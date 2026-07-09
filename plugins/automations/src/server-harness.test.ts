@@ -137,7 +137,7 @@ describe("automations server plugin harness", () => {
     vi.useRealTimers();
   });
 
-  it("boots through server.ts and registers settings, rpc, cli, thread events, and sweep service", async () => {
+  it("boots through server.ts and registers rpc, cli, thread events, and sweep service", async () => {
     const { harness } = await bootAutomationsPlugin();
 
     expect([...harness.registrations.rpcMethods].sort()).toEqual(rpcMethods);
@@ -150,9 +150,7 @@ describe("automations server plugin harness", () => {
       "thread.failed": 1,
       "thread.deleted": 1,
     });
-    expect(harness.registrations.settingsDescriptors.allowScriptRuns).toEqual(
-      expect.objectContaining({ type: "boolean", default: true }),
-    );
+    expect(harness.registrations.settingsDescriptors).toEqual({});
 
     await harness.dispose();
   });

@@ -63,7 +63,6 @@ async function processDueAutomation(
     pluginDataDir: string;
     automation: AutomationRow;
     now: number;
-    allowScriptRuns: boolean;
     agentHostsAvailable: boolean;
     serverUrl: string;
   },
@@ -93,13 +92,6 @@ async function processDueAutomation(
   }
 
   if (execution.mode === "agent" && !args.agentHostsAvailable) {
-    return;
-  }
-
-  if (execution.mode === "script" && !args.allowScriptRuns) {
-    bb.log.warn(
-      `Skipping due script automation ${args.automation.id}: script runs are disabled`,
-    );
     return;
   }
 
@@ -169,7 +161,6 @@ export async function sweepDueAutomations(
   db: Db,
   args: {
     pluginDataDir: string;
-    allowScriptRuns: boolean;
     serverUrl: string;
     now?: number;
   },
@@ -183,7 +174,6 @@ export async function sweepDueAutomations(
         pluginDataDir: args.pluginDataDir,
         automation,
         now,
-        allowScriptRuns: args.allowScriptRuns,
         agentHostsAvailable,
         serverUrl: args.serverUrl,
       });

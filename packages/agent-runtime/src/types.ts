@@ -36,7 +36,20 @@ export interface AgentRuntimePiSkillRoot {
   skillDirectoryRootPath: string;
 }
 
+export interface AgentRuntimeAcpSkill {
+  description: string;
+  name: string;
+}
+
+export interface AgentRuntimeAcpSkillRoot {
+  id: string;
+  providerId: "acp";
+  skillDirectoryRootPath: string;
+  skills: readonly AgentRuntimeAcpSkill[];
+}
+
 export type AgentRuntimeSkillRoot =
+  | AgentRuntimeAcpSkillRoot
   | AgentRuntimeClaudeCodeSkillRoot
   | AgentRuntimeCodexSkillRoot
   | AgentRuntimePiSkillRoot;

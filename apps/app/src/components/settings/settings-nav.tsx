@@ -7,6 +7,7 @@ import {
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { usePluginLogoUrl } from "@/lib/plugin-logos";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   SETTINGS_PLUGIN_ROUTE_PATH,
@@ -48,7 +49,7 @@ export interface SettingsNavState {
   activeSection: SettingsSectionId | null;
   /** True when the :section URL segment is unknown (the view redirects). */
   hasUnknownSection: boolean;
-  /** Enabled plugins that declared settings — each gets a nav entry. */
+  /** Enabled plugins that declared settings or settingsSection slots. */
   pluginEntries: PluginListItem[];
   /** Buckets visible on this host (files/plugins hide when irrelevant). */
   sections: readonly SettingsNavSection[];
@@ -62,10 +63,15 @@ export interface SettingsNavState {
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
-  const { fileOpeners } = usePluginSlots();
+  const { fileOpeners, settingsSections } = usePluginSlots();
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const pluginListQuery = usePluginList();
+  const settingsSectionPluginIds = new Set(
+    settingsSections.map((section) => section.pluginId),
+  );
+  const pluginListQuery = usePluginList({
+    enabled: pluginsEnabled || settingsSectionPluginIds.size > 0,
+  });
 
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
   const sectionMatch = matchPath(
@@ -93,11 +99,11 @@ export function useSettingsNavState(): SettingsNavState {
     }
     return true;
   });
-  const pluginEntries = pluginsEnabled
-    ? (pluginListQuery.data ?? []).filter(
-        (plugin) => plugin.enabled && plugin.hasSettings,
-      )
-    : [];
+  const pluginEntries = (pluginListQuery.data ?? []).filter(
+    (plugin) =>
+      plugin.enabled &&
+      (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),
+  );
 
   return {
     activePluginId,
@@ -110,10 +116,11 @@ export function useSettingsNavState(): SettingsNavState {
 
 export function PluginNavIcon({ plugin }: { plugin: PluginListItem }) {
   const theme = usePreferredTheme();
+  const storedLogoUrl = usePluginLogoUrl(plugin.id);
   const logoUrl =
     theme === "dark" && plugin.logoDarkUrl !== null
       ? plugin.logoDarkUrl
-      : plugin.logoUrl;
+      : (plugin.logoUrl ?? storedLogoUrl);
   if (logoUrl === null) {
     return <Icon name="Layers" className="size-4 shrink-0" />;
   }

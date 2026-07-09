@@ -73,7 +73,8 @@ message agents, or inspect projects, providers, and environments.
   `bb connect status` / `bb connect off` report and clear the pairing. Remote
   access is owned by the builtin `connect` plugin: `bb plugin disable connect`
   cuts it off entirely; with bb connect still enabled, `bb plugin enable
-  connect` restores the command.
+  connect` restores the command. Settings → Connect shows the current URL,
+  QR code, re-pair form, and disconnect control.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or
@@ -291,10 +292,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     declared) and reloads the plugin; open app pages pick the new UI up live.
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
-    `@bb/plugin-sdk/app` and register UI slots (homepageSection, navPanel,
-    threadPanelAction, composerAccessory) with hooks (useRpc, useRealtime,
-    useSettings, useBbContext, useBbNavigate); components are vendored
-    shadcn source the plugin owns. Installed
+    `@bb/plugin-sdk/app` and register UI slots (homepageSection,
+    settingsSection, navPanel, threadPanelAction, composerAccessory,
+    fileOpener) with hooks (useRpc, useRealtime, useSettings, useBbContext,
+    useBbNavigate, useComposer); components are vendored shadcn source the
+    plugin owns. Installed
     plugins and their settings also appear under Settings → Plugins.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run
   them directly — unknown `bb` commands are resolved against installed plugins

@@ -1126,6 +1126,7 @@ export function ThreadDetailPromptArea({
         {shouldHideComposer ? null : (
           <QueuedMessagesList
             queuedMessages={queuedMessages}
+            resolveMentionLink={resolveMentionLink}
             sendDisabled={
               !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
               runtimeDisplayStatus === "provisioning" ||
@@ -1176,6 +1177,7 @@ export function ThreadDetailPromptArea({
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,
+      resolveMentionLink,
       runtimeDisplayStatus,
       shouldHideComposer,
       submitMode.kind,

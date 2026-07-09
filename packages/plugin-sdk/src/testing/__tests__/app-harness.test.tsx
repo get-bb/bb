@@ -65,6 +65,11 @@ function Section(_props: PluginHomepageSectionProps) {
   return <div>greeting: {String(settings.values?.greeting)}</div>;
 }
 
+function SettingsSection() {
+  const settings = useSettings();
+  return <div>settings greeting: {String(settings.values?.greeting)}</div>;
+}
+
 const app = await loadPluginApp(
   definePluginApp((builder) => {
     builder.slots.navPanel({
@@ -79,6 +84,10 @@ const app = await loadPluginApp(
       title: "Home",
       component: Section,
     });
+    builder.slots.settingsSection({
+      id: "settings",
+      component: SettingsSection,
+    });
   }),
 );
 
@@ -91,6 +100,7 @@ describe("loadPluginApp", () => {
       chrome: "page",
     });
     expect(app.homepageSections[0]?.id).toBe("home");
+    expect(app.settingsSections[0]?.id).toBe("settings");
   });
 
   it("rejects registrations the host would reject, with the host's message", async () => {
@@ -163,6 +173,13 @@ describe("renderSlot", () => {
       { settings: { greeting: "hi" } },
     );
     section.getByText("greeting: hi");
+
+    const settingsSection = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { settings: { greeting: "settings-hi" } },
+    );
+    settingsSection.getByText("settings greeting: settings-hi");
 
     const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {});
     await slot.findByText(

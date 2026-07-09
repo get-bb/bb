@@ -22,6 +22,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginRpcClient,
   type PluginSdkApp,
+  type PluginSettingsSectionRegistration,
   type PluginSettingsState,
   type PluginThreadPanelActionRegistration,
 } from "../app-contract.js";
@@ -186,6 +187,7 @@ export function installTestPluginRuntime(): void {
 
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
+  settingsSections: PluginSettingsSectionRegistration[];
   navPanels: Array<
     PluginNavPanelRegistration & { chrome: "page" | "none" }
   >;
@@ -221,6 +223,17 @@ function requireNonEmptyString(
   return value;
 }
 
+function requireOptionalString(
+  kind: string,
+  field: string,
+  value: unknown,
+): string | undefined {
+  if (value !== undefined && typeof value !== "string") {
+    throw new Error(`${kind}: "${field}" must be a string when set`);
+  }
+  return value;
+}
+
 function requireComponent<T>(kind: string, value: unknown): T {
   if (typeof value !== "function") {
     throw new Error(`${kind}: "component" must be a React component function`);
@@ -245,6 +258,7 @@ function collectRegistrations(
 ): CapturedPluginApp {
   const captured: CapturedPluginApp = {
     homepageSections: [],
+    settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
@@ -252,6 +266,7 @@ function collectRegistrations(
   };
   const seenIds = {
     homepageSection: new Set<string>(),
+    settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
@@ -267,6 +282,17 @@ function collectRegistrations(
         captured.homepageSections.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      settingsSection(registration) {
+        const kind = "slots.settingsSection";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.settingsSection, id);
+        const title = requireOptionalString(kind, "title", registration.title);
+        captured.settingsSections.push({
+          id,
+          ...(title !== undefined ? { title } : {}),
           component: requireComponent(kind, registration.component),
         });
       },

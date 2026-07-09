@@ -2,10 +2,17 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import type { SystemConfigResponse } from "@bb/server-contract";
+import { defaultAppTheme, defaultExperiments } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import {
   PluginSettingsDetail,
+  PluginSettingsDetailSection,
   PluginSettingsForm,
   PluginToggleRow,
 } from "./PluginsSettingsSection";
@@ -23,6 +30,25 @@ function jsonOk(body: unknown): Response {
   } as Response;
 }
 
+function responseJson(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
+  return {
+    experiments: { ...defaultExperiments, plugins: pluginsEnabled },
+    appearance: defaultAppTheme,
+    customThemes: [],
+    featureFlags: { placeholder: false },
+    hostDaemonPort: null,
+    voiceTranscriptionEnabled: false,
+    dataDir: "/tmp/bb-test",
+  };
+}
+
 const SETTINGS_VIEW = {
   ok: true,
   schema: {
@@ -35,6 +61,7 @@ const SETTINGS_VIEW = {
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
   vi.unstubAllGlobals();
 });
 
@@ -179,6 +206,62 @@ describe("PluginSettingsDetail settings gating", () => {
       wrapper,
     });
     expect(screen.queryByTestId("plugin-settings-logo-linear")).toBeNull();
+  });
+
+  it("renders a slot-only settings page while the plugins experiment is off", async () => {
+    function ConnectSettings() {
+      return <div>Custom connect settings</div>;
+    }
+    setPluginSlotRegistrations("connect", {
+      homepageSections: [],
+      settingsSections: [
+        { id: "remote", title: "Remote access", component: ConnectSettings },
+      ],
+      navPanels: [],
+      threadPanelActions: [],
+      composerAccessories: [],
+      fileOpeners: [],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const rawUrl =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        const path = new URL(rawUrl, "http://localhost").pathname;
+        if (path === "/api/v1/system/config") {
+          return responseJson(systemConfig(false));
+        }
+        if (path === "/api/v1/plugins") {
+          return responseJson({
+            plugins: [
+              {
+                id: "connect",
+                version: "0.1.0",
+                enabled: true,
+                status: "running",
+                statusDetail: null,
+                description: null,
+                logoUrl: null,
+                logoDarkUrl: null,
+                hasSettings: false,
+              },
+            ],
+          });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsDetailSection pluginId="connect" />, { wrapper });
+
+    expect(await screen.findByText("Remote access")).toBeDefined();
+    expect(screen.getByText("Custom connect settings")).toBeDefined();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 });
 

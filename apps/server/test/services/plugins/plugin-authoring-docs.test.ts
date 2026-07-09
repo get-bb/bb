@@ -12,6 +12,7 @@ import {
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
   type PluginSettingDescriptor,
+  type PluginSettingsSectionProps,
   type PluginThreadEventPayloads,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk";
@@ -133,6 +134,7 @@ void _assertAllThreadEventFieldsListed;
  */
 type SlotPropsByName = {
   homepageSection: PluginHomepageSectionProps;
+  settingsSection: PluginSettingsSectionProps;
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
   composerAccessory: PluginComposerAccessoryProps;
@@ -145,6 +147,7 @@ void _assertAllSlotsListed;
 
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
+  settingsSection: [],
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
