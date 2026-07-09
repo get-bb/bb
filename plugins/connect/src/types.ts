@@ -22,8 +22,13 @@ export interface ConnectStatus {
    */
   state: ConnectStateName;
   paired: boolean;
+  /**
+   * Routing label of the paired server (subdomain). Equal to the account
+   * handle for the primary bb; a distinct label when an additional bb is
+   * paired. Null when unpaired.
+   */
   handle: string | null;
-  /** Public URL, e.g. https://<handle>.getbb.app; null when not paired. */
+  /** Public URL, e.g. https://<label>.getbb.app; null when not paired. */
   url: string | null;
   /**
    * getbb.app dashboard URL to mint connect codes — derived from the paired

@@ -14,7 +14,9 @@ import {
   createServer,
   disconnectServer,
   getAccountState,
+  redeemConnectCode,
 } from "./api.js";
+import { sha256Hex } from "./tokens.js";
 
 // Real in-memory SQLite (never mock the DB): apply the same connect-db
 // migration chain the worker runs, then drive the product-state functions.
@@ -190,6 +192,55 @@ describe("createConnectCode (per-server minting + reuse)", () => {
     if ("error" in first || "error" in second) throw new Error("mint failed");
     expect(second.code).not.toBe(first.code);
     expect(db.select().from(connectCode).all()).toHaveLength(2);
+  });
+});
+
+describe("redeemConnectCode (multi-server routing label)", () => {
+  it("returns the redeemed server's subdomain, not the account handle", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+
+    // Primary starts unpaired (no credential hash); second server is the redeem target.
+    const primary = db.select().from(server).where(eq(server.subdomain, "sawyer")).get();
+    expect(primary?.credentialHash).toBeNull();
+
+    const minted = await createConnectCode(deps, "u1", { serverId: desktop.server.id });
+    if ("error" in minted) throw new Error(minted.error);
+
+    const result = await redeemConnectCode(deps, minted.code);
+    if ("error" in result) throw new Error(`${result.error} (${result.status})`);
+
+    // (a) Wire handle is the second server's routing label, not the primary account handle.
+    expect(result.handle).toBe("sawyer-desktop");
+    expect(result.serverId).toBe(desktop.server.id);
+    // (b) tunnelUrl is keyed by that subdomain.
+    expect(result.tunnelUrl).toBe("wss://sawyer-desktop.getbb.app/__tunnel");
+    expect(result.credential.startsWith("bbcred_")).toBe(true);
+
+    // (c) Credential hash lands on the second server only; primary is untouched.
+    const second = db.select().from(server).where(eq(server.id, desktop.server.id)).get();
+    expect(second?.credentialHash).toBe(await sha256Hex(result.credential));
+    expect(second?.revokedAt).toBeNull();
+
+    const primaryAfter = db.select().from(server).where(eq(server.subdomain, "sawyer")).get();
+    expect(primaryAfter?.credentialHash).toBeNull();
+  });
+
+  it("returns the primary handle when redeeming a primary-server code", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const primary = db.select().from(server).where(eq(server.subdomain, "sawyer")).get();
+    const minted = await createConnectCode(deps, "u1", { serverId: primary!.id });
+    if ("error" in minted) throw new Error(minted.error);
+
+    const result = await redeemConnectCode(deps, minted.code);
+    if ("error" in result) throw new Error(`${result.error} (${result.status})`);
+
+    // Primary server: subdomain === account handle — byte-identical pre-fix behavior.
+    expect(result.handle).toBe("sawyer");
+    expect(result.tunnelUrl).toBe("wss://sawyer.getbb.app/__tunnel");
   });
 });
 

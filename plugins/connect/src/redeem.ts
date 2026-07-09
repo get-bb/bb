@@ -5,6 +5,12 @@ export const DEFAULT_CONNECT_BASE_URL = "https://getbb.app";
 
 export interface RedeemedCredential {
   credential: string;
+  /**
+   * Routing label of the redeemed server (its subdomain). Equal to the
+   * account handle for the primary server; a distinct label when pairing an
+   * additional bb. Used to build serverUrl and share URLs — not necessarily
+   * the account's primary handle.
+   */
   handle: string;
 }
 
@@ -65,7 +71,10 @@ export function deriveConnectBaseUrl(serverUrl: string): string {
   return new URL(serverUrl).origin.replace(/\/\/[^.]+\./, "//");
 }
 
-/** `https://getbb.app` + `sawyer` → `https://sawyer.getbb.app`. */
+/**
+ * `https://getbb.app` + routing label → `https://<label>.getbb.app`.
+ * `handle` is the redeemed server's subdomain (primary or additional).
+ */
 export function serverUrlForHandle(baseUrl: string, handle: string): string {
   const url = new URL(baseUrl);
   return `${url.protocol}//${handle}.${url.host}`;

@@ -51,7 +51,9 @@ export function parseSharePort(raw: unknown): number {
 }
 
 /**
- * Public share URL for a port: `https://<handle>--<port>.<base-domain>`.
+ * Public share URL for a port: `https://<label>--<port>.<base-domain>`.
+ * `credential.handle` is the paired server's routing label (subdomain),
+ * which may be a non-primary label when multiple bbs are connected.
  * Base domain is derived from the credential's serverUrl the same way the
  * connect apex is (e.g. `https://sawyer.getbb.app` → `getbb.app`).
  */

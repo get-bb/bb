@@ -108,6 +108,18 @@ describe("sharePublicUrl", () => {
       ),
     ).toBe("https://sawyer--8000.getbb.app");
   });
+
+  it("uses a non-primary routing label when multi-server pairing stored one", () => {
+    expect(
+      sharePublicUrl(
+        {
+          serverUrl: "https://sawyer-desktop.getbb.app",
+          handle: "sawyer-desktop",
+        },
+        8000,
+      ),
+    ).toBe("https://sawyer-desktop--8000.getbb.app");
+  });
 });
 
 describe("parseSharePort / serverOwnPort", () => {
@@ -599,6 +611,49 @@ describe("connect plugin", () => {
     );
     expect(status.url).toBe("http://sawyer.localhost:59329");
     expect(status.paired).toBe(true);
+  });
+
+  it("pair stores a non-primary routing label from redeem (multi-server)", async () => {
+    // Cloud returns the redeemed server's subdomain, not the account handle.
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            credential: "bbcred_second",
+            handle: "sawyer-desktop",
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { bb, harness } = await loadPlugin();
+
+    const status = (await harness.callRpc("pair", {
+      code: "ABCD",
+      baseUrl: "http://localhost:59332",
+    })) as ConnectStatus;
+
+    expect(status.paired).toBe(true);
+    expect(status.handle).toBe("sawyer-desktop");
+    expect(status.url).toBe("http://sawyer-desktop.localhost:59332");
+
+    const stored = (await bb.storage.kv.get(CREDENTIAL_KV_KEY)) as {
+      serverUrl: string;
+      handle: string;
+      credential: string;
+    };
+    expect(stored).toEqual({
+      serverUrl: "http://sawyer-desktop.localhost:59332",
+      handle: "sawyer-desktop",
+      credential: "bbcred_second",
+    });
+
+    // Share URLs follow the stored label, not the account primary handle.
+    const exposed = (await harness.callRpc("expose", { port: 8000 })) as {
+      port: number;
+      url: string;
+    };
+    expect(exposed.url).toBe("http://sawyer-desktop--8000.localhost:59332");
   });
 
   it("disconnect clears the stored credential", async () => {

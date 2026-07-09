@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { PluginKvStorage } from "@bb/plugin-sdk";
 
 // The durable tunnel credential lives in the plugin's kv storage (bb.db).
+// `handle` is the paired server's routing label (subdomain), which may differ
+// from the account's primary handle when multiple bbs are connected.
 export const connectCredentialSchema = z.object({
   serverUrl: z.string().min(1),
   handle: z.string().min(1),

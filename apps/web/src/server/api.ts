@@ -408,19 +408,39 @@ export async function disconnectServer(
 }
 
 /**
+ * Rows affected by a drizzle `.run()` across D1 (`meta.changes`) and
+ * better-sqlite3 (`changes`) drivers.
+ */
+function rowsChanged(result: unknown): number {
+  if (result && typeof result === "object") {
+    const r = result as { meta?: { changes?: number }; changes?: number };
+    if (typeof r.meta?.changes === "number") return r.meta.changes;
+    if (typeof r.changes === "number") return r.changes;
+  }
+  return 0;
+}
+
+/**
  * Redeem a connect code (called by the tunnel client — the code is the
  * credential). Atomically consumes the code, mints a durable tunnel credential,
- * pins it (hashed) on the server row, returns plaintext once. Worker-only (D1),
- * so it stays env-based and uses the D1 `.meta.changes` result shape.
+ * pins it (hashed) on the server row, returns plaintext once.
+ *
+ * `handle` is the redeemed server's routing label (its subdomain). For the
+ * primary server this equals the account handle, so primary pairing is
+ * byte-identical to the pre-multi-server behavior. The tunnel client uses
+ * this field to build serverUrl / share URLs — it must not be the account's
+ * primary handle when a non-primary server was paired.
+ *
+ * Accepts `Deps` (D1 in the worker via `depsFromEnv`, better-sqlite3 in tests).
  */
 export async function redeemConnectCode(
-  env: Env,
+  deps: Pick<Deps, "db" | "baseDomain">,
   code: string,
 ): Promise<
   | { credential: string; serverId: string; handle: string | null; tunnelUrl: string | null }
   | { error: string; status: number }
 > {
-  const db = drizzle(env.DB);
+  const { db, baseDomain } = deps;
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { error: "missing-code", status: 400 };
 
@@ -434,7 +454,7 @@ export async function redeemConnectCode(
     .set({ consumedAt: new Date() })
     .where(and(eq(connectCode.code, normalized), isNull(connectCode.consumedAt)))
     .run();
-  if (consumed.meta.changes === 0) return { error: "already-used", status: 409 };
+  if (rowsChanged(consumed) === 0) return { error: "already-used", status: 409 };
 
   const credential = generateToken("bbcred_", 32);
   await db
@@ -445,12 +465,14 @@ export async function redeemConnectCode(
 
   const srv = await db.select().from(server).where(eq(server.id, row.serverId)).get();
   const prof = await db.select().from(profile).where(eq(profile.userId, row.userId)).get();
+  // Routing label of the redeemed server (not necessarily the account handle).
+  const handle = srv?.subdomain ?? prof?.handle ?? null;
   return {
     credential,
     serverId: row.serverId,
-    handle: prof?.handle ?? null,
-    // Keyed by this server's subdomain (which may be non-primary), not the handle.
-    tunnelUrl: srv ? `wss://${srv.subdomain}.${env.BASE_DOMAIN}/__tunnel` : null,
+    handle,
+    // Keyed by this server's subdomain (which may be non-primary), not the account handle.
+    tunnelUrl: srv ? `wss://${srv.subdomain}.${baseDomain}/__tunnel` : null,
   };
 }
 
