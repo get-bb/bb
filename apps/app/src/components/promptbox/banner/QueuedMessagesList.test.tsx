@@ -31,6 +31,19 @@ function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
   };
 }
 
+function makeQueuedFileMessage(id: string, name: string): ThreadQueuedMessage {
+  return {
+    ...makeQueuedMessage(id, ""),
+    content: [
+      {
+        type: "localFile",
+        path: `/tmp/${name}`,
+        name,
+      },
+    ],
+  };
+}
+
 function makeGroupedQueuedMessages(): ThreadQueuedMessage[] {
   return [
     {
@@ -108,10 +121,75 @@ describe("QueuedMessagesList", () => {
       ),
     ]);
 
-    const quote = container.querySelector("blockquote");
-    expect(quote?.textContent).toBe("first quoted line second quoted line");
-    expect(container.textContent).toContain("reply underneath");
+    expect(container.querySelector("blockquote")).toBeNull();
+    expect(container.querySelector("br")).toBeNull();
+    expect(container.textContent?.replace(/\s+/gu, " ")).toContain(
+      "first quoted line second quoted line reply underneath",
+    );
     expect(container.textContent).not.toContain("> first quoted line");
+  });
+
+  it("renders queued markdown formatting instead of raw delimiters", () => {
+    const { container } = renderQueuedMessages([
+      makeQueuedMessage("q_markdown", "## Heading\nReview **bold** and `code`."),
+    ]);
+
+    expect(container.querySelector("h2")).toBeNull();
+    expect(container.textContent).toContain("Heading");
+    expect(container.querySelector("strong")?.textContent).toBe("bold");
+    expect(container.querySelector("code")?.textContent).toBe("code");
+    expect(container.textContent).not.toContain("## Heading");
+    expect(container.textContent).not.toContain("**bold**");
+    expect(container.textContent).not.toContain("`code`");
+  });
+
+  it("does not add hard-break elements for multi-line queued markdown", () => {
+    const { container } = renderQueuedMessages([
+      makeQueuedMessage("q_multiline", "first line\nsecond line"),
+    ]);
+
+    expect(container.querySelector("br")).toBeNull();
+    expect(container.textContent?.replace(/\s+/gu, " ")).toContain(
+      "first line second line",
+    );
+  });
+
+  it("does not render full markdown preview controls in queued rows", () => {
+    const { container, queryByLabelText } = renderQueuedMessages([
+      makeQueuedMessage("q_code_block", "```ts\nconst value = 1;\n```"),
+    ]);
+
+    expect(queryByLabelText("Copy code")).toBeNull();
+    expect(queryByLabelText("Wrap long lines")).toBeNull();
+    expect(container.querySelector("pre")).toBeNull();
+    expect(container.querySelector("code")?.textContent).toContain(
+      "const value = 1;",
+    );
+  });
+
+  it("flattens images and links in queued markdown previews", () => {
+    const { container } = renderQueuedMessages([
+      makeQueuedMessage(
+        "q_media",
+        "![Diagram](https://example.test/a.png) [docs](https://example.test)",
+      ),
+    ]);
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("a[href]")).toBeNull();
+    expect(container.textContent).toContain("Diagram");
+    expect(container.textContent).toContain("docs");
+  });
+
+  it("renders attachment-only fallback text literally", () => {
+    const { container } = renderQueuedMessages([
+      makeQueuedFileMessage("q_attachment", "[notes](https://example.test).md"),
+    ]);
+
+    expect(container.querySelector("a[href]")).toBeNull();
+    expect(container.textContent).toContain(
+      "Attachment only ([notes](https://example.test).md)",
+    );
   });
 
   it("renders prompt mentions as pills in queued previews", () => {

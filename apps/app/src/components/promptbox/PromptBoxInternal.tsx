@@ -1268,10 +1268,13 @@ export function PromptBoxInternal({
   const editor = useEditor(
     {
       extensions: editorExtensions,
-      content: promptEditorContentFromValue({
-        text: value,
-        mentions: mentionRanges,
-      }),
+      content: promptEditorContentFromValue(
+        {
+          text: value,
+          mentions: mentionRanges,
+        },
+        { richTextMarkdown: richTextEditing },
+      ),
       immediatelyRender: false,
       editorProps: {
         attributes: {
@@ -1354,7 +1357,9 @@ export function PromptBoxInternal({
 
             const currentEditor = editorRef.current;
             const pastedContent =
-              promptEditorContentFromValue(pastedValue).content ?? [];
+              promptEditorContentFromValue(pastedValue, {
+                richTextMarkdown: richTextEditing,
+              }).content ?? [];
             currentEditor
               ?.chain()
               .focus()
@@ -1481,7 +1486,11 @@ export function PromptBoxInternal({
 
     try {
       skipEditorChangeRef.current = true;
-      editor.commands.setContent(promptEditorContentFromValue(nextValue));
+      editor.commands.setContent(
+        promptEditorContentFromValue(nextValue, {
+          richTextMarkdown: richTextEditing,
+        }),
+      );
       editorValueKeyRef.current = nextKey;
     } finally {
       skipEditorChangeRef.current = false;
@@ -1491,6 +1500,7 @@ export function PromptBoxInternal({
   }, [
     editor,
     mentionRanges,
+    richTextEditing,
     scheduleRevealEditorSelection,
     syncTriggerState,
     value,

@@ -45,6 +45,23 @@ function roundTrip(value: PromptEditorValue): PromptEditorValue {
   return promptEditorValueFromDoc(node);
 }
 
+function roundTripRichMarkdown(value: PromptEditorValue): PromptEditorValue {
+  const node = Node.fromJSON(
+    schema,
+    promptEditorContentFromValue(value, { richTextMarkdown: true }),
+  );
+  return promptEditorValueFromDoc(node);
+}
+
+function threadMentionResource(label = "@thr") {
+  return {
+    kind: "thread" as const,
+    threadId: "thr_1",
+    projectId: "proj_1",
+    label,
+  };
+}
+
 describe("prompt editor serialization round-trip", () => {
   it("round-trips plain text with no quotes (regression)", () => {
     const value: PromptEditorValue = {
@@ -166,6 +183,121 @@ describe("prompt editor clipboard serialization", () => {
         },
       ]),
     ).toBe("> quoted");
+  });
+});
+
+describe("prompt editor rich markdown restore", () => {
+  it("restores heading, list, and inline mark markdown as editor nodes", () => {
+    const value: PromptEditorValue = {
+      text: "# Title\n- **bold**\n- _italic_\n1. `code`",
+      mentions: [],
+    };
+
+    const doc = Node.fromJSON(
+      schema,
+      promptEditorContentFromValue(value, { richTextMarkdown: true }),
+    );
+
+    expect(doc.toJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1 } },
+        { type: "bulletList" },
+        { type: "orderedList", attrs: { start: 1 } },
+      ],
+    });
+    expect(promptEditorValueFromDoc(doc)).toEqual(value);
+  });
+
+  it("keeps mention offsets stable when restoring headings and lists", () => {
+    const resource = {
+      kind: "thread" as const,
+      threadId: "thr_1",
+      projectId: "proj_1",
+      label: "@thr",
+    };
+    const text = "## See @thr\n- Ping @thr";
+    const firstMentionStart = text.indexOf("@thr");
+    const secondMentionStart = text.lastIndexOf("@thr");
+    const value: PromptEditorValue = {
+      text,
+      mentions: [
+        {
+          start: firstMentionStart,
+          end: firstMentionStart + "@thr".length,
+          resource,
+        },
+        {
+          start: secondMentionStart,
+          end: secondMentionStart + "@thr".length,
+          resource,
+        },
+      ],
+    };
+
+    expect(roundTripRichMarkdown(value)).toEqual(value);
+  });
+
+  it("does not treat underscores inside words as italic delimiters", () => {
+    const value: PromptEditorValue = {
+      text: "Open apps/app/src/snake_case_file.ts",
+      mentions: [],
+    };
+
+    expect(roundTripRichMarkdown(value)).toEqual(value);
+  });
+
+  it("treats emphasis markers inside inline code as literal text", () => {
+    const value: PromptEditorValue = {
+      text: "`**literal**` and `a ** b ** c`",
+      mentions: [],
+    };
+
+    expect(roundTripRichMarkdown(value)).toEqual(value);
+  });
+
+  it("keeps marked mention markdown valid when restoring rich text", () => {
+    const mentionText = "@thr";
+    const text = `**${mentionText} done**`;
+    const mentionStart = text.indexOf(mentionText);
+    const value: PromptEditorValue = {
+      text,
+      mentions: [
+        {
+          start: mentionStart,
+          end: mentionStart + mentionText.length,
+          resource: threadMentionResource(),
+        },
+      ],
+    };
+
+    const result = roundTripRichMarkdown(value);
+
+    expect(result).toEqual(value);
+    expect(
+      result.text.slice(result.mentions[0]!.start, result.mentions[0]!.end),
+    ).toBe(mentionText);
+  });
+
+  it("restores rich markdown blocks inside blockquotes", () => {
+    expect(
+      roundTripRichMarkdown({
+        text: "> ## Head",
+        mentions: [],
+      }),
+    ).toEqual({
+      text: "> ## Head",
+      mentions: [],
+    });
+    expect(
+      roundTripRichMarkdown({
+        text: "> - item",
+        mentions: [],
+      }),
+    ).toEqual({
+      text: "> - item",
+      mentions: [],
+    });
   });
 });
 
