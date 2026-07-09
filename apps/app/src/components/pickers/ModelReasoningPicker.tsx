@@ -639,9 +639,9 @@ export function ModelReasoningPicker({
   ].join("");
 
   // The trigger renders identically whether interactive or disabled — the only
-  // difference is the `disabled` button state and a dropped chevron — so the
-  // disabled read-only surface (e.g. the side chat) shows the same model label
-  // in the same position as its editable counterpart.
+  // difference is the `disabled` button state and a dropped chevron — so fully
+  // read-only surfaces show the same model label in the same position as their
+  // editable counterpart.
   const trigger = (
     <Button
       type="button"

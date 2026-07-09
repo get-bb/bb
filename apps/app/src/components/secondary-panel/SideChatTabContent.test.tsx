@@ -17,11 +17,15 @@ import { SideChatTabContent } from "./SideChatTabContent";
 const mocks = vi.hoisted(() => ({
   commandSuggestionArgs: [] as unknown[],
   createThreadMutateAsync: vi.fn(),
+  defaultExecutionOptionsThreadIds: [] as string[],
   noopMutate: vi.fn(),
   noopMutateAsync: vi.fn(),
   promptMentionArgs: [] as unknown[],
   promptMentionSetQuery: vi.fn(),
   sendThreadMessageMutateAsync: vi.fn(),
+  threadCreationReasoningLevel: "medium",
+  threadCreationSelectedModel: "gpt-5",
+  threadCreationServiceTier: undefined as "default" | "fast" | undefined,
   threadTimelineRows: [] as unknown[],
   timelineRowsProps: [] as Array<{
     onSendToMainMessage?: unknown;
@@ -34,6 +38,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   FollowUpPromptBox: ({
     attachments,
     composer,
+    execution,
+    permissionReadOnly,
+    readOnly,
     stack,
     typeahead,
   }: {
@@ -48,6 +55,20 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       | "onModifierSubmit"
       | "onSubmit"
     >;
+    execution: {
+      model: {
+        onChange: (value: string) => void;
+        selected: string;
+      };
+      reasoning: {
+        onChange: (value: "high") => void;
+      };
+      serviceTier?: {
+        onChange: (value: "fast") => void;
+      };
+    };
+    permissionReadOnly?: boolean;
+    readOnly?: boolean;
     typeahead: {
       command: {
         onQueryChange: (query: string | null) => void;
@@ -67,6 +88,21 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       />
       <button type="button" onClick={composer.onSubmit}>
         Send
+      </button>
+      <button type="button" onClick={() => execution.model.onChange("o4-mini")}>
+        Use o4-mini
+      </button>
+      <button
+        type="button"
+        onClick={() => execution.reasoning.onChange("high")}
+      >
+        Use high reasoning
+      </button>
+      <button
+        type="button"
+        onClick={() => execution.serviceTier?.onChange("fast")}
+      >
+        Use fast mode
       </button>
       <button
         type="button"
@@ -93,6 +129,15 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <span data-testid="command-trigger">{typeahead.command.trigger}</span>
       <span data-testid="side-chat-stack-state">
         {stack === null ? "null" : "provided"}
+      </span>
+      <span data-testid="side-chat-selected-model">
+        {execution.model.selected}
+      </span>
+      <span data-testid="side-chat-read-only">
+        {readOnly ? "true" : "false"}
+      </span>
+      <span data-testid="side-chat-permission-read-only">
+        {permissionReadOnly ? "true" : "false"}
       </span>
       <button
         type="button"
@@ -229,27 +274,51 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ isLocalDaemonHost: () => true }),
 }));
 
-vi.mock("@/hooks/useThreadCreationOptions", () => ({
-  useThreadCreationOptions: () => ({
-    activeModel: null,
-    hasMultipleProviders: false,
-    isLoadingModels: false,
-    modelLoadError: null,
-    modelOptions: [],
-    permissionModeOptions: [],
-    providerOptions: [],
-    reasoningLevel: "medium",
-    reasoningOptions: [],
-    selectedModel: "gpt-5",
-    selectedProviderComposerActions: [{ kind: "skills", trigger: "/" }],
-    selectedProviderDisplayName: "Codex",
-    selectedProviderId: "codex",
-    serviceTier: undefined,
-    serviceTierSupportByProvider: {},
-    supportsPermissionModeSelection: true,
-    supportsServiceTier: false,
-  }),
-}));
+vi.mock("@/hooks/useThreadCreationOptions", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  return {
+    useThreadCreationOptions: () => {
+      const [selectedModel, setSelectedModel] = React.useState(
+        mocks.threadCreationSelectedModel,
+      );
+      const [reasoningLevel, setReasoningLevel] = React.useState(
+        mocks.threadCreationReasoningLevel,
+      );
+      const [serviceTier, setServiceTier] = React.useState(
+        mocks.threadCreationServiceTier,
+      );
+      return {
+        activeModel: { model: selectedModel },
+        hasMultipleProviders: false,
+        isLoadingModels: false,
+        modelLoadError: null,
+        modelLoadFailed: false,
+        modelOptions: [
+          { value: "gpt-5", label: "GPT-5" },
+          { value: "o4-mini", label: "o4-mini" },
+        ],
+        permissionModeOptions: [],
+        providerOptions: [],
+        reasoningLevel,
+        reasoningOptions: [
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High" },
+        ],
+        selectedModel,
+        selectedProviderComposerActions: [{ kind: "skills", trigger: "/" }],
+        selectedProviderDisplayName: "Codex",
+        selectedProviderId: "codex",
+        serviceTier,
+        serviceTierSupportByProvider: {},
+        setReasoningLevel,
+        setSelectedModel,
+        setServiceTier,
+        supportsPermissionModeSelection: true,
+        supportsServiceTier: true,
+      };
+    },
+  };
+});
 
 vi.mock("@/hooks/usePromptMentions", () => ({
   usePromptMentions: (projectId: string | undefined, options: unknown) => {
@@ -299,14 +368,17 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
-  useThreadDefaultExecutionOptions: () => ({
-    data: {
-      model: "gpt-5",
-      reasoningLevel: "medium",
-      serviceTier: undefined,
-    },
-    isLoading: false,
-  }),
+  useThreadDefaultExecutionOptions: (threadId: string) => {
+    mocks.defaultExecutionOptionsThreadIds.push(threadId);
+    return {
+      data: {
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        serviceTier: undefined,
+      },
+      isLoading: false,
+    };
+  },
 }));
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
@@ -352,9 +424,13 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   mocks.commandSuggestionArgs.length = 0;
+  mocks.defaultExecutionOptionsThreadIds.length = 0;
   mocks.promptMentionArgs.length = 0;
   mocks.threadTimelineRows.length = 0;
   mocks.timelineRowsProps.length = 0;
+  mocks.threadCreationReasoningLevel = "medium";
+  mocks.threadCreationSelectedModel = "gpt-5";
+  mocks.threadCreationServiceTier = undefined;
   mocks.threadRuntimeDisplayStatus = "idle";
   vi.clearAllMocks();
 });
@@ -431,6 +507,27 @@ describe("SideChatTabContent", () => {
     );
   });
 
+  it("keeps permission locked while model controls remain editable", () => {
+    renderDraftSideChat();
+
+    expect(screen.getByTestId("side-chat-read-only").textContent).toBe("false");
+    expect(
+      screen.getByTestId("side-chat-permission-read-only").textContent,
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Use o4-mini" }));
+
+    expect(screen.getByTestId("side-chat-selected-model").textContent).toBe(
+      "o4-mini",
+    );
+  });
+
+  it("loads child execution defaults after a side-chat thread exists", () => {
+    renderSideChat({ threadId: "thr_side" });
+
+    expect(mocks.defaultExecutionOptionsThreadIds).toContain("thr_side");
+  });
+
   it("renders the side-chat reply anchor as markdown", () => {
     renderSideChat({
       threadId: null,
@@ -505,6 +602,57 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       threadId: "thr_side",
     });
+  });
+
+  it("uses the selected model options when creating a draft side-chat thread", async () => {
+    mocks.createThreadMutateAsync.mockResolvedValueOnce({ id: "thr_side" });
+    renderDraftSideChat();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use o4-mini" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use high reasoning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use fast mode" }));
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Use another model" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "o4-mini",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+        permissionMode: "readonly",
+      }),
+    );
+  });
+
+  it("uses the selected model options when sending an existing side-chat message", async () => {
+    mocks.sendThreadMessageMutateAsync.mockResolvedValueOnce(undefined);
+    renderSideChat({ threadId: "thr_side" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Use o4-mini" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use high reasoning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use fast mode" }));
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Continue with another model" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_side",
+        model: "o4-mini",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+        permissionMode: "readonly",
+      }),
+    );
   });
 
   it("keeps the first submitted message visible while the side chat starts", async () => {

@@ -57,8 +57,7 @@ export interface ExecutionControlsProps {
   footerAction?: ModelReasoningPickerFooterAction;
   /**
    * Render the model/reasoning picker as a non-interactive, dimmed label
-   * (read-only surfaces, e.g. the side chat inheriting the parent thread's
-   * model). The same picker renders, just disabled.
+   * for fully read-only surfaces. The same picker renders, just disabled.
    */
   disabled?: boolean;
 }

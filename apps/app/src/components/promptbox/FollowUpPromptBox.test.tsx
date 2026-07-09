@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FollowUpPromptBox,
@@ -8,6 +9,7 @@ import {
 } from "@/components/promptbox/FollowUpPromptBox";
 
 const mocks = vi.hoisted(() => ({
+  executionControls: vi.fn(),
   scrollToBottom: vi.fn(),
   permissionModePicker: vi.fn(),
 }));
@@ -24,13 +26,16 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
 
 vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
   PromptBoxInternal: ({
+    footerStart,
     onSubmit,
     submission,
   }: {
+    footerStart?: ReactNode;
     onSubmit: () => void;
     submission?: { onModifierSubmit?: () => void };
   }) => (
     <div>
+      {footerStart}
       <button type="button" onClick={onSubmit}>
         Submit
       </button>
@@ -53,7 +58,10 @@ vi.mock("@/components/promptbox/usePromptVoice", () => ({
 }));
 
 vi.mock("@/components/promptbox/ExecutionControls", () => ({
-  ExecutionControls: () => null,
+  ExecutionControls: (props: { disabled?: boolean }) => {
+    mocks.executionControls(props);
+    return null;
+  },
 }));
 
 vi.mock("@/components/pickers/PermissionModePicker", () => ({
@@ -204,6 +212,23 @@ describe("FollowUpPromptBox", () => {
       expect.objectContaining({
         disabled: true,
         showChevronWhenDisabled: true,
+      }),
+    );
+  });
+
+  it("can lock permission without disabling execution controls", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+
+    render(<FollowUpPromptBox {...props} permissionReadOnly />);
+
+    expect(mocks.executionControls).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disabled: false,
+      }),
+    );
+    expect(mocks.permissionModePicker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disabled: true,
       }),
     );
   });

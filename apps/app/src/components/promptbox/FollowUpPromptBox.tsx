@@ -39,7 +39,9 @@ import {
   shouldDisablePermissionPickerForPromptMode,
 } from "./effective-prompt-mode";
 
-type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal> & {
+type PromptBoxWithScrollAnchorProps = ComponentProps<
+  typeof PromptBoxInternal
+> & {
   scrollToBottomOnSubmit?: boolean;
 };
 
@@ -167,12 +169,14 @@ export interface FollowUpPromptBoxProps {
   /** Permission mode picker rendered in the bottom row. */
   permission: ExecutionPermissionConfig;
   /**
-   * Render the footer controls (model/reasoning + permission pickers) as
-   * non-interactive, dimmed labels. Used by the side chat, which inherits the
-   * parent thread's model and is always read-only: it renders the SAME pickers
-   * as the main thread, just disabled. The composer text input stays editable.
+   * Render all footer controls (model/reasoning + permission pickers) as
+   * non-interactive, dimmed labels. The composer text input stays editable.
    */
   readOnly?: boolean;
+  /** Override only the execution controls' readonly state. */
+  executionReadOnly?: boolean;
+  /** Override only the permission picker's readonly state. */
+  permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
   promptActions?: readonly PromptBoxAction[];
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
@@ -215,6 +219,8 @@ function FollowUpPromptBoxWithComposer({
   execution,
   permission,
   readOnly,
+  executionReadOnly,
+  permissionReadOnly,
   typeahead,
   promptActions,
   zenModeResetKey,
@@ -245,9 +251,12 @@ function FollowUpPromptBoxWithComposer({
   const onModifierSubmit = composer.canModifierSubmit
     ? composer.onModifierSubmit
     : undefined;
+  const executionControlsDisabled = executionReadOnly ?? readOnly ?? false;
   const footerStart = useMemo(
-    () => <ExecutionControls {...execution} disabled={readOnly} />,
-    [execution, readOnly],
+    () => (
+      <ExecutionControls {...execution} disabled={executionControlsDisabled} />
+    ),
+    [execution, executionControlsDisabled],
   );
   const promptModeInput = useMemo(
     () => ({
@@ -255,11 +264,7 @@ function FollowUpPromptBoxWithComposer({
       value: composer.message,
       mentionRanges: composer.mentionRanges,
     }),
-    [
-      composer.mentionRanges,
-      composer.message,
-      execution.provider.selectedId,
-    ],
+    [composer.mentionRanges, composer.message, execution.provider.selectedId],
   );
   const permissionDisplayOverride = useMemo(
     () =>
@@ -270,8 +275,9 @@ function FollowUpPromptBoxWithComposer({
   const permissionPickerDisabledByPlanMode =
     shouldDisablePermissionPickerForActivePromptMode(activePromptMode) ||
     shouldDisablePermissionPickerForPromptMode(promptModeInput);
+  const permissionReadOnlyResolved = permissionReadOnly ?? readOnly ?? false;
   const permissionPickerDisabled =
-    readOnly || permissionPickerDisabledByPlanMode;
+    permissionReadOnlyResolved || permissionPickerDisabledByPlanMode;
   // Side chat and active plan mode render the same permission picker as the
   // main thread, but non-interactive so the displayed effective mode cannot
   // diverge from the provider mode driving the current turn.
