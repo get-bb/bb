@@ -294,6 +294,8 @@ describe("bb-plugin-authoring skill", () => {
     expect(skill).toContain("bb.logo");
     expect(skill).toContain("logo-dark.svg");
     expect(skill).toContain("bb.logoDark");
+    expect(skill).toContain("currentColor");
+    expect(skill).toContain("named `icon` hint");
   });
 
   it("documents every frontend slot and its prop fields", () => {

@@ -55,7 +55,13 @@ The manifest is `package.json`:
   at the root (same precedence), or `bb.logoDark` (same rules) — is
   preferred whenever the app is in dark mode, falling back to the light
   logo. Without a logo, contributions fall back to their named `icon` hint
-  or a generic bolt. Picked up on `bb plugin reload`.
+  or a generic bolt. Picked up on `bb plugin reload`. Inline icons must use
+  `currentColor` for their stroke/fill and take their color from semantic
+  text-token classes; never hardcode gray or palette values. An SVG loaded
+  through `<img>` cannot inherit `currentColor`, so omit the logo and use a
+  named `icon` hint when a monochrome glyph should match the surrounding bb
+  chrome. Reserve logo assets for intentionally branded artwork (and provide
+  a dark variant when needed).
 - `engines.bb` — semver range checked against the bb version at load.
 - The plugin id is the package name minus the `bb-plugin-` prefix
   (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
