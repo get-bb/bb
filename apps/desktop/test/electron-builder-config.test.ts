@@ -81,6 +81,8 @@ const signingEnvironmentKeys = [
   "CSC_LINK",
   "CSC_NAME",
 ];
+const audioInputEntitlementPattern =
+  /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\s*\/>/u;
 
 type ElectronBuilderConfig = z.infer<typeof electronBuilderConfigSchema>;
 type EnvironmentOverrides = Record<string, string | undefined>;
@@ -345,6 +347,27 @@ describe("electron-builder signing config", () => {
     await expect(
       access(resolve(desktopPackageRoot, config.mac.entitlementsInherit)),
     ).resolves.toBeUndefined();
+  });
+
+  it("grants audio input to the signed app and helper processes", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+    const entitlementPaths = [
+      config.mac.entitlements,
+      config.mac.entitlementsInherit,
+    ];
+
+    for (const entitlementPath of entitlementPaths) {
+      const entitlements = await readFile(
+        resolve(desktopPackageRoot, entitlementPath),
+        "utf8",
+      );
+
+      expect(entitlements).toMatch(audioInputEntitlementPattern);
+    }
   });
 
   it("keeps the updater provider pointed at desktop-latest release assets", async () => {
