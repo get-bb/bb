@@ -1,67 +1,160 @@
-import type { AvailableModel } from "@bb/domain";
+import {
+  reasoningEffortsForLevels,
+  reasoningLevelSchema,
+  type AvailableModel,
+  type ModelReasoningEffort,
+  type ReasoningLevel,
+} from "@bb/domain";
 import { z } from "zod";
 
-const reasoningLevelSchema = z.enum(["low", "medium", "high", "xhigh"]);
+const DEFAULT_REASONING_EFFORTS: readonly ModelReasoningEffort[] =
+  reasoningEffortsForLevels(["low", "medium", "high", "xhigh"]);
 
-const reasoningEffortOptionSchema = z
+const codexModelIdentitySchema = z
   .object({
-    reasoningEffort: reasoningLevelSchema,
-    description: z.string(),
+    id: z.string().min(1),
+    model: z.string().min(1),
   })
   .passthrough();
 
-const DEFAULT_REASONING_EFFORTS: z.infer<typeof reasoningEffortOptionSchema>[] =
-  [
-    { reasoningEffort: "low", description: "Low reasoning effort" },
-    { reasoningEffort: "medium", description: "Medium reasoning effort" },
-    { reasoningEffort: "high", description: "High reasoning effort" },
-    { reasoningEffort: "xhigh", description: "Extra high reasoning effort" },
-  ];
+/** Map a Codex-native reasoning effort string into a BB ReasoningLevel. */
+export function mapCodexReasoningLevelToBb(
+  value: unknown,
+): ReasoningLevel | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  // Codex levels that BB knows about (including Codex-only "ultra") pass
+  // through via the shared schema. Unknown future names soft-fail to null.
+  const parsed = reasoningLevelSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
-const codexModelSchema = z
-  .object({
-    id: z.string(),
-    model: z.string(),
-    displayName: z.string().optional(),
-    description: z.string().optional(),
-    isDefault: z.boolean().optional(),
-    supportedReasoningEfforts: z.array(reasoningEffortOptionSchema).optional(),
-    defaultReasoningEffort: reasoningLevelSchema.optional(),
-  })
-  .passthrough();
+/**
+ * Map a BB ReasoningLevel to the string Codex app-server expects for
+ * `model_reasoning_effort`. Returns null for levels Codex never accepts
+ * (currently only "none").
+ *
+ * "ultracode" is Claude-specific and is not sent to Codex; callers should not
+ * offer it for Codex models. "ultra" is the Codex-native top tier and passes
+ * through as-is.
+ */
+export function mapBbReasoningLevelToCodex(
+  level: ReasoningLevel,
+): string | null {
+  switch (level) {
+    case "none":
+    case "ultracode":
+      return null;
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+    case "max":
+    case "ultra":
+      return level;
+  }
+}
 
-const codexModelListResponseSchema = z
-  .object({
-    data: z.array(codexModelSchema),
-  })
-  .passthrough();
+function cloneDefaultReasoningEfforts(): ModelReasoningEffort[] {
+  return DEFAULT_REASONING_EFFORTS.map((effort) => ({ ...effort }));
+}
+
+function parseReasoningEffortOption(
+  raw: unknown,
+): ModelReasoningEffort | null {
+  if (raw == null || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const level = mapCodexReasoningLevelToBb(record.reasoningEffort);
+  if (!level) {
+    return null;
+  }
+  const description =
+    typeof record.description === "string" && record.description.length > 0
+      ? record.description
+      : reasoningEffortsForLevels([level])[0].description;
+  return {
+    reasoningEffort: level,
+    description,
+  };
+}
+
+function parseSupportedReasoningEfforts(
+  raw: unknown,
+): ModelReasoningEffort[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return cloneDefaultReasoningEfforts();
+  }
+
+  const efforts: ModelReasoningEffort[] = [];
+  const seen = new Set<ReasoningLevel>();
+  for (const item of raw) {
+    const effort = parseReasoningEffortOption(item);
+    if (!effort || seen.has(effort.reasoningEffort)) {
+      continue;
+    }
+    seen.add(effort.reasoningEffort);
+    efforts.push(effort);
+  }
+
+  // All efforts unknown/unmapped — fall back rather than rejecting the model.
+  return efforts.length > 0 ? efforts : cloneDefaultReasoningEfforts();
+}
 
 function toAvailableModel(
-  raw: z.infer<typeof codexModelSchema>,
+  raw: z.infer<typeof codexModelIdentitySchema>,
 ): AvailableModel {
-  const efforts = raw.supportedReasoningEfforts?.length
-    ? raw.supportedReasoningEfforts
-    : DEFAULT_REASONING_EFFORTS;
+  const efforts = parseSupportedReasoningEfforts(
+    raw.supportedReasoningEfforts,
+  );
+  const mappedDefault = mapCodexReasoningLevelToBb(raw.defaultReasoningEffort);
+  const defaultReasoningEffort =
+    mappedDefault &&
+    efforts.some((effort) => effort.reasoningEffort === mappedDefault)
+      ? mappedDefault
+      : efforts[0].reasoningEffort;
 
   return {
     id: raw.id,
     model: raw.model,
-    displayName: raw.displayName ?? raw.model,
-    description: raw.description ?? "",
+    displayName:
+      typeof raw.displayName === "string" && raw.displayName.length > 0
+        ? raw.displayName
+        : raw.model,
+    description: typeof raw.description === "string" ? raw.description : "",
     supportedReasoningEfforts: efforts,
-    defaultReasoningEffort:
-      raw.defaultReasoningEffort ?? efforts[0].reasoningEffort,
-    isDefault: raw.isDefault ?? false,
+    defaultReasoningEffort,
+    isDefault: raw.isDefault === true,
   };
 }
 
+/**
+ * Parse Codex `model/list` results.
+ *
+ * Soft by design: unknown reasoning efforts are skipped, malformed model
+ * entries are skipped, and only a completely unusable payload fails hard.
+ * This keeps the model picker working when Codex introduces new effort names.
+ */
 export function parseModelsResponse(result: unknown): AvailableModel[] {
-  const parsed = codexModelListResponseSchema.safeParse(result);
-  if (!parsed.success) {
+  if (result == null || typeof result !== "object") {
     throw new Error("Invalid response from codex model/list.");
   }
 
-  const models = parsed.data.data.map(toAvailableModel);
+  const data = (result as { data?: unknown }).data;
+  if (!Array.isArray(data)) {
+    throw new Error("Invalid response from codex model/list.");
+  }
+
+  const models: AvailableModel[] = [];
+  for (const entry of data) {
+    const identity = codexModelIdentitySchema.safeParse(entry);
+    if (!identity.success) {
+      continue;
+    }
+    models.push(toAvailableModel(identity.data));
+  }
 
   if (models.length === 0) {
     throw new Error("Codex model/list returned no supported models.");

@@ -63,6 +63,8 @@ function toSdkEffort(
   // "none" (thinking-off) is a Cursor-only level; Claude Code models never
   // expose it, so this is a defensive floor that reconciliation never reaches.
   if (reasoningLevel === "none") return "low";
+  // "ultra" is a Codex-only top tier; if it ever reaches Claude, floor to max.
+  if (reasoningLevel === "ultra") return "max";
   return reasoningLevel;
 }
 

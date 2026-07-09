@@ -139,7 +139,7 @@ describe("agent provider catalog", () => {
       supportsWorkflows: false,
       supportsExecutionOverride: false,
       backsHostDaemonAiServices: true,
-      reasoningLevels: ["low", "medium", "high", "xhigh"],
+      reasoningLevels: ["low", "medium", "high", "xhigh", "max", "ultra"],
     });
     expect(getBuiltInAgentProviderServerCapabilities("claude-code")).toEqual({
       supportsWorkflows: true,

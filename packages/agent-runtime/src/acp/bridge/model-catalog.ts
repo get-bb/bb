@@ -155,6 +155,7 @@ const ACP_NATIVE_REASONING_LEVEL_BY_VALUE: Readonly<
   xhigh: "xhigh",
   ultracode: "ultracode",
   max: "max",
+  ultra: "ultra",
 };
 
 const ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL: Readonly<
@@ -167,6 +168,7 @@ const ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL: Readonly<
   xhigh: ["xhigh"],
   ultracode: ["ultracode", "xhigh"],
   max: ["max", "xhigh"],
+  ultra: ["ultra", "max"],
 };
 
 function acpNativeValueToReasoningLevel(
@@ -369,6 +371,7 @@ const EFFORT_DISPLAY_WORDS: Readonly<Record<string, string>> = {
   high: "High",
   low: "Low",
   max: "Max",
+  ultra: "Ultra",
   none: "None",
 };
 

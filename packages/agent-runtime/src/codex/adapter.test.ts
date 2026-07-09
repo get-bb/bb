@@ -1640,7 +1640,57 @@ describe("codex provider adapter", () => {
     });
   });
 
-  it("buildCommand rejects max reasoning level because Codex does not support it", () => {
+  it("buildCommand maps max reasoning level through to Codex", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/start",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      input: [promptTextInput({ text: "hello" })],
+      instructionMode: "append",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "gpt-5.6-luna",
+        reasoningLevel: "max",
+      },
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/start",
+      params: {
+        config: {
+          model_reasoning_effort: "max",
+        },
+      },
+    });
+  });
+
+  it("buildCommand maps ultra reasoning level through to Codex", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/start",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      input: [promptTextInput({ text: "hello" })],
+      instructionMode: "append",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "gpt-5.6-sol",
+        reasoningLevel: "ultra",
+      },
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/start",
+      params: {
+        config: {
+          model_reasoning_effort: "ultra",
+        },
+      },
+    });
+  });
+
+  it("buildCommand rejects ultracode because Codex does not support it", () => {
     const adapter = createCodexProviderAdapter();
 
     expect(() =>
@@ -1652,11 +1702,11 @@ describe("codex provider adapter", () => {
         instructionMode: "append",
         options: {
           ...fullProviderExecutionContext,
-          model: "gpt-5.4",
-          reasoningLevel: "max",
+          model: "gpt-5.6-sol",
+          reasoningLevel: "ultracode",
         },
       }),
-    ).toThrow("Codex does not support max reasoning level.");
+    ).toThrow("Codex does not support the ultracode reasoning level.");
   });
 
   it("buildCommand thread/start replaces instructions as base instructions", () => {
@@ -5339,5 +5389,61 @@ describe("codex provider adapter", () => {
     });
     expect(result.models).toHaveLength(1);
     expect(result.selectedOnlyModels).toHaveLength(0);
+  });
+
+  it("parseModelListResult accepts max and ultra as distinct levels", () => {
+    const adapter = createCodexProviderAdapter();
+    const result = adapter.parseModelListResult({
+      data: [
+        {
+          id: "gpt-5.6-sol",
+          model: "gpt-5.6-sol",
+          displayName: "GPT-5.6-Sol",
+          description: "Latest frontier agentic coding model.",
+          supportedReasoningEfforts: [
+            {
+              reasoningEffort: "low",
+              description: "Fast responses with lighter reasoning",
+            },
+            {
+              reasoningEffort: "max",
+              description: "Maximum reasoning depth for the hardest problems",
+            },
+            {
+              reasoningEffort: "ultra",
+              description:
+                "Maximum reasoning with automatic task delegation",
+            },
+          ],
+          defaultReasoningEffort: "ultra",
+          isDefault: false,
+        },
+      ],
+    });
+
+    expect(result.models).toEqual([
+      {
+        id: "gpt-5.6-sol",
+        model: "gpt-5.6-sol",
+        displayName: "GPT-5.6-Sol",
+        description: "Latest frontier agentic coding model.",
+        supportedReasoningEfforts: [
+          {
+            reasoningEffort: "low",
+            description: "Fast responses with lighter reasoning",
+          },
+          {
+            reasoningEffort: "max",
+            description: "Maximum reasoning depth for the hardest problems",
+          },
+          {
+            reasoningEffort: "ultra",
+            description: "Maximum reasoning with automatic task delegation",
+          },
+        ],
+        defaultReasoningEffort: "ultra",
+        isDefault: false,
+      },
+    ]);
   });
 });

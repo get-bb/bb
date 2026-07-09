@@ -37,7 +37,10 @@ import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
-import { parseModelsResponse } from "./models.js";
+import {
+  mapBbReasoningLevelToCodex,
+  parseModelsResponse,
+} from "./models.js";
 import {
   buildShellEnvironmentPolicyConfig,
   extractResultText,
@@ -662,24 +665,16 @@ function toCodexServiceTier(tier: ServiceTier | undefined): "fast" | undefined {
 function toCodexReasoningEffort(
   reasoningLevel: ReasoningLevel,
 ): CodexReasoningEffort {
-  switch (reasoningLevel) {
-    case "low":
-      return "low";
-    case "medium":
-      return "medium";
-    case "high":
-      return "high";
-    case "xhigh":
-      return "xhigh";
-    case "none":
-      // "none" (thinking-off) is a Cursor-only level; Codex models never
-      // expose it, so model-switch reconciliation maps it away before here.
-      throw new Error("Codex does not support the none reasoning level.");
-    case "ultracode":
-      throw new Error("Codex does not support ultracode reasoning level.");
-    case "max":
-      throw new Error("Codex does not support max reasoning level.");
+  const codexEffort = mapBbReasoningLevelToCodex(reasoningLevel);
+  if (codexEffort == null) {
+    // "none" is Cursor-only; "ultracode" is Claude-specific. Codex models
+    // never expose either, so model-switch reconciliation maps them away
+    // before here — but fail closed if something slips through.
+    throw new Error(
+      `Codex does not support the ${reasoningLevel} reasoning level.`,
+    );
   }
+  return codexEffort;
 }
 
 function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {

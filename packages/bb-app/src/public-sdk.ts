@@ -22,7 +22,13 @@ export type ThreadStatus =
   | "error";
 
 export type PermissionMode = "full" | "workspace-write" | "readonly";
-export type ReasoningLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type ReasoningLevel =
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max"
+  | "ultra";
 export type ServiceTier = "fast" | "default";
 export type ExecutionInputSource = "explicit" | "client-preference";
 

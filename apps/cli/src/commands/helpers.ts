@@ -2,6 +2,7 @@ import { createInterface } from "node:readline/promises";
 import {
   PERSONAL_PROJECT_ID,
   reasoningLevelSchema,
+  reasoningLevelValues,
   type ReasoningLevel,
 } from "@bb/domain";
 import type {
@@ -19,13 +20,7 @@ export {
   requireThreadIdOrSelf,
 } from "../context-env.js";
 
-const REASONING_LEVELS: ReasoningLevel[] = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
+const REASONING_LEVELS: readonly ReasoningLevel[] = reasoningLevelValues;
 
 export interface JsonOutputOptions {
   json?: boolean;
