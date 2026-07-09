@@ -7,6 +7,12 @@ import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
 import { Label } from "@bb/shared-ui/label";
 import {
+  DashedLineCircleIcon,
+  ViewIcon,
+  ViewOffSlashIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
   secretRequestPayloadSchema,
   secretRequestResponseSchema,
 } from "./src/contracts.js";
@@ -42,9 +48,6 @@ function SecretRequestInteraction({
     );
   }
   const payload = parsed.data;
-  const complete = payload.fields.every(
-    (field) => (values[field.name] ?? "").length > 0,
-  );
   const submitValues = async () => {
     const validated = secretRequestResponseSchema.safeParse({ values });
     if (!validated.success) {
@@ -83,72 +86,131 @@ function SecretRequestInteraction({
   };
 
   return (
-    <div className="space-y-4">
-      {payload.purpose ? (
-        <p className="text-sm text-muted-foreground">{payload.purpose}</p>
+    <form
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submitValues();
+      }}
+    >
+      <div className="space-y-2">
+        {payload.purpose ? (
+          <p className="text-pretty text-sm leading-relaxed text-foreground">
+            {payload.purpose}
+          </p>
+        ) : null}
+        <p className="min-w-0 text-xs text-muted-foreground">
+          Secrets will be written directly to{" "}
+          <code className="break-all rounded bg-surface-raised px-1.5 py-0.5 font-mono text-foreground">
+            {payload.destination.path}
+          </code>
+        </p>
+      </div>
+
+      <div className="space-y-3.5">
+        {payload.fields.map((field) => {
+          const inputId = `secret-${interaction.id}-${field.name}`;
+          const isRevealed = revealed[field.name] ?? false;
+          return (
+            <div key={field.name} className="min-w-0 space-y-1.5">
+              <div className="space-y-0.5">
+                <Label
+                  htmlFor={inputId}
+                  className="font-mono text-xs font-semibold text-foreground"
+                  translate="no"
+                >
+                  {field.name}
+                </Label>
+                {field.description ? (
+                  <p className="text-xs leading-snug text-muted-foreground">
+                    {field.description}
+                  </p>
+                ) : null}
+              </div>
+              <div className="relative">
+                <Input
+                  id={inputId}
+                  name={field.name}
+                  type={isRevealed ? "text" : "password"}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  required
+                  value={values[field.name] ?? ""}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      [field.name]: event.target.value,
+                    }))
+                  }
+                  disabled={busy}
+                  className="bg-card pr-11 font-mono"
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="absolute right-1 top-1/2 size-7 -translate-y-1/2 text-muted-foreground"
+                  aria-label={`${isRevealed ? "Hide" : "Show"} ${field.name}`}
+                  aria-pressed={isRevealed}
+                  onClick={() =>
+                    setRevealed((current) => ({
+                      ...current,
+                      [field.name]: !current[field.name],
+                    }))
+                  }
+                  disabled={busy}
+                >
+                  <HugeiconsIcon
+                    icon={isRevealed ? ViewOffSlashIcon : ViewIcon}
+                    className="size-4"
+                    aria-hidden="true"
+                  />
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {formError ? (
+        <p
+          className="rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text"
+          aria-live="polite"
+        >
+          {formError}
+        </p>
       ) : null}
-      <p className="text-xs text-muted-foreground">
-        Destination: {payload.destination.path}
-      </p>
-      {payload.fields.map((field) => (
-        <div key={field.name} className="space-y-1.5">
-          <Label htmlFor={`secret-${interaction.id}-${field.name}`}>
-            {field.name}
-          </Label>
-          {field.description ? (
-            <p className="text-xs text-muted-foreground">{field.description}</p>
-          ) : null}
-          <div className="flex gap-2">
-            <Input
-              id={`secret-${interaction.id}-${field.name}`}
-              type={revealed[field.name] ? "text" : "password"}
-              autoComplete="off"
-              value={values[field.name] ?? ""}
-              onChange={(event) =>
-                setValues((current) => ({
-                  ...current,
-                  [field.name]: event.target.value,
-                }))
-              }
-              disabled={busy}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                setRevealed((current) => ({
-                  ...current,
-                  [field.name]: !current[field.name],
-                }))
-              }
-              disabled={busy}
-            >
-              {revealed[field.name] ? "Hide" : "Show"}
-            </Button>
-          </div>
-        </div>
-      ))}
-      <div className="flex justify-end gap-2">
+
+      <div className="flex flex-col-reverse gap-2 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-end">
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
+          size="sm"
+          className="w-full sm:w-auto"
           disabled={busy}
           onClick={() => void cancelRequest()}
         >
           Cancel
         </Button>
         <Button
-          type="button"
-          disabled={busy || !complete}
-          onClick={() => void submitValues()}
+          type="submit"
+          size="sm"
+          className="w-full sm:w-auto"
+          disabled={busy}
         >
+          {busy ? (
+            <HugeiconsIcon
+              icon={DashedLineCircleIcon}
+              className="size-3 animate-spin"
+              aria-hidden="true"
+            />
+          ) : null}
           Add secrets
         </Button>
       </div>
-      {formError ? (
-        <p className="text-sm text-destructive">{formError}</p>
-      ) : null}
-    </div>
+    </form>
   );
 }
 

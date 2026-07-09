@@ -785,6 +785,9 @@ function assertNoDuplicatePendingInteractionProviderRequests(
           provider_request_id AS providerRequestId,
           COUNT(*) AS duplicateCount
         FROM pending_interactions
+        WHERE provider_id IS NOT NULL
+          AND provider_thread_id IS NOT NULL
+          AND provider_request_id IS NOT NULL
         GROUP BY provider_id, provider_thread_id, provider_request_id
         HAVING COUNT(*) > 1
         ORDER BY duplicateCount DESC, provider_id, provider_thread_id, provider_request_id

@@ -63,15 +63,15 @@ export function PluginPendingInteractionComposer({
   }, [interaction.id, interaction.threadId]);
 
   return (
-    <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
-      <div className="mb-3">
-        <div className="text-sm font-medium text-foreground">
+    <section className="mb-2 rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground">
+      <header className="mb-4 min-w-0">
+        <h3 className="text-pretty text-sm font-semibold text-foreground">
           {interaction.payload.title}
-        </div>
-        <div className="text-xs capitalize text-muted-foreground">
-          Requested by {origin.pluginId}
-        </div>
-      </div>
+        </h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Requested by <span className="capitalize">{origin.pluginId}</span>
+        </p>
+      </header>
       {slot ? (
         <PluginSlotMount
           pluginId={slot.pluginId}
@@ -123,7 +123,14 @@ export function PluginPendingInteractionComposer({
           </Button>
         </div>
       )}
-      {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p
+          className="mt-3 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text"
+          aria-live="polite"
+        >
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }
