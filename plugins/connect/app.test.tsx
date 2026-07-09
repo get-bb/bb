@@ -32,7 +32,9 @@ function status(overrides: Partial<ConnectStatus> = {}): ConnectStatus {
     paired: false,
     handle: null,
     url: null,
+    dashboardUrl: "https://getbb.app/dashboard",
     lastError: null,
+    nextRetryAt: null,
     since: 1_700_000_000_000,
     remoteClients: 0,
     lastRemoteActivityAt: null,
@@ -41,118 +43,149 @@ function status(overrides: Partial<ConnectStatus> = {}): ConnectStatus {
   };
 }
 
+const connected = (overrides: Partial<ConnectStatus> = {}) =>
+  status({
+    state: "connected",
+    paired: true,
+    handle: "workstation",
+    url: "https://workstation.getbb.app",
+    since: 1_700_000_060_000,
+    ...overrides,
+  });
+
 describe("connect settings section", () => {
-  it("pairs from the not-paired state and applies live paired status", async () => {
+  it("registers the section with native title + description chrome", () => {
     expect(app.navPanels).toHaveLength(0);
     expect(app.settingsSections).toHaveLength(1);
-    expect(app.settingsSections[0]?.id).toBe("remote-access");
+    const section = app.settingsSections[0]!;
+    expect(section.id).toBe("remote-access");
+    expect(section.title).toBe("Remote access");
+    expect(section.description).toBe(
+      "Use this bb from any device, anywhere — powered by getbb.app.",
+    );
+  });
 
+  it("auto-submits a normalized 4-4 code and applies live paired status", async () => {
     let currentStatus = status();
-    const pairedStatus = status({
-      state: "connected",
-      paired: true,
-      handle: "workstation",
-      url: "https://workstation.getbb.app",
-      since: 1_700_000_060_000,
-    });
-
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
       {
         rpc: {
           status: () => currentStatus,
-          pair: () => {
-            return null;
-          },
+          pair: () => null,
         },
       },
     );
 
-    await slot.findByText("Set up remote access");
-    fireEvent.change(slot.getByPlaceholderText("Paste your connect code"), {
-      target: { value: " code-123 " },
+    await slot.findByText("Get a connect code");
+    // Messy case/whitespace/dash input normalizes to the canonical XXXX-XXXX
+    // and connects automatically — no Connect click.
+    fireEvent.change(slot.getByLabelText("Connect code"), {
+      target: { value: "  k7qp-2m4x  " },
     });
-    fireEvent.click(slot.getByRole("button", { name: "Connect" }));
 
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
         method: "pair",
-        input: { code: "code-123" },
+        input: { code: "K7QP-2M4X" },
       }),
     );
     expect(slot.queryByText("https://workstation.getbb.app")).toBeNull();
 
-    currentStatus = pairedStatus;
-    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, pairedStatus);
+    currentStatus = connected();
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, currentStatus);
 
     await slot.findByText("Connected");
     slot.getByText("https://workstation.getbb.app");
     slot.getByRole("button", { name: "Copy URL" });
   });
 
-  it("renders shared ports with URLs and empty state", async () => {
-    const emptySlot = renderSlot(
+  it("does not auto-submit an incomplete code", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { rpc: { status: () => status(), pair: () => null } },
+    );
+    await slot.findByText("Get a connect code");
+    fireEvent.change(slot.getByLabelText("Connect code"), {
+      target: { value: "K7QP-2M4" },
+    });
+    // Connect button stays disabled and nothing was submitted.
+    expect(
+      (slot.getByRole("button", { name: "Connect" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(slot.rpcCalls.some((call) => call.method === "pair")).toBe(false);
+  });
+
+  it("maps a typed pair error code to human copy, never wire text", async () => {
+    const slot = renderSlot(
       app.settingsSections[0]!,
       {},
       {
         rpc: {
-          status: () =>
-            status({
-              state: "connected",
-              paired: true,
-              handle: "workstation",
-              url: "https://workstation.getbb.app",
-              shares: [],
-            }),
+          status: () => status(),
+          pair: () => {
+            // The server maps redeem failures to stable codes (see rpc.ts).
+            throw new Error("expired_code");
+          },
         },
       },
     );
 
-    await emptySlot.findByText("Shared ports");
-    emptySlot.getByText(/No shared ports/);
-
-    const withShares = status({
-      state: "connected",
-      paired: true,
-      handle: "workstation",
-      url: "https://workstation.getbb.app",
-      shares: [
-        {
-          port: 5173,
-          url: "https://workstation--5173.getbb.app",
-        },
-      ],
+    await slot.findByText("Get a connect code");
+    fireEvent.change(slot.getByLabelText("Connect code"), {
+      target: { value: "K7QP-2M4X" },
     });
-    await emptySlot.emitRealtime(CONNECT_REALTIME_CHANNEL, withShares);
 
-    await emptySlot.findByText("5173");
-    const shareLink = emptySlot.getByRole("link", {
-      name: "https://workstation--5173.getbb.app",
-    });
-    expect(shareLink.getAttribute("href")).toBe(
-      "https://workstation--5173.getbb.app",
-    );
-    expect(emptySlot.queryByText(/No shared ports/)).toBeNull();
+    await slot.findByText(/That code has expired\./);
+    slot.getByRole("link", { name: "Get a new code" });
+    expect(slot.queryByText(/expired_code/)).toBeNull();
   });
 
-  it("unexpose action fires the revoke RPC", async () => {
+  it("shows a remote-viewer count on the connected status line", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { rpc: { status: () => connected({ remoteClients: 2 }) } },
+    );
+    await slot.findByText("Connected");
+    await slot.findByText(/2 viewing remotely/);
+  });
+
+  it("reconnecting shows the amber state with the human transport error", async () => {
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
       {
         rpc: {
           status: () =>
-            status({
-              state: "connected",
-              paired: true,
-              handle: "workstation",
-              url: "https://workstation.getbb.app",
+            connected({
+              state: "reconnecting",
+              lastError: "can't reach getbb.app — connection refused",
+              nextRetryAt: null,
+            }),
+        },
+      },
+    );
+    await slot.findByText("Reconnecting…");
+    await slot.findByText(/can't reach getbb.app — connection refused/);
+    await slot.findByText(/Local access is unaffected/);
+    // The connected-only affordances are gone while the tunnel is down.
+    expect(slot.queryByRole("button", { name: "Open" })).toBeNull();
+  });
+
+  it("revokes a shared port", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            connected({
               shares: [
-                {
-                  port: 3000,
-                  url: "https://workstation--3000.getbb.app",
-                },
+                { port: 3000, url: "https://workstation--3000.getbb.app" },
               ],
             }),
           unexpose: () => ({ removed: true, port: 3000 }),
@@ -160,7 +193,7 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("3000");
+    await slot.findByText(":3000");
     fireEvent.click(slot.getByRole("button", { name: "Revoke" }));
 
     await waitFor(() =>
@@ -171,20 +204,13 @@ describe("connect settings section", () => {
     );
   });
 
-  it("share form calls expose RPC and surfaces errors", async () => {
+  it("exposes a port through the disclosure form and surfaces errors", async () => {
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
       {
         rpc: {
-          status: () =>
-            status({
-              state: "connected",
-              paired: true,
-              handle: "workstation",
-              url: "https://workstation.getbb.app",
-              shares: [],
-            }),
+          status: () => connected({ shares: [] }),
           expose: () => {
             throw new Error("this bb is not connected to getbb.app");
           },
@@ -193,10 +219,14 @@ describe("connect settings section", () => {
     );
 
     await slot.findByText("Shared ports");
+    // The form is hidden until the disclosure is clicked.
+    expect(slot.queryByLabelText("Port to share")).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Expose a port" }));
+
     fireEvent.change(slot.getByLabelText("Port to share"), {
       target: { value: "8080" },
     });
-    fireEvent.click(slot.getByRole("button", { name: "Share" }));
+    fireEvent.click(slot.getByRole("button", { name: "Expose" }));
 
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
@@ -205,5 +235,40 @@ describe("connect settings section", () => {
       }),
     );
     await slot.findByText(/this bb is not connected to getbb.app/);
+  });
+
+  it("disconnect confirms, then lands on the unpaired card with a receipt", async () => {
+    let currentStatus = connected();
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () => currentStatus,
+          disconnect: () => {
+            currentStatus = status();
+            return currentStatus;
+          },
+        },
+      },
+    );
+
+    await slot.findByText("Connected");
+    fireEvent.click(slot.getByRole("button", { name: "Disconnect…" }));
+
+    // The dialog names the concrete URL that will die.
+    await slot.findByText("Disconnect remote access?");
+    await slot.findByText(/will stop working on all devices/);
+    fireEvent.click(slot.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(slot.rpcCalls.some((call) => call.method === "disconnect")).toBe(
+        true,
+      ),
+    );
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, currentStatus);
+
+    await slot.findByText("Get a connect code");
+    await slot.findByText("Remote access disconnected");
   });
 });

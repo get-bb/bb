@@ -447,61 +447,80 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
   const showDeclarativeSettingsCard =
     plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
+  const displayName = plugin.displayName ?? plugin.id;
+  const isRunning = plugin.status === "running";
+  // A running plugin whose only surface is a settingsSection lets that
+  // section own the chrome (its own SettingsSection title + description), so
+  // the diagnostic header (version + status pill + manifest description)
+  // doesn't stack a second heading above it. The diagnostic header stays for
+  // every other case — it's what explains why a section is missing.
+  const sectionOwnsHeader =
+    isRunning && hasSettingsSections && !plugin.hasSettings;
   return (
     <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
-      <div className="space-y-3">
-        <div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <PluginLogo
-              plugin={plugin}
-              className="size-4 shrink-0 rounded-sm object-contain"
-            />
-            <h2 className="text-sm font-semibold text-foreground">
-              {plugin.id}
-            </h2>
-            <span className="text-xs text-muted-foreground">
-              v{plugin.version}
-            </span>
-            <Pill variant={statusPillVariant(plugin.status)} size="sm">
-              {plugin.status}
-            </Pill>
-            {!plugin.enabled ? (
-              <Pill variant="outline" size="sm">
-                disabled
-              </Pill>
+      {sectionOwnsHeader ? null : (
+        <div className="space-y-3">
+          <div>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <PluginLogo
+                plugin={plugin}
+                className="size-4 shrink-0 rounded-sm object-contain"
+              />
+              <h2 className="text-sm font-semibold text-foreground">
+                {displayName}
+              </h2>
+              {/* The version + status pills read as diagnostics; a running,
+                  configurable plugin doesn't need them on its settings page. */}
+              {!isRunning ? (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    v{plugin.version}
+                  </span>
+                  <Pill variant={statusPillVariant(plugin.status)} size="sm">
+                    {plugin.status}
+                  </Pill>
+                  {!plugin.enabled ? (
+                    <Pill variant="outline" size="sm">
+                      disabled
+                    </Pill>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+            {!isRunning &&
+            plugin.description !== null &&
+            plugin.description.length > 0 ? (
+              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                {plugin.description}
+              </p>
+            ) : null}
+            {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
+              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                {plugin.statusDetail}
+              </p>
             ) : null}
           </div>
-          {plugin.description !== null && plugin.description.length > 0 ? (
-            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-              {plugin.description}
-            </p>
-          ) : null}
-          {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
-            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-              {plugin.statusDetail}
-            </p>
-          ) : null}
-        </div>
-        {showDeclarativeSettingsCard ? (
-          <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-            {settingsAvailable ? (
-              plugin.hasSettings ? (
-                <PluginSettingsForm pluginId={plugin.id} />
+          {showDeclarativeSettingsCard ? (
+            <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+              {settingsAvailable ? (
+                plugin.hasSettings ? (
+                  <PluginSettingsForm pluginId={plugin.id} />
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    This plugin declares no settings.
+                  </p>
+                )
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  This plugin declares no settings.
+                  {plugin.enabled
+                    ? `Settings are unavailable while the plugin is ${plugin.status}.`
+                    : "Enable this plugin to edit its settings."}
                 </p>
-              )
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                {plugin.enabled
-                  ? `Settings are unavailable while the plugin is ${plugin.status}.`
-                  : "Enable this plugin to edit its settings."}
-              </p>
-            )}
-          </div>
-        ) : null}
-      </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
       {settingsAvailable ? (
         <PluginSettingsSections pluginId={plugin.id} />
       ) : null}

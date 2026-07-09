@@ -31,9 +31,18 @@ function PluginSettingsSectionList({
           className="space-y-3"
         >
           {section.title !== undefined ? (
-            <h2 className="text-sm font-semibold text-foreground">
-              {section.title}
-            </h2>
+            // Built-in SettingsSection header idiom (title + optional
+            // description) above the card, so a plugin section reads native.
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                {section.title}
+              </h2>
+              {section.description !== undefined ? (
+                <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                  {section.description}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <div className="rounded-lg border border-border bg-card px-4 py-3.5">
             <PluginSlotMount

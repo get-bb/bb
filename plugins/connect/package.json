@@ -8,6 +8,7 @@
     "bb": ">=0.0"
   },
   "bb": {
+    "displayName": "Remote access",
     "server": "./src/server.ts",
     "app": "./app.tsx"
   },

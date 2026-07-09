@@ -101,6 +101,11 @@ export interface PluginSettingsSectionRegistration {
   id: string;
   /** Optional host-rendered section heading. */
   title?: string;
+  /**
+   * Optional one-line host-rendered subheading under `title`, in the built-in
+   * SettingsSection idiom (ignored when `title` is absent).
+   */
+  description?: string;
   component: ComponentType<PluginSettingsSectionProps>;
 }
 

@@ -9,6 +9,55 @@ export interface RedeemedCredential {
 }
 
 /**
+ * Typed pairing failure. `code` is the stable, UI-facing reason (mapped to
+ * human copy by the panel); `message` keeps the raw wire detail for the CLI
+ * and the plugin log — never shown verbatim in the panel.
+ */
+export type ConnectPairErrorCode =
+  | "invalid_code"
+  | "expired_code"
+  | "already_used"
+  | "network";
+
+export class ConnectPairError extends Error {
+  constructor(
+    readonly code: ConnectPairErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ConnectPairError";
+  }
+}
+
+/** Map an HTTP redeem rejection (status + optional wire error) to a code. */
+function pairErrorCodeForRedeem(
+  status: number,
+  wireError: string | undefined,
+): ConnectPairErrorCode {
+  const detail = (wireError ?? "").toLowerCase();
+  if (detail.includes("expired") || status === 410) return "expired_code";
+  if (
+    detail.includes("already") ||
+    detail.includes("used") ||
+    detail.includes("redeemed") ||
+    status === 409
+  ) {
+    return "already_used";
+  }
+  if (status >= 500) return "network";
+  return "invalid_code";
+}
+
+/** Normalize any thrown value from a pair attempt into a ConnectPairError. */
+export function asConnectPairError(error: unknown): ConnectPairError {
+  if (error instanceof ConnectPairError) return error;
+  // fetch() rejects (DNS/refused/reset/offline) with a TypeError — transport,
+  // not a bad code.
+  const message = error instanceof Error ? error.message : String(error);
+  return new ConnectPairError("network", message);
+}
+
+/**
  * Derive the connect cloud apex (`https://getbb.app`) from a server URL
  * (`https://<handle>.getbb.app`) by dropping the handle label.
  */
@@ -33,7 +82,8 @@ export async function redeemConnectCode(args: {
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(
+    throw new ConnectPairError(
+      pairErrorCodeForRedeem(res.status, body.error),
       `Redeem failed (${res.status})${body.error ? `: ${body.error}` : ""}`,
     );
   }

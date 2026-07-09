@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ConnectPairError } from "./redeem.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
 
@@ -30,11 +31,20 @@ export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
   return {
     async pair(input: unknown) {
       const args = pairInputSchema.parse(input);
-      return tunnel.pair({
-        code: args.code,
-        ...(args.server !== undefined ? { serverUrl: args.server } : {}),
-        ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
-      });
+      try {
+        return await tunnel.pair({
+          code: args.code,
+          ...(args.server !== undefined ? { serverUrl: args.server } : {}),
+          ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
+        });
+      } catch (error) {
+        // The panel maps stable codes to human copy; raw detail stays in the
+        // plugin log (see ConnectTunnel.pair). Never surface wire text.
+        if (error instanceof ConnectPairError) {
+          throw new Error(error.code);
+        }
+        throw error;
+      }
     },
     status() {
       return tunnel.status();

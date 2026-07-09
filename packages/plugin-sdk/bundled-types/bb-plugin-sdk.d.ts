@@ -92,6 +92,11 @@ interface PluginSettingsSectionRegistration {
     id: string;
     /** Optional host-rendered section heading. */
     title?: string;
+    /**
+     * Optional one-line host-rendered subheading under `title`, in the built-in
+     * SettingsSection idiom (ignored when `title` is absent).
+     */
+    description?: string;
     component: ComponentType<PluginSettingsSectionProps>;
 }
 interface PluginNavPanelRegistration {
@@ -446,8 +451,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             in_progress: "in_progress";
+            completed: "completed";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;

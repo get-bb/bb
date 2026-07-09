@@ -1,22 +1,21 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
-import { machine, profile, server, session } from "@bb/connect-db";
+import { type ConnectDb, machine, server, session } from "@bb/connect-db";
 
 // Per-isolate caches. The gate authenticates every request (including each
 // static asset), so a single page load fires dozens of requests through the
 // same warm isolate. Without caching, that's 3 sequential D1 round-trips per
 // request (~150ms each); with it, only the first request in a burst touches
 // D1. TTLs are short so sign-out / disconnect take effect quickly (and the DO
-// already severs a live tunnel on revoke, so a stale-cached handle still can't
+// already severs a live tunnel on revoke, so a stale-cached label still can't
 // reach a disconnected server).
-const HANDLE_TTL_MS = 15_000;
+const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
 
 interface CacheEntry<T> {
   value: T;
   expires: number;
 }
-const handleCache = new Map<string, CacheEntry<ResolvedHandle | null>>();
+const labelCache = new Map<string, CacheEntry<ResolvedServer | null>>();
 const sessionCache = new Map<string, CacheEntry<string | null>>();
 
 function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string, now: number): T | undefined {
@@ -26,56 +25,71 @@ function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string, now: number):
   return undefined;
 }
 
-export interface ResolvedHandle {
+export interface ResolvedServer {
+  /**
+   * The account that owns this server (`server.userId`). Session and machine
+   * auth scope to this: only this account may visit the server, and only this
+   * account's machines may traverse `/internal/*`. With multi-server, an
+   * account owns several servers, each with its own `userId === this account`.
+   */
   userId: string;
   server: {
     id: string;
     credentialHash: string | null;
     revokedAt: Date | null;
-  } | null;
+    /** Last tunnel heartbeat; null = never connected. Drives the offline page. */
+    lastSeenAt: Date | null;
+  };
 }
 
 /**
- * Resolve a handle to its owner + server in a single JOINed query, cached
- * per-isolate. `null` means the handle doesn't exist.
+ * Resolve a routing label to its server row in a single exact lookup on
+ * `server.subdomain`, cached per-isolate. `null` means no server owns that
+ * label. Each label (the account handle for the primary bb, or a claimed
+ * subdomain for additional bbs) maps to exactly one server, so this replaces
+ * the old label → profile → the account's single server indirection: the base
+ * label may now be ANY server's subdomain, not just a profile handle.
  *
  * Pass `{ fresh: true }` to bypass the read cache for credential-sensitive
  * paths (tunnel (re)connect): the ~15s cache TTL would otherwise let a
  * just-revoked credential re-establish a tunnel from a warm isolate. The
  * fresh read still refreshes the cache for subsequent visitor lookups.
  */
-export async function resolveHandle(
-  handle: string,
-  db: ReturnType<typeof drizzle>,
+export async function resolveLabel(
+  label: string,
+  db: ConnectDb,
   options?: { fresh?: boolean },
-): Promise<ResolvedHandle | null> {
+): Promise<ResolvedServer | null> {
   const now = Date.now();
   if (!options?.fresh) {
-    const cached = cacheGet(handleCache, handle, now);
+    const cached = cacheGet(labelCache, label, now);
     if (cached !== undefined) return cached;
   }
 
   const row = await db
     .select({
-      userId: profile.userId,
+      userId: server.userId,
       serverId: server.id,
       credentialHash: server.credentialHash,
       revokedAt: server.revokedAt,
+      lastSeenAt: server.lastSeenAt,
     })
-    .from(profile)
-    .leftJoin(server, eq(server.userId, profile.userId))
-    .where(eq(profile.handle, handle))
+    .from(server)
+    .where(eq(server.subdomain, label))
     .get();
 
-  const resolved: ResolvedHandle | null = row
+  const resolved: ResolvedServer | null = row
     ? {
         userId: row.userId,
-        server: row.serverId
-          ? { id: row.serverId, credentialHash: row.credentialHash, revokedAt: row.revokedAt }
-          : null,
+        server: {
+          id: row.serverId,
+          credentialHash: row.credentialHash,
+          revokedAt: row.revokedAt,
+          lastSeenAt: row.lastSeenAt,
+        },
       }
     : null;
-  handleCache.set(handle, { value: resolved, expires: now + HANDLE_TTL_MS });
+  labelCache.set(label, { value: resolved, expires: now + LABEL_TTL_MS });
   return resolved;
 }
 
@@ -88,7 +102,7 @@ export async function resolveHandle(
 export async function verifySessionCookie(
   cookieValue: string,
   secret: string,
-  db: ReturnType<typeof drizzle>,
+  db: ConnectDb,
 ): Promise<string | null> {
   // better-auth URL-encodes the cookie value, so the base64 signature arrives
   // with %2F/%2B/%3D. Decode before splitting/comparing (the hex token is
@@ -146,7 +160,7 @@ async function sha256Hex(value: string): Promise<string> {
  */
 export async function verifyMachineCredential(
   credential: string,
-  db: ReturnType<typeof drizzle>,
+  db: ConnectDb,
 ): Promise<string | null> {
   if (!credential) return null;
   const now = Date.now();

@@ -90,7 +90,7 @@ describe("parseClientProtocolVersion", () => {
 
 vi.mock("./session.js", () => ({
   parseCookie: vi.fn(),
-  resolveHandle: vi.fn(),
+  resolveLabel: vi.fn(),
   verifyMachineCredential: vi.fn(),
   verifySessionCookie: vi.fn(),
 }));
@@ -116,19 +116,32 @@ vi.mock("drizzle-orm/d1", () => ({
 
 import {
   parseCookie,
-  resolveHandle,
+  resolveLabel,
   verifyMachineCredential,
   verifySessionCookie,
 } from "./session.js";
 import { serveWithCache } from "./cache.js";
-import worker from "./worker.js";
-import { TunnelDO } from "./tunnel-do.js";
+import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
+import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
 
 const mockParseCookie = vi.mocked(parseCookie);
-const mockResolveHandle = vi.mocked(resolveHandle);
+const mockResolveLabel = vi.mocked(resolveLabel);
 const mockVerifyMachine = vi.mocked(verifyMachineCredential);
 const mockVerifySession = vi.mocked(verifySessionCookie);
 const mockServeWithCache = vi.mocked(serveWithCache);
+
+/** A resolved server row; overrides let a test tweak one field. */
+function resolvedServer(over: Partial<{ lastSeenAt: Date | null; userId: string }> = {}) {
+  return {
+    userId: over.userId ?? OWNER,
+    server: {
+      id: "srv1",
+      credentialHash: "abc",
+      revokedAt: null,
+      lastSeenAt: over.lastSeenAt ?? null,
+    },
+  };
+}
 
 const BASE = "getbb.app";
 const OWNER = "user-owner";
@@ -167,10 +180,7 @@ function visitorRequest(host: string, path = "/", init: RequestInit = {}): Reque
 describe("gate worker share hosts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockResolveHandle.mockResolvedValue({
-      userId: OWNER,
-      server: { id: "srv1", credentialHash: "abc", revokedAt: null },
-    });
+    mockResolveLabel.mockResolvedValue(resolvedServer());
     mockParseCookie.mockReturnValue("session-token");
     mockVerifySession.mockResolvedValue(OWNER);
   });
@@ -213,6 +223,27 @@ describe("gate worker share hosts", () => {
     expect(mockServeWithCache).toHaveBeenCalledWith(
       expect.any(Request),
       "sawyer",
+      ctx,
+      expect.any(Function),
+    );
+  });
+
+  it("forwards a share host on a non-primary label (single-dash subdomain)", async () => {
+    // `sawyer-desktop` is a second bb's own subdomain, not the account handle;
+    // `--3000` nests its port share. parseVisitorHost splits on the first `--`
+    // only, so the base label stays `sawyer-desktop` and resolves per-bb.
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer-desktop--3000.getbb.app", "/app"),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(mockResolveLabel).toHaveBeenCalledWith("sawyer-desktop", expect.anything());
+    expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("3000");
+    expect(mockServeWithCache).toHaveBeenCalledWith(
+      expect.any(Request),
+      "sawyer-desktop--3000",
       ctx,
       expect.any(Function),
     );
@@ -326,6 +357,118 @@ describe("gate worker share hosts", () => {
     );
     expect(res.status).toBe(404);
     expect(await res.text()).toContain("unknown host");
+  });
+});
+
+// ── gate offline page (styled 503 vs plain 503) ─────────────────────────────
+
+const OFFLINE_BODY = "bb connect: this server is offline (no tunnel connected)\n";
+
+function offlineDoResponse(): Response {
+  return new Response(OFFLINE_BODY, {
+    status: 503,
+    headers: { "content-type": "text/plain; charset=utf-8", [TUNNEL_OFFLINE_HEADER]: "1" },
+  });
+}
+
+describe("gate offline page", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockParseCookie.mockReturnValue("session-token");
+    mockVerifySession.mockResolvedValue(OWNER);
+  });
+
+  it("renders the styled offline page on a browser navigation, using last-seen", async () => {
+    mockResolveLabel.mockResolvedValue(
+      resolvedServer({ lastSeenAt: new Date(Date.now() - 5 * 60_000) }),
+    );
+    const { env, ctx } = makeEnv(offlineDoResponse);
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", { headers: { accept: "text/html" } }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("Your bb is offline");
+    expect(html).toContain("Last seen 5 minutes ago");
+    expect(html).toContain('http-equiv="refresh"');
+  });
+
+  it("omits the last-seen sentence when the server never connected", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedServer({ lastSeenAt: null }));
+    const { env, ctx } = makeEnv(offlineDoResponse);
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", { headers: { accept: "text/html" } }),
+      env as never,
+      ctx,
+    );
+    const html = await res.text();
+    expect(html).toContain("Your bb is offline");
+    expect(html).not.toContain("Last seen");
+  });
+
+  it("keeps the plain 503 for non-navigation requests (API/assets/fetch)", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    const { env, ctx } = makeEnv(offlineDoResponse);
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/threads", {
+        headers: { accept: "application/json" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    expect(await res.text()).toBe(OFFLINE_BODY);
+  });
+
+  it("does not intercept an origin 503 that lacks the offline marker", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    const { env, ctx } = makeEnv(
+      () => new Response("origin down", { status: 503 }),
+    );
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", { headers: { accept: "text/html" } }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(503);
+    expect(await res.text()).toBe("origin down");
+  });
+});
+
+describe("gate page helpers", () => {
+  it("relativeTime buckets from just-now through calendar date", () => {
+    const now = Date.UTC(2026, 6, 8, 12, 0, 0);
+    expect(relativeTime(new Date(now - 30_000), now)).toBe("just now");
+    expect(relativeTime(new Date(now - 60_000), now)).toBe("1 minute ago");
+    expect(relativeTime(new Date(now - 5 * 60_000), now)).toBe("5 minutes ago");
+    expect(relativeTime(new Date(now - 60 * 60_000), now)).toBe("1 hour ago");
+    expect(relativeTime(new Date(now - 3 * 60 * 60_000), now)).toBe("3 hours ago");
+    // Beyond a day → calendar date, not "N hours ago".
+    expect(relativeTime(new Date(now - 3 * 24 * 60 * 60_000), now)).not.toContain("ago");
+  });
+
+  it("wantsHtml only matches a text/html Accept", () => {
+    expect(wantsHtml(new Request("https://x/", { headers: { accept: "text/html" } }))).toBe(true);
+    expect(
+      wantsHtml(
+        new Request("https://x/", {
+          headers: { accept: "text/html,application/xhtml+xml" },
+        }),
+      ),
+    ).toBe(true);
+    expect(wantsHtml(new Request("https://x/", { headers: { accept: "*/*" } }))).toBe(false);
+    expect(wantsHtml(new Request("https://x/"))).toBe(false);
+  });
+
+  it("offlinePage is a self-retrying styled 503", async () => {
+    const res = offlinePage(null);
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toContain("Retry now");
   });
 });
 

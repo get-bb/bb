@@ -36,6 +36,14 @@ describe("connect return-to URLs", () => {
     ).toBeNull();
   });
 
+  it("treats absent and the literal 'null'/'undefined' strings as no return target", () => {
+    expect(connectReturnTo(null, "https://getbb.app")).toBeNull();
+    expect(connectReturnTo(undefined, "https://getbb.app")).toBeNull();
+    expect(connectReturnTo("", "https://getbb.app")).toBeNull();
+    expect(connectReturnTo("null", "https://getbb.app")).toBeNull();
+    expect(connectReturnTo("undefined", "https://getbb.app")).toBeNull();
+  });
+
   it("exports the dashboard path used by landing sign-in links", () => {
     expect(DASHBOARD_PATH).toBe("/dashboard");
   });

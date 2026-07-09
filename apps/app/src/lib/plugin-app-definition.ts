@@ -125,9 +125,15 @@ export function collectPluginAppRegistrations(
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.settingsSection, id);
         const title = requireOptionalString(kind, "title", registration.title);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
         settingsSections.push({
           id,
           ...(title !== undefined ? { title } : {}),
+          ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),
         });
       },

@@ -7,10 +7,12 @@ function appBaseDomain(appHostname: string): string {
 }
 
 export function connectReturnTo(
-  rawReturnTo: string | null,
+  rawReturnTo: string | null | undefined,
   appOrigin: string,
 ): string | null {
-  if (!rawReturnTo) return null;
+  // Absent means absent: reject empty and the literal strings "null"/"undefined"
+  // that leak in when a caller serializes a missing value instead of omitting it.
+  if (!rawReturnTo || rawReturnTo === "null" || rawReturnTo === "undefined") return null;
 
   let appUrl: URL;
   let returnToUrl: URL;

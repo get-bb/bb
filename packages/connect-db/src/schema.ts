@@ -97,9 +97,16 @@ export const profile = sqliteTable("profile", {
 });
 
 /**
- * A connected bb server (the machine running the tunnel client). v1 hardcodes
- * one per user named `default`; the schema allows N via the (user, name) unique
- * index so `home.<handle>.getbb.app` needs no migration.
+ * A connected bb server (the machine running the tunnel client). An account may
+ * own up to `MAX_SERVERS_PER_ACCOUNT` servers; each owns a globally-unique
+ * `subdomain` label in the SAME public namespace as `profile.handle`
+ * (`<subdomain>.getbb.app`). The account's `profile.handle` names the
+ * primary/first server (its subdomain is backfilled to the handle); additional
+ * servers claim their own free labels (e.g. `sawyerhood-desktop`).
+ *
+ * `subdomain` uses the exact handle grammar (see `validateLabel`) — reserved
+ * words and the `--` share separator are rejected — and is unique across BOTH
+ * `server.subdomain` and `profile.handle` (see `checkLabelAvailability`).
  *
  * `credentialHash` is a hash of the durable tunnel credential — the plaintext
  * lives only on the user's machine. `lastSeenAt` is bumped by tunnel
@@ -113,6 +120,9 @@ export const server = sqliteTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name").notNull().default("default"),
+    // Globally-unique routing label (`<subdomain>.getbb.app`). Backfilled to the
+    // owner's handle for pre-multi-server rows; see migration 0003.
+    subdomain: text("subdomain").notNull().unique(),
     credentialHash: text("credential_hash"),
     version: text("version"),
     lastSeenAt: timestampMs("last_seen_at"),

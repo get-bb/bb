@@ -20,6 +20,7 @@ import {
 import type { PluginLogger } from "@bb/plugin-sdk";
 import type { ConnectCredential, CredentialStore } from "./credential.js";
 import {
+  asConnectPairError,
   DEFAULT_CONNECT_BASE_URL,
   deriveConnectBaseUrl,
   redeemConnectCode,
@@ -73,6 +74,32 @@ export function headersForLoopbackRequest(
     forwarded.Host = rewrite.host;
   }
   return forwarded;
+}
+
+/** Host shown in transport errors — the connect apex, e.g. "getbb.app". */
+function connectApexHost(serverUrl: string): string {
+  try {
+    return new URL(deriveConnectBaseUrl(serverUrl)).host;
+  } catch {
+    return "getbb.app";
+  }
+}
+
+/**
+ * Turn a raw socket error into a human line for the reconnecting card:
+ * "can't reach getbb.app — connection refused". Falls back to the raw
+ * message for unrecognized failures rather than inventing a cause.
+ */
+export function humanizeTransportError(error: Error, host: string): string {
+  const code = (error as NodeJS.ErrnoException).code;
+  let reason: string;
+  if (code === "ECONNREFUSED") reason = "connection refused";
+  else if (code === "ENOTFOUND" || code === "EAI_AGAIN") reason = "host not found";
+  else if (code === "ETIMEDOUT" || /timed out|timeout|ETIMEDOUT/i.test(error.message))
+    reason = "timed out";
+  else if (code === "ECONNRESET") reason = "connection reset";
+  else reason = error.message;
+  return `can't reach ${host} — ${reason}`;
 }
 
 function tunnelUrlForServer(serverUrl: string): string {
@@ -452,6 +479,7 @@ export class ConnectTunnel {
   private stateSince = Date.now();
   private lastRemoteActivityAt: number | null = null;
   private remoteClients = 0;
+  private nextRetryAt: number | null = null;
 
   constructor(private readonly options: ConnectTunnelOptions) {}
 
@@ -489,7 +517,16 @@ export class ConnectTunnel {
     this.pairing = true;
     this.publish();
     try {
-      const redeemed = await redeemConnectCode({ code: args.code, baseUrl });
+      let redeemed;
+      try {
+        redeemed = await redeemConnectCode({ code: args.code, baseUrl });
+      } catch (error) {
+        // Raw wire/transport detail goes to the log only; the caller gets a
+        // typed ConnectPairError whose code the panel maps to human copy.
+        const pairError = asConnectPairError(error);
+        this.options.log.warn(`pair failed (${pairError.code}): ${pairError.message}`);
+        throw pairError;
+      }
       const serverUrl = (
         args.serverUrl ?? serverUrlForHandle(baseUrl, redeemed.handle)
       ).replace(/\/$/, "");
@@ -536,17 +573,29 @@ export class ConnectTunnel {
   }
 
   status(): ConnectStatus {
+    const state = this.computeState();
     return {
-      state: this.computeState(),
+      state,
       paired: this.credential !== null,
       handle: this.credential?.handle ?? null,
       url: this.credential?.serverUrl ?? null,
+      dashboardUrl: this.dashboardUrl(),
       lastError: this.lastError,
+      nextRetryAt: state === "reconnecting" ? this.nextRetryAt : null,
       since: this.stateSince,
       remoteClients: this.remoteClients,
       lastRemoteActivityAt: this.lastRemoteActivityAt,
       shares: this.listShares(),
     };
+  }
+
+  /** getbb.app dashboard URL, derived from the paired base (or the apex). */
+  private dashboardUrl(): string {
+    const base =
+      this.credential !== null
+        ? deriveConnectBaseUrl(this.credential.serverUrl)
+        : DEFAULT_CONNECT_BASE_URL;
+    return `${base.replace(/\/$/, "")}/dashboard`;
   }
 
   /** Stop the tunnel without clearing the credential (service abort). */
@@ -588,6 +637,7 @@ export class ConnectTunnel {
     this.tunnel = undefined;
     this.connected = false;
     this.attempt = 0;
+    this.nextRetryAt = null;
   }
 
   private reconnect(): void {
@@ -678,6 +728,7 @@ export class ConnectTunnel {
       connectedAt = Date.now();
       this.connected = true;
       this.lastError = null;
+      this.nextRetryAt = null;
       this.options.log.info("tunnel connected");
       this.session = new TunnelSession({
         tunnel,
@@ -704,7 +755,9 @@ export class ConnectTunnel {
       this.options.log.warn(this.lastError);
     });
     tunnel.on("error", (e: Error) => {
-      this.lastError = e.message;
+      // Humanize transport failures for the reconnecting card; the raw
+      // message still rides the log via the close handler below.
+      this.lastError = humanizeTransportError(e, connectApexHost(credential.serverUrl));
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
       this.connected = false;
@@ -715,6 +768,12 @@ export class ConnectTunnel {
       const stable = connectedAt ? Date.now() - connectedAt : 0;
       this.attempt = stable > 10_000 ? 0 : this.attempt + 1;
       const delay = Math.min(1000 * 2 ** this.attempt, MAX_RECONNECT_DELAY_MS);
+      // A clean close with no prior socket error still leaves the card empty;
+      // give it an honest line so the reconnecting state is never blank.
+      if (this.lastError === null) {
+        this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — connection closed`;
+      }
+      this.nextRetryAt = Date.now() + delay;
       this.options.log.warn(
         `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""}); reconnecting in ${delay}ms`,
       );

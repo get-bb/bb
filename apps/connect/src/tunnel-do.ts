@@ -28,6 +28,14 @@ const PRESENCE_INTERVAL_MS = 50_000;
 /** Gate → DO header carrying a share target; never forwarded to the origin. */
 const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
 
+/**
+ * DO → gate marker on the offline 503. Lets the gate distinguish "no tunnel
+ * connected" (infra offline — render the styled page for browser navigations)
+ * from an origin app that happens to answer 503 through a live tunnel. The 503
+ * body stays plain text; this is a routing hint only.
+ */
+export const TUNNEL_OFFLINE_HEADER = "x-bb-tunnel-offline";
+
 /** Headers that must not be forwarded in either direction. */
 const HOP_HEADERS = new Set([
   "connection",
@@ -137,7 +145,10 @@ export class TunnelDO {
     if (!tunnel) {
       return new Response("bb connect: this server is offline (no tunnel connected)\n", {
         status: 503,
-        headers: { "content-type": "text/plain; charset=utf-8" },
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          [TUNNEL_OFFLINE_HEADER]: "1",
+        },
       });
     }
 

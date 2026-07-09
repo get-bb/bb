@@ -18,6 +18,8 @@ export const HANDLE_MAX_LENGTH = 30;
  */
 export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
   "www",
+  // `default` collides with the primary server's row name on (user_id, name).
+  "default",
   "api",
   "app",
   "admin",
@@ -64,8 +66,8 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 ]);
 
 /** Per-account resource ceilings enforced at the gate (open-signup abuse guard). */
-export const MAX_SERVERS_PER_ACCOUNT = 1;
-export const MAX_MACHINES_PER_SERVER = 5;
+export const MAX_SERVERS_PER_ACCOUNT = 5;
+export const MAX_MACHINES_PER_ACCOUNT = 5;
 
 /** Connect-code lifetimes. */
 export const CONNECT_CODE_TTL_MS = 10 * 60 * 1000;
@@ -93,6 +95,20 @@ export function validateHandle(handle: string): HandleValidationError | null {
   if (RESERVED_HANDLES.has(handle)) return "reserved";
   return null;
 }
+
+/**
+ * Account handles and server subdomains live in ONE public namespace and share
+ * the exact same grammar, so both claim paths validate through a single
+ * function. `validateLabel` is the intent-neutral canonical name;
+ * `validateHandle` / `validateSubdomain` are the same function under
+ * domain-specific names so the two claim paths cannot drift apart.
+ */
+export const validateLabel = validateHandle;
+export const validateSubdomain = validateHandle;
+
+/** Alias of {@link HandleValidationError}; the two namespaces share one grammar. */
+export type LabelValidationError = HandleValidationError;
+export type SubdomainValidationError = HandleValidationError;
 
 /** Decimal port 1–65535 with no leading zeros (v1 share target grammar). */
 const SHARE_PORT_TARGET = /^[1-9]\d{0,4}$/;

@@ -1,0 +1,290 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { connectCode, schema, server, user } from "@bb/connect-db";
+import {
+  type Deps,
+  checkAvailability,
+  claimHandle,
+  createConnectCode,
+  createServer,
+  disconnectServer,
+  getAccountState,
+} from "./api.js";
+
+// Real in-memory SQLite (never mock the DB): apply the same connect-db
+// migration chain the worker runs, then drive the product-state functions.
+const MIGRATIONS_DIR = fileURLToPath(
+  new URL("../../../../packages/connect-db/migrations", import.meta.url),
+);
+
+let sqlite: Database.Database;
+let db: ReturnType<typeof drizzle>;
+let closeTunnel: ReturnType<typeof vi.fn<(subdomain: string) => Promise<void>>>;
+let deps: Deps;
+
+beforeEach(() => {
+  sqlite = new Database(":memory:");
+  sqlite.pragma("foreign_keys = ON");
+  for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
+    if (file.endsWith(".sql")) sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+  }
+  db = drizzle(sqlite, { schema });
+  closeTunnel = vi.fn<(subdomain: string) => Promise<void>>(async () => {});
+  deps = {
+    db,
+    baseDomain: "getbb.app",
+    appUrl: "https://getbb.app",
+    closeTunnel,
+  };
+});
+
+afterEach(() => {
+  sqlite.close();
+});
+
+function seedUser(id: string, githubLogin?: string): void {
+  const now = new Date();
+  db.insert(user)
+    .values({
+      id,
+      name: "Test",
+      email: `${id}@example.com`,
+      emailVerified: true,
+      githubLogin: githubLogin ?? null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+}
+
+describe("claimHandle", () => {
+  it("creates the profile and the primary server (subdomain = handle)", async () => {
+    seedUser("u1");
+    const r = await claimHandle(deps, "u1", "Sawyer");
+    expect(r).toEqual({ ok: true, handle: "sawyer" });
+
+    const rows = db.select().from(server).where(eq(server.userId, "u1")).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].subdomain).toBe("sawyer");
+    expect(rows[0].name).toBe("default");
+  });
+
+  it("rejects reserved, malformed, and already-taken labels", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    expect(await claimHandle(deps, "u1", "admin")).toEqual({ error: "reserved" });
+    expect(await claimHandle(deps, "u1", "foo--bar")).toEqual({ error: "invalid-format" });
+    expect(await claimHandle(deps, "u1", "ab")).toEqual({ error: "too-short" });
+
+    await claimHandle(deps, "u1", "sawyer");
+    // A second account cannot take a handle already used as another server's subdomain.
+    expect(await claimHandle(deps, "u2", "sawyer")).toEqual({ error: "taken" });
+  });
+
+  it("refuses a second claim for the same account", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    expect(await claimHandle(deps, "u1", "sawyer2")).toEqual({ error: "already-claimed" });
+  });
+});
+
+describe("checkAvailability", () => {
+  it("reports free, invalid, and taken labels distinctly", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    expect(await checkAvailability(deps, "sawyer-desktop")).toEqual({
+      available: true,
+      label: "sawyer-desktop",
+    });
+    expect(await checkAvailability(deps, "admin")).toEqual({
+      available: false,
+      reason: "invalid",
+      error: "reserved",
+    });
+    expect(await checkAvailability(deps, "sawyer")).toEqual({
+      available: false,
+      reason: "taken",
+      namespace: "handle",
+    });
+  });
+});
+
+describe("createServer (connect another bb)", () => {
+  it("claims a new label and holds it as an offline row", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const r = await createServer(deps, "u1", "sawyer-desktop");
+    expect("ok" in r && r.ok).toBe(true);
+    if ("ok" in r) {
+      expect(r.server.subdomain).toBe("sawyer-desktop");
+      expect(r.server.isPrimary).toBe(false);
+      expect(r.server.connected).toBe(false);
+      expect(r.server.serverUrl).toBe("https://sawyer-desktop.getbb.app");
+    }
+  });
+
+  it("enforces the per-account server cap", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    // One primary already; add up to the cap (5), then the next is rejected.
+    for (let i = 1; i < 5; i++) {
+      expect("ok" in (await createServer(deps, "u1", `sawyer-${i}`))).toBe(true);
+    }
+    expect(db.select().from(server).where(eq(server.userId, "u1")).all()).toHaveLength(5);
+    expect(await createServer(deps, "u1", "sawyer-over")).toEqual({ error: "server-limit" });
+  });
+
+  it("rejects a label already taken by another server", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    await createServer(deps, "u1", "sawyer-desktop");
+    expect(await createServer(deps, "u1", "sawyer-desktop")).toEqual({ error: "taken" });
+  });
+});
+
+describe("createConnectCode (per-server minting + reuse)", () => {
+  async function primaryId(userId: string): Promise<string> {
+    const rows = db.select().from(server).where(eq(server.userId, userId)).all();
+    return rows[0].id;
+  }
+
+  it("mints a server-pair code bound to the requested server", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+
+    const r = await createConnectCode(deps, "u1", { serverId: desktop.server.id });
+    if ("error" in r) throw new Error(r.error);
+    expect(r.serverUrl).toBe("https://sawyer-desktop.getbb.app");
+    expect(r.serverId).toBe(desktop.server.id);
+
+    const row = db.select().from(connectCode).where(eq(connectCode.code, r.code)).get();
+    expect(row?.serverId).toBe(desktop.server.id);
+    expect(row?.purpose).toBe("server-pair");
+  });
+
+  it("reuses an unexpired code instead of re-minting when reuse=true", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const id = await primaryId("u1");
+
+    const first = await createConnectCode(deps, "u1", { serverId: id, reuse: true });
+    const second = await createConnectCode(deps, "u1", { serverId: id, reuse: true });
+    if ("error" in first || "error" in second) throw new Error("mint failed");
+    expect(second.code).toBe(first.code);
+    expect(db.select().from(connectCode).all()).toHaveLength(1);
+  });
+
+  it("mints a fresh code when reuse is not requested", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const id = await primaryId("u1");
+    const first = await createConnectCode(deps, "u1", { serverId: id });
+    const second = await createConnectCode(deps, "u1", { serverId: id });
+    if ("error" in first || "error" in second) throw new Error("mint failed");
+    expect(second.code).not.toBe(first.code);
+    expect(db.select().from(connectCode).all()).toHaveLength(2);
+  });
+});
+
+describe("disconnectServer (server-scoped)", () => {
+  it("clears only the target server's credential and closes only its tunnel", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+
+    // Pair both servers (give each a credential).
+    db.update(server).set({ credentialHash: "hash", revokedAt: null }).run();
+
+    const r = await disconnectServer(deps, "u1", desktop.server.id);
+    expect(r).toEqual({ ok: true });
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
+    expect(closeTunnel).toHaveBeenCalledWith("sawyer-desktop");
+
+    const target = db.select().from(server).where(eq(server.id, desktop.server.id)).get();
+    expect(target?.credentialHash).toBeNull();
+    expect(target?.revokedAt).not.toBeNull();
+
+    // The primary is untouched.
+    const primary = db.select().from(server).where(eq(server.subdomain, "sawyer")).get();
+    expect(primary?.credentialHash).toBe("hash");
+    expect(primary?.revokedAt).toBeNull();
+  });
+
+  it("refuses a server the caller does not own", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    await claimHandle(deps, "u1", "sawyer");
+    await claimHandle(deps, "u2", "other");
+    const victim = db.select().from(server).where(eq(server.subdomain, "other")).get();
+    expect(await disconnectServer(deps, "u1", victim!.id)).toEqual({ error: "not-found" });
+    expect(closeTunnel).not.toHaveBeenCalled();
+  });
+});
+
+describe("getAccountState (adaptive single / multi)", () => {
+  it("returns an empty account before a handle is claimed", async () => {
+    seedUser("u1", "sawyerhood");
+    const state = await getAccountState(deps, "u1");
+    expect(state.handle).toBeNull();
+    expect(state.servers).toHaveLength(0);
+    expect(state.githubLogin).toBe("sawyerhood");
+    expect(state.maxServers).toBe(5);
+  });
+
+  it("returns one server, flagged primary, after a claim", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const state = await getAccountState(deps, "u1");
+    expect(state.servers).toHaveLength(1);
+    expect(state.servers[0]).toMatchObject({
+      subdomain: "sawyer",
+      isPrimary: true,
+      connected: false,
+      online: false,
+      serverUrl: "https://sawyer.getbb.app",
+    });
+  });
+
+  it("lists multiple servers with the primary first", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    await createServer(deps, "u1", "sawyer-desktop");
+    await createServer(deps, "u1", "sawyer-studio");
+
+    const state = await getAccountState(deps, "u1");
+    expect(state.servers.map((s) => s.subdomain)).toEqual([
+      "sawyer",
+      "sawyer-desktop",
+      "sawyer-studio",
+    ]);
+    expect(state.servers[0].isPrimary).toBe(true);
+    expect(state.servers.slice(1).every((s) => !s.isPrimary)).toBe(true);
+  });
+
+  it("marks a server online only when credentialed and freshly seen", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    db.update(server)
+      .set({ credentialHash: "hash", revokedAt: null, lastSeenAt: new Date() })
+      .run();
+    const online = (await getAccountState(deps, "u1")).servers[0];
+    expect(online.connected).toBe(true);
+    expect(online.online).toBe(true);
+
+    // Stale heartbeat → connected but offline.
+    db.update(server)
+      .set({ lastSeenAt: new Date(Date.now() - 10 * 60 * 1000) })
+      .run();
+    const stale = (await getAccountState(deps, "u1")).servers[0];
+    expect(stale.connected).toBe(true);
+    expect(stale.online).toBe(false);
+  });
+});

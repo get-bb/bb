@@ -290,9 +290,15 @@ function collectRegistrations(
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.settingsSection, id);
         const title = requireOptionalString(kind, "title", registration.title);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
         captured.settingsSections.push({
           id,
           ...(title !== undefined ? { title } : {}),
+          ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),
         });
       },

@@ -1,8 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import {
+  checkAvailability,
   claimHandle,
   createConnectCode,
   createMachineCode,
+  createServer,
+  depsFromEnv,
   disconnectServer,
   getAccountState,
   type AccountState,
@@ -20,32 +23,61 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(
   async (): Promise<DashboardState> => {
     const userId = await getSessionUserId();
     if (!userId) return { authed: false };
-    return { authed: true, ...(await getAccountState(getEnv(), userId)) };
+    return { authed: true, ...(await getAccountState(depsFromEnv(getEnv()), userId)) };
   },
 );
 
 export const claimHandleFn = createServerFn({ method: "POST" })
-  .validator((handle: string) => handle)
+  .validator((handle: string) => String(handle))
   .handler(async ({ data: handle }) => {
     const userId = await getSessionUserId();
-    if (!userId) return { error: "unauthenticated" };
-    return claimHandle(getEnv(), userId, handle);
+    if (!userId) return { error: "unauthenticated" as const };
+    return claimHandle(depsFromEnv(getEnv()), userId, handle);
   });
 
-export const createCodeFn = createServerFn({ method: "POST" }).handler(async () => {
-  const userId = await getSessionUserId();
-  if (!userId) return { error: "unauthenticated" as const };
-  return createConnectCode(getEnv(), userId);
-});
+export const checkAvailabilityFn = createServerFn({ method: "POST" })
+  .validator((label: string) => String(label))
+  .handler(async ({ data: label }) => {
+    const userId = await getSessionUserId();
+    if (!userId) return { error: "unauthenticated" as const };
+    return checkAvailability(depsFromEnv(getEnv()), label);
+  });
 
-export const createMachineCodeFn = createServerFn({ method: "POST" }).handler(async () => {
-  const userId = await getSessionUserId();
-  if (!userId) return { error: "unauthenticated" as const };
-  return createMachineCode(getEnv(), userId);
-});
+export const createServerRowFn = createServerFn({ method: "POST" })
+  .validator((label: string) => String(label))
+  .handler(async ({ data: label }) => {
+    const userId = await getSessionUserId();
+    if (!userId) return { error: "unauthenticated" as const };
+    return createServer(depsFromEnv(getEnv()), userId, label);
+  });
 
-export const disconnectFn = createServerFn({ method: "POST" }).handler(async () => {
-  const userId = await getSessionUserId();
-  if (!userId) return { error: "unauthenticated" as const };
-  return disconnectServer(getEnv(), userId);
-});
+/** Parse the connect-code request at the boundary: an optional server + reuse flag. */
+export const createCodeFn = createServerFn({ method: "POST" })
+  .validator((input: { serverId?: string; reuse?: boolean } | undefined) => ({
+    serverId: typeof input?.serverId === "string" ? input.serverId : undefined,
+    reuse: input?.reuse === true,
+  }))
+  .handler(async ({ data }) => {
+    const userId = await getSessionUserId();
+    if (!userId) return { error: "unauthenticated" as const };
+    return createConnectCode(depsFromEnv(getEnv()), userId, data);
+  });
+
+export const createMachineCodeFn = createServerFn({ method: "POST" })
+  .validator((input: { serverId?: string } | undefined) => ({
+    serverId: typeof input?.serverId === "string" ? input.serverId : undefined,
+  }))
+  .handler(async ({ data }) => {
+    const userId = await getSessionUserId();
+    if (!userId) return { error: "unauthenticated" as const };
+    return createMachineCode(depsFromEnv(getEnv()), userId, data.serverId);
+  });
+
+export const disconnectFn = createServerFn({ method: "POST" })
+  .validator((input: { serverId: string }) => ({ serverId: String(input.serverId) }))
+  .handler(async ({ data }) => {
+    const userId = await getSessionUserId();
+    if (!userId) return { error: "unauthenticated" as const };
+    if (!data.serverId) return { error: "not-found" as const };
+    return disconnectServer(depsFromEnv(getEnv()), userId, data.serverId);
+  });

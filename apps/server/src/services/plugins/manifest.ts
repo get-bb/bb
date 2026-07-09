@@ -13,6 +13,11 @@ import { z } from "zod";
 const bbManifestFieldSchema = z.object({
   server: z.string().min(1),
   app: z.string().min(1).optional(),
+  /**
+   * Human, Title-Case name for the settings nav + detail header (e.g.
+   * "Remote access"); falls back to the derived plugin id when absent.
+   */
+  displayName: z.string().min(1).optional(),
   skills: z.array(z.string().min(1)).optional(),
   logo: z.string().min(1).optional(),
   logoDark: z.string().min(1).optional(),
@@ -34,6 +39,8 @@ export interface PluginManifest {
   version: string;
   /** package.json description, shown in the Settings → Plugins row. */
   description: string | null;
+  /** `bb.displayName` — human nav/header label; null when not declared. */
+  displayName: string | null;
   /** semver range from engines.bb, when declared. */
   bbEngineRange: string | undefined;
   /** Absolute path of the backend entry file. */
@@ -152,6 +159,7 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
       description !== undefined && description.trim().length > 0
         ? description
         : null,
+    displayName: bb.displayName ?? null,
     bbEngineRange: engines?.bb,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,

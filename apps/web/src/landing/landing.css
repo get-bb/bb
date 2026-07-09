@@ -2491,6 +2491,31 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     width: 100%;
     justify-content: center;
   }
+
+  /* Keep the header on one line: at desktop the 26px gap is fine, but on a
+     narrow phone "Sign in" wraps against "Download for macOS". Tighten the gap
+     and keep the links from breaking. */
+  .nav-links {
+    gap: 16px;
+  }
+
+  .nav-links a:not(.btn) {
+    white-space: nowrap;
+  }
+}
+
+/* Below ~430px the download CTA + two text links still can't share one row at
+   the desktop scale — shrink the gap and the button so the header never wraps
+   (fix 9: "Sign in" wrapping against "Download for macOS" at 390px). */
+@media (max-width: 430px) {
+  .nav-links {
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .nav-links .btn-sm {
+    padding: 8px 12px;
+  }
 }
 
 /* ── Reduced motion ─────────────────────────────────────────────── */

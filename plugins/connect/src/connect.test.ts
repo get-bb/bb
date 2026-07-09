@@ -517,6 +517,10 @@ describe("connect plugin", () => {
       lastRemoteActivityAt: null,
       shares: [],
     });
+    // Dashboard URL is sourced from the status payload (the apex when
+    // unpaired), never a frontend literal.
+    expect(status.dashboardUrl).toBe("https://getbb.app/dashboard");
+    expect(status.nextRetryAt).toBeNull();
     expect(harness.needsConfigurationMessages).toEqual([]);
   });
 
@@ -612,7 +616,7 @@ describe("connect plugin", () => {
     expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
   });
 
-  it("surfaces a redeem failure without persisting", async () => {
+  it("maps a redeem failure to a typed code (no wire text) and does not persist", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -622,15 +626,47 @@ describe("connect plugin", () => {
     );
     const { bb, harness } = await loadPlugin();
 
+    // The panel maps codes to human copy; the raw "Redeem failed (410)…"
+    // detail must never reach the caller — only the stable code does.
     await expect(
       harness.callRpc("pair", {
         code: "OLD",
         server: "https://sawyer.getbb.app",
       }),
-    ).rejects.toThrow(/410.*expired/);
+    ).rejects.toThrow("expired_code");
     expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
     const status = (await harness.callRpc("status")) as ConnectStatus;
     expect(status.state).toBe("disconnected");
+  });
+
+  it("maps redeem status/detail to invalid_code / already_used / network codes", async () => {
+    const cases: Array<{ status: number; error: string; code: string }> = [
+      { status: 404, error: "invalid-code", code: "invalid_code" },
+      { status: 409, error: "already-used", code: "already_used" },
+      { status: 500, error: "boom", code: "network" },
+    ];
+    for (const testCase of cases) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ error: testCase.error }), {
+              status: testCase.status,
+            }),
+        ),
+      );
+      const { harness } = await loadPlugin();
+      await expect(
+        harness.callRpc("pair", {
+          code: "X",
+          server: "https://sawyer.getbb.app",
+        }),
+      ).rejects.toThrow(testCase.code);
+      await stopTunnel(host!);
+      await host!.harness.dispose();
+      host = undefined;
+      vi.unstubAllGlobals();
+    }
   });
 
   it("the tunnel service reconnects from a stored credential", async () => {

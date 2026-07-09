@@ -1,9 +1,9 @@
 import { drizzle } from "drizzle-orm/d1";
-import { RESERVED_HANDLES, parseVisitorHost } from "@bb/connect-db";
-import { TunnelDO, type Env } from "./tunnel-do.js";
+import { RESERVED_HANDLES, parseVisitorHost, schema } from "@bb/connect-db";
+import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
-  resolveHandle,
+  resolveLabel,
   verifyMachineCredential,
   verifySessionCookie,
 } from "./session.js";
@@ -34,47 +34,125 @@ export function dashboardSignInUrl(appUrl: string, returnTo: string): string {
   return url.toString();
 }
 
-function signInPage(handle: string, appUrl: string, returnTo: string): Response {
-  const host = new URL(appUrl).host;
-  const signInUrl = dashboardSignInUrl(appUrl, returnTo);
+// Shared gate-page shell. The 401 sign-in and 503 offline pages render through
+// one template so they can never drift apart the way the dashboard and gate
+// once did. Matches the bb dashboard's visual language (Inter, --canvas/--ink
+// tokens derived from two anchors, dark-mode media query, inlined bb icon,
+// centered card) since this plain worker can't bundle React.
+const GATE_STYLE = `
+  :root{--canvas:oklch(1 0 0);--ink:oklch(0.3211 0 0);
+    --muted:color-mix(in oklch,var(--ink) 55%,var(--canvas));
+    --subtle:color-mix(in oklch,var(--ink) 40%,var(--canvas));
+    --border:color-mix(in oklch,var(--ink) 14%,var(--canvas));
+    --card:color-mix(in oklch,var(--ink) 2%,var(--canvas));
+    --warn:oklch(0.72 0.15 66);
+    --warn-bg:color-mix(in oklch,var(--warn) 14%,var(--canvas));
+    --warn-border:color-mix(in oklch,var(--warn) 38%,var(--canvas));}
+  @media (prefers-color-scheme:dark){:root{--canvas:oklch(0.195 0 0);--ink:oklch(0.81 0 0)}}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+    background:var(--canvas);color:var(--ink);
+    font:15px/1.6 "Inter",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{width:100%;max-width:420px;padding:24px}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  .brand img{width:28px;height:28px}
+  .brand b{font-weight:600;font-size:15px;letter-spacing:-.01em}
+  .brand span{color:var(--muted);font-size:13px}
+  .card{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:22px 24px}
+  h1{margin:0 0 4px;font-size:18px;font-weight:600;letter-spacing:-.01em}
+  p{margin:0 0 16px;color:var(--muted);font-size:14px}
+  p.note{color:var(--subtle);font-size:13px}
+  code{font-family:"Fira Code",ui-monospace,monospace;font-size:.92em}
+  .btn{display:flex;align-items:center;justify-content:center;width:100%;padding:11px 16px;
+    border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink);
+    font:500 14px/1 "Inter",-apple-system,system-ui,sans-serif;text-decoration:none;cursor:pointer}
+  .btn.primary{background:var(--ink);border-color:var(--ink);color:var(--canvas)}
+  .glyph{width:34px;height:34px;border-radius:999px;background:var(--warn-bg);
+    border:1px solid var(--warn-border);color:var(--warn);
+    display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+  .glyph svg{width:16px;height:16px;stroke:currentColor}
+`;
+
+/** Render a gate page: brand row + centered card, one status, optional refresh. */
+function gatePage(cardBody: string, status: number, metaRefreshSeconds?: number): Response {
+  const refresh =
+    metaRefreshSeconds !== undefined
+      ? `<meta http-equiv="refresh" content="${metaRefreshSeconds}">`
+      : "";
   return new Response(
     `<!doctype html><html lang="en"><head><meta charset="utf-8">
      <meta name="viewport" content="width=device-width, initial-scale=1">
-     <title>bb connect</title>
+     ${refresh}<title>bb connect</title>
      <link rel="preconnect" href="https://fonts.googleapis.com">
      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-     <style>
-       :root{--canvas:oklch(1 0 0);--ink:oklch(0.3211 0 0);
-         --muted:color-mix(in oklch,var(--ink) 55%,var(--canvas));
-         --border:color-mix(in oklch,var(--ink) 14%,var(--canvas));
-         --card:color-mix(in oklch,var(--ink) 2%,var(--canvas));}
-       @media (prefers-color-scheme:dark){:root{--canvas:oklch(0.195 0 0);--ink:oklch(0.81 0 0)}}
-       *{box-sizing:border-box}
-       body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;
-         background:var(--canvas);color:var(--ink);
-         font:15px/1.6 "Inter",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-       .wrap{width:100%;max-width:440px;padding:24px}
-       .brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
-       .brand img{width:28px;height:28px}
-       .brand b{font-weight:600;font-size:15px;letter-spacing:-.01em}
-       .brand span{color:var(--muted);font-size:13px}
-       .card{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:24px}
-       h1{margin:0 0 6px;font-size:20px;font-weight:600;letter-spacing:-.02em}
-       p{margin:0 0 18px;color:var(--muted);font-size:14px}
-       code{font-family:"Fira Code",ui-monospace,monospace;font-size:.9em}
-       a.btn{display:inline-flex;align-items:center;height:36px;padding:0 16px;border-radius:8px;
-         background:var(--ink);color:var(--canvas);font-size:14px;font-weight:500;text-decoration:none}
-     </style></head>
+     <style>${GATE_STYLE}</style></head>
      <body><div class="wrap">
        <div class="brand"><img src="${BB_ICON_DATA_URI}" alt="bb"><div><b>bb connect</b><br><span>Your bb, reachable anywhere</span></div></div>
-       <div class="card">
-         <h1>This is <code>${handle}</code>'s bb</h1>
-         <p>Sign in with the account that owns this server to reach it.</p>
-         <a class="btn" href="${signInUrl}">Sign in at ${host}</a>
-       </div>
+       <div class="card">${cardBody}</div>
      </div></body></html>`,
-    { status: 401, headers: { "content-type": "text/html; charset=utf-8" } },
+    { status, headers: { "content-type": "text/html; charset=utf-8" } },
+  );
+}
+
+/** Escape a label before interpolation. Labels are LDH-validated, but defensive. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Relative "last seen" phrasing for the offline page: "just now" under a
+ * minute, "N minutes ago" / "N hours ago" within a day, then the calendar date.
+ */
+export function relativeTime(date: Date, now: number = Date.now()): string {
+  const diffMs = Math.max(0, now - date.getTime());
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/**
+ * A browser navigation (not an API/asset/fetch call). Only navigations get the
+ * styled offline page; everything else keeps the plain 503 the origin expects.
+ */
+export function wantsHtml(request: Request): boolean {
+  return (request.headers.get("accept") ?? "").includes("text/html");
+}
+
+/** 401: visitor isn't signed in as the account that owns this label's server. */
+function signInPage(label: string, appUrl: string, returnTo: string): Response {
+  const host = new URL(appUrl).host;
+  const signInUrl = dashboardSignInUrl(appUrl, returnTo);
+  return gatePage(
+    `<h1>This is <code>${escapeHtml(label)}</code>'s bb</h1>
+     <p>Sign in with the account that owns this server to open it.</p>
+     <a class="btn primary" href="${signInUrl}">Sign in at ${escapeHtml(host)}</a>`,
+    401,
+  );
+}
+
+/**
+ * 503: the owner is signed in but the tunnel is down. Rendered only for browser
+ * navigations; the last-seen timestamp comes from the row the gate already
+ * resolved (fresh enough to be truthful) and the page self-retries.
+ */
+export function offlinePage(lastSeenAt: Date | null): Response {
+  const lastSeen = lastSeenAt ? `Last seen ${relativeTime(lastSeenAt)}. ` : "";
+  return gatePage(
+    `<div class="glyph"><svg viewBox="0 0 16 16" fill="none" stroke-width="1.5"><path d="M1.5 6.2a9.5 9.5 0 0 1 13 0M3.8 8.7a6 6 0 0 1 8.4 0M6.1 11.2a2.6 2.6 0 0 1 3.8 0" stroke-linecap="round"/><path d="M2 2l12 12" stroke-linecap="round"/><circle cx="8" cy="13.6" r="0.9" fill="currentColor" stroke="none"/></svg></div>
+     <h1>Your bb is offline</h1>
+     <p>${lastSeen}This page retries automatically when it comes back.</p>
+     <p class="note">Usually this means the machine is asleep or bb isn't running.</p>
+     <button class="btn" onclick="location.reload()">Retry now</button>`,
+    503,
+    10,
   );
 }
 
@@ -102,21 +180,28 @@ export default {
     const host = request.headers.get("host") ?? url.host;
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
     if (!parsed) return text("bb connect: unknown host\n", 404);
-    const { handle, target } = parsed;
-    // Reserved labels (www, api, …) are never handles. The wildcard route can
+    // The base label is now ANY server's subdomain (the account handle names the
+    // primary bb; additional bbs claim their own labels), not just a profile
+    // handle. `target` (a port) rides along for share hosts, nested per-bb.
+    const { handle: label, target } = parsed;
+    // Reserved labels (www, api, …) are never claimable. The wildcard route can
     // receive them if a more specific binding is missing — send them home
     // rather than answering with a confusing "no server" page.
-    if (RESERVED_HANDLES.has(handle)) {
+    if (RESERVED_HANDLES.has(label)) {
       return Response.redirect(`https://${env.BASE_DOMAIN}${url.pathname}${url.search}`, 301);
     }
 
-    const db = drizzle(env.DB);
-    const resolved = await resolveHandle(handle, db);
-    if (!resolved) return text(`bb connect: no server for "${handle}"\n`, 404);
+    // Bind the schema so the db satisfies the shared ConnectDb type (also what
+    // the session helpers accept, and what in-memory tests exercise directly).
+    const db = drizzle(env.DB, { schema });
+    const resolved = await resolveLabel(label, db);
+    if (!resolved) return text(`bb connect: no server for "${label}"\n`, 404);
 
-    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(handle));
+    // One TunnelDO + one edge-cache namespace per resolved label (= subdomain),
+    // so each bb on the account gets its own DO instance and cache isolation.
+    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(label));
 
-    // Tunnel client connection — bare handle only (share hosts are visitor-facing).
+    // Tunnel client connection — bare label only (share hosts are visitor-facing).
     if (url.pathname === "/__tunnel") {
       if (target !== null) return text("bb connect: not found\n", 404);
       const auth = request.headers.get("authorization") ?? "";
@@ -124,7 +209,7 @@ export default {
       // Re-resolve fresh (bypass the isolate cache): a warm isolate would
       // otherwise honor a just-revoked credential for up to the cache TTL,
       // letting a leaked credential re-establish a tunnel after disconnect.
-      const freshResolved = await resolveHandle(handle, db, { fresh: true });
+      const freshResolved = await resolveLabel(label, db, { fresh: true });
       const srv = freshResolved?.server;
       if (!srv || srv.revokedAt != null || srv.credentialHash == null) {
         return text("bb connect: server not paired\n", 403);
@@ -155,13 +240,14 @@ export default {
       return stub.fetch(new Request(request, { headers }));
     }
 
-    // Visitor request — require a session owned by this handle's account.
-    // Identical auth for bare-handle and share hosts.
+    // Visitor request — require a session owned by this server's account.
+    // Identical auth for bare-label and share hosts. Because this check passed,
+    // only the owner ever reaches the DO below (and thus its offline 503).
     const cookie = parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
     const appUrl = `https://${env.BASE_DOMAIN}`;
-    if (!cookie) return signInPage(handle, appUrl, url.toString());
+    if (!cookie) return signInPage(label, appUrl, url.toString());
     const userId = await verifySessionCookie(cookie, env.BETTER_AUTH_SECRET, db);
-    if (!userId) return signInPage(handle, appUrl, url.toString());
+    if (!userId) return signInPage(label, appUrl, url.toString());
     if (userId !== resolved.userId) return text("bb connect: not your server\n", 403);
 
     const doRequest = requestForTunnelDo(request, target);
@@ -172,9 +258,20 @@ export default {
     }
     // Everything else: serve from the edge cache when the origin allows it,
     // otherwise proxy through the tunnel. Namespace by full host label so a
-    // share response never collides with bare-handle app assets.
-    return serveWithCache(request, cacheNamespace(handle, target), ctx, () =>
+    // share response never collides with bare-label app assets.
+    const response = await serveWithCache(request, cacheNamespace(label, target), ctx, () =>
       stub.fetch(doRequest),
     );
+    // Tunnel down + a browser navigation → the styled offline page, using the
+    // last_seen_at already resolved for this server. API/asset/fetch requests
+    // (no text/html Accept) keep the DO's plain 503 so clients handle it.
+    if (
+      response.status === 503 &&
+      response.headers.get(TUNNEL_OFFLINE_HEADER) === "1" &&
+      wantsHtml(request)
+    ) {
+      return offlinePage(resolved.server.lastSeenAt);
+    }
+    return response;
   },
 } satisfies ExportedHandler<Env>;

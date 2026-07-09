@@ -164,6 +164,7 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     status,
     statusDetail: null,
     description: null,
+    displayName: null,
     logoUrl,
     logoDarkUrl: null,
     hasSettings: true,
