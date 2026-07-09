@@ -80,7 +80,7 @@ export const PLUGIN_STARTER_FILES: readonly PluginStarterFile[] = [
 export const PLUGIN_STARTER_DEPENDENCIES: Readonly<Record<string, string>> = {
   "@hugeicons/core-free-icons": "^4.1.3",
   "@hugeicons/react": "^1.1.6",
-  "@radix-ui/react-slot": "^1.2.4",
+  "@radix-ui/react-slot": "^1.3.0",
   "class-variance-authority": "^0.7.1",
   "clsx": "^2.1.1",
   "tailwind-merge": "^3.4.0"
@@ -88,6 +88,6 @@ export const PLUGIN_STARTER_DEPENDENCIES: Readonly<Record<string, string>> = {
 
 /** Runtime-shimmed packages — installed for editor/tsc types only. */
 export const PLUGIN_STARTER_TYPE_DEPENDENCIES: Readonly<Record<string, string>> = {
-  "@radix-ui/react-dialog": "^1.1.15",
+  "@radix-ui/react-dialog": "^1.1.19",
   "vaul": "^1.1.2"
 };
