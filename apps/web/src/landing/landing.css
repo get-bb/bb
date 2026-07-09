@@ -497,6 +497,16 @@ code,
   transform: translateY(-1px);
 }
 
+/* Collapsed "+N more" for the mobile provider row; desktop shows every logo. */
+.pmore {
+  display: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--subtle);
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
 /* ── Hero app mock (interactive recreation of the bb app) ───────── */
 
 .mockup-wrap {
@@ -2411,6 +2421,20 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 @media (max-width: 720px) {
+  /* Eight logos wrap into a dense two-row strip on narrow phones; keep the
+     first three and collapse the rest into "+N more". Desktop still shows all. */
+  .providers {
+    gap: 14px;
+  }
+
+  .plogo-more {
+    display: none;
+  }
+
+  .pmore {
+    display: inline;
+  }
+
   /* Same fixed-px problem as the dots below: the desktop wash uses a 640px
      radial that can't fade within the narrow mobile hero, leaving a tinted
      rectangle with hard side edges/corners. Re-size it relative to the hero
