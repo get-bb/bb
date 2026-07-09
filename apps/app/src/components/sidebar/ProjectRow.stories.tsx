@@ -393,6 +393,29 @@ export function Overview() {
         })}
       </StoryRow>
       <StoryRow
+        label="collapsed project — child plan mode"
+        hint="collapsed project header right-aligns the hidden child plan-mode glyph"
+      >
+        {singleProject({
+          initialCollapsed: true,
+          threadListState: {
+            status: "ready",
+            threads: [
+              makeThread({
+                id: "thr_collapsed_project_plan",
+                activity: {
+                  activeWorkflowCount: 0,
+                  activeBackgroundAgentCount: 0,
+                  activeBackgroundCommandCount: 0,
+                  activePlanModeCount: 1,
+                  activeGoalCount: 0,
+                },
+              }),
+            ],
+          },
+        })}
+      </StoryRow>
+      <StoryRow
         label="active project route"
         hint="active project header stays static; only the chevron and row actions hover"
       >
@@ -526,6 +549,32 @@ export function Overview() {
                 },
               },
               { ...sharedWorktreeThreadB, environmentId: "env_collapsed_busy" },
+            ],
+          },
+        })}
+      </StoryRow>
+      <StoryRow
+        label="collapsed worktree — child goal"
+        hint="trailing slot shows the target glyph when a hidden child has an active goal banner"
+      >
+        {singleProject({
+          initialCollapsedEnvironmentIds: new Set(["env_collapsed_goal"]),
+          threadListState: {
+            status: "ready",
+            threads: [
+              {
+                ...sharedWorktreeThreadA,
+                id: "thr_collapsed_worktree_goal",
+                environmentId: "env_collapsed_goal",
+                activity: {
+                  activeWorkflowCount: 0,
+                  activeBackgroundAgentCount: 0,
+                  activeBackgroundCommandCount: 0,
+                  activePlanModeCount: 0,
+                  activeGoalCount: 1,
+                },
+              },
+              { ...sharedWorktreeThreadB, environmentId: "env_collapsed_goal" },
             ],
           },
         })}

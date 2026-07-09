@@ -4,21 +4,30 @@ import {
   getSessionById,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestSessionsForHosts,
+  listStoredEventRowsByThreadIdsAndTypes,
   type DbConnection,
   type HostDaemonSessionRow,
+  type StoredEventRow,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
 import type {
   Thread,
   ThreadActivityState,
+  ThreadEventType,
   ThreadListEntry,
   ThreadRuntimeState,
   ThreadStatus,
   ThreadWithRuntime,
 } from "@bb/domain";
+import {
+  extractThreadTimelineActivePromptMode,
+  extractThreadTimelineGoal,
+  type ThreadEventWithMeta,
+} from "@bb/thread-view";
 import type { ThreadResponse } from "@bb/server-contract";
 import { DAEMON_DISCONNECT_GRACE_MS } from "../../constants.js";
 import type { NotificationHub } from "../../ws/hub.js";
+import { parseStoredEvent } from "./thread-data.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
 
 type ThreadRuntimeDisplayHub = Pick<
@@ -66,6 +75,28 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   now?: number;
   thread: ThreadWithPendingInteractionState;
 }
+
+type PromptBannerActivityState = Pick<
+  ThreadActivityState,
+  "activeGoalCount" | "activePlanModeCount"
+>;
+
+const PROMPT_BANNER_ACTIVITY_EVENT_TYPES = [
+  "client/turn/requested",
+  "turn/input/accepted",
+  "turn/completed",
+  "system/thread/interrupted",
+  "thread/goal/updated",
+  "thread/goal/cleared",
+] satisfies ThreadEventType[];
+
+const EMPTY_THREAD_ACTIVITY: ThreadActivityState = {
+  activeBackgroundAgentCount: 0,
+  activeBackgroundCommandCount: 0,
+  activeGoalCount: 0,
+  activePlanModeCount: 0,
+  activeWorkflowCount: 0,
+};
 
 function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   switch (status) {
@@ -227,15 +258,77 @@ export function toThreadResponseFromThread(
   };
 }
 
+function toThreadEventWithMeta(row: StoredEventRow): ThreadEventWithMeta {
+  return {
+    event: parseStoredEvent(row),
+    meta: {
+      id: row.id,
+      seq: row.sequence,
+      createdAt: row.createdAt,
+    },
+  };
+}
+
+function getThreadPromptBannerActivityState(
+  thread: Thread,
+  events: readonly ThreadEventWithMeta[],
+): PromptBannerActivityState {
+  const activePromptMode = extractThreadTimelineActivePromptMode({
+    events,
+    providerId: thread.providerId,
+    threadStatus: thread.status,
+  });
+  const goal = extractThreadTimelineGoal(events);
+
+  return {
+    activeGoalCount: goal?.status === "active" ? 1 : 0,
+    activePlanModeCount: activePromptMode?.mode === "plan" ? 1 : 0,
+  };
+}
+
+function buildThreadPromptBannerActivityByThreadId(
+  deps: ThreadRuntimeDisplayDeps,
+  threads: readonly Thread[],
+): Map<string, PromptBannerActivityState> {
+  const rows = listStoredEventRowsByThreadIdsAndTypes(deps.db, {
+    threadIds: threads.map((thread) => thread.id),
+    types: PROMPT_BANNER_ACTIVITY_EVENT_TYPES,
+  });
+  const eventsByThreadId = new Map<string, ThreadEventWithMeta[]>();
+  for (const row of rows) {
+    const threadEvents = eventsByThreadId.get(row.threadId);
+    const event = toThreadEventWithMeta(row);
+    if (threadEvents) {
+      threadEvents.push(event);
+    } else {
+      eventsByThreadId.set(row.threadId, [event]);
+    }
+  }
+
+  const result = new Map<string, PromptBannerActivityState>();
+  for (const thread of threads) {
+    const activity = getThreadPromptBannerActivityState(
+      thread,
+      eventsByThreadId.get(thread.id) ?? [],
+    );
+    if (activity.activeGoalCount > 0 || activity.activePlanModeCount > 0) {
+      result.set(thread.id, activity);
+    }
+  }
+  return result;
+}
+
 export function toThreadListEntryResponses(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadListEntryResponsesArgs,
 ): ThreadListEntry[] {
-  const threadActivityById = new Map(
+  const backgroundTaskActivityByThreadId = new Map(
     listActiveBackgroundTaskCountsByThreadIds(deps.db, {
       threadIds: args.threads.map((thread) => thread.id),
     }).map((activity) => [activity.threadId, activity]),
   );
+  const promptBannerActivityByThreadId =
+    buildThreadPromptBannerActivityByThreadId(deps, args.threads);
   const activeHostIds = [
     ...new Set(
       args.threads.flatMap((thread) =>
@@ -256,12 +349,26 @@ export function toThreadListEntryResponses(
     }).map((session) => [session.hostId, session]),
   );
 
-  return args.threads.map((thread) =>
-    toThreadListEntryResponseFromLatestSession({
-      activity: threadActivityById.get(thread.id) ?? {
-        activeBackgroundAgentCount: 0,
-        activeBackgroundCommandCount: 0,
-        activeWorkflowCount: 0,
+  return args.threads.map((thread) => {
+    const backgroundActivity = backgroundTaskActivityByThreadId.get(thread.id);
+    const promptBannerActivity = promptBannerActivityByThreadId.get(thread.id);
+    return toThreadListEntryResponseFromLatestSession({
+      activity: {
+        activeBackgroundAgentCount:
+          backgroundActivity?.activeBackgroundAgentCount ??
+          EMPTY_THREAD_ACTIVITY.activeBackgroundAgentCount,
+        activeBackgroundCommandCount:
+          backgroundActivity?.activeBackgroundCommandCount ??
+          EMPTY_THREAD_ACTIVITY.activeBackgroundCommandCount,
+        activeGoalCount:
+          promptBannerActivity?.activeGoalCount ??
+          EMPTY_THREAD_ACTIVITY.activeGoalCount,
+        activePlanModeCount:
+          promptBannerActivity?.activePlanModeCount ??
+          EMPTY_THREAD_ACTIVITY.activePlanModeCount,
+        activeWorkflowCount:
+          backgroundActivity?.activeWorkflowCount ??
+          EMPTY_THREAD_ACTIVITY.activeWorkflowCount,
       },
       hostConnected:
         thread.environmentHostId !== null &&
@@ -272,8 +379,8 @@ export function toThreadListEntryResponses(
           : (latestSessionByHostId.get(thread.environmentHostId) ?? null),
       now: args.now,
       thread,
-    }),
-  );
+    });
+  });
 }
 
 function toThreadListEntryResponseFromLatestSession(

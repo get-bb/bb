@@ -14,6 +14,8 @@ import { formatRelativeTime } from "@/lib/relative-time";
 import {
   hasActiveBackgroundAgentActivity,
   hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -143,6 +145,10 @@ function ThreadSearchResultRowComponent({
     !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
   const threadBackgroundCommandActive =
     !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
+  const threadPlanModeActive =
+    !hasPendingInteraction && hasActivePlanModeActivity(thread);
+  const threadGoalActive =
+    !hasPendingInteraction && hasActiveGoalActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   // For recents and title-only matches, the second line shows the project and
   // when the thread was last active.
@@ -218,6 +224,8 @@ function ThreadSearchResultRowComponent({
             isBackgroundAgentActive={threadBackgroundAgentActive}
             isBackgroundCommandActive={threadBackgroundCommandActive}
             isForegroundAgentWorking={threadRuntimeBusy}
+            isGoalActive={threadGoalActive}
+            isPlanModeActive={threadPlanModeActive}
             isBusy={threadRuntimeBusy}
             isWorkflowActive={threadWorkflowActive}
             showUnreadBadge={false}

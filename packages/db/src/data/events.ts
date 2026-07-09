@@ -751,6 +751,11 @@ export interface ListStoredEventRowsByParentToolCallIdsArgs {
   threadId: string;
 }
 
+export interface ListStoredEventRowsByThreadIdsAndTypesArgs {
+  threadIds: readonly string[];
+  types: readonly ThreadEventType[];
+}
+
 export interface ListStoredToolCallRowsByItemIdsArgs {
   itemIds: readonly string[];
   threadId: string;
@@ -913,6 +918,27 @@ export function listStoredEventRows(
     )
     .orderBy(events.sequence)
     .limit(args.limit ?? Number.MAX_SAFE_INTEGER)
+    .all();
+}
+
+export function listStoredEventRowsByThreadIdsAndTypes(
+  db: DbConnection,
+  args: ListStoredEventRowsByThreadIdsAndTypesArgs,
+): StoredEventRow[] {
+  if (args.threadIds.length === 0 || args.types.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        inArray(events.threadId, [...args.threadIds]),
+        inArray(events.type, [...args.types]),
+      ),
+    )
+    .orderBy(events.threadId, events.sequence)
     .all();
 }
 

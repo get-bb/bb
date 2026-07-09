@@ -71,6 +71,40 @@ export function Overview() {
           />
         </SidebarStage>
       </StoryRow>
+      <StoryRow
+        label="collapsed plan mode"
+        hint="hidden plan-mode banner rolls up to the right-aligned plan glyph"
+      >
+        <SidebarStage>
+          <SidebarFolderRow
+            name="Planning"
+            label="Work / Planning"
+            depth={2}
+            activity={activity({ working: true, planMode: true })}
+            isCollapsed
+            onToggleCollapsed={noop}
+            onCreateThread={noop}
+            onRename={noop}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="collapsed goal"
+        hint="hidden active-goal banner rolls up to the right-aligned target glyph"
+      >
+        <SidebarStage>
+          <SidebarFolderRow
+            name="Goals"
+            label="Work / Goals"
+            depth={2}
+            activity={activity({ working: true, goal: true })}
+            isCollapsed
+            onToggleCollapsed={noop}
+            onCreateThread={noop}
+            onRename={noop}
+          />
+        </SidebarStage>
+      </StoryRow>
       <StoryRow label="pending" hint="pending descendant wins the rollup">
         <SidebarStage>
           <SidebarFolderRow

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
+  appendStoredThreadEvent,
   closeSession,
   createConnection,
   createEnvironment,
@@ -15,7 +16,17 @@ import {
   type DbConnection,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
-import type { Thread, ThreadRuntimeState } from "@bb/domain";
+import {
+  formatClientTurnRequestIdSuffix,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
+import type {
+  ClientTurnRequestId,
+  PromptInput,
+  Thread,
+  ThreadRuntimeState,
+} from "@bb/domain";
 import { DAEMON_DISCONNECT_GRACE_MS } from "../../../src/constants.js";
 import {
   resolveThreadRuntimeState,
@@ -54,6 +65,54 @@ interface ThreadWithPinSortKey extends Thread {
 interface CreateThreadListEntryArgs {
   environmentHostId: string | null;
   thread: ThreadWithPinSortKey;
+}
+
+const planPromptInput: PromptInput[] = [
+  {
+    type: "text",
+    text: "/plan inspect the failing command",
+    mentions: [
+      {
+        start: 0,
+        end: 5,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ],
+  },
+];
+
+function turnRequestData({
+  input,
+  requestId,
+}: {
+  input: PromptInput[];
+  requestId: ClientTurnRequestId;
+}) {
+  return {
+    direction: "outbound",
+    source: "tell",
+    initiator: "user",
+    senderThreadId: null,
+    requestId,
+    input,
+    target: { kind: "new-turn" },
+    request: { method: "turn/start", params: {} },
+    execution: {
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "workspace-write",
+      source: "client/turn/requested",
+      serviceTier: "default",
+    },
+  } as const;
 }
 
 function setup(): SetupResult {
@@ -319,5 +378,149 @@ describe("thread runtime display", () => {
         hostReconnectGraceExpiresAt: null,
       },
     ] satisfies ThreadRuntimeState[]);
+  });
+
+  it("marks list entries active when the prompt banner would show plan or goal state", () => {
+    const { db, hostId, hub } = setup();
+    const activePlan = createThreadWithEnvironment({ db, hostId });
+    const completedPlan = createThreadWithEnvironment({ db, hostId });
+    const activeGoal = createThreadWithEnvironment({ db, hostId });
+    const clearedGoal = createThreadWithEnvironment({ db, hostId });
+    const activePlanRequestId = formatClientTurnRequestIdSuffix({
+      suffix: "23456789ab",
+    });
+    const completedPlanRequestId = formatClientTurnRequestIdSuffix({
+      suffix: "23456789ac",
+    });
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: activePlan.thread.id,
+      scope: threadScope(),
+      type: "client/turn/requested",
+      data: turnRequestData({
+        input: planPromptInput,
+        requestId: activePlanRequestId,
+      }),
+    });
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: activePlan.thread.id,
+      scope: turnScope("turn-active-plan"),
+      providerThreadId: "provider-active-plan",
+      type: "turn/input/accepted",
+      data: {
+        providerThreadId: "provider-active-plan",
+        clientRequestId: activePlanRequestId,
+      },
+    });
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: completedPlan.thread.id,
+      scope: threadScope(),
+      type: "client/turn/requested",
+      data: turnRequestData({
+        input: planPromptInput,
+        requestId: completedPlanRequestId,
+      }),
+    });
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: completedPlan.thread.id,
+      scope: turnScope("turn-completed-plan"),
+      providerThreadId: "provider-completed-plan",
+      type: "turn/input/accepted",
+      data: {
+        providerThreadId: "provider-completed-plan",
+        clientRequestId: completedPlanRequestId,
+      },
+    });
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: completedPlan.thread.id,
+      scope: turnScope("turn-completed-plan"),
+      providerThreadId: "provider-completed-plan",
+      type: "turn/completed",
+      data: {
+        providerThreadId: "provider-completed-plan",
+        status: "completed",
+      },
+    });
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: activeGoal.thread.id,
+      scope: threadScope(),
+      providerThreadId: "provider-active-goal",
+      type: "thread/goal/updated",
+      data: {
+        providerThreadId: "provider-active-goal",
+        objective: "Finish the sidebar activity indicator",
+        status: "active",
+        tokenBudget: 10_000,
+        tokensUsed: 512,
+        timeUsedSeconds: 42,
+      },
+    });
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: clearedGoal.thread.id,
+      scope: threadScope(),
+      providerThreadId: "provider-cleared-goal",
+      type: "thread/goal/updated",
+      data: {
+        providerThreadId: "provider-cleared-goal",
+        objective: "This goal was cleared",
+        status: "active",
+        tokenBudget: null,
+        tokensUsed: 128,
+        timeUsedSeconds: 10,
+      },
+    });
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: clearedGoal.thread.id,
+      scope: threadScope(),
+      providerThreadId: "provider-cleared-goal",
+      type: "thread/goal/cleared",
+      data: { providerThreadId: "provider-cleared-goal" },
+    });
+
+    const entries = toThreadListEntryResponses(
+      { db, hub },
+      {
+        threads: [
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: activePlan.thread,
+          }),
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: completedPlan.thread,
+          }),
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: activeGoal.thread,
+          }),
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: clearedGoal.thread,
+          }),
+        ],
+      },
+    );
+    const activityByThreadId = new Map(
+      entries.map((entry) => [entry.id, entry.activity]),
+    );
+
+    expect(activityByThreadId.get(activePlan.thread.id)).toMatchObject({
+      activePlanModeCount: 1,
+      activeGoalCount: 0,
+    });
+    expect(activityByThreadId.get(completedPlan.thread.id)).toMatchObject({
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    });
+    expect(activityByThreadId.get(activeGoal.thread.id)).toMatchObject({
+      activePlanModeCount: 0,
+      activeGoalCount: 1,
+    });
+    expect(activityByThreadId.get(clearedGoal.thread.id)).toMatchObject({
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    });
   });
 });

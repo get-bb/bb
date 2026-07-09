@@ -174,6 +174,8 @@ function SidebarFolderRowComponent({
               isBackgroundAgentActive={activity.backgroundAgent}
               isBackgroundCommandActive={activity.backgroundCommand}
               isForegroundAgentWorking={activity.runtimeWorking}
+              isGoalActive={activity.goal}
+              isPlanModeActive={activity.planMode}
               isBusy={activity.working}
               isWorkflowActive={activity.workflow}
               showUnreadBadge={activity.unread}
@@ -183,9 +185,7 @@ function SidebarFolderRowComponent({
         ) : null}
         {hasActions ? (
           <span
-            data-sidebar-hover-actions-open={
-              isActionsOpen ? "true" : undefined
-            }
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             data-sidebar-hover-actions-mobile={
               SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
             }

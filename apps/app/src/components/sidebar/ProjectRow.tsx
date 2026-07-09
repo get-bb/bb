@@ -1192,6 +1192,8 @@ function EnvironmentThreadGroupHeader({
               isBackgroundAgentActive={childActivity.backgroundAgent}
               isBackgroundCommandActive={childActivity.backgroundCommand}
               isForegroundAgentWorking={childActivity.runtimeWorking}
+              isGoalActive={childActivity.goal}
+              isPlanModeActive={childActivity.planMode}
               isBusy={childActivity.runtimeWorking}
               isWorkflowActive={childActivity.workflow}
               showUnreadBadge={childActivity.unread}
@@ -2217,6 +2219,8 @@ function ProjectRowComponent({
                       projectActivity.backgroundCommand
                     }
                     isForegroundAgentWorking={projectActivity.runtimeWorking}
+                    isGoalActive={projectActivity.goal}
+                    isPlanModeActive={projectActivity.planMode}
                     isBusy={projectActivity.working}
                     isWorkflowActive={projectActivity.workflow}
                     showUnreadBadge={projectActivity.unread}

@@ -33,6 +33,18 @@ export function hasActiveBackgroundCommandActivity(
   return thread.activity.activeBackgroundCommandCount > 0;
 }
 
+export function hasActivePlanModeActivity(
+  thread: ThreadActivityStateShape,
+): boolean {
+  return thread.activity.activePlanModeCount > 0;
+}
+
+export function hasActiveGoalActivity(
+  thread: ThreadActivityStateShape,
+): boolean {
+  return thread.activity.activeGoalCount > 0;
+}
+
 export function isBusyThread(
   thread: ThreadRuntimeShape & ThreadActivityStateShape,
 ): boolean {
@@ -40,7 +52,9 @@ export function isBusyThread(
     isRuntimeBusyThread(thread) ||
     hasActiveWorkflowActivity(thread) ||
     hasActiveBackgroundAgentActivity(thread) ||
-    hasActiveBackgroundCommandActivity(thread)
+    hasActiveBackgroundCommandActivity(thread) ||
+    hasActivePlanModeActivity(thread) ||
+    hasActiveGoalActivity(thread)
   );
 }
 
@@ -49,8 +63,8 @@ export function isBusyThread(
  * A collapsed row renders these through its single trailing status glyph, using
  * the same priority as a leaf row: failed unread work is loudest, then pending
  * user input, then foreground runtime work, then workflow work, then background
- * agent work, then background commands, then unread success, then generic
- * runtime work. Expanded rows show their own status,
+ * agent work, then background commands, then plan/goal banner modes, then
+ * unread success, then generic runtime work. Expanded rows show their own status,
  * since the children are then visible with their own glyphs. Background
  * agent, command, and workflow work are tracked separately from runtime work so
  * the sidebar can use task-specific signals instead of collapsing them into a
@@ -69,6 +83,10 @@ export interface CollapsedChildActivity {
   backgroundAgent: boolean;
   /** At least one child has a background shell command still running. */
   backgroundCommand: boolean;
+  /** At least one child is showing the plan-mode banner above the composer. */
+  planMode: boolean;
+  /** At least one child is showing the active-goal banner above the composer. */
+  goal: boolean;
   /**
    * At least one finished child is unread. Only top-level worktree children
    * qualify — `isUnreadDoneThread` is false for parented threads, so manager
@@ -86,6 +104,8 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   workflow: false,
   backgroundAgent: false,
   backgroundCommand: false,
+  planMode: false,
+  goal: false,
   unread: false,
   unreadError: false,
 };
@@ -104,6 +124,8 @@ export function getCollapsedChildActivity(
   let workflow = false;
   let backgroundAgent = false;
   let backgroundCommand = false;
+  let planMode = false;
+  let goal = false;
   let unread = false;
   let unreadError = false;
   for (const thread of threads) {
@@ -123,6 +145,8 @@ export function getCollapsedChildActivity(
     const childBackgroundAgentActive = hasActiveBackgroundAgentActivity(thread);
     const childBackgroundCommandActive =
       hasActiveBackgroundCommandActivity(thread);
+    const childPlanModeActive = hasActivePlanModeActivity(thread);
+    const childGoalActive = hasActiveGoalActivity(thread);
     if (childRuntimeWorking) {
       runtimeWorking = true;
       working = true;
@@ -139,11 +163,21 @@ export function getCollapsedChildActivity(
       backgroundCommand = true;
       working = true;
     }
+    if (childPlanModeActive) {
+      planMode = true;
+      working = true;
+    }
+    if (childGoalActive) {
+      goal = true;
+      working = true;
+    }
     if (
       !childRuntimeWorking &&
       !childWorkflowActive &&
       !childBackgroundAgentActive &&
       !childBackgroundCommandActive &&
+      !childPlanModeActive &&
+      !childGoalActive &&
       childUnreadDone
     ) {
       unread = true;
@@ -156,6 +190,8 @@ export function getCollapsedChildActivity(
     workflow,
     backgroundAgent,
     backgroundCommand,
+    planMode,
+    goal,
     unread,
     unreadError,
   };

@@ -7,6 +7,8 @@ import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
   hasActiveBackgroundAgentActivity,
   hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -103,6 +105,21 @@ function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
     !isBackgroundAgentActive &&
     hasActiveBackgroundCommandActivity(thread) &&
     !thread.hasPendingInteraction;
+  const isPlanModeActive =
+    !isRuntimeBusy &&
+    !isWorkflowActive &&
+    !isBackgroundAgentActive &&
+    !isBackgroundCommandActive &&
+    hasActivePlanModeActivity(thread) &&
+    !thread.hasPendingInteraction;
+  const isGoalActive =
+    !isRuntimeBusy &&
+    !isWorkflowActive &&
+    !isBackgroundAgentActive &&
+    !isBackgroundCommandActive &&
+    !isPlanModeActive &&
+    hasActiveGoalActivity(thread) &&
+    !thread.hasPendingInteraction;
 
   return (
     <ThreadStatusGlyph
@@ -110,6 +127,8 @@ function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
       isBackgroundAgentActive={isBackgroundAgentActive}
       isBackgroundCommandActive={isBackgroundCommandActive}
       isForegroundAgentWorking={isRuntimeBusy && !thread.hasPendingInteraction}
+      isGoalActive={isGoalActive}
+      isPlanModeActive={isPlanModeActive}
       isBusy={isRuntimeBusy && !thread.hasPendingInteraction}
       isWorkflowActive={isWorkflowActive}
       showUnreadBadge={

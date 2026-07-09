@@ -31,6 +31,8 @@ import {
 import {
   hasActiveBackgroundAgentActivity,
   hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -170,6 +172,8 @@ interface ThreadStatusGlyphProps {
   isBackgroundAgentActive: boolean;
   isBackgroundCommandActive: boolean;
   isForegroundAgentWorking: boolean;
+  isGoalActive: boolean;
+  isPlanModeActive: boolean;
   isBusy: boolean;
   isWorkflowActive: boolean;
   showUnreadBadge: boolean;
@@ -185,6 +189,8 @@ export function ThreadStatusGlyph({
   isBackgroundAgentActive,
   isBackgroundCommandActive,
   isForegroundAgentWorking,
+  isGoalActive,
+  isPlanModeActive,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
@@ -270,6 +276,34 @@ export function ThreadStatusGlyph({
     );
   }
 
+  if (isPlanModeActive) {
+    return (
+      <Icon
+        name="ListTodo"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Plan mode active"
+      />
+    );
+  }
+
+  if (isGoalActive) {
+    return (
+      <Icon
+        name="Target"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Goal active"
+      />
+    );
+  }
+
   if (showUnreadBadge) {
     const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
     return (
@@ -307,6 +341,8 @@ function ThreadTrailingIndicator({
   isBackgroundAgentActive,
   isBackgroundCommandActive,
   isForegroundAgentWorking,
+  isGoalActive,
+  isPlanModeActive,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
@@ -317,6 +353,8 @@ function ThreadTrailingIndicator({
     isBackgroundAgentActive ||
     isBackgroundCommandActive ||
     isForegroundAgentWorking ||
+    isGoalActive ||
+    isPlanModeActive ||
     isBusy ||
     isWorkflowActive ||
     showUnreadBadge;
@@ -337,6 +375,8 @@ function ThreadTrailingIndicator({
         isBackgroundAgentActive={isBackgroundAgentActive}
         isBackgroundCommandActive={isBackgroundCommandActive}
         isForegroundAgentWorking={isForegroundAgentWorking}
+        isGoalActive={isGoalActive}
+        isPlanModeActive={isPlanModeActive}
         isBusy={isBusy}
         isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
@@ -371,6 +411,10 @@ function ThreadRowComponent({
     !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
   const threadBackgroundCommandActive =
     !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
+  const threadPlanModeActive =
+    !hasPendingInteraction && hasActivePlanModeActivity(thread);
+  const threadGoalActive =
+    !hasPendingInteraction && hasActiveGoalActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const threadUnreadDone = isUnreadDoneThread(thread);
   const threadUnreadError = threadUnreadDone && thread.status === "error";
@@ -410,7 +454,15 @@ function ThreadRowComponent({
   const trailingBackgroundCommandActive = hasHiddenChildren
     ? threadBackgroundCommandActive || childActivity.backgroundCommand
     : threadBackgroundCommandActive;
-  const trailingIsBusy = trailingRuntimeBusy;
+  const trailingPlanModeActive = hasHiddenChildren
+    ? threadPlanModeActive || childActivity.planMode
+    : threadPlanModeActive;
+  const trailingGoalActive = hasHiddenChildren
+    ? threadGoalActive || childActivity.goal
+    : threadGoalActive;
+  const trailingIsBusy = hasHiddenChildren
+    ? threadIsBusy || childActivity.working
+    : threadIsBusy;
   const trailingShowUnreadBadge = hasHiddenChildren
     ? showUnreadBadge || childActivity.unread
     : showUnreadBadge;
@@ -507,6 +559,8 @@ function ThreadRowComponent({
               isBackgroundAgentActive={trailingBackgroundAgentActive}
               isBackgroundCommandActive={trailingBackgroundCommandActive}
               isForegroundAgentWorking={trailingRuntimeBusy}
+              isGoalActive={trailingGoalActive}
+              isPlanModeActive={trailingPlanModeActive}
               isBusy={trailingIsBusy}
               isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}

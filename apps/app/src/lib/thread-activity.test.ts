@@ -22,6 +22,8 @@ function makeChild(
       activeWorkflowCount: 0,
       activeBackgroundAgentCount: 0,
       activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
     },
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
@@ -48,6 +50,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: {
           displayStatus: "active",
@@ -61,6 +65,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: {
           displayStatus: "host-reconnecting",
@@ -74,6 +80,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: {
           displayStatus: "provisioning",
@@ -87,6 +95,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: {
           displayStatus: "waiting-for-host",
@@ -101,6 +111,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: {
           displayStatus: "idle",
@@ -115,6 +127,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: {
           displayStatus: "idle",
@@ -129,6 +143,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: {
           displayStatus: "idle",
@@ -180,6 +196,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -190,6 +208,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -203,6 +223,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -213,6 +235,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -223,6 +247,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: true,
         unreadError: false,
       });
@@ -233,6 +259,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: true,
         unreadError: true,
       });
@@ -248,6 +276,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: true,
         unreadError: false,
       });
@@ -265,6 +295,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: true,
         unreadError: true,
       });
@@ -279,6 +311,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
       });
@@ -290,6 +324,8 @@ describe("thread-activity", () => {
         workflow: true,
         backgroundAgent: true,
         backgroundCommand: true,
+        planMode: false,
+        goal: false,
         unread: true,
         unreadError: true,
       });
@@ -308,6 +344,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -319,6 +357,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       });
 
@@ -329,6 +369,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: true,
+        planMode: false,
+        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -340,6 +382,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       });
 
@@ -350,6 +394,8 @@ describe("thread-activity", () => {
         workflow: false,
         backgroundAgent: true,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -361,6 +407,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       });
 
@@ -371,6 +419,58 @@ describe("thread-activity", () => {
         workflow: true,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
+        unread: false,
+        unreadError: false,
+      });
+    });
+
+    it("distinguishes plan-mode banner activity from runtime work", () => {
+      const planModeChild = makeChild({
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 1,
+          activeGoalCount: 0,
+        },
+      });
+
+      expect(getCollapsedChildActivity([planModeChild])).toEqual({
+        pending: false,
+        working: true,
+        runtimeWorking: false,
+        workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
+        planMode: true,
+        goal: false,
+        unread: false,
+        unreadError: false,
+      });
+    });
+
+    it("distinguishes active-goal banner activity from runtime work", () => {
+      const goalChild = makeChild({
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 1,
+        },
+      });
+
+      expect(getCollapsedChildActivity([goalChild])).toEqual({
+        pending: false,
+        working: true,
+        runtimeWorking: false,
+        workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
+        planMode: false,
+        goal: true,
         unread: false,
         unreadError: false,
       });
@@ -382,6 +482,8 @@ describe("thread-activity", () => {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
         status: "active",
@@ -394,6 +496,8 @@ describe("thread-activity", () => {
         workflow: true,
         backgroundAgent: false,
         backgroundCommand: false,
+        planMode: false,
+        goal: false,
         unread: false,
         unreadError: false,
       });

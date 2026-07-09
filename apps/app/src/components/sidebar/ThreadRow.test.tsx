@@ -44,6 +44,8 @@ function createThread(
       activeWorkflowCount: 0,
       activeBackgroundAgentCount: 0,
       activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
     },
     hasPendingInteraction: false,
     environmentHostId: null,
@@ -130,6 +132,8 @@ describe("ThreadRow", () => {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
         runtime: {
           displayStatus: "active",
@@ -154,6 +158,8 @@ describe("ThreadRow", () => {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       }),
     });
@@ -178,6 +184,8 @@ describe("ThreadRow", () => {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       }),
     });
@@ -195,6 +203,8 @@ describe("ThreadRow", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       }),
     });
@@ -217,6 +227,8 @@ describe("ThreadRow", () => {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       }),
     });
@@ -234,6 +246,8 @@ describe("ThreadRow", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       }),
     });
@@ -250,6 +264,8 @@ describe("ThreadRow", () => {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       }),
     });
@@ -261,6 +277,86 @@ describe("ThreadRow", () => {
     expect(terminalIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Agent working")).toBeNull();
+  });
+
+  it("shows an animated plan-mode glyph when the plan banner is active", () => {
+    renderThreadRow({
+      thread: createThread({
+        title: "Plan mode thread",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 1,
+          activeGoalCount: 0,
+        },
+      }),
+    });
+
+    const planIcon = screen.getByLabelText("Plan mode active");
+    const planIconClasses = Array.from(planIcon.classList);
+    expect(planIcon.getAttribute("data-icon")).toBe("ListTodo");
+    expect(planIconClasses).toContain("animate-shine-icon");
+    expect(planIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
+    expect(screen.queryByLabelText("Background command running")).toBeNull();
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(screen.queryByLabelText("Agent working")).toBeNull();
+  });
+
+  it("shows an animated goal glyph when the goal banner is active", () => {
+    renderThreadRow({
+      thread: createThread({
+        title: "Goal thread",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 1,
+        },
+      }),
+    });
+
+    const goalIcon = screen.getByLabelText("Goal active");
+    const goalIconClasses = Array.from(goalIcon.classList);
+    expect(goalIcon.getAttribute("data-icon")).toBe("Target");
+    expect(goalIconClasses).toContain("animate-shine-icon");
+    expect(goalIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(screen.queryByLabelText("Agent working")).toBeNull();
+  });
+
+  it("shows a working spinner for collapsed parent rows with generic hidden child work", () => {
+    renderThreadRow({
+      thread: createThread({
+        title: "Parent thread",
+        lastReadAt: 1,
+        latestAttentionAt: 1,
+      }),
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: true,
+        childCount: 1,
+        childActivity: {
+          pending: false,
+          working: true,
+          runtimeWorking: false,
+          workflow: false,
+          backgroundAgent: false,
+          backgroundCommand: false,
+          planMode: false,
+          goal: false,
+          unread: false,
+          unreadError: false,
+        },
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
   });
 
   it("renders an already-unread successful thread as a settled dot on initial load", () => {

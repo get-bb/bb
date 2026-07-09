@@ -34,6 +34,8 @@ function createThread(
       activeWorkflowCount: 0,
       activeBackgroundAgentCount: 0,
       activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
     },
     hasPendingInteraction: false,
     environmentHostId: null,
@@ -66,6 +68,8 @@ describe("ThreadSearchResultRow", () => {
             activeWorkflowCount: 1,
             activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,
+            activePlanModeCount: 0,
+            activeGoalCount: 0,
           },
           runtime: {
             displayStatus: "active",
@@ -78,5 +82,29 @@ describe("ThreadSearchResultRow", () => {
     expect(screen.getByLabelText("Agent working")).not.toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("shows plan-mode activity for idle search results", () => {
+    render(
+      <ThreadSearchResultRow
+        id="row-plan-mode"
+        isActive={false}
+        matches={[]}
+        onActive={vi.fn()}
+        onSelect={vi.fn()}
+        projectName="bb"
+        thread={createThread({
+          activity: {
+            activeWorkflowCount: 0,
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activePlanModeCount: 1,
+            activeGoalCount: 0,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
   });
 });

@@ -108,6 +108,8 @@ function WorkflowActiveThreadRow() {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       })}
       isActive={false}
@@ -127,6 +129,8 @@ function BackgroundCommandActiveThreadRow() {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       })}
       isActive={false}
@@ -146,6 +150,50 @@ function BackgroundAgentActiveThreadRow() {
           activeWorkflowCount: 0,
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
+}
+
+function PlanModeActiveThreadRow() {
+  return (
+    <StoryThreadRow
+      projectId="proj_demo"
+      thread={makeThread({
+        title: "Plan mode investigation",
+        titleFallback: "Plan mode investigation",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 1,
+          activeGoalCount: 0,
+        },
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
+}
+
+function GoalActiveThreadRow() {
+  return (
+    <StoryThreadRow
+      projectId="proj_demo"
+      thread={makeThread({
+        title: "Goal-driven cleanup",
+        titleFallback: "Goal-driven cleanup",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 1,
         },
       })}
       isActive={false}
@@ -170,6 +218,8 @@ function WorkflowAndRuntimeActiveThreadRow() {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
         },
       })}
       isActive={false}
@@ -322,6 +372,22 @@ export function Overview() {
       >
         <SidebarStage>
           <BackgroundCommandActiveThreadRow />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="active plan mode"
+        hint="plan-mode banner is active - far-right reserved slot shows the animated plan glyph"
+      >
+        <SidebarStage>
+          <PlanModeActiveThreadRow />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="active goal"
+        hint="goal banner is active - far-right reserved slot shows the animated target glyph"
+      >
+        <SidebarStage>
+          <GoalActiveThreadRow />
         </SidebarStage>
       </StoryRow>
       <StoryRow
