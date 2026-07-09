@@ -5,6 +5,7 @@ import type {
   PluginHomepageSectionRegistration,
   PluginNavPanelRegistration,
   PluginSettingsSectionRegistration,
+  PluginSidebarFooterActionRegistration,
   PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 
@@ -22,6 +23,7 @@ export interface PluginRegistrationSet {
   navPanels: readonly PluginNavPanelRegistration[];
   threadPanelActions: readonly PluginThreadPanelActionRegistration[];
   composerAccessories: readonly PluginComposerAccessoryRegistration[];
+  sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
 }
 
@@ -46,6 +48,8 @@ export interface PluginThreadPanelActionSlot
   extends PluginThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginComposerAccessorySlot
   extends PluginComposerAccessoryRegistration, PluginSlotBase {}
+export interface PluginSidebarFooterActionSlot
+  extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
   extends PluginFileOpenerRegistration, PluginSlotBase {}
 
@@ -56,6 +60,7 @@ export interface PluginSlotSnapshot {
   navPanels: readonly PluginNavPanelSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   composerAccessories: readonly PluginComposerAccessorySlot[];
+  sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
 }
 
@@ -65,6 +70,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   navPanels: [],
   threadPanelActions: [],
   composerAccessories: [],
+  sidebarFooterActions: [],
   fileOpeners: [],
 };
 
@@ -81,6 +87,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     navPanels: PluginNavPanelSlot[];
     threadPanelActions: PluginThreadPanelActionSlot[];
     composerAccessories: PluginComposerAccessorySlot[];
+    sidebarFooterActions: PluginSidebarFooterActionSlot[];
     fileOpeners: PluginFileOpenerSlot[];
   } = {
     homepageSections: [],
@@ -88,6 +95,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    sidebarFooterActions: [],
     fileOpeners: [],
   };
   for (const pluginId of pluginIds) {
@@ -108,6 +116,13 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.composerAccessories) {
       next.composerAccessories.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.sidebarFooterActions) {
+      next.sidebarFooterActions.push({
+        ...registration,
+        pluginId,
+        generation,
+      });
     }
     for (const registration of set.fileOpeners) {
       next.fileOpeners.push({ ...registration, pluginId, generation });

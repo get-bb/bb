@@ -47,12 +47,14 @@ export interface PersistedPermissionModeSelectionField {
 
 function isReasoningLevel(value: string): value is ReasoningLevel {
   return (
+    value === "none" ||
     value === "low" ||
     value === "medium" ||
     value === "high" ||
     value === "xhigh" ||
     value === "ultracode" ||
-    value === "max"
+    value === "max" ||
+    value === "ultra"
   );
 }
 

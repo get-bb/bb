@@ -29,6 +29,10 @@ export const MAX_REASONING_EFFORT: ModelReasoningEffort = {
   reasoningEffort: "max",
   description: "Maximum reasoning effort",
 };
+export const ULTRA_REASONING_EFFORT: ModelReasoningEffort = {
+  reasoningEffort: "ultra",
+  description: "Maximum reasoning with automatic task delegation",
+};
 
 export const ALL_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
   LOW_REASONING_EFFORT,
@@ -37,6 +41,7 @@ export const ALL_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
   XHIGH_REASONING_EFFORT,
   ULTRACODE_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
+  ULTRA_REASONING_EFFORT,
 ];
 
 const REASONING_EFFORT_BY_LEVEL: Record<ReasoningLevel, ModelReasoningEffort> =
@@ -48,6 +53,7 @@ const REASONING_EFFORT_BY_LEVEL: Record<ReasoningLevel, ModelReasoningEffort> =
     xhigh: XHIGH_REASONING_EFFORT,
     ultracode: ULTRACODE_REASONING_EFFORT,
     max: MAX_REASONING_EFFORT,
+    ultra: ULTRA_REASONING_EFFORT,
   };
 
 // Expands coarse reasoning levels into the descriptive picker entries above.

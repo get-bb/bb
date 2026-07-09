@@ -60,19 +60,10 @@ export interface ServerSummary {
   serverUrl: string;
 }
 
-/** An execution host (account-scoped machine), projected for the dashboard. */
-export interface MachineSummary {
-  id: string;
-  name: string | null;
-  online: boolean;
-  lastSeenAt: number | null;
-}
-
 export interface AccountState {
   handle: string | null;
   /** Primary first, then oldest → newest. Empty until a handle is claimed. */
   servers: ServerSummary[];
-  machines: MachineSummary[];
   appUrl: string;
   baseDomain: string;
   /** GitHub login for the account footer link; null for pre-column rows. */
@@ -125,7 +116,7 @@ async function resolveServer(
   return [...all].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
 }
 
-/** Product-state read for the dashboard: every server the account owns, plus machines. */
+/** Product-state read for the dashboard: every server the account owns. */
 export async function getAccountState(deps: Deps, userId: string): Promise<AccountState> {
   const { db, baseDomain } = deps;
   const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
@@ -144,15 +135,10 @@ export async function getAccountState(deps: Deps, userId: string): Promise<Accou
   };
 
   if (!prof) {
-    return { handle: null, servers: [], machines: [], ...base };
+    return { handle: null, servers: [], ...base };
   }
 
   const serverRows = await db.select().from(server).where(eq(server.userId, userId)).all();
-  const machineRows = await db
-    .select()
-    .from(machine)
-    .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
-    .all();
 
   const servers = serverRows
     .map((srv) => toServerSummary(srv, prof.handle, baseDomain, now))
@@ -160,19 +146,7 @@ export async function getAccountState(deps: Deps, userId: string): Promise<Accou
       a.isPrimary !== b.isPrimary ? (a.isPrimary ? -1 : 1) : a.createdAt - b.createdAt,
     );
 
-  const machines: MachineSummary[] = machineRows
-    .map((m) => {
-      const lastSeenMs = m.lastSeenAt?.getTime() ?? null;
-      return {
-        id: m.id,
-        name: m.name,
-        online: lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
-        lastSeenAt: lastSeenMs,
-      };
-    })
-    .sort((a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0));
-
-  return { handle: prof.handle, servers, machines, ...base };
+  return { handle: prof.handle, servers, ...base };
 }
 
 /** Live label-availability check for the claim UIs (handle + "connect another"). */
@@ -404,6 +378,34 @@ export async function disconnectServer(
   } catch {
     // best-effort; the credential is already revoked so reconnect is blocked
   }
+  return { ok: true };
+}
+
+/**
+ * Delete a never-paired secondary server row, freeing its subdomain for re-claim.
+ * Distinct from `disconnectServer`: disconnect revokes a live credential but keeps
+ * the row (so it can be re-paired at the same address); remove drops the row
+ * entirely. Refuses the primary (subdomain === account handle) — that row is the
+ * account's identity and must survive — and refuses a still-connected row, since
+ * a live bb should be disconnected (revoked + tunnel closed), not silently deleted.
+ */
+export async function removeServer(
+  deps: Deps,
+  userId: string,
+  serverId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { db } = deps;
+  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const srv = await db
+    .select()
+    .from(server)
+    .where(and(eq(server.id, serverId), eq(server.userId, userId)))
+    .get();
+  if (!srv) return { error: "not-found" };
+  if (prof && srv.subdomain === prof.handle) return { error: "is-primary" };
+  if (srv.credentialHash != null && srv.revokedAt == null) return { error: "connected" };
+
+  await db.delete(server).where(eq(server.id, srv.id)).run();
   return { ok: true };
 }
 

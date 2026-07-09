@@ -14,4 +14,5 @@ export const REASONING_LABELS: Record<ReasoningLevel, string> = {
   xhigh: "Extra High",
   ultracode: "Ultracode",
   max: "Max",
+  ultra: "Ultra",
 };

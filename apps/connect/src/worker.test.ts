@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeFrame } from "@bb/tunnel-contract";
+import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 
 import { cacheKey } from "./cache";
 import { parseClientProtocolVersion } from "./tunnel-do";
@@ -484,7 +484,7 @@ class FakeWebSocketRequestResponsePair {
 vi.stubGlobal("WebSocketRequestResponsePair", FakeWebSocketRequestResponsePair);
 
 type MockState = {
-  sockets: WebSocket[];
+  addSocket: (ws: WebSocket, tags: string[]) => void;
   storage: Map<string, unknown>;
   restore: Promise<void>;
   api: DurableObjectState;
@@ -492,15 +492,16 @@ type MockState = {
 
 function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   const storage = new Map<string, unknown>(Object.entries(initialStorage));
-  const sockets: WebSocket[] = [];
+  const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
   let restore = Promise.resolve();
   const api = {
-    getWebSockets: (tag?: string) => {
-      if (tag === "tunnel" || tag === undefined) return sockets;
-      return [];
-    },
-    acceptWebSocket: (ws: WebSocket) => {
-      sockets.push(ws);
+    getWebSockets: (tag?: string) =>
+      entries
+        .filter((entry) => tag === undefined || entry.tags.includes(tag))
+        .map((entry) => entry.ws),
+    getTags: (ws: WebSocket) => entries.find((entry) => entry.ws === ws)?.tags ?? [],
+    acceptWebSocket: (ws: WebSocket, tags: string[] = []) => {
+      entries.push({ ws, tags });
     },
     setWebSocketAutoResponse: vi.fn(),
     blockConcurrencyWhile: (fn: () => Promise<void>) => {
@@ -519,7 +520,9 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
     },
   } as unknown as DurableObjectState;
   return {
-    sockets,
+    addSocket: (ws: WebSocket, tags: string[]) => {
+      entries.push({ ws, tags });
+    },
     storage,
     get restore() {
       return restore;
@@ -552,7 +555,7 @@ describe("TunnelDO targeted request with old client", () => {
     await state.restore;
 
     // Tunnel must look connected for the version gate (vs 503 offline).
-    state.sockets.push(fakeTunnelSocket());
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
 
     const res = await dob.fetch(
       new Request("https://do.internal/", {
@@ -567,7 +570,7 @@ describe("TunnelDO targeted request with old client", () => {
     const state = mockDoState({ protocolVersion: 0 });
     const dob = new TunnelDO(state.api, makeDoEnv());
     await state.restore;
-    state.sockets.push(fakeTunnelSocket());
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
 
     const res = await dob.fetch(
       new Request("https://do.internal/ws", {
@@ -588,7 +591,7 @@ describe("TunnelDO targeted request with old client", () => {
       const state = mockDoState({ protocolVersion: 1 });
       const dob = new TunnelDO(state.api, makeDoEnv());
       await state.restore;
-      state.sockets.push(
+      state.addSocket(
         fakeTunnelSocket((data) => {
           if (typeof data === "string") return;
           if (data instanceof ArrayBuffer) {
@@ -597,6 +600,7 @@ describe("TunnelDO targeted request with old client", () => {
             sent.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
           }
         }),
+        ["tunnel"],
       );
 
       const pending = dob.fetch(
@@ -623,5 +627,168 @@ describe("TunnelDO targeted request with old client", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ── TunnelDO response relay ─────────────────────────────────────────────────
+
+/** Tunnel-socket send handler that records binary frames into `sent`. */
+function captureSent(sent: Uint8Array[]) {
+  return (data: ArrayBuffer | ArrayBufferView | string) => {
+    if (typeof data === "string") return;
+    if (data instanceof ArrayBuffer) {
+      sent.push(new Uint8Array(data));
+    } else {
+      sent.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    }
+  };
+}
+
+/** Encode a frame as the ArrayBuffer webSocketMessage receives on the wire. */
+function frameBuffer(frame: Frame): ArrayBuffer {
+  const u8 = encodeFrame(frame);
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
+}
+
+function openHttpStreamId(sent: Uint8Array[], index: number): number {
+  const frame = decodeFrame(sent[index]);
+  if (frame.type !== "open-http") throw new Error(`expected open-http at ${index}`);
+  return frame.streamId;
+}
+
+describe("TunnelDO response relay", () => {
+  it("relays null-body statuses (304/204) bodiless instead of stranding the visitor", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+
+    // A browser revalidating a cached asset (the dev-server reload path).
+    for (const [index, status] of [304, 204].entries()) {
+      const pending = dob.fetch(
+        new Request("https://do.internal/app.js", {
+          headers: { "if-none-match": 'W/"abc"' },
+        }),
+      );
+      const streamId = openHttpStreamId(sent, index);
+      dob.webSocketMessage(
+        tunnel,
+        frameBuffer({
+          type: "resp-head",
+          streamId,
+          status,
+          headers: [
+            ["etag", 'W/"abc"'],
+            ["connection", "keep-alive"],
+          ],
+        }),
+      );
+      dob.webSocketMessage(tunnel, frameBuffer({ type: "body-end", streamId }));
+      const res = await pending;
+      expect(res.status).toBe(status);
+      expect(res.body).toBeNull();
+      expect(res.headers.get("etag")).toBe('W/"abc"');
+      // Hop headers stay filtered on this path too.
+      expect(res.headers.get("connection")).toBeNull();
+    }
+  });
+
+  it("answers 502 for a response status that cannot be constructed", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+
+    const pending = dob.fetch(new Request("https://do.internal/weird"));
+    const streamId = openHttpStreamId(sent, 0);
+    dob.webSocketMessage(
+      tunnel,
+      frameBuffer({ type: "resp-head", streamId, status: 199, headers: [] }),
+    );
+    const res = await pending;
+    expect(res.status).toBe(502);
+    expect(await res.text()).toContain("unrelayable");
+  });
+
+  it("fails in-flight streams and closes visitor sockets when a new tunnel replaces the old", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const oldTunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(oldTunnel, ["tunnel"]);
+    const visitor = fakeTunnelSocket();
+    state.addSocket(visitor, ["visitor:41"]);
+
+    // One request still awaiting resp-head, one mid-body (its resp-head
+    // timeout is already cleared — the state that used to hang forever).
+    const pendingHead = dob.fetch(new Request("https://do.internal/pending"));
+    const pendingBody = dob.fetch(new Request("https://do.internal/mid-body"));
+    const bodyStreamId = openHttpStreamId(sent, 1);
+    dob.webSocketMessage(
+      oldTunnel,
+      frameBuffer({
+        type: "resp-head",
+        streamId: bodyStreamId,
+        status: 200,
+        headers: [["content-type", "text/plain"]],
+      }),
+    );
+    const midBodyResponse = await pendingBody;
+    expect(midBodyResponse.status).toBe(200);
+
+    // The client reconnects: acceptTunnel replaces the old socket. Node lacks
+    // WebSocketPair and rejects `new Response(null, {status: 101})`, so both
+    // are emulated for the accept call only.
+    const RealResponse = globalThis.Response;
+    class FakeWebSocketPair {
+      0 = fakeTunnelSocket();
+      1 = fakeTunnelSocket();
+    }
+    class WorkersResponse extends RealResponse {
+      readonly webSocket: WebSocket | null;
+      constructor(
+        body?: BodyInit | null,
+        init?: ResponseInit & { webSocket?: WebSocket | null },
+      ) {
+        if (init?.webSocket != null) {
+          super(null, { status: 200 });
+          Object.defineProperty(this, "status", { value: init.status });
+          this.webSocket = init.webSocket;
+        } else {
+          super(body ?? null, init);
+          this.webSocket = null;
+        }
+      }
+    }
+    globalThis.Response = WorkersResponse as never;
+    (globalThis as { WebSocketPair?: unknown }).WebSocketPair = FakeWebSocketPair;
+    try {
+      const upgrade = await dob.fetch(
+        new Request("https://do.internal/__tunnel?v=1", {
+          headers: { upgrade: "websocket" },
+        }),
+      );
+      expect(upgrade.status).toBe(101);
+    } finally {
+      globalThis.Response = RealResponse;
+      delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
+    }
+
+    expect(vi.mocked(oldTunnel.close)).toHaveBeenCalledWith(
+      1000,
+      "replaced by a new tunnel connection",
+    );
+    expect(vi.mocked(visitor.close)).toHaveBeenCalledWith(1001, "tunnel reconnected");
+
+    const headResponse = await pendingHead;
+    expect(headResponse.status).toBe(502);
+    expect(await headResponse.text()).toContain("tunnel reconnected mid-request");
+    // The mid-body response's stream errors out instead of hanging forever.
+    await expect(midBodyResponse.text()).rejects.toBeTruthy();
   });
 });

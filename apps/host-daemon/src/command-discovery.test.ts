@@ -1117,10 +1117,82 @@ describe("discoverProviderCommands (codex)", () => {
 });
 
 describe("resolveCommandScanRoots", () => {
-  it("returns no roots for a provider without a command surface", async () => {
+  it("scans shared bb skill roots for pi", async () => {
     const fixture = await makeWorkspaceFixture();
     const roots = resolveCommandScanRoots({
       providerId: "pi",
+      cwd: fixture.cwd,
+      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      additionalSkillsRootPaths: [path.join(fixture.dataDir, "inherited")],
+      dataDir: fixture.dataDir,
+      homeDir: fixture.homeDir,
+      codexHome: fixture.codexHome,
+    });
+    expect(roots).toEqual([
+      {
+        rootPath: path.join(fixture.cwd, ".bb", "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "project",
+      },
+      {
+        rootPath: path.join(fixture.dataDir, "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      },
+      {
+        rootPath: path.join(fixture.dataDir, "inherited"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      },
+      {
+        rootPath: fixture.builtinSkillsRootPath,
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      },
+    ]);
+  });
+
+  it("scans shared bb skill roots for ACP providers", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const roots = resolveCommandScanRoots({
+      providerId: "acp-cursor",
+      cwd: null,
+      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      additionalSkillsRootPaths: [],
+      dataDir: fixture.dataDir,
+      homeDir: fixture.homeDir,
+      codexHome: fixture.codexHome,
+    });
+    expect(roots).toEqual([
+      {
+        rootPath: path.join(fixture.dataDir, "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      },
+      {
+        rootPath: fixture.builtinSkillsRootPath,
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      },
+    ]);
+  });
+
+  it("returns no roots for an unknown provider", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const roots = resolveCommandScanRoots({
+      providerId: "unknown-provider",
       cwd: fixture.cwd,
       builtinSkillsRootPath: fixture.builtinSkillsRootPath,
       additionalSkillsRootPaths: [],

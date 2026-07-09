@@ -75,6 +75,7 @@ describe("useSettingsNavState", () => {
       navPanels: [],
       threadPanelActions: [],
       composerAccessories: [],
+      sidebarFooterActions: [],
       fileOpeners: [],
     });
     const fetchMock = vi.fn().mockResolvedValue(

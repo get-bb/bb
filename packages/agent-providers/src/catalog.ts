@@ -63,8 +63,8 @@ export interface ProviderServerCapabilities {
   /**
    * The coarse, ordered per-provider reasoning ladder. Used as a fallback when
    * a precise per-model `supportedReasoningEfforts` set is unavailable. Mirrors
-   * daemon-side translation: codex rejects "max"/"ultracode" provider-wide and
-   * the pi bridge caps at xhigh, so those ladders stop at xhigh.
+   * daemon-side translation: Codex can expose "max"/"ultra" on some models but
+   * not "ultracode"; the pi bridge caps at xhigh.
    */
   reasoningLevels: readonly ReasoningLevel[];
 }
@@ -132,8 +132,15 @@ const CLAUDE_COMPOSER_ACTIONS: ProviderComposerAction[] = [
   },
 ];
 
-const PI_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
-const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
+// Skills are injected into every provider runtime (bb skills catalog). The
+// `/` skills composer action unlocks slash-command typeahead for those same
+// skills on every provider surface, not just Codex/Claude Code.
+const PI_COMPOSER_ACTIONS: ProviderComposerAction[] = [
+  { kind: "skills", trigger: "/" },
+];
+const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
+  { kind: "skills", trigger: "/" },
+];
 
 // Shared by all ACP (Agent Client Protocol) providers: the external agent owns
 // its own model selection, tool execution, and session naming, so BB-side
@@ -157,7 +164,9 @@ const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: true,
-  reasoningLevels: ["low", "medium", "high", "xhigh"],
+  // Per-model list from app-server is authoritative; this ladder is the
+  // fallback for custom models / missing catalogs. "ultra" is Codex-only.
+  reasoningLevels: ["low", "medium", "high", "xhigh", "max", "ultra"],
 };
 
 const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {

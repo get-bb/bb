@@ -7,6 +7,8 @@ import { z } from "zod";
  * "ultracode" sits between "xhigh" and "max" because its underlying effort IS
  * xhigh (plus standing workflow orchestration) — a model without ultracode
  * support should reconcile down to xhigh, not up to max.
+ * "ultra" is a Codex-native top tier (max effort plus automatic task
+ * delegation) exposed only by some models; it ranks above "max".
  */
 export const reasoningLevelValues = [
   "none",
@@ -16,6 +18,7 @@ export const reasoningLevelValues = [
   "xhigh",
   "ultracode",
   "max",
+  "ultra",
 ] as const;
 export const reasoningLevelSchema = z.enum(reasoningLevelValues);
 export type ReasoningLevel = z.infer<typeof reasoningLevelSchema>;

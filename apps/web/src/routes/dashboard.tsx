@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  ArrowUpRight01Icon,
+  GithubIcon,
+  MoreHorizontalIcon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
 import { MAX_SERVERS_PER_ACCOUNT } from "@bb/connect-db";
 import type { HandleValidationError, LabelAvailability } from "@bb/connect-db";
 import appCss from "../styles.css?url";
@@ -9,12 +16,12 @@ import {
   checkAvailabilityFn,
   claimHandleFn,
   createCodeFn,
-  createMachineCodeFn,
   createServerRowFn,
   disconnectFn,
+  removeServerFn,
   getDashboard,
 } from "@/server/fns";
-import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
+import type { IssuedCode, ServerSummary } from "@/server/api";
 import bbIcon from "../assets/bb-icon.png";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
 
@@ -98,14 +105,14 @@ function WebCard({ children, className }: { children: React.ReactNode; className
 
 /* ── small primitives ─────────────────────────────────────────────── */
 
-function StatusDot({ state }: { state: "online" | "offline" | "idle" }) {
+function StatusDot({ state }: { state: "online" | "offline" | "new" }) {
   return (
     <span
       className={cn(
         "inline-block h-2 w-2 shrink-0 rounded-full",
         state === "online" && "bg-success",
         state === "offline" && "bg-warning",
-        state === "idle" && "bg-subtle-foreground",
+        state === "new" && "border border-dashed border-subtle-foreground bg-transparent",
       )}
     />
   );
@@ -170,29 +177,6 @@ function BigCode({ code, disabled }: { code: string; disabled?: boolean }) {
   );
 }
 
-function UrlChip({ url, showOpen }: { url: string; showOpen?: boolean }) {
-  return (
-    <div className="mt-3 flex items-center gap-1 rounded-[9px] border border-border bg-surface-recessed py-1 pl-3.5 pr-1">
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        className="min-w-0 flex-1 truncate font-mono text-sm font-medium text-foreground underline-offset-2 hover:underline"
-      >
-        {url}
-      </a>
-      <CopyButton text={url} />
-      {showOpen && (
-        <Button size="sm" asChild>
-          <a href={url} target="_blank" rel="noreferrer">
-            Open
-          </a>
-        </Button>
-      )}
-    </div>
-  );
-}
-
 function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div
@@ -210,18 +194,10 @@ function Overlay({ children, onClose }: { children: React.ReactNode; onClose: ()
 }
 
 function GithubMark() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" className="size-4" aria-hidden>
-      <path d="M8 .8a7.2 7.2 0 0 0-2.28 14.03c.36.07.5-.15.5-.34l-.01-1.34c-2 .44-2.43-.85-2.43-.85-.32-.83-.8-1.05-.8-1.05-.65-.45.05-.44.05-.44.73.05 1.11.74 1.11.74.65 1.1 1.7.79 2.11.6.07-.47.25-.79.46-.97-1.6-.18-3.28-.8-3.28-3.56 0-.79.28-1.43.74-1.94-.07-.18-.32-.91.07-1.9 0 0 .6-.2 1.98.74a6.9 6.9 0 0 1 3.6 0c1.37-.93 1.97-.74 1.97-.74.4.99.15 1.72.07 1.9.46.5.74 1.15.74 1.94 0 2.77-1.69 3.38-3.3 3.55.26.23.5.67.5 1.35l-.01 2c0 .2.13.42.5.34A7.2 7.2 0 0 0 8 .8z" />
-    </svg>
-  );
+  return <HugeiconsIcon icon={GithubIcon} className="size-4" aria-hidden />;
 }
 
 /* ── formatting + copy ────────────────────────────────────────────── */
-
-function humanDate(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
 
 function relativeTime(ms: number): string {
   const secs = Math.max(0, Math.floor((Date.now() - ms) / 1000));
@@ -486,11 +462,12 @@ function ClaimView({ baseDomain }: { baseDomain: string }) {
 function SetupCodePanel({
   serverId,
   waitingText,
-  inDialog,
+  compact,
 }: {
   serverId: string | undefined;
   waitingText: string;
-  inDialog?: boolean;
+  /** Drop the top divider above the waiting line when already inside a box (dialog / inline panel). */
+  compact?: boolean;
 }) {
   const [code, setCode] = useState<IssuedCode | null>(null);
   const [showCli, setShowCli] = useState(false);
@@ -519,7 +496,10 @@ function SetupCodePanel({
       <p className="mt-2.5 text-xs text-subtle-foreground">
         Paste in <span className="font-medium text-foreground">Settings → Remote access</span> on
         your bb{" · "}
-        <button className="text-accent hover:underline" onClick={() => setShowCli((v) => !v)}>
+        <button
+          className="text-foreground underline underline-offset-2 hover:text-muted-foreground"
+          onClick={() => setShowCli((v) => !v)}
+        >
           using a terminal?
         </button>
       </p>
@@ -536,7 +516,7 @@ function SetupCodePanel({
       <div
         className={cn(
           "mt-4 flex items-center gap-2.5 text-sm text-muted-foreground",
-          !inDialog && "border-t border-border pt-3.5",
+          !compact && "border-t border-border pt-3.5",
         )}
       >
         <Spinner />
@@ -546,144 +526,20 @@ function SetupCodePanel({
   );
 }
 
-/* ── W2b: first-run pair ──────────────────────────────────────────── */
-
-function FirstRunView({ server, baseDomain }: { server: ServerSummary; baseDomain: string }) {
-  return (
-    <Shell>
-      <WebCard>
-        <h3 className="text-[17px] font-semibold tracking-tight">Connect your bb</h3>
-        <p className="mt-1 mb-4 text-sm text-muted-foreground">
-          <code className="font-mono text-xs text-foreground">
-            {server.subdomain}.{baseDomain}
-          </code>{" "}
-          is yours. Pair your machine to bring it online.
-        </p>
-        <SetupCodePanel
-          serverId={server.id}
-          waitingText="Waiting for your bb to connect… this page updates automatically."
-        />
-      </WebCard>
-    </Shell>
-  );
-}
-
-/* ── machines section (hero + multi detail) ───────────────────────── */
-
-function MachineRow({
-  online,
-  lastSeenAt,
-  name,
-  meta,
-  connected = true,
-}: {
-  online: boolean;
-  lastSeenAt: number | null;
-  name: string;
-  meta: string;
-  connected?: boolean;
-}) {
-  const status = online
-    ? "online"
-    : lastSeenAt != null
-      ? `last seen ${relativeTime(lastSeenAt)}`
-      : connected
-        ? "offline"
-        : "never connected";
-  return (
-    <div className="flex items-center gap-2.5 border-b border-border py-2 text-sm last:border-0">
-      <StatusDot state={online ? "online" : "idle"} />
-      <span className="font-medium">{name}</span>
-      <span className="text-xs text-subtle-foreground">{meta}</span>
-      <span className="flex-1" />
-      <span className="text-xs text-subtle-foreground">{status}</span>
-    </div>
-  );
-}
-
-function MachinesSection({
-  server,
-  machines,
-  appUrl,
-}: {
-  server: ServerSummary;
-  machines: MachineSummary[];
-  appUrl: string;
-}) {
-  const [command, setCommand] = useState<string | null>(null);
-  const [show, setShow] = useState(false);
-
-  async function toggle() {
-    const next = !show;
-    setShow(next);
-    if (next && command === null) {
-      const r = await createMachineCodeFn({ data: { serverId: server.id } });
-      setCommand(
-        "code" in r
-          ? `curl -fsSL ${appUrl}/connect | sh -s -- machine --code ${r.code} --server ${r.serverUrl}`
-          : `# Could not add machine: ${r.error}`,
-      );
-    }
-  }
-
-  return (
-    <div className="mt-4 border-t border-border pt-3.5">
-      <div className="flex items-center">
-        <h5 className="text-[11px] font-semibold uppercase tracking-wide text-subtle-foreground">
-          Machines
-        </h5>
-        <span className="flex-1" />
-        <button
-          className="text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => void toggle()}
-        >
-          + Add machine
-        </button>
-      </div>
-      <MachineRow
-        online={server.online}
-        lastSeenAt={server.lastSeenAt}
-        name={server.subdomain}
-        meta="primary · this bb"
-        connected={server.connected}
-      />
-      {machines.map((m) => (
-        <MachineRow
-          key={m.id}
-          online={m.online}
-          lastSeenAt={m.lastSeenAt}
-          name={m.name ?? "machine"}
-          meta="execution host"
-        />
-      ))}
-      {show && command && (
-        <div className="mt-2.5">
-          <pre className="overflow-x-auto whitespace-nowrap rounded-lg border border-border bg-surface-recessed px-3 py-2.5 font-mono text-xs leading-relaxed">
-            {command}
-          </pre>
-          <p className="mt-2 text-xs text-subtle-foreground">
-            Run on the machine you want to add as an execution host · code expires in 10 min
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ── re-pair code disclosure ──────────────────────────────────────── */
 
 function RepairCodeBlock({ serverId }: { serverId: string }) {
   const [code, setCode] = useState<IssuedCode | null>(null);
   useEffect(() => {
-    // "New connect code" always mints fresh (reuse: false).
+    // "Pair again" always mints fresh (reuse: false).
     void createCodeFn({ data: { serverId, reuse: false } }).then((r) => {
       if ("code" in r) setCode(r);
     });
   }, [serverId]);
   return (
-    <div className="mt-3.5">
+    <div>
       <BigCode code={code?.code ?? "····–····"} disabled={!code} />
-      <p className="mt-2 text-xs text-subtle-foreground">
+      <p className="mt-2.5 text-xs text-subtle-foreground">
         Re-pairing replaces this bb&rsquo;s credential. Paste in{" "}
         <span className="font-medium text-foreground">Settings → Remote access</span>
         {code ? ` · expires in ${minutes(code.expiresInMs)} min` : ""}
@@ -692,221 +548,242 @@ function RepairCodeBlock({ serverId }: { serverId: string }) {
   );
 }
 
-/* ── disconnect confirm ───────────────────────────────────────────── */
+/* ── disconnect / remove confirm ──────────────────────────────────── */
 
-function ConfirmDisconnect({
+function ConfirmServerAction({
   server,
+  mode,
   onCancel,
 }: {
   server: ServerSummary;
+  /** "disconnect" revokes a live credential (row survives); "remove" deletes a never-paired row. */
+  mode: "disconnect" | "remove";
   onCancel: () => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   async function go() {
     setBusy(true);
-    await disconnectFn({ data: { serverId: server.id } });
+    if (mode === "remove") {
+      await removeServerFn({ data: { serverId: server.id } });
+    } else {
+      await disconnectFn({ data: { serverId: server.id } });
+    }
     await router.invalidate();
     setBusy(false);
     onCancel();
   }
+  const removing = mode === "remove";
   return (
     <Overlay onClose={onCancel}>
-      <h4 className="mb-1.5 text-[15px] font-semibold">Disconnect your bb?</h4>
+      <h4 className="mb-1.5 text-[15px] font-semibold">
+        {removing ? "Remove this address?" : "Disconnect your bb?"}
+      </h4>
       <p className="mb-4 text-sm text-muted-foreground">
-        <b className="font-semibold text-foreground">{server.subdomain}</b> stops working on all
-        devices immediately. Your bb keeps running locally; re-pairing needs a new connect code.
+        <b className="font-semibold text-foreground">{server.serverUrl.replace(/^https?:\/\//, "")}</b>{" "}
+        {removing
+          ? "is freed up and can be claimed again. It was never paired, so nothing stops working."
+          : "stops working on all devices immediately. Your bb keeps running locally; re-pairing needs a new connect code."}
       </p>
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
         <Button variant="destructive" onClick={() => void go()} disabled={busy}>
-          {busy ? "Disconnecting…" : "Disconnect"}
+          {busy
+            ? removing
+              ? "Removing…"
+              : "Disconnecting…"
+            : removing
+              ? "Remove"
+              : "Disconnect"}
         </Button>
       </div>
     </Overlay>
   );
 }
 
-/* ── W3: single-bb hero card ──────────────────────────────────────── */
+/* ── row overflow menu ────────────────────────────────────────────── */
 
-function HeroCard({
-  server,
-  state,
-  onConnectAnother,
-}: {
-  server: ServerSummary;
-  state: ServerState;
-  onConnectAnother: () => void;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [showRepair, setShowRepair] = useState(false);
-  const [confirm, setConfirm] = useState(false);
-
+function RowMenu({ items }: { items: { label: string; danger?: boolean; onSelect: () => void }[] }) {
+  const [open, setOpen] = useState(false);
   return (
-    <>
-      <WebCard>
-        <div className="flex items-center gap-2">
-          <h3 className="text-[17px] font-semibold tracking-tight">Your bb</h3>
-          <span className="flex-1" />
-          {server.online ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-0.5 text-[11px] font-semibold text-success">
-              <StatusDot state="online" />
-              Online
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-2.5 py-0.5 text-[11px] font-semibold text-warning-text">
-              <StatusDot state="offline" />
-              Offline
-            </span>
-          )}
-          <div className="relative">
-            <button
-              className="rounded-md px-2 py-0.5 text-lg leading-none text-muted-foreground hover:bg-state-hover hover:text-foreground"
-              aria-label="More"
-              onClick={() => setMenuOpen((v) => !v)}
-            >
-              ···
-            </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-9 z-20 min-w-[210px] rounded-[9px] border border-border bg-popover p-1 shadow-lg">
-                  <button
-                    className="block w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-state-hover"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onConnectAnother();
-                    }}
-                  >
-                    Connect another bb…
-                  </button>
-                  <div className="mx-1.5 my-1 h-px bg-border" />
-                  <button
-                    className="block w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-state-hover"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setShowRepair((v) => !v);
-                    }}
-                  >
-                    New connect code (re-pair)…
-                  </button>
-                  <div className="mx-1.5 my-1 h-px bg-border" />
-                  <button
-                    className="block w-full rounded-md px-2.5 py-2 text-left text-sm text-destructive-text hover:bg-surface-destructive"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setConfirm(true);
-                    }}
-                  >
-                    Disconnect…
-                  </button>
-                </div>
-              </>
-            )}
+    <div className="relative justify-self-center">
+      <button
+        className={cn(
+          "flex h-[26px] w-[26px] items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground",
+          open && "bg-state-hover text-foreground",
+        )}
+        aria-label="More"
+        onClick={(e) => {
+          // The row is a link / click target; keep the button's own click from
+          // navigating or toggling the row's panel.
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
+      </button>
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          />
+          <div className="absolute right-0 top-8 z-20 min-w-[210px] rounded-[10px] border border-border bg-popover p-1 text-left shadow-lg">
+            {items.map((item, i) => (
+              <button
+                key={i}
+                className={cn(
+                  "block w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-state-hover",
+                  item.danger && "text-destructive-text hover:bg-surface-destructive",
+                )}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOpen(false);
+                  item.onSelect();
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
-        </div>
-
-        <UrlChip url={server.serverUrl} showOpen />
-
-        <p className="mt-2 text-xs text-subtle-foreground">
-          Connected since {humanDate(server.createdAt)} · nothing stored in the cloud
-        </p>
-
-        {showRepair && <RepairCodeBlock serverId={server.id} />}
-
-        <MachinesSection server={server} machines={state.machines} appUrl={state.appUrl} />
-      </WebCard>
-      {confirm && <ConfirmDisconnect server={server} onCancel={() => setConfirm(false)} />}
-    </>
+        </>
+      )}
+    </div>
   );
 }
 
-/* ── M1: multi-server row ─────────────────────────────────────────── */
+/* ── server row — one row per bb, the row is the link ─────────────── */
 
-function ServerRow({ server, state }: { server: ServerSummary; state: ServerState }) {
-  const [open, setOpen] = useState(false);
-  const [showRepair, setShowRepair] = useState(false);
-  const [confirm, setConfirm] = useState(false);
+function ServerRow({
+  server,
+  baseDomain,
+  autoPair,
+}: {
+  server: ServerSummary;
+  baseDomain: string;
+  /** First-run: the sole never-paired bb opens its pair panel by default. */
+  autoPair?: boolean;
+}) {
+  // A connected row toggles the re-pair panel; a never-paired row toggles its
+  // setup panel. `panel` tracks which (if any) is showing under this row.
+  const [panel, setPanel] = useState<"none" | "setup" | "repair">(
+    autoPair && !server.connected ? "setup" : "none",
+  );
+  const [confirm, setConfirm] = useState<"disconnect" | "remove" | null>(null);
 
-  const status = server.online
-    ? "online"
-    : server.lastSeenAt != null
-      ? `last seen ${relativeTime(server.lastSeenAt)}`
-      : "never connected";
+  const url = server.serverUrl;
+  const copyUrl = () => void navigator.clipboard.writeText(url).catch(() => {});
+
+  const dot = server.online ? "online" : server.connected ? "offline" : "new";
+  const menuItems = server.connected
+    ? [
+        { label: "Copy URL", onSelect: copyUrl },
+        {
+          label: "Pair again…",
+          onSelect: () => setPanel((p) => (p === "repair" ? "none" : "repair")),
+        },
+        { label: "Disconnect…", danger: true, onSelect: () => setConfirm("disconnect") },
+      ]
+    : [
+        { label: "Copy URL", onSelect: copyUrl },
+        // The primary bb (subdomain === handle) is the account's identity and
+        // can't be removed; only never-paired secondaries offer Remove.
+        ...(server.isPrimary
+          ? []
+          : [{ label: "Remove…", danger: true, onSelect: () => setConfirm("remove") }]),
+      ];
+
+  const content = (
+    <>
+      <span className="flex justify-center">
+        <StatusDot state={dot} />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate font-mono text-sm font-medium leading-tight">
+          {server.subdomain}
+          <span className="font-normal text-subtle-foreground">.{baseDomain}</span>
+        </span>
+        <span className="mt-px block text-xs text-muted-foreground">
+          {server.online ? (
+            "Online"
+          ) : server.connected ? (
+            <>
+              <span className="text-warning-text">Offline</span>
+              {server.lastSeenAt != null ? ` · last seen ${relativeTime(server.lastSeenAt)}` : ""}
+            </>
+          ) : (
+            <>
+              Not set up ·{" "}
+              <span className="text-foreground underline underline-offset-2">
+                {panel === "setup" ? "hide code" : "get connect code"}
+              </span>
+            </>
+          )}
+        </span>
+      </span>
+      {server.connected ? (
+        <span className="justify-self-center text-subtle-foreground" aria-hidden>
+          <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-4" />
+        </span>
+      ) : (
+        <span aria-hidden />
+      )}
+      <RowMenu items={menuItems} />
+    </>
+  );
+
+  const rowClass =
+    "grid grid-cols-[14px_1fr_26px_26px] items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-state-hover";
 
   return (
-    <div className="border-b border-border last:border-0">
-      <div
-        className="flex cursor-pointer items-center gap-2.5 py-3"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span
-          className={cn(
-            "w-3 shrink-0 text-[11px] text-subtle-foreground transition-transform",
-            open && "rotate-90",
-          )}
+    <>
+      {server.connected ? (
+        <a href={url} target="_blank" rel="noreferrer" className={cn(rowClass, "cursor-pointer")}>
+          {content}
+        </a>
+      ) : (
+        <div
+          className={cn(rowClass, "cursor-pointer")}
+          role="button"
+          tabIndex={0}
+          onClick={() => setPanel((p) => (p === "setup" ? "none" : "setup"))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setPanel((p) => (p === "setup" ? "none" : "setup"));
+            }
+          }}
         >
-          ▶
-        </span>
-        <StatusDot state={server.online ? "online" : "offline"} />
-        <span className="truncate font-mono text-sm font-medium">
-          {server.subdomain}
-          <span className="text-subtle-foreground">.{state.baseDomain}</span>
-        </span>
-        {server.isPrimary && (
-          <span className="shrink-0 rounded-[5px] border border-border px-1.5 py-px text-[10px] font-semibold text-subtle-foreground">
-            primary
-          </span>
-        )}
-        <span className="flex-1" />
-        <span className="shrink-0 text-xs text-subtle-foreground">{status}</span>
-        <Button
-          size="sm"
-          disabled={!server.online}
-          asChild={server.online}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {server.online ? (
-            <a href={server.serverUrl} target="_blank" rel="noreferrer">
-              Open
-            </a>
-          ) : (
-            <span>Open</span>
-          )}
-        </Button>
-      </div>
-
-      {open && (
-        <div className="pb-4 pl-6">
-          <UrlChip url={server.serverUrl} />
-          <p className="mt-2 text-xs text-subtle-foreground">
-            {server.connected
-              ? `Connected since ${humanDate(server.createdAt)} · nothing stored in the cloud`
-              : "Not paired yet · nothing stored in the cloud"}
-          </p>
-          {showRepair && <RepairCodeBlock serverId={server.id} />}
-          <MachinesSection server={server} machines={state.machines} appUrl={state.appUrl} />
-          <div className="mt-2.5 flex items-center gap-1">
-            <button
-              className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setShowRepair((v) => !v)}
-            >
-              New connect code (re-pair)…
-            </button>
-            <span className="flex-1" />
-            <button
-              className="rounded px-1.5 py-1 text-xs text-destructive-text hover:bg-surface-destructive"
-              onClick={() => setConfirm(true)}
-            >
-              Disconnect…
-            </button>
-          </div>
+          {content}
         </div>
       )}
-      {confirm && <ConfirmDisconnect server={server} onCancel={() => setConfirm(false)} />}
-    </div>
+
+      {panel !== "none" && (
+        <div className="mb-2 ml-9 mr-2 rounded-[10px] border border-border bg-surface-recessed p-3.5">
+          {panel === "setup" ? (
+            <SetupCodePanel
+              serverId={server.id}
+              compact
+              waitingText="Waiting for it to connect… this page updates automatically."
+            />
+          ) : (
+            <RepairCodeBlock serverId={server.id} />
+          )}
+        </div>
+      )}
+
+      {confirm && (
+        <ConfirmServerAction server={server} mode={confirm} onCancel={() => setConfirm(null)} />
+      )}
+    </>
   );
 }
 
@@ -979,7 +856,7 @@ function ConnectAnotherDialog({
           </p>
           <SetupCodePanel
             serverId={server.id}
-            inDialog
+            compact
             waitingText="Waiting for it to connect… this dialog closes itself."
           />
           <div className="mt-3.5 flex justify-end">
@@ -1016,20 +893,19 @@ function AccountFooter({ state }: { state: ServerState }) {
   );
 }
 
-/* ── account dashboard (adaptive single / multi) ──────────────────── */
+/* ── account dashboard — one list for 1..N bbs ────────────────────── */
 
 function AccountDashboard({ state }: { state: ServerState }) {
   const router = useRouter();
   const [connectOpen, setConnectOpen] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const sole = state.servers[0];
-  const single = state.servers.length <= 1;
-  const firstRun = single && (!sole || !sole.connected);
-  const waiting = firstRun || (connectOpen && pendingId != null);
+  const single = state.servers.length === 1;
+  // Poll whenever any bb is still unpaired (first run, or a just-claimed row
+  // waiting for its machine) so the row flips to Online without a manual reload.
+  const waiting =
+    state.servers.some((s: ServerSummary) => !s.connected) || (connectOpen && pendingId != null);
 
-  // Poll while waiting on a machine to dial in (first-run or connect-another
-  // beat 2); the loader re-runs, and connection flips the view automatically.
   useEffect(() => {
     if (!waiting) return;
     const id = setInterval(() => void router.invalidate(), 3000);
@@ -1045,11 +921,6 @@ function AccountDashboard({ state }: { state: ServerState }) {
     }
   }, [state.servers, pendingId]);
 
-  // First run: no server has ever paired — the code is the whole page.
-  if (firstRun && sole) {
-    return <FirstRunView server={sole} baseDomain={state.baseDomain} />;
-  }
-
   const dialog = connectOpen && (
     <ConnectAnotherDialog
       state={state}
@@ -1064,33 +935,24 @@ function AccountDashboard({ state }: { state: ServerState }) {
     />
   );
 
-  // Single connected bb: calm hero card.
-  if (single && sole) {
-    return (
-      <Shell top width="md" footer={<AccountFooter state={state} />}>
-        <HeroCard server={sole} state={state} onConnectAnother={() => setConnectOpen(true)} />
-        {dialog}
-      </Shell>
-    );
-  }
-
-  // Two or more: the row list.
   return (
-    <Shell top width="lg" footer={<AccountFooter state={state} />}>
-      <WebCard>
-        <div className="flex items-center gap-2">
-          <h3 className="text-[17px] font-semibold tracking-tight">Your bbs</h3>
-          <span className="flex-1" />
-          <Button variant="outline" size="sm" onClick={() => setConnectOpen(true)}>
-            + Connect another bb
-          </Button>
+    <Shell top width="md" footer={<AccountFooter state={state} />}>
+      {/* Tight padding so each row is a full-bleed, rounded hover target. */}
+      <div className="rounded-xl border border-border bg-card p-2 shadow-sm">
+        <div className="flex items-center px-1.5 pb-1.5 pl-3 pt-1.5">
+          <h3 className="flex-1 text-[17px] font-semibold tracking-tight">Your bbs</h3>
+          <button
+            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-recessed hover:text-foreground"
+            onClick={() => setConnectOpen(true)}
+          >
+            <HugeiconsIcon icon={PlusSignIcon} className="size-3" />
+            Add a bb
+          </button>
         </div>
-        <div className="mt-2 flex flex-col">
-          {state.servers.map((s: ServerSummary) => (
-            <ServerRow key={s.id} server={s} state={state} />
-          ))}
-        </div>
-      </WebCard>
+        {state.servers.map((s: ServerSummary) => (
+          <ServerRow key={s.id} server={s} baseDomain={state.baseDomain} autoPair={single} />
+        ))}
+      </div>
       {dialog}
     </Shell>
   );

@@ -49,6 +49,7 @@ import {
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
+import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import {
   useUpdateGeneralSettings,
@@ -1146,6 +1147,8 @@ export function SettingsView() {
     );
   } else if (activeSection === "plugins") {
     content = <PluginsSettingsSection />;
+  } else if (activeSection === "community") {
+    content = <CommunitySettingsSection />;
   } else {
     content = (
       <>

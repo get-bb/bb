@@ -7,6 +7,7 @@ import {
   type PluginHomepageSectionRegistration,
   type PluginNavPanelRegistration,
   type PluginSettingsSectionRegistration,
+  type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 import type { PluginFrontendRecord } from "./plugin-frontend";
@@ -98,6 +99,7 @@ export function collectPluginAppRegistrations(
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
   const composerAccessories: PluginComposerAccessoryRegistration[] = [];
+  const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const seenIds = {
     homepageSection: new Set<string>(),
@@ -105,6 +107,7 @@ export function collectPluginAppRegistrations(
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
   };
 
@@ -205,6 +208,20 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      sidebarFooterAction(registration) {
+        const kind = "slots.sidebarFooterAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.sidebarFooterAction, id);
+        if (typeof registration.run !== "function") {
+          throw new Error(`${kind}: "run" must be a function`);
+        }
+        sidebarFooterActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          run: registration.run,
+        });
+      },
       fileOpener(registration) {
         const kind = "slots.fileOpener";
         const id = requireSlotId(kind, registration?.id);
@@ -242,6 +259,7 @@ export function collectPluginAppRegistrations(
     navPanels,
     threadPanelActions,
     composerAccessories,
+    sidebarFooterActions,
     fileOpeners,
   };
 }

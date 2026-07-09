@@ -1,5 +1,7 @@
 import {
+  buildAcpProviderInfo,
   getBuiltInAgentProviderInfo,
+  isAcpProviderId,
   isAgentProviderId,
 } from "@bb/agent-providers";
 import { getEnvironment, getProjectSourceByHost } from "@bb/db";
@@ -35,13 +37,32 @@ const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
   },
 ];
 
+function providerComposerHasSkillsAction(
+  composerActions: readonly { kind: string }[],
+): boolean {
+  return composerActions.some((action) => action.kind === "skills");
+}
+
+/**
+ * Whether the provider declares a skills composer action (slash-command
+ * typeahead). Built-in providers are looked up in the catalog; dynamic ACP
+ * providers (`acp-*`) share the ACP catalog template via `buildAcpProviderInfo`.
+ */
 export function providerHasCommandSurface(providerId: string): boolean {
-  if (!isAgentProviderId(providerId)) {
-    return false;
+  if (isAgentProviderId(providerId)) {
+    return providerComposerHasSkillsAction(
+      getBuiltInAgentProviderInfo(providerId).composerActions,
+    );
   }
-  return getBuiltInAgentProviderInfo(providerId).composerActions.some(
-    (action) => action.kind === "skills",
-  );
+  if (isAcpProviderId(providerId)) {
+    return providerComposerHasSkillsAction(
+      buildAcpProviderInfo({
+        id: providerId,
+        displayName: providerId,
+      }).composerActions,
+    );
+  }
+  return false;
 }
 
 export interface CommandWorkspace {

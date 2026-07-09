@@ -40,7 +40,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   CornerDownLeft: "Mod+Enter submit hint in prompt footer",
   CornerDownRight:
     "Queued message indicator, steer/edit request label marker in conversation",
-  Discord: "Join Discord link in sidebar footer",
+  Discord: "Join Discord link in Settings → Community",
+  Github: "View on GitHub link in Settings → Community",
   Edit: "Rename project, edit queued message, edit project source",
   ExternalLink: "FilePathLink external indicator",
   File: "Right-panel markdown/doc file visual, Open file action",

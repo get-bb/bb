@@ -227,6 +227,7 @@ describe("PluginSettingsDetail settings gating", () => {
       navPanels: [],
       threadPanelActions: [],
       composerAccessories: [],
+      sidebarFooterActions: [],
       fileOpeners: [],
     });
     vi.stubGlobal(
