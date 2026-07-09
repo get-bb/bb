@@ -41,4 +41,17 @@ describe("dotenv reconciliation", () => {
       ]),
     ).toThrow("duplicate assignments for API_KEY");
   });
+
+  it("rejects multiline quoted values instead of rewriting inside them", () => {
+    const source = [
+      'CERT="-----BEGIN-----',
+      "API_KEY=inner",
+      '-----END-----"',
+      "",
+    ].join("\n");
+
+    expect(() => reconcileDotenv(source, { API_KEY: "replacement" })).toThrow(
+      "multiline quoted values cannot be reconciled safely",
+    );
+  });
 });

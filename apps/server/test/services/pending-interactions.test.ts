@@ -43,33 +43,47 @@ function registerPendingInteraction(
   });
 }
 
+function seedPluginInteractionThread(deps: AppDeps, suffix: string) {
+  const { host } = seedHostSession(deps, {
+    id: `host-plugin-interaction-${suffix}`,
+  });
+  const { project } = seedProjectWithSource(deps, { hostId: host.id });
+  const environment = seedEnvironment(deps, {
+    hostId: host.id,
+    projectId: project.id,
+  });
+  return seedThread(deps, {
+    projectId: project.id,
+    environmentId: environment.id,
+  });
+}
+
+function requestPluginInteraction(
+  deps: AppDeps,
+  args: {
+    threadId: string;
+    name?: string;
+    signal?: AbortSignal;
+  },
+) {
+  return deps.pendingInteractions.requestPluginInteraction({
+    pluginId: "secrets",
+    threadId: args.threadId,
+    rendererId: "secret-request",
+    title: "Add secrets",
+    payload: { fields: [{ name: args.name ?? "API_KEY" }] },
+    timeoutMs: 10_000,
+    ...(args.signal ? { signal: args.signal } : {}),
+  });
+}
+
 describe("pending interaction lifecycle", () => {
   it("returns a plugin response only through memory and persists metadata only", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-plugin-interaction",
+      const thread = seedPluginInteractionThread(harness.deps, "memory-only");
+      const pending = requestPluginInteraction(harness.deps, {
+        threadId: thread.id,
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      const pending = harness.deps.pendingInteractions.requestPluginInteraction(
-        {
-          pluginId: "secrets",
-          threadId: thread.id,
-          rendererId: "secret-request",
-          title: "Add secrets",
-          payload: { fields: [{ name: "API_KEY" }] },
-          timeoutMs: 10_000,
-        },
-      );
       const [interaction] =
         harness.deps.pendingInteractions.listPendingThreadInteractions(
           thread.id,
@@ -96,6 +110,108 @@ describe("pending interaction lifecycle", () => {
       expect(
         JSON.stringify(harness.db.select().from(eventTable).all()),
       ).not.toContain("sentinel-secret-value");
+    });
+  });
+
+  it("delivers a plugin response before terminal side effects run", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(harness.deps, "delivery");
+      const pending = requestPluginInteraction(harness.deps, {
+        threadId: thread.id,
+      });
+      const [interaction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      vi.spyOn(harness.hub, "notifyThread").mockImplementationOnce(() => {
+        throw new Error("timeline notification failed");
+      });
+
+      expect(
+        harness.deps.pendingInteractions.respondToPluginInteraction({
+          threadId: thread.id,
+          interactionId: interaction!.id,
+          value: { values: { API_KEY: "sentinel-secret-value" } },
+        }),
+      ).toMatchObject({ status: "resolved" });
+      await expect(pending).resolves.toEqual({
+        outcome: "submitted",
+        value: { values: { API_KEY: "sentinel-secret-value" } },
+      });
+    });
+  });
+
+  it("contains abort callback failures and settles the in-memory waiter", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(harness.deps, "abort");
+      const controller = new AbortController();
+      const pending = requestPluginInteraction(harness.deps, {
+        threadId: thread.id,
+        signal: controller.signal,
+      });
+      vi.spyOn(
+        harness.deps.pendingInteractions,
+        "cancelPluginInteraction",
+      ).mockImplementation(() => {
+        throw new Error("cancellation failed");
+      });
+
+      expect(() => controller.abort()).not.toThrow();
+      await expect(pending).resolves.toEqual({
+        outcome: "cancelled",
+        reason: "request-aborted",
+      });
+    });
+  });
+
+  it("interrupts a plugin interaction when its creation side effects fail", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(harness.deps, "setup-failure");
+      vi.spyOn(harness.hub, "notifyThread").mockImplementationOnce(() => {
+        throw new Error("timeline notification failed");
+      });
+
+      await expect(
+        Promise.resolve().then(() =>
+          requestPluginInteraction(harness.deps, {
+            threadId: thread.id,
+          }),
+        ),
+      ).rejects.toThrow("timeline notification failed");
+      expect(
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        ),
+      ).toEqual([]);
+      expect(
+        harness.deps.pendingInteractions.listThreadInteractions(thread.id),
+      ).toMatchObject([{ status: "interrupted" }]);
+    });
+  });
+
+  it("settles every plugin waiter before batch terminal side effects", async () => {
+    await withTestHarness(async (harness) => {
+      const firstThread = seedPluginInteractionThread(harness.deps, "batch-1");
+      const secondThread = seedPluginInteractionThread(harness.deps, "batch-2");
+      const first = requestPluginInteraction(harness.deps, {
+        threadId: firstThread.id,
+        name: "FIRST",
+      });
+      const second = requestPluginInteraction(harness.deps, {
+        threadId: secondThread.id,
+        name: "SECOND",
+      });
+      vi.spyOn(harness.hub, "notifyThread").mockImplementationOnce(() => {
+        throw new Error("timeline notification failed");
+      });
+
+      expect(() =>
+        harness.deps.pendingInteractions.interruptPluginInteractions("secrets"),
+      ).toThrow("timeline notification failed");
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        { outcome: "cancelled", reason: "plugin-disposed" },
+        { outcome: "cancelled", reason: "plugin-disposed" },
+      ]);
     });
   });
 

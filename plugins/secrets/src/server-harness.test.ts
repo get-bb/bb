@@ -71,4 +71,29 @@ describe("secrets plugin server", () => {
       mode: 0o600,
     });
   });
+
+  it.each([
+    {
+      argv: ["request", "API_KEY", "--purpose", "--write-env", ".env"],
+      message: "--purpose requires a non-empty description.",
+    },
+    {
+      argv: ["request", "API_KEY", "--describe", "--write-env", ".env"],
+      message: "--describe requires NAME and DESCRIPTION.",
+    },
+  ])(
+    "reports a usage error for missing option values",
+    async ({ argv, message }) => {
+      const host = createFakePluginHost({ pluginId: "secrets" });
+      plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+
+      const result = await host.harness.runCli(argv, {
+        threadId: "thr-test",
+        cwd: "/workspace",
+      });
+
+      expect(result).toMatchObject({ exitCode: 1, stderr: `${message}\n` });
+      expect(host.harness.pendingInteractions).toEqual([]);
+    },
+  );
 });

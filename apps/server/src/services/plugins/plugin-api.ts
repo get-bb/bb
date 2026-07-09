@@ -10,7 +10,10 @@ import {
   setPluginKvValue,
   type DbConnection,
 } from "@bb/db";
-import type { JsonValue } from "@bb/domain";
+import {
+  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  type JsonValue,
+} from "@bb/domain";
 import type {
   BbPluginApi,
   PluginAgentToolContext,
@@ -545,9 +548,11 @@ export function createPluginApi(options: {
       if (
         typeof request.title !== "string" ||
         request.title.trim().length === 0 ||
-        request.title.trim().length > 160
+        request.title.trim().length > PLUGIN_INTERACTION_MAX_TITLE_LENGTH
       ) {
-        throw new Error("interactions.request title must be 1-160 characters");
+        throw new Error(
+          `interactions.request title must be 1-${PLUGIN_INTERACTION_MAX_TITLE_LENGTH} characters`,
+        );
       }
       let payload: JsonValue;
       try {

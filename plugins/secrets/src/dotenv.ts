@@ -9,10 +9,43 @@ function assignmentPattern(name: string): RegExp {
   return new RegExp(`^(\\s*(?:export\\s+)?${name}\\s*=\\s*)(.*)$`, "u");
 }
 
+const ANY_ASSIGNMENT_PATTERN =
+  /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*(.*)$/u;
+
+function hasClosingQuote(value: string, quote: "'" | '"'): boolean {
+  let escaped = false;
+  for (let index = 1; index < value.length; index += 1) {
+    const character = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (quote === '"' && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character === quote) return true;
+  }
+  return false;
+}
+
+function assertNoMultilineQuotedAssignments(content: string): void {
+  for (const line of content.split(/\r?\n/u)) {
+    const value = ANY_ASSIGNMENT_PATTERN.exec(line)?.[1] ?? "";
+    const quote = value[0];
+    if ((quote === "'" || quote === '"') && !hasClosingQuote(value, quote)) {
+      throw new Error(
+        "Dotenv files with multiline quoted values cannot be reconciled safely.",
+      );
+    }
+  }
+}
+
 export function assertNoDuplicateAssignments(
   content: string,
   names: readonly string[],
 ): void {
+  assertNoMultilineQuotedAssignments(content);
   const lines = content.split(/\r?\n/u);
   for (const name of names) {
     const pattern = assignmentPattern(name);

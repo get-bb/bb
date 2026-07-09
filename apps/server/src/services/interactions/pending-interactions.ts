@@ -463,9 +463,9 @@ export class PendingInteractionLifecycle {
     });
     const interaction = toPendingInteraction(row);
 
-    return new Promise<PluginInteractionResult>((resolve) => {
+    const pending = new Promise<PluginInteractionResult>((resolve) => {
       const abort = () => {
-        this.cancelPluginInteraction({
+        this.cancelPluginInteractionFromCallback({
           interactionId: interaction.id,
           threadId: interaction.threadId,
           reason: "request-aborted",
@@ -473,7 +473,7 @@ export class PendingInteractionLifecycle {
       };
       args.signal?.addEventListener("abort", abort, { once: true });
       const timer = setTimeout(() => {
-        this.cancelPluginInteraction({
+        this.cancelPluginInteractionFromCallback({
           interactionId: interaction.id,
           threadId: interaction.threadId,
           reason: "timeout",
@@ -487,15 +487,40 @@ export class PendingInteractionLifecycle {
       });
       if (args.signal?.aborted) {
         abort();
-        return;
       }
+    });
+    if (args.signal?.aborted) {
+      return pending;
+    }
+    try {
       appendPendingInteractionTimelineEvent(this.deps, interaction);
       notifyInteractionChanged({
         deps: this.deps,
         hasPendingInteraction: true,
         threadId: interaction.threadId,
       });
-    });
+    } catch (error) {
+      try {
+        setPendingInteractionInterrupted(this.deps.db, {
+          id: interaction.id,
+          statusReason: "Plugin interaction setup failed",
+        });
+      } catch (cleanupError) {
+        this.deps.logger.warn(
+          {
+            err: cleanupError,
+            interactionId: interaction.id,
+          },
+          "Failed to clean up plugin interaction after setup failure",
+        );
+      }
+      this.settlePluginWaiter(interaction.id, {
+        outcome: "cancelled",
+        reason: "thread-stopped",
+      });
+      throw error;
+    }
+    return pending;
   }
 
   respondToPluginInteraction(args: {
@@ -515,11 +540,11 @@ export class PendingInteractionLifecycle {
     if (!updated)
       throw buildResolveConflictError(this.requireInteraction(current.id));
     const interaction = toPendingInteraction(updated);
-    this.settleInteractionTerminalState(interaction);
     this.settlePluginWaiter(interaction.id, {
       outcome: "submitted",
       value: args.value,
     });
+    this.settlePluginInteractionTerminalSideEffects(interaction);
     return interaction;
   }
 
@@ -542,11 +567,11 @@ export class PendingInteractionLifecycle {
     if (!updated)
       throw buildResolveConflictError(this.requireInteraction(current.id));
     const interaction = toPendingInteraction(updated);
-    this.settleInteractionTerminalState(interaction);
     this.settlePluginWaiter(interaction.id, {
       outcome: "cancelled",
       reason: args.reason,
     });
+    this.settlePluginInteractionTerminalSideEffects(interaction);
     return interaction;
   }
 
@@ -743,6 +768,9 @@ export class PendingInteractionLifecycle {
   ): PendingInteraction[] {
     const interactions = rows.map(toPendingInteraction);
     for (const interaction of interactions) {
+      this.settleInterruptedPluginWaiter(interaction);
+    }
+    for (const interaction of interactions) {
       this.settleInteractionTerminalState(interaction);
     }
     return interactions;
@@ -755,6 +783,9 @@ export class PendingInteractionLifecycle {
     const interactions = rows.map(toPendingInteraction);
     for (const interaction of interactions) {
       this.settleInteractionTerminalStateInTransaction(deps, interaction);
+    }
+    for (const interaction of interactions) {
+      this.settleInterruptedPluginWaiterAfterTransaction(interaction);
     }
     return interactions;
   }
@@ -862,15 +893,6 @@ export class PendingInteractionLifecycle {
       hasPendingInteraction: false,
       threadId: interaction.threadId,
     });
-    if (
-      isPluginPendingInteractionPayload(interaction.payload) &&
-      interaction.status === "interrupted"
-    ) {
-      this.settlePluginWaiter(interaction.id, {
-        outcome: "cancelled",
-        reason: this.normalizePluginCancelReason(interaction.statusReason),
-      });
-    }
   }
 
   private settleInteractionTerminalStateInTransaction(
@@ -883,6 +905,68 @@ export class PendingInteractionLifecycle {
       hasPendingInteraction: false,
       threadId: interaction.threadId,
     });
+  }
+
+  private cancelPluginInteractionFromCallback(args: {
+    interactionId: string;
+    threadId: string;
+    reason: PluginInteractionCancelReason;
+  }): void {
+    try {
+      this.cancelPluginInteraction(args);
+    } catch (error) {
+      this.settlePluginWaiter(args.interactionId, {
+        outcome: "cancelled",
+        reason: args.reason,
+      });
+      this.deps.logger.warn(
+        {
+          err: error,
+          interactionId: args.interactionId,
+          reason: args.reason,
+        },
+        "Failed to cancel plugin interaction from callback",
+      );
+    }
+  }
+
+  private settlePluginInteractionTerminalSideEffects(
+    interaction: PendingInteraction,
+  ): void {
+    try {
+      this.settleInteractionTerminalState(interaction);
+    } catch (error) {
+      this.deps.logger.warn(
+        { err: error, interactionId: interaction.id },
+        "Failed to publish plugin interaction terminal state",
+      );
+    }
+  }
+
+  private settleInterruptedPluginWaiterAfterTransaction(
+    interaction: PendingInteraction,
+  ): void {
+    queueMicrotask(() => {
+      try {
+        const row = getPendingInteraction(this.deps.db, interaction.id);
+        if (!row) {
+          this.settleInterruptedPluginWaiter(interaction);
+          return;
+        }
+        const current = toPendingInteraction(row);
+        if (current.status === "interrupted") {
+          this.settleInterruptedPluginWaiter(current);
+        }
+      } catch (error) {
+        this.deps.logger.warn(
+          { err: error, interactionId: interaction.id },
+          "Failed to settle plugin interaction after transaction",
+        );
+      }
+    });
+  }
+
+  private settleInterruptedPluginWaiter(interaction: PendingInteraction): void {
     if (
       isPluginPendingInteractionPayload(interaction.payload) &&
       interaction.status === "interrupted"

@@ -37,6 +37,26 @@ const fileWriteResultSchema = z.discriminatedUnion("outcome", [
   }),
 ]);
 
+function requireOptionValue(
+  argv: readonly string[],
+  index: number,
+  message: string,
+): string {
+  const value = argv[index]?.trim();
+  if (!value || value.startsWith("--")) throw new Error(message);
+  return value;
+}
+
+function parseSecretName(value: string, label: string): string {
+  const parsed = secretNameSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `${label} must start with a letter or underscore and contain only letters, digits, and underscores.`,
+    );
+  }
+  return parsed.data;
+}
+
 function parseRequest(argv: string[]): ParsedRequest {
   if (argv[0] !== "request")
     throw new Error("Usage: bb secret request <NAME...> --write-env <path>");
@@ -47,25 +67,39 @@ function parseRequest(argv: string[]): ParsedRequest {
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (!token.startsWith("--")) {
-      names.push(secretNameSchema.parse(token));
+      names.push(parseSecretName(token, "Variable name"));
       continue;
     }
     if (token === "--purpose") {
-      purpose = argv[++index]?.trim() || null;
-      if (!purpose)
-        throw new Error("--purpose requires a non-empty description.");
+      purpose = requireOptionValue(
+        argv,
+        ++index,
+        "--purpose requires a non-empty description.",
+      );
       continue;
     }
     if (token === "--write-env") {
-      writeEnv = argv[++index]?.trim() || null;
-      if (!writeEnv) throw new Error("--write-env requires a path.");
+      writeEnv = requireOptionValue(
+        argv,
+        ++index,
+        "--write-env requires a path.",
+      );
       continue;
     }
     if (token === "--describe") {
-      const name = secretNameSchema.parse(argv[++index]);
-      const description = argv[++index]?.trim();
-      if (!description)
-        throw new Error("--describe requires NAME and DESCRIPTION.");
+      const name = parseSecretName(
+        requireOptionValue(
+          argv,
+          ++index,
+          "--describe requires NAME and DESCRIPTION.",
+        ),
+        "--describe NAME",
+      );
+      const description = requireOptionValue(
+        argv,
+        ++index,
+        "--describe requires NAME and DESCRIPTION.",
+      );
       if (descriptions.has(name))
         throw new Error(`Duplicate --describe for ${name}.`);
       descriptions.set(name, description);

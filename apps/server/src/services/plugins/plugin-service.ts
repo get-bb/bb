@@ -778,6 +778,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // install could enter loadOne mid-dispose (no loaded entry, no hung
   // marker yet) and double-start the plugin's services.
   const lifecycleChains = new Map<string, Promise<void>>();
+  const disposingPluginIds = new Set<string>();
 
   function withLifecycleLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const previous = lifecycleChains.get(id) ?? Promise.resolve();
@@ -1410,6 +1411,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (!deps.pendingInteractions) {
           throw new Error("Plugin interactions are unavailable in this host");
         }
+        if (disposingPluginIds.has(row.id)) {
+          throw new Error(`plugin "${row.id}" is disposing`);
+        }
         return deps.pendingInteractions.requestPluginInteraction({
           ...args,
           pluginId: row.id,
@@ -1515,35 +1519,46 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     const plugin = loaded.get(id);
     if (!plugin) return;
     loaded.delete(id);
-    deps.pendingInteractions?.interruptPluginInteractions(id);
-    // §3 order: services first (abort + bounded await), then dispose hooks,
-    // then vended resources, then handle invalidation.
-    await stopServices(id, plugin);
-    // LIFO, each hook isolated: one bad hook must not skip the rest.
-    for (const hook of [...plugin.handle.disposeHooks].reverse()) {
+    disposingPluginIds.add(id);
+    try {
       try {
-        await hook();
+        deps.pendingInteractions?.interruptPluginInteractions(id);
       } catch (error) {
         logger.warn(
-          `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+          `plugin ${id} interaction cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-    }
-    // §3 step 3: let in-flight rpc/http/event handlers settle (bounded)
-    // before their sqlite handles close and their API handle goes stale.
-    await drainInvocations(id);
-    // Close host-vended sqlite handles before invalidating: a stale handle
-    // throws on use instead of writing to a database mid-reload.
-    for (const database of plugin.handle.sqliteHandles.splice(0)) {
-      try {
-        database.close();
-      } catch (error) {
-        logger.warn(
-          `plugin ${id} sqlite close failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      // §3 order: services first (abort + bounded await), then dispose hooks,
+      // then vended resources, then handle invalidation.
+      await stopServices(id, plugin);
+      // LIFO, each hook isolated: one bad hook must not skip the rest.
+      for (const hook of [...plugin.handle.disposeHooks].reverse()) {
+        try {
+          await hook();
+        } catch (error) {
+          logger.warn(
+            `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
+      // §3 step 3: let in-flight rpc/http/event handlers settle (bounded)
+      // before their sqlite handles close and their API handle goes stale.
+      await drainInvocations(id);
+      // Close host-vended sqlite handles before invalidating: a stale handle
+      // throws on use instead of writing to a database mid-reload.
+      for (const database of plugin.handle.sqliteHandles.splice(0)) {
+        try {
+          database.close();
+        } catch (error) {
+          logger.warn(
+            `plugin ${id} sqlite close failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    } finally {
+      plugin.handle.invalidate();
+      disposingPluginIds.delete(id);
     }
-    plugin.handle.invalidate();
   }
 
   async function disposeAll(): Promise<void> {
