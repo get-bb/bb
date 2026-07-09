@@ -107,6 +107,7 @@ function renderProjectRow(
   threadListState: ProjectThreadListState = { status: "ready", threads: [] },
   isActive = false,
   collapsedEnvironmentIds: Set<string> = new Set(),
+  isCollapsed = false,
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
@@ -115,7 +116,7 @@ function renderProjectRow(
         project={makeProject()}
         threadListState={threadListState}
         isActive={isActive}
-        isCollapsed={false}
+        isCollapsed={isCollapsed}
         compareThreads={() => 0}
         collapsedThreadIds={new Set()}
         collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -127,6 +128,13 @@ function renderProjectRow(
     </MemoryRouter>,
   );
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
+}
+
+function expectRightAlignedRollupStatus(label: string) {
+  const icon = screen.getByLabelText(label);
+  const overlay = icon.closest(".bb-sidebar-hover-actions-fade");
+  expect(overlay).not.toBeNull();
+  expect(overlay?.className).toContain("justify-end");
 }
 
 describe("ProjectRow interactions", () => {
@@ -264,6 +272,33 @@ describe("ProjectRow interactions", () => {
     expect(screen.getByLabelText("Agent working")).not.toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+    expectRightAlignedRollupStatus("Agent working");
+  });
+
+  it("shows right-aligned collapsed project activity before hover actions", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            status: "active",
+            runtime: {
+              displayStatus: "active",
+              hostReconnectGraceExpiresAt: null,
+            },
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      true,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Expand Test project" }),
+    ).not.toBeNull();
+    expectRightAlignedRollupStatus("Agent working");
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

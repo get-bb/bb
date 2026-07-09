@@ -372,6 +372,27 @@ export function Overview() {
         })}
       </StoryRow>
       <StoryRow
+        label="collapsed project — child working"
+        hint="collapsed project header right-aligns the hidden child activity in the trailing slot"
+      >
+        {singleProject({
+          initialCollapsed: true,
+          threadListState: {
+            status: "ready",
+            threads: [
+              makeThread({
+                id: "thr_collapsed_project_busy",
+                status: "active",
+                runtime: {
+                  displayStatus: "active",
+                  hostReconnectGraceExpiresAt: null,
+                },
+              }),
+            ],
+          },
+        })}
+      </StoryRow>
+      <StoryRow
         label="active project route"
         hint="active project header stays static; only the chevron and row actions hover"
       >

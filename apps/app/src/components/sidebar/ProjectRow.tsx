@@ -69,7 +69,11 @@ import {
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
-import type { CollapsedChildActivity } from "@/lib/thread-activity";
+import {
+  getCollapsedChildActivity,
+  NO_COLLAPSED_CHILD_ACTIVITY,
+  type CollapsedChildActivity,
+} from "@/lib/thread-activity";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getProjectSettingsRoutePath } from "@/lib/route-paths";
@@ -1180,7 +1184,7 @@ function EnvironmentThreadGroupHeader({
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "pointer-events-none absolute inset-0 flex items-center justify-center text-subtle-foreground",
+              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
             )}
           >
             <ThreadStatusGlyph
@@ -2112,6 +2116,17 @@ function ProjectRowComponent({
   const handleCreateThread = useCallback(() => {
     onCreateProjectThread?.(project.id);
   }, [onCreateProjectThread, project.id]);
+  const projectActivity = useMemo<CollapsedChildActivity>(() => {
+    if (!isCollapsed || threadListState.status !== "ready") {
+      return NO_COLLAPSED_CHILD_ACTIVITY;
+    }
+    return getCollapsedChildActivity(threadListState.threads);
+  }, [isCollapsed, threadListState]);
+  const showProjectRollupGlyph =
+    isCollapsed &&
+    (projectActivity.pending ||
+      projectActivity.working ||
+      projectActivity.unread);
   return (
     <SidebarStickyGroup asChild data-sidebar-sticky-project-item="">
       <SidebarMenuItem
@@ -2184,47 +2199,75 @@ function ProjectRowComponent({
                 />
               </NavLink>
             ) : null}
-            <span
-              data-sidebar-hover-actions-open={
-                isActionsOpen ? "true" : undefined
-              }
-              data-sidebar-hover-actions-mobile={
-                SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-              }
-              className={cn(
-                SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-10 inline-flex shrink-0 items-center",
-                SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-              )}
-            >
-              <ProjectActionsMenu
-                project={project}
-                onOpenChange={setIsDropdownActionsOpen}
-                triggerClassName={cn(
-                  "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                )}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`New thread in ${project.name}`}
-                disabled={!onCreateProjectThread}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleCreateThread();
-                }}
+            <span className="relative z-10 inline-flex shrink-0 items-center">
+              {showProjectRollupGlyph ? (
+                <span
+                  data-sidebar-hover-actions-open={
+                    isActionsOpen ? "true" : undefined
+                  }
+                  className={cn(
+                    SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+                    "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
+                  )}
+                >
+                  <ThreadStatusGlyph
+                    hasPendingInteraction={projectActivity.pending}
+                    isBackgroundAgentActive={projectActivity.backgroundAgent}
+                    isBackgroundCommandActive={
+                      projectActivity.backgroundCommand
+                    }
+                    isForegroundAgentWorking={projectActivity.runtimeWorking}
+                    isBusy={projectActivity.working}
+                    isWorkflowActive={projectActivity.workflow}
+                    showUnreadBadge={projectActivity.unread}
+                    unreadBadgeTone={
+                      projectActivity.unreadError ? "error" : "default"
+                    }
+                  />
+                </span>
+              ) : null}
+              <span
+                data-sidebar-hover-actions-open={
+                  isActionsOpen ? "true" : undefined
+                }
+                data-sidebar-hover-actions-mobile={
+                  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                }
                 className={cn(
-                  "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                  SIDEBAR_HOVER_ACTIONS_CLASS,
+                  "relative z-10 inline-flex shrink-0 items-center",
+                  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
                 )}
               >
-                <Icon
-                  name="MessageSquarePlus"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                <ProjectActionsMenu
+                  project={project}
+                  onOpenChange={setIsDropdownActionsOpen}
+                  triggerClassName={cn(
+                    "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                  )}
                 />
-              </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`New thread in ${project.name}`}
+                  disabled={!onCreateProjectThread}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleCreateThread();
+                  }}
+                  className={cn(
+                    "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                    COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                  )}
+                >
+                  <Icon
+                    name="MessageSquarePlus"
+                    className={COARSE_POINTER_ICON_SIZE_CLASS}
+                  />
+                </Button>
+              </span>
             </span>
           </SidebarStickyTier>
         </ProjectActionsContextMenu>

@@ -66,6 +66,8 @@ export function Overview() {
             activity={activity({ working: true })}
             isCollapsed
             onToggleCollapsed={noop}
+            onCreateThread={noop}
+            onRename={noop}
           />
         </SidebarStage>
       </StoryRow>
