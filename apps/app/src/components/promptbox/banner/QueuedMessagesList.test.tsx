@@ -70,6 +70,30 @@ function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
   );
 }
 
+function renderQueuedMessagesWithOptions(
+  queuedMessages: readonly ThreadQueuedMessage[],
+  options: Pick<
+    Parameters<typeof QueuedMessagesList>[0],
+    "resolveMentionLink"
+  >,
+) {
+  return render(
+    <QueuedMessagesList
+      queuedMessages={queuedMessages}
+      resolveMentionLink={options.resolveMentionLink}
+      sendDisabled={false}
+      actionDisabled={false}
+      processingMessageId={null}
+      processingAction={null}
+      onSendImmediately={noop}
+      onReorder={noop}
+      onSetGroupBoundary={noop}
+      onEdit={noop}
+      onDelete={noop}
+    />,
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -88,6 +112,88 @@ describe("QueuedMessagesList", () => {
     expect(quote?.textContent).toBe("first quoted line second quoted line");
     expect(container.textContent).toContain("reply underneath");
     expect(container.textContent).not.toContain("> first quoted line");
+  });
+
+  it("renders prompt mentions as pills in queued previews", () => {
+    const text =
+      "Run /goal and open @apps/app/src/foo.ts from @thread:thr_prompt_pills";
+    const commandToken = "/goal";
+    const pathToken = "@apps/app/src/foo.ts";
+    const threadToken = "@thread:thr_prompt_pills";
+    const commandStart = text.indexOf(commandToken);
+    const pathStart = text.indexOf(pathToken);
+    const threadStart = text.indexOf(threadToken);
+    const openPath = vi.fn();
+
+    const { container, getByText } = renderQueuedMessagesWithOptions(
+      [
+        {
+          ...makeQueuedMessage("q_mentions", text),
+          content: [
+            {
+              type: "text",
+              text,
+              mentions: [
+                {
+                  start: commandStart,
+                  end: commandStart + commandToken.length,
+                  resource: {
+                    kind: "command",
+                    trigger: "/",
+                    name: "goal",
+                    source: "command",
+                    origin: "user",
+                    label: "goal",
+                    argumentHint: null,
+                  },
+                },
+                {
+                  start: pathStart,
+                  end: pathStart + pathToken.length,
+                  resource: {
+                    kind: "path",
+                    source: "workspace",
+                    entryKind: "file",
+                    path: "apps/app/src/foo.ts",
+                    label: "foo.ts",
+                  },
+                },
+                {
+                  start: threadStart,
+                  end: threadStart + threadToken.length,
+                  resource: {
+                    kind: "thread",
+                    threadId: "thr_prompt_pills",
+                    label: "Prompt pills QA",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      {
+        resolveMentionLink: (resource) =>
+          resource.kind === "path" ? openPath : null,
+      },
+    );
+
+    expect(container.querySelectorAll(".prompt-mention-pill")).toHaveLength(3);
+    expect(container.querySelector('[data-icon="Target"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="File"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-icon="MessageSquare"]'),
+    ).not.toBeNull();
+    expect(container.textContent).toContain(
+      "Run goal and open foo.ts from Prompt pills QA",
+    );
+    expect(container.textContent).not.toContain(commandToken);
+    expect(container.textContent).not.toContain(pathToken);
+    expect(container.textContent).not.toContain(threadToken);
+
+    fireEvent.click(getByText("foo.ts"));
+
+    expect(openPath).toHaveBeenCalledTimes(1);
   });
 
   it("shows a bottom fade when the expanded queue overflows", async () => {

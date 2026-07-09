@@ -406,6 +406,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default definePluginApp((app) => {
   app.slots.homepageSection({ id: "issues", title: "Open issues", component: IssuesSection });
+  app.slots.settingsSection({ id: "settings", title: "Connection", component: SettingsSection });
   app.slots.navPanel({ id: "board", title: "Board", icon: "Columns", path: "board", component: Board });
   app.slots.threadPanelAction({ id: "issue", title: "Open issue", component: IssuePanel, run: async ({ threadId, openPanel }) => openPanel({ title: `Issue for ${threadId}` }) });
   app.slots.composerAccessory({ id: "hint", component: Hint });
@@ -416,6 +417,16 @@ Slot props contracts (versioned, additive-only):
 
 - `homepageSection` → `{ projectId: string | null }` (project in view on
   the compose surface). Registration: `{ id, title, component }`.
+- `settingsSection` → `{}` (deliberately no props in V1). Rendered on
+  `/settings/plugins/<pluginId>` below the host-rendered declarative settings
+  form for running, needs-configuration, and degraded plugins. Registration:
+  `{ id, title?, component }`; `title` is an optional host-rendered section
+  heading. Use the existing hooks (`useRpc`, `useRealtime`, `useSettings`,
+  `useBbNavigate`, `useBbContext`) for data. Enabled plugins appear in the
+  settings sidebar when they declare settings descriptors OR register
+  settings sections. Slot-derived sidebar entries work for builtin plugin
+  frontends even when the user-installed Plugins experiment is off; the
+  Settings → Plugins management bucket remains experiment-gated.
 - `navPanel` → `{ subPath: string }` — owns the whole route at
   `/plugins/<pluginId>/<path>/*` and gets its own sidebar entry. `subPath`
   is the route remainder after the panel root (`""` at the root), so deep
@@ -632,8 +643,8 @@ slot.rpcCalls; slot.navigateCalls; slot.composer.quotes; // recorded hook activi
 ```
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
-patterns, navPanel path, chrome, fileOpener extensions) and returns them
-typed with defaults filled. Working examples:
+patterns, settingsSection optional title, navPanel path, chrome,
+fileOpener extensions) and returns them typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
 `thread.idle` reply), `examples/plugins/simple-notes/app.test.tsx` (nav
 panel list over rpc + create/open navigation assertions), and

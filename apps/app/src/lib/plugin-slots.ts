@@ -4,6 +4,7 @@ import type {
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginNavPanelRegistration,
+  PluginSettingsSectionRegistration,
   PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 
@@ -17,6 +18,7 @@ import type {
 
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
+  settingsSections: readonly PluginSettingsSectionRegistration[];
   navPanels: readonly PluginNavPanelRegistration[];
   threadPanelActions: readonly PluginThreadPanelActionRegistration[];
   composerAccessories: readonly PluginComposerAccessoryRegistration[];
@@ -36,6 +38,8 @@ interface PluginSlotBase {
 
 export interface PluginHomepageSectionSlot
   extends PluginHomepageSectionRegistration, PluginSlotBase {}
+export interface PluginSettingsSectionSlot
+  extends PluginSettingsSectionRegistration, PluginSlotBase {}
 export interface PluginNavPanelSlot
   extends PluginNavPanelRegistration, PluginSlotBase {}
 export interface PluginThreadPanelActionSlot
@@ -48,6 +52,7 @@ export interface PluginFileOpenerSlot
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
+  settingsSections: readonly PluginSettingsSectionSlot[];
   navPanels: readonly PluginNavPanelSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   composerAccessories: readonly PluginComposerAccessorySlot[];
@@ -56,6 +61,7 @@ export interface PluginSlotSnapshot {
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   homepageSections: [],
+  settingsSections: [],
   navPanels: [],
   threadPanelActions: [],
   composerAccessories: [],
@@ -71,12 +77,14 @@ function buildSnapshot(): PluginSlotSnapshot {
   const pluginIds = [...registrationsByPluginId.keys()].sort();
   const next: {
     homepageSections: PluginHomepageSectionSlot[];
+    settingsSections: PluginSettingsSectionSlot[];
     navPanels: PluginNavPanelSlot[];
     threadPanelActions: PluginThreadPanelActionSlot[];
     composerAccessories: PluginComposerAccessorySlot[];
     fileOpeners: PluginFileOpenerSlot[];
   } = {
     homepageSections: [],
+    settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
@@ -88,6 +96,9 @@ function buildSnapshot(): PluginSlotSnapshot {
     const generation = generationByPluginId.get(pluginId) ?? 0;
     for (const registration of set.homepageSections) {
       next.homepageSections.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.settingsSections) {
+      next.settingsSections.push({ ...registration, pluginId, generation });
     }
     for (const registration of set.navPanels) {
       next.navPanels.push({ ...registration, pluginId, generation });

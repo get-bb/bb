@@ -8,6 +8,7 @@
  * instead expose model and thought-level config options over the protocol.
  */
 
+import path from "node:path";
 import {
   buildAcpProviderInfo,
   getBuiltInAgentProviderInfo,
@@ -77,6 +78,10 @@ import {
   type EnsureProviderTurnStartedArgs,
 } from "../shared/turn-state.js";
 import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
+import type {
+  AgentRuntimeAcpSkillRoot,
+  AgentRuntimeSkillRoot,
+} from "../types.js";
 import {
   ACP_FS_WRITE_METHOD,
   ACP_PERMISSION_REQUEST_METHOD,
@@ -463,6 +468,67 @@ function buildOpaqueAcpPermissionCommand(toolCall: {
     toolCall.kind ??
     "ACP permission request"
   );
+}
+
+function requireAcpSkillRoot(
+  skillRoot: AgentRuntimeSkillRoot,
+): AgentRuntimeAcpSkillRoot {
+  if (skillRoot.providerId !== "acp") {
+    throw new Error(
+      `ACP cannot configure ${skillRoot.providerId} skill root "${skillRoot.id}".`,
+    );
+  }
+  return skillRoot;
+}
+
+function sanitizeAcpSkillDescription(description: string): string {
+  const sanitized = description
+    .replace(/[\r\n]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .replace(/[<>]/gu, "")
+    .trim();
+  return sanitized.length > 0 ? sanitized : "(description unavailable)";
+}
+
+function buildAcpSkillsInstructions(
+  skillRoots: ProviderExecutionContext["skillRoots"],
+): string | undefined {
+  if (!skillRoots || skillRoots.length === 0) {
+    return undefined;
+  }
+
+  const skillLines = skillRoots.flatMap((skillRoot) => {
+    const acpSkillRoot = requireAcpSkillRoot(skillRoot);
+    return acpSkillRoot.skills.map((skill) => {
+      const skillFilePath = path.join(
+        acpSkillRoot.skillDirectoryRootPath,
+        skill.name,
+        "SKILL.md",
+      );
+      return `- ${skill.name}: ${sanitizeAcpSkillDescription(skill.description)} (SKILL.md: ${skillFilePath})`;
+    });
+  });
+  if (skillLines.length === 0) {
+    return undefined;
+  }
+
+  return [
+    "bb skills are reusable instruction folders. When the current task matches a listed skill description, read that skill's SKILL.md at the absolute path before proceeding; you may read supporting files in the same skill directory that SKILL.md references. If a listed path does not exist, the list is stale and should be ignored.",
+    "",
+    "Available bb skills:",
+    ...skillLines,
+  ].join("\n");
+}
+
+function buildAcpSessionInstructions(
+  options: ProviderExecutionContext,
+): string | undefined {
+  const baseInstructions = options.instructions?.trim();
+  const skillsInstructions = buildAcpSkillsInstructions(options.skillRoots);
+  const instructions = [baseInstructions, skillsInstructions].filter(
+    (value): value is string => value !== undefined && value.length > 0,
+  );
+  return instructions.length > 0 ? instructions.join("\n\n") : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -1164,7 +1230,7 @@ export function createAcpProviderAdapter(
       { type: "thread/start" | "thread/resume" }
     >,
   ): Record<string, unknown> {
-    const instructions = command.options.instructions?.trim();
+    const instructions = buildAcpSessionInstructions(command.options);
     const cwd = profile.cwd ?? command.cwd;
     const envVars = {
       ...(profile.env ?? {}),
@@ -1282,7 +1348,7 @@ export function createAcpProviderAdapter(
         case "skills/configure":
           return {
             kind: "noop",
-            reason: "ACP agents manage their own skills",
+            reason: "ACP skills are delivered through session instructions",
           };
         case "thread/start": {
           finishOpenProviderTurn({

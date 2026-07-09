@@ -23,6 +23,13 @@ export interface PluginHomepageSectionProps {
   projectId: string | null;
 }
 
+/**
+ * Props passed to a `settingsSection` component.
+ *
+ * Deliberately empty in V1; versioned additive like the other slot props.
+ */
+export interface PluginSettingsSectionProps {}
+
 /** Props passed to a `navPanel` component (it owns its whole route). */
 export interface PluginNavPanelProps {
   /**
@@ -87,6 +94,14 @@ export interface PluginHomepageSectionRegistration {
   id: string;
   title: string;
   component: ComponentType<PluginHomepageSectionProps>;
+}
+
+export interface PluginSettingsSectionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Optional host-rendered section heading. */
+  title?: string;
+  component: ComponentType<PluginSettingsSectionProps>;
 }
 
 export interface PluginNavPanelRegistration {
@@ -182,6 +197,7 @@ export interface PluginFileOpenerRegistration {
 
 export interface PluginAppSlots {
   homepageSection(registration: PluginHomepageSectionRegistration): void;
+  settingsSection(registration: PluginSettingsSectionRegistration): void;
   navPanel(registration: PluginNavPanelRegistration): void;
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
   composerAccessory(registration: PluginComposerAccessoryRegistration): void;

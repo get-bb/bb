@@ -25,6 +25,13 @@ interface PluginHomepageSectionProps {
     /** Project in view on the compose surface; null when none is selected. */
     projectId: string | null;
 }
+/**
+ * Props passed to a `settingsSection` component.
+ *
+ * Deliberately empty in V1; versioned additive like the other slot props.
+ */
+interface PluginSettingsSectionProps {
+}
 /** Props passed to a `navPanel` component (it owns its whole route). */
 interface PluginNavPanelProps {
     /**
@@ -79,6 +86,13 @@ interface PluginHomepageSectionRegistration {
     id: string;
     title: string;
     component: ComponentType<PluginHomepageSectionProps>;
+}
+interface PluginSettingsSectionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Optional host-rendered section heading. */
+    title?: string;
+    component: ComponentType<PluginSettingsSectionProps>;
 }
 interface PluginNavPanelRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -167,6 +181,7 @@ interface PluginFileOpenerRegistration {
 }
 interface PluginAppSlots {
     homepageSection(registration: PluginHomepageSectionRegistration): void;
+    settingsSection(registration: PluginSettingsSectionRegistration): void;
     navPanel(registration: PluginNavPanelRegistration): void;
     threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
     composerAccessory(registration: PluginComposerAccessoryRegistration): void;
@@ -430,9 +445,9 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
+            completed: "completed";
             pending: "pending";
             in_progress: "in_progress";
-            completed: "completed";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -2013,4 +2028,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN };
-export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginNavPanelProps, PluginNavPanelRegistration, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
+export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginNavPanelProps, PluginNavPanelRegistration, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };

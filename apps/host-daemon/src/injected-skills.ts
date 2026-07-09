@@ -87,6 +87,7 @@ interface WriteStageRootArgs {
 interface BuildSkillRootsArgs {
   catalogHash: string;
   stageRootPath: string;
+  trees: readonly CollectedSkillTree[];
 }
 
 interface PluginManifestAuthor {
@@ -451,16 +452,26 @@ async function writeStageRootOnce(args: WriteStageRootArgs): Promise<string> {
 }
 
 function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
+  const skillDirectoryRootPath = path.join(args.stageRootPath, "skills");
   return [
     {
       id: `global-skills:${args.catalogHash}:codex`,
       providerId: "codex",
-      skillDirectoryRootPath: path.join(args.stageRootPath, "skills"),
+      skillDirectoryRootPath,
     },
     {
       id: `global-skills:${args.catalogHash}:claude-code`,
       providerId: "claude-code",
       localPluginPath: args.stageRootPath,
+    },
+    {
+      id: `global-skills:${args.catalogHash}:acp`,
+      providerId: "acp",
+      skillDirectoryRootPath,
+      skills: args.trees.map((tree) => ({
+        description: tree.source.description,
+        name: tree.source.name,
+      })),
     },
   ];
 }
@@ -518,6 +529,7 @@ export async function stageInjectedSkillSources(
     skillRoots: buildSkillRoots({
       catalogHash,
       stageRootPath,
+      trees: sortedTrees,
     }),
   };
 }

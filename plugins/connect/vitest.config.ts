@@ -1,8 +1,16 @@
-import { defineConfig } from "vitest/config";
+import path from "node:path";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
-export default defineConfig({
+export default defineWorkspaceTestConfig({
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "."),
+    },
+  },
   test: {
+    name: "bb-plugin-connect",
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["**/*.test.{ts,tsx}"],
+    exclude: ["node_modules/**"],
   },
 });

@@ -1049,6 +1049,7 @@ export function SideChatTabContent({
       queuedMessages.length > 0 ? (
         <QueuedMessagesList
           queuedMessages={queuedMessages}
+          resolveMentionLink={resolveMentionLink}
           sendDisabled={
             childThreadId === null ||
             isSideChatProvisioning ||
@@ -1076,6 +1077,7 @@ export function SideChatTabContent({
       processingQueuedMessage?.id,
       queuedMessageActionPending,
       queuedMessages,
+      resolveMentionLink,
     ],
   );
 

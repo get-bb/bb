@@ -16,6 +16,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   ArrowRight: "Rename arrow in diff file headers (old → new)",
   ArrowUp: "Submit prompt button",
   AudioLines: "Voice recording indicator (pulsing) and idle wave",
+  Bug: "Report a bug link in sidebar footer",
   Check:
     "Selected item in pickers/menus, CopyButton confirmation, completed todo",
   ChartColumn: "Right-panel report file visual",

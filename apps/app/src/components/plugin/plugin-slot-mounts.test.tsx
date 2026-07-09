@@ -29,6 +29,7 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginComposerAccessories } from "./PluginComposerAccessories";
 import { PluginHomepageSections } from "./PluginHomepageSections";
+import { PluginSettingsSections } from "./PluginSettingsSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { useComposer } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
@@ -44,6 +45,7 @@ function registrationSet(
 ): PluginRegistrationSet {
   return {
     homepageSections: [],
+    settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
@@ -115,6 +117,33 @@ describe("PluginHomepageSections", () => {
     );
     expect(screen.getByText("plugin broken crashed")).toBeDefined();
     expect(screen.getByText("fine section body")).toBeDefined();
+  });
+});
+
+describe("PluginSettingsSections", () => {
+  it("contains a crashing section without hiding its sibling", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    function Crashes(): never {
+      throw new Error("settings section crashed");
+    }
+    function Fine() {
+      return <div>fine settings body</div>;
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        settingsSections: [
+          { id: "broken", title: "Broken settings", component: Crashes },
+          { id: "fine", title: "Fine settings", component: Fine },
+        ],
+      }),
+    );
+
+    render(<PluginSettingsSections pluginId="demo" />);
+
+    expect(screen.getByText("plugin demo crashed")).toBeDefined();
+    expect(screen.getByText("fine settings body")).toBeDefined();
   });
 });
 
