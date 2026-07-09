@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket as NodeWebSocket, WebSocketServer } from "ws";
 import {
@@ -400,6 +401,112 @@ describe("TunnelSession routing", () => {
     expect(frames.some((f) => f.type === "body-end" && f.streamId === 3)).toBe(
       true,
     );
+  });
+
+  it("drops stale content-length/content-encoding when the origin compresses, and relays 304 bodiless", async () => {
+    const plainBody = "hello ".repeat(200);
+    const gzippedBody = gzipSync(Buffer.from(plainBody));
+    const origin = await listen((req, res) => {
+      if (req.headers["if-none-match"] === 'W/"v1"') {
+        res.writeHead(304, { etag: 'W/"v1"' });
+        res.end();
+        return;
+      }
+      res.writeHead(200, {
+        "content-type": "text/plain",
+        "content-encoding": "gzip",
+        "content-length": String(gzippedBody.length),
+        etag: 'W/"v1"',
+      });
+      res.end(gzippedBody);
+    });
+    cleanups.push(
+      () => new Promise<void>((resolve) => origin.server.close(() => resolve())),
+    );
+
+    const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+    await new Promise<void>((resolve) => wss.once("listening", () => resolve()));
+    const wssAddr = wss.address();
+    if (wssAddr === null || typeof wssAddr === "string") {
+      throw new Error("expected TCP address");
+    }
+    const relayReady = new Promise<NodeWebSocket>((resolve) => {
+      wss.on("connection", (socket) => resolve(socket));
+    });
+    const client = new NodeWebSocket(`ws://127.0.0.1:${wssAddr.port}`);
+    cleanups.push(async () => {
+      client.terminate();
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+    });
+    await waitForOpen(client);
+    const relay = await relayReady;
+    const frames = collectFrames(relay);
+
+    const session = new TunnelSession({
+      tunnel: client,
+      log: {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      resolveOrigin: () => ({
+        kind: "ok",
+        resolved: {
+          origin: origin.origin,
+          publicOrigin: "https://sawyer.getbb.app",
+        },
+      }),
+    });
+    session.start();
+    cleanups.push(() => session.dispose());
+
+    const inject = (frame: Frame) => {
+      relay.send(Buffer.from(encodeFrame(frame)));
+    };
+
+    // Compressed 200: fetch decompresses, so the origin's content-encoding
+    // and (compressed-size) content-length must not ride the resp-head —
+    // relaying the smaller length would corrupt framing at the relay.
+    inject({
+      type: "open-http",
+      streamId: 21,
+      method: "GET",
+      path: "/asset.js",
+      headers: [],
+      hasBody: false,
+    });
+    await waitFor(() => frames.some((f) => f.type === "body-end" && f.streamId === 21));
+    const head = frames.find((f) => f.type === "resp-head" && f.streamId === 21);
+    if (head?.type !== "resp-head") throw new Error("missing resp-head");
+    expect(head.status).toBe(200);
+    const headerNames = head.headers.map(([name]) => name.toLowerCase());
+    expect(headerNames).not.toContain("content-encoding");
+    expect(headerNames).not.toContain("content-length");
+    expect(headerNames).toContain("etag");
+    const relayedBody = Buffer.concat(
+      frames
+        .filter((f) => f.type === "body-chunk" && f.streamId === 21)
+        .map((f) => (f.type === "body-chunk" ? Buffer.from(f.data) : Buffer.alloc(0))),
+    ).toString();
+    expect(relayedBody).toBe(plainBody);
+
+    // Revalidation: a 304 relays as resp-head + body-end with no chunks.
+    frames.length = 0;
+    inject({
+      type: "open-http",
+      streamId: 22,
+      method: "GET",
+      path: "/asset.js",
+      headers: [["If-None-Match", 'W/"v1"']],
+      hasBody: false,
+    });
+    await waitFor(() => frames.some((f) => f.type === "body-end" && f.streamId === 22));
+    const revalidated = frames.find(
+      (f) => f.type === "resp-head" && f.streamId === 22,
+    );
+    expect(revalidated).toMatchObject({ type: "resp-head", status: 304 });
+    expect(frames.some((f) => f.type === "body-chunk" && f.streamId === 22)).toBe(false);
   });
 
   it("tracks remoteClients for bare-handle /ws streams", async () => {

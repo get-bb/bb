@@ -330,8 +330,16 @@ export class TunnelSession {
         signal: stream.abort.signal,
       });
       const respHeaders: HeaderPair[] = [];
+      // fetch transparently decompresses a compressed origin body, so when
+      // content-encoding is present the origin's content-length describes
+      // compressed bytes we are not forwarding — relaying it would corrupt
+      // the response framing at the relay. Drop both.
+      const decompressed = res.headers.get("content-encoding") !== null;
       res.headers.forEach((v, n) => {
-        if (n.toLowerCase() !== "content-encoding") respHeaders.push([n, v]);
+        const lower = n.toLowerCase();
+        if (lower === "content-encoding") return;
+        if (decompressed && lower === "content-length") return;
+        respHeaders.push([n, v]);
       });
       this.send({
         type: "resp-head",
