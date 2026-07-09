@@ -13,6 +13,8 @@ import {
   type PluginNavPanelRegistration,
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
+  type PluginSidebarFooterActionProps,
+  type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk";
@@ -138,6 +140,7 @@ type SlotPropsByName = {
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
   composerAccessory: PluginComposerAccessoryProps;
+  sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
 };
 
@@ -151,6 +154,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
+  sidebarFooterAction: [],
   fileOpener: ["path", "source"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
@@ -191,6 +195,22 @@ const _assertAllNavPanelRegistrationFieldsListed: MissingNavPanelRegistrationFie
   ? true
   : never = true;
 void _assertAllNavPanelRegistrationFieldsListed;
+
+const SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS = [
+  "id",
+  "title",
+  "icon",
+  "run",
+] as const satisfies readonly (keyof PluginSidebarFooterActionRegistration)[];
+
+type MissingSidebarFooterActionRegistrationField = Exclude<
+  keyof PluginSidebarFooterActionRegistration,
+  (typeof SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS)[number]
+>;
+const _assertAllSidebarFooterActionRegistrationFieldsListed: MissingSidebarFooterActionRegistrationField extends never
+  ? true
+  : never = true;
+void _assertAllSidebarFooterActionRegistrationFieldsListed;
 
 describe("bb-plugin-authoring skill", () => {
   const skill = readFileSync(SKILL_PATH, "utf8");
@@ -257,6 +277,16 @@ describe("bb-plugin-authoring skill", () => {
     // Both chrome modes must be spelled out.
     expect(skill).toContain('"page"');
     expect(skill).toContain('"none"');
+  });
+
+  it("documents every sidebarFooterAction registration field", () => {
+    for (const field of SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS) {
+      expect(
+        skill,
+        `sidebarFooterAction registration field "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
+    expect(skill).toContain("openSettings");
   });
 
   it("documents the plugin logo convention (both theme variants)", () => {

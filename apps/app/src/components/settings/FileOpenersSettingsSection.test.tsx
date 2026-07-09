@@ -19,6 +19,7 @@ function registerNotesOpener() {
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    sidebarFooterActions: [],
     fileOpeners: [
       {
         id: "editor",

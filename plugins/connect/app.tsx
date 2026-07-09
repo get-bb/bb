@@ -1095,4 +1095,12 @@ export default definePluginApp((app) => {
       "Use this bb from any device, anywhere — powered by getbb.app.",
     component: ConnectSettingsSection,
   });
+  app.slots.sidebarFooterAction({
+    id: "remote-access",
+    title: "Remote access",
+    icon: "Smartphone",
+    run({ openSettings }) {
+      openSettings();
+    },
+  });
 });

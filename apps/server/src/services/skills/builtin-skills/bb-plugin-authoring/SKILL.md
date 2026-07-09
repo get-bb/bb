@@ -425,6 +425,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({ id: "board", title: "Board", icon: "Columns", path: "board", component: Board });
   app.slots.threadPanelAction({ id: "issue", title: "Open issue", component: IssuePanel, run: async ({ threadId, openPanel }) => openPanel({ title: `Issue for ${threadId}` }) });
   app.slots.composerAccessory({ id: "hint", component: Hint });
+  app.slots.sidebarFooterAction({ id: "remote", title: "Remote access", icon: "Smartphone", run: ({ openSettings }) => openSettings() });
 });
 ```
 
@@ -479,6 +480,15 @@ Slot props contracts (versioned, additive-only):
   or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
+- `sidebarFooterAction` → host-rendered icon button in the app sidebar footer
+  (next to Settings / bug / Discord). No plugin component — the host paints
+  the chrome so icons stay consistent. Registration:
+  `{ id, title, icon, run }`. Activating it calls
+  `run({ openSettings })` — use `openSettings()` to open this plugin's
+  Settings detail page (`/settings/plugins/<pluginId>`), or do anything else
+  (rpc, toast). Errors from `run` (sync or async) are contained and logged,
+  never breaking the sidebar. `title` is the tooltip + accessible label;
+  `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
 - `fileOpener` → `{ path: string, source }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Users set the per-extension default under Settings → "File openers", and

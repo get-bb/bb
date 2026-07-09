@@ -57,6 +57,12 @@ describe("collectPluginAppRegistrations", () => {
         run,
       });
       app.slots.composerAccessory({ id: "picker", component: Component });
+      app.slots.sidebarFooterAction({
+        id: "remote",
+        title: "Remote access",
+        icon: "Smartphone",
+        run,
+      });
       app.slots.fileOpener({
         id: "editor",
         title: "Notes editor",
@@ -92,6 +98,14 @@ describe("collectPluginAppRegistrations", () => {
     ]);
     expect(registrations.composerAccessories).toEqual([
       { id: "picker", component: Component },
+    ]);
+    expect(registrations.sidebarFooterActions).toEqual([
+      {
+        id: "remote",
+        title: "Remote access",
+        icon: "Smartphone",
+        run,
+      },
     ]);
     expect(registrations.fileOpeners).toEqual([
       {
@@ -145,6 +159,18 @@ describe("collectPluginAppRegistrations", () => {
           app.slots.composerAccessory({ id: "a", component: Component });
         }),
       /duplicate id/,
+    ],
+    [
+      "sidebar footer action missing run",
+      () =>
+        definePluginApp((app) => {
+          app.slots.sidebarFooterAction({
+            id: "x",
+            title: "X",
+            icon: "Smartphone",
+          } as never);
+        }),
+      /"run" must be a function/,
     ],
     [
       "nav panel path with slash",

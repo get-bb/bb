@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
@@ -333,6 +334,7 @@ export function AppSidebar({
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <PluginSidebarFooterActions onNavigate={closeOnMobile} />
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 className={SIDEBAR_FOOTER_ACTION_CLASS}

@@ -25,6 +25,7 @@ function registrationSet(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    sidebarFooterActions: [],
     fileOpeners: [],
     ...overrides,
   };
