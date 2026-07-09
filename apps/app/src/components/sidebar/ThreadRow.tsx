@@ -97,7 +97,6 @@ interface ThreadRowContainerArgs {
   className: string;
   dragBindings?: SidebarSortableDragBindings;
   onClickCapture?: ThreadRowClickCaptureHandler;
-  showDragCursor: boolean;
   stickyLevel?: number;
   style: CSSProperties;
 }
@@ -123,22 +122,18 @@ function renderThreadRowContainer({
   className,
   dragBindings,
   onClickCapture,
-  showDragCursor,
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
-  // Draggable rows show a grab cursor over the whole row.
-  const containerClassName = cn(
-    className,
-    showDragCursor && "cursor-grab active:cursor-grabbing",
-  );
+  // Never show a grab cursor on thread rows. Folder DnD still works after the
+  // activation distance; the link still selects on click.
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
         tier="parent"
         level={stickyLevel}
-        className={containerClassName}
+        className={className}
         style={style}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
@@ -152,7 +147,7 @@ function renderThreadRowContainer({
   return (
     <div
       ref={dragBindings?.setActivatorNodeRef}
-      className={containerClassName}
+      className={className}
       style={style}
       {...dragBindings?.attributes}
       {...(dragBindings?.listeners ?? {})}
@@ -344,7 +339,6 @@ function ThreadRowComponent({
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
   const rowDragBindings = options.dragBindings;
-  const showDragCursor = rowDragBindings !== undefined && thread.pinnedAt === null;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -384,12 +378,7 @@ function ThreadRowComponent({
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
-        className={cn(
-          "absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
-          // Draggable rows show a grab affordance; the link still selects on
-          // click since a drag needs the activation distance.
-          showDragCursor && "cursor-grab active:cursor-grabbing",
-        )}
+        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate" title={labelTitle}>
@@ -461,7 +450,6 @@ function ThreadRowComponent({
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,
-    showDragCursor,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });
