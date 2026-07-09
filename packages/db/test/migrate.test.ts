@@ -212,6 +212,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
+  db.$client.prepare("DROP TABLE IF EXISTS app_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
