@@ -29,7 +29,15 @@ const CLI_SOURCE = `
         if (argv[0] === "fail") return { exitCode: 3, stderr: "acme failed" };
         if (argv[0] === "throw") throw new Error("kaboom");
         if (argv[0] === "malformed") return { exitCode: "nope" };
-        return { exitCode: 0, stdout: JSON.stringify({ argv, ctx }) };
+        const { signal, ...requestContext } = ctx;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            argv,
+            ctx: requestContext,
+            signalAborted: signal?.aborted,
+          }),
+        };
       },
     });
   }
@@ -142,7 +150,12 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toEqual({
       argv: ["issues", "--team", "ENG"],
-      ctx: { cwd: "/tmp/somewhere", threadId: "thr_123", projectId: "proj_456" },
+      ctx: {
+        cwd: "/tmp/somewhere",
+        threadId: "thr_123",
+        projectId: "proj_456",
+      },
+      signalAborted: false,
     });
   });
 

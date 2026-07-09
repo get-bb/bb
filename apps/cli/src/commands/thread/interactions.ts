@@ -14,6 +14,7 @@ import {
   isUserQuestionPendingInteractionPayload,
   isUserQuestionPendingInteractionResolution,
   PendingInteraction,
+  type ProviderPendingInteraction,
   type PendingInteractionUserAnswer,
   type ApprovalPendingInteractionPayload,
   type ApprovalPendingInteractionResolution,
@@ -54,12 +55,12 @@ type PrintablePermissionProfile =
 type UserQuestionQuestion =
   UserQuestionPendingInteractionPayload["questions"][number];
 
-interface ApprovalPendingInteraction extends PendingInteraction {
+interface ApprovalPendingInteraction extends ProviderPendingInteraction {
   payload: ApprovalPendingInteractionPayload;
   resolution: ApprovalPendingInteractionResolution | null;
 }
 
-interface UserQuestionPendingInteraction extends PendingInteraction {
+interface UserQuestionPendingInteraction extends ProviderPendingInteraction {
   payload: UserQuestionPendingInteractionPayload;
   resolution: UserQuestionPendingInteractionResolution | null;
 }
@@ -122,7 +123,7 @@ function formatInteractionKind(interaction: PendingInteraction): string {
   }
 
   if (!isApprovalPendingInteractionPayload(interaction.payload)) {
-    return assertNever(interaction.payload);
+    return "plugin";
   }
 
   switch (interaction.payload.subject.kind) {

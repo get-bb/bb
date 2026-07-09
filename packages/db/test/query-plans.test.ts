@@ -236,7 +236,12 @@ describe("slow query index plans", () => {
       db,
       debugLog,
       indexName: "pending_interactions_provider_request_idx",
-      params: ["codex", "provider-thread-query-plan", "request-query-plan"],
+      params: [
+        "provider",
+        "codex",
+        "provider-thread-query-plan",
+        "request-query-plan",
+      ],
     });
 
     db.$client.close();

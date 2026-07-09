@@ -3,6 +3,7 @@ import {
   isUserQuestionPendingInteractionPayload,
   type PendingInteraction,
   type PendingInteractionResolution,
+  type ProviderPendingInteraction,
   type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import type { TimelineQuestionWorkRow, TimelineRow } from "@bb/server-contract";
@@ -25,7 +26,7 @@ import {
   TURN_TIMEOUT_MS,
 } from "./shared.js";
 
-interface UserQuestionInteraction extends PendingInteraction {
+interface UserQuestionInteraction extends ProviderPendingInteraction {
   payload: UserQuestionPendingInteractionPayload;
 }
 
