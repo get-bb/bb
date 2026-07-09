@@ -30,7 +30,12 @@
     {
       "binding": "DB",
       "database_name": "bb-connect-prod",
-      "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b"
+      "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b",
+      // Shared schema lives in connect-db; CI runs `wrangler d1 migrations
+      // apply DB --remote` from this config before every deploy (the
+      // d1_migrations tracking tables were seeded with the hand-applied
+      // 0000-000N chain on 2026-07-08).
+      "migrations_dir": "../../packages/connect-db/migrations"
     }
   ],
   "routes": [{ "pattern": "*.getbb.app/*", "zone_name": "getbb.app" }],
@@ -59,7 +64,8 @@
         {
           "binding": "DB",
           "database_name": "bb-connect-staging",
-          "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c"
+          "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c",
+          "migrations_dir": "../../packages/connect-db/migrations"
         }
       ]
     }

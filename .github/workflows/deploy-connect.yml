@@ -46,6 +46,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      # Apply any pending connect-db migrations BEFORE the new worker ships so
+      # it never queries columns prod D1 doesn't have yet. The d1_migrations
+      # tracking table (seeded 2026-07-08 with the previously hand-applied
+      # chain) makes this a no-op when nothing is pending.
+      - name: Apply connect-db migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @bb/connect exec wrangler d1 migrations apply DB --remote
+
       # No build step: the gate is a single worker entry (src/worker.ts) and
       # wrangler's esbuild bundles its workspace deps (@bb/connect-db,
       # @bb/tunnel-contract) straight from source. Plain `wrangler deploy`

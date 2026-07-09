@@ -85,6 +85,18 @@ jobs:
           fi
           printf '%s' "$RESEND_API_KEY" | pnpm --filter @bb/web exec wrangler secret put RESEND_API_KEY --name bb-web
 
+      # Apply any pending connect-db migrations BEFORE the new worker ships so
+      # it never queries columns prod D1 doesn't have yet. Runs off the gate's
+      # wrangler config (which declares migrations_dir); the d1_migrations
+      # tracking table makes this a no-op when nothing is pending. If
+      # deploy-connect runs concurrently its apply races this one — the loser
+      # fails on already-applied SQL and a re-run goes green; prod is fine
+      # because the winner applied everything.
+      - name: Apply connect-db migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @bb/connect exec wrangler d1 migrations apply DB --remote
+
       # GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET are set
       # once by hand and intentionally NOT synced from CI.
       - name: Deploy web
