@@ -599,8 +599,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
 
-    // Providers without a command surface (pi, anything unknown) have no
-    // typeahead entries, so skip the daemon roundtrip entirely.
+    // Providers without a skills composer action have no typeahead entries,
+    // so skip the daemon roundtrip entirely.
     if (!providerHasCommandSurface(query.provider)) {
       return context.json({ commands: [], truncated: false });
     }

@@ -117,6 +117,13 @@ or artifacts, validation performed, and blockers.
   <seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
+- By default, `bb thread tell` **queues** the message: if the agent is still
+  working, delivery waits until the current turn finishes. Use
+  `--mode steer` to **steer** — send the message immediately into the active
+  turn. Prefer steer when the change is urgent (wrong direction, hard stop,
+  critical clarification). Prefer the default queue when the note is non-urgent
+  and the agent can finish its current work first.
+  Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
 
 ## Inspecting Results
 

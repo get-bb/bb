@@ -26,4 +26,4 @@ export function downloadMacosHref(placement: CtaPlacement): string {
 
 export const SITE_TITLE = "bb: the IDE for loop-driven development";
 export const SITE_DESCRIPTION =
-  "bb can control, customize, and automate itself, laying the groundwork for your own software factory. Fully open source and local-first, with Claude Code, Codex, Cursor, Pi, and OpenCode.";
+  "bb can control, customize, and automate itself, laying the groundwork for your own software factory. Fully open source and local-first, with Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes.";

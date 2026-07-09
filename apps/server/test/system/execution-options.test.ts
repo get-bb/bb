@@ -64,21 +64,30 @@ describe("appendCustomModels", () => {
     ).toEqual(["low", "medium", "high", "xhigh", "ultracode", "max"]);
   });
 
-  it("caps codex and pi custom models at xhigh (no max)", () => {
-    for (const providerId of ["codex", "pi"] as const) {
-      const { models } = appendCustomModels({
-        customModels: [{ providerId, model: "custom-model" }],
-        models: [],
-        providerId,
-        selectedOnlyModels: [],
-      });
+  it("uses the provider reasoning ladder for codex and pi custom models", () => {
+    const { models: codexModels } = appendCustomModels({
+      customModels: [{ providerId: "codex", model: "custom-model" }],
+      models: [],
+      providerId: "codex",
+      selectedOnlyModels: [],
+    });
+    expect(
+      codexModels[0].supportedReasoningEfforts.map(
+        (effort) => effort.reasoningEffort,
+      ),
+    ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
 
-      expect(
-        models[0].supportedReasoningEfforts.map(
-          (effort) => effort.reasoningEffort,
-        ),
-      ).toEqual(["low", "medium", "high", "xhigh"]);
-    }
+    const { models: piModels } = appendCustomModels({
+      customModels: [{ providerId: "pi", model: "custom-model" }],
+      models: [],
+      providerId: "pi",
+      selectedOnlyModels: [],
+    });
+    expect(
+      piModels[0].supportedReasoningEfforts.map(
+        (effort) => effort.reasoningEffort,
+      ),
+    ).toEqual(["low", "medium", "high", "xhigh"]);
   });
 
   it("falls back to the model id when displayName is omitted", () => {
@@ -828,7 +837,7 @@ describe("resolveSystemExecutionOptions", () => {
               id: "acp-example-agent",
               displayName: "Example Agent",
               available: true,
-              composerActions: [],
+              composerActions: [{ kind: "skills", trigger: "/" }],
               capabilities: expect.objectContaining({
                 supportsFork: false,
                 supportsServiceTier: true,

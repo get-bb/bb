@@ -61,6 +61,12 @@ export interface PluginComposerAccessoryProps {
 }
 
 /**
+ * Props for a `sidebarFooterAction` — host-rendered (no plugin component).
+ * Deliberately empty; the registration's `run` carries the behavior.
+ */
+export interface PluginSidebarFooterActionProps {}
+
+/**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
  * thread-storage paths are relative to the thread's storage root, host paths
@@ -177,6 +183,36 @@ export interface PluginComposerAccessoryRegistration {
   component: ComponentType<PluginComposerAccessoryProps>;
 }
 
+/** Context handed to a `sidebarFooterAction`'s `run`. */
+export interface PluginSidebarFooterActionContext {
+  /**
+   * Navigate to this plugin's Settings detail page
+   * (`/settings/plugins/<pluginId>`), where declarative settings and
+   * `settingsSection` slots render.
+   */
+  openSettings(): void;
+}
+
+/**
+ * An icon button in the app sidebar footer (next to Settings / bug report).
+ * Host-rendered for consistent chrome — plugins supply icon, label, and
+ * `run` behavior only.
+ */
+export interface PluginSidebarFooterActionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Tooltip and accessible label for the icon button. */
+  title: string;
+  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  icon: string;
+  /**
+   * Runs when the user activates the action (e.g. call `openSettings()`,
+   * open a panel via other surfaces, toast). Errors (sync or async) are
+   * contained and logged; they never break the sidebar.
+   */
+  run(context: PluginSidebarFooterActionContext): void | Promise<void>;
+}
+
 /**
  * Register this plugin as a viewer/editor for file extensions. The user
  * picks (and can set as default) an opener per extension via the file tab's
@@ -206,6 +242,9 @@ export interface PluginAppSlots {
   navPanel(registration: PluginNavPanelRegistration): void;
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
   composerAccessory(registration: PluginComposerAccessoryRegistration): void;
+  sidebarFooterAction(
+    registration: PluginSidebarFooterActionRegistration,
+  ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
 }
 

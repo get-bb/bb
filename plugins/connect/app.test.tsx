@@ -65,6 +65,17 @@ describe("connect settings section", () => {
     );
   });
 
+  it("registers a sidebar footer phone action that opens settings", () => {
+    expect(app.sidebarFooterActions).toHaveLength(1);
+    const action = app.sidebarFooterActions[0]!;
+    expect(action.id).toBe("remote-access");
+    expect(action.title).toBe("Remote access");
+    expect(action.icon).toBe("Smartphone");
+    const openSettings = vi.fn();
+    action.run({ openSettings });
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("auto-submits a normalized 4-4 code and applies live paired status", async () => {
     let currentStatus = status();
     const slot = renderSlot(

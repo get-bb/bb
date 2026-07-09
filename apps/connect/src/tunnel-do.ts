@@ -209,6 +209,11 @@ export class TunnelDO {
     for (const existing of this.state.getWebSockets(TUNNEL_TAG)) {
       existing.close(1000, "replaced by a new tunnel connection");
     }
+    // Streams opened over a replaced (or hibernated-away) tunnel belong to
+    // the old client session — the connecting client has no state for them,
+    // so their frames will never arrive. Fail them now: a mid-body response
+    // has no timeout and would otherwise hang its visitor forever.
+    this.abandonStreams("tunnel reconnected mid-request", "tunnel reconnected");
     this.clientProtocolVersion = protocolVersion;
     void this.state.storage.put("protocolVersion", protocolVersion);
     if (serverId) {
@@ -329,6 +334,18 @@ export class TunnelDO {
     }
   }
 
+  /** Fail every in-flight stream: pending HTTP answers `status` 502, visitor sockets close. */
+  private abandonStreams(httpReason: string, wsReason: string): void {
+    for (const streamId of [...this.pendingHttp.keys()]) {
+      this.failHttpStream(streamId, 502, httpReason);
+    }
+    for (const visitor of this.state.getWebSockets()) {
+      if (!this.state.getTags(visitor).includes(TUNNEL_TAG)) {
+        visitor.close(1001, wsReason);
+      }
+    }
+  }
+
   private failHttpStream(streamId: number, status: number, message: string): void {
     const entry = this.pendingHttp.get(streamId);
     if (!entry) return;
@@ -377,14 +394,35 @@ export class TunnelDO {
         const entry = this.pendingHttp.get(frame.streamId);
         if (!entry) return;
         clearTimeout(entry.timeout);
+        const headers = frame.headers.filter(([name]) => !HOP_HEADERS.has(name.toLowerCase()));
+        // Null-body statuses must resolve bodiless: Response throws on a
+        // stream body for 204/205/304, and a throw here would strand the
+        // visitor's request unresolved forever (its timeout is already
+        // cleared). Dev servers answer 304 to every ETag revalidation, so
+        // this is the common path on a reload, not an edge case. The entry
+        // stays until the client's trailing body-end frame clears it.
+        if (frame.status === 204 || frame.status === 205 || frame.status === 304) {
+          entry.resolve(new Response(null, { status: frame.status, headers }));
+          return;
+        }
         const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+        let response: Response;
+        try {
+          response = new Response(readable, { status: frame.status, headers });
+        } catch {
+          // Any other unconstructable response (e.g. an out-of-range status):
+          // answer 502 rather than leaving the request pending.
+          this.pendingHttp.delete(frame.streamId);
+          entry.resolve(
+            new Response(`bb connect: unrelayable origin response (status ${frame.status})\n`, {
+              status: 502,
+              headers: { "content-type": "text/plain; charset=utf-8" },
+            }),
+          );
+          return;
+        }
         entry.writer = writable.getWriter();
-        entry.resolve(
-          new Response(readable, {
-            status: frame.status,
-            headers: frame.headers.filter(([name]) => !HOP_HEADERS.has(name.toLowerCase())),
-          }),
-        );
+        entry.resolve(response);
         return;
       }
       case "body-chunk": {
@@ -436,16 +474,10 @@ export class TunnelDO {
     const tags = this.state.getTags(ws);
     if (tags.includes(TUNNEL_TAG)) {
       // Only react if this socket is still the active tunnel (a replaced
-      // socket closing must not tear down the new tunnel's visitors).
+      // socket closing must not tear down the new tunnel's visitors —
+      // acceptTunnel already abandoned the old socket's streams).
       if (this.tunnelSocket() !== null) return;
-      for (const streamId of [...this.pendingHttp.keys()]) {
-        this.failHttpStream(streamId, 502, "tunnel disconnected mid-request");
-      }
-      for (const visitor of this.state.getWebSockets()) {
-        if (!this.state.getTags(visitor).includes(TUNNEL_TAG)) {
-          visitor.close(1001, "tunnel disconnected");
-        }
-      }
+      this.abandonStreams("tunnel disconnected mid-request", "tunnel disconnected");
       return;
     }
     const attachment = ws.deserializeAttachment() as { streamId: number };

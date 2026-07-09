@@ -24,6 +24,7 @@ import {
   type PluginSdkApp,
   type PluginSettingsSectionRegistration,
   type PluginSettingsState,
+  type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "../app-contract.js";
 
@@ -193,6 +194,7 @@ export interface CapturedPluginApp {
   >;
   threadPanelActions: PluginThreadPanelActionRegistration[];
   composerAccessories: PluginComposerAccessoryRegistration[];
+  sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
 }
 
@@ -262,6 +264,7 @@ function collectRegistrations(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    sidebarFooterActions: [],
     fileOpeners: [],
   };
   const seenIds = {
@@ -270,6 +273,7 @@ function collectRegistrations(
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
   };
 
@@ -365,6 +369,20 @@ function collectRegistrations(
         captured.composerAccessories.push({
           id,
           component: requireComponent(kind, registration.component),
+        });
+      },
+      sidebarFooterAction(registration) {
+        const kind = "slots.sidebarFooterAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.sidebarFooterAction, id);
+        if (typeof registration.run !== "function") {
+          throw new Error(`${kind}: "run" must be a function`);
+        }
+        captured.sidebarFooterActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          run: registration.run,
         });
       },
       fileOpener(registration) {

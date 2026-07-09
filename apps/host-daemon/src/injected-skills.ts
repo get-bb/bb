@@ -465,6 +465,11 @@ function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
       localPluginPath: args.stageRootPath,
     },
     {
+      id: `global-skills:${args.catalogHash}:pi`,
+      providerId: "pi",
+      skillDirectoryRootPath,
+    },
+    {
       id: `global-skills:${args.catalogHash}:acp`,
       providerId: "acp",
       skillDirectoryRootPath,

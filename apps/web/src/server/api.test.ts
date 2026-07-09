@@ -5,7 +5,13 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { connectCode, schema, server, user } from "@bb/connect-db";
+import {
+  connectCode,
+  MAX_SERVERS_PER_ACCOUNT,
+  schema,
+  server,
+  user,
+} from "@bb/connect-db";
 import {
   type Deps,
   checkAvailability,
@@ -13,6 +19,7 @@ import {
   createConnectCode,
   createServer,
   disconnectServer,
+  removeServer,
   getAccountState,
   redeemConnectCode,
 } from "./api.js";
@@ -133,11 +140,13 @@ describe("createServer (connect another bb)", () => {
   it("enforces the per-account server cap", async () => {
     seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    // One primary already; add up to the cap (5), then the next is rejected.
-    for (let i = 1; i < 5; i++) {
+    // One primary already; add up to the cap, then the next is rejected.
+    for (let i = 1; i < MAX_SERVERS_PER_ACCOUNT; i++) {
       expect("ok" in (await createServer(deps, "u1", `sawyer-${i}`))).toBe(true);
     }
-    expect(db.select().from(server).where(eq(server.userId, "u1")).all()).toHaveLength(5);
+    expect(db.select().from(server).where(eq(server.userId, "u1")).all()).toHaveLength(
+      MAX_SERVERS_PER_ACCOUNT,
+    );
     expect(await createServer(deps, "u1", "sawyer-over")).toEqual({ error: "server-limit" });
   });
 
@@ -280,6 +289,56 @@ describe("disconnectServer (server-scoped)", () => {
   });
 });
 
+describe("removeServer (delete a never-paired row)", () => {
+  it("deletes a never-paired secondary and frees its subdomain for re-claim", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+
+    expect(await removeServer(deps, "u1", desktop.server.id)).toEqual({ ok: true });
+    expect(db.select().from(server).where(eq(server.id, desktop.server.id)).get()).toBeUndefined();
+
+    // The address is now free (availability treats any live row as taken).
+    const avail = await checkAvailability(deps, "sawyer-desktop");
+    expect(avail.available).toBe(true);
+
+    // The primary is untouched.
+    expect(db.select().from(server).where(eq(server.subdomain, "sawyer")).get()).toBeDefined();
+  });
+
+  it("refuses to remove the primary (account handle) row", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const primary = db.select().from(server).where(eq(server.subdomain, "sawyer")).get();
+    expect(await removeServer(deps, "u1", primary!.id)).toEqual({ error: "is-primary" });
+    expect(db.select().from(server).where(eq(server.id, primary!.id)).get()).toBeDefined();
+  });
+
+  it("refuses to remove a still-connected secondary (disconnect first)", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+    db.update(server)
+      .set({ credentialHash: "hash", revokedAt: null })
+      .where(eq(server.id, desktop.server.id))
+      .run();
+
+    expect(await removeServer(deps, "u1", desktop.server.id)).toEqual({ error: "connected" });
+    expect(db.select().from(server).where(eq(server.id, desktop.server.id)).get()).toBeDefined();
+  });
+
+  it("refuses a server the caller does not own", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    await claimHandle(deps, "u1", "sawyer");
+    await claimHandle(deps, "u2", "other");
+    const victim = db.select().from(server).where(eq(server.subdomain, "other")).get();
+    expect(await removeServer(deps, "u1", victim!.id)).toEqual({ error: "not-found" });
+  });
+});
+
 describe("getAccountState (adaptive single / multi)", () => {
   it("returns an empty account before a handle is claimed", async () => {
     seedUser("u1", "sawyerhood");
@@ -287,7 +346,7 @@ describe("getAccountState (adaptive single / multi)", () => {
     expect(state.handle).toBeNull();
     expect(state.servers).toHaveLength(0);
     expect(state.githubLogin).toBe("sawyerhood");
-    expect(state.maxServers).toBe(5);
+    expect(state.maxServers).toBe(MAX_SERVERS_PER_ACCOUNT);
   });
 
   it("returns one server, flagged primary, after a claim", async () => {

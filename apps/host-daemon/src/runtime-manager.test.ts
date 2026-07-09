@@ -435,6 +435,17 @@ describe("RuntimeManager", () => {
         ),
       },
       {
+        id: `global-skills:${entry.skillCatalogHash}:pi`,
+        providerId: "pi",
+        skillDirectoryRootPath: path.join(
+          dataDir,
+          "runtime",
+          "global-skills",
+          entry.skillCatalogHash ?? "",
+          "skills",
+        ),
+      },
+      {
         id: `global-skills:${entry.skillCatalogHash}:acp`,
         providerId: "acp",
         skillDirectoryRootPath: path.join(

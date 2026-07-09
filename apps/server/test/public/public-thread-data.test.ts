@@ -3045,7 +3045,8 @@ describe("public thread data routes", () => {
         projectId: project.id,
         providerId: "codex",
         model: "gpt-5.5",
-        reasoningLevel: "max",
+        // ultracode is Claude-only; stale for Codex project defaults.
+        reasoningLevel: "ultracode",
         permissionMode: "full",
         serviceTier: "default",
       });

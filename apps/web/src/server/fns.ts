@@ -7,6 +7,7 @@ import {
   createServer,
   depsFromEnv,
   disconnectServer,
+  removeServer,
   getAccountState,
   type AccountState,
 } from "./api.js";
@@ -80,4 +81,13 @@ export const disconnectFn = createServerFn({ method: "POST" })
     if (!userId) return { error: "unauthenticated" as const };
     if (!data.serverId) return { error: "not-found" as const };
     return disconnectServer(depsFromEnv(getEnv()), userId, data.serverId);
+  });
+
+export const removeServerFn = createServerFn({ method: "POST" })
+  .validator((input: { serverId: string }) => ({ serverId: String(input.serverId) }))
+  .handler(async ({ data }) => {
+    const userId = await getSessionUserId();
+    if (!userId) return { error: "unauthenticated" as const };
+    if (!data.serverId) return { error: "not-found" as const };
+    return removeServer(depsFromEnv(getEnv()), userId, data.serverId);
   });

@@ -64,6 +64,7 @@ describe("markdown editor example frontend bundle", () => {
       navPanel: [],
       threadPanelAction: [],
       composerAccessory: [],
+      sidebarFooterAction: [],
       fileOpener: [],
     };
     const componentStub: unknown = new Proxy(function stub() {}, {
@@ -114,6 +115,7 @@ describe("markdown editor example frontend bundle", () => {
         navPanel: (r) => registered.navPanel.push(r),
         threadPanelAction: (r) => registered.threadPanelAction.push(r),
         composerAccessory: (r) => registered.composerAccessory.push(r),
+        sidebarFooterAction: (r) => registered.sidebarFooterAction.push(r),
         fileOpener: (r) => registered.fileOpener.push(r),
       },
     });
@@ -143,5 +145,6 @@ describe("markdown editor example frontend bundle", () => {
 
     expect(registered.homepageSection).toHaveLength(0);
     expect(registered.composerAccessory).toHaveLength(0);
+    expect(registered.sidebarFooterAction).toHaveLength(0);
   });
 });

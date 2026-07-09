@@ -22,6 +22,12 @@ describe("reconcileReasoningLevel", () => {
     ).toBe("ultracode");
   });
 
+  it("reconciles ultra down toward max when ultra is unavailable", () => {
+    expect(
+      reconcileReasoningLevel("ultra", ["low", "medium", "high", "xhigh", "max"]),
+    ).toBe("max");
+  });
+
 
   it("keeps the previous level when the new model supports it", () => {
     expect(
