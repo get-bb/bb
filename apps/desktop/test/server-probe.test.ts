@@ -78,6 +78,7 @@ describe("probeBbServer", () => {
             200,
             JSON.stringify({
               hostDaemonPort: 38887,
+              primaryHostPlatform: null,
               voiceTranscriptionEnabled: false,
             }),
           );
@@ -128,6 +129,7 @@ describe("probeBbServer", () => {
             200,
             JSON.stringify({
               hostDaemonPort: 38887,
+              primaryHostPlatform: null,
               voiceTranscriptionEnabled: false,
             }),
           );

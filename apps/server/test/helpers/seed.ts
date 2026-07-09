@@ -106,6 +106,7 @@ export function seedSession(deps: Pick<AppDeps, "db" | "hub">, hostId: string) {
     heartbeatIntervalMs: 5_000,
     leaseTimeoutMs: 30_000,
   });
+  deps.hub.recordDaemonSessionPlatform(session.id, "darwin");
   registerTestHostRpcCapture(deps, { hostId, sessionId: session.id });
   return session;
 }

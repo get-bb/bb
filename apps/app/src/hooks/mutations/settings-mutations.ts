@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { AppThemeSelection, Experiments } from "@bb/domain";
+import type { AppSettings, AppThemeSelection, Experiments } from "@bb/domain";
 import * as api from "@/lib/api";
 import { invalidateSystemConfig } from "../cache-owners/system-cache-effects";
 
@@ -17,6 +17,25 @@ export function useUpdateExperiments() {
     },
     mutationFn: (experiments: Experiments) =>
       api.updateExperiments(experiments),
+    onSuccess: () => {
+      invalidateSystemConfig({ queryClient });
+    },
+  });
+}
+
+/**
+ * Replace the user's server-backed Settings → General preferences. The server
+ * broadcasts `config-changed` for other windows; the local invalidation gives
+ * this window an immediate refresh.
+ */
+export function useUpdateGeneralSettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to update general settings.",
+    },
+    mutationFn: (settings: AppSettings) => api.updateGeneralSettings(settings),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

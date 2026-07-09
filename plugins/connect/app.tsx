@@ -50,6 +50,9 @@ function asStatus(payload: unknown): ConnectStatus | null {
     url?: unknown;
     lastError?: unknown;
     since?: unknown;
+    remoteClients?: unknown;
+    lastRemoteActivityAt?: unknown;
+    shares?: unknown;
   };
   if (
     (record.state !== "disconnected" &&
@@ -61,6 +64,22 @@ function asStatus(payload: unknown): ConnectStatus | null {
   ) {
     return null;
   }
+  const shares: ConnectStatus["shares"] = [];
+  if (Array.isArray(record.shares)) {
+    for (const entry of record.shares) {
+      if (
+        entry !== null &&
+        typeof entry === "object" &&
+        typeof (entry as { port?: unknown }).port === "number" &&
+        typeof (entry as { url?: unknown }).url === "string"
+      ) {
+        shares.push({
+          port: (entry as { port: number }).port,
+          url: (entry as { url: string }).url,
+        });
+      }
+    }
+  }
   return {
     state: record.state,
     paired: record.paired,
@@ -68,6 +87,13 @@ function asStatus(payload: unknown): ConnectStatus | null {
     url: typeof record.url === "string" ? record.url : null,
     lastError: typeof record.lastError === "string" ? record.lastError : null,
     since: record.since,
+    remoteClients:
+      typeof record.remoteClients === "number" ? record.remoteClients : 0,
+    lastRemoteActivityAt:
+      typeof record.lastRemoteActivityAt === "number"
+        ? record.lastRemoteActivityAt
+        : null,
+    shares,
   };
 }
 
@@ -280,6 +306,139 @@ function DisconnectDialog({
   );
 }
 
+function SharedPortsSection({
+  shares,
+}: {
+  shares: ConnectStatus["shares"];
+}) {
+  const rpc = useRpc();
+  const [portInput, setPortInput] = useState("");
+  const [exposing, setExposing] = useState(false);
+  const [revokingPort, setRevokingPort] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const expose = useCallback(() => {
+    const trimmed = portInput.trim();
+    if (trimmed.length === 0 || exposing) return;
+    const port = Number(trimmed);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setError("Port must be an integer between 1 and 65535");
+      return;
+    }
+    setExposing(true);
+    setError(null);
+    rpc.call("expose", { port }).then(
+      () => {
+        setExposing(false);
+        setPortInput("");
+      },
+      (rpcError: unknown) => {
+        setExposing(false);
+        setError(errorText(rpcError));
+      },
+    );
+  }, [portInput, exposing, rpc]);
+
+  const unexpose = useCallback(
+    (port: number) => {
+      if (revokingPort !== null) return;
+      setRevokingPort(port);
+      setError(null);
+      rpc.call("unexpose", { port }).then(
+        () => {
+          setRevokingPort(null);
+        },
+        (rpcError: unknown) => {
+          setRevokingPort(null);
+          setError(errorText(rpcError));
+        },
+      );
+    },
+    [revokingPort, rpc],
+  );
+
+  return (
+    <div className="space-y-3 border-t border-border-seam pt-4">
+      <h3 className="text-sm font-semibold">Shared ports</h3>
+      {shares.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No shared ports — run{" "}
+          <span className="font-mono">bb connect expose &lt;port&gt;</span> or
+          add one here.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {shares.map((share) => (
+            <li
+              key={share.port}
+              className="flex flex-wrap items-center gap-2"
+            >
+              <span className="font-mono text-sm tabular-nums">
+                {share.port}
+              </span>
+              <a
+                href={share.url}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all font-mono text-sm underline-offset-4 hover:underline"
+              >
+                {share.url}
+              </a>
+              <CopyUrlButton url={share.url} />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                disabled={revokingPort === share.port}
+                onClick={() => unexpose(share.port)}
+              >
+                {revokingPort === share.port ? (
+                  <Icon name="Spinner" className="size-4 animate-spin" />
+                ) : null}
+                Revoke
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="flex flex-wrap items-center gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          expose();
+        }}
+      >
+        <Input
+          type="number"
+          min={1}
+          max={65535}
+          step={1}
+          value={portInput}
+          onChange={(event) => setPortInput(event.target.value)}
+          placeholder="Port"
+          inputMode="numeric"
+          className="max-w-[7rem] font-mono"
+          aria-label="Port to share"
+        />
+        <Button
+          type="submit"
+          size="sm"
+          disabled={exposing || portInput.trim().length === 0}
+        >
+          {exposing ? (
+            <Icon name="Spinner" className="size-4 animate-spin" />
+          ) : null}
+          Share
+        </Button>
+      </form>
+      {error !== null ? (
+        <p className="text-sm text-destructive">{error}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function NotPairedContent({ onPaired }: { onPaired: () => void }) {
   return (
     <div className="space-y-5">
@@ -395,6 +554,8 @@ function PairedContent({
           <QrCodeImage value={status.url} />
         </div>
       ) : null}
+
+      <SharedPortsSection shares={status.shares} />
 
       <div className="space-y-2 border-t border-border-seam pt-4">
         <div className="flex items-center gap-2">

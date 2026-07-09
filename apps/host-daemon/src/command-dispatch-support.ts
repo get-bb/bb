@@ -19,6 +19,7 @@ import type { InteractiveResolveCommandInput } from "./interactive-request-regis
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
+import type { CaffeinateManager } from "./command-handlers/caffeinate.js";
 
 type DispatchCommand = HostDaemonCommand | HostDaemonOnlineRpcCommand;
 
@@ -56,6 +57,7 @@ export interface CommandDispatchOptions {
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
+  caffeinateManager?: CaffeinateManager;
   threadStorageRootPath: string;
 }
 

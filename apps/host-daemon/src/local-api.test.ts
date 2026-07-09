@@ -8,11 +8,11 @@ import {
   type WorkspaceOpenTarget,
 } from "@bb/host-daemon-contract";
 import {
-  resolveHostPlatform,
   resolveNativeFolderPicker,
   startLocalApiServer,
   type LocalApiServer,
 } from "./local-api.js";
+import { resolveHostPlatform } from "./host-platform.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { WorkspaceOpenTargetError } from "@bb/local-open-targets";
 

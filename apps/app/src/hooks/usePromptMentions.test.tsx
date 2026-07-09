@@ -2,7 +2,11 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemConfigResponse } from "@bb/server-contract";
-import { defaultAppTheme, defaultExperiments } from "@bb/domain";
+import {
+  defaultAppSettings,
+  defaultAppTheme,
+  defaultExperiments,
+} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -18,11 +22,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
+    generalSettings: defaultAppSettings,
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
+    primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
     dataDir: "/tmp/bb-test",
   };

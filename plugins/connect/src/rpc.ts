@@ -13,10 +13,17 @@ const pairInputSchema = z.object({
   baseUrl: z.string().url().optional(),
 });
 
+const portInputSchema = z.object({
+  port: z.number().int().min(1).max(65535),
+});
+
 export type ConnectRpcHandlers = {
   pair(input: unknown): Promise<ConnectStatus>;
   status(): ConnectStatus;
   disconnect(): Promise<ConnectStatus>;
+  expose(input: unknown): Promise<{ port: number; url: string }>;
+  unexpose(input: unknown): Promise<{ removed: boolean; port: number }>;
+  listShares(): Array<{ port: number; url: string }>;
 };
 
 export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
@@ -34,6 +41,17 @@ export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
     },
     async disconnect() {
       return tunnel.disconnect();
+    },
+    async expose(input: unknown) {
+      const args = portInputSchema.parse(input);
+      return tunnel.expose(args.port);
+    },
+    async unexpose(input: unknown) {
+      const args = portInputSchema.parse(input);
+      return tunnel.unexpose(args.port);
+    },
+    listShares() {
+      return tunnel.listShares();
     },
   };
 }

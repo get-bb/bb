@@ -151,7 +151,7 @@ Ownership:
 
 Lifecycle:
 
-  bb thread archive [id]                   Archive a thread
+  bb thread archive [id]                   Archive a thread (and children/side chats)
     --self                                 Archive current thread
 
   bb thread unarchive [id]                 Unarchive a thread

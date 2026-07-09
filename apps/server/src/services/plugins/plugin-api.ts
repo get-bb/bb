@@ -362,6 +362,11 @@ export interface PluginApiHandle {
   cli: { registration: PluginCliRegistrationRecord | null };
   /** Native tools recorded by `bb.agents.registerTool`. */
   agentTools: PluginAgentToolRecord[];
+  /**
+   * Dynamic thread-instructions provider from
+   * `bb.agents.contributeInstructions` (at most one; null when none).
+   */
+  instructionProvider: PluginInstructionProvider | null;
   /** Thread actions recorded by `bb.ui.registerThreadAction`. */
   threadActions: PluginThreadActionRecord[];
   /** Mention providers recorded by `bb.ui.registerMentionProvider`. */
@@ -369,6 +374,12 @@ export interface PluginApiHandle {
   /** Poison every method on the handle. */
   invalidate(): void;
 }
+
+/** Provider registered by `bb.agents.contributeInstructions`. */
+export type PluginInstructionProvider = (ctx: {
+  threadId: string;
+  projectId: string;
+}) => string | null;
 
 /** Duck-typed zod detection: plugin sources may carry their own zod copy,
  * so instanceof is useless — anything with safeParse is treated as zod. */
@@ -725,7 +736,18 @@ export function createPluginApi(options: {
   };
 
   const agentTools: PluginAgentToolRecord[] = [];
+  let instructionProvider: PluginInstructionProvider | null = null;
   const agents: PluginAgents = {
+    contributeInstructions(provider) {
+      assertLive();
+      if (typeof provider !== "function") {
+        throw new Error(
+          "contributeInstructions requires a provider function (ctx) => string | null",
+        );
+      }
+      // At most one provider per plugin; a repeated call replaces.
+      instructionProvider = provider;
+    },
     registerTool(tool: {
       name: string;
       description: string;
@@ -1068,6 +1090,9 @@ export function createPluginApi(options: {
     schedules,
     cli: cliRecord,
     agentTools,
+    get instructionProvider() {
+      return instructionProvider;
+    },
     threadActions,
     mentionProviders,
     invalidate() {

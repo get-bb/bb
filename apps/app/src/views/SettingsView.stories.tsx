@@ -136,6 +136,7 @@ function useSettingsStoryState() {
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] = useState(false);
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
   const [richTextEditing, setRichTextEditing] = useState(false);
+  const [caffeinate, setCaffeinate] = useState(false);
   const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
     useState<PreferredAudioInputDeviceId>("studio-mic");
   const [directoryTargetId, setDirectoryTargetId] =
@@ -149,6 +150,7 @@ function useSettingsStoryState() {
 
   return {
     appearance,
+    caffeinate,
     directoryTargetId,
     experiments,
     fileTargetId,
@@ -158,6 +160,7 @@ function useSettingsStoryState() {
     rewriteLocalhostLinks,
     richTextEditing,
     setAppearance,
+    setCaffeinate,
     setDirectoryTargetId,
     setExperiments,
     setFileTargetId,
@@ -188,16 +191,22 @@ function VoiceInputStory() {
 }
 
 function GeneralSettingsStory({
+  caffeinateAvailable = false,
   desktopBrowserAvailable = false,
 }: {
+  caffeinateAvailable?: boolean;
   desktopBrowserAvailable?: boolean;
 }) {
   const state = useSettingsStoryState();
 
   return (
     <GeneralSettingsSection
+      caffeinateAvailable={caffeinateAvailable}
+      caffeinateDisabled={false}
+      caffeinateEnabled={state.caffeinate}
       desktopBrowserAvailable={desktopBrowserAvailable}
       navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
+      onCaffeinateChange={state.setCaffeinate}
       onNavigateToThreadAfterCreateChange={
         state.setNavigateToThreadAfterCreate
       }
@@ -365,7 +374,7 @@ export function Overview() {
 export function General() {
   return (
     <SettingsStoryFrame>
-      <GeneralSettingsStory desktopBrowserAvailable />
+      <GeneralSettingsStory caffeinateAvailable desktopBrowserAvailable />
       <VoiceInputStory />
     </SettingsStoryFrame>
   );

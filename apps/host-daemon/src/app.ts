@@ -37,6 +37,10 @@ import {
   ensureDataDirSkillsRootPath,
 } from "./injected-skills.js";
 import {
+  createCaffeinateManager,
+  type CaffeinateManager,
+} from "./command-handlers/caffeinate.js";
+import {
   ServerConnection,
   type HandleServerSessionInvalidatedArgs,
   type ServerSessionInvalidationSource,
@@ -113,6 +117,7 @@ export interface CreateHostDaemonAppOptions {
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
+  caffeinateManager?: CaffeinateManager;
   runtimeShellEnv?: AgentRuntimeOptions["shellEnv"];
   runtimeShellEnvResolvedAtMs?: number;
   resolveRuntimeShellEnv?: () => Promise<
@@ -224,6 +229,8 @@ export async function createHostDaemonApp(
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
   );
+  const caffeinateManager =
+    options.caffeinateManager ?? createCaffeinateManager();
   await cleanupInjectedSkillStagingDirs({
     dataDir: options.dataDir,
     keepCatalogHashes: [],
@@ -709,6 +716,7 @@ export async function createHostDaemonApp(
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },
+    caffeinateManager,
     threadStorageRootPath,
     logger: options.logger,
     eventSink: {
@@ -826,6 +834,7 @@ export async function createHostDaemonApp(
       idleProviderSessionReaper.stop();
       eventLoopStallMonitor.stop();
       hostDaemonHealthMonitor.stop();
+      caffeinateManager.shutdown();
       await localApi?.close();
       await watchManager.shutdown();
       // Tear down the isolated parcel watcher child (SIGKILL + clear timers) so

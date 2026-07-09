@@ -339,6 +339,19 @@ export interface PluginAgents {
       ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
     },
   ): void;
+  /**
+   * Contribute a dynamic section appended to thread instructions. The
+   * provider runs when a thread's runtime command config is resolved
+   * (thread.start / turn.submit); return null to contribute nothing for
+   * that resolution. Must be synchronous and fast — it sits on the
+   * thread-start path. A repeated call replaces this plugin's previous
+   * provider. Output longer than 4096 characters is truncated; a throwing
+   * provider is logged against the plugin and contributes nothing.
+   * Side-chat threads never receive plugin instructions.
+   */
+  contributeInstructions(
+    provider: (ctx: { threadId: string; projectId: string }) => string | null,
+  ): void;
 }
 
 // ---------------------------------------------------------------------------

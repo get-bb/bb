@@ -7,6 +7,7 @@ import { ApiError } from "../errors.js";
 import { verifyAuthenticatedDaemon } from "../internal/auth.js";
 import type { AppDeps } from "../types.js";
 import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
+import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
 import {
   getInactiveSessionLogFields,
   requireAuthorizedOpenSession,
@@ -85,6 +86,9 @@ export function onDaemonSocketOpen(
   deps.terminalSessions.expireDisconnectedHostTerminals({
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
+  });
+  schedulePrimaryHostCaffeinateReconciliation(deps, {
+    reason: "daemon-open",
   });
 }
 

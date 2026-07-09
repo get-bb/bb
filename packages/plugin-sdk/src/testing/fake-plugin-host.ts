@@ -264,6 +264,11 @@ export interface FakePluginRegistrations {
   schedules: FakeScheduleRecord[];
   cli: FakeCliRecord | null;
   agentTools: FakeAgentToolRecord[];
+  /** Provider from contributeInstructions, or null when none registered. */
+  instructionProvider: ((ctx: {
+    threadId: string;
+    projectId: string;
+  }) => string | null) | null;
   threadActions: FakeThreadActionRecord[];
   threadEventHandlers: Record<PluginThreadEventName, number>;
   mentionProviders: FakeMentionProviderRecord[];
@@ -885,7 +890,20 @@ export function createFakePluginHost(
 
   // --- agents ---
   const agentTools: FakeAgentToolRecord[] = [];
+  let instructionProvider: ((ctx: {
+    threadId: string;
+    projectId: string;
+  }) => string | null) | null = null;
   const agents: PluginAgents = {
+    contributeInstructions(provider) {
+      assertLive();
+      if (typeof provider !== "function") {
+        throw new Error(
+          "contributeInstructions requires a provider function (ctx) => string | null",
+        );
+      }
+      instructionProvider = provider;
+    },
     registerTool(tool: {
       name: string;
       description: string;
@@ -1165,6 +1183,9 @@ export function createFakePluginHost(
         return cliRecord.registration;
       },
       agentTools,
+      get instructionProvider() {
+        return instructionProvider;
+      },
       threadActions,
       get threadEventHandlers() {
         return {

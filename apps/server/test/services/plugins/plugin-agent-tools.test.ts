@@ -377,6 +377,125 @@ describe("bb.agents.registerTool", () => {
   });
 });
 
+describe("bb.agents.contributeInstructions", () => {
+  let db: DbConnection;
+  let workDir: string;
+  let experimentOn: boolean;
+  let service: PluginService;
+
+  beforeEach(async () => {
+    db = createConnection(":memory:");
+    migrate(db);
+    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-instr-test-"));
+    experimentOn = true;
+    service = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      isEnabled: () => experimentOn,
+      isConnectEnabled: () => false,
+      loadTimeoutMs: 2000,
+    });
+  });
+
+  afterEach(async () => {
+    await service.stop();
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("registers a provider; re-register replaces; listed by plugin id", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-advisor",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.contributeInstructions(() => "first");
+          bb.agents.contributeInstructions(() => "second");
+        }
+      `,
+    });
+    const entry = await service.installPath(rootDir);
+    expect(entry.status).toBe("running");
+
+    const listed = service.listInstructionContributions();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.pluginId).toBe("advisor");
+    expect(
+      listed[0]?.provider({ threadId: "thr_1", projectId: "proj_1" }),
+    ).toBe("second");
+  });
+
+  it("two plugins each contribute one provider, ordered by plugin id", async () => {
+    const zebra = await writePlugin(workDir, {
+      name: "bb-plugin-zebra",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.contributeInstructions(() => "from zebra");
+        }
+      `,
+    });
+    const alpha = await writePlugin(workDir, {
+      name: "bb-plugin-alpha",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.contributeInstructions(() => "from alpha");
+        }
+      `,
+    });
+    await service.installPath(zebra);
+    await service.installPath(alpha);
+
+    const listed = service.listInstructionContributions();
+    expect(listed.map((c) => c.pluginId)).toEqual(["alpha", "zebra"]);
+    expect(
+      listed.map((c) =>
+        c.provider({ threadId: "thr_1", projectId: "proj_1" }),
+      ),
+    ).toEqual(["from alpha", "from zebra"]);
+  });
+
+  it("reload without contributeInstructions clears the previous provider", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-transient",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.contributeInstructions(() => "present");
+        }
+      `,
+    });
+    await service.installPath(rootDir);
+    expect(service.listInstructionContributions()).toHaveLength(1);
+
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `export default function plugin() {}`,
+    );
+    await service.reload("transient");
+    expect(service.listInstructionContributions()).toEqual([]);
+  });
+
+  it("the plugins experiment gates instruction contributions", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-gated-instr",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.contributeInstructions(() => "gated");
+        }
+      `,
+    });
+    await service.installPath(rootDir);
+    expect(service.listInstructionContributions()).toHaveLength(1);
+
+    experimentOn = false;
+    expect(service.listInstructionContributions()).toEqual([]);
+  });
+});
+
 describe("plugin tools reach thread runtime config", () => {
   let harness: TestAppHarness;
   let pluginsDir: string;

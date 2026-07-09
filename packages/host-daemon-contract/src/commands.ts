@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 47 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 49 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -522,6 +522,13 @@ const hostPickFolderCommandSchema = z
   })
   .strict();
 
+const hostCaffeinateCommandSchema = z
+  .object({
+    type: z.literal("host.caffeinate"),
+    enabled: z.boolean(),
+  })
+  .strict();
+
 export const directoryEntrySchema = z.object({
   kind: hostPathEntryKindSchema,
   name: z.string(),
@@ -937,6 +944,13 @@ const pathListResultSchema = z.object({
   truncated: z.boolean(),
 });
 
+const hostCaffeinateResultSchema = z
+  .object({
+    enabled: z.boolean(),
+    supported: z.boolean(),
+  })
+  .strict();
+
 // No `truncated` here, unlike `pathListResultSchema`: the daemon returns the
 // full raw set across all roots and the server owns de-dup/sort/limit.
 const commandListResultSchema = z.object({
@@ -1278,6 +1292,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.pick_folder",
     schema: hostPickFolderCommandSchema,
     resultSchema: pickFolderResponseSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.caffeinate": defineHostDaemonCommandDescriptor({
+    type: "host.caffeinate",
+    schema: hostCaffeinateCommandSchema,
+    resultSchema: hostCaffeinateResultSchema,
     transport: "onlineRpc",
     retryable: false,
     flushEventsBeforeResult: false,

@@ -1,7 +1,9 @@
 import {
+  getAppSettings,
   getExperiments,
   getStoredFaviconColor,
   getStoredThemeId,
+  setAppSettings,
   setExperiments,
   setStoredAppearance,
 } from "@bb/db";
@@ -31,6 +33,8 @@ import {
   resolveCustomThemeCssPath,
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
+import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
+import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
 
 export function registerSystemRoutes(
   app: Hono,
@@ -44,8 +48,14 @@ export function registerSystemRoutes(
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
 
+  function resolvePrimaryHostPlatform() {
+    const hostId = resolvePrimaryHostId(deps);
+    return hostId === null ? null : deps.hub.getDaemonPlatformForHost(hostId);
+  }
+
   function buildSystemConfigResponse() {
     return {
+      generalSettings: getAppSettings(deps.db),
       experiments: getExperiments(deps.db),
       appearance: resolveAppTheme(
         themeRoot,
@@ -55,12 +65,22 @@ export function registerSystemRoutes(
       customThemes: listCustomThemeNames(themeRoot),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
+      primaryHostPlatform: resolvePrimaryHostPlatform(),
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
       dataDir: deps.config.dataDir,
     };
   }
 
   get(routes.config, (context) => context.json(buildSystemConfigResponse()));
+
+  put(routes.generalSettings, (context, payload) => {
+    setAppSettings(deps.db, payload);
+    deps.hub.notifySystem(["config-changed"]);
+    schedulePrimaryHostCaffeinateReconciliation(deps, {
+      reason: "settings-updated",
+    });
+    return context.json(getAppSettings(deps.db));
+  });
 
   put(routes.experiments, (context, payload) => {
     const previous = getExperiments(deps.db);

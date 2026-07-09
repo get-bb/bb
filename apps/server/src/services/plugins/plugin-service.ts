@@ -257,6 +257,12 @@ export interface PluginAgentToolContribution {
   instructions: string | null;
 }
 
+/** One dynamic instructions provider from a running plugin. */
+export interface PluginInstructionContribution {
+  pluginId: string;
+  provider: (ctx: { threadId: string; projectId: string }) => string | null;
+}
+
 /** One thread action contributed by a running plugin (design §4.9). */
 export interface PluginThreadActionContribution {
   pluginId: string;
@@ -470,6 +476,13 @@ export interface PluginService {
    * NEXT session start. Empty when the experiment is off.
    */
   listAgentTools(): PluginAgentToolContribution[];
+  /**
+   * Dynamic instruction providers from bb.agents.contributeInstructions,
+   * ordered by plugin id. Resolved live at thread.start/turn.submit;
+   * empty when the experiment is off or no plugin registered a provider.
+   * At most one provider per plugin (re-register replaces).
+   */
+  listInstructionContributions(): PluginInstructionContribution[];
   /** Resolve one registered native tool by name (same view as listAgentTools). */
   findAgentTool(
     name: string,
@@ -2365,6 +2378,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         },
         instructions: record.instructions,
       }));
+    },
+
+    listInstructionContributions() {
+      const out: PluginInstructionContribution[] = [];
+      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        const provider = plugin.handle.instructionProvider;
+        if (provider === null) continue;
+        out.push({ pluginId: id, provider });
+      }
+      return out;
     },
 
     findAgentTool(name) {

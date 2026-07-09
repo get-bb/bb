@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { RESERVED_HANDLES, handleFromHost } from "@bb/connect-db";
+import { RESERVED_HANDLES, parseVisitorHost } from "@bb/connect-db";
 import { TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
@@ -13,6 +13,9 @@ import { BB_ICON_DATA_URI } from "./bb-icon.js";
 export { TunnelDO };
 
 const SESSION_COOKIE = "__Secure-better-auth.session_token";
+
+/** Internal header: gate → TunnelDO, share target (port string). Never trust visitors. */
+export const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
@@ -75,12 +78,31 @@ function signInPage(handle: string, appUrl: string, returnTo: string): Response 
   );
 }
 
+/**
+ * Build the request forwarded to the TunnelDO. Always strips a visitor-supplied
+ * target header; sets it only when the host label is a share (`handle--port`).
+ */
+export function requestForTunnelDo(request: Request, target: string | null): Request {
+  const headers = new Headers(request.headers);
+  headers.delete(TUNNEL_TARGET_HEADER);
+  if (target !== null) {
+    headers.set(TUNNEL_TARGET_HEADER, target);
+  }
+  return new Request(request, { headers });
+}
+
+/** Cache namespace for the full visitor host label (bare handle or share). */
+export function cacheNamespace(handle: string, target: string | null): string {
+  return target !== null ? `${handle}--${target}` : handle;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const host = request.headers.get("host") ?? url.host;
-    const handle = handleFromHost(host, env.BASE_DOMAIN);
-    if (!handle) return text("bb connect: unknown host\n", 404);
+    const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
+    if (!parsed) return text("bb connect: unknown host\n", 404);
+    const { handle, target } = parsed;
     // Reserved labels (www, api, …) are never handles. The wildcard route can
     // receive them if a more specific binding is missing — send them home
     // rather than answering with a confusing "no server" page.
@@ -94,8 +116,9 @@ export default {
 
     const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(handle));
 
-    // Tunnel client connection — authenticate with the durable credential.
+    // Tunnel client connection — bare handle only (share hosts are visitor-facing).
     if (url.pathname === "/__tunnel") {
+      if (target !== null) return text("bb connect: not found\n", 404);
       const auth = request.headers.get("authorization") ?? "";
       const credential = auth.startsWith("Bearer ") ? auth.slice(7) : "";
       // Re-resolve fresh (bypass the isolate cache): a warm isolate would
@@ -117,13 +140,10 @@ export default {
     // Reserve the /__ namespace: never proxy internal paths from outside.
     if (url.pathname.startsWith("/__")) return text("bb connect: not found\n", 404);
 
-    // Daemon → server traffic (bb's host-daemon protocol). Authenticated by a
-    // bb-connect machine credential so the internet can't reach /internal/*
-    // (which the server would otherwise treat as loopback via the tunnel). The
-    // server still host-key-auths underneath — defense in depth. The machine
-    // credential header is stripped before forwarding.
+    // Daemon → server traffic. Share hosts are visitor-only — no machine path.
     const MACHINE_HEADER = "x-bb-connect-machine";
     if (url.pathname.startsWith("/internal")) {
+      if (target !== null) return text("bb connect: not found\n", 404);
       const machineCred = request.headers.get(MACHINE_HEADER) ?? "";
       const machineUserId = await verifyMachineCredential(machineCred, db);
       if (machineUserId == null || machineUserId !== resolved.userId) {
@@ -131,10 +151,12 @@ export default {
       }
       const headers = new Headers(request.headers);
       headers.delete(MACHINE_HEADER);
+      headers.delete(TUNNEL_TARGET_HEADER);
       return stub.fetch(new Request(request, { headers }));
     }
 
     // Visitor request — require a session owned by this handle's account.
+    // Identical auth for bare-handle and share hosts.
     const cookie = parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
     const appUrl = `https://${env.BASE_DOMAIN}`;
     if (!cookie) return signInPage(handle, appUrl, url.toString());
@@ -142,12 +164,17 @@ export default {
     if (!userId) return signInPage(handle, appUrl, url.toString());
     if (userId !== resolved.userId) return text("bb connect: not your server\n", 403);
 
+    const doRequest = requestForTunnelDo(request, target);
+
     // WebSocket upgrades (bb's /ws, terminals) can't be cached — proxy directly.
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-      return stub.fetch(request);
+      return stub.fetch(doRequest);
     }
     // Everything else: serve from the edge cache when the origin allows it,
-    // otherwise proxy through the tunnel.
-    return serveWithCache(request, handle, ctx, () => stub.fetch(request));
+    // otherwise proxy through the tunnel. Namespace by full host label so a
+    // share response never collides with bare-handle app assets.
+    return serveWithCache(request, cacheNamespace(handle, target), ctx, () =>
+      stub.fetch(doRequest),
+    );
   },
 } satisfies ExportedHandler<Env>;

@@ -34,6 +34,9 @@ function status(overrides: Partial<ConnectStatus> = {}): ConnectStatus {
     url: null,
     lastError: null,
     since: 1_700_000_000_000,
+    remoteClients: 0,
+    lastRemoteActivityAt: null,
+    shares: [],
     ...overrides,
   };
 }
@@ -86,5 +89,121 @@ describe("connect settings section", () => {
     await slot.findByText("Connected");
     slot.getByText("https://workstation.getbb.app");
     slot.getByRole("button", { name: "Copy URL" });
+  });
+
+  it("renders shared ports with URLs and empty state", async () => {
+    const emptySlot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            status({
+              state: "connected",
+              paired: true,
+              handle: "workstation",
+              url: "https://workstation.getbb.app",
+              shares: [],
+            }),
+        },
+      },
+    );
+
+    await emptySlot.findByText("Shared ports");
+    emptySlot.getByText(/No shared ports/);
+
+    const withShares = status({
+      state: "connected",
+      paired: true,
+      handle: "workstation",
+      url: "https://workstation.getbb.app",
+      shares: [
+        {
+          port: 5173,
+          url: "https://workstation--5173.getbb.app",
+        },
+      ],
+    });
+    await emptySlot.emitRealtime(CONNECT_REALTIME_CHANNEL, withShares);
+
+    await emptySlot.findByText("5173");
+    const shareLink = emptySlot.getByRole("link", {
+      name: "https://workstation--5173.getbb.app",
+    });
+    expect(shareLink.getAttribute("href")).toBe(
+      "https://workstation--5173.getbb.app",
+    );
+    expect(emptySlot.queryByText(/No shared ports/)).toBeNull();
+  });
+
+  it("unexpose action fires the revoke RPC", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            status({
+              state: "connected",
+              paired: true,
+              handle: "workstation",
+              url: "https://workstation.getbb.app",
+              shares: [
+                {
+                  port: 3000,
+                  url: "https://workstation--3000.getbb.app",
+                },
+              ],
+            }),
+          unexpose: () => ({ removed: true, port: 3000 }),
+        },
+      },
+    );
+
+    await slot.findByText("3000");
+    fireEvent.click(slot.getByRole("button", { name: "Revoke" }));
+
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "unexpose",
+        input: { port: 3000 },
+      }),
+    );
+  });
+
+  it("share form calls expose RPC and surfaces errors", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            status({
+              state: "connected",
+              paired: true,
+              handle: "workstation",
+              url: "https://workstation.getbb.app",
+              shares: [],
+            }),
+          expose: () => {
+            throw new Error("this bb is not connected to getbb.app");
+          },
+        },
+      },
+    );
+
+    await slot.findByText("Shared ports");
+    fireEvent.change(slot.getByLabelText("Port to share"), {
+      target: { value: "8080" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Share" }));
+
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "expose",
+        input: { port: 8080 },
+      }),
+    );
+    await slot.findByText(/this bb is not connected to getbb.app/);
   });
 });

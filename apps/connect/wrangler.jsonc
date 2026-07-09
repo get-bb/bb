@@ -41,6 +41,15 @@
         "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
       },
       "vars": { "BASE_DOMAIN": "vibecodethis.site" },
+      // Staging has no wildcard zone route; per-handle (and per-share) hosts
+      // are custom domains. Declared explicitly so a staging deploy never
+      // inherits the top-level prod routes (routes inherit across wrangler
+      // envs — the same footgun that once stole a domain from bb-web).
+      "routes": [
+        { "pattern": "sawyer.vibecodethis.site", "custom_domain": true },
+        { "pattern": "sawyer--8000.vibecodethis.site", "custom_domain": true },
+        { "pattern": "sawyer--8099.vibecodethis.site", "custom_domain": true }
+      ],
       "d1_databases": [
         {
           "binding": "DB",

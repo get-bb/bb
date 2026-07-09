@@ -26,6 +26,7 @@ import {
 import {
   getPluginSkillsRootPaths,
   listPluginAgentTools,
+  listPluginInstructionContributions,
 } from "../plugins/plugin-agent-contributions.js";
 import { generatedSkillsRootPath } from "../plugins/plugin-commands-skill.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
@@ -45,6 +46,9 @@ const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
 );
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, stop work in the current turn; future turns will run in the updated environment.";
+
+/** Cap on each plugin's contributeInstructions output (per resolution). */
+const PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS = 4096;
 
 export interface ThreadRuntimeCommandEnvironment {
   hostId: string;
@@ -207,6 +211,38 @@ export async function resolveThreadRuntimeCommandConfig(
       instructionSections.push(
         `The following instructions come from the BB plugin "${contribution.pluginId}" for its tool "${contribution.tool.name}":`,
         contribution.instructions,
+      );
+    }
+  }
+  // Plugin-level contributeInstructions providers (after per-tool snippets,
+  // before data-dir user instructions). Side chats get no plugin tools and
+  // no plugin instructions.
+  if (!isSideChatThread(args.thread)) {
+    for (const contribution of listPluginInstructionContributions()) {
+      let text: string | null;
+      try {
+        text = contribution.provider({
+          threadId: args.thread.id,
+          projectId: args.thread.projectId,
+        });
+      } catch (error) {
+        deps.logger.warn(
+          {
+            err: error,
+            pluginId: contribution.pluginId,
+            threadId: args.thread.id,
+          },
+          "Plugin instruction contribution threw; skipping",
+        );
+        continue;
+      }
+      if (text === null || text.trim().length === 0) continue;
+      if (text.length > PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS) {
+        text = text.slice(0, PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS);
+      }
+      instructionSections.push(
+        `The following instructions come from the BB plugin "${contribution.pluginId}":`,
+        text,
       );
     }
   }

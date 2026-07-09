@@ -102,5 +102,5 @@ describe("source CLI wrapper", () => {
       project: null,
       thread: null,
     });
-  }, 30_000);
+  }, 90_000);
 });

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CONNECT_CODE_TTL_MS,
   connectCode,
-  handleFromHost,
+  parseVisitorHost,
   profile,
   schema,
   server,
@@ -166,22 +166,51 @@ describe("validateHandle", () => {
     expect(validateHandle("Upper")).toBe("invalid-format");
     expect(validateHandle("has space")).toBe("invalid-format");
     expect(validateHandle("has_underscore")).toBe("invalid-format");
+    // `--` is reserved as the host-label separator for port shares.
+    expect(validateHandle("foo--bar")).toBe("invalid-format");
+    expect(validateHandle("a--b")).toBe("invalid-format");
     expect(validateHandle("api")).toBe("reserved");
     expect(validateHandle("www")).toBe("reserved");
     expect(validateHandle("admin")).toBe("reserved");
   });
 });
 
-describe("handleFromHost", () => {
-  it("extracts the handle label", () => {
-    expect(handleFromHost("sawyer.getbb.app", "getbb.app")).toBe("sawyer");
-    expect(handleFromHost("Sawyer.getbb.app", "getbb.app")).toBe("sawyer");
+describe("parseVisitorHost", () => {
+  it("extracts a bare handle", () => {
+    expect(parseVisitorHost("sawyer.getbb.app", "getbb.app")).toEqual({
+      handle: "sawyer",
+      target: null,
+    });
+    expect(parseVisitorHost("Sawyer.getbb.app", "getbb.app")).toEqual({
+      handle: "sawyer",
+      target: null,
+    });
   });
 
-  it("rejects the apex, www-style multi-label, and foreign hosts", () => {
-    expect(handleFromHost("getbb.app", "getbb.app")).toBeNull();
-    expect(handleFromHost("a.b.getbb.app", "getbb.app")).toBeNull();
-    expect(handleFromHost("evil.com", "getbb.app")).toBeNull();
-    expect(handleFromHost("getbb.app.evil.com", "getbb.app")).toBeNull();
+  it("extracts handle--port share hosts", () => {
+    expect(parseVisitorHost("sawyer--8000.getbb.app", "getbb.app")).toEqual({
+      handle: "sawyer",
+      target: "8000",
+    });
+    expect(parseVisitorHost("Sawyer--5173.getbb.app", "getbb.app")).toEqual({
+      handle: "sawyer",
+      target: "5173",
+    });
+  });
+
+  it("rejects invalid share targets as unroutable", () => {
+    expect(parseVisitorHost("sawyer--0.getbb.app", "getbb.app")).toBeNull();
+    expect(parseVisitorHost("sawyer--99999.getbb.app", "getbb.app")).toBeNull();
+    expect(parseVisitorHost("sawyer--08000.getbb.app", "getbb.app")).toBeNull();
+    expect(parseVisitorHost("sawyer--x.getbb.app", "getbb.app")).toBeNull();
+    // Multi `--`: first split only; suffix is not a valid port → null.
+    expect(parseVisitorHost("foo--80--00.getbb.app", "getbb.app")).toBeNull();
+  });
+
+  it("rejects the apex, multi-label, and foreign hosts", () => {
+    expect(parseVisitorHost("getbb.app", "getbb.app")).toBeNull();
+    expect(parseVisitorHost("a.b.getbb.app", "getbb.app")).toBeNull();
+    expect(parseVisitorHost("evil.com", "getbb.app")).toBeNull();
+    expect(parseVisitorHost("getbb.app.evil.com", "getbb.app")).toBeNull();
   });
 });
