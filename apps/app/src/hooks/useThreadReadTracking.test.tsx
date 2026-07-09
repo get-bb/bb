@@ -8,6 +8,11 @@ type MarkThreadReadMutation = Parameters<
   typeof useThreadReadTracking
 >[0]["markThreadRead"];
 type MutateOptions = Parameters<MarkThreadReadMutation["mutate"]>[1];
+type TestThread = {
+  id: string;
+  lastReadAt: number | null;
+  latestAttentionAt: number;
+};
 
 function makeMarkThreadRead() {
   return {
@@ -78,6 +83,94 @@ describe("useThreadReadTracking", () => {
 
     options?.onError?.();
     rerender();
+
+    expect(markThreadRead.mutate).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not immediately undo marking the visible thread unread", () => {
+    const markThreadRead = makeMarkThreadRead();
+    type VisibleThreadProps = { lastReadAt: number | null };
+    const initialProps: VisibleThreadProps = { lastReadAt: 20 };
+    const { rerender } = renderHook(
+      ({ lastReadAt }: VisibleThreadProps) =>
+        useThreadReadTracking({
+          markThreadRead,
+          thread: {
+            id: "thr_side_chat",
+            lastReadAt,
+            latestAttentionAt: 20,
+          },
+        }),
+      { initialProps },
+    );
+
+    expect(markThreadRead.mutate).not.toHaveBeenCalled();
+
+    rerender({ lastReadAt: null });
+
+    expect(markThreadRead.mutate).not.toHaveBeenCalled();
+  });
+
+  it("marks a manually unread thread read when it is opened again", () => {
+    const markThreadRead = makeMarkThreadRead();
+    const unreadThread: TestThread = {
+      id: "thr_side_chat",
+      lastReadAt: null,
+      latestAttentionAt: 20,
+    };
+    type ThreadProps = { thread: TestThread | undefined };
+    const initialProps: ThreadProps = { thread: undefined };
+    const { rerender } = renderHook(
+      ({ thread }: ThreadProps) =>
+        useThreadReadTracking({
+          markThreadRead,
+          thread,
+        }),
+      { initialProps },
+    );
+
+    rerender({ thread: unreadThread });
+
+    expect(markThreadRead.mutate).toHaveBeenCalledTimes(1);
+    expect(markThreadRead.mutate).toHaveBeenLastCalledWith(
+      "thr_side_chat",
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+  });
+
+  it("marks a previously auto-read thread read when reopened after manual unread", () => {
+    const markThreadRead = makeMarkThreadRead();
+    type ReopenThreadProps = {
+      lastReadAt: number | null;
+      visible: boolean;
+    };
+    const initialProps: ReopenThreadProps = {
+      lastReadAt: 10,
+      visible: true,
+    };
+    const { rerender } = renderHook(
+      ({ lastReadAt, visible }: ReopenThreadProps) =>
+        useThreadReadTracking({
+          markThreadRead,
+          thread: visible
+            ? {
+                id: "thr_side_chat",
+                lastReadAt,
+                latestAttentionAt: 20,
+              }
+            : undefined,
+        }),
+      { initialProps },
+    );
+
+    expect(markThreadRead.mutate).toHaveBeenCalledTimes(1);
+
+    rerender({ lastReadAt: 20, visible: true });
+    rerender({ lastReadAt: null, visible: true });
+    expect(markThreadRead.mutate).toHaveBeenCalledTimes(1);
+
+    rerender({ lastReadAt: null, visible: false });
+    rerender({ lastReadAt: null, visible: true });
 
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(2);
   });
