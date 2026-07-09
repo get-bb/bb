@@ -138,6 +138,11 @@ Messaging:
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
 
+  By default, tell queues: if the agent is working, the message is delivered
+  after the current turn finishes. Use --mode steer to send immediately into
+  the active turn. Prefer steer for urgent redirects; prefer queue for
+  non-urgent follow-ups that can wait until the agent is free.
+
   bb thread stop [id]                      Stop an active or provisioning thread
     --self                                 Stop current thread
 
