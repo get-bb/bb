@@ -41,7 +41,6 @@ import {
 } from "./sidebarThreadSearch";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
-const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
@@ -351,27 +350,6 @@ export function AppSidebar({
               >
                 <Icon name="Bug" />
                 <span className="sr-only">Report a bug</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem className="min-w-0">
-              <SidebarMenuButton
-                className={SIDEBAR_FOOTER_ACTION_CLASS}
-                tooltip={{
-                  children: "Join Discord",
-                  hidden: false,
-                  side: "top",
-                }}
-                aria-label="Join Discord"
-                onClick={() => {
-                  closeOnMobile();
-                  openUrlInExternalBrowser(DISCORD_INVITE_URL);
-                }}
-              >
-                <Icon
-                  name="Discord"
-                  className="!size-[18px] max-md:pointer-coarse:!size-[22px]"
-                />
-                <span className="sr-only">Join Discord</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

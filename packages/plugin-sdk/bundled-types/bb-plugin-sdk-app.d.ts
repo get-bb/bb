@@ -178,7 +178,7 @@ interface PluginSidebarFooterActionContext {
     openSettings(): void;
 }
 /**
- * An icon button in the app sidebar footer (next to Settings / bug / Discord).
+ * An icon button in the app sidebar footer (next to Settings / bug report).
  * Host-rendered for consistent chrome — plugins supply icon, label, and
  * `run` behavior only.
  */

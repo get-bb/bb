@@ -481,7 +481,7 @@ Slot props contracts (versioned, additive-only):
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
 - `sidebarFooterAction` → host-rendered icon button in the app sidebar footer
-  (next to Settings / bug / Discord). No plugin component — the host paints
+  (next to Settings / bug report). No plugin component — the host paints
   the chrome so icons stay consistent. Registration:
   `{ id, title, icon, run }`. Activating it calls
   `run({ openSettings })` — use `openSettings()` to open this plugin's

@@ -20,9 +20,9 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
 
 /**
  * Plugin `sidebarFooterAction` slots: host-rendered icon buttons in the app
- * sidebar footer (after Settings, before bug/Discord). Activating one runs
- * the plugin's `run` with `{ openSettings }` — throws/rejections are logged
- * and never break the sidebar.
+ * sidebar footer (after Settings, before the bug-report action). Activating
+ * one runs the plugin's `run` with `{ openSettings }` — throws/rejections
+ * are logged and never break the sidebar.
  */
 export function PluginSidebarFooterActions(props: {
   onNavigate?: () => void;

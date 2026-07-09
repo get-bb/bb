@@ -182,7 +182,7 @@ interface PluginSidebarFooterActionContext {
     openSettings(): void;
 }
 /**
- * An icon button in the app sidebar footer (next to Settings / bug / Discord).
+ * An icon button in the app sidebar footer (next to Settings / bug report).
  * Host-rendered for consistent chrome — plugins supply icon, label, and
  * `run` behavior only.
  */
@@ -485,8 +485,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
+            pending: "pending";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
