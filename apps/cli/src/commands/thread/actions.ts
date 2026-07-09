@@ -190,16 +190,35 @@ export function registerActionsCommands(
         async (id: string | undefined, opts: ThreadArchiveCommandOptions) => {
           const threadId = requireThreadIdOrSelf(id, opts);
           const sdk = createCliBbSdk(getUrl());
+          let archivedThreadIds: string[] = [threadId];
           try {
-            await sdk.threads.archive({ threadId });
+            const result = await sdk.threads.archive({ threadId });
+            archivedThreadIds = result.archivedThreadIds;
           } catch (err: unknown) {
             throw prependErrorContext(
               `Failed to archive thread ${threadId}`,
               err,
             );
           }
-          if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Thread ${threadId} archived`);
+          if (
+            outputJson(opts, {
+              ok: true,
+              threadId,
+              archivedThreadIds,
+            })
+          ) {
+            return;
+          }
+          const cascadedCount = archivedThreadIds.filter(
+            (archivedId) => archivedId !== threadId,
+          ).length;
+          if (cascadedCount === 0) {
+            console.log(`Thread ${threadId} archived`);
+            return;
+          }
+          console.log(
+            `Thread ${threadId} archived (${cascadedCount} related thread${cascadedCount === 1 ? "" : "s"} also archived)`,
+          );
         },
       ),
     );

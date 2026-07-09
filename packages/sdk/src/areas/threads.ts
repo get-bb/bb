@@ -72,7 +72,7 @@ export type ThreadTimelineResult = PublicApiOutput<
   "$get"
 >;
 export type ThreadArchiveResult = PublicApiOutput<
-  "/threads/:id/archive",
+  "/threads/:id/archive-all",
   "$post"
 >;
 export type ThreadOpenResult = PublicApiOutput<"/threads/:id/open", "$post">;
@@ -620,12 +620,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   };
   return {
     async archive(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].archive.$post({
+      // Match the UI: archiving a parent also archives assigned children and
+      // source-derived side chats via the cascade archive-all route.
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["archive-all"].$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async delete(input) {
       await transport.readVoid(

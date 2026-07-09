@@ -18,8 +18,11 @@ describe("bb thread action command output", () => {
     registerThreadCommands(program, () => "http://server");
 
   it("bb thread archive sends the thread id from args", async () => {
-    const archivePost = vi.fn(async () => ({ ok: true }));
-    stubServerApi({ "v1.threads.:id.archive.$post": archivePost });
+    const archivePost = vi.fn(async () => ({
+      ok: true,
+      archivedThreadIds: ["thread-archive-1"],
+    }));
+    stubServerApi({ "v1.threads.:id.archive-all.$post": archivePost });
 
     await runCommand(["thread", "archive", "thread-archive-1"], register);
 
@@ -31,10 +34,30 @@ describe("bb thread action command output", () => {
     );
   });
 
+  it("bb thread archive reports related threads when cascading", async () => {
+    const archivePost = vi.fn(async () => ({
+      ok: true,
+      archivedThreadIds: ["thread-child-1", "thread-archive-1"],
+    }));
+    stubServerApi({ "v1.threads.:id.archive-all.$post": archivePost });
+
+    await runCommand(["thread", "archive", "thread-archive-1"], register);
+
+    expect(archivePost).toHaveBeenCalledWith({
+      param: { id: "thread-archive-1" },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-archive-1 archived (1 related thread also archived)",
+    );
+  });
+
   it("bb thread archive --self resolves from BB_THREAD_ID", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-archive-2");
-    const archivePost = vi.fn(async () => ({ ok: true }));
-    stubServerApi({ "v1.threads.:id.archive.$post": archivePost });
+    const archivePost = vi.fn(async () => ({
+      ok: true,
+      archivedThreadIds: ["thread-archive-2"],
+    }));
+    stubServerApi({ "v1.threads.:id.archive-all.$post": archivePost });
 
     await runCommand(["thread", "archive", "--self"], register);
 
@@ -47,7 +70,7 @@ describe("bb thread action command output", () => {
     const archivePost = vi.fn(async () => {
       throw new Error("HTTP 404: missing");
     });
-    stubServerApi({ "v1.threads.:id.archive.$post": archivePost });
+    stubServerApi({ "v1.threads.:id.archive-all.$post": archivePost });
 
     await expect(
       runCommand(["thread", "archive", "thread-archive-1"], register),
