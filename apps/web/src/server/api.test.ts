@@ -5,7 +5,13 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { connectCode, schema, server, user } from "@bb/connect-db";
+import {
+  connectCode,
+  MAX_SERVERS_PER_ACCOUNT,
+  schema,
+  server,
+  user,
+} from "@bb/connect-db";
 import {
   type Deps,
   checkAvailability,
@@ -133,11 +139,13 @@ describe("createServer (connect another bb)", () => {
   it("enforces the per-account server cap", async () => {
     seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    // One primary already; add up to the cap (5), then the next is rejected.
-    for (let i = 1; i < 5; i++) {
+    // One primary already; add up to the cap, then the next is rejected.
+    for (let i = 1; i < MAX_SERVERS_PER_ACCOUNT; i++) {
       expect("ok" in (await createServer(deps, "u1", `sawyer-${i}`))).toBe(true);
     }
-    expect(db.select().from(server).where(eq(server.userId, "u1")).all()).toHaveLength(5);
+    expect(db.select().from(server).where(eq(server.userId, "u1")).all()).toHaveLength(
+      MAX_SERVERS_PER_ACCOUNT,
+    );
     expect(await createServer(deps, "u1", "sawyer-over")).toEqual({ error: "server-limit" });
   });
 
@@ -287,7 +295,7 @@ describe("getAccountState (adaptive single / multi)", () => {
     expect(state.handle).toBeNull();
     expect(state.servers).toHaveLength(0);
     expect(state.githubLogin).toBe("sawyerhood");
-    expect(state.maxServers).toBe(5);
+    expect(state.maxServers).toBe(MAX_SERVERS_PER_ACCOUNT);
   });
 
   it("returns one server, flagged primary, after a claim", async () => {

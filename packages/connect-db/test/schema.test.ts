@@ -298,7 +298,7 @@ describe("validateSubdomain (shares the handle grammar)", () => {
 
 describe("multi-server policy", () => {
   it("raises the per-account server cap for multi-server", () => {
-    expect(MAX_SERVERS_PER_ACCOUNT).toBe(5);
+    expect(MAX_SERVERS_PER_ACCOUNT).toBe(10);
   });
 });
 

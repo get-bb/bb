@@ -66,7 +66,7 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 ]);
 
 /** Per-account resource ceilings enforced at the gate (open-signup abuse guard). */
-export const MAX_SERVERS_PER_ACCOUNT = 5;
+export const MAX_SERVERS_PER_ACCOUNT = 10;
 export const MAX_MACHINES_PER_ACCOUNT = 5;
 
 /** Connect-code lifetimes. */
