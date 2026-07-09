@@ -2,13 +2,16 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type KeyboardEventHandler,
   type MouseEventHandler,
   type PointerEventHandler,
   type ReactNode,
+  type Ref,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
@@ -123,6 +126,7 @@ import {
   sidebarSortDirectionAtom,
   type SidebarChronologicalSort,
   type CollapsibleSidebarSectionId,
+  type SidebarOrganizationMode,
   type SidebarSectionId,
   type SidebarSortDirection,
 } from "./sidebarCollapsedAtoms";
@@ -133,6 +137,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import {
@@ -205,12 +210,7 @@ interface ProjectListThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
-interface SidebarGroupOptionsMenuProps {
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-}
-
-interface SidebarSortOptionsMenuProps {
+interface SidebarDisplayOptionsMenuProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -289,7 +289,6 @@ type ToggleCollapsedId = (id: string) => void;
 type ToggleCollapsedSidebarSectionId = (
   id: CollapsibleSidebarSectionId,
 ) => void;
-type SidebarDisplayOptionsMenuKind = "group" | "sort";
 
 interface TopLevelSidebarSectionProps {
   label: string;
@@ -651,40 +650,63 @@ function ProjectListThreadsSectionActions({
   );
 }
 
-interface SidebarGroupMenuOptionProps {
-  disabled?: boolean;
+interface SidebarOrganizeOption {
   label: string;
-  selected: boolean;
-  onSelect: (event: Event) => void;
+  mode: SidebarOrganizationMode;
 }
 
-function SidebarGroupMenuOption({
-  disabled = false,
-  label,
-  selected,
-  onSelect,
-}: SidebarGroupMenuOptionProps) {
+// "Manual" is the user-facing name for the chronological/drag-ordered mode; the
+// stored atom value stays "chronological".
+const SIDEBAR_ORGANIZE_OPTIONS: readonly SidebarOrganizeOption[] = [
+  { label: "Projects", mode: "project" },
+  { label: "Manual", mode: "chronological" },
+];
+
+interface SidebarOrganizeSegmentedControlProps {
+  value: SidebarOrganizationMode;
+  onChange: (mode: SidebarOrganizationMode) => void;
+}
+
+// Inline segmented control (no shared primitive fits this compact in-menu use).
+// The track sits on the menu's muted fill; the active segment lifts to the
+// popover surface so it reads raised. All colors come from theme tokens.
+function SidebarOrganizeSegmentedControl({
+  value,
+  onChange,
+}: SidebarOrganizeSegmentedControlProps) {
   return (
-    <DropdownMenuItem
-      disabled={disabled}
-      onSelect={onSelect}
-      className="flex items-center justify-between gap-3"
+    <div
+      role="radiogroup"
+      aria-label="Organize by"
+      className="mx-2 my-1 flex items-center gap-0.5 rounded-md bg-muted p-0.5"
     >
-      <span className="truncate text-xs">{label}</span>
-      <Icon
-        name="Check"
-        className={cn(
-          COARSE_POINTER_ICON_SIZE_CLASS,
-          selected ? "opacity-100" : "opacity-0",
-        )}
-      />
-    </DropdownMenuItem>
+      {SIDEBAR_ORGANIZE_OPTIONS.map((option) => {
+        const selected = value === option.mode;
+        return (
+          <button
+            key={option.mode}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(option.mode)}
+            className={cn(
+              "flex-1 cursor-pointer rounded-[0.3125rem] px-2 py-1 text-center text-xs outline-none ring-ring focus-visible:ring-2",
+              LIST_HOVER_TRANSITION,
+              selected
+                ? "bg-popover text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 interface SidebarSortMenuOptionProps {
   direction: SidebarSortDirection;
-  keepOpenOnSelect: boolean;
   label: string;
   selected: boolean;
   sort: SidebarChronologicalSort;
@@ -695,10 +717,12 @@ interface SidebarSortMenuOptionProps {
 
 function SidebarDisplayMenuTrigger({
   ariaLabel,
+  buttonRef,
   iconName,
   tooltip,
 }: {
   ariaLabel: string;
+  buttonRef?: Ref<HTMLButtonElement>;
   iconName: IconName;
   tooltip: string;
 }) {
@@ -710,6 +734,7 @@ function SidebarDisplayMenuTrigger({
       <TooltipTrigger asChild>
         <DropdownMenuTrigger asChild>
           <Button
+            ref={buttonRef}
             type="button"
             variant="ghost"
             size="icon"
@@ -734,7 +759,6 @@ function SidebarDisplayMenuTrigger({
 
 function SidebarSortMenuOption({
   direction,
-  keepOpenOnSelect,
   label,
   selected,
   sort,
@@ -743,9 +767,10 @@ function SidebarSortMenuOption({
   return (
     <DropdownMenuItem
       onSelect={(event) => {
-        if (keepOpenOnSelect) {
-          event.preventDefault();
-        }
+        // The display-options menu stays open across every interaction; it
+        // closes only on outside click / Escape. This holds on the mobile sheet
+        // too (the item's onClick honors defaultPrevented).
+        event.preventDefault();
         onToggle(sort);
       }}
       className="flex items-center justify-between gap-3"
@@ -765,67 +790,88 @@ function SidebarSortMenuOption({
   );
 }
 
-// Shared organization menu rendered on both the Projects and Threads section
-// headers. The organization mode is global, so either header's menu drives the
-// whole sidebar.
-export function SidebarGroupOptionsMenu({
+// Where the open display-options menu's trigger last sat on screen. Toggling
+// the organization mode swaps the sidebar's section tree, so the open menu
+// unmounts with the old tree and a sibling remounts with the new one; the
+// outgoing menu records its trigger rect here so the incoming menu can hold
+// the popover at the same on-screen spot instead of re-anchoring mid-
+// interaction. Only one display-options menu is ever open at a time.
+let lastOpenDisplayMenuTriggerPosition: { x: number; y: number } | null = null;
+
+// Single combined display-options menu (organize + sort) rendered on every
+// section header. Both the organization mode and the sort field/direction are
+// global, so any header's menu drives the whole sidebar. The menu stays open
+// across selections and closes only on outside click / Escape.
+export function SidebarDisplayOptionsMenu({
   open,
   onOpenChange,
-}: SidebarGroupOptionsMenuProps) {
-  const isCompactViewport = useIsCompactViewport();
+}: SidebarDisplayOptionsMenuProps) {
   const [organizationMode, setOrganizationMode] = useAtom(
     sidebarOrganizationModeAtom,
   );
-
-  return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <SidebarDisplayMenuTrigger
-        ariaLabel="Sidebar organize options"
-        iconName="Layers"
-        tooltip="Organize by"
-      />
-      <DropdownMenuContent
-        align="end"
-        mobileTitle="Organize by"
-        className="min-w-0"
-      >
-        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
-          Organize by
-        </DropdownMenuLabel>
-        <SidebarGroupMenuOption
-          label="Projects"
-          selected={organizationMode === "project"}
-          onSelect={(event) => {
-            if (!isCompactViewport || organizationMode === "project") {
-              event.preventDefault();
-            }
-            setOrganizationMode("project");
-          }}
-        />
-        <SidebarGroupMenuOption
-          label="Manually"
-          selected={organizationMode === "chronological"}
-          onSelect={(event) => {
-            if (!isCompactViewport || organizationMode === "chronological") {
-              event.preventDefault();
-            }
-            setOrganizationMode("chronological");
-          }}
-        />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-export function SidebarSortOptionsMenu({
-  open,
-  onOpenChange,
-}: SidebarSortOptionsMenuProps) {
-  const isCompactViewport = useIsCompactViewport();
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
   const [sortDirection, setSortDirection] = useAtom(sidebarSortDirectionAtom);
+  // Toggling the organization mode swaps the sidebar's section tree, which
+  // remounts this menu while it is open; Radix then replays the content's
+  // entrance animation, reading as a flash. Suppress the entrance animation
+  // for a menu that mounts already open, until it has closed once.
+  const [mountedWhileOpen, setMountedWhileOpen] = useState(open === true);
+  const isCompactViewport = useIsCompactViewport();
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  // A remounting menu also re-anchors to its new header, which can sit at a
+  // different height — yanking the popover out from under the pointer. Offset
+  // the content back to the outgoing menu's spot until the menu closes; the
+  // next open anchors normally. The mobile drawer is bottom-anchored and never
+  // moves, so it needs no pinning.
+  const [pinOffset, setPinOffset] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  // Mirror of pinOffset for the effect cleanup below, so recording the
+  // outgoing position doesn't have to re-run the effect on every pin change.
+  const pinOffsetRef = useRef(pinOffset);
+  pinOffsetRef.current = pinOffset;
+  useLayoutEffect(() => {
+    if (!open || isCompactViewport) {
+      return;
+    }
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      return;
+    }
+    if (mountedWhileOpen && lastOpenDisplayMenuTriggerPosition) {
+      const rect = trigger.getBoundingClientRect();
+      const x = lastOpenDisplayMenuTriggerPosition.x - rect.left;
+      const y = lastOpenDisplayMenuTriggerPosition.y - rect.top;
+      if (x !== 0 || y !== 0) {
+        setPinOffset({ x, y });
+      }
+    }
+    return () => {
+      const rect = trigger.getBoundingClientRect();
+      // Record the EFFECTIVE anchor — trigger position plus any active pin —
+      // so consecutive mode toggles keep the popover at the same visual spot
+      // instead of accumulating drift. A zero rect means the trigger was
+      // already detached; drop the stale position rather than pinning a
+      // future menu to it.
+      const pin = pinOffsetRef.current;
+      lastOpenDisplayMenuTriggerPosition =
+        rect.width > 0 || rect.height > 0
+          ? { x: rect.left + (pin?.x ?? 0), y: rect.top + (pin?.y ?? 0) }
+          : null;
+    };
+  }, [open, isCompactViewport, mountedWhileOpen]);
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        setMountedWhileOpen(false);
+        setPinOffset(null);
+      }
+      onOpenChange?.(nextOpen);
+    },
+    [onOpenChange],
+  );
   const selectedSort: SidebarChronologicalSort =
     chronologicalSort === "none" ? "updated" : chronologicalSort;
   const handleSortToggle = useCallback(
@@ -844,13 +890,34 @@ export function SidebarSortOptionsMenu({
   );
 
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <SidebarDisplayMenuTrigger
-        ariaLabel="Sidebar sort options"
-        iconName="ArrowUpDown"
-        tooltip="Sort"
+        ariaLabel="Sidebar display options"
+        buttonRef={triggerRef}
+        iconName="SlidersHorizontal"
+        tooltip="Display options"
       />
-      <DropdownMenuContent align="end" mobileTitle="Sort" className="min-w-0">
+      <DropdownMenuContent
+        align="end"
+        mobileTitle="Display options"
+        className={cn(
+          "min-w-[13rem]",
+          mountedWhileOpen && "data-[state=open]:animate-none",
+        )}
+        style={
+          pinOffset
+            ? { transform: `translate(${pinOffset.x}px, ${pinOffset.y}px)` }
+            : undefined
+        }
+      >
+        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+          Organize by
+        </DropdownMenuLabel>
+        <SidebarOrganizeSegmentedControl
+          value={organizationMode}
+          onChange={setOrganizationMode}
+        />
+        <DropdownMenuSeparator />
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
           Sort by
         </DropdownMenuLabel>
@@ -859,7 +926,6 @@ export function SidebarSortOptionsMenu({
           sort="updated"
           selected={selectedSort === "updated"}
           direction={sortDirection}
-          keepOpenOnSelect={!isCompactViewport}
           onToggle={handleSortToggle}
         />
         <SidebarSortMenuOption
@@ -867,7 +933,6 @@ export function SidebarSortOptionsMenu({
           sort="created"
           selected={selectedSort === "created"}
           direction={sortDirection}
-          keepOpenOnSelect={!isCompactViewport}
           onToggle={handleSortToggle}
         />
         <SidebarSortMenuOption
@@ -875,7 +940,6 @@ export function SidebarSortOptionsMenu({
           sort="alpha"
           selected={selectedSort === "alpha"}
           direction={sortDirection}
-          keepOpenOnSelect={!isCompactViewport}
           onToggle={handleSortToggle}
         />
       </DropdownMenuContent>
@@ -883,38 +947,9 @@ export function SidebarSortOptionsMenu({
   );
 }
 
-interface SidebarDisplayOptionsActionsProps {
-  open: SidebarDisplayOptionsMenuKind | null;
-  onOpenChange: (menu: SidebarDisplayOptionsMenuKind, open: boolean) => void;
-}
-
-// The Group + Sort menu pair shown on the primary section header (Projects in
-// project mode, Folders in the folders view). Shared so both headers stay
-// identical and changes land in one place instead of being copied per view.
-function SidebarDisplayOptionsActions({
-  open,
-  onOpenChange,
-}: SidebarDisplayOptionsActionsProps) {
-  return (
-    <>
-      <SidebarGroupOptionsMenu
-        open={open === "group"}
-        onOpenChange={(next) => onOpenChange("group", next)}
-      />
-      <SidebarSortOptionsMenu
-        open={open === "sort"}
-        onOpenChange={(next) => onOpenChange("sort", next)}
-      />
-    </>
-  );
-}
-
 interface SidebarThreadsSectionActionsProps {
-  displayOptionsOpen: SidebarDisplayOptionsMenuKind | null;
-  onDisplayOptionsOpenChange: (
-    menu: SidebarDisplayOptionsMenuKind,
-    open: boolean,
-  ) => void;
+  displayOptionsOpen: boolean;
+  onDisplayOptionsOpenChange: (open: boolean) => void;
   onOpenArchivedThreads?: () => void;
   isCreatingFolder: boolean;
   onNewThread: () => void;
@@ -928,11 +963,11 @@ interface SidebarAllThreadsOverflowMenuProps {
   onOpenArchivedThreads: () => void;
 }
 
-// The complete Threads-section header cluster (archived menu + sort + new
-// thread). One component drives the Threads header in both project mode and the
-// folders view, so they can never drift apart. The Threads section is always the
-// loose/unfiled set, so it offers sorting but not the Group-by toggle (that
-// lives on the primary section header).
+// The complete Threads-section header cluster (archived menu + display options +
+// new thread). One component drives the Threads header in both project mode and
+// the folders view, so they can never drift apart. It carries the same combined
+// display-options menu as the primary header, so in manual mode the menu is
+// reachable above both the Folders and Threads sections.
 function SidebarThreadsSectionActions({
   displayOptionsOpen,
   onDisplayOptionsOpenChange,
@@ -950,9 +985,9 @@ function SidebarThreadsSectionActions({
           onClick={onOpenArchivedThreads}
         />
       ) : null}
-      <SidebarSortOptionsMenu
-        open={displayOptionsOpen === "sort"}
-        onOpenChange={(next) => onDisplayOptionsOpenChange("sort", next)}
+      <SidebarDisplayOptionsMenu
+        open={displayOptionsOpen}
+        onOpenChange={onDisplayOptionsOpenChange}
       />
       <ProjectListThreadsSectionActions
         isCreatingFolder={isCreatingFolder}
@@ -1603,26 +1638,26 @@ function ProjectListComponent({
     sidebarSectionOrderAtom,
   );
   const [projectsDisplayOptionsMenuOpen, setProjectsDisplayOptionsMenuOpen] =
-    useState<SidebarDisplayOptionsMenuKind | null>(null);
+    useState(false);
   const [threadsDisplayOptionsMenuOpen, setThreadsDisplayOptionsMenuOpen] =
-    useState<SidebarDisplayOptionsMenuKind | null>(null);
+    useState(false);
   const [allThreadsOverflowMenuOpen, setAllThreadsOverflowMenuOpen] =
     useState(false);
   const handleProjectsDisplayOptionsMenuOpenChange = useCallback(
-    (menu: SidebarDisplayOptionsMenuKind, open: boolean) => {
-      setProjectsDisplayOptionsMenuOpen(open ? menu : null);
+    (open: boolean) => {
+      setProjectsDisplayOptionsMenuOpen(open);
       if (open) {
-        setThreadsDisplayOptionsMenuOpen(null);
+        setThreadsDisplayOptionsMenuOpen(false);
         setAllThreadsOverflowMenuOpen(false);
       }
     },
     [],
   );
   const handleThreadsDisplayOptionsMenuOpenChange = useCallback(
-    (menu: SidebarDisplayOptionsMenuKind, open: boolean) => {
-      setThreadsDisplayOptionsMenuOpen(open ? menu : null);
+    (open: boolean) => {
+      setThreadsDisplayOptionsMenuOpen(open);
       if (open) {
-        setProjectsDisplayOptionsMenuOpen(null);
+        setProjectsDisplayOptionsMenuOpen(false);
         setAllThreadsOverflowMenuOpen(false);
       }
     },
@@ -1632,8 +1667,8 @@ function ProjectListComponent({
     (open: boolean) => {
       setAllThreadsOverflowMenuOpen(open);
       if (open) {
-        setProjectsDisplayOptionsMenuOpen(null);
-        setThreadsDisplayOptionsMenuOpen(null);
+        setProjectsDisplayOptionsMenuOpen(false);
+        setThreadsDisplayOptionsMenuOpen(false);
       }
     },
     [],
@@ -2013,7 +2048,7 @@ function ProjectListComponent({
   // both can be open independently — and never both at once across sections.
   const projectsSectionActions = (
     <>
-      <SidebarDisplayOptionsActions
+      <SidebarDisplayOptionsMenu
         open={projectsDisplayOptionsMenuOpen}
         onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
       />
@@ -2027,7 +2062,7 @@ function ProjectListComponent({
   );
   const folderSectionActions = (
     <>
-      <SidebarDisplayOptionsActions
+      <SidebarDisplayOptionsMenu
         open={projectsDisplayOptionsMenuOpen}
         onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
       />
@@ -2042,7 +2077,7 @@ function ProjectListComponent({
   );
   const allThreadsSectionActions = (
     <>
-      <SidebarDisplayOptionsActions
+      <SidebarDisplayOptionsMenu
         open={projectsDisplayOptionsMenuOpen}
         onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
       />
@@ -2089,8 +2124,7 @@ function ProjectListComponent({
           label="All Threads"
           actions={allThreadsSectionActions}
           actionsOpen={
-            projectsDisplayOptionsMenuOpen !== null ||
-            allThreadsOverflowMenuOpen
+            projectsDisplayOptionsMenuOpen || allThreadsOverflowMenuOpen
           }
           actionsMobileAlways
           collapseControl={{
@@ -2105,7 +2139,7 @@ function ProjectListComponent({
         <TopLevelSidebarSection
           label="Folders"
           actions={folderSectionActions}
-          actionsOpen={projectsDisplayOptionsMenuOpen !== null}
+          actionsOpen={projectsDisplayOptionsMenuOpen}
           actionsMobileAlways
           collapseControl={{
             isCollapsed: collapsedSidebarSectionIds.has("folders"),
@@ -2119,7 +2153,7 @@ function ProjectListComponent({
         <TopLevelSidebarSection
           label="Threads"
           actions={threadsSectionActions}
-          actionsOpen={threadsDisplayOptionsMenuOpen !== null}
+          actionsOpen={threadsDisplayOptionsMenuOpen}
           actionsMobileAlways
           collapseControl={{
             isCollapsed: collapsedSidebarSectionIds.has("threads"),
@@ -2251,7 +2285,7 @@ function ProjectListComponent({
                   label="Projects"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
-                  actionsOpen={projectsDisplayOptionsMenuOpen !== null}
+                  actionsOpen={projectsDisplayOptionsMenuOpen}
                   actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("projects"),
@@ -2271,7 +2305,7 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
-                  actionsOpen={threadsDisplayOptionsMenuOpen !== null}
+                  actionsOpen={threadsDisplayOptionsMenuOpen}
                   actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("threads"),

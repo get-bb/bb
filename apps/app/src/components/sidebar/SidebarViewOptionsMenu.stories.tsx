@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { SidebarGroupOptionsMenu, SidebarSortOptionsMenu } from "./ProjectList";
+import { SidebarDisplayOptionsMenu } from "./ProjectList";
 import {
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
@@ -12,15 +12,15 @@ export default {
   title: "sidebar/View options menu",
 };
 
-// Live readout of the atoms the menus drive, so the effect of each click is
-// visible even after a menu closes.
+// Live readout of the atoms the menu drives, so the effect of each click is
+// visible even after the menu closes.
 function StateReadout() {
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const sort = useAtomValue(sidebarChronologicalSortAtom);
   const direction = useAtomValue(sidebarSortDirectionAtom);
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-      <dt className="text-muted-foreground">group</dt>
+      <dt className="text-muted-foreground">organize</dt>
       <dd className="font-mono">{organizationMode}</dd>
       <dt className="text-muted-foreground">sort</dt>
       <dd className="font-mono">{sort}</dd>
@@ -30,10 +30,10 @@ function StateReadout() {
   );
 }
 
-// The menus write to global (atomWithStorage) atoms. A story-local Jotai store
+// The menu writes to global (atomWithStorage) atoms. A story-local Jotai store
 // keeps each mount self-contained and seeded with the same defaults the app
 // ships, instead of inheriting whatever the last Ladle session left behind.
-function InteractiveMenus() {
+function InteractiveMenu() {
   const store = useMemo(() => {
     const next = createStore();
     next.set(sidebarOrganizationModeAtom, "project");
@@ -50,8 +50,7 @@ function InteractiveMenus() {
             Projects
           </span>
           <div className="flex items-center gap-1">
-            <SidebarGroupOptionsMenu />
-            <SidebarSortOptionsMenu />
+            <SidebarDisplayOptionsMenu />
           </div>
         </div>
         <StateReadout />
@@ -65,9 +64,9 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="interactive"
-        hint="click an icon to open · pick a sort field, click it again to flip ↑/↓"
+        hint="open the menu · toggle Projects/Manual · pick a sort field, click it again to flip ↑/↓ · the menu stays open"
       >
-        <InteractiveMenus />
+        <InteractiveMenu />
       </StoryRow>
     </StoryCard>
   );
