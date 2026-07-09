@@ -82,9 +82,21 @@ Remote access (bb connect):
 
   bb connect status                       Show the server's connect status
   bb connect off                          Disconnect and forget the pairing
+  bb connect expose <port>                Share a local HTTP port
+  bb connect unexpose <port>              Stop sharing a port
+  bb connect shares                       List shared ports and their URLs
+
+  Port sharing: after pairing, `bb connect expose <port>` publishes a local
+  HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent host for
+  a self-hosted gate). Access is owner-session-gated — only viewers signed into
+  the owner's getbb.app account can open the URL; it is not a public internet
+  link. Agents that start a local server for the user should run expose and
+  share that URL (especially when the user is remote); unexpose when the
+  server stops. `bb connect shares` lists active URLs; Settings → Connect
+  shows and manages them in the UI.
 
   Remote access is owned by the builtin "connect" plugin (Settings → Connect
-  shows the URL and a QR code). Disabling the plugin
+  shows the URL, QR code, and shared ports). Disabling the plugin
   (`bb plugin disable connect`) cuts off all remote access; with the
   bb connect experiment still enabled, re-enable with `bb plugin enable
   connect`.

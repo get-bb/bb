@@ -44,6 +44,7 @@ function stringFlag(parsed: ParsedFlags, name: string): string | undefined {
 function helpText(): string {
   return [
     "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app.",
+    "Share local HTTP ports at https://<handle>--<port>.… (owner session only).",
     "",
     "  1. Sign in at https://getbb.app and claim a handle.",
     "  2. Copy the connect command from the dashboard and run it here:",

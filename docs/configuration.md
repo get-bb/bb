@@ -286,12 +286,17 @@ lives as long as the bb server runs (with the plugin enabled) and
 re-establishes on restart; there is no foreground client. Pair from a machine
 without an installed bb via `npx -p bb-app@latest bb connect …`.
 `bb connect status` shows the connect state and `bb connect off` disconnects
-and clears the pairing. Disabling the plugin (`bb plugin disable connect`)
-cuts off all remote access; with the bb connect experiment still enabled,
-`bb plugin enable connect` restores it.
+and clears the pairing. After pairing, `bb connect expose <port>` shares a
+local HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent
+host for a self-hosted gate); access requires the owner's getbb.app session
+(not a public link). `bb connect unexpose <port>` stops sharing and
+`bb connect shares` lists active URLs. Disabling the plugin
+(`bb plugin disable connect`) cuts off all remote access; with the bb connect
+experiment still enabled, `bb plugin enable connect` restores it.
 
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
-the plugin, and Settings → Connect drives the plugin's rpc.
+the plugin, and Settings → Connect drives the plugin's rpc (including shared
+ports).
 
 ## Plugins
 
