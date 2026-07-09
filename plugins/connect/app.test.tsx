@@ -34,6 +34,9 @@ function status(overrides: Partial<ConnectStatus> = {}): ConnectStatus {
     url: null,
     lastError: null,
     since: 1_700_000_000_000,
+    remoteClients: 0,
+    lastRemoteActivityAt: null,
+    shares: [],
     ...overrides,
   };
 }

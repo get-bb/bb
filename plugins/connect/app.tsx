@@ -50,6 +50,9 @@ function asStatus(payload: unknown): ConnectStatus | null {
     url?: unknown;
     lastError?: unknown;
     since?: unknown;
+    remoteClients?: unknown;
+    lastRemoteActivityAt?: unknown;
+    shares?: unknown;
   };
   if (
     (record.state !== "disconnected" &&
@@ -61,6 +64,22 @@ function asStatus(payload: unknown): ConnectStatus | null {
   ) {
     return null;
   }
+  const shares: ConnectStatus["shares"] = [];
+  if (Array.isArray(record.shares)) {
+    for (const entry of record.shares) {
+      if (
+        entry !== null &&
+        typeof entry === "object" &&
+        typeof (entry as { port?: unknown }).port === "number" &&
+        typeof (entry as { url?: unknown }).url === "string"
+      ) {
+        shares.push({
+          port: (entry as { port: number }).port,
+          url: (entry as { url: string }).url,
+        });
+      }
+    }
+  }
   return {
     state: record.state,
     paired: record.paired,
@@ -68,6 +87,13 @@ function asStatus(payload: unknown): ConnectStatus | null {
     url: typeof record.url === "string" ? record.url : null,
     lastError: typeof record.lastError === "string" ? record.lastError : null,
     since: record.since,
+    remoteClients:
+      typeof record.remoteClients === "number" ? record.remoteClients : 0,
+    lastRemoteActivityAt:
+      typeof record.lastRemoteActivityAt === "number"
+        ? record.lastRemoteActivityAt
+        : null,
+    shares,
   };
 }
 
