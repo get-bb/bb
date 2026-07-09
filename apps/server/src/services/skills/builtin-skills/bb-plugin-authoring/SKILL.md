@@ -321,11 +321,12 @@ thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
 
-### bb.agents — native tools
+### bb.agents — native tools and dynamic instructions
 
 To give agents standing knowledge (conventions, workflows), ship a
-`skills/` directory — there is deliberately no per-turn instruction
-injection API. For schema'd capabilities, register a native tool:
+`skills/` directory. For schema'd capabilities, register a native tool.
+For a short, per-resolution instruction block (e.g. "the user is viewing
+bb remotely — share tunnel URLs"), use `contributeInstructions`:
 
 ```ts
 import { z } from "zod";   // runtime import — declare zod as a plugin dependency
@@ -338,6 +339,16 @@ bb.agents.registerTool({
     return excerpts.join("\n");           // or { content: [{ type: "text", text }], isError? }
   },
 });
+
+// Dynamic section evaluated at thread.start / turn.submit (sync, fast).
+// Return null to contribute nothing for that resolution. Re-registering
+// replaces this plugin's previous provider. Output is capped at 4096
+// characters; a throw is logged and contributes nothing. Side-chat
+// threads never receive plugin instructions.
+bb.agents.contributeInstructions(({ threadId, projectId }) => {
+  if (!shouldAdviseRemoteUrls()) return null;
+  return "The user is viewing bb remotely — share tunnel URLs, not localhost.";
+});
 ```
 
 `parameters` is a zod schema (zod 4; validated per call — bad model args
@@ -346,6 +357,10 @@ become a tool error, not a plugin crash) or a plain JSON-schema object
 session start, not mid-session. Name collisions: within a plugin the later
 registration replaces the earlier; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
+
+`contributeInstructions` is **synchronous** and runs on the thread-start
+path — keep it cheap. Prefer `skills/` for standing knowledge; use this
+only when the text must reflect live plugin state at resolution time.
 
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 

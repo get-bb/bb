@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   markThreadDeleted,
   setExperiments,
@@ -10,6 +10,8 @@ import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
+import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
+import type { PluginAgentToolContribution } from "../../src/services/plugins/plugin-service.js";
 import {
   resolvePermissionEscalation,
   resolveExecutionOptions,
@@ -1155,6 +1157,265 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions.indexOf(userSource)).toBeLessThan(
         runtimeConfig.instructions.indexOf(workspaceSource),
       );
+    });
+  });
+
+  describe("plugin contributeInstructions assembly", () => {
+    afterEach(() => {
+      // withTestHarness rebinds this on each createApp; clear so a later
+      // isolated test doesn't see a leftover stub if harness cleanup races.
+      setPluginAgentContributions(undefined);
+    });
+
+    function stubContributions(args: {
+      tools?: PluginAgentToolContribution[];
+      instructions?: Array<{
+        pluginId: string;
+        provider: (ctx: {
+          threadId: string;
+          projectId: string;
+        }) => string | null;
+      }>;
+    }): void {
+      setPluginAgentContributions({
+        listSkillsRootPaths: () => [],
+        listAgentTools: () => args.tools ?? [],
+        listInstructionContributions: () => args.instructions ?? [],
+        findAgentTool: () => undefined,
+        invokeAgentTool: async () => ({
+          success: false,
+          contentItems: [{ type: "inputText", text: "unused" }],
+        }),
+        resolveMention: async () => ({
+          ok: false,
+          error: "unused in runtime-config tests",
+        }),
+      });
+    }
+
+    it("appends attributed plugin instructions after tool snippets and before data-dir instructions", async () => {
+      await withTestHarness(async (harness) => {
+        const hostId = "host-runtime-plugin-instr";
+        seedHostSession(harness.deps, { id: hostId });
+        const workspacePath = path.join(
+          harness.config.dataDir,
+          "plugin-instr-workspace",
+        );
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId,
+          path: workspacePath,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId,
+          projectId: project.id,
+          path: workspacePath,
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId: "codex",
+        });
+        await writeDataDirAgentInstructions({
+          content: "# User Rules\n\nPrefer concise progress updates.\n",
+          dataDir: harness.config.dataDir,
+        });
+
+        stubContributions({
+          tools: [
+            {
+              pluginId: "tooldemo",
+              tool: {
+                name: "demo_lookup",
+                description: "Look up demo data",
+                inputSchema: { type: "object" },
+              },
+              instructions: "Call demo_lookup before guessing.",
+            },
+          ],
+          instructions: [
+            {
+              pluginId: "connect",
+              provider: ({ threadId, projectId }) =>
+                `Remote session for ${threadId} in ${projectId}`,
+            },
+          ],
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          {
+            thread,
+            environment: {
+              hostId: environment.hostId,
+              id: environment.id,
+              path: environment.path,
+              status: environment.status,
+              workspaceProvisionType: environment.workspaceProvisionType,
+            },
+          },
+        );
+
+        const toolHeader =
+          'The following instructions come from the BB plugin "tooldemo" for its tool "demo_lookup":';
+        const pluginHeader =
+          'The following instructions come from the BB plugin "connect":';
+        const dataDirHeader =
+          "The following user instructions come from <dataDir>/AGENTS.md:";
+        const instructions = runtimeConfig.instructions;
+        expect(instructions).toContain(toolHeader);
+        expect(instructions).toContain("Call demo_lookup before guessing.");
+        expect(instructions).toContain(pluginHeader);
+        expect(instructions).toContain(
+          `Remote session for ${thread.id} in ${project.id}`,
+        );
+        expect(instructions).toContain(dataDirHeader);
+        expect(instructions.indexOf(toolHeader)).toBeLessThan(
+          instructions.indexOf(pluginHeader),
+        );
+        expect(instructions.indexOf(pluginHeader)).toBeLessThan(
+          instructions.indexOf(dataDirHeader),
+        );
+      });
+    });
+
+    it("skips null/empty providers, truncates long text, and isolates throws", async () => {
+      await withTestHarness(async (harness) => {
+        const hostId = "host-runtime-plugin-instr-edge";
+        seedHostSession(harness.deps, { id: hostId });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId,
+          path: "/tmp/runtime-plugin-instr-edge",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId,
+          projectId: project.id,
+          path: "/tmp/runtime-plugin-instr-edge",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+
+        const longBody = "x".repeat(5000);
+        stubContributions({
+          instructions: [
+            {
+              pluginId: "nuller",
+              provider: () => null,
+            },
+            {
+              pluginId: "blank",
+              provider: () => "   \n\t  ",
+            },
+            {
+              pluginId: "boom",
+              provider: () => {
+                throw new Error("provider boom");
+              },
+            },
+            {
+              pluginId: "verbose",
+              provider: () => longBody,
+            },
+            {
+              pluginId: "ok",
+              provider: () => "still contributes",
+            },
+          ],
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          {
+            thread,
+            environment: {
+              hostId: environment.hostId,
+              id: environment.id,
+              path: environment.path,
+              status: environment.status,
+              workspaceProvisionType: environment.workspaceProvisionType,
+            },
+          },
+        );
+
+        const instructions = runtimeConfig.instructions;
+        expect(instructions).not.toContain(
+          'The following instructions come from the BB plugin "nuller":',
+        );
+        expect(instructions).not.toContain(
+          'The following instructions come from the BB plugin "blank":',
+        );
+        expect(instructions).not.toContain(
+          'The following instructions come from the BB plugin "boom":',
+        );
+        expect(instructions).toContain(
+          'The following instructions come from the BB plugin "verbose":',
+        );
+        expect(instructions).toContain(
+          'The following instructions come from the BB plugin "ok":',
+        );
+        expect(instructions).toContain("still contributes");
+        // Truncated to 4096 chars — the full 5000-x body must not appear.
+        expect(instructions).not.toContain(longBody);
+        expect(instructions).toContain("x".repeat(4096));
+        expect(instructions).not.toContain("x".repeat(4097));
+      });
+    });
+
+    it("does not apply plugin instruction contributions to side-chat threads", async () => {
+      await withTestHarness(async (harness) => {
+        const hostId = "host-runtime-plugin-instr-side";
+        seedHostSession(harness.deps, { id: hostId });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId,
+          path: "/tmp/runtime-plugin-instr-side",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId,
+          projectId: project.id,
+          path: "/tmp/runtime-plugin-instr-side",
+        });
+        const mainThread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+        const sideChatThread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          originKind: "side-chat",
+          sourceThreadId: mainThread.id,
+        });
+
+        stubContributions({
+          instructions: [
+            {
+              pluginId: "connect",
+              provider: () => "should not reach side chat",
+            },
+          ],
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          {
+            thread: sideChatThread,
+            environment: {
+              hostId: environment.hostId,
+              id: environment.id,
+              path: environment.path,
+              status: environment.status,
+              workspaceProvisionType: environment.workspaceProvisionType,
+            },
+          },
+        );
+
+        expect(runtimeConfig.instructions).not.toContain(
+          'The following instructions come from the BB plugin "connect":',
+        );
+        expect(runtimeConfig.instructions).not.toContain(
+          "should not reach side chat",
+        );
+      });
     });
   });
 });

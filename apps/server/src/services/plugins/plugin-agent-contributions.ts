@@ -21,6 +21,7 @@ type PluginAgentContributions = Pick<
   PluginService,
   | "listSkillsRootPaths"
   | "listAgentTools"
+  | "listInstructionContributions"
   | "findAgentTool"
   | "invokeAgentTool"
   | "resolveMention"
@@ -42,6 +43,17 @@ export function getPluginSkillsRootPaths(): string[] {
 /** Native tools from bb.agents.registerTool, resolved live per session start. */
 export function listPluginAgentTools(): PluginAgentToolContribution[] {
   return contributions?.listAgentTools() ?? [];
+}
+
+/**
+ * Dynamic instruction providers from bb.agents.contributeInstructions,
+ * resolved live per session start / turn submit.
+ */
+export function listPluginInstructionContributions(): Array<{
+  pluginId: string;
+  provider: (ctx: { threadId: string; projectId: string }) => string | null;
+}> {
+  return contributions?.listInstructionContributions() ?? [];
 }
 
 /** Resolve a native plugin tool by name for tool-call dispatch. */
