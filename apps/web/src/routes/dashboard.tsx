@@ -493,7 +493,10 @@ function SetupCodePanel({
       <p className="mt-2.5 text-xs text-subtle-foreground">
         Paste in <span className="font-medium text-foreground">Settings → Remote access</span> on
         your bb{" · "}
-        <button className="text-accent hover:underline" onClick={() => setShowCli((v) => !v)}>
+        <button
+          className="text-foreground underline underline-offset-2 hover:text-muted-foreground"
+          onClick={() => setShowCli((v) => !v)}
+        >
           using a terminal?
         </button>
       </p>
@@ -715,7 +718,10 @@ function ServerRow({
             </>
           ) : (
             <>
-              Not set up · <span className="text-accent">{panel === "setup" ? "hide code" : "get connect code"}</span>
+              Not set up ·{" "}
+              <span className="text-foreground underline underline-offset-2">
+                {panel === "setup" ? "hide code" : "get connect code"}
+              </span>
             </>
           )}
         </span>
