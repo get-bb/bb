@@ -20,6 +20,7 @@ import {
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginNavPanelRegistration,
+  type PluginPendingInteractionRegistration,
   type PluginRpcClient,
   type PluginSdkApp,
   type PluginSettingsSectionRegistration,
@@ -115,9 +116,7 @@ function definePluginApp(setup: PluginAppSetup): PluginAppDefinition {
   return Object.freeze({ __bbPluginApp: true as const, setup });
 }
 
-function isPluginAppDefinition(
-  value: unknown,
-): value is PluginAppDefinition {
+function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -189,11 +188,10 @@ export function installTestPluginRuntime(): void {
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
-  navPanels: Array<
-    PluginNavPanelRegistration & { chrome: "page" | "none" }
-  >;
+  navPanels: Array<PluginNavPanelRegistration & { chrome: "page" | "none" }>;
   threadPanelActions: PluginThreadPanelActionRegistration[];
   composerAccessories: PluginComposerAccessoryRegistration[];
+  pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
 }
@@ -264,6 +262,7 @@ function collectRegistrations(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],
   };
@@ -273,6 +272,7 @@ function collectRegistrations(
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
   };
@@ -371,6 +371,15 @@ function collectRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      pendingInteraction(registration) {
+        const kind = "slots.pendingInteraction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.pendingInteraction, id);
+        captured.pendingInteractions.push({
+          id,
+          component: requireComponent(kind, registration.component),
+        });
+      },
       sidebarFooterAction(registration) {
         const kind = "slots.sidebarFooterAction";
         const id = requireSlotId(kind, registration?.id);
@@ -396,10 +405,7 @@ function collectRegistrations(
           );
         }
         const extensions = rawExtensions.map((extension) => {
-          if (
-            typeof extension !== "string" ||
-            !/^[a-z0-9]+$/.test(extension)
-          ) {
+          if (typeof extension !== "string" || !/^[a-z0-9]+$/.test(extension)) {
             throw new Error(
               `${kind}: extensions must be lowercase alphanumerics without the dot, got ${JSON.stringify(extension)}`,
             );

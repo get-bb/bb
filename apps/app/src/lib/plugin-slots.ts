@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type {
   PluginComposerAccessoryRegistration,
+  PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginNavPanelRegistration,
@@ -23,6 +24,7 @@ export interface PluginRegistrationSet {
   navPanels: readonly PluginNavPanelRegistration[];
   threadPanelActions: readonly PluginThreadPanelActionRegistration[];
   composerAccessories: readonly PluginComposerAccessoryRegistration[];
+  pendingInteractions?: readonly PluginPendingInteractionRegistration[];
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
 }
@@ -48,6 +50,8 @@ export interface PluginThreadPanelActionSlot
   extends PluginThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginComposerAccessorySlot
   extends PluginComposerAccessoryRegistration, PluginSlotBase {}
+export interface PluginPendingInteractionSlot
+  extends PluginPendingInteractionRegistration, PluginSlotBase {}
 export interface PluginSidebarFooterActionSlot
   extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
@@ -60,6 +64,7 @@ export interface PluginSlotSnapshot {
   navPanels: readonly PluginNavPanelSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   composerAccessories: readonly PluginComposerAccessorySlot[];
+  pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
 }
@@ -70,6 +75,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   navPanels: [],
   threadPanelActions: [],
   composerAccessories: [],
+  pendingInteractions: [],
   sidebarFooterActions: [],
   fileOpeners: [],
 };
@@ -87,6 +93,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     navPanels: PluginNavPanelSlot[];
     threadPanelActions: PluginThreadPanelActionSlot[];
     composerAccessories: PluginComposerAccessorySlot[];
+    pendingInteractions: PluginPendingInteractionSlot[];
     sidebarFooterActions: PluginSidebarFooterActionSlot[];
     fileOpeners: PluginFileOpenerSlot[];
   } = {
@@ -95,6 +102,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],
   };
@@ -116,6 +124,9 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.composerAccessories) {
       next.composerAccessories.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.pendingInteractions ?? []) {
+      next.pendingInteractions.push({ ...registration, pluginId, generation });
     }
     for (const registration of set.sidebarFooterActions) {
       next.sidebarFooterActions.push({

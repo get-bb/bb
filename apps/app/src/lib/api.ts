@@ -7,6 +7,7 @@ import type {
   Experiments,
   Host,
   PendingInteraction,
+  JsonValue,
   ProjectSource,
   ResolvedThreadExecutionOptions,
   ThreadChildOrigin,
@@ -1222,6 +1223,30 @@ export async function resolveThreadPendingInteraction(
     apiClient.threads[":id"].interactions[":interactionId"].resolve.$post({
       param: { id: threadId, interactionId },
       json: req,
+    }),
+  );
+}
+
+export async function respondToThreadPluginInteraction(
+  threadId: string,
+  interactionId: string,
+  value: JsonValue,
+): Promise<PendingInteraction> {
+  return request<PendingInteraction>(
+    apiClient.threads[":id"].interactions[":interactionId"].respond.$post({
+      param: { id: threadId, interactionId },
+      json: { value },
+    }),
+  );
+}
+
+export async function cancelThreadPluginInteraction(
+  threadId: string,
+  interactionId: string,
+): Promise<PendingInteraction> {
+  return request<PendingInteraction>(
+    apiClient.threads[":id"].interactions[":interactionId"].cancel.$post({
+      param: { id: threadId, interactionId },
     }),
   );
 }

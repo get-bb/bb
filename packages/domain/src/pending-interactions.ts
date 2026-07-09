@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonValueSchema } from "./json-value.js";
 
 export const pendingInteractionStatusSchema = z.enum([
   "pending",
@@ -171,6 +172,7 @@ export const USER_QUESTION_MAX_QUESTIONS = 4;
 export const USER_QUESTION_MAX_OPTIONS = 4;
 export const USER_QUESTION_MAX_SELECTED = 4;
 export const USER_QUESTION_MAX_FREE_TEXT_LENGTH = 4096;
+export const PLUGIN_INTERACTION_MAX_TITLE_LENGTH = 160;
 
 const pendingInteractionUserQuestionIdSchema = z
   .string()
@@ -304,6 +306,15 @@ export type UserQuestionPendingInteractionPayload = z.infer<
   typeof userQuestionPendingInteractionPayloadSchema
 >;
 
+export const pluginPendingInteractionPayloadSchema = z.object({
+  kind: z.literal("plugin"),
+  title: z.string().trim().min(1).max(PLUGIN_INTERACTION_MAX_TITLE_LENGTH),
+  data: jsonValueSchema,
+});
+export type PluginPendingInteractionPayload = z.infer<
+  typeof pluginPendingInteractionPayloadSchema
+>;
+
 export const pendingInteractionPayloadSchema = z.discriminatedUnion("kind", [
   approvalPendingInteractionPayloadSchema,
   userQuestionPendingInteractionPayloadSchema,
@@ -311,17 +322,26 @@ export const pendingInteractionPayloadSchema = z.discriminatedUnion("kind", [
 export type PendingInteractionPayload = z.infer<
   typeof pendingInteractionPayloadSchema
 >;
+export type AnyPendingInteractionPayload =
+  | PendingInteractionPayload
+  | PluginPendingInteractionPayload;
 
 export function isApprovalPendingInteractionPayload(
-  payload: PendingInteractionPayload,
+  payload: AnyPendingInteractionPayload,
 ): payload is ApprovalPendingInteractionPayload {
   return payload.kind === "approval";
 }
 
 export function isUserQuestionPendingInteractionPayload(
-  payload: PendingInteractionPayload,
+  payload: AnyPendingInteractionPayload,
 ): payload is UserQuestionPendingInteractionPayload {
   return payload.kind === "user_question";
+}
+
+export function isPluginPendingInteractionPayload(
+  payload: AnyPendingInteractionPayload,
+): payload is PluginPendingInteractionPayload {
+  return payload.kind === "plugin";
 }
 
 const approvalDecisionDiscriminatorError =
@@ -371,10 +391,18 @@ export type UserQuestionPendingInteractionResolution = z.infer<
   typeof userQuestionPendingInteractionResolutionSchema
 >;
 
+export const pluginPendingInteractionResolutionSchema = z.object({
+  kind: z.literal("plugin_submitted"),
+});
+export type PluginPendingInteractionResolution = z.infer<
+  typeof pluginPendingInteractionResolutionSchema
+>;
+
 export const pendingInteractionResolutionSchema = z.union(
   [
     approvalPendingInteractionResolutionSchema,
     userQuestionPendingInteractionResolutionSchema,
+    pluginPendingInteractionResolutionSchema,
   ],
   approvalDecisionDiscriminatorError,
 );
@@ -394,30 +422,107 @@ export function isUserQuestionPendingInteractionResolution(
   return "kind" in resolution && resolution.kind === "user_answer";
 }
 
+export function isPluginPendingInteractionResolution(
+  resolution: PendingInteractionResolution,
+): resolution is PluginPendingInteractionResolution {
+  return "kind" in resolution && resolution.kind === "plugin_submitted";
+}
+
+export const pendingInteractionProviderOriginSchema = z.object({
+  kind: z.literal("provider"),
+  providerId: z.string().min(1),
+  providerThreadId: z.string().min(1),
+  providerRequestId: z.string().min(1),
+});
+export type PendingInteractionProviderOrigin = z.infer<
+  typeof pendingInteractionProviderOriginSchema
+>;
+
+export const pendingInteractionPluginOriginSchema = z.object({
+  kind: z.literal("plugin"),
+  pluginId: z.string().min(1),
+  rendererId: z.string().min(1),
+});
+export type PendingInteractionPluginOrigin = z.infer<
+  typeof pendingInteractionPluginOriginSchema
+>;
+
+export const pendingInteractionOriginSchema = z.discriminatedUnion("kind", [
+  pendingInteractionProviderOriginSchema,
+  pendingInteractionPluginOriginSchema,
+]);
+export type PendingInteractionOrigin = z.infer<
+  typeof pendingInteractionOriginSchema
+>;
+
 export const pendingInteractionCreateSchema = z.object({
   threadId: z.string().min(1),
   turnId: z.string().min(1),
   providerId: z.string().min(1),
   providerThreadId: z.string().min(1),
   providerRequestId: z.string().min(1),
-  payload: pendingInteractionPayloadSchema,
+  payload: z.union([
+    approvalPendingInteractionPayloadSchema,
+    userQuestionPendingInteractionPayloadSchema,
+  ]),
 });
 export type PendingInteractionCreate = z.infer<
   typeof pendingInteractionCreateSchema
 >;
 
-export const pendingInteractionSchema = z.object({
+const pendingInteractionBaseSchema = z.object({
   id: z.string().min(1),
   threadId: z.string().min(1),
-  turnId: z.string().min(1),
-  providerId: z.string().min(1),
-  providerThreadId: z.string().min(1),
-  providerRequestId: z.string().min(1),
   status: pendingInteractionStatusSchema,
-  payload: pendingInteractionPayloadSchema,
-  resolution: pendingInteractionResolutionSchema.nullable(),
   statusReason: z.string().nullable(),
   createdAt: z.number().int().nonnegative(),
+  expiresAt: z.number().int().nonnegative().nullable().optional(),
   resolvedAt: z.number().int().nonnegative().nullable(),
 });
-export type PendingInteraction = z.infer<typeof pendingInteractionSchema>;
+
+export const providerPendingInteractionSchema =
+  pendingInteractionBaseSchema.extend({
+    turnId: z.string().min(1),
+    providerId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+    providerRequestId: z.string().min(1),
+    origin: pendingInteractionProviderOriginSchema.optional(),
+    payload: z.union([
+      approvalPendingInteractionPayloadSchema,
+      userQuestionPendingInteractionPayloadSchema,
+    ]),
+    resolution: z
+      .union([
+        approvalPendingInteractionResolutionSchema,
+        userQuestionPendingInteractionResolutionSchema,
+      ])
+      .nullable(),
+  });
+export type ProviderPendingInteraction = z.infer<
+  typeof providerPendingInteractionSchema
+>;
+
+export const pluginPendingInteractionSchema =
+  pendingInteractionBaseSchema.extend({
+    turnId: z.string().min(1).nullable(),
+    origin: pendingInteractionPluginOriginSchema,
+    payload: pluginPendingInteractionPayloadSchema,
+    resolution: pluginPendingInteractionResolutionSchema.nullable(),
+  });
+export type PluginPendingInteraction = z.infer<
+  typeof pluginPendingInteractionSchema
+>;
+
+export const pendingInteractionSchema = z.union([
+  providerPendingInteractionSchema,
+  pluginPendingInteractionSchema,
+]);
+export type PendingInteraction =
+  | ProviderPendingInteraction
+  | PluginPendingInteraction;
+
+export function isPluginPendingInteraction(
+  interaction: PendingInteraction,
+): interaction is PluginPendingInteraction {
+  return interaction.payload.kind === "plugin";
+}

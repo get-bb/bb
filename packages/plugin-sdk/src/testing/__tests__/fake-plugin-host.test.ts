@@ -1,10 +1,62 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { BbPluginApi } from "../../backend-contract.js";
-import {
-  createFakePluginHost,
-  makeThreadResponse,
-} from "../index.js";
+import { createFakePluginHost, makeThreadResponse } from "../index.js";
+
+describe("interactions", () => {
+  it("settles a blocking request through the harness", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const pending = bb.interactions.request({
+      threadId: "thread-test",
+      rendererId: "secret-request",
+      title: "Add secrets",
+      payload: { fields: ["API_KEY"] },
+    });
+
+    expect(harness.pendingInteractions).toHaveLength(1);
+    harness.submitInteraction(harness.pendingInteractions[0]!.id, {
+      values: { API_KEY: "sentinel" },
+    });
+
+    await expect(pending).resolves.toEqual({
+      outcome: "submitted",
+      value: { values: { API_KEY: "sentinel" } },
+    });
+    expect(harness.pendingInteractions).toEqual([]);
+  });
+
+  it("settles requests on abort and plugin disposal", async () => {
+    const first = createFakePluginHost();
+    const controller = new AbortController();
+    const aborted = first.bb.interactions.request(
+      {
+        threadId: "thread-test",
+        rendererId: "form",
+        title: "Form",
+        payload: null,
+      },
+      { signal: controller.signal },
+    );
+    controller.abort();
+    await expect(aborted).resolves.toEqual({
+      outcome: "cancelled",
+      reason: "request-aborted",
+    });
+
+    const second = createFakePluginHost();
+    const disposed = second.bb.interactions.request({
+      threadId: "thread-test",
+      rendererId: "form",
+      title: "Form",
+      payload: null,
+    });
+    await second.harness.dispose();
+    await expect(disposed).resolves.toEqual({
+      outcome: "cancelled",
+      reason: "plugin-disposed",
+    });
+  });
+});
 
 describe("storage", () => {
   it("kv round-trips JSON, lists by prefix sorted, and enforces the 256KB cap", async () => {
@@ -79,7 +131,7 @@ describe("settings", () => {
       'unknown setting "nope"',
     );
     await expect(harness.setSettings({ mode: "warp" })).rejects.toThrow(
-      'must be one of: fast, slow',
+      "must be one of: fast, slow",
     );
 
     await harness.setSettings({ token: "xoxb-2", mode: "slow" });
@@ -248,9 +300,9 @@ describe("background", () => {
 
   it("validates cron expressions at registration and runs schedules on demand", async () => {
     const { bb, harness } = createFakePluginHost();
-    expect(() =>
-      bb.background.schedule("sync", "not-cron", () => {}),
-    ).toThrow('invalid cron "not-cron" for schedule "sync"');
+    expect(() => bb.background.schedule("sync", "not-cron", () => {})).toThrow(
+      'invalid cron "not-cron" for schedule "sync"',
+    );
 
     let runs = 0;
     bb.background.schedule("sync", "*/5 * * * *", () => {
@@ -285,9 +337,9 @@ describe("thread events", () => {
 
   it("rejects unknown events at registration", () => {
     const { bb } = createFakePluginHost();
-    expect(() =>
-      bb.on("thread.unknown" as "thread.idle", () => {}),
-    ).toThrow('unknown event "thread.unknown"');
+    expect(() => bb.on("thread.unknown" as "thread.idle", () => {})).toThrow(
+      'unknown event "thread.unknown"',
+    );
   });
 });
 
@@ -321,7 +373,7 @@ describe("sdk", () => {
   it("throws a stub-naming error for unstubbed methods and accepts late stubs", async () => {
     const { bb, harness } = createFakePluginHost();
     expect(() => bb.sdk.projects.list({})).toThrow(
-      'bb.sdk.projects.list is not stubbed',
+      "bb.sdk.projects.list is not stubbed",
     );
     harness.sdk.stub("projects.list", async () => []);
     await expect(bb.sdk.projects.list({})).resolves.toEqual([]);
@@ -381,7 +433,7 @@ describe("dispose", () => {
     expect(order).toEqual(["aborted", "second", "first"]);
     expect(db.open).toBe(false);
     await expect(bb.storage.kv.get("x")).rejects.toThrow(
-      'used a stale API handle',
+      "used a stale API handle",
     );
     expect(() => bb.sdk).toThrow("stale");
     // A second dispose is a no-op.

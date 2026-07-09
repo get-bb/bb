@@ -2,6 +2,7 @@ import {
   parseThreadEventRow,
   type PromptInput,
   type PendingInteractionResolution,
+  type JsonValue,
   type ThreadStatus,
 } from "@bb/domain";
 import type {
@@ -57,6 +58,14 @@ export type ThreadInteractionListResult = PublicApiOutput<
 >;
 export type ThreadInteractionResolveResult = PublicApiOutput<
   "/threads/:id/interactions/:interactionId/resolve",
+  "$post"
+>;
+export type ThreadInteractionRespondResult = PublicApiOutput<
+  "/threads/:id/interactions/:interactionId/respond",
+  "$post"
+>;
+export type ThreadInteractionCancelResult = PublicApiOutput<
+  "/threads/:id/interactions/:interactionId/cancel",
   "$post"
 >;
 export type ThreadEventsListResult = PublicApiOutput<
@@ -215,6 +224,10 @@ export interface ThreadInteractionResolveArgs extends ThreadInteractionGetArgs {
   resolution: PendingInteractionResolution;
 }
 
+export interface ThreadInteractionRespondArgs extends ThreadInteractionGetArgs {
+  value: JsonValue;
+}
+
 export type ThreadWaitTarget =
   | { kind: "status"; status: ThreadStatus }
   | { kind: "event"; eventType: string };
@@ -275,11 +288,17 @@ export class ThreadWaitUnreachableError extends Error {
 }
 
 export interface ThreadInteractionsArea {
+  cancel(
+    args: ThreadInteractionGetArgs,
+  ): Promise<ThreadInteractionCancelResult>;
   get(args: ThreadInteractionGetArgs): Promise<ThreadInteractionGetResult>;
   list(args: ThreadInteractionListArgs): Promise<ThreadInteractionListResult>;
   resolve(
     args: ThreadInteractionResolveArgs,
   ): Promise<ThreadInteractionResolveResult>;
+  respond(
+    args: ThreadInteractionRespondArgs,
+  ): Promise<ThreadInteractionRespondResult>;
 }
 
 export interface ThreadEventsArea {
@@ -525,6 +544,15 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   const interactions: ThreadInteractionsArea = {
+    async cancel(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].interactions[
+          ":interactionId"
+        ].cancel.$post({
+          param: { id: input.threadId, interactionId: input.interactionId },
+        }),
+      );
+    },
     async get(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].interactions[":interactionId"].$get({
@@ -552,6 +580,16 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             interactionId: input.interactionId,
           },
           json: input.resolution,
+        }),
+      );
+    },
+    async respond(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].interactions[
+          ":interactionId"
+        ].respond.$post({
+          param: { id: input.threadId, interactionId: input.interactionId },
+          json: { value: input.value },
         }),
       );
     },

@@ -1,4 +1,7 @@
-import type { PendingInteraction } from "@bb/domain";
+import type {
+  PendingInteraction,
+  ProviderPendingInteraction,
+} from "@bb/domain";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
@@ -12,7 +15,7 @@ function PromptStage({ children }: { children: React.ReactNode }) {
   return <div className="w-full max-w-[760px]">{children}</div>;
 }
 
-function basePendingInteraction(): Omit<PendingInteraction, "payload"> {
+function basePendingInteraction(): Omit<ProviderPendingInteraction, "payload"> {
   return {
     id: "pi_demo",
     threadId: "thr_qfk8ksbxkk",
@@ -106,7 +109,9 @@ const permissionGrant: PendingInteraction = {
             "/Users/michael/Projects/bb/apps/app",
             "/Users/michael/Projects/bb/packages",
           ],
-          write: ["/Users/michael/Projects/bb/apps/app/src/components/promptbox"],
+          write: [
+            "/Users/michael/Projects/bb/apps/app/src/components/promptbox",
+          ],
         },
       },
     },
@@ -151,10 +156,7 @@ export function Overview() {
           />
         </PromptStage>
       </StoryRow>
-      <StoryRow
-        label="file change approval"
-        hint="agent wants to write a file"
-      >
+      <StoryRow label="file change approval" hint="agent wants to write a file">
         <PromptStage>
           <ThreadPendingInteractionBanner
             interaction={fileChange}

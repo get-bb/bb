@@ -1,4 +1,7 @@
-import type { PendingInteraction } from "@bb/domain";
+import type {
+  PendingInteraction,
+  ProviderPendingInteraction,
+} from "@bb/domain";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
@@ -14,7 +17,7 @@ function PromptStage({ children }: PromptStageProps) {
   return <div className="w-full max-w-[760px]">{children}</div>;
 }
 
-function basePendingInteraction(): Omit<PendingInteraction, "payload"> {
+function basePendingInteraction(): Omit<ProviderPendingInteraction, "payload"> {
   return {
     id: "pi_question_demo",
     threadId: "thr_qfk8ksbxkk",

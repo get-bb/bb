@@ -26,6 +26,8 @@ export interface FileWriteArgs {
    * null → create-only. A failed guard resolves to the `conflict` outcome.
    */
   expectedSha256?: string | null;
+  /** POSIX permission bits used when creating a file (for example 0o600). */
+  mode?: number;
 }
 
 export interface FileListArgs {

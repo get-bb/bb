@@ -4,7 +4,7 @@ import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -21,6 +21,7 @@ import type {
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
 import {
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
@@ -595,7 +596,6 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
-
 
   const sendQueuedMessageById = useCallback(
     async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {
@@ -1188,6 +1188,13 @@ export function ThreadDetailPromptArea({
   );
 
   if (activePendingInteraction && !shouldHideComposer) {
+    if (isPluginPendingInteraction(activePendingInteraction)) {
+      return (
+        <PluginPendingInteractionComposer
+          interaction={activePendingInteraction}
+        />
+      );
+    }
     if (!activePromptMode) {
       return (
         <ThreadPendingInteractionBanner

@@ -7,6 +7,8 @@ import {
   getThread,
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
+  interruptPendingInteractionsForPlugin,
+  listActivePluginPendingInteractions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
   setPendingInteractionResolved,
@@ -17,6 +19,9 @@ import {
 } from "@bb/db";
 import {
   isApprovalPendingInteractionPayload,
+  isPluginPendingInteractionPayload,
+  isPluginPendingInteraction,
+  type JsonValue,
   type PendingInteraction,
   type PendingInteractionCreate,
   type PendingInteractionResolution,
@@ -83,6 +88,35 @@ interface BuildInteractiveResolveCommandArgs {
   environmentId: string;
   interaction: PendingInteraction;
   resolution: PendingInteractionResolution;
+}
+
+export type PluginInteractionCancelReason =
+  | "user"
+  | "request-aborted"
+  | "thread-stopped"
+  | "thread-deleted"
+  | "plugin-disposed"
+  | "server-restarted"
+  | "timeout";
+
+export type PluginInteractionResult =
+  | { outcome: "submitted"; value: JsonValue }
+  | { outcome: "cancelled"; reason: PluginInteractionCancelReason };
+
+interface RequestPluginInteractionArgs {
+  pluginId: string;
+  threadId: string;
+  rendererId: string;
+  title: string;
+  payload: JsonValue;
+  timeoutMs: number;
+  signal?: AbortSignal;
+}
+
+interface PluginInteractionWaiter {
+  resolve: (result: PluginInteractionResult) => void;
+  timer: ReturnType<typeof setTimeout>;
+  removeAbortListener: () => void;
 }
 
 interface GetThreadInteractionArgs {
@@ -171,6 +205,9 @@ function getUnsupportedPendingInteractionReason(
 function buildInteractiveResolveCommand(
   args: BuildInteractiveResolveCommandArgs,
 ): Extract<HostDaemonCommand, { type: "interactive.resolve" }> {
+  if (isPluginPendingInteraction(args.interaction)) {
+    throw new Error("Plugin interactions do not produce host resolve commands");
+  }
   return {
     type: "interactive.resolve",
     environmentId: args.environmentId,
@@ -222,6 +259,7 @@ function notifyInteractionChanged({
  */
 export class PendingInteractionLifecycle {
   private readonly deps: CreateLifecycleDeps;
+  private readonly pluginWaiters = new Map<string, PluginInteractionWaiter>();
   private started = false;
 
   constructor(args: PendingInteractionLifecycleArgs) {
@@ -242,6 +280,15 @@ export class PendingInteractionLifecycle {
       return;
     }
     this.started = true;
+    this.settleInterruptedRows(
+      listActivePluginPendingInteractions(this.deps.db).flatMap((row) => {
+        const updated = setPendingInteractionInterrupted(this.deps.db, {
+          id: row.id,
+          statusReason: "server-restarted",
+        });
+        return updated ? [updated] : [];
+      }),
+    );
   }
 
   listThreadInteractions(threadId: string): PendingInteraction[] {
@@ -346,10 +393,12 @@ export class PendingInteractionLifecycle {
         row: createPendingInteraction(tx, {
           threadId: interaction.threadId,
           turnId: interaction.turnId,
+          originKind: "provider",
           providerId: interaction.providerId,
           providerThreadId: interaction.providerThreadId,
           providerRequestId: interaction.providerRequestId,
           payload,
+          expiresAt: null,
         }),
       };
     });
@@ -373,6 +422,141 @@ export class PendingInteractionLifecycle {
       outcome: registered.outcome,
       interaction: pendingInteraction,
     };
+  }
+
+  requestPluginInteraction(
+    args: RequestPluginInteractionArgs,
+  ): Promise<PluginInteractionResult> {
+    const thread = getThread(this.deps.db, args.threadId);
+    if (!thread || thread.deletedAt !== null) {
+      throw new ApiError(404, "invalid_request", "Thread does not exist");
+    }
+    if (args.signal?.aborted) {
+      return Promise.resolve({
+        outcome: "cancelled",
+        reason: "request-aborted",
+      });
+    }
+
+    const expiresAt = Date.now() + args.timeoutMs;
+    const row = this.deps.db.transaction((tx) => {
+      if (getActivePendingInteractionForThread(tx, args.threadId)) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          `Thread ${args.threadId} is already awaiting user interaction`,
+        );
+      }
+      return createPendingInteraction(tx, {
+        originKind: "plugin",
+        pluginId: args.pluginId,
+        rendererId: args.rendererId,
+        threadId: args.threadId,
+        turnId: null,
+        expiresAt,
+        payload: JSON.stringify({
+          kind: "plugin",
+          title: args.title,
+          data: args.payload,
+        }),
+      });
+    });
+    const interaction = toPendingInteraction(row);
+
+    return new Promise<PluginInteractionResult>((resolve) => {
+      const abort = () => {
+        this.cancelPluginInteraction({
+          interactionId: interaction.id,
+          threadId: interaction.threadId,
+          reason: "request-aborted",
+        });
+      };
+      args.signal?.addEventListener("abort", abort, { once: true });
+      const timer = setTimeout(() => {
+        this.cancelPluginInteraction({
+          interactionId: interaction.id,
+          threadId: interaction.threadId,
+          reason: "timeout",
+        });
+      }, args.timeoutMs);
+      this.pluginWaiters.set(interaction.id, {
+        resolve,
+        timer,
+        removeAbortListener: () =>
+          args.signal?.removeEventListener("abort", abort),
+      });
+      if (args.signal?.aborted) {
+        abort();
+        return;
+      }
+      appendPendingInteractionTimelineEvent(this.deps, interaction);
+      notifyInteractionChanged({
+        deps: this.deps,
+        hasPendingInteraction: true,
+        threadId: interaction.threadId,
+      });
+    });
+  }
+
+  respondToPluginInteraction(args: {
+    interactionId: string;
+    threadId: string;
+    value: JsonValue;
+  }): PendingInteraction {
+    const current = this.getThreadInteraction(args);
+    if (!isPluginPendingInteraction(current)) {
+      throw new ApiError(400, "invalid_request", "Plugin interaction expected");
+    }
+    if (current.status !== "pending") throw buildResolveConflictError(current);
+    const updated = setPendingInteractionResolved(this.deps.db, {
+      id: current.id,
+      resolution: JSON.stringify({ kind: "plugin_submitted" }),
+    });
+    if (!updated)
+      throw buildResolveConflictError(this.requireInteraction(current.id));
+    const interaction = toPendingInteraction(updated);
+    this.settleInteractionTerminalState(interaction);
+    this.settlePluginWaiter(interaction.id, {
+      outcome: "submitted",
+      value: args.value,
+    });
+    return interaction;
+  }
+
+  cancelPluginInteraction(args: {
+    interactionId: string;
+    threadId: string;
+    reason: PluginInteractionCancelReason;
+  }): PendingInteraction {
+    const current = this.getThreadInteraction(args);
+    if (!isPluginPendingInteraction(current)) {
+      throw new ApiError(400, "invalid_request", "Plugin interaction expected");
+    }
+    if (current.status !== "pending" && current.status !== "resolving") {
+      throw buildResolveConflictError(current);
+    }
+    const updated = setPendingInteractionInterrupted(this.deps.db, {
+      id: current.id,
+      statusReason: args.reason,
+    });
+    if (!updated)
+      throw buildResolveConflictError(this.requireInteraction(current.id));
+    const interaction = toPendingInteraction(updated);
+    this.settleInteractionTerminalState(interaction);
+    this.settlePluginWaiter(interaction.id, {
+      outcome: "cancelled",
+      reason: args.reason,
+    });
+    return interaction;
+  }
+
+  interruptPluginInteractions(pluginId: string): PendingInteraction[] {
+    return this.settleInterruptedRows(
+      interruptPendingInteractionsForPlugin(this.deps.db, {
+        pluginId,
+        statusReason: "plugin-disposed",
+      }),
+    );
   }
 
   resolvePendingInteraction(
@@ -678,6 +862,15 @@ export class PendingInteractionLifecycle {
       hasPendingInteraction: false,
       threadId: interaction.threadId,
     });
+    if (
+      isPluginPendingInteractionPayload(interaction.payload) &&
+      interaction.status === "interrupted"
+    ) {
+      this.settlePluginWaiter(interaction.id, {
+        outcome: "cancelled",
+        reason: this.normalizePluginCancelReason(interaction.statusReason),
+      });
+    }
   }
 
   private settleInteractionTerminalStateInTransaction(
@@ -690,5 +883,43 @@ export class PendingInteractionLifecycle {
       hasPendingInteraction: false,
       threadId: interaction.threadId,
     });
+    if (
+      isPluginPendingInteractionPayload(interaction.payload) &&
+      interaction.status === "interrupted"
+    ) {
+      this.settlePluginWaiter(interaction.id, {
+        outcome: "cancelled",
+        reason: this.normalizePluginCancelReason(interaction.statusReason),
+      });
+    }
+  }
+
+  private settlePluginWaiter(
+    interactionId: string,
+    result: PluginInteractionResult,
+  ): void {
+    const waiter = this.pluginWaiters.get(interactionId);
+    if (!waiter) return;
+    this.pluginWaiters.delete(interactionId);
+    clearTimeout(waiter.timer);
+    waiter.removeAbortListener();
+    waiter.resolve(result);
+  }
+
+  private normalizePluginCancelReason(
+    reason: string | null,
+  ): PluginInteractionCancelReason {
+    switch (reason) {
+      case "user":
+      case "request-aborted":
+      case "thread-stopped":
+      case "thread-deleted":
+      case "plugin-disposed":
+      case "server-restarted":
+      case "timeout":
+        return reason;
+      default:
+        return "thread-stopped";
+    }
   }
 }

@@ -705,15 +705,22 @@ export const pendingInteractions = sqliteTable(
     threadId: text("thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
-    turnId: text("turn_id").notNull(),
-    providerId: text("provider_id").notNull(),
-    providerThreadId: text("provider_thread_id").notNull(),
-    providerRequestId: text("provider_request_id").notNull(),
+    originKind: text("origin_kind")
+      .$type<"provider" | "plugin">()
+      .notNull()
+      .default("provider"),
+    turnId: text("turn_id"),
+    providerId: text("provider_id"),
+    providerThreadId: text("provider_thread_id"),
+    providerRequestId: text("provider_request_id"),
+    pluginId: text("plugin_id"),
+    rendererId: text("renderer_id"),
     status: text("status").$type<PendingInteractionStatus>().notNull(),
     payload: text("payload").notNull(),
     resolution: text("resolution"),
     statusReason: text("status_reason"),
     createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at"),
     resolvedAt: integer("resolved_at"),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -733,6 +740,11 @@ export const pendingInteractions = sqliteTable(
       table.createdAt,
     ),
     index("pending_interactions_status_created_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    index("pending_interactions_plugin_status_created_idx").on(
+      table.pluginId,
       table.status,
       table.createdAt,
     ),

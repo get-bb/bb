@@ -195,6 +195,7 @@ const saved = await bb.sdk.files.write({
   rootPath: "/home/me/notes",     // optional: confine writes beneath this root
   content: "# Todo\n",
   expectedSha256: file.sha256,    // CAS guard; omit for unconditional, null for create-only
+  mode: 0o600,                    // optional POSIX mode for a newly created file; existing mode is preserved
 });
 if (saved.outcome === "conflict") {
   // File changed since the read (saved.currentSha256, null = deleted) —
@@ -327,6 +328,17 @@ thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
 
+### bb.interactions — replace the composer with a blocking plugin form
+
+Use `bb.interactions.request({ threadId, rendererId, title, payload, timeoutMs? },
+{ signal? })` when plugin backend code must wait for sensitive or structured
+user input. The promise resolves to `{ outcome: "submitted", value }` or
+`{ outcome: "cancelled", reason }`. Payloads and responses are JSON values
+capped at 64 KiB; response values are delivered only to the waiting plugin
+invocation and are never persisted. Pair `rendererId` with a frontend
+`pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
+the caller cancels the request.
+
 ### bb.agents — native tools and dynamic instructions
 
 To give agents standing knowledge (conventions, workflows), ship a
@@ -431,6 +443,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({ id: "board", title: "Board", icon: "Columns", path: "board", component: Board });
   app.slots.threadPanelAction({ id: "issue", title: "Open issue", component: IssuePanel, run: async ({ threadId, openPanel }) => openPanel({ title: `Issue for ${threadId}` }) });
   app.slots.composerAccessory({ id: "hint", component: Hint });
+  app.slots.pendingInteraction({ id: "credentials", component: CredentialForm });
   app.slots.sidebarFooterAction({ id: "remote", title: "Remote access", icon: "Smartphone", run: ({ openSettings }) => openSettings() });
 });
 ```
@@ -486,6 +499,13 @@ Slot props contracts (versioned, additive-only):
   or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
+- `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
+  thread composer only while a matching plugin interaction is pending.
+  Registration: `{ id, component }`; `id` must equal the backend request's
+  `rendererId`. `interaction` contains metadata plus the JSON `payload`;
+  `submit(value)` returns the JSON value to the waiting backend invocation,
+  while `cancel()` settles it without a value. Keep sensitive field values in
+  component state only.
 - `sidebarFooterAction` → host-rendered icon button in the app sidebar footer
   (next to Settings / bug report). No plugin component — the host paints
   the chrome so icons stay consistent. Registration:

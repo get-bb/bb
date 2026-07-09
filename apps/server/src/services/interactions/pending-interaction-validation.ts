@@ -10,6 +10,7 @@ import {
   isApprovalPendingInteractionResolution,
   isUserQuestionPendingInteractionPayload,
   isUserQuestionPendingInteractionResolution,
+  isPluginPendingInteractionResolution,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 
@@ -103,6 +104,15 @@ export function pendingInteractionResolutionEquals(
 ): boolean {
   if (left === null || right === null) {
     return left === right;
+  }
+  if (
+    isPluginPendingInteractionResolution(left) ||
+    isPluginPendingInteractionResolution(right)
+  ) {
+    return (
+      isPluginPendingInteractionResolution(left) &&
+      isPluginPendingInteractionResolution(right)
+    );
   }
   if (
     isUserQuestionPendingInteractionResolution(left) ||
@@ -270,6 +280,13 @@ export function validatePendingInteractionResolution(
   interaction: PendingInteraction,
   resolution: PendingInteractionResolution,
 ): void {
+  if (interaction.payload.kind === "plugin") {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Plugin interactions must be submitted through the respond endpoint",
+    );
+  }
   if (isUserQuestionPendingInteraction(interaction)) {
     validateUserQuestionResolution(interaction, resolution);
     return;

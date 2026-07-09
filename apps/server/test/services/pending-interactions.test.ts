@@ -1,7 +1,10 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
-import { pendingInteractions as pendingInteractionTable } from "@bb/db";
+import {
+  events as eventTable,
+  pendingInteractions as pendingInteractionTable,
+} from "@bb/db";
 import type { PendingInteractionCreate } from "@bb/domain";
 import { handleHostSessionOpened } from "../../src/internal/session-owner-side-effects.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
@@ -41,6 +44,61 @@ function registerPendingInteraction(
 }
 
 describe("pending interaction lifecycle", () => {
+  it("returns a plugin response only through memory and persists metadata only", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-plugin-interaction",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const pending = harness.deps.pendingInteractions.requestPluginInteraction(
+        {
+          pluginId: "secrets",
+          threadId: thread.id,
+          rendererId: "secret-request",
+          title: "Add secrets",
+          payload: { fields: [{ name: "API_KEY" }] },
+          timeoutMs: 10_000,
+        },
+      );
+      const [interaction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      expect(interaction?.payload.kind).toBe("plugin");
+
+      harness.deps.pendingInteractions.respondToPluginInteraction({
+        threadId: thread.id,
+        interactionId: interaction!.id,
+        value: { values: { API_KEY: "sentinel-secret-value" } },
+      });
+
+      await expect(pending).resolves.toEqual({
+        outcome: "submitted",
+        value: { values: { API_KEY: "sentinel-secret-value" } },
+      });
+      const [stored] = harness.db
+        .select()
+        .from(pendingInteractionTable)
+        .where(eq(pendingInteractionTable.id, interaction!.id))
+        .all();
+      expect(JSON.stringify(stored)).not.toContain("sentinel-secret-value");
+      expect(stored?.resolution).toBe('{"kind":"plugin_submitted"}');
+      expect(
+        JSON.stringify(harness.db.select().from(eventTable).all()),
+      ).not.toContain("sentinel-secret-value");
+    });
+  });
+
   it("includes project and pending state metadata in interaction change notifications", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

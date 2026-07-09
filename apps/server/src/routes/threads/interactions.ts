@@ -66,4 +66,37 @@ export function registerThreadInteractionRoutes(
       }),
     );
   });
+
+  post(routes.respondToInteraction, (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    if (Buffer.byteLength(JSON.stringify(payload.value), "utf8") > 64 * 1024) {
+      throw new ApiError(
+        413,
+        "invalid_request",
+        "Interaction response exceeds 64 KiB",
+      );
+    }
+    return context.json(
+      deps.pendingInteractions.respondToPluginInteraction({
+        threadId: thread.id,
+        interactionId: parsePendingInteractionId(
+          context.req.param("interactionId"),
+        ),
+        value: payload.value,
+      }),
+    );
+  });
+
+  post(routes.cancelInteraction, (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(
+      deps.pendingInteractions.cancelPluginInteraction({
+        threadId: thread.id,
+        interactionId: parsePendingInteractionId(
+          context.req.param("interactionId"),
+        ),
+        reason: "user",
+      }),
+    );
+  });
 }

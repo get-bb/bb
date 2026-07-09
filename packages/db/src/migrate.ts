@@ -169,20 +169,23 @@ const branchLocalThreadSearchMigrationCreatedAts = [
 const pendingInteractionColumns: ExpectedColumn[] = [
   { name: "id", type: "text", notNull: true, primaryKey: true },
   { name: "thread_id", type: "text", notNull: true, primaryKey: false },
-  { name: "turn_id", type: "text", notNull: true, primaryKey: false },
-  { name: "provider_id", type: "text", notNull: true, primaryKey: false },
+  { name: "origin_kind", type: "text", notNull: true, primaryKey: false },
+  { name: "turn_id", type: "text", notNull: false, primaryKey: false },
+  { name: "provider_id", type: "text", notNull: false, primaryKey: false },
   {
     name: "provider_thread_id",
     type: "text",
-    notNull: true,
+    notNull: false,
     primaryKey: false,
   },
   {
     name: "provider_request_id",
     type: "text",
-    notNull: true,
+    notNull: false,
     primaryKey: false,
   },
+  { name: "plugin_id", type: "text", notNull: false, primaryKey: false },
+  { name: "renderer_id", type: "text", notNull: false, primaryKey: false },
   { name: "status", type: "text", notNull: true, primaryKey: false },
   { name: "payload", type: "text", notNull: true, primaryKey: false },
   { name: "resolution", type: "text", notNull: false, primaryKey: false },
@@ -193,6 +196,7 @@ const pendingInteractionColumns: ExpectedColumn[] = [
     primaryKey: false,
   },
   { name: "created_at", type: "integer", notNull: true, primaryKey: false },
+  { name: "expires_at", type: "integer", notNull: false, primaryKey: false },
   { name: "resolved_at", type: "integer", notNull: false, primaryKey: false },
   { name: "updated_at", type: "integer", notNull: true, primaryKey: false },
 ];
@@ -225,6 +229,11 @@ const pendingInteractionIndexes: ExpectedIndex[] = [
   {
     name: "pending_interactions_status_created_idx",
     columns: ["status", "created_at"],
+    unique: false,
+  },
+  {
+    name: "pending_interactions_plugin_status_created_idx",
+    columns: ["plugin_id", "status", "created_at"],
     unique: false,
   },
 ];

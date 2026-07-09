@@ -6,6 +6,7 @@ import {
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginNavPanelRegistration,
+  type PluginPendingInteractionRegistration,
   type PluginSettingsSectionRegistration,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
@@ -99,6 +100,7 @@ export function collectPluginAppRegistrations(
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
   const composerAccessories: PluginComposerAccessoryRegistration[] = [];
+  const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const seenIds = {
@@ -107,6 +109,7 @@ export function collectPluginAppRegistrations(
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
   };
@@ -208,6 +211,15 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      pendingInteraction(registration) {
+        const kind = "slots.pendingInteraction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.pendingInteraction, id);
+        pendingInteractions.push({
+          id,
+          component: requireComponent(kind, registration.component),
+        });
+      },
       sidebarFooterAction(registration) {
         const kind = "slots.sidebarFooterAction";
         const id = requireSlotId(kind, registration?.id);
@@ -233,10 +245,7 @@ export function collectPluginAppRegistrations(
           );
         }
         const extensions = rawExtensions.map((extension) => {
-          if (
-            typeof extension !== "string" ||
-            !/^[a-z0-9]+$/.test(extension)
-          ) {
+          if (typeof extension !== "string" || !/^[a-z0-9]+$/.test(extension)) {
             throw new Error(
               `${kind}: extensions must be lowercase alphanumerics without the dot, got ${JSON.stringify(extension)}`,
             );
@@ -259,6 +268,7 @@ export function collectPluginAppRegistrations(
     navPanels,
     threadPanelActions,
     composerAccessories,
+    pendingInteractions,
     sidebarFooterActions,
     fileOpeners,
   };

@@ -1,8 +1,4 @@
-import {
-  pendingInteractionPayloadSchema,
-  pendingInteractionResolutionSchema,
-  type PendingInteraction,
-} from "@bb/domain";
+import { pendingInteractionSchema, type PendingInteraction } from "@bb/domain";
 import type { PendingInteractionRow } from "@bb/db";
 import { ApiError } from "../../errors.js";
 
@@ -39,11 +35,9 @@ function parseStoredPendingInteractionJson(
 export function toPendingInteraction(
   row: PendingInteractionRow,
 ): PendingInteraction {
-  let payload: PendingInteraction["payload"];
+  let payload: unknown;
   try {
-    payload = pendingInteractionPayloadSchema.parse(
-      parseStoredPendingInteractionJson(row, "payload"),
-    );
+    payload = parseStoredPendingInteractionJson(row, "payload");
   } catch (error) {
     if (error instanceof PendingInteractionSerializationError) {
       throw error;
@@ -51,14 +45,12 @@ export function toPendingInteraction(
     throw new PendingInteractionSerializationError(row.id, "payload");
   }
 
-  let resolution: PendingInteraction["resolution"];
+  let resolution: unknown;
   try {
     resolution =
       row.resolution === null
         ? null
-        : pendingInteractionResolutionSchema.parse(
-            parseStoredPendingInteractionJson(row, "resolution"),
-          );
+        : parseStoredPendingInteractionJson(row, "resolution");
   } catch (error) {
     if (error instanceof PendingInteractionSerializationError) {
       throw error;
@@ -66,18 +58,40 @@ export function toPendingInteraction(
     throw new PendingInteractionSerializationError(row.id, "resolution");
   }
 
-  return {
-    id: row.id,
-    threadId: row.threadId,
-    turnId: row.turnId,
-    providerId: row.providerId,
-    providerThreadId: row.providerThreadId,
-    providerRequestId: row.providerRequestId,
-    status: row.status,
-    payload,
-    resolution,
-    statusReason: row.statusReason,
-    createdAt: row.createdAt,
-    resolvedAt: row.resolvedAt,
-  };
+  try {
+    return pendingInteractionSchema.parse({
+      id: row.id,
+      threadId: row.threadId,
+      turnId: row.turnId,
+      ...(row.originKind === "provider"
+        ? {
+            providerId: row.providerId,
+            providerThreadId: row.providerThreadId,
+            providerRequestId: row.providerRequestId,
+          }
+        : {}),
+      origin:
+        row.originKind === "provider"
+          ? {
+              kind: "provider",
+              providerId: row.providerId,
+              providerThreadId: row.providerThreadId,
+              providerRequestId: row.providerRequestId,
+            }
+          : {
+              kind: "plugin",
+              pluginId: row.pluginId,
+              rendererId: row.rendererId,
+            },
+      status: row.status,
+      payload,
+      resolution,
+      statusReason: row.statusReason,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      resolvedAt: row.resolvedAt,
+    });
+  } catch {
+    throw new PendingInteractionSerializationError(row.id, "payload");
+  }
 }

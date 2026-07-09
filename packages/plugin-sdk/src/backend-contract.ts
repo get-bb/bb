@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type * as z from "zod";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
+import type { JsonValue } from "@bb/domain";
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -241,6 +242,38 @@ export interface PluginCliContext {
   cwd?: string;
   threadId?: string;
   projectId?: string;
+  /** Aborted when the invoking CLI HTTP request disconnects. */
+  signal?: AbortSignal;
+}
+
+export type PluginInteractionCancelReason =
+  | "user"
+  | "request-aborted"
+  | "thread-stopped"
+  | "thread-deleted"
+  | "plugin-disposed"
+  | "server-restarted"
+  | "timeout";
+
+export type PluginInteractionResult =
+  | { outcome: "submitted"; value: JsonValue }
+  | { outcome: "cancelled"; reason: PluginInteractionCancelReason };
+
+export interface PluginInteractionRequest {
+  threadId: string;
+  rendererId: string;
+  title: string;
+  payload: JsonValue;
+  /** Defaults to ten minutes; capped at one hour. */
+  timeoutMs?: number;
+}
+
+export interface PluginInteractions {
+  /** Block until the app submits or cancels a plugin-owned composer form. */
+  request(
+    request: PluginInteractionRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<PluginInteractionResult>;
 }
 
 export interface PluginCliResult {
@@ -512,6 +545,8 @@ export interface BbPluginApi {
   readonly background: PluginBackground;
   /** Agent-facing `bb` CLI subcommand (design §4.4). */
   readonly cli: PluginCli;
+  /** Secure, user-mediated pending interactions rendered by this plugin. */
+  readonly interactions: PluginInteractions;
   /** Per-turn agent context contributions (design §4.4). */
   readonly agents: PluginAgents;
   /** Host-rendered UI contributions (design §4.9). */

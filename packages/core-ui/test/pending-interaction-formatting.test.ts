@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PendingInteraction } from "@bb/domain";
+import type { PendingInteraction, PendingInteractionPayload } from "@bb/domain";
 import {
   buildPendingInteractionApprovalResolution,
   formatPendingInteractionApprovalResolutionOutcome,
@@ -8,7 +8,7 @@ import {
 } from "../src/index.js";
 
 function createInteraction(
-  payload: PendingInteraction["payload"],
+  payload: PendingInteractionPayload,
 ): PendingInteraction {
   return {
     id: "pint_123456789a",

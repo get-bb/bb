@@ -33,6 +33,7 @@ export const hostFileWriteRequestSchema = z
     // Omitted → unconditional write; hash → compare-and-swap against the
     // current content; null → create-only (fail if the file exists).
     expectedSha256: z.string().nullable().optional(),
+    mode: z.number().int().min(0).max(0o777).optional(),
   })
   .strict();
 export type HostFileWriteRequest = z.infer<typeof hostFileWriteRequestSchema>;
