@@ -712,7 +712,7 @@ export function ActiveWorkflow() {
       </StoryRow>
       <StoryRow
         label="active workflow + runtime"
-        hint="the workflow glyph still shows when the foreground runtime is active"
+        hint="foreground runtime takes precedence over workflow activity"
       >
         <SidebarStage>
           <WorkflowAndRuntimeActiveThreadRow />

@@ -133,10 +133,14 @@ function renderProjectRow(
 }
 
 function expectRightAlignedRollupStatus(label: string) {
-  const icon = screen.getByLabelText(label);
-  const overlay = icon.closest(".bb-sidebar-hover-actions-fade");
+  const icon = screen
+    .getAllByLabelText(label)
+    .find((element) => element.closest(".bb-sidebar-hover-actions-fade"));
+  expect(icon).not.toBeUndefined();
+  const overlay = icon?.closest(".bb-sidebar-hover-actions-fade");
   expect(overlay).not.toBeNull();
   expect(overlay?.className).toContain("justify-end");
+  return overlay;
 }
 
 describe("ProjectRow interactions", () => {
@@ -302,7 +306,17 @@ describe("ProjectRow interactions", () => {
     expect(
       screen.getByRole("button", { name: "Expand Test project" }),
     ).not.toBeNull();
-    expectRightAlignedRollupStatus("Agent working");
+    const overlay = expectRightAlignedRollupStatus("Agent working");
+    expect(overlay?.className).toContain("max-md:pointer-coarse:hidden");
+    expect(
+      screen
+        .getAllByLabelText("Agent working")
+        .some((element) =>
+          element
+            .closest("span")
+            ?.className.includes("max-md:pointer-coarse:inline-flex"),
+        ),
+    ).toBe(true);
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

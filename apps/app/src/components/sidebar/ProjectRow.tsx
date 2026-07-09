@@ -2209,9 +2209,29 @@ function ProjectRowComponent({
                   }
                   className={cn(
                     SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-                    "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
+                    "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
                   )}
                 >
+                  <ThreadStatusGlyph
+                    hasPendingInteraction={projectActivity.pending}
+                    isBackgroundAgentActive={projectActivity.backgroundAgent}
+                    isBackgroundCommandActive={
+                      projectActivity.backgroundCommand
+                    }
+                    isForegroundAgentWorking={projectActivity.runtimeWorking}
+                    isGoalActive={projectActivity.goal}
+                    isPlanModeActive={projectActivity.planMode}
+                    isBusy={projectActivity.working}
+                    isWorkflowActive={projectActivity.workflow}
+                    showUnreadBadge={projectActivity.unread}
+                    unreadBadgeTone={
+                      projectActivity.unreadError ? "error" : "default"
+                    }
+                  />
+                </span>
+              ) : null}
+              {showProjectRollupGlyph ? (
+                <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
                   <ThreadStatusGlyph
                     hasPendingInteraction={projectActivity.pending}
                     isBackgroundAgentActive={projectActivity.backgroundAgent}

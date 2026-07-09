@@ -167,6 +167,7 @@ function SidebarFolderRowComponent({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
               "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
+              hasActions && "max-md:pointer-coarse:hidden",
             )}
           >
             <ThreadStatusGlyph
@@ -196,6 +197,22 @@ function SidebarFolderRowComponent({
             )}
             onClick={stopActionsClick}
           >
+            {showRollupGlyph ? (
+              <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
+                <ThreadStatusGlyph
+                  hasPendingInteraction={activity.pending}
+                  isBackgroundAgentActive={activity.backgroundAgent}
+                  isBackgroundCommandActive={activity.backgroundCommand}
+                  isForegroundAgentWorking={activity.runtimeWorking}
+                  isGoalActive={activity.goal}
+                  isPlanModeActive={activity.planMode}
+                  isBusy={activity.working}
+                  isWorkflowActive={activity.workflow}
+                  showUnreadBadge={activity.unread}
+                  unreadBadgeTone={activity.unreadError ? "error" : "default"}
+                />
+              </span>
+            ) : null}
             {hasMenuActions ? (
               <DropdownMenu onOpenChange={setIsActionsOpen}>
                 <DropdownMenuTrigger asChild>

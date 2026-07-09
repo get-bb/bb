@@ -327,37 +327,63 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("shows a working spinner for collapsed parent rows with generic hidden child work", () => {
-    renderThreadRow({
-      thread: createThread({
-        title: "Parent thread",
-        lastReadAt: 1,
-        latestAttentionAt: 1,
-      }),
-      options: {
-        kind: "parent",
-        depth: 1,
-        isCompact: false,
-        isCollapsed: true,
-        childCount: 1,
-        childActivity: {
-          pending: false,
-          working: true,
-          runtimeWorking: false,
-          workflow: false,
-          backgroundAgent: false,
-          backgroundCommand: false,
-          planMode: false,
-          goal: false,
-          unread: false,
-          unreadError: false,
+  it.each([
+    {
+      flag: "backgroundAgent" as const,
+      label: "Background agent running",
+      icon: "UserRoundPlus",
+    },
+    {
+      flag: "backgroundCommand" as const,
+      label: "Background command running",
+      icon: "Terminal",
+    },
+    {
+      flag: "planMode" as const,
+      label: "Plan mode active",
+      icon: "ListTodo",
+    },
+    {
+      flag: "goal" as const,
+      label: "Goal active",
+      icon: "Target",
+    },
+  ])(
+    "shows the $label glyph for collapsed parent rows with hidden child activity",
+    ({ flag, icon, label }) => {
+      renderThreadRow({
+        thread: createThread({
+          title: "Parent thread",
+          lastReadAt: 1,
+          latestAttentionAt: 1,
+        }),
+        options: {
+          kind: "parent",
+          depth: 1,
+          isCompact: false,
+          isCollapsed: true,
+          childCount: 1,
+          childActivity: {
+            pending: false,
+            working: true,
+            runtimeWorking: false,
+            workflow: false,
+            backgroundAgent: false,
+            backgroundCommand: false,
+            planMode: false,
+            goal: false,
+            unread: false,
+            unreadError: false,
+            [flag]: true,
+          },
+          onToggleCollapsed: vi.fn(),
         },
-        onToggleCollapsed: vi.fn(),
-      },
-    });
+      });
 
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
-  });
+      expect(screen.getByLabelText(label).getAttribute("data-icon")).toBe(icon);
+      expect(screen.queryByLabelText("Thread working")).toBeNull();
+    },
+  );
 
   it("renders an already-unread successful thread as a settled dot on initial load", () => {
     const { container } = renderThreadRow({

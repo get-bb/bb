@@ -34,10 +34,23 @@ describe("SidebarFolderRow", () => {
       </TooltipProvider>,
     );
 
-    const icon = screen.getByLabelText("Background command running");
-    const overlay = icon.closest(".bb-sidebar-hover-actions-fade");
+    const icon = screen
+      .getAllByLabelText("Background command running")
+      .find((element) => element.closest(".bb-sidebar-hover-actions-fade"));
+    expect(icon).not.toBeUndefined();
+    const overlay = icon?.closest(".bb-sidebar-hover-actions-fade");
     expect(overlay).not.toBeNull();
     expect(overlay?.className).toContain("justify-end");
+    expect(overlay?.className).toContain("max-md:pointer-coarse:hidden");
+    expect(
+      screen
+        .getAllByLabelText("Background command running")
+        .some((element) =>
+          element
+            .closest("span")
+            ?.className.includes("max-md:pointer-coarse:inline-flex"),
+        ),
+    ).toBe(true);
     expect(
       screen.getByRole("button", { name: "New thread in Build" }),
     ).not.toBeNull();

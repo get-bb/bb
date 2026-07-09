@@ -756,6 +756,23 @@ export interface ListStoredEventRowsByThreadIdsAndTypesArgs {
   types: readonly ThreadEventType[];
 }
 
+export interface ListLatestGoalEventRowsByThreadIdsArgs {
+  threadIds: readonly string[];
+}
+
+export interface ListOpenTurnInputAcceptedRowsByThreadIdsArgs {
+  threadIds: readonly string[];
+}
+
+export interface ThreadClientTurnRequestKey {
+  requestId: ClientTurnRequestId;
+  threadId: string;
+}
+
+export interface ListStoredClientTurnRequestRowsByKeysArgs {
+  keys: readonly ThreadClientTurnRequestKey[];
+}
+
 export interface ListStoredToolCallRowsByItemIdsArgs {
   itemIds: readonly string[];
   threadId: string;
@@ -938,6 +955,112 @@ export function listStoredEventRowsByThreadIdsAndTypes(
         inArray(events.type, [...args.types]),
       ),
     )
+    .orderBy(events.threadId, events.sequence)
+    .all();
+}
+
+export function listLatestGoalEventRowsByThreadIds(
+  db: DbQueryConnection,
+  args: ListLatestGoalEventRowsByThreadIdsArgs,
+): StoredEventRow[] {
+  if (args.threadIds.length === 0) {
+    return [];
+  }
+
+  const goalTypes = [
+    "thread/goal/updated",
+    "thread/goal/cleared",
+  ] satisfies ThreadEventType[];
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        inArray(events.threadId, [...args.threadIds]),
+        inArray(events.type, goalTypes),
+        sql`${events.sequence} = (
+          SELECT MAX(latest.sequence)
+          FROM events latest
+          WHERE latest.thread_id = ${events.threadId}
+            AND latest.type IN (${goalTypes[0]}, ${goalTypes[1]})
+        )`,
+      ),
+    )
+    .orderBy(events.threadId, events.sequence)
+    .all();
+}
+
+export function listOpenTurnInputAcceptedRowsByThreadIds(
+  db: DbQueryConnection,
+  args: ListOpenTurnInputAcceptedRowsByThreadIdsArgs,
+): StoredEventRow[] {
+  if (args.threadIds.length === 0) {
+    return [];
+  }
+
+  const acceptedType = "turn/input/accepted" satisfies ThreadEventType;
+  const completedType = "turn/completed" satisfies ThreadEventType;
+  const interruptedType = "system/thread/interrupted" satisfies ThreadEventType;
+  const completed = alias(events, "completed_turn_for_accepted_input");
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        inArray(events.threadId, [...args.threadIds]),
+        eq(events.type, acceptedType),
+        isNotNull(events.turnId),
+        sql`${events.sequence} > COALESCE((
+          SELECT MAX(interrupted.sequence)
+          FROM events interrupted
+          WHERE interrupted.thread_id = ${events.threadId}
+            AND interrupted.type = ${interruptedType}
+        ), -1)`,
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(completed)
+            .where(
+              and(
+                eq(completed.threadId, events.threadId),
+                eq(completed.turnId, events.turnId),
+                eq(completed.type, completedType),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(events.threadId, events.sequence)
+    .all();
+}
+
+export function listStoredClientTurnRequestRowsByKeys(
+  db: DbQueryConnection,
+  args: ListStoredClientTurnRequestRowsByKeysArgs,
+): StoredEventRow[] {
+  const uniqueKeys = [
+    ...new Map(
+      args.keys.map((key) => [`${key.threadId}\0${key.requestId}`, key]),
+    ).values(),
+  ];
+  if (uniqueKeys.length === 0) {
+    return [];
+  }
+
+  const requestType = "client/turn/requested" satisfies ThreadEventType;
+  const keyConditions = uniqueKeys.map((key) =>
+    and(
+      eq(events.threadId, key.threadId),
+      sql`json_extract(${events.data}, '$.requestId') = ${key.requestId}`,
+    ),
+  );
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(and(eq(events.type, requestType), or(...keyConditions)))
     .orderBy(events.threadId, events.sequence)
     .all();
 }

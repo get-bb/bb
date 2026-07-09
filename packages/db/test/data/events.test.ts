@@ -28,11 +28,14 @@ import {
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
   listEvents,
+  listLatestGoalEventRowsByThreadIds,
   listRecentStoredEventRows,
   listTimelineSegmentAnchorsDescending,
   findTimelineSegmentAnchorSequenceAfter,
   getTimelineSegmentAnchorAtSequence,
+  listOpenTurnInputAcceptedRowsByThreadIds,
   listStoredClientTurnRequestIdsInRange,
+  listStoredClientTurnRequestRowsByKeys,
   listStoredEventRows,
   listStoredEventRowsInRange,
   listStoredThreadProvisioningRowsByProvisioningId,
@@ -102,6 +105,25 @@ function createTurnEventFields(args: CreateTurnEventFieldsArgs) {
 
 function textInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
+}
+
+function clientTurnRequestData(requestId: string, text: string): string {
+  return JSON.stringify({
+    direction: "outbound",
+    requestId,
+    source: "tell",
+    initiator: "user",
+    input: textInput(text),
+    target: { kind: "new-turn" },
+    request: { method: "turn/start", params: {} },
+    execution: {
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "workspace-write",
+      source: "client/turn/requested",
+      serviceTier: "auto",
+    },
+  });
 }
 
 interface CreateTokenUsageDataArgs {
@@ -1124,6 +1146,173 @@ describe("events", () => {
         clientRequestIds: ["creq_23456789ab", "creq_23456789ac"],
       }).map((row) => row.sequence),
     ).toEqual([3, 5]);
+  });
+
+  it("lists only the latest goal event row per thread", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "thread/goal/updated",
+        ...threadEventFields,
+        providerThreadId: "provider-thread-1",
+        data: JSON.stringify({
+          objective: "Old goal",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 1,
+          timeUsedSeconds: 1,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "thread/goal/cleared",
+        ...threadEventFields,
+        providerThreadId: "provider-thread-1",
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: otherThread.id,
+        sequence: 1,
+        type: "thread/goal/updated",
+        ...threadEventFields,
+        providerThreadId: "provider-thread-2",
+        data: JSON.stringify({
+          objective: "Active goal",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 2,
+          timeUsedSeconds: 2,
+        }),
+      },
+    ]);
+
+    const rowsByThreadId = new Map(
+      listLatestGoalEventRowsByThreadIds(db, {
+        threadIds: [thread.id, otherThread.id],
+      }).map((row) => [row.threadId, row]),
+    );
+
+    expect(rowsByThreadId.get(thread.id)?.type).toBe("thread/goal/cleared");
+    expect(rowsByThreadId.get(thread.id)?.sequence).toBe(2);
+    expect(rowsByThreadId.get(otherThread.id)?.type).toBe(
+      "thread/goal/updated",
+    );
+    expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
+  });
+
+  it("lists only open accepted turn inputs after the latest interruption", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/input/accepted",
+        ...createTurnEventFields({ turnId: "turn-completed" }),
+        data: JSON.stringify({ clientRequestId: "creq_23456789aa" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/completed",
+        ...createTurnEventFields({ turnId: "turn-completed" }),
+        data: JSON.stringify({ status: "completed" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "turn/input/accepted",
+        ...createTurnEventFields({ turnId: "turn-interrupted" }),
+        data: JSON.stringify({ clientRequestId: "creq_23456789ab" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "system/thread/interrupted",
+        ...threadEventFields,
+        data: JSON.stringify({ reason: "user" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "turn/input/accepted",
+        ...createTurnEventFields({ turnId: "turn-open" }),
+        data: JSON.stringify({ clientRequestId: "creq_23456789ac" }),
+      },
+      {
+        threadId: otherThread.id,
+        sequence: 1,
+        type: "turn/input/accepted",
+        ...createTurnEventFields({ turnId: "turn-other-open" }),
+        data: JSON.stringify({ clientRequestId: "creq_23456789ad" }),
+      },
+    ]);
+
+    const rowsByThreadId = new Map(
+      listOpenTurnInputAcceptedRowsByThreadIds(db, {
+        threadIds: [thread.id, otherThread.id],
+      }).map((row) => [row.threadId, row]),
+    );
+
+    expect(rowsByThreadId.get(thread.id)?.sequence).toBe(5);
+    expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
+  });
+
+  it("lists client turn request rows by thread/request keys", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: clientTurnRequestData("creq_23456789aa", "first"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: clientTurnRequestData("creq_23456789ab", "ignored"),
+      },
+      {
+        threadId: otherThread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: clientTurnRequestData("creq_23456789aa", "same id elsewhere"),
+      },
+    ]);
+
+    const rowsByThreadId = new Map(
+      listStoredClientTurnRequestRowsByKeys(db, {
+        keys: [
+          { threadId: thread.id, requestId: "creq_23456789aa" },
+          { threadId: otherThread.id, requestId: "creq_23456789aa" },
+        ],
+      }).map((row) => [row.threadId, row]),
+    );
+
+    expect(rowsByThreadId.get(thread.id)?.sequence).toBe(1);
+    expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
+    expect(rowsByThreadId.size).toBe(2);
   });
 
   it("lists client turn request ids in range with a storage predicate", () => {

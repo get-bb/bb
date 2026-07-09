@@ -3,17 +3,19 @@ import {
   getLatestSessionForHost,
   getSessionById,
   listActiveBackgroundTaskCountsByThreadIds,
+  listLatestGoalEventRowsByThreadIds,
   listLatestSessionsForHosts,
-  listStoredEventRowsByThreadIdsAndTypes,
+  listOpenTurnInputAcceptedRowsByThreadIds,
+  listStoredClientTurnRequestRowsByKeys,
   type DbConnection,
   type HostDaemonSessionRow,
   type StoredEventRow,
+  type ThreadClientTurnRequestKey,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
 import type {
   Thread,
   ThreadActivityState,
-  ThreadEventType,
   ThreadListEntry,
   ThreadRuntimeState,
   ThreadStatus,
@@ -80,15 +82,6 @@ type PromptBannerActivityState = Pick<
   ThreadActivityState,
   "activeGoalCount" | "activePlanModeCount"
 >;
-
-const PROMPT_BANNER_ACTIVITY_EVENT_TYPES = [
-  "client/turn/requested",
-  "turn/input/accepted",
-  "turn/completed",
-  "system/thread/interrupted",
-  "thread/goal/updated",
-  "thread/goal/cleared",
-] satisfies ThreadEventType[];
 
 const EMPTY_THREAD_ACTIVITY: ThreadActivityState = {
   activeBackgroundAgentCount: 0,
@@ -286,14 +279,48 @@ function getThreadPromptBannerActivityState(
   };
 }
 
+function canThreadShowActivePlanMode(thread: Thread): boolean {
+  return (
+    thread.status === "active" &&
+    (thread.providerId === "claude-code" || thread.providerId === "codex")
+  );
+}
+
+function listPromptBannerActivityCandidateRows(
+  deps: ThreadRuntimeDisplayDeps,
+  threads: readonly Thread[],
+): StoredEventRow[] {
+  const latestGoalRows = listLatestGoalEventRowsByThreadIds(deps.db, {
+    threadIds: threads.map((thread) => thread.id),
+  });
+  const openAcceptedRows = listOpenTurnInputAcceptedRowsByThreadIds(deps.db, {
+    threadIds: threads
+      .filter((thread) => canThreadShowActivePlanMode(thread))
+      .map((thread) => thread.id),
+  });
+  const openAcceptedEvents = openAcceptedRows.map(toThreadEventWithMeta);
+  const requestKeys: ThreadClientTurnRequestKey[] = openAcceptedEvents.flatMap(
+    ({ event }) =>
+      event.type === "turn/input/accepted"
+        ? [{ requestId: event.clientRequestId, threadId: event.threadId }]
+        : [],
+  );
+  const requestRows = listStoredClientTurnRequestRowsByKeys(deps.db, {
+    keys: requestKeys,
+  });
+
+  return [...latestGoalRows, ...openAcceptedRows, ...requestRows].sort(
+    (left, right) =>
+      left.threadId.localeCompare(right.threadId) ||
+      left.sequence - right.sequence,
+  );
+}
+
 function buildThreadPromptBannerActivityByThreadId(
   deps: ThreadRuntimeDisplayDeps,
   threads: readonly Thread[],
 ): Map<string, PromptBannerActivityState> {
-  const rows = listStoredEventRowsByThreadIdsAndTypes(deps.db, {
-    threadIds: threads.map((thread) => thread.id),
-    types: PROMPT_BANNER_ACTIVITY_EVENT_TYPES,
-  });
+  const rows = listPromptBannerActivityCandidateRows(deps, threads);
   const eventsByThreadId = new Map<string, ThreadEventWithMeta[]>();
   for (const row of rows) {
     const threadEvents = eventsByThreadId.get(row.threadId);
