@@ -39,7 +39,7 @@ import {
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
 
-const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
+const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
@@ -336,15 +336,19 @@ export function AppSidebar({
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 className={SIDEBAR_FOOTER_ACTION_CLASS}
-                tooltip={{ children: "Feedback", hidden: false, side: "top" }}
-                aria-label="Send feedback"
+                tooltip={{
+                  children: "Report a bug",
+                  hidden: false,
+                  side: "top",
+                }}
+                aria-label="Report a bug"
                 onClick={() => {
                   closeOnMobile();
-                  openUrlInExternalBrowser(FEEDBACK_NEW_ISSUE_URL);
+                  openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
                 }}
               >
-                <Icon name="ChatFeedback" />
-                <span className="sr-only">Feedback</span>
+                <Icon name="Bug" />
+                <span className="sr-only">Report a bug</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem className="min-w-0">
