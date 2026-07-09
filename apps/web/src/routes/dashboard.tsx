@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  ArrowUpRight01Icon,
+  GithubIcon,
+  MoreHorizontalIcon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
 import { MAX_SERVERS_PER_ACCOUNT } from "@bb/connect-db";
 import type { HandleValidationError, LabelAvailability } from "@bb/connect-db";
 import appCss from "../styles.css?url";
@@ -187,11 +194,7 @@ function Overlay({ children, onClose }: { children: React.ReactNode; onClose: ()
 }
 
 function GithubMark() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" className="size-4" aria-hidden>
-      <path d="M8 .8a7.2 7.2 0 0 0-2.28 14.03c.36.07.5-.15.5-.34l-.01-1.34c-2 .44-2.43-.85-2.43-.85-.32-.83-.8-1.05-.8-1.05-.65-.45.05-.44.05-.44.73.05 1.11.74 1.11.74.65 1.1 1.7.79 2.11.6.07-.47.25-.79.46-.97-1.6-.18-3.28-.8-3.28-3.56 0-.79.28-1.43.74-1.94-.07-.18-.32-.91.07-1.9 0 0 .6-.2 1.98.74a6.9 6.9 0 0 1 3.6 0c1.37-.93 1.97-.74 1.97-.74.4.99.15 1.72.07 1.9.46.5.74 1.15.74 1.94 0 2.77-1.69 3.38-3.3 3.55.26.23.5.67.5 1.35l-.01 2c0 .2.13.42.5.34A7.2 7.2 0 0 0 8 .8z" />
-    </svg>
-  );
+  return <HugeiconsIcon icon={GithubIcon} className="size-4" aria-hidden />;
 }
 
 /* ── formatting + copy ────────────────────────────────────────────── */
@@ -528,7 +531,7 @@ function SetupCodePanel({
 function RepairCodeBlock({ serverId }: { serverId: string }) {
   const [code, setCode] = useState<IssuedCode | null>(null);
   useEffect(() => {
-    // "New connect code" always mints fresh (reuse: false).
+    // "Pair again" always mints fresh (reuse: false).
     void createCodeFn({ data: { serverId, reuse: false } }).then((r) => {
       if ("code" in r) setCode(r);
     });
@@ -608,7 +611,7 @@ function RowMenu({ items }: { items: { label: string; danger?: boolean; onSelect
     <div className="relative justify-self-center">
       <button
         className={cn(
-          "flex h-[26px] w-[26px] items-center justify-center rounded-md text-lg leading-none text-subtle-foreground hover:bg-state-hover hover:text-foreground",
+          "flex h-[26px] w-[26px] items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground",
           open && "bg-state-hover text-foreground",
         )}
         aria-label="More"
@@ -620,7 +623,7 @@ function RowMenu({ items }: { items: { label: string; danger?: boolean; onSelect
           setOpen((v) => !v);
         }}
       >
-        ⋯
+        <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
       </button>
       {open && (
         <>
@@ -684,7 +687,7 @@ function ServerRow({
     ? [
         { label: "Copy URL", onSelect: copyUrl },
         {
-          label: "New connect code (re-pair)…",
+          label: "Pair again…",
           onSelect: () => setPanel((p) => (p === "repair" ? "none" : "repair")),
         },
         { label: "Disconnect…", danger: true, onSelect: () => setConfirm("disconnect") },
@@ -728,7 +731,7 @@ function ServerRow({
       </span>
       {server.connected ? (
         <span className="justify-self-center text-subtle-foreground" aria-hidden>
-          ↗
+          <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-4" />
         </span>
       ) : (
         <span aria-hidden />
@@ -939,10 +942,11 @@ function AccountDashboard({ state }: { state: ServerState }) {
         <div className="flex items-center px-1.5 pb-1.5 pl-3 pt-1.5">
           <h3 className="flex-1 text-[17px] font-semibold tracking-tight">Your bbs</h3>
           <button
-            className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-recessed hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-recessed hover:text-foreground"
             onClick={() => setConnectOpen(true)}
           >
-            + Add a bb
+            <HugeiconsIcon icon={PlusSignIcon} className="size-3" />
+            Add a bb
           </button>
         </div>
         {state.servers.map((s: ServerSummary) => (
