@@ -3611,6 +3611,223 @@ describe("codex provider adapter", () => {
     );
   });
 
+  it("materializes Codex subagent activity as a nested delegation lifecycle", () => {
+    const adapter = createCodexProviderAdapter();
+
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "item/completed",
+        params: {
+          threadId: "root-provider-thread",
+          turnId: "parent-turn",
+          item: {
+            type: "subAgentActivity",
+            id: "subagent-call-1",
+            kind: "started",
+            agentThreadId: "agent-thread-1",
+            agentPath: "/root/audit_do_browser",
+          },
+        },
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        threadId: "root-provider-thread",
+        providerThreadId: "root-provider-thread",
+        scope: turnScope("parent-turn"),
+        item: expect.objectContaining({
+          type: "toolCall",
+          id: "subagent-call-1",
+          tool: "spawnAgent",
+          status: "pending",
+          arguments: {
+            senderThreadId: "root-provider-thread",
+            receiverThreadIds: ["agent-thread-1"],
+            description: "/root/audit_do_browser",
+          },
+        }),
+      }),
+    ]);
+
+    expect(
+      adapter.translateEvent(
+        codexEvent("turn/started", {
+          threadId: "root-provider-thread",
+          turn: codexTurn({
+            id: "child-turn-1",
+            status: "inProgress",
+            error: null,
+          }),
+        }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("child-turn-1"),
+        parentToolCallId: "subagent-call-1",
+      }),
+    );
+
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "item/completed",
+        params: {
+          threadId: "root-provider-thread",
+          turnId: "parent-turn",
+          item: {
+            type: "subAgentActivity",
+            id: "interaction-1",
+            kind: "interacted",
+            agentThreadId: "agent-thread-1",
+            agentPath: "/root/audit_do_browser",
+          },
+        },
+      }),
+    ).toEqual([]);
+
+    expect(
+      adapter.translateEvent(
+        codexEvent("item/completed", {
+          threadId: "root-provider-thread",
+          turnId: "child-turn-1",
+          completedAtMs: 0,
+          item: {
+            type: "agentMessage",
+            id: "child-message-1",
+            text: "Audit complete.",
+            phase: null,
+            memoryCitation: null,
+          },
+        }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: "child-message-1",
+          parentToolCallId: "subagent-call-1",
+        }),
+      }),
+    );
+
+    expect(
+      adapter.translateEvent(
+        codexEvent("turn/completed", {
+          threadId: "root-provider-thread",
+          turn: codexTurn({
+            id: "child-turn-1",
+            status: "completed",
+            error: null,
+          }),
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("child-turn-1"),
+      }),
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("parent-turn"),
+        item: expect.objectContaining({
+          type: "toolCall",
+          id: "subagent-call-1",
+          tool: "spawnAgent",
+          status: "completed",
+        }),
+      }),
+    ]);
+  });
+
+  it("links concurrent Codex subagents to child turns in activity order", () => {
+    const adapter = createCodexProviderAdapter();
+
+    for (const index of [1, 2]) {
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "item/completed",
+        params: {
+          threadId: "root-provider-thread",
+          turnId: "parent-turn",
+          item: {
+            type: "subAgentActivity",
+            id: `subagent-call-${index}`,
+            kind: "started",
+            agentThreadId: `agent-thread-${index}`,
+            agentPath: `/root/agent_${index}`,
+          },
+        },
+      });
+    }
+
+    for (const index of [1, 2]) {
+      expect(
+        adapter.translateEvent(
+          codexEvent("turn/started", {
+            threadId: "root-provider-thread",
+            turn: codexTurn({
+              id: `child-turn-${index}`,
+              status: "inProgress",
+              error: null,
+            }),
+          }),
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          type: "turn/started",
+          scope: turnScope(`child-turn-${index}`),
+          parentToolCallId: `subagent-call-${index}`,
+        }),
+      );
+    }
+  });
+
+  it("terminalizes an open Codex subagent when activity is interrupted", () => {
+    const adapter = createCodexProviderAdapter();
+    const startedActivity = {
+      jsonrpc: "2.0" as const,
+      method: "item/completed",
+      params: {
+        threadId: "root-provider-thread",
+        turnId: "parent-turn",
+        item: {
+          type: "subAgentActivity",
+          id: "subagent-call-1",
+          kind: "started",
+          agentThreadId: "agent-thread-1",
+          agentPath: "/root/audit",
+        },
+      },
+    };
+    adapter.translateEvent(startedActivity);
+
+    const interruptedEvents = adapter.translateEvent({
+      ...startedActivity,
+      params: {
+        ...startedActivity.params,
+        item: {
+          ...startedActivity.params.item,
+          id: "interrupt-activity-1",
+          kind: "interrupted",
+        },
+      },
+    });
+    expect(interruptedEvents).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("parent-turn"),
+        item: expect.objectContaining({
+          id: "subagent-call-1",
+          status: "interrupted",
+        }),
+      }),
+    ]);
+
+    expect(adapter.translateEvent(startedActivity)).toHaveLength(0);
+  });
+
   it.each(["spawnAgent", "resumeAgent"] as const)(
     "stamps pending same-provider child turn events for %s",
     (tool) => {
