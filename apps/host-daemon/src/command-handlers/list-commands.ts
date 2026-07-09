@@ -1059,9 +1059,54 @@ export async function resolveProviderCommandScanRoots(
 }
 
 /**
+ * Shared bb skill roots scanned for every provider that exposes slash-command
+ * typeahead: project `.bb/skills`, data-dir skills, inherited roots, and
+ * built-in skills. Project roots are skipped when `cwd` is null.
+ */
+function pushBbSkillCommandScanRoots(
+  roots: CommandScanRoot[],
+  resolution: CommandRootResolution,
+): void {
+  if (resolution.cwd !== null) {
+    roots.push({
+      rootPath: path.join(resolution.cwd, ".bb", "skills"),
+      shape: "skill",
+      namePrefix: "",
+      source: "skill",
+      origin: "project",
+    });
+  }
+  roots.push({
+    rootPath: resolveDataDirSkillsRootPath(resolution.dataDir),
+    shape: "skill",
+    namePrefix: "",
+    source: "skill",
+    origin: "user",
+  });
+  for (const rootPath of resolution.additionalSkillsRootPaths) {
+    roots.push({
+      rootPath,
+      shape: "skill",
+      namePrefix: "",
+      source: "skill",
+      origin: "user",
+    });
+  }
+  roots.push({
+    rootPath: resolution.builtinSkillsRootPath,
+    shape: "skill",
+    namePrefix: "",
+    source: "skill",
+    origin: "user",
+  });
+}
+
+/**
  * Build the ordered set of roots to scan for a provider. Project (cwd-dependent)
  * roots are skipped when `cwd` is null; user-home roots are always included.
- * Providers without a command surface (e.g. `pi`) yield an empty root set.
+ * Every provider that injects bb skills also scans those roots for typeahead;
+ * Claude Code and Codex add their native skill/command directories on top.
+ * Unknown provider ids yield an empty root set.
  */
 export function resolveCommandScanRoots(
   resolution: CommandRootResolution,
@@ -1188,6 +1233,17 @@ export function resolveCommandScanRoots(
       source: "skill",
       origin: "user",
     });
+    return roots;
+  }
+
+  // Pi and all ACP agents (built-in `acp-cursor` and dynamic `acp-*`) receive
+  // the shared bb skills catalog at runtime and expose the same set in
+  // slash-command typeahead. No provider-native command directories.
+  if (
+    resolution.providerId === "pi" ||
+    resolution.providerId.startsWith("acp-")
+  ) {
+    pushBbSkillCommandScanRoots(roots, resolution);
     return roots;
   }
 

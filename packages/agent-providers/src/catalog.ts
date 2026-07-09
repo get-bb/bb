@@ -132,8 +132,15 @@ const CLAUDE_COMPOSER_ACTIONS: ProviderComposerAction[] = [
   },
 ];
 
-const PI_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
-const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
+// Skills are injected into every provider runtime (bb skills catalog). The
+// `/` skills composer action unlocks slash-command typeahead for those same
+// skills on every provider surface, not just Codex/Claude Code.
+const PI_COMPOSER_ACTIONS: ProviderComposerAction[] = [
+  { kind: "skills", trigger: "/" },
+];
+const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
+  { kind: "skills", trigger: "/" },
+];
 
 // Shared by all ACP (Agent Client Protocol) providers: the external agent owns
 // its own model selection, tool execution, and session naming, so BB-side

@@ -70,7 +70,7 @@ describe("agent provider catalog", () => {
           supportsFork: true,
           supportedPermissionModes: ["full"],
         },
-        composerActions: [],
+        composerActions: [{ kind: "skills", trigger: "/" }],
         available: true,
       },
       {
@@ -84,7 +84,7 @@ describe("agent provider catalog", () => {
           supportsFork: false,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
-        composerActions: [],
+        composerActions: [{ kind: "skills", trigger: "/" }],
         available: true,
       },
     ]);
@@ -118,7 +118,7 @@ describe("agent provider catalog", () => {
         supportsFork: false,
         supportedPermissionModes: ["full", "workspace-write", "readonly"],
       },
-      composerActions: [],
+      composerActions: [{ kind: "skills", trigger: "/" }],
       available: true,
     });
 

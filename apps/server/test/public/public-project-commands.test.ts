@@ -293,7 +293,7 @@ describe("public project command typeahead route", () => {
   it("returns an empty list without an RPC for a provider with no command surface", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-pi",
+        id: "host-commands-unknown",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -309,7 +309,7 @@ describe("public project command typeahead route", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=pi&environmentId=${environment.id}`,
+        `/api/v1/projects/${project.id}/commands?provider=unknown-provider&environmentId=${environment.id}`,
       );
 
       expect(response.status).toBe(200);
@@ -317,6 +317,46 @@ describe("public project command typeahead route", () => {
       expect(body).toEqual({ commands: [], truncated: false });
       // No daemon roundtrip for a provider without a command surface.
       expect(stub.requests).toEqual([]);
+    });
+  });
+
+  it("lists skills for pi via the shared command surface", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-commands-pi",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/pi-commands-env",
+      });
+      const stub = registerCommandRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        commands: [
+          skill("bb-cli", "user", { description: "Use the bb CLI" }),
+        ],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=pi&environmentId=${environment.id}`,
+      );
+
+      expect(response.status).toBe(200);
+      const body = commandListResponseSchema.parse(await readJson(response));
+      expect(body.commands.map((command) => command.name)).toEqual([
+        "compact",
+        "bb-cli",
+      ]);
+      expect(stub.requests[0]?.command).toEqual({
+        type: "host.list_commands",
+        providerId: "pi",
+        cwd: "/tmp/pi-commands-env",
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+      });
     });
   });
 
