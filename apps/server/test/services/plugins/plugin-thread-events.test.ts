@@ -212,7 +212,8 @@ describe("plugin thread lifecycle events", () => {
           title: "Rollback event test",
           input: [{ type: "text", text: "hello", mentions: [] }],
           model: "gpt-5",
-          reasoningLevel: "max",
+          // Force validation failure after insert so the create rolls back.
+          reasoningLevel: "ultracode",
           environment: { type: "reuse", environmentId: environment.id },
         }),
       });

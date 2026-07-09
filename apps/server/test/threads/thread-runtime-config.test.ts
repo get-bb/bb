@@ -612,12 +612,12 @@ describe("thread runtime config", () => {
           threadId: thread.id,
           requestedExecution: {
             model: "gpt-5.4",
-            reasoningLevel: "max",
+            reasoningLevel: "ultracode",
             source: "client/turn/requested",
           },
         }),
       ).rejects.toThrow(
-        "Provider codex does not support max reasoning level. Supported reasoning levels: low, medium, high, xhigh.",
+        "Provider codex does not support ultracode reasoning level. Supported reasoning levels: low, medium, high, xhigh, max, ultra.",
       );
     });
   });
