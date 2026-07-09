@@ -29,6 +29,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
+  hasActiveBackgroundCommandActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -165,6 +166,7 @@ function renderThreadRowContainer({
 
 interface ThreadStatusGlyphProps {
   hasPendingInteraction: boolean;
+  isBackgroundCommandActive: boolean;
   isBusy: boolean;
   isWorkflowActive: boolean;
   showUnreadBadge: boolean;
@@ -177,6 +179,7 @@ interface ThreadUnreadBadgeLabelArgs {
 
 export function ThreadStatusGlyph({
   hasPendingInteraction,
+  isBackgroundCommandActive,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
@@ -202,6 +205,20 @@ export function ThreadStatusGlyph({
           COARSE_POINTER_ICON_SIZE_CLASS,
         )}
         aria-label="Thread needs user input"
+      />
+    );
+  }
+
+  if (isBackgroundCommandActive) {
+    return (
+      <Icon
+        name="Terminal"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Background command running"
       />
     );
   }
@@ -254,13 +271,18 @@ type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
 
 function ThreadTrailingIndicator({
   hasPendingInteraction,
+  isBackgroundCommandActive,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
   unreadBadgeTone,
 }: ThreadTrailingIndicatorProps) {
   const showStatusGlyph =
-    hasPendingInteraction || isBusy || isWorkflowActive || showUnreadBadge;
+    hasPendingInteraction ||
+    isBackgroundCommandActive ||
+    isBusy ||
+    isWorkflowActive ||
+    showUnreadBadge;
 
   if (!showStatusGlyph) {
     return null;
@@ -275,6 +297,7 @@ function ThreadTrailingIndicator({
     >
       <ThreadStatusGlyph
         hasPendingInteraction={hasPendingInteraction}
+        isBackgroundCommandActive={isBackgroundCommandActive}
         isBusy={isBusy}
         isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
@@ -303,6 +326,8 @@ function ThreadRowComponent({
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
+  const threadBackgroundCommandActive =
+    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
   const threadWorkflowActive =
     !hasPendingInteraction && hasActiveWorkflowActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
@@ -331,6 +356,9 @@ function ThreadRowComponent({
   const trailingRuntimeBusy = hasHiddenChildren
     ? threadRuntimeBusy || childActivity.runtimeWorking
     : threadRuntimeBusy;
+  const trailingBackgroundCommandActive = hasHiddenChildren
+    ? threadBackgroundCommandActive || childActivity.backgroundCommand
+    : threadBackgroundCommandActive;
   const trailingIsWorkflowActive = hasHiddenChildren
     ? threadWorkflowActive || childActivity.workflow
     : threadWorkflowActive;
@@ -344,7 +372,8 @@ function ThreadRowComponent({
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
   const rowDragBindings = options.dragBindings;
-  const showDragCursor = rowDragBindings !== undefined && thread.pinnedAt === null;
+  const showDragCursor =
+    rowDragBindings !== undefined && thread.pinnedAt === null;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -427,6 +456,7 @@ function ThreadRowComponent({
           >
             <ThreadTrailingIndicator
               hasPendingInteraction={trailingHasPendingInteraction}
+              isBackgroundCommandActive={trailingBackgroundCommandActive}
               isBusy={trailingIsBusy}
               isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}

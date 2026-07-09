@@ -5,6 +5,7 @@ import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { Icon } from "@bb/shared-ui/icon";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
+  hasActiveBackgroundCommandActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -84,14 +85,18 @@ function getMobileRecentThreads({
 function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
   const isBusy = isBusyThread(thread);
   const isRuntimeBusy = isRuntimeBusyThread(thread);
+  const isBackgroundCommandActive =
+    hasActiveBackgroundCommandActivity(thread) && !thread.hasPendingInteraction;
   const isWorkflowActive =
     !isRuntimeBusy &&
+    !isBackgroundCommandActive &&
     hasActiveWorkflowActivity(thread) &&
     !thread.hasPendingInteraction;
 
   return (
     <ThreadStatusGlyph
       hasPendingInteraction={thread.hasPendingInteraction}
+      isBackgroundCommandActive={isBackgroundCommandActive}
       isBusy={isRuntimeBusy && !thread.hasPendingInteraction}
       isWorkflowActive={isWorkflowActive}
       showUnreadBadge={

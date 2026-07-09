@@ -246,9 +246,7 @@ export function toThreadListEntryResponses(
     ),
   ];
   const connectedActiveHostIds = new Set(
-    activeHostIds.filter((hostId) =>
-      hasOpenDaemonSessionForHost(deps, hostId),
-    ),
+    activeHostIds.filter((hostId) => hasOpenDaemonSessionForHost(deps, hostId)),
   );
   const latestSessionByHostId = new Map(
     listLatestSessionsForHosts(deps.db, {
@@ -261,6 +259,7 @@ export function toThreadListEntryResponses(
   return args.threads.map((thread) =>
     toThreadListEntryResponseFromLatestSession({
       activity: threadActivityById.get(thread.id) ?? {
+        activeBackgroundCommandCount: 0,
         activeWorkflowCount: 0,
       },
       hostConnected:

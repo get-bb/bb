@@ -40,7 +40,7 @@ function createThread(
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
-    activity: { activeWorkflowCount: 0 },
+    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -119,7 +119,7 @@ describe("ThreadRow", () => {
     renderThreadRow({
       thread: createThread({
         title: "Workflow thread",
-        activity: { activeWorkflowCount: 1 },
+        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
       }),
     });
 
@@ -139,11 +139,31 @@ describe("ThreadRow", () => {
           displayStatus: "active",
           hostReconnectGraceExpiresAt: null,
         },
-        activity: { activeWorkflowCount: 1 },
+        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
       }),
     });
 
     expect(screen.getByLabelText("Workflow running")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("shows an animated terminal glyph for an active background command", () => {
+    renderThreadRow({
+      thread: createThread({
+        title: "Background command thread",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundCommandCount: 1,
+        },
+      }),
+    });
+
+    const terminalIcon = screen.getByLabelText("Background command running");
+    const terminalIconClasses = Array.from(terminalIcon.classList);
+    expect(terminalIcon.getAttribute("data-icon")).toBe("Terminal");
+    expect(terminalIconClasses).toContain("animate-shine-icon");
+    expect(terminalIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 

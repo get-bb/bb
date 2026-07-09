@@ -88,7 +88,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     latestAttentionAt: 100,
     createdAt: 100,
     updatedAt: 100,
-    activity: { activeWorkflowCount: 0 },
+    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -256,8 +256,9 @@ describe("readRootComposeFolderTargetFromLocationState", () => {
   });
 
   it("clears the folder target for an unusable folder id", () => {
-    expect(readRootComposeFolderTargetFromLocationState({ folderId: "" }))
-      .toEqual({ kind: "clear" });
+    expect(
+      readRootComposeFolderTargetFromLocationState({ folderId: "" }),
+    ).toEqual({ kind: "clear" });
   });
 
   it("returns null when no folder target instruction is present", () => {
@@ -512,9 +513,9 @@ describe("shouldStartComposingFromLocationState", () => {
   it("ignores non-focus navigation state", () => {
     expect(shouldStartComposingFromLocationState(null)).toBe(false);
     expect(shouldStartComposingFromLocationState({})).toBe(false);
-    expect(
-      shouldStartComposingFromLocationState({ focusPrompt: false }),
-    ).toBe(false);
+    expect(shouldStartComposingFromLocationState({ focusPrompt: false })).toBe(
+      false,
+    );
   });
 });
 

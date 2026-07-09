@@ -27,6 +27,7 @@ import type {
   ThreadEventType,
 } from "@bb/domain";
 import {
+  LOCAL_BASH_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   clientTurnRequestIdSchema,
   getThreadEventScopeTurnId,
@@ -1212,6 +1213,7 @@ export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
 }
 
 export interface ActiveBackgroundTaskCountRow {
+  activeBackgroundCommandCount: number;
   activeWorkflowCount: number;
   threadId: string;
 }
@@ -1318,7 +1320,7 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
 }
 
 /**
- * Counts open provider workflow tasks by thread, using each item's latest
+ * Counts open provider background tasks by thread, using each item's latest
  * start/progress row. A task can report a terminal status in a progress row
  * before the final completed event arrives, so active means the latest
  * lifecycle snapshot still has item.status = "pending".
@@ -1362,7 +1364,22 @@ export function listActiveBackgroundTaskCountsByThreadIds(
     )
     SELECT
       active_event.thread_id AS threadId,
-      COUNT(*) AS activeWorkflowCount
+      SUM(
+        CASE
+          WHEN json_extract(active_event.data, '$.item.taskType') =
+            ${LOCAL_WORKFLOW_TASK_TYPE}
+          THEN 1
+          ELSE 0
+        END
+      ) AS activeWorkflowCount,
+      SUM(
+        CASE
+          WHEN json_extract(active_event.data, '$.item.taskType') =
+            ${LOCAL_BASH_TASK_TYPE}
+          THEN 1
+          ELSE 0
+        END
+      ) AS activeBackgroundCommandCount
     FROM latest_background_task_activity latest
     JOIN events active_event
       ON active_event.thread_id = latest.thread_id
@@ -1372,8 +1389,10 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       AND completed.item_id = latest.item_id
     WHERE completed.item_id IS NULL
       AND json_extract(active_event.data, '$.item.status') = 'pending'
-      AND json_extract(active_event.data, '$.item.taskType') =
-        ${LOCAL_WORKFLOW_TASK_TYPE}
+      AND json_extract(active_event.data, '$.item.taskType') IN (
+        ${LOCAL_WORKFLOW_TASK_TYPE},
+        ${LOCAL_BASH_TASK_TYPE}
+      )
       AND COALESCE(
         json_extract(active_event.data, '$.item.skipTranscript'),
         0

@@ -327,7 +327,7 @@ export function makeThreadListEntry(
     latestAttentionAt: 100,
     createdAt: 0,
     updatedAt: 100,
-    activity: { activeWorkflowCount: 0 },
+    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,

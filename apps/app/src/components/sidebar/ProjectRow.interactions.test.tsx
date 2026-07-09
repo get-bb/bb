@@ -87,7 +87,7 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     latestAttentionAt: 100,
     createdAt: 0,
     updatedAt: 100,
-    activity: { activeWorkflowCount: 0 },
+    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -179,28 +179,25 @@ describe("ProjectRow interactions", () => {
   });
 
   it("keeps worktree group row static and scopes collapse to the chevron", () => {
-    const { onToggleEnvironmentCollapsed } = renderProjectRow(
-      vi.fn(),
-      {
-        status: "ready",
-        threads: [
-          makeThread({
-            id: "thr_worktree_a",
-            environmentId: "env_test",
-            environmentName: "Feature workspace",
-            environmentBranchName: "feat/menu-close",
-            environmentWorkspaceDisplayKind: "managed-worktree",
-          }),
-          makeThread({
-            id: "thr_worktree_b",
-            environmentId: "env_test",
-            environmentName: "Feature workspace",
-            environmentBranchName: "feat/menu-close",
-            environmentWorkspaceDisplayKind: "managed-worktree",
-          }),
-        ],
-      },
-    );
+    const { onToggleEnvironmentCollapsed } = renderProjectRow(vi.fn(), {
+      status: "ready",
+      threads: [
+        makeThread({
+          id: "thr_worktree_a",
+          environmentId: "env_test",
+          environmentName: "Feature workspace",
+          environmentBranchName: "feat/menu-close",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+        makeThread({
+          id: "thr_worktree_b",
+          environmentId: "env_test",
+          environmentName: "Feature workspace",
+          environmentBranchName: "feat/menu-close",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+      ],
+    });
     const worktreeHeader = screen
       .getByText("Feature workspace")
       .closest(".bb-sidebar-hover-actions-row");
@@ -232,7 +229,10 @@ describe("ProjectRow interactions", () => {
             environmentName: "Feature workspace",
             environmentBranchName: "feat/menu-close",
             environmentWorkspaceDisplayKind: "managed-worktree",
-            activity: { activeWorkflowCount: 1 },
+            activity: {
+              activeWorkflowCount: 1,
+              activeBackgroundCommandCount: 0,
+            },
             runtime: {
               displayStatus: "active",
               hostReconnectGraceExpiresAt: null,

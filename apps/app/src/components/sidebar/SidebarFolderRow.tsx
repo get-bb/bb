@@ -15,11 +15,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -172,6 +168,7 @@ function SidebarFolderRowComponent({
           >
             <ThreadStatusGlyph
               hasPendingInteraction={activity.pending}
+              isBackgroundCommandActive={activity.backgroundCommand}
               isBusy={activity.working}
               isWorkflowActive={activity.workflow}
               showUnreadBadge={activity.unread}

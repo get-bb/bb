@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  LOCAL_BASH_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   threadScope,
   turnScope,
@@ -3066,7 +3067,7 @@ describe("events", () => {
     ]);
   });
 
-  it("counts only active background workflow snapshots by thread", () => {
+  it("counts active workflow and command snapshots by thread", () => {
     const { db, thread } = setup();
 
     const taskData = (args: {
@@ -3188,6 +3189,20 @@ describe("events", () => {
           skipTranscript: true,
         }),
       },
+      {
+        threadId: thread.id,
+        sequence: 8,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:cmd-active",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:cmd-active",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_BASH_TASK_TYPE,
+        }),
+      },
     ]);
 
     const countsByThreadId = new Map(
@@ -3199,6 +3214,7 @@ describe("events", () => {
     expect(countsByThreadId.get(thread.id)).toEqual({
       threadId: thread.id,
       activeWorkflowCount: 1,
+      activeBackgroundCommandCount: 1,
     });
   });
 

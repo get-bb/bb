@@ -30,7 +30,7 @@ function createThread(
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
-    activity: { activeWorkflowCount: 0 },
+    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -58,7 +58,7 @@ describe("ThreadSearchResultRow", () => {
         projectName="bb"
         thread={createThread({
           status: "active",
-          activity: { activeWorkflowCount: 1 },
+          activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
           runtime: {
             displayStatus: "active",
             hostReconnectGraceExpiresAt: null,

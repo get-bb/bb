@@ -46,6 +46,7 @@ export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 
 export const threadActivityStateSchema = z.object({
   activeWorkflowCount: z.number().int().nonnegative(),
+  activeBackgroundCommandCount: z.number().int().nonnegative(),
 });
 export type ThreadActivityState = z.infer<typeof threadActivityStateSchema>;
 

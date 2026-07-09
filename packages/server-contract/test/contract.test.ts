@@ -797,6 +797,7 @@ describe("server-contract canonical schemas", () => {
           },
           activity: {
             activeWorkflowCount: 0,
+            activeBackgroundCommandCount: 0,
           },
           hasPendingInteraction: true,
           environmentHostId: "host_123",
@@ -1017,10 +1018,7 @@ describe("server-contract canonical schemas", () => {
       "threads-changed",
       "project-order-changed",
     ]);
-    expect(SYSTEM_CHANGE_KINDS).toEqual([
-      "config-changed",
-      "plugins-changed",
-    ]);
+    expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed", "plugins-changed"]);
   });
 
   it("keeps only intentional optional request fields", () => {

@@ -104,7 +104,25 @@ function WorkflowActiveThreadRow() {
       thread={makeThread({
         title: "Background workflow audit",
         titleFallback: "Background workflow audit",
-        activity: { activeWorkflowCount: 1 },
+        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
+}
+
+function BackgroundCommandActiveThreadRow() {
+  return (
+    <StoryThreadRow
+      projectId="proj_demo"
+      thread={makeThread({
+        title: "Background pixel gate",
+        titleFallback: "Background pixel gate",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundCommandCount: 1,
+        },
       })}
       isActive={false}
       options={defaultOption}
@@ -124,7 +142,7 @@ function WorkflowAndRuntimeActiveThreadRow() {
           displayStatus: "active",
           hostReconnectGraceExpiresAt: null,
         },
-        activity: { activeWorkflowCount: 1 },
+        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
       })}
       isActive={false}
       options={defaultOption}
@@ -260,6 +278,14 @@ export function Overview() {
       >
         <SidebarStage>
           <WorkflowActiveThreadRow />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="active background command"
+        hint="background shell command is active - far-right reserved slot shows the animated terminal glyph"
+      >
+        <SidebarStage>
+          <BackgroundCommandActiveThreadRow />
         </SidebarStage>
       </StoryRow>
       <StoryRow

@@ -33,7 +33,7 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     latestAttentionAt: 2,
     createdAt: 1,
     updatedAt: 2,
-    activity: { activeWorkflowCount: 0 },
+    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -49,7 +49,10 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
 
 // The item comparator only reads node.thread for thread-kind items.
 function threadItem(entry: ThreadListEntry): ProjectThreadItem {
-  return { kind: "thread", node: { thread: entry } } as unknown as ProjectThreadItem;
+  return {
+    kind: "thread",
+    node: { thread: entry },
+  } as unknown as ProjectThreadItem;
 }
 
 const apple = thread({
@@ -78,11 +81,10 @@ function order(comparator: ThreadComparator, entries: ThreadListEntry[]) {
 describe("getSidebarThreadComparator", () => {
   it("created: desc lists newest first, asc lists oldest first", () => {
     expect(
-      order(getSidebarThreadComparator({ sort: "created", direction: "desc" }), [
-        apple,
-        banana,
-        cherry,
-      ]),
+      order(
+        getSidebarThreadComparator({ sort: "created", direction: "desc" }),
+        [apple, banana, cherry],
+      ),
     ).toEqual(["thr_c", "thr_b", "thr_a"]);
     expect(
       order(getSidebarThreadComparator({ sort: "created", direction: "asc" }), [
@@ -95,11 +97,10 @@ describe("getSidebarThreadComparator", () => {
 
   it("updated: desc lists most recent first, asc inverts", () => {
     expect(
-      order(getSidebarThreadComparator({ sort: "updated", direction: "desc" }), [
-        apple,
-        banana,
-        cherry,
-      ]),
+      order(
+        getSidebarThreadComparator({ sort: "updated", direction: "desc" }),
+        [apple, banana, cherry],
+      ),
     ).toEqual(["thr_c", "thr_b", "thr_a"]);
     expect(
       order(getSidebarThreadComparator({ sort: "updated", direction: "asc" }), [
@@ -131,7 +132,10 @@ describe("getSidebarThreadComparator", () => {
   // direction, or folders and threads appear in opposite alphabetical order.
   it("alpha: leaf and item comparators agree in direction", () => {
     for (const direction of ["asc", "desc"] as const) {
-      const comparator = getSidebarThreadComparator({ sort: "alpha", direction });
+      const comparator = getSidebarThreadComparator({
+        sort: "alpha",
+        direction,
+      });
       expect(comparator.compareItems).toBeDefined();
       const leafSign = Math.sign(comparator(apple, banana));
       const itemSign = Math.sign(

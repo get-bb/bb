@@ -50,7 +50,7 @@ function makeThreadListEntry(
 ): ThreadListEntry {
   return {
     ...makeThreadWithRuntime(thread),
-    activity: { activeWorkflowCount: 0 },
+    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
     pinSortKey: null,
     hasPendingInteraction: false,
     environmentHostId: "host-1",

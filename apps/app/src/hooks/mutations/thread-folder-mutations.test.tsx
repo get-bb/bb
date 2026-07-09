@@ -46,7 +46,7 @@ function makeThreadListEntry(
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,
     },
-    activity: { activeWorkflowCount: 0 },
+    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
     hasPendingInteraction: false,
     environmentBranchName: "main",
     environmentHostId: "host-1",
