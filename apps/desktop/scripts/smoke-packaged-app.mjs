@@ -160,7 +160,11 @@ async function startSmokeServer({ dataDir, expectedDesktopVersion }) {
         featureFlags: {
           placeholder: false,
         },
+        generalSettings: {
+          caffeinate: false,
+        },
         hostDaemonPort: 38887,
+        primaryHostPlatform: null,
         voiceTranscriptionEnabled: false,
       });
       return;

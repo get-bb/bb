@@ -24,7 +24,6 @@ import {
   typedRoutes,
   workspaceOpenTargetsQuerySchema,
   type HostDaemonLocalSchema,
-  type HostPlatform,
   type OpenInTargetRequest,
   type WorkspaceOpenTarget,
   type WorkspaceOpenTargetsQuery,
@@ -45,6 +44,7 @@ import {
   ProviderCliInstallInProgressError,
   streamProviderCliInstall,
 } from "./provider-cli-health.js";
+import { resolveHostPlatform } from "./host-platform.js";
 
 const execFileAsync = promisify(execFile);
 export type WorkspaceOpenTargetListHandler = (
@@ -219,18 +219,6 @@ export function resolveNativeFolderPicker(
   return (options.platform ?? process.platform) === "darwin"
     ? pickLocalFolder
     : null;
-}
-
-export function resolveHostPlatform(
-  nodePlatform: NodeJS.Platform = process.platform,
-  env: NodeJS.ProcessEnv = process.env,
-): HostPlatform {
-  if (nodePlatform === "darwin") return "darwin";
-  if (nodePlatform === "linux") {
-    const isWsl = env.WSL_DISTRO_NAME != null || env.WSL_INTEROP != null;
-    return isWsl ? "wsl" : "linux";
-  }
-  return "unknown";
 }
 
 export async function startLocalApiServer(

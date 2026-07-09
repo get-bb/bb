@@ -21,6 +21,7 @@ describe("internal session protocol version", () => {
           instanceId: "instance-1",
           hostName: "Protocol Host",
           hostType: "persistent",
+          platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
           protocolVersion: staleProtocolVersion,
           activeThreads: [],

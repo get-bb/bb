@@ -34,6 +34,7 @@ import {
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
 import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
+import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
 
 export function registerSystemRoutes(
   app: Hono,
@@ -47,6 +48,11 @@ export function registerSystemRoutes(
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
 
+  function resolvePrimaryHostPlatform() {
+    const hostId = resolvePrimaryHostId(deps);
+    return hostId === null ? null : deps.hub.getDaemonPlatformForHost(hostId);
+  }
+
   function buildSystemConfigResponse() {
     return {
       generalSettings: getAppSettings(deps.db),
@@ -59,6 +65,7 @@ export function registerSystemRoutes(
       customThemes: listCustomThemeNames(themeRoot),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
+      primaryHostPlatform: resolvePrimaryHostPlatform(),
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
       dataDir: deps.config.dataDir,
     };

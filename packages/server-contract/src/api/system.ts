@@ -7,6 +7,7 @@ import {
   featureFlagsSchema,
   providerInfoSchema,
 } from "@bb/domain";
+import { hostPlatformSchema } from "@bb/host-daemon-contract";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
   "missing_executable",
@@ -88,6 +89,7 @@ export const systemConfigResponseSchema = z.object({
   customThemes: z.array(z.string()),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
+  primaryHostPlatform: hostPlatformSchema.nullable(),
   voiceTranscriptionEnabled: z.boolean(),
   /** Absolute path of the active bb data directory (where ui/, theme/, the DB live). */
   dataDir: z.string(),

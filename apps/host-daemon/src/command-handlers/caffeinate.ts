@@ -9,6 +9,7 @@ export interface CaffeinateChildProcess {
     event: "exit",
     listener: (code: number | null, signal: NodeJS.Signals | null) => void,
   ): this;
+  on(event: "error", listener: (error: Error) => void): this;
   unref(): void;
 }
 
@@ -65,6 +66,11 @@ export function createCaffeinateManager(
     ]);
     child = nextChild;
     nextChild.on("exit", () => {
+      if (child === nextChild) {
+        child = null;
+      }
+    });
+    nextChild.on("error", () => {
       if (child === nextChild) {
         child = null;
       }

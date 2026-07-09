@@ -9,6 +9,7 @@ class FakeCaffeinateChild implements CaffeinateChildProcess {
   readonly exitListeners: Array<
     (code: number | null, signal: NodeJS.Signals | null) => void
   > = [];
+  readonly errorListeners: Array<(error: Error) => void> = [];
   unrefCount = 0;
 
   kill(signal: NodeJS.Signals = "SIGTERM"): boolean {
@@ -19,9 +20,24 @@ class FakeCaffeinateChild implements CaffeinateChildProcess {
   on(
     event: "exit",
     listener: (code: number | null, signal: NodeJS.Signals | null) => void,
+  ): this;
+  on(event: "error", listener: (error: Error) => void): this;
+  on(
+    event: "exit" | "error",
+    listener:
+      | ((code: number | null, signal: NodeJS.Signals | null) => void)
+      | ((error: Error) => void),
   ): this {
-    expect(event).toBe("exit");
-    this.exitListeners.push(listener);
+    if (event === "exit") {
+      this.exitListeners.push(
+        listener as (
+          code: number | null,
+          signal: NodeJS.Signals | null,
+        ) => void,
+      );
+    } else {
+      this.errorListeners.push(listener as (error: Error) => void);
+    }
     return this;
   }
 
@@ -32,6 +48,12 @@ class FakeCaffeinateChild implements CaffeinateChildProcess {
   emitExit(): void {
     for (const listener of this.exitListeners) {
       listener(0, null);
+    }
+  }
+
+  emitError(): void {
+    for (const listener of this.errorListeners) {
+      listener(new Error("spawn failed"));
     }
   }
 }
@@ -101,6 +123,26 @@ describe("caffeinate manager", () => {
 
     manager.setEnabled(true);
     children[0]?.emitExit();
+    manager.setEnabled(true);
+
+    expect(children).toHaveLength(2);
+  });
+
+  it("clears failed children so a later enable restarts caffeinate", () => {
+    const children: FakeCaffeinateChild[] = [];
+    const manager = createCaffeinateManager({
+      platform: "darwin",
+      spawner: {
+        spawn() {
+          const child = new FakeCaffeinateChild();
+          children.push(child);
+          return child;
+        },
+      },
+    });
+
+    manager.setEnabled(true);
+    children[0]?.emitError();
     manager.setEnabled(true);
 
     expect(children).toHaveLength(2);

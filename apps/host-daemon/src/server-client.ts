@@ -24,6 +24,7 @@ import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
 import type { EventPostResult } from "./event-sink.js";
 import { runtimeErrorLogFields } from "./error-utils.js";
+import { resolveHostPlatform } from "./host-platform.js";
 import type {
   FetchedProjectAttachment,
   FetchProjectAttachmentArgs,
@@ -332,6 +333,7 @@ export function createServerClient(
         instanceId: args.instanceId,
         hostName: args.hostName,
         hostType: args.hostType,
+        platform: resolveHostPlatform(),
         dataDir: args.dataDir,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: await args.activeThreads,

@@ -1018,7 +1018,7 @@ export function SettingsView() {
   const navigate = useNavigate();
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
-  const { hasDaemon, platform } = useHostDaemon();
+  const { hasDaemon } = useHostDaemon();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
     enabled: hasDaemon,
   });
@@ -1150,7 +1150,9 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
-          caffeinateAvailable={platform === "darwin"}
+          caffeinateAvailable={
+            systemConfigQuery.data?.primaryHostPlatform === "darwin"
+          }
           caffeinateDisabled={
             systemConfigQuery.data === undefined ||
             updateGeneralSettingsMutation.isPending

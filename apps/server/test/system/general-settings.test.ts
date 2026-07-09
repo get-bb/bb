@@ -49,10 +49,11 @@ describe("general settings", () => {
       expect(getAppSettings(harness.db)).toEqual({ caffeinate: true });
 
       const config = await harness.app.request("/api/v1/system/config");
-      expect(
-        systemConfigResponseSchema.parse(await readJson(config))
-          .generalSettings,
-      ).toEqual({ caffeinate: true });
+      const parsedConfig = systemConfigResponseSchema.parse(
+        await readJson(config),
+      );
+      expect(parsedConfig.generalSettings).toEqual({ caffeinate: true });
+      expect(parsedConfig.primaryHostPlatform).toBe("darwin");
       await vi.waitFor(() => {
         expect(responder.requests).toHaveLength(1);
       });

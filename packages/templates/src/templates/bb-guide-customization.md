@@ -31,9 +31,9 @@ Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
 window and restart sees the same value. On macOS, the Caffeinate toggle asks the
-local host daemon to run `/usr/bin/caffeinate -i -w <daemon-pid>`, preventing
+primary host daemon to run `/usr/bin/caffeinate -i -w <daemon-pid>`, preventing
 system idle sleep while bb is running; turning it off stops that process. This
-setting is only shown when the reachable local host daemon reports macOS.
+setting is only shown when the connected primary host daemon reports macOS.
 
 Client-local UI preferences
 

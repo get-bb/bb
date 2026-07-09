@@ -26,6 +26,7 @@ import {
   hostDaemonRpcCommandTypeSchema,
   workspaceContextSchema,
 } from "./commands.js";
+import { hostPlatformSchema } from "./local.js";
 
 export const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
 
@@ -77,6 +78,7 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   instanceId: z.string().min(1),
   hostName: z.string().min(1),
   hostType: hostTypeSchema,
+  platform: hostPlatformSchema,
   dataDir: z.string().min(1),
   // Accept any version at the schema boundary so the server can return an
   // actionable protocol mismatch instead of an opaque validation failure.

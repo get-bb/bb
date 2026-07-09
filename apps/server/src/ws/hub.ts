@@ -11,6 +11,7 @@ import {
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 import type {
+  HostPlatform,
   HostDaemonOnlineRpcRequestMessage,
   HostDaemonOnlineRpcResponseMessage,
   HostDaemonServerWsMessage,
@@ -131,7 +132,11 @@ export class NotificationHub implements DbNotifier {
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
   private readonly daemonSessions = new Map<
     string,
-    { hostId: string; socket: HubSocket }
+    { hostId: string; platform: HostPlatform; socket: HubSocket }
+  >();
+  private readonly daemonSessionPlatformsBySessionId = new Map<
+    string,
+    HostPlatform
   >();
   private readonly daemonRegistrationWaiters = new Map<
     string,
@@ -296,6 +301,10 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
+  recordDaemonSessionPlatform(sessionId: string, platform: HostPlatform): void {
+    this.daemonSessionPlatformsBySessionId.set(sessionId, platform);
+  }
+
   registerDaemon(sessionId: string, hostId: string, socket: HubSocket): void {
     this.cancelPendingDaemonDisconnect(sessionId);
     const existingSessionId = this.daemonSessionIdsByHost.get(hostId);
@@ -303,7 +312,12 @@ export class NotificationHub implements DbNotifier {
       this.cancelPendingDaemonDisconnect(existingSessionId);
       this.unregisterDaemon(existingSessionId);
     }
-    this.daemonSessions.set(sessionId, { hostId, socket });
+    this.daemonSessions.set(sessionId, {
+      hostId,
+      platform:
+        this.daemonSessionPlatformsBySessionId.get(sessionId) ?? "unknown",
+      socket,
+    });
     this.daemonSessionIdsByHost.set(hostId, sessionId);
     this.resolveDaemonRegistrationWaiters(hostId);
     // Broadcast only now that the socket is registered: host status derives
@@ -319,6 +333,7 @@ export class NotificationHub implements DbNotifier {
       return;
     }
     this.daemonSessions.delete(sessionId);
+    this.daemonSessionPlatformsBySessionId.delete(sessionId);
     this.rejectHostOnlineRpcWaitersForSession(sessionId);
     if (this.daemonSessionIdsByHost.get(entry.hostId) === sessionId) {
       this.daemonSessionIdsByHost.delete(entry.hostId);
@@ -336,6 +351,14 @@ export class NotificationHub implements DbNotifier {
       return null;
     }
     return sessionId;
+  }
+
+  getDaemonPlatformForHost(hostId: string): HostPlatform | null {
+    const sessionId = this.daemonSessionIdsByHost.get(hostId);
+    if (!sessionId) {
+      return null;
+    }
+    return this.daemonSessions.get(sessionId)?.platform ?? null;
   }
 
   async waitForDaemonForHost(

@@ -77,6 +77,7 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
       });
+      deps.hub.recordDaemonSessionPlatform(session.id, payload.platform);
 
       await handleHostSessionOpened(deps, {
         activeThreads: payload.activeThreads,

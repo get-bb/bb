@@ -3,7 +3,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { SystemConfigResponse } from "@bb/server-contract";
-import { defaultAppTheme, defaultExperiments } from "@bb/domain";
+import {
+  defaultAppSettings,
+  defaultAppTheme,
+  defaultExperiments,
+} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -39,11 +43,13 @@ function responseJson(body: unknown): Response {
 
 function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
+    generalSettings: defaultAppSettings,
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
+    primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
     dataDir: "/tmp/bb-test",
   };
