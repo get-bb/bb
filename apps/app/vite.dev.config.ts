@@ -22,6 +22,11 @@ export default defineConfig({
         target: viteDevConfig.serverHttpOrigin,
         changeOrigin: true,
       },
+      "/ws": {
+        target: viteDevConfig.serverHttpOrigin,
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 });
