@@ -168,7 +168,9 @@ function SidebarFolderRowComponent({
           >
             <ThreadStatusGlyph
               hasPendingInteraction={activity.pending}
+              isBackgroundAgentActive={activity.backgroundAgent}
               isBackgroundCommandActive={activity.backgroundCommand}
+              isForegroundAgentWorking={activity.runtimeWorking}
               isBusy={activity.working}
               isWorkflowActive={activity.workflow}
               showUnreadBadge={activity.unread}

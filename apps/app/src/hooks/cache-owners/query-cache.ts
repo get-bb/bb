@@ -576,7 +576,11 @@ export function optimisticallyInsertThread(
     queryClient.setQueryData<ThreadListEntry[]>(queryKey, [
       {
         ...thread,
-        activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
         environmentBranchName: null,
         environmentHostId: null,
         environmentName: null,

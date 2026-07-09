@@ -87,7 +87,11 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     latestAttentionAt: 100,
     createdAt: 0,
     updatedAt: 100,
-    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+    },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -216,7 +220,7 @@ describe("ProjectRow interactions", () => {
     expect(onToggleEnvironmentCollapsed).toHaveBeenCalledWith("env_test");
   });
 
-  it("shows workflow rollup instead of the generic spinner for collapsed worktree workflow activity", () => {
+  it("shows foreground agent rollup before workflow activity", () => {
     renderProjectRow(
       vi.fn(),
       {
@@ -231,6 +235,7 @@ describe("ProjectRow interactions", () => {
             environmentWorkspaceDisplayKind: "managed-worktree",
             activity: {
               activeWorkflowCount: 1,
+              activeBackgroundAgentCount: 0,
               activeBackgroundCommandCount: 0,
             },
             runtime: {
@@ -256,7 +261,8 @@ describe("ProjectRow interactions", () => {
         name: "Expand Feature workspace threads",
       }),
     ).not.toBeNull();
-    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
+    expect(screen.getByLabelText("Agent working")).not.toBeNull();
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 

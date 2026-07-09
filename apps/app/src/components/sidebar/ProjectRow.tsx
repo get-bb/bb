@@ -1185,7 +1185,9 @@ function EnvironmentThreadGroupHeader({
           >
             <ThreadStatusGlyph
               hasPendingInteraction={childActivity.pending}
+              isBackgroundAgentActive={childActivity.backgroundAgent}
               isBackgroundCommandActive={childActivity.backgroundCommand}
+              isForegroundAgentWorking={childActivity.runtimeWorking}
               isBusy={childActivity.runtimeWorking}
               isWorkflowActive={childActivity.workflow}
               showUnreadBadge={childActivity.unread}

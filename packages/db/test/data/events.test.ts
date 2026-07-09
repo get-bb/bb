@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  LOCAL_AGENT_TASK_TYPE,
   LOCAL_BASH_TASK_TYPE,
+  LOCAL_SUBAGENT_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   threadScope,
   turnScope,
@@ -3067,7 +3069,7 @@ describe("events", () => {
     ]);
   });
 
-  it("counts active workflow and command snapshots by thread", () => {
+  it("counts active workflow, agent, subagent, and command snapshots by thread", () => {
     const { db, thread } = setup();
 
     const taskData = (args: {
@@ -3203,6 +3205,34 @@ describe("events", () => {
           taskType: LOCAL_BASH_TASK_TYPE,
         }),
       },
+      {
+        threadId: thread.id,
+        sequence: 9,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:agent-active",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:agent-active",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_AGENT_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 10,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:subagent-active",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:subagent-active",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_SUBAGENT_TASK_TYPE,
+        }),
+      },
     ]);
 
     const countsByThreadId = new Map(
@@ -3214,6 +3244,7 @@ describe("events", () => {
     expect(countsByThreadId.get(thread.id)).toEqual({
       threadId: thread.id,
       activeWorkflowCount: 1,
+      activeBackgroundAgentCount: 2,
       activeBackgroundCommandCount: 1,
     });
   });

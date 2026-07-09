@@ -18,7 +18,11 @@ function makeChild(
     latestAttentionAt: 10,
     parentThreadId: null,
     hasPendingInteraction: false,
-    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+    },
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
   };
@@ -40,7 +44,11 @@ describe("thread-activity", () => {
   it("exposes shared running/unread helpers", () => {
     expect(
       isBusyThread({
-        activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
         runtime: {
           displayStatus: "active",
           hostReconnectGraceExpiresAt: null,
@@ -49,7 +57,11 @@ describe("thread-activity", () => {
     ).toBe(true);
     expect(
       isBusyThread({
-        activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
         runtime: {
           displayStatus: "host-reconnecting",
           hostReconnectGraceExpiresAt: 100,
@@ -58,7 +70,11 @@ describe("thread-activity", () => {
     ).toBe(true);
     expect(
       isBusyThread({
-        activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
         runtime: {
           displayStatus: "provisioning",
           hostReconnectGraceExpiresAt: null,
@@ -67,7 +83,11 @@ describe("thread-activity", () => {
     ).toBe(true);
     expect(
       isBusyThread({
-        activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
         runtime: {
           displayStatus: "waiting-for-host",
           hostReconnectGraceExpiresAt: null,
@@ -77,7 +97,11 @@ describe("thread-activity", () => {
 
     expect(
       isBusyThread({
-        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
         runtime: {
           displayStatus: "idle",
           hostReconnectGraceExpiresAt: null,
@@ -87,7 +111,25 @@ describe("thread-activity", () => {
 
     expect(
       isBusyThread({
-        activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 1 },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 1,
+        },
+        runtime: {
+          displayStatus: "idle",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      isBusyThread({
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 1,
+          activeBackgroundCommandCount: 0,
+        },
         runtime: {
           displayStatus: "idle",
           hostReconnectGraceExpiresAt: null,
@@ -135,8 +177,9 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         runtimeWorking: false,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: false,
         unreadError: false,
       });
@@ -144,8 +187,9 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         runtimeWorking: false,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: false,
         unreadError: false,
       });
@@ -156,8 +200,9 @@ describe("thread-activity", () => {
         pending: false,
         working: true,
         runtimeWorking: true,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: false,
         unreadError: false,
       });
@@ -165,8 +210,9 @@ describe("thread-activity", () => {
         pending: true,
         working: false,
         runtimeWorking: false,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: false,
         unreadError: false,
       });
@@ -174,8 +220,9 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         runtimeWorking: false,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: true,
         unreadError: false,
       });
@@ -183,8 +230,9 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         runtimeWorking: false,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: true,
         unreadError: true,
       });
@@ -197,8 +245,9 @@ describe("thread-activity", () => {
         pending: true,
         working: true,
         runtimeWorking: true,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: true,
         unreadError: false,
       });
@@ -213,8 +262,34 @@ describe("thread-activity", () => {
         pending: true,
         working: true,
         runtimeWorking: true,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
+        unread: true,
+        unreadError: true,
+      });
+    });
+
+    it("keeps unread errors visible even when a child is busy", () => {
+      const busyUnreadErrorChild = makeChild({
+        status: "error",
+        latestAttentionAt: 20,
+        lastReadAt: 10,
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 1,
+          activeBackgroundCommandCount: 1,
+        },
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      });
+
+      expect(getCollapsedChildActivity([busyUnreadErrorChild])).toEqual({
+        pending: false,
+        working: true,
+        runtimeWorking: true,
+        workflow: true,
+        backgroundAgent: true,
+        backgroundCommand: true,
         unread: true,
         unreadError: true,
       });
@@ -230,8 +305,9 @@ describe("thread-activity", () => {
         pending: true,
         working: false,
         runtimeWorking: false,
-        backgroundCommand: false,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: false,
         unreadError: false,
       });
@@ -239,15 +315,41 @@ describe("thread-activity", () => {
 
     it("distinguishes idle background commands from runtime work", () => {
       const commandChild = makeChild({
-        activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 1 },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 1,
+        },
       });
 
       expect(getCollapsedChildActivity([commandChild])).toEqual({
         pending: false,
         working: true,
         runtimeWorking: false,
-        backgroundCommand: true,
         workflow: false,
+        backgroundAgent: false,
+        backgroundCommand: true,
+        unread: false,
+        unreadError: false,
+      });
+    });
+
+    it("distinguishes idle background agent activity from runtime work", () => {
+      const agentChild = makeChild({
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 1,
+          activeBackgroundCommandCount: 0,
+        },
+      });
+
+      expect(getCollapsedChildActivity([agentChild])).toEqual({
+        pending: false,
+        working: true,
+        runtimeWorking: false,
+        workflow: false,
+        backgroundAgent: true,
+        backgroundCommand: false,
         unread: false,
         unreadError: false,
       });
@@ -255,15 +357,20 @@ describe("thread-activity", () => {
 
     it("distinguishes idle workflow activity from runtime work", () => {
       const workflowChild = makeChild({
-        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
       });
 
       expect(getCollapsedChildActivity([workflowChild])).toEqual({
         pending: false,
         working: true,
         runtimeWorking: false,
-        backgroundCommand: false,
         workflow: true,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: false,
         unreadError: false,
       });
@@ -271,7 +378,11 @@ describe("thread-activity", () => {
 
     it("keeps workflow activity visible when the same child also has runtime work", () => {
       const workflowAndRuntimeChild = makeChild({
-        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
         runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
         status: "active",
       });
@@ -280,8 +391,9 @@ describe("thread-activity", () => {
         pending: false,
         working: true,
         runtimeWorking: true,
-        backgroundCommand: false,
         workflow: true,
+        backgroundAgent: false,
+        backgroundCommand: false,
         unread: false,
         unreadError: false,
       });

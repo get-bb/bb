@@ -797,6 +797,7 @@ describe("server-contract canonical schemas", () => {
           },
           activity: {
             activeWorkflowCount: 0,
+            activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,
           },
           hasPendingInteraction: true,

@@ -45,7 +45,11 @@ function createThreadListEntry({
   title: string;
 }): ThreadListEntry {
   return {
-    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+    },
     archivedAt: null,
     childOrigin: null,
     createdAt: 1000,

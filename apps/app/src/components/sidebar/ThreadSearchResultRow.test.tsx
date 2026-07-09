@@ -30,7 +30,11 @@ function createThread(
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
-    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+    },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -47,7 +51,7 @@ function createThread(
 afterEach(cleanup);
 
 describe("ThreadSearchResultRow", () => {
-  it("shows workflow activity instead of the generic runtime spinner", () => {
+  it("shows foreground agent work before workflow activity", () => {
     render(
       <ThreadSearchResultRow
         id="row-workflow"
@@ -58,7 +62,11 @@ describe("ThreadSearchResultRow", () => {
         projectName="bb"
         thread={createThread({
           status: "active",
-          activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
+          activity: {
+            activeWorkflowCount: 1,
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+          },
           runtime: {
             displayStatus: "active",
             hostReconnectGraceExpiresAt: null,
@@ -67,7 +75,8 @@ describe("ThreadSearchResultRow", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
+    expect(screen.getByLabelText("Agent working")).not.toBeNull();
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 });

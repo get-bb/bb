@@ -27,7 +27,9 @@ import type {
   ThreadEventType,
 } from "@bb/domain";
 import {
+  LOCAL_AGENT_TASK_TYPE,
   LOCAL_BASH_TASK_TYPE,
+  LOCAL_SUBAGENT_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   clientTurnRequestIdSchema,
   getThreadEventScopeTurnId,
@@ -1213,6 +1215,7 @@ export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
 }
 
 export interface ActiveBackgroundTaskCountRow {
+  activeBackgroundAgentCount: number;
   activeBackgroundCommandCount: number;
   activeWorkflowCount: number;
   threadId: string;
@@ -1374,6 +1377,16 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       ) AS activeWorkflowCount,
       SUM(
         CASE
+          WHEN json_extract(active_event.data, '$.item.taskType') IN (
+            ${LOCAL_AGENT_TASK_TYPE},
+            ${LOCAL_SUBAGENT_TASK_TYPE}
+          )
+          THEN 1
+          ELSE 0
+        END
+      ) AS activeBackgroundAgentCount,
+      SUM(
+        CASE
           WHEN json_extract(active_event.data, '$.item.taskType') =
             ${LOCAL_BASH_TASK_TYPE}
           THEN 1
@@ -1391,6 +1404,8 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       AND json_extract(active_event.data, '$.item.status') = 'pending'
       AND json_extract(active_event.data, '$.item.taskType') IN (
         ${LOCAL_WORKFLOW_TASK_TYPE},
+        ${LOCAL_AGENT_TASK_TYPE},
+        ${LOCAL_SUBAGENT_TASK_TYPE},
         ${LOCAL_BASH_TASK_TYPE}
       )
       AND COALESCE(

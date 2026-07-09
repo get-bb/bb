@@ -9,7 +9,11 @@ type ThreadListEntryOverrides = Partial<ThreadListEntry>;
 
 function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
   return {
-    activity: { activeWorkflowCount: 0, activeBackgroundCommandCount: 0 },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+    },
     archivedAt: null,
     childOrigin: null,
     createdAt: 1,

@@ -259,6 +259,7 @@ export function toThreadListEntryResponses(
   return args.threads.map((thread) =>
     toThreadListEntryResponseFromLatestSession({
       activity: threadActivityById.get(thread.id) ?? {
+        activeBackgroundAgentCount: 0,
         activeBackgroundCommandCount: 0,
         activeWorkflowCount: 0,
       },

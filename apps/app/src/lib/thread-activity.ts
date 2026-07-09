@@ -21,6 +21,12 @@ export function hasActiveWorkflowActivity(
   return thread.activity.activeWorkflowCount > 0;
 }
 
+export function hasActiveBackgroundAgentActivity(
+  thread: ThreadActivityStateShape,
+): boolean {
+  return thread.activity.activeBackgroundAgentCount > 0;
+}
+
 export function hasActiveBackgroundCommandActivity(
   thread: ThreadActivityStateShape,
 ): boolean {
@@ -33,6 +39,7 @@ export function isBusyThread(
   return (
     isRuntimeBusyThread(thread) ||
     hasActiveWorkflowActivity(thread) ||
+    hasActiveBackgroundAgentActivity(thread) ||
     hasActiveBackgroundCommandActivity(thread)
   );
 }
@@ -41,12 +48,13 @@ export function isBusyThread(
  * The signals a collapsed parent row surfaces on behalf of its hidden children.
  * A collapsed row renders these through its single trailing status glyph, using
  * the same priority as a leaf row: failed unread work is loudest, then pending
- * user input, then background commands, then workflow work, then unread
- * success, then generic runtime work. Expanded rows show their own status,
+ * user input, then foreground runtime work, then workflow work, then background
+ * agent work, then background commands, then unread success, then generic
+ * runtime work. Expanded rows show their own status,
  * since the children are then visible with their own glyphs. Background
- * commands and workflow work are tracked separately from runtime work so the
- * sidebar can use the same task-specific signals as the prompt banner instead
- * of collapsing them into a generic spinner.
+ * agent, command, and workflow work are tracked separately from runtime work so
+ * the sidebar can use task-specific signals instead of collapsing them into a
+ * generic spinner.
  */
 export interface CollapsedChildActivity {
   /** At least one child is blocked on the user (needs input). */
@@ -55,10 +63,12 @@ export interface CollapsedChildActivity {
   working: boolean;
   /** At least one child is actively running a foreground/runtime turn. */
   runtimeWorking: boolean;
-  /** At least one child has a background shell command still running. */
-  backgroundCommand: boolean;
   /** At least one idle child has a provider workflow still running. */
   workflow: boolean;
+  /** At least one child has a background agent or subagent still running. */
+  backgroundAgent: boolean;
+  /** At least one child has a background shell command still running. */
+  backgroundCommand: boolean;
   /**
    * At least one finished child is unread. Only top-level worktree children
    * qualify — `isUnreadDoneThread` is false for parented threads, so manager
@@ -73,8 +83,9 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   pending: false,
   working: false,
   runtimeWorking: false,
-  backgroundCommand: false,
   workflow: false,
+  backgroundAgent: false,
+  backgroundCommand: false,
   unread: false,
   unreadError: false,
 };
@@ -90,50 +101,61 @@ export function getCollapsedChildActivity(
   let pending = false;
   let working = false;
   let runtimeWorking = false;
-  let backgroundCommand = false;
   let workflow = false;
+  let backgroundAgent = false;
+  let backgroundCommand = false;
   let unread = false;
   let unreadError = false;
   for (const thread of threads) {
+    const childUnreadDone = isUnreadDoneThread(thread);
+    if (childUnreadDone && thread.status === "error") {
+      unread = true;
+      unreadError = true;
+    }
+
     if (thread.hasPendingInteraction) {
       // Mirror leaf rows: a blocked thread reads as pending, not also working.
       pending = true;
       continue;
     }
     const childRuntimeWorking = isRuntimeBusyThread(thread);
+    const childWorkflowActive = hasActiveWorkflowActivity(thread);
+    const childBackgroundAgentActive = hasActiveBackgroundAgentActivity(thread);
     const childBackgroundCommandActive =
       hasActiveBackgroundCommandActivity(thread);
-    const childWorkflowActive = hasActiveWorkflowActivity(thread);
     if (childRuntimeWorking) {
       runtimeWorking = true;
-      working = true;
-    }
-    if (childBackgroundCommandActive) {
-      backgroundCommand = true;
       working = true;
     }
     if (childWorkflowActive) {
       workflow = true;
       working = true;
     }
+    if (childBackgroundAgentActive) {
+      backgroundAgent = true;
+      working = true;
+    }
+    if (childBackgroundCommandActive) {
+      backgroundCommand = true;
+      working = true;
+    }
     if (
       !childRuntimeWorking &&
-      !childBackgroundCommandActive &&
       !childWorkflowActive &&
-      isUnreadDoneThread(thread)
+      !childBackgroundAgentActive &&
+      !childBackgroundCommandActive &&
+      childUnreadDone
     ) {
       unread = true;
-      if (thread.status === "error") {
-        unreadError = true;
-      }
     }
   }
   return {
     pending,
     working,
     runtimeWorking,
-    backgroundCommand,
     workflow,
+    backgroundAgent,
+    backgroundCommand,
     unread,
     unreadError,
   };

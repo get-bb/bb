@@ -12,6 +12,7 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
+  hasActiveBackgroundAgentActivity,
   hasActiveBackgroundCommandActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
@@ -136,10 +137,12 @@ function ThreadSearchResultRowComponent({
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
-  const threadBackgroundCommandActive =
-    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
   const threadWorkflowActive =
     !hasPendingInteraction && hasActiveWorkflowActivity(thread);
+  const threadBackgroundAgentActive =
+    !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
+  const threadBackgroundCommandActive =
+    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   // For recents and title-only matches, the second line shows the project and
   // when the thread was last active.
@@ -212,7 +215,9 @@ function ThreadSearchResultRowComponent({
         <span className="inline-flex size-4 shrink-0 items-center justify-center">
           <ThreadStatusGlyph
             hasPendingInteraction={hasPendingInteraction}
+            isBackgroundAgentActive={threadBackgroundAgentActive}
             isBackgroundCommandActive={threadBackgroundCommandActive}
+            isForegroundAgentWorking={threadRuntimeBusy}
             isBusy={threadRuntimeBusy}
             isWorkflowActive={threadWorkflowActive}
             showUnreadBadge={false}

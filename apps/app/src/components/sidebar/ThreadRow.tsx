@@ -29,6 +29,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
+  hasActiveBackgroundAgentActivity,
   hasActiveBackgroundCommandActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
@@ -166,7 +167,9 @@ function renderThreadRowContainer({
 
 interface ThreadStatusGlyphProps {
   hasPendingInteraction: boolean;
+  isBackgroundAgentActive: boolean;
   isBackgroundCommandActive: boolean;
+  isForegroundAgentWorking: boolean;
   isBusy: boolean;
   isWorkflowActive: boolean;
   showUnreadBadge: boolean;
@@ -179,7 +182,9 @@ interface ThreadUnreadBadgeLabelArgs {
 
 export function ThreadStatusGlyph({
   hasPendingInteraction,
+  isBackgroundAgentActive,
   isBackgroundCommandActive,
+  isForegroundAgentWorking,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
@@ -209,16 +214,16 @@ export function ThreadStatusGlyph({
     );
   }
 
-  if (isBackgroundCommandActive) {
+  if (isForegroundAgentWorking) {
     return (
       <Icon
-        name="Terminal"
+        name="Loading"
         className={cn(
-          "animate-shine-icon",
+          "animate-spin",
           SIDEBAR_WORKING_STATUS_COLOR_CLASS,
           COARSE_POINTER_ICON_SIZE_CLASS,
         )}
-        aria-label="Background command running"
+        aria-label="Agent working"
       />
     );
   }
@@ -233,6 +238,34 @@ export function ThreadStatusGlyph({
           COARSE_POINTER_ICON_SIZE_CLASS,
         )}
         aria-label="Workflow running"
+      />
+    );
+  }
+
+  if (isBackgroundAgentActive) {
+    return (
+      <Icon
+        name="UserRoundPlus"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Background agent running"
+      />
+    );
+  }
+
+  if (isBackgroundCommandActive) {
+    return (
+      <Icon
+        name="Terminal"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Background command running"
       />
     );
   }
@@ -271,7 +304,9 @@ type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
 
 function ThreadTrailingIndicator({
   hasPendingInteraction,
+  isBackgroundAgentActive,
   isBackgroundCommandActive,
+  isForegroundAgentWorking,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
@@ -279,7 +314,9 @@ function ThreadTrailingIndicator({
 }: ThreadTrailingIndicatorProps) {
   const showStatusGlyph =
     hasPendingInteraction ||
+    isBackgroundAgentActive ||
     isBackgroundCommandActive ||
+    isForegroundAgentWorking ||
     isBusy ||
     isWorkflowActive ||
     showUnreadBadge;
@@ -297,7 +334,9 @@ function ThreadTrailingIndicator({
     >
       <ThreadStatusGlyph
         hasPendingInteraction={hasPendingInteraction}
+        isBackgroundAgentActive={isBackgroundAgentActive}
         isBackgroundCommandActive={isBackgroundCommandActive}
+        isForegroundAgentWorking={isForegroundAgentWorking}
         isBusy={isBusy}
         isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
@@ -326,15 +365,21 @@ function ThreadRowComponent({
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
-  const threadBackgroundCommandActive =
-    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
   const threadWorkflowActive =
     !hasPendingInteraction && hasActiveWorkflowActivity(thread);
+  const threadBackgroundAgentActive =
+    !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
+  const threadBackgroundCommandActive =
+    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
+  const threadUnreadDone = isUnreadDoneThread(thread);
+  const threadUnreadError = threadUnreadDone && thread.status === "error";
   const showUnreadBadge =
-    !hasPendingInteraction && !threadIsBusy && isUnreadDoneThread(thread);
-  const unreadBadgeTone: SidebarUnreadDotTone =
-    showUnreadBadge && thread.status === "error" ? "error" : "default";
+    threadUnreadError ||
+    (!hasPendingInteraction && !threadIsBusy && threadUnreadDone);
+  const unreadBadgeTone: SidebarUnreadDotTone = threadUnreadError
+    ? "error"
+    : "default";
   const threadTitle = getThreadDisplayTitle(thread);
   // Inside a folder the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
@@ -356,12 +401,15 @@ function ThreadRowComponent({
   const trailingRuntimeBusy = hasHiddenChildren
     ? threadRuntimeBusy || childActivity.runtimeWorking
     : threadRuntimeBusy;
-  const trailingBackgroundCommandActive = hasHiddenChildren
-    ? threadBackgroundCommandActive || childActivity.backgroundCommand
-    : threadBackgroundCommandActive;
   const trailingIsWorkflowActive = hasHiddenChildren
     ? threadWorkflowActive || childActivity.workflow
     : threadWorkflowActive;
+  const trailingBackgroundAgentActive = hasHiddenChildren
+    ? threadBackgroundAgentActive || childActivity.backgroundAgent
+    : threadBackgroundAgentActive;
+  const trailingBackgroundCommandActive = hasHiddenChildren
+    ? threadBackgroundCommandActive || childActivity.backgroundCommand
+    : threadBackgroundCommandActive;
   const trailingIsBusy = trailingRuntimeBusy;
   const trailingShowUnreadBadge = hasHiddenChildren
     ? showUnreadBadge || childActivity.unread
@@ -456,7 +504,9 @@ function ThreadRowComponent({
           >
             <ThreadTrailingIndicator
               hasPendingInteraction={trailingHasPendingInteraction}
+              isBackgroundAgentActive={trailingBackgroundAgentActive}
               isBackgroundCommandActive={trailingBackgroundCommandActive}
+              isForegroundAgentWorking={trailingRuntimeBusy}
               isBusy={trailingIsBusy}
               isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}

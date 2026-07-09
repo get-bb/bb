@@ -104,7 +104,11 @@ function WorkflowActiveThreadRow() {
       thread={makeThread({
         title: "Background workflow audit",
         titleFallback: "Background workflow audit",
-        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
       })}
       isActive={false}
       options={defaultOption}
@@ -121,7 +125,27 @@ function BackgroundCommandActiveThreadRow() {
         titleFallback: "Background pixel gate",
         activity: {
           activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 1,
+        },
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
+}
+
+function BackgroundAgentActiveThreadRow() {
+  return (
+    <StoryThreadRow
+      projectId="proj_demo"
+      thread={makeThread({
+        title: "Background agent review",
+        titleFallback: "Background agent review",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 1,
+          activeBackgroundCommandCount: 0,
         },
       })}
       isActive={false}
@@ -142,7 +166,11 @@ function WorkflowAndRuntimeActiveThreadRow() {
           displayStatus: "active",
           hostReconnectGraceExpiresAt: null,
         },
-        activity: { activeWorkflowCount: 1, activeBackgroundCommandCount: 0 },
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+        },
       })}
       isActive={false}
       options={defaultOption}
@@ -281,6 +309,14 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
+        label="active background agent"
+        hint="background agent is active - far-right reserved slot shows the animated delegated-agent glyph"
+      >
+        <SidebarStage>
+          <BackgroundAgentActiveThreadRow />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
         label="active background command"
         hint="background shell command is active - far-right reserved slot shows the animated terminal glyph"
       >
@@ -290,7 +326,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active workflow + runtime"
-        hint="workflow activity wins over the generic runtime spinner so the sidebar matches the workflow banner"
+        hint="foreground agent activity wins over workflow activity"
       >
         <SidebarStage>
           <WorkflowAndRuntimeActiveThreadRow />
