@@ -19,6 +19,7 @@ import {
   createConnectCode,
   createServer,
   disconnectServer,
+  removeServer,
   getAccountState,
   redeemConnectCode,
 } from "./api.js";
@@ -285,6 +286,56 @@ describe("disconnectServer (server-scoped)", () => {
     const victim = db.select().from(server).where(eq(server.subdomain, "other")).get();
     expect(await disconnectServer(deps, "u1", victim!.id)).toEqual({ error: "not-found" });
     expect(closeTunnel).not.toHaveBeenCalled();
+  });
+});
+
+describe("removeServer (delete a never-paired row)", () => {
+  it("deletes a never-paired secondary and frees its subdomain for re-claim", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+
+    expect(await removeServer(deps, "u1", desktop.server.id)).toEqual({ ok: true });
+    expect(db.select().from(server).where(eq(server.id, desktop.server.id)).get()).toBeUndefined();
+
+    // The address is now free (availability treats any live row as taken).
+    const avail = await checkAvailability(deps, "sawyer-desktop");
+    expect(avail.available).toBe(true);
+
+    // The primary is untouched.
+    expect(db.select().from(server).where(eq(server.subdomain, "sawyer")).get()).toBeDefined();
+  });
+
+  it("refuses to remove the primary (account handle) row", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const primary = db.select().from(server).where(eq(server.subdomain, "sawyer")).get();
+    expect(await removeServer(deps, "u1", primary!.id)).toEqual({ error: "is-primary" });
+    expect(db.select().from(server).where(eq(server.id, primary!.id)).get()).toBeDefined();
+  });
+
+  it("refuses to remove a still-connected secondary (disconnect first)", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+    db.update(server)
+      .set({ credentialHash: "hash", revokedAt: null })
+      .where(eq(server.id, desktop.server.id))
+      .run();
+
+    expect(await removeServer(deps, "u1", desktop.server.id)).toEqual({ error: "connected" });
+    expect(db.select().from(server).where(eq(server.id, desktop.server.id)).get()).toBeDefined();
+  });
+
+  it("refuses a server the caller does not own", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    await claimHandle(deps, "u1", "sawyer");
+    await claimHandle(deps, "u2", "other");
+    const victim = db.select().from(server).where(eq(server.subdomain, "other")).get();
+    expect(await removeServer(deps, "u1", victim!.id)).toEqual({ error: "not-found" });
   });
 });
 
