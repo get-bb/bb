@@ -14,7 +14,13 @@
 // account tags, reconnect-resume) extends this format — new frame types get
 // new type bytes, existing layouts stay stable.
 
-export const PROTOCOL_VERSION = 0;
+export const PROTOCOL_VERSION = 1;
+
+/**
+ * Query param the tunnel client sets on `/__tunnel` with its
+ * {@link PROTOCOL_VERSION}. Missing or unparsable is treated as 0 (pre-v1).
+ */
+export const TUNNEL_PROTOCOL_QUERY_PARAM = "v";
 
 /** Heartbeat text messages (eligible for DO auto-response). */
 export const HEARTBEAT_REQUEST = "bbt:hb";
@@ -46,6 +52,11 @@ export interface OpenHttpFrame {
   headers: HeaderPair[];
   /** When true, body-chunk/body-end frames for this stream follow. */
   hasBody: boolean;
+  /**
+   * When set, route to the registered local share named by `target`
+   * (v1: decimal port string like "8000"). Absent = bb server loopback origin.
+   */
+  target?: string;
 }
 
 /** Either direction: a piece of an HTTP request or response body. */
@@ -76,6 +87,11 @@ export interface OpenWsFrame {
   path: string;
   headers: HeaderPair[];
   protocols: string[];
+  /**
+   * When set, route to the registered local share named by `target`
+   * (v1: decimal port string like "8000"). Absent = bb server loopback origin.
+   */
+  target?: string;
 }
 
 /** Client → relay: the origin accepted the WebSocket. */
@@ -145,6 +161,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
           path: frame.path,
           headers: frame.headers,
           hasBody: frame.hasBody,
+          ...(frame.target !== undefined ? { target: frame.target } : {}),
         }),
       );
     case "body-chunk": {
@@ -167,7 +184,12 @@ export function encodeFrame(frame: Frame): Uint8Array {
       return withHeader(
         FRAME_TYPE.openWs,
         frame.streamId,
-        jsonPayload({ path: frame.path, headers: frame.headers, protocols: frame.protocols }),
+        jsonPayload({
+          path: frame.path,
+          headers: frame.headers,
+          protocols: frame.protocols,
+          ...(frame.target !== undefined ? { target: frame.target } : {}),
+        }),
       );
     case "ws-open-ack":
       return withHeader(
@@ -213,8 +235,17 @@ export function decodeFrame(message: ArrayBuffer | Uint8Array): Frame {
         path: string;
         headers: HeaderPair[];
         hasBody: boolean;
+        target?: unknown;
       }>(payload, "open-http");
-      return { type: "open-http", streamId, ...meta };
+      return {
+        type: "open-http",
+        streamId,
+        method: meta.method,
+        path: meta.path,
+        headers: meta.headers,
+        hasBody: meta.hasBody,
+        ...(typeof meta.target === "string" ? { target: meta.target } : {}),
+      };
     }
     case FRAME_TYPE.bodyChunk:
       return { type: "body-chunk", streamId, data: payload };
@@ -225,11 +256,20 @@ export function decodeFrame(message: ArrayBuffer | Uint8Array): Frame {
       return { type: "resp-head", streamId, ...meta };
     }
     case FRAME_TYPE.openWs: {
-      const meta = parseJson<{ path: string; headers: HeaderPair[]; protocols: string[] }>(
-        payload,
-        "open-ws",
-      );
-      return { type: "open-ws", streamId, ...meta };
+      const meta = parseJson<{
+        path: string;
+        headers: HeaderPair[];
+        protocols: string[];
+        target?: unknown;
+      }>(payload, "open-ws");
+      return {
+        type: "open-ws",
+        streamId,
+        path: meta.path,
+        headers: meta.headers,
+        protocols: meta.protocols,
+        ...(typeof meta.target === "string" ? { target: meta.target } : {}),
+      };
     }
     case FRAME_TYPE.wsOpenAck: {
       const meta = parseJson<{ protocol: string | null }>(payload, "ws-open-ack");

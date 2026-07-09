@@ -4,6 +4,7 @@ import { server } from "@bb/connect-db";
 import {
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
+  TUNNEL_PROTOCOL_QUERY_PARAM,
   decodeFrame,
   encodeFrame,
   type Frame,
@@ -24,6 +25,9 @@ const RESP_HEAD_TIMEOUT_MS = 30_000;
 // run JS), kept under the 90s offline window.
 const PRESENCE_INTERVAL_MS = 50_000;
 
+/** Gate → DO header carrying a share target; never forwarded to the origin. */
+const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
+
 /** Headers that must not be forwarded in either direction. */
 const HOP_HEADERS = new Set([
   "connection",
@@ -35,6 +39,7 @@ const HOP_HEADERS = new Set([
   "sec-websocket-key",
   "sec-websocket-version",
   "sec-websocket-extensions",
+  TUNNEL_TARGET_HEADER,
 ]);
 
 function forwardableHeaders(headers: Headers): HeaderPair[] {
@@ -44,6 +49,22 @@ function forwardableHeaders(headers: Headers): HeaderPair[] {
   });
   return pairs;
 }
+
+function readTunnelTarget(headers: Headers): string | undefined {
+  const value = headers.get(TUNNEL_TARGET_HEADER);
+  return value !== null && value !== "" ? value : undefined;
+}
+
+/** Parse client protocol version from dial query; missing/unparsable → 0. */
+export function parseClientProtocolVersion(raw: string | null): number {
+  if (raw === null || raw === "") return 0;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
+const PORT_SHARE_TOO_OLD =
+  "this bb's connect plugin is too old for port sharing — update bb and reconnect";
 
 interface PendingHttp {
   resolve: (response: Response) => void;
@@ -65,6 +86,8 @@ interface PendingHttp {
 export class TunnelDO {
   private readonly pendingHttp = new Map<number, PendingHttp>();
   private nextStreamId: number;
+  /** Client protocol version from the dial (`?v=`); 0 = pre-port-sharing. */
+  private clientProtocolVersion = 0;
 
   constructor(
     private readonly state: DurableObjectState,
@@ -81,12 +104,23 @@ export class TunnelDO {
     this.state.setWebSocketAutoResponse(
       new WebSocketRequestResponsePair(HEARTBEAT_REQUEST, HEARTBEAT_RESPONSE),
     );
+    // Restore protocol version after hibernation (in-memory is wiped).
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.get<number>("protocolVersion");
+      if (typeof stored === "number" && Number.isFinite(stored) && stored >= 0) {
+        this.clientProtocolVersion = stored;
+      }
+    });
   }
 
   fetch(request: Request): Response | Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/__tunnel") {
-      return this.acceptTunnel(request, url.searchParams.get("serverId"));
+      return this.acceptTunnel(
+        request,
+        url.searchParams.get("serverId"),
+        parseClientProtocolVersion(url.searchParams.get(TUNNEL_PROTOCOL_QUERY_PARAM)),
+      );
     }
     // Internal control channel — only reachable via the cross-script DO binding
     // (the gate rejects external /__ paths). Used to sever a live tunnel the
@@ -94,6 +128,8 @@ export class TunnelDO {
     if (url.pathname === "/__control/close") {
       for (const ws of this.state.getWebSockets(TUNNEL_TAG)) ws.close(1000, "revoked by owner");
       void this.state.storage.delete("serverId");
+      void this.state.storage.delete("protocolVersion");
+      this.clientProtocolVersion = 0;
       return new Response(null, { status: 204 });
     }
 
@@ -104,10 +140,19 @@ export class TunnelDO {
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     }
-    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-      return this.openVisitorWebSocket(request, url, tunnel);
+
+    const target = readTunnelTarget(request.headers);
+    if (target !== undefined && this.clientProtocolVersion < 1) {
+      return new Response(`bb connect: ${PORT_SHARE_TOO_OLD}\n`, {
+        status: 502,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
     }
-    return this.proxyHttp(request, url, tunnel);
+
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      return this.openVisitorWebSocket(request, url, tunnel, target);
+    }
+    return this.proxyHttp(request, url, tunnel, target);
   }
 
   private tunnelSocket(): WebSocket | null {
@@ -133,13 +178,19 @@ export class TunnelDO {
   async alarm(): Promise<void> {
     if (!this.tunnelSocket()) {
       await this.state.storage.delete("serverId");
+      await this.state.storage.delete("protocolVersion");
+      this.clientProtocolVersion = 0;
       return;
     }
     await this.markPresence();
     await this.state.storage.setAlarm(Date.now() + PRESENCE_INTERVAL_MS);
   }
 
-  private acceptTunnel(request: Request, serverId: string | null): Response {
+  private acceptTunnel(
+    request: Request,
+    serverId: string | null,
+    protocolVersion: number,
+  ): Response {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("expected websocket", { status: 426 });
     }
@@ -147,6 +198,8 @@ export class TunnelDO {
     for (const existing of this.state.getWebSockets(TUNNEL_TAG)) {
       existing.close(1000, "replaced by a new tunnel connection");
     }
+    this.clientProtocolVersion = protocolVersion;
+    void this.state.storage.put("protocolVersion", protocolVersion);
     if (serverId) {
       void this.state.storage.put("serverId", serverId);
       void this.markPresence();
@@ -157,7 +210,12 @@ export class TunnelDO {
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
-  private openVisitorWebSocket(request: Request, url: URL, tunnel: WebSocket): Response {
+  private openVisitorWebSocket(
+    request: Request,
+    url: URL,
+    tunnel: WebSocket,
+    target: string | undefined,
+  ): Response {
     const streamId = this.nextStreamId++;
     const protocols =
       request.headers
@@ -177,6 +235,7 @@ export class TunnelDO {
         path: url.pathname + url.search,
         headers: forwardableHeaders(request.headers),
         protocols,
+        ...(target !== undefined ? { target } : {}),
       }),
     );
 
@@ -190,7 +249,12 @@ export class TunnelDO {
     return new Response(null, { status: 101, webSocket: pair[0], headers: responseHeaders });
   }
 
-  private async proxyHttp(request: Request, url: URL, tunnel: WebSocket): Promise<Response> {
+  private async proxyHttp(
+    request: Request,
+    url: URL,
+    tunnel: WebSocket,
+    target: string | undefined,
+  ): Promise<Response> {
     const streamId = this.nextStreamId++;
     const hasBody = request.body !== null;
 
@@ -214,6 +278,7 @@ export class TunnelDO {
         path: url.pathname + url.search,
         headers: forwardableHeaders(request.headers),
         hasBody,
+        ...(target !== undefined ? { target } : {}),
       }),
     );
 

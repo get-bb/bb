@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_CHUNK_BYTES,
+  PROTOCOL_VERSION,
+  TUNNEL_PROTOCOL_QUERY_PARAM,
   chunkBody,
   decodeFrame,
   encodeFrame,
@@ -11,8 +13,15 @@ function roundTrip(frame: Frame): Frame {
   return decodeFrame(encodeFrame(frame));
 }
 
+describe("protocol version", () => {
+  it("exports PROTOCOL_VERSION 1 and the dial query param name", () => {
+    expect(PROTOCOL_VERSION).toBe(1);
+    expect(TUNNEL_PROTOCOL_QUERY_PARAM).toBe("v");
+  });
+});
+
 describe("frame round-trips", () => {
-  it("open-http", () => {
+  it("open-http without target", () => {
     const frame: Frame = {
       type: "open-http",
       streamId: 7,
@@ -24,7 +33,41 @@ describe("frame round-trips", () => {
       ],
       hasBody: true,
     };
+    const out = roundTrip(frame);
+    expect(out).toEqual(frame);
+    expect(out.type).toBe("open-http");
+    if (out.type !== "open-http") throw new Error("unreachable");
+    expect(out.target).toBeUndefined();
+  });
+
+  it("open-http with target", () => {
+    const frame: Frame = {
+      type: "open-http",
+      streamId: 7,
+      method: "GET",
+      path: "/",
+      headers: [],
+      hasBody: false,
+      target: "8000",
+    };
     expect(roundTrip(frame)).toEqual(frame);
+  });
+
+  it("open-http encoded without target decodes with target undefined", () => {
+    const encoded = encodeFrame({
+      type: "open-http",
+      streamId: 1,
+      method: "GET",
+      path: "/",
+      headers: [],
+      hasBody: false,
+    });
+    // Payload must not contain the target key at all.
+    const payload = new TextDecoder().decode(encoded.subarray(5));
+    expect(payload).not.toContain("target");
+    const out = decodeFrame(encoded);
+    if (out.type !== "open-http") throw new Error("unreachable");
+    expect(out.target).toBeUndefined();
   });
 
   it("body-chunk preserves bytes exactly", () => {
@@ -54,7 +97,7 @@ describe("frame round-trips", () => {
     expect(roundTrip(frame)).toEqual(frame);
   });
 
-  it("open-ws / ws-open-ack / ws-data / close-stream", () => {
+  it("open-ws without target", () => {
     const open: Frame = {
       type: "open-ws",
       streamId: 20,
@@ -62,8 +105,40 @@ describe("frame round-trips", () => {
       headers: [["cookie", "a=b"]],
       protocols: ["bb.v1"],
     };
-    expect(roundTrip(open)).toEqual(open);
+    const out = roundTrip(open);
+    expect(out).toEqual(open);
+    if (out.type !== "open-ws") throw new Error("unreachable");
+    expect(out.target).toBeUndefined();
+  });
 
+  it("open-ws with target", () => {
+    const open: Frame = {
+      type: "open-ws",
+      streamId: 21,
+      path: "/ws",
+      headers: [],
+      protocols: [],
+      target: "5173",
+    };
+    expect(roundTrip(open)).toEqual(open);
+  });
+
+  it("open-ws encoded without target decodes with target undefined", () => {
+    const encoded = encodeFrame({
+      type: "open-ws",
+      streamId: 2,
+      path: "/ws",
+      headers: [],
+      protocols: [],
+    });
+    const payload = new TextDecoder().decode(encoded.subarray(5));
+    expect(payload).not.toContain("target");
+    const out = decodeFrame(encoded);
+    if (out.type !== "open-ws") throw new Error("unreachable");
+    expect(out.target).toBeUndefined();
+  });
+
+  it("ws-open-ack / ws-data / close-stream", () => {
     expect(roundTrip({ type: "ws-open-ack", streamId: 20, protocol: null })).toEqual({
       type: "ws-open-ack",
       streamId: 20,
