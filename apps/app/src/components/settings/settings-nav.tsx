@@ -9,6 +9,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { usePluginLogoUrl } from "@/lib/plugin-logos";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
@@ -122,7 +123,12 @@ export function PluginNavIcon({ plugin }: { plugin: PluginListItem }) {
       ? plugin.logoDarkUrl
       : (plugin.logoUrl ?? storedLogoUrl);
   if (logoUrl === null) {
-    return <Icon name="Layers" className="size-4 shrink-0" />;
+    return (
+      <Icon
+        name={pluginIconName(plugin.icon ?? "Layers")}
+        className="size-4 shrink-0"
+      />
+    );
   }
   return (
     <img

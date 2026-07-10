@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "bb": {
+    "icon": "EditFile",
     "server": "./server.ts"
   }
 }

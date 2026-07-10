@@ -171,6 +171,7 @@ describe("builtin plugin reconciliation", () => {
         id: "builtin-fixture",
         source: "builtin:fixture",
         version: "0.1.0",
+        icon: "EditFile",
         enabled: true,
         status: "running",
       },

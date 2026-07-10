@@ -161,6 +161,8 @@ export interface PluginListEntry {
    * plugin is not currently loaded (falls back to the id in the UI).
    */
   displayName: string | null;
+  /** `bb.icon` — host icon-name hint; null when not declared or unloaded. */
+  icon: string | null;
   status: PluginRuntimeStatus;
   statusDetail: string | null;
   handlerStats: PluginHandlerStats;
@@ -2012,6 +2014,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           enabled: row.enabled,
           description: exposedPlugin?.manifest.description ?? null,
           displayName: exposedPlugin?.manifest.displayName ?? null,
+          icon: exposedPlugin?.manifest.icon ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
