@@ -34,6 +34,7 @@ import {
   bbDesktopServerRenameRequestSchema,
   bbDesktopServerSetAutoConnectRequestSchema,
   bbDesktopServerSetShowConnectServersRequestSchema,
+  bbDesktopServerSetTileStyleRequestSchema,
   bbDesktopThemeSchema,
   getDesktopThreadRoutePath,
   type BbDesktopInfo,
@@ -92,6 +93,7 @@ import {
   BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
   BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
   BB_DESKTOP_SERVERS_SET_SHOW_CONNECT_SERVERS_CHANNEL,
+  BB_DESKTOP_SERVERS_SET_TILE_STYLE_CHANNEL,
 } from "./desktop-server-ipc.js";
 import {
   createConnectServerSync,
@@ -1057,10 +1059,11 @@ async function loadUrlInApplicationWindow(args: {
 function buildServerListEntries(args: {
   activeServerId: string;
 }): BbDesktopServerListEntry[] {
-  if (serverRegistry === null) {
+  const registry = serverRegistry;
+  if (registry === null) {
     return [];
   }
-  return serverRegistry.list().map((server) => {
+  return registry.list().map((server) => {
     const status: BbDesktopServerStatus =
       server.source === "builtin"
         ? builtinServerStatus({
@@ -1068,8 +1071,11 @@ function buildServerListEntries(args: {
             lastProbe: builtinLastProbe,
           })
         : (remoteServerStatuses.get(server.id) ?? "unknown");
+    const tileStyle = registry.getTileStyle(server.id);
     return {
       active: server.id === args.activeServerId,
+      color: tileStyle.color,
+      icon: tileStyle.icon,
       id: server.id,
       name: server.name,
       source: server.source,
@@ -1303,6 +1309,8 @@ function registerDesktopServerIpc(): void {
         ok: true as const,
         server: {
           active: false,
+          color: null,
+          icon: null,
           id: result.server.id,
           name: result.server.name,
           source: result.server.source,
@@ -1359,6 +1367,26 @@ function registerDesktopServerIpc(): void {
     }
     await serverRegistry.rename(parsed.data.id, parsed.data.name);
   });
+
+  ipcMain.handle(
+    BB_DESKTOP_SERVERS_SET_TILE_STYLE_CHANNEL,
+    async (event, payload) => {
+      if (!isApplicationWindowSender(event.sender)) {
+        return;
+      }
+      if (serverRegistry === null) {
+        return;
+      }
+      const parsed = bbDesktopServerSetTileStyleRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      await serverRegistry.setTileStyle(parsed.data.id, {
+        icon: parsed.data.icon,
+        color: parsed.data.color,
+      });
+    },
+  );
 
   ipcMain.handle(
     BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,

@@ -186,6 +186,55 @@ describe("applyConnectServerSync", () => {
     ).toBe(true);
   });
 
+  it("preserves tile styles across connect upsert and removes style on stale handle", async () => {
+    const registry = memoryRegistry();
+    await registry.load();
+    const laptop = connectServerId("laptop");
+    const gone = connectServerId("gone");
+    await registry.upsert({
+      id: laptop,
+      name: "Laptop",
+      source: "connect",
+      url: "https://laptop.getbb.app",
+    });
+    await registry.upsert({
+      id: gone,
+      name: "Gone",
+      source: "connect",
+      url: "https://gone.getbb.app",
+    });
+    await registry.setTileStyle(laptop, { icon: "Cloud", color: "purple" });
+    await registry.setTileStyle(gone, { icon: "Zap", color: "orange" });
+
+    await applyConnectServerSync({
+      registry,
+      result: {
+        selfHandle: "me",
+        servers: [
+          {
+            handle: "laptop",
+            name: "Laptop Renamed",
+            live: true,
+            url: "https://laptop-new.getbb.app",
+          },
+        ],
+      },
+    });
+
+    // Upsert updated row fields but left the local style overlay alone.
+    expect(registry.getServer(laptop)).toMatchObject({
+      name: "Laptop Renamed",
+      url: "https://laptop-new.getbb.app",
+    });
+    expect(registry.getTileStyle(laptop)).toEqual({
+      icon: "Cloud",
+      color: "purple",
+    });
+    // Stale connect id removed together with its style.
+    expect(registry.getServer(gone)).toBeNull();
+    expect(gone in registry.snapshot().tileStyles).toBe(false);
+  });
+
   it("updates name/url for an existing connect id", async () => {
     const registry = memoryRegistry();
     await registry.load();

@@ -1,6 +1,8 @@
 import {
   useEffect,
+  useMemo,
   useState,
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -11,9 +13,15 @@ import type {
   BbDesktopServerStatus,
   BbDesktopServersApi,
 } from "@bb/desktop-contract";
+import { FAVICON_COLORS, type FaviconColor } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@bb/shared-ui/popover";
 import { Switch } from "@bb/shared-ui/switch";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -22,6 +30,11 @@ import {
   SettingsWithControl,
 } from "@/components/ui/settings-section";
 import { getDesktopServersApi } from "@/lib/bb-desktop";
+import { FAVICON_COLOR_VALUES } from "@/lib/favicon-color-preference";
+import {
+  resolveServerTileColor,
+  resolveServerTileIcon,
+} from "@/lib/server-tile-style";
 
 const SERVERS_SECTION_DESCRIPTION =
   "Servers this desktop app can connect to. The list lives in the desktop app, not on any server.";
@@ -37,6 +50,17 @@ const ADD_FAILURE_MESSAGES: Record<BbDesktopServerAddFailureReason, string> = {
   duplicate: "Already in your list",
   incompatible: "That URL responds but is not a compatible bb server",
   unreachable: "Could not reach a bb server at that URL",
+};
+
+const COLOR_SWATCH_LABELS: Record<FaviconColor, string> = {
+  red: "Red",
+  orange: "Orange",
+  yellow: "Yellow",
+  green: "Green",
+  teal: "Teal",
+  blue: "Blue",
+  purple: "Purple",
+  pink: "Pink",
 };
 
 interface ServerStatusDisplay {
@@ -94,14 +118,232 @@ function partitionServers(servers: BbDesktopServerListEntry[]): {
   return { builtin, connect, manual };
 }
 
+function tileGlyph(name: string): string {
+  const first = [...name.trim()][0];
+  return first === undefined ? "?" : first.toUpperCase();
+}
+
+function ServerTileLogo({
+  color,
+  icon,
+  name,
+}: {
+  color: FaviconColor | null;
+  icon: IconName | null;
+  name: string;
+}) {
+  const colorHex = color === null ? undefined : FAVICON_COLOR_VALUES[color];
+  const glyphStyle: CSSProperties | undefined =
+    colorHex === undefined ? undefined : { color: colorHex };
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground",
+      )}
+      style={glyphStyle}
+    >
+      {icon !== null ? (
+        <Icon name={icon} className="size-4" />
+      ) : (
+        tileGlyph(name)
+      )}
+    </span>
+  );
+}
+
+interface ServerTileStylePickerProps {
+  onSetTileStyle: (style: {
+    icon: string | null;
+    color: string | null;
+  }) => void;
+  server: BbDesktopServerListEntry;
+}
+
+function ServerTileStylePicker({
+  onSetTileStyle,
+  server,
+}: ServerTileStylePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [iconQuery, setIconQuery] = useState("");
+  // Local draft so icon+color picks compose before servers:changed lands.
+  const [draft, setDraft] = useState<{
+    icon: string | null;
+    color: string | null;
+  }>({ icon: server.icon, color: server.color });
+
+  useEffect(() => {
+    setDraft({ icon: server.icon, color: server.color });
+  }, [server.icon, server.color]);
+
+  const resolvedIcon = resolveServerTileIcon(draft.icon);
+  const resolvedColor = resolveServerTileColor(draft.color);
+
+  const filteredIcons = useMemo(() => {
+    const query = iconQuery.trim().toLowerCase();
+    if (query.length === 0) {
+      return ICON_NAMES;
+    }
+    return ICON_NAMES.filter((name) => name.toLowerCase().includes(query));
+  }, [iconQuery]);
+
+  function applyStyle(next: {
+    icon: string | null;
+    color: string | null;
+  }): void {
+    setDraft(next);
+    onSetTileStyle(next);
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setIconQuery("");
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Customize ${server.name} icon`}
+          className="rounded-md outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+          data-testid={`server-tile-customize-${server.id}`}
+        >
+          <ServerTileLogo
+            color={resolvedColor}
+            icon={resolvedIcon}
+            name={server.name}
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-72 space-y-3 p-3"
+        mobileTitle={`Customize ${server.name}`}
+        sideOffset={6}
+      >
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-foreground">Icon</p>
+          <Input
+            aria-label="Search icons"
+            className="h-7 text-xs"
+            onChange={(event) => setIconQuery(event.target.value)}
+            placeholder="Search icons…"
+            value={iconQuery}
+          />
+          <div className="grid max-h-40 grid-cols-6 gap-1 overflow-y-auto pr-0.5">
+            <button
+              type="button"
+              aria-label="Letter"
+              aria-pressed={resolvedIcon === null}
+              className={cn(
+                "flex size-8 items-center justify-center rounded-md text-xs font-semibold text-muted-foreground hover:bg-accent",
+                resolvedIcon === null && "bg-accent text-foreground",
+              )}
+              onClick={() =>
+                applyStyle({
+                  icon: null,
+                  color: draft.color,
+                })
+              }
+            >
+              {tileGlyph(server.name)}
+            </button>
+            {filteredIcons.map((name) => (
+              <button
+                key={name}
+                type="button"
+                aria-label={name}
+                aria-pressed={resolvedIcon === name}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+                  resolvedIcon === name && "bg-accent text-foreground",
+                )}
+                onClick={() =>
+                  applyStyle({
+                    icon: name,
+                    color: draft.color,
+                  })
+                }
+              >
+                <Icon name={name} className="size-4" />
+              </button>
+            ))}
+          </div>
+          {filteredIcons.length === 0 ? (
+            <p className="text-xs text-subtle-foreground">No icons match.</p>
+          ) : null}
+        </div>
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-xs font-medium text-foreground">Color</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="Default color"
+              aria-pressed={resolvedColor === null}
+              className={cn(
+                "flex size-6 items-center justify-center rounded-full border border-border bg-background text-[10px] font-medium text-muted-foreground hover:border-foreground/40",
+                resolvedColor === null &&
+                  "ring-2 ring-ring ring-offset-1 ring-offset-background",
+              )}
+              onClick={() =>
+                applyStyle({
+                  icon: draft.icon,
+                  color: null,
+                })
+              }
+            >
+              A
+            </button>
+            {FAVICON_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                aria-label={COLOR_SWATCH_LABELS[color]}
+                aria-pressed={resolvedColor === color}
+                className={cn(
+                  "size-6 rounded-full border border-border/60 hover:scale-105",
+                  resolvedColor === color &&
+                    "ring-2 ring-ring ring-offset-1 ring-offset-background",
+                )}
+                style={{ backgroundColor: FAVICON_COLOR_VALUES[color] }}
+                onClick={() =>
+                  applyStyle({
+                    icon: draft.icon,
+                    color,
+                  })
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 interface ServerRowProps {
   onRemove: (server: BbDesktopServerListEntry) => void;
   onRename: (server: BbDesktopServerListEntry, name: string) => void;
   onSetActive: (server: BbDesktopServerListEntry) => void;
+  onSetTileStyle: (
+    server: BbDesktopServerListEntry,
+    style: { icon: string | null; color: string | null },
+  ) => void;
   server: BbDesktopServerListEntry;
 }
 
-function ServerRow({ onRemove, onRename, onSetActive, server }: ServerRowProps) {
+function ServerRow({
+  onRemove,
+  onRename,
+  onSetActive,
+  onSetTileStyle,
+  server,
+}: ServerRowProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(server.name);
   const status = serverStatusDisplay(server.status);
@@ -136,6 +378,10 @@ function ServerRow({ onRemove, onRename, onSetActive, server }: ServerRowProps) 
       className="group flex items-start gap-3 py-2.5 first:pt-0 last:pb-0"
       data-testid={`server-row-${server.id}`}
     >
+      <ServerTileStylePicker
+        onSetTileStyle={(style) => onSetTileStyle(server, style)}
+        server={server}
+      />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {renaming && canRename ? (
@@ -236,6 +482,10 @@ interface ServersSettingsSectionContentProps {
   onRemove: (server: BbDesktopServerListEntry) => void;
   onRename: (server: BbDesktopServerListEntry, name: string) => void;
   onSetActive: (server: BbDesktopServerListEntry) => void;
+  onSetTileStyle: (
+    server: BbDesktopServerListEntry,
+    style: { icon: string | null; color: string | null },
+  ) => void;
   onShowConnectServersChange: (enabled: boolean) => void;
   servers: BbDesktopServerListEntry[];
   showConnectServers: boolean;
@@ -249,6 +499,7 @@ export function ServersSettingsSectionContent({
   onRemove,
   onRename,
   onSetActive,
+  onSetTileStyle,
   onShowConnectServersChange,
   servers,
   showConnectServers,
@@ -297,6 +548,7 @@ export function ServersSettingsSectionContent({
                   onRemove={onRemove}
                   onRename={onRename}
                   onSetActive={onSetActive}
+                  onSetTileStyle={onSetTileStyle}
                   server={server}
                 />
               ))}
@@ -310,6 +562,7 @@ export function ServersSettingsSectionContent({
                   onRemove={onRemove}
                   onRename={onRename}
                   onSetActive={onSetActive}
+                  onSetTileStyle={onSetTileStyle}
                   server={server}
                 />
               ))}
@@ -323,6 +576,7 @@ export function ServersSettingsSectionContent({
                   onRemove={onRemove}
                   onRename={onRename}
                   onSetActive={onSetActive}
+                  onSetTileStyle={onSetTileStyle}
                   server={server}
                 />
               ))}
@@ -480,6 +734,13 @@ export function ServersSettingsSection() {
       }}
       onSetActive={(server) => {
         void serversApi.setActive(server.id);
+      }}
+      onSetTileStyle={(server, style) => {
+        void serversApi.setTileStyle({
+          id: server.id,
+          icon: style.icon,
+          color: style.color,
+        });
       }}
       onShowConnectServersChange={(enabled) => {
         setShowConnectServers(enabled);

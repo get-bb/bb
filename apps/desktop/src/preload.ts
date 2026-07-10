@@ -16,6 +16,7 @@ import {
   bbDesktopServerRenameRequestSchema,
   bbDesktopServerSetAutoConnectRequestSchema,
   bbDesktopServerSetShowConnectServersRequestSchema,
+  bbDesktopServerSetTileStyleRequestSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
   type BbDesktopBrowserApi,
@@ -36,6 +37,7 @@ import {
   type BbDesktopServerAddRequest,
   type BbDesktopServerAddResult,
   type BbDesktopServerListEntry,
+  type BbDesktopServerSetTileStyleRequest,
   type BbDesktopServersApi,
   type BbDesktopServersChangeHandler,
   type BbDesktopTheme,
@@ -93,6 +95,7 @@ import {
   BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
   BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
   BB_DESKTOP_SERVERS_SET_SHOW_CONNECT_SERVERS_CHANNEL,
+  BB_DESKTOP_SERVERS_SET_TILE_STYLE_CHANNEL,
 } from "./desktop-server-ipc.js";
 import {
   BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
@@ -381,6 +384,22 @@ const bbServersApi: BbDesktopServersApi = {
     }
     try {
       await ipcRenderer.invoke(BB_DESKTOP_SERVERS_RENAME_CHANNEL, parsed.data);
+    } catch {
+      return;
+    }
+  },
+  async setTileStyle(
+    request: BbDesktopServerSetTileStyleRequest,
+  ): Promise<void> {
+    const parsed = bbDesktopServerSetTileStyleRequestSchema.safeParse(request);
+    if (!parsed.success) {
+      return;
+    }
+    try {
+      await ipcRenderer.invoke(
+        BB_DESKTOP_SERVERS_SET_TILE_STYLE_CHANNEL,
+        parsed.data,
+      );
     } catch {
       return;
     }
