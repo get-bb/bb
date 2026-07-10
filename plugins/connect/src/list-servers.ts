@@ -1,0 +1,90 @@
+import { z } from "zod";
+import type { ConnectCredential } from "./credential.js";
+
+/** One server row from `GET /api/connect/servers` (worker boundary). */
+export const accountServerSchema = z.object({
+  handle: z.string().min(1),
+  name: z.string().min(1),
+  live: z.boolean(),
+});
+
+export const accountServersResponseSchema = z.object({
+  servers: z.array(accountServerSchema),
+});
+
+export type AccountServer = z.infer<typeof accountServerSchema>;
+
+export type ListAccountServersResult = {
+  servers: AccountServer[];
+  /** This bb's routing label so callers can dedupe self. */
+  selfHandle: string;
+};
+
+export type ConnectListErrorCode =
+  | "not_paired"
+  | "unauthorized"
+  | "network"
+  | "invalid_response";
+
+/**
+ * Typed list failure. `code` is stable for RPC/CLI mapping; `message` carries
+ * detail for logs/stderr.
+ */
+export class ConnectListError extends Error {
+  constructor(
+    readonly code: ConnectListErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ConnectListError";
+  }
+}
+
+/**
+ * Call the connect gate `GET /api/connect/servers` with the stored pairing
+ * credential. Zod-parses the worker response at the boundary.
+ */
+export async function fetchAccountServers(
+  credential: ConnectCredential,
+): Promise<AccountServer[]> {
+  const url = `${credential.serverUrl.replace(/\/$/, "")}/api/connect/servers`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: { "x-bb-connect-machine": credential.credential },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ConnectListError("network", message);
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    throw new ConnectListError(
+      "unauthorized",
+      `List servers failed (${res.status}): not authorized`,
+    );
+  }
+  if (!res.ok) {
+    throw new ConnectListError(
+      "network",
+      `List servers failed (${res.status})`,
+    );
+  }
+
+  let raw: unknown;
+  try {
+    raw = await res.json();
+  } catch {
+    throw new ConnectListError("invalid_response", "List servers returned non-JSON");
+  }
+
+  const parsed = accountServersResponseSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ConnectListError(
+      "invalid_response",
+      "List servers response failed schema validation",
+    );
+  }
+  return parsed.data.servers;
+}

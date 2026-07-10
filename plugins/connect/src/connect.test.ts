@@ -894,6 +894,88 @@ describe("connect plugin", () => {
     expect(removed).toEqual({ removed: true, port: 8000 });
     expect(await harness.callRpc("listShares")).toEqual([]);
   });
+
+  it("listAccountServers fetches the worker list and returns selfHandle", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return new Response(
+          JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/connect/servers")) {
+        return new Response(
+          JSON.stringify({
+            servers: [
+              { handle: "sawyer", name: "default", live: true },
+              { handle: "sawyer-desktop", name: "desktop", live: false },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.localhost:59340",
+      baseUrl: "https://getbb.app",
+    });
+
+    const result = (await harness.callRpc("listAccountServers")) as {
+      servers: Array<{ handle: string; name: string; live: boolean }>;
+      selfHandle: string;
+    };
+    expect(result).toEqual({
+      servers: [
+        { handle: "sawyer", name: "default", live: true },
+        { handle: "sawyer-desktop", name: "desktop", live: false },
+      ],
+      selfHandle: "sawyer",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://sawyer.localhost:59340/api/connect/servers",
+      expect.objectContaining({
+        method: "GET",
+        headers: { "x-bb-connect-machine": "bbcred_live" },
+      }),
+    );
+  });
+
+  it("listAccountServers when unpaired returns a typed not_paired code", async () => {
+    const { harness } = await loadPlugin();
+    await expect(harness.callRpc("listAccountServers")).rejects.toThrow(
+      "not_paired",
+    );
+  });
+
+  it("listAccountServers surfaces unauthorized cleanly on 401", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return new Response(
+          JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.localhost:59341",
+      baseUrl: "https://getbb.app",
+    });
+    await expect(harness.callRpc("listAccountServers")).rejects.toThrow(
+      "unauthorized",
+    );
+  });
 });
 
 describe("connect CLI", () => {
@@ -991,6 +1073,62 @@ describe("connect CLI", () => {
     const result = await harness.runCli(["expose", "8000"]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("not connected to getbb.app");
+  });
+
+  it("servers when unpaired errors clearly", async () => {
+    const { harness } = await loadCli();
+    const result = await harness.runCli(["servers"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("not connected to getbb.app");
+  });
+
+  it("servers lists account servers as a table or json", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return new Response(
+          JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/connect/servers")) {
+        return new Response(
+          JSON.stringify({
+            servers: [
+              { handle: "sawyer", name: "default", live: true },
+              { handle: "sawyer-desktop", name: "desktop", live: false },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli();
+    await harness.runCli([
+      "--code",
+      "ABCD",
+      "--server",
+      "http://sawyer.localhost:59342",
+    ]);
+
+    const table = await harness.runCli(["servers"]);
+    expect(table.exitCode).toBe(0);
+    expect(table.stdout).toContain("sawyer");
+    expect(table.stdout).toContain("desktop");
+    expect(table.stdout).toContain("yes");
+    expect(table.stdout).toContain("no");
+
+    const json = await harness.runCli(["servers", "--json"]);
+    expect(json.exitCode).toBe(0);
+    expect(json.stdout).toBeTruthy();
+    const parsed = JSON.parse(json.stdout ?? "") as {
+      servers: Array<{ handle: string }>;
+      selfHandle: string;
+    };
+    expect(parsed.selfHandle).toBe("sawyer");
+    expect(parsed.servers).toHaveLength(2);
   });
 
   it("expose / shares / unexpose happy path", async () => {

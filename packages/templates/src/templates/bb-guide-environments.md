@@ -85,6 +85,7 @@ Remote access (bb connect):
   bb connect expose <port>                Share a local HTTP port
   bb connect unexpose <port>              Stop sharing a port
   bb connect shares                       List shared ports and their URLs
+  bb connect servers                      List every bb on this account
 
   Port sharing: after pairing, `bb connect expose <port>` publishes a local
   HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent host for

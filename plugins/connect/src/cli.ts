@@ -6,7 +6,7 @@ import type { ConnectStatus } from "./types.js";
 // `bb connect` — resolved through the plugin CLI proxy. The dashboard-issued
 // command `npx -p bb-app@latest bb connect --code <code> --server <url>` must
 // keep working verbatim, so the root command takes the pairing flags and
-// `status` / `off` / `expose` / `unexpose` / `shares` are subcommands.
+// `status` / `off` / `expose` / `unexpose` / `shares` / `servers` are subcommands.
 
 interface ParsedFlags {
   flags: Map<string, string | true>;
@@ -55,6 +55,7 @@ function helpText(): string {
     "  bb connect expose <port>       Share a local HTTP port at https://<handle>--<port>.…",
     "  bb connect unexpose <port>     Stop sharing a port",
     "  bb connect shares              List shared ports and their URLs",
+    "  bb connect servers             List every bb on this account (from getbb.app)",
     "",
     "The server holds the tunnel; it stays up while bb is running.",
   ].join("\n");
@@ -119,6 +120,11 @@ export function registerConnectCli(args: {
         name: "shares",
         summary: "List shared ports and their public URLs",
         usage: "bb connect shares [--json]",
+      },
+      {
+        name: "servers",
+        summary: "List every bb server on this account",
+        usage: "bb connect servers [--json]",
       },
     ],
     async run(argv): Promise<PluginCliResult> {
@@ -197,6 +203,36 @@ export function registerConnectCli(args: {
             return { exitCode: 0, stdout: "No shared ports\n" };
           }
           const lines = shares.map((s) => `${s.port}  ${s.url}`);
+          return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
+        }
+        if (first === "servers") {
+          const parsed = parseFlags(argv.slice(1));
+          if (!tunnel.status().paired) {
+            return { exitCode: 1, stderr: `${notPairedError()}\n` };
+          }
+          const result = await tunnel.listAccountServers();
+          if (parsed.flags.has("json")) {
+            return { exitCode: 0, stdout: asJson(result) };
+          }
+          if (result.servers.length === 0) {
+            return { exitCode: 0, stdout: "No servers on this account\n" };
+          }
+          const handleWidth = Math.max(
+            "HANDLE".length,
+            ...result.servers.map((s) => s.handle.length),
+          );
+          const nameWidth = Math.max(
+            "NAME".length,
+            ...result.servers.map((s) => s.name.length),
+          );
+          const lines = [
+            `${"HANDLE".padEnd(handleWidth)}  ${"NAME".padEnd(nameWidth)}  LIVE  SELF`,
+            ...result.servers.map((s) => {
+              const live = s.live ? "yes" : "no";
+              const self = s.handle === result.selfHandle ? "*" : "";
+              return `${s.handle.padEnd(handleWidth)}  ${s.name.padEnd(nameWidth)}  ${live.padEnd(4)}  ${self}`;
+            }),
+          ];
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
         }
         if (first !== undefined && !first.startsWith("--")) {
