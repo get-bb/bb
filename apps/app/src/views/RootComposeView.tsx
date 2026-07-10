@@ -213,7 +213,6 @@ import {
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
 import {
-  useAppCommandContext,
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
@@ -2526,10 +2525,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
-  useAppCommandContext(
-    "panelOpen",
-    props.surface === "page" && isSecondaryPanelOpen,
-  );
   useAppCommandHandler("panel.toggle", () => {
     if (props.surface !== "page") return false;
     handleToggleSecondaryPanel();

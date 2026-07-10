@@ -68,7 +68,6 @@ const EMPTY_CONTEXT: AppCommandContext = {
   browserFocus: false,
   modelPickerOpen: false,
   questionOpen: false,
-  panelOpen: false,
   promptAvailable: false,
 };
 
@@ -168,6 +167,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       next.terminalFocus =
         target instanceof HTMLElement &&
         target.closest("[data-app-terminal]") !== null;
+      next.browserFocus =
+        target instanceof HTMLElement &&
+        target.closest("[data-app-browser]") !== null;
       for (const key of activeContextsRef.current.keys()) {
         next[key] = true;
       }

@@ -217,7 +217,6 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import {
-  useAppCommandContext,
   useAppCommandHandler,
 } from "@/components/commands/AppCommandProvider";
 
@@ -1252,10 +1251,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
-  useAppCommandContext(
-    "panelOpen",
-    props.surface === "page" && isSecondaryPanelOpen,
-  );
   useAppCommandHandler("panel.toggle", () => {
     if (props.surface !== "page") return false;
     toggleSecondaryPanel();

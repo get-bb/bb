@@ -40,7 +40,6 @@ import {
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 import {
-  useAppCommandContext,
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
@@ -754,10 +753,6 @@ export function BrowserTabContent({
     return true;
   }, [canShowNativeBrowserView, currentUrl, desktopBrowser]);
 
-  useAppCommandContext(
-    "browserFocus",
-    canShowNativeBrowserView && desktopBrowser !== null,
-  );
   useAppCommandHandler("browser.focusLocation", handleFocusLocation, 100);
   useAppCommandHandler("browser.reload", () => {
     if (!canShowNativeBrowserView || desktopBrowser === null || !hasPage) {
@@ -776,7 +771,7 @@ export function BrowserTabContent({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div data-app-browser className="flex h-full min-h-0 flex-col">
       <BrowserChrome
         addressDraft={addressDraft}
         isEditing={isEditing}

@@ -20,6 +20,10 @@ export interface InstallApplicationMenuArgs {
   openNewTab(): void;
   openNewThread(): void;
   openSettings(): void;
+  reloadWindow(
+    browserWindow: BaseWindow | undefined,
+    ignoreCache: boolean,
+  ): void;
   closeWindowOrSideTab(browserWindow: BaseWindow | undefined): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
@@ -116,8 +120,18 @@ export function buildApplicationMenuTemplate(
     {
       label: "View",
       submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
+        {
+          label: "Reload",
+          click(_menuItem, browserWindow) {
+            args.reloadWindow(browserWindow, false);
+          },
+        },
+        {
+          label: "Force Reload",
+          click(_menuItem, browserWindow) {
+            args.reloadWindow(browserWindow, true);
+          },
+        },
         {
           accelerator: TOGGLE_DEVELOPER_TOOLS_ACCELERATOR,
           label: TOGGLE_DEVELOPER_TOOLS_MENU_LABEL,

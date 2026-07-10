@@ -569,6 +569,16 @@ function refreshApplicationMenu(): void {
         "settings.open",
       );
     },
+    reloadWindow(browserWindow, ignoreCache) {
+      if (!(browserWindow instanceof BrowserWindow)) {
+        return;
+      }
+      if (ignoreCache) {
+        browserWindow.webContents.reloadIgnoringCache();
+        return;
+      }
+      browserWindow.webContents.reload();
+    },
     closeWindowOrSideTab(browserWindow) {
       if (browserWindow === undefined) {
         // A focused detached DevTools window is the key window but never

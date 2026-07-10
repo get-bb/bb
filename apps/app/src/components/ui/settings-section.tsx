@@ -66,6 +66,14 @@ export interface SettingsWithControlProps {
   children: ReactNode;
 }
 
+export function SettingsBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground">
+      {children}
+    </span>
+  );
+}
+
 export function SettingsWithControl({
   label,
   labelBadge,
@@ -84,11 +92,7 @@ export function SettingsWithControl({
           <p className="min-w-0 text-sm font-normal text-foreground">
             {label}
           </p>
-          {labelBadge ? (
-            <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] leading-none text-subtle-foreground">
-              {labelBadge}
-            </span>
-          ) : null}
+          {labelBadge ? <SettingsBadge>{labelBadge}</SettingsBadge> : null}
         </div>
         {description ? (
           <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">

@@ -70,7 +70,6 @@ export const APP_COMMAND_CONTEXT_KEYS = [
   "browserFocus",
   "modelPickerOpen",
   "questionOpen",
-  "panelOpen",
   "promptAvailable",
 ] as const;
 

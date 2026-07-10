@@ -23,7 +23,10 @@ import {
 import { formatAppShortcut } from "@/lib/app-keybindings";
 import { useUpdateKeyboardSettings } from "@/hooks/mutations/settings-mutations";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { SettingsSection } from "@/components/ui/settings-section";
+import {
+  SettingsBadge,
+  SettingsSection,
+} from "@/components/ui/settings-section";
 
 const EMPTY_KEYBINDINGS: AppKeybindings = [];
 const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
@@ -154,16 +157,8 @@ function KeyboardCommandRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <p className="text-sm text-foreground">{metadata.label}</p>
-          {desktopOnly ? (
-            <span className="rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] leading-none text-subtle-foreground">
-              Desktop
-            </span>
-          ) : null}
-          {customized ? (
-            <span className="rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] leading-none text-subtle-foreground">
-              Custom
-            </span>
-          ) : null}
+          {desktopOnly ? <SettingsBadge>Desktop</SettingsBadge> : null}
+          {customized ? <SettingsBadge>Custom</SettingsBadge> : null}
         </div>
         <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
           {metadata.description}

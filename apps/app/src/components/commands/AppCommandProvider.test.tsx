@@ -43,6 +43,22 @@ const testState = vi.hoisted(() => ({
         none: [],
       },
     },
+    {
+      command: "browser.reload" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "r",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: {
+        all: ["mainSurface" as const, "browserFocus" as const],
+        none: [],
+      },
+    },
   ],
 }));
 
@@ -80,9 +96,7 @@ function Handler({
 
 function QuestionContext() {
   useAppCommandContext("questionOpen", true);
-  return (
-    <Handler command="question.select.1" name="question" result={true} />
-  );
+  return <Handler command="question.select.1" name="question" result={true} />;
 }
 
 function FocusScopedHandler({ name }: { name: string }) {
@@ -187,5 +201,36 @@ describe("AppCommandProvider", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(testState.calls).toEqual(["main"]);
+  });
+
+  it("derives browser focus only from events inside browser DOM chrome", () => {
+    renderProvider(
+      <>
+        <Handler command="browser.reload" name="browser" result={true} />
+        <button type="button">Outside</button>
+        <div data-app-browser>
+          <button type="button">Inside browser</button>
+        </div>
+      </>,
+    );
+    const outside = document.querySelector<HTMLButtonElement>("button");
+    const inside = document.querySelector<HTMLButtonElement>(
+      "[data-app-browser] button",
+    );
+    const dispatchReload = (target: HTMLButtonElement | null) => {
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        key: "r",
+      });
+      target?.dispatchEvent(event);
+      return event;
+    };
+
+    expect(dispatchReload(outside).defaultPrevented).toBe(false);
+    expect(testState.calls).toEqual([]);
+    expect(dispatchReload(inside).defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual(["browser"]);
   });
 });

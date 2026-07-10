@@ -31,7 +31,6 @@ const CONTEXT: AppCommandContext = {
   browserFocus: false,
   modelPickerOpen: false,
   questionOpen: false,
-  panelOpen: false,
   promptAvailable: false,
 };
 
