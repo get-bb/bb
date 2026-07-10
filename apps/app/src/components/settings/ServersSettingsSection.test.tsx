@@ -261,11 +261,8 @@ describe("ServersSettingsSectionContent", () => {
     ).toBeDefined();
   });
 
-  it("confirms before remove and skips the call when cancelled", async () => {
+  it("removes on click without a blocking confirm", async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
-    const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
-    vi.stubGlobal("confirm", confirm);
-
     const servers = createServersApi({
       list: vi.fn().mockResolvedValue([
         serverEntry({
@@ -288,11 +285,6 @@ describe("ServersSettingsSectionContent", () => {
     });
 
     fireEvent.click(removeButton);
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(remove).not.toHaveBeenCalled();
-
-    fireEvent.click(removeButton);
-    expect(confirm).toHaveBeenCalledTimes(2);
     expect(remove).toHaveBeenCalledWith("manual_1");
   });
 });

@@ -471,13 +471,8 @@ export function ServersSettingsSection() {
         });
       }}
       onRemove={(server) => {
-        if (
-          !window.confirm(
-            `Remove “${server.name}” from your server list?`,
-          )
-        ) {
-          return;
-        }
+        // No blocking confirm: Electron's window.confirm is unreliable, the
+        // button is hover-revealed, and re-adding a server is one URL paste.
         void serversApi.remove(server.id);
       }}
       onRename={(server, name) => {
