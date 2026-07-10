@@ -25,16 +25,12 @@ describe("desktop info schema", () => {
 
   it("accepts the desktop theme values", () => {
     expect(bbDesktopThemeSchema.safeParse("dark").success).toBe(true);
+    expect(bbDesktopThemeSchema.safeParse("light").success).toBe(true);
     expect(bbDesktopThemeSchema.safeParse("system").success).toBe(false);
     expect(
       bbDesktopThemeSchema.safeParse({
         canvasColor: "oklch(0.195 0 0)",
         inkColor: "oklch(0.81 0 0)",
-        mode: "dark",
-      }).success,
-    ).toBe(true);
-    expect(
-      bbDesktopThemeSchema.safeParse({
         mode: "dark",
       }).success,
     ).toBe(false);

@@ -20,50 +20,13 @@ export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
 export const bbDesktopWindowStateSchema = z
   .object({
     isFullScreen: z.boolean(),
-    /**
-     * True when the native server rail owns the window's top-left corner —
-     * the macOS traffic lights render over the rail, so the SPA must NOT
-     * reserve space for them. Optional for version skew: older shells omit it
-     * and the SPA keeps its classic reserve.
-     */
-    windowButtonsInRail: z.boolean().optional(),
   })
   .strict();
 export type BbDesktopWindowState = z.infer<
   typeof bbDesktopWindowStateSchema
 >;
 
-export const bbDesktopThemeModeSchema = z.enum(["light", "dark"]);
-export type BbDesktopThemeMode = z.infer<typeof bbDesktopThemeModeSchema>;
-
-/**
- * Resolved theme push from the SPA. Includes the light/dark mode (for
- * NSWindow/nativeTheme) plus the computed --canvas/--ink anchors so shell
- * chrome (server rail) can re-derive surfaces without embedding the full
- * palette CSS. Older SPAs still send the legacy mode string alone.
- */
-export const bbDesktopThemeResolvedSchema = z
-  .object({
-    canvasColor: z.string().min(1),
-    inkColor: z.string().min(1),
-    /**
-     * Resolved --sidebar surface color. The server rail paints this exactly so
-     * rail + SPA sidebar read as one panel — deriving it shell-side from the
-     * anchors drifts whenever a theme re-anchors the sidebar formula. Optional
-     * for version skew with older SPAs.
-     */
-    sidebarColor: z.string().min(1).optional(),
-    mode: bbDesktopThemeModeSchema,
-  })
-  .strict();
-export type BbDesktopThemeResolved = z.infer<
-  typeof bbDesktopThemeResolvedSchema
->;
-
-export const bbDesktopThemeSchema = z.union([
-  bbDesktopThemeModeSchema,
-  bbDesktopThemeResolvedSchema,
-]);
+export const bbDesktopThemeSchema = z.enum(["light", "dark"]);
 export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;

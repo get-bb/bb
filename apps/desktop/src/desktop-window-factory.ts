@@ -16,15 +16,6 @@ import {
   type StatefulBrowserWindow,
 } from "./window-state.js";
 import type { DesktopContextMenuWebContents } from "./desktop-context-menu.js";
-import {
-  trafficLightPositionForLayout,
-  type DesktopWindowLayoutMode,
-} from "./desktop-rail-layout.js";
-import {
-  getDesktopRailSession,
-  type DesktopRailSession,
-  type DesktopRailHostWindow,
-} from "./desktop-rail-session.js";
 
 export type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
 
@@ -35,8 +26,6 @@ export type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
 // geometry contract: the renderer half is `CHROME_ROW_HEIGHT_CLASS` (48px) and
 // the traffic-light reserve tokens in apps/app/src/lib/bb-desktop.ts. The two
 // bundles can't share a runtime value, so keep this inset in sync with them.
-// When the native server rail is present, use trafficLightPositionForLayout("rail")
-// instead ({x:70,y:18}) so lights clear the 52px strip.
 const MACOS_TRAFFIC_LIGHT_DIAGONAL_INSET = 18;
 const MACOS_TRAFFIC_LIGHT_POSITION = {
   x: MACOS_TRAFFIC_LIGHT_DIAGONAL_INSET,
@@ -67,21 +56,9 @@ export interface DesktopWindowWebContents extends DesktopContextMenuWebContents 
   setZoomFactor(factor: number): void;
 }
 
-export interface DesktopBrowserWindowContentView {
-  addChildView(view: unknown): void;
-  removeChildView(view: unknown): void;
-}
-
 export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   readonly id: number;
-  /**
-   * Present on real Electron BrowserWindows. Used when the native server rail
-   * hosts SPA/rail as child WebContentsViews. Tests may omit it when not
-   * exercising the rail layout.
-   */
-  contentView?: DesktopBrowserWindowContentView;
   focus(): void;
-  getContentBounds?(): { height: number; width: number };
   isFocused(): boolean;
   isMinimized(): boolean;
   loadURL(url: string): Promise<void>;
@@ -91,14 +68,12 @@ export interface DesktopBrowserWindow extends StatefulBrowserWindow {
       | "close"
       | "closed"
       | "enter-full-screen"
-      | "leave-full-screen"
-      | "resize",
+      | "leave-full-screen",
     listener: () => void,
   ): void;
   once(eventName: "ready-to-show", listener: () => void): void;
   restore(): void;
   setFullScreen(isFullScreen: boolean): void;
-  setWindowButtonPosition?(position: { x: number; y: number } | null): void;
   show(): void;
   webContents: DesktopWindowWebContents;
 }
@@ -111,19 +86,6 @@ export interface OpenExternalUrlArgs {
   url: string;
 }
 
-/**
- * Optional rail installer. When provided and resolveLayoutMode() returns "rail"
- * at window creation, the SPA is hosted in a child WebContentsView beside the
- * server rail. Classic single-webContents layout is unchanged when mode is
- * "classic" (the default for single-server users and the safety fallback).
- */
-export interface DesktopRailLayoutHooks {
-  installRail(args: {
-    hostWindow: DesktopRailHostWindow;
-  }): DesktopRailSession;
-  resolveLayoutMode(): DesktopWindowLayoutMode;
-}
-
 export interface CreateDesktopWindowFactoryArgs {
   browserWindowCreator: DesktopBrowserWindowCreator;
   createWindowStateKey(): WindowStateKey;
@@ -132,7 +94,6 @@ export interface CreateDesktopWindowFactoryArgs {
   isQuitting(): boolean;
   openExternalUrl(args: OpenExternalUrlArgs): void;
   preloadPath: string;
-  railLayout?: DesktopRailLayoutHooks;
   userDataPath: string;
 }
 
@@ -179,7 +140,6 @@ interface LoadUrlIntoWindowArgs {
 interface CreateWindowOptionsArgs {
   bounds: WindowBounds;
   icon: DesktopWindowIcon;
-  layoutMode: DesktopWindowLayoutMode;
   preloadPath: string;
 }
 
@@ -209,10 +169,6 @@ function resolveWindowStateKey(
 function createWindowOptions(
   args: CreateWindowOptionsArgs,
 ): BrowserWindowConstructorOptions {
-  const trafficLightPosition =
-    args.layoutMode === "rail"
-      ? trafficLightPositionForLayout("rail")
-      : MACOS_TRAFFIC_LIGHT_POSITION;
   return {
     frame: false,
     height: args.bounds.height,
@@ -222,7 +178,7 @@ function createWindowOptions(
     show: false,
     title: "bb",
     titleBarStyle: "hiddenInset",
-    trafficLightPosition,
+    trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -236,26 +192,7 @@ function createWindowOptions(
   };
 }
 
-function sendToWindowWebContents(
-  browserWindow: DesktopBrowserWindow,
-  channel: string,
-  payload: unknown,
-): void {
-  const railSession = getDesktopRailSession(browserWindow.webContents.id);
-  if (railSession !== null) {
-    railSession.send(channel, payload);
-    return;
-  }
-  browserWindow.webContents.send(channel, payload);
-}
-
 async function loadUrlIntoWindow(args: LoadUrlIntoWindowArgs): Promise<void> {
-  const railSession = getDesktopRailSession(args.browserWindow.webContents.id);
-  if (railSession !== null) {
-    await railSession.loadUrl(args.url);
-    return;
-  }
-
   // Native macOS traffic lights do not scale with Chromium page zoom, so reset
   // app-window zoom before loading the renderer chrome that visually aligns to
   // them. This also clears stale per-origin zoom persisted by Electron sessions.
@@ -294,43 +231,14 @@ export function createDesktopWindowFactory(
         stateKey,
         userDataPath: args.userDataPath,
       });
-      const layoutMode =
-        args.railLayout?.resolveLayoutMode() ?? "classic";
       const browserWindow = args.browserWindowCreator.create(
         createWindowOptions({
           bounds: restoredState.bounds,
           icon: args.icon,
-          layoutMode,
           preloadPath: args.preloadPath,
         }),
       );
       browserWindow.webContents.session.setSpellCheckerEnabled(true);
-
-      if (layoutMode === "rail" && args.railLayout !== undefined) {
-        const contentView = browserWindow.contentView;
-        // Electron native methods are `this`-sensitive: an unbound reference
-        // throws "Object has been destroyed" when invoked off the instance.
-        const getContentBounds = browserWindow.getContentBounds?.bind(browserWindow);
-        if (contentView !== undefined && getContentBounds !== undefined) {
-          args.railLayout.installRail({
-            hostWindow: {
-              contentView,
-              getContentBounds,
-              isDestroyed: () => browserWindow.isDestroyed(),
-              on: (eventName, listener) => {
-                browserWindow.on(eventName, listener);
-              },
-              setWindowButtonPosition: browserWindow.setWindowButtonPosition?.bind(
-                browserWindow,
-              ),
-              webContents: {
-                id: browserWindow.webContents.id,
-                loadURL: (url) => browserWindow.loadURL(url),
-              },
-            },
-          });
-        }
-      }
 
       activeWindows.set(stateKey, browserWindow);
 
@@ -444,7 +352,7 @@ export function createDesktopWindowFactory(
       if (browserWindow.isMinimized()) {
         browserWindow.restore();
       }
-      sendToWindowWebContents(browserWindow, channel, payload);
+      browserWindow.webContents.send(channel, payload);
       browserWindow.focus();
       return true;
     }
@@ -456,7 +364,7 @@ export function createDesktopWindowFactory(
       if (!browserWindow.isFocused()) {
         continue;
       }
-      sendToWindowWebContents(browserWindow, channel, payload);
+      browserWindow.webContents.send(channel, payload);
       return true;
     }
     return sendToFirstWindow(channel, payload);
@@ -464,12 +372,7 @@ export function createDesktopWindowFactory(
 
   function openDevTools(): void {
     for (const browserWindow of activeWindows.values()) {
-      const railSession = getDesktopRailSession(browserWindow.webContents.id);
-      if (railSession !== null) {
-        railSession.openDevTools();
-      } else {
-        browserWindow.webContents.openDevTools({ mode: "detach" });
-      }
+      browserWindow.webContents.openDevTools({ mode: "detach" });
     }
   }
 
