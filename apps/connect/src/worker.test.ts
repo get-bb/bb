@@ -95,6 +95,10 @@ vi.mock("./session.js", () => ({
   verifySessionCookie: vi.fn(),
 }));
 
+vi.mock("./servers.js", () => ({
+  handleListAccountServers: vi.fn(),
+}));
+
 vi.mock("./cache.js", async () => {
   const actual = await vi.importActual<typeof import("./cache.js")>("./cache.js");
   return {
@@ -120,6 +124,7 @@ import {
   verifyMachineCredential,
   verifySessionCookie,
 } from "./session.js";
+import { handleListAccountServers } from "./servers.js";
 import { serveWithCache } from "./cache.js";
 import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
@@ -129,6 +134,7 @@ const mockResolveLabel = vi.mocked(resolveLabel);
 const mockVerifyMachine = vi.mocked(verifyMachineCredential);
 const mockVerifySession = vi.mocked(verifySessionCookie);
 const mockServeWithCache = vi.mocked(serveWithCache);
+const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
 
 /** A resolved server row; overrides let a test tweak one field. */
 function resolvedServer(over: Partial<{ lastSeenAt: Date | null; userId: string }> = {}) {
@@ -176,6 +182,55 @@ function visitorRequest(host: string, path = "/", init: RequestInit = {}): Reque
   headers.set("host", host);
   return new Request(`https://${host}${path}`, { ...init, headers });
 }
+
+describe("GET /api/connect/servers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockHandleListAccountServers.mockResolvedValue(
+      new Response(JSON.stringify({ servers: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("intercepts the path before host routing (never proxies to the tunnel)", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/connect/servers", {
+        headers: { "x-bb-connect-machine": "bbcm_ok" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(mockHandleListAccountServers).toHaveBeenCalledTimes(1);
+    expect(mockResolveLabel).not.toHaveBeenCalled();
+    expect(captured).toHaveLength(0);
+  });
+
+  it("handles the path even on an unknown host label", async () => {
+    // Apex is not routed to this worker in prod, but the handler is path-based
+    // so a future apex binding or local wrangler still works.
+    const { env, ctx } = makeEnv(() => new Response("origin"));
+    mockHandleListAccountServers.mockResolvedValue(
+      new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }),
+    );
+    const res = await worker.fetch(
+      new Request("https://getbb.app/api/connect/servers", {
+        headers: { host: "getbb.app" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(401);
+    expect(mockHandleListAccountServers).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("gate worker share hosts", () => {
   beforeEach(() => {

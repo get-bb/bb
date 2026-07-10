@@ -7,6 +7,7 @@ import {
   verifyMachineCredential,
   verifySessionCookie,
 } from "./session.js";
+import { handleListAccountServers } from "./servers.js";
 import { serveWithCache } from "./cache.js";
 import { BB_ICON_DATA_URI } from "./bb-icon.js";
 
@@ -177,6 +178,13 @@ export function cacheNamespace(handle: string, target: string | null): string {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    // Account-scoped APIs are handled on the gate before host/label routing so
+    // they never proxy through a tunnel to a local bb origin. Auth is
+    // machine/server credential or owner session — see servers.ts.
+    if (url.pathname === "/api/connect/servers") {
+      return handleListAccountServers(request, env);
+    }
+
     const host = request.headers.get("host") ?? url.host;
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
     if (!parsed) return text("bb connect: unknown host\n", 404);

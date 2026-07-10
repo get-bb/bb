@@ -77,12 +77,14 @@ message agents, or inspect projects, providers, and environments.
   Port sharing: `bb connect expose <port>` publishes a local HTTP port at
   `https://<handle>--<port>.getbb.app` (owner-session-gated, not public);
   `bb connect unexpose <port>` stops sharing; `bb connect shares` lists active
-  URLs. When you start a local server the user should open remotely, expose
-  the port and give them the share URL. Remote access is owned by the builtin
-  `connect` plugin: `bb plugin disable connect` cuts it off entirely; with bb
-  connect still enabled, `bb plugin enable connect` restores the command.
-  Settings → Connect shows the current URL, QR code, shared ports, re-pair
-  form, and disconnect control.
+  URLs. `bb connect servers` lists every bb on the paired account (handle,
+  name, live) so callers can discover siblings; `--json` includes `selfHandle`
+  for deduping this server. When you start a local server the user should open
+  remotely, expose the port and give them the share URL. Remote access is owned
+  by the builtin `connect` plugin: `bb plugin disable connect` cuts it off
+  entirely; with bb connect still enabled, `bb plugin enable connect` restores
+  the command. Settings → Connect shows the current URL, QR code, shared ports,
+  re-pair form, and disconnect control.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or
