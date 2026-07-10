@@ -271,4 +271,144 @@ describe("server registry", () => {
     expect(registry.getServer(b)).toBeNull();
     expect(registry.getServer(a)).not.toBeNull();
   });
+
+  it("persists tile styles (including builtin), skips no-ops, and cleans up on remove", async () => {
+    const tempDir = await createTempDir();
+    const storagePath = join(tempDir.path, SERVER_REGISTRY_FILE_NAME);
+    const registry = createServerRegistry({
+      builtinUrl: "http://127.0.0.1:38886",
+      storagePath,
+    });
+    await registry.load();
+
+    const notifications: number[] = [];
+    registry.onChange(() => {
+      notifications.push(Object.keys(registry.snapshot().tileStyles).length);
+    });
+
+    await registry.setTileStyle(BUILTIN_SERVER_ID, {
+      icon: "Cloud",
+      color: "blue",
+    });
+    expect(registry.getTileStyle(BUILTIN_SERVER_ID)).toEqual({
+      icon: "Cloud",
+      color: "blue",
+    });
+    expect(notifications).toEqual([1]);
+
+    // Unchanged style is a no-op (no second notify).
+    await registry.setTileStyle(BUILTIN_SERVER_ID, {
+      icon: "Cloud",
+      color: "blue",
+    });
+    expect(notifications).toEqual([1]);
+
+    const manual = await registry.add({
+      name: "Staging",
+      source: "manual",
+      url: "https://staging.example.com",
+    });
+    await registry.setTileStyle(manual.id, {
+      icon: "Server",
+      color: "red",
+    });
+    expect(registry.getTileStyle(manual.id)).toEqual({
+      icon: "Server",
+      color: "red",
+    });
+
+    const raw = await readFile(storagePath, "utf8");
+    const persisted = JSON.parse(raw) as {
+      tileStyles: Record<string, { icon: string | null; color: string | null }>;
+    };
+    // Builtin row is not persisted, but its style is (keyed by builtin id).
+    expect(persisted.tileStyles[BUILTIN_SERVER_ID]).toEqual({
+      icon: "Cloud",
+      color: "blue",
+    });
+    expect(persisted.tileStyles[manual.id]).toEqual({
+      icon: "Server",
+      color: "red",
+    });
+
+    expect(await registry.remove(manual.id)).toBe(true);
+    expect(registry.getTileStyle(manual.id)).toEqual({
+      icon: null,
+      color: null,
+    });
+    expect(manual.id in registry.snapshot().tileStyles).toBe(false);
+    // Builtin style survives manual removal.
+    expect(registry.getTileStyle(BUILTIN_SERVER_ID)).toEqual({
+      icon: "Cloud",
+      color: "blue",
+    });
+
+    // Clearing both fields drops the overlay entry.
+    await registry.setTileStyle(BUILTIN_SERVER_ID, {
+      icon: null,
+      color: null,
+    });
+    expect(BUILTIN_SERVER_ID in registry.snapshot().tileStyles).toBe(false);
+
+    const reloaded = createServerRegistry({
+      builtinUrl: "http://127.0.0.1:39999",
+      storagePath,
+    });
+    const snapshot = await reloaded.load();
+    // After clear, no styles remain.
+    expect(snapshot.tileStyles).toEqual({});
+  });
+
+  it("defaults tileStyles to {} for older registry files", async () => {
+    const tempDir = await createTempDir();
+    const storagePath = join(tempDir.path, SERVER_REGISTRY_FILE_NAME);
+    await writeFile(
+      storagePath,
+      JSON.stringify({
+        autoConnectToLocalServer: true,
+        servers: [],
+      }),
+      "utf8",
+    );
+    const registry = createServerRegistry({
+      builtinUrl: "http://127.0.0.1:38886",
+      storagePath,
+    });
+    const snapshot = await registry.load();
+    expect(snapshot.tileStyles).toEqual({});
+  });
+
+  it("removeBySource deletes styles of removed connect ids", async () => {
+    const tempDir = await createTempDir();
+    const registry = createServerRegistry({
+      builtinUrl: "http://127.0.0.1:38886",
+      storagePath: join(tempDir.path, SERVER_REGISTRY_FILE_NAME),
+    });
+    await registry.load();
+
+    const keep = connectServerId("keep");
+    const drop = connectServerId("drop");
+    await registry.upsert({
+      id: keep,
+      name: "Keep",
+      source: "connect",
+      url: "https://keep.getbb.app",
+    });
+    await registry.upsert({
+      id: drop,
+      name: "Drop",
+      source: "connect",
+      url: "https://drop.getbb.app",
+    });
+    await registry.setTileStyle(keep, { icon: "Cloud", color: "green" });
+    await registry.setTileStyle(drop, { icon: "Server", color: "red" });
+
+    const removed = await registry.removeBySource("connect", new Set([keep]));
+    expect(removed).toEqual([drop]);
+    expect(registry.getTileStyle(keep)).toEqual({
+      icon: "Cloud",
+      color: "green",
+    });
+    expect(drop in registry.snapshot().tileStyles).toBe(false);
+  });
 });

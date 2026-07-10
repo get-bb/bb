@@ -27,6 +27,8 @@ function serverEntry(
 ): BbDesktopServerListEntry {
   return {
     active: false,
+    color: null,
+    icon: null,
     status: "connected",
     ...overrides,
   };
@@ -41,6 +43,7 @@ function createServersApi(
     remove: vi.fn(),
     rename: vi.fn(),
     setActive: vi.fn().mockResolvedValue(undefined),
+    setTileStyle: vi.fn().mockResolvedValue(undefined),
     getAutoConnect: vi.fn().mockResolvedValue(true),
     setAutoConnect: vi.fn(),
     getShowConnectServers: vi.fn().mockResolvedValue(true),
@@ -133,5 +136,46 @@ describe("ServerRail", () => {
     expect(
       screen.getByTestId("server-rail-add").getAttribute("href"),
     ).toBe("/settings/servers");
+  });
+
+  it("renders chosen icon and color, and falls back on unknown values", async () => {
+    const servers = createServersApi({
+      list: vi.fn().mockResolvedValue([
+        serverEntry({
+          id: "styled",
+          name: "Studio",
+          source: "manual",
+          url: "https://studio.example",
+          active: true,
+          icon: "Zap",
+          color: "blue",
+        }),
+        serverEntry({
+          id: "unknown",
+          name: "Lab",
+          source: "connect",
+          url: "https://lab.example",
+          icon: "NotARealIcon",
+          color: "not-a-color",
+        }),
+      ]),
+    });
+    window.bbDesktop = { ...createBbDesktopApi(desktopInfo), servers };
+
+    renderRail();
+    await screen.findByTestId("app-server-rail");
+
+    const styled = screen.getByTestId("server-rail-tile-styled");
+    expect(styled.querySelector("[data-icon='Zap']")).not.toBeNull();
+    expect(styled.style.backgroundColor).toContain("color-mix");
+    // Glyph color is applied on the inner span (jsdom may normalize hex → rgb).
+    const styledGlyph = styled.querySelector("span");
+    expect(styledGlyph?.style.color).toMatch(/rgb\(0,\s*144,\s*255\)|#0090ff/i);
+
+    const unknown = screen.getByTestId("server-rail-tile-unknown");
+    // Unknown icon → letter glyph; unknown color → no custom tint.
+    expect(unknown.querySelector("[data-icon]")).toBeNull();
+    expect(unknown.textContent).toContain("L");
+    expect(unknown.style.backgroundColor).toBe("");
   });
 });

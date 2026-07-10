@@ -36,6 +36,8 @@ function serverEntry(
 ): BbDesktopServerListEntry {
   return {
     active: false,
+    color: null,
+    icon: null,
     status: "offline",
     ...overrides,
   };
@@ -58,6 +60,7 @@ function createServersApi(
     remove: vi.fn().mockResolvedValue(undefined),
     rename: vi.fn().mockResolvedValue(undefined),
     setActive: vi.fn().mockResolvedValue(undefined),
+    setTileStyle: vi.fn().mockResolvedValue(undefined),
     getAutoConnect: vi.fn().mockResolvedValue(true),
     setAutoConnect: vi.fn().mockResolvedValue(undefined),
     getShowConnectServers: vi.fn().mockResolvedValue(true),
@@ -137,6 +140,7 @@ describe("ServersSettingsSectionContent", () => {
         onRemove={vi.fn()}
         onRename={vi.fn()}
         onSetActive={vi.fn()}
+        onSetTileStyle={vi.fn()}
         onShowConnectServersChange={vi.fn()}
         servers={[]}
         showConnectServers={true}
@@ -206,6 +210,7 @@ describe("ServersSettingsSectionContent", () => {
         onRemove={vi.fn()}
         onRename={vi.fn()}
         onSetActive={vi.fn()}
+        onSetTileStyle={vi.fn()}
         onShowConnectServersChange={vi.fn()}
         showConnectServers={true}
         servers={[
@@ -286,5 +291,95 @@ describe("ServersSettingsSectionContent", () => {
 
     fireEvent.click(removeButton);
     expect(remove).toHaveBeenCalledWith("manual_1");
+  });
+
+  it("applies setTileStyle from the logo picker on all row sources", async () => {
+    const onSetTileStyle = vi.fn();
+    render(
+      <ServersSettingsSectionContent
+        autoConnect={true}
+        onAdd={vi.fn()}
+        onAutoConnectChange={vi.fn()}
+        onRemove={vi.fn()}
+        onRename={vi.fn()}
+        onSetActive={vi.fn()}
+        onSetTileStyle={onSetTileStyle}
+        onShowConnectServersChange={vi.fn()}
+        showConnectServers={true}
+        servers={[
+          serverEntry({
+            id: "builtin",
+            name: "This Mac",
+            source: "builtin",
+            url: "http://127.0.0.1:3000",
+            active: true,
+            status: "connected",
+          }),
+          serverEntry({
+            id: "connect_1",
+            name: "Office",
+            source: "connect",
+            url: "https://office.getbb.app",
+          }),
+        ]}
+      />,
+    );
+
+    // Available on builtin (style is a local overlay, unlike rename).
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize This Mac icon" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Zap" }));
+    expect(onSetTileStyle).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "builtin" }),
+      { icon: "Zap", color: null },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Blue" }));
+    expect(onSetTileStyle).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "builtin" }),
+      { icon: "Zap", color: "blue" },
+    );
+
+    // Connect rows get the same picker.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize Office icon" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Terminal" }));
+    expect(onSetTileStyle).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "connect_1" }),
+      { icon: "Terminal", color: null },
+    );
+  });
+
+  it("wires the bridge setTileStyle method", async () => {
+    const setTileStyle = vi.fn().mockResolvedValue(undefined);
+    const servers = createServersApi({
+      list: vi.fn().mockResolvedValue([
+        serverEntry({
+          id: "manual_1",
+          name: "Lab",
+          source: "manual",
+          url: "https://lab.example.com",
+        }),
+      ]),
+      setTileStyle,
+    });
+    window.bbDesktop = {
+      ...createBbDesktopApi(desktopInfo),
+      servers,
+    };
+
+    render(<ServersSettingsSection />);
+    const customize = await screen.findByRole("button", {
+      name: "Customize Lab icon",
+    });
+    fireEvent.click(customize);
+    fireEvent.click(await screen.findByRole("button", { name: "Zap" }));
+    expect(setTileStyle).toHaveBeenCalledWith({
+      id: "manual_1",
+      icon: "Zap",
+      color: null,
+    });
   });
 });

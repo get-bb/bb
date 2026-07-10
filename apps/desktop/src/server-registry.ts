@@ -16,10 +16,17 @@ export interface DesktopServerRecord {
   url: string;
 }
 
+/** Local tile presentation overlay; independent of server row data. */
+export interface DesktopServerTileStyle {
+  icon: string | null;
+  color: string | null;
+}
+
 export interface ServerRegistrySnapshot {
   autoConnectToLocalServer: boolean;
   showConnectServers: boolean;
   servers: DesktopServerRecord[];
+  tileStyles: Record<string, DesktopServerTileStyle>;
 }
 
 export type ServerRegistryChangeHandler = (
@@ -60,6 +67,7 @@ export interface ServerRegistry {
   getAutoConnectToLocalServer(): boolean;
   getServer(id: string): DesktopServerRecord | null;
   getShowConnectServers(): boolean;
+  getTileStyle(id: string): DesktopServerTileStyle;
   /**
    * Visible servers for list/menu output. When `showConnectServers` is false,
    * connect-source entries are omitted (they remain in storage/snapshot).
@@ -79,6 +87,11 @@ export interface ServerRegistry {
   rename(id: string, name: string): Promise<boolean>;
   setAutoConnectToLocalServer(value: boolean): Promise<void>;
   setShowConnectServers(value: boolean): Promise<void>;
+  /**
+   * Set the local tile style overlay for a server id. No-op (no persist/notify)
+   * when the resolved style is unchanged. Both-null clears the overlay entry.
+   */
+  setTileStyle(id: string, style: DesktopServerTileStyle): Promise<void>;
   snapshot(): ServerRegistrySnapshot;
   /**
    * Insert or replace a remote entry by stable id (used for connect sync).
@@ -97,12 +110,21 @@ const persistedServerRecordSchema = z
   })
   .strict();
 
+const persistedTileStyleSchema = z
+  .object({
+    icon: z.string().max(100).nullable(),
+    color: z.string().max(100).nullable(),
+  })
+  .strict();
+
 const persistedServerRegistrySchema = z
   .object({
     autoConnectToLocalServer: z.boolean(),
     // Absent on older files → treated as true at the load boundary.
     showConnectServers: z.boolean().optional(),
     servers: z.array(persistedServerRecordSchema),
+    // Absent on older files → treated as {} at the load boundary.
+    tileStyles: z.record(z.string().min(1), persistedTileStyleSchema).optional(),
   })
   .strict();
 
@@ -112,6 +134,11 @@ const defaultFs: ServerRegistryFs = {
   mkdir,
   readFile,
   writeFile,
+};
+
+const EMPTY_TILE_STYLE: DesktopServerTileStyle = {
+  icon: null,
+  color: null,
 };
 
 function createBuiltinServer(builtinUrl: string): DesktopServerRecord {
@@ -128,7 +155,43 @@ function createDefaultSnapshot(builtinUrl: string): ServerRegistrySnapshot {
     autoConnectToLocalServer: true,
     showConnectServers: true,
     servers: [createBuiltinServer(builtinUrl)],
+    tileStyles: {},
   };
+}
+
+function normalizeTileStyleField(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 100) {
+    return null;
+  }
+  return trimmed;
+}
+
+function normalizeTileStyle(style: DesktopServerTileStyle): DesktopServerTileStyle {
+  return {
+    icon: normalizeTileStyleField(style.icon),
+    color: normalizeTileStyleField(style.color),
+  };
+}
+
+function tileStylesEqual(
+  a: DesktopServerTileStyle,
+  b: DesktopServerTileStyle,
+): boolean {
+  return a.icon === b.icon && a.color === b.color;
+}
+
+function copyTileStyles(
+  tileStyles: Record<string, DesktopServerTileStyle>,
+): Record<string, DesktopServerTileStyle> {
+  const copy: Record<string, DesktopServerTileStyle> = {};
+  for (const [id, style] of Object.entries(tileStyles)) {
+    copy[id] = { icon: style.icon, color: style.color };
+  }
+  return copy;
 }
 
 function toPersistedRegistry(
@@ -145,6 +208,7 @@ function toPersistedRegistry(
         source: server.source === "connect" ? "connect" : "manual",
         url: server.url,
       })),
+    tileStyles: copyTileStyles(snapshot.tileStyles),
   };
 }
 
@@ -166,10 +230,19 @@ function fromPersistedRegistry(args: {
       url: server.url,
     });
   }
+  const tileStyles: Record<string, DesktopServerTileStyle> = {};
+  for (const [id, style] of Object.entries(args.persisted.tileStyles ?? {})) {
+    const normalized = normalizeTileStyle(style);
+    if (normalized.icon === null && normalized.color === null) {
+      continue;
+    }
+    tileStyles[id] = normalized;
+  }
   return {
     autoConnectToLocalServer: args.persisted.autoConnectToLocalServer,
     showConnectServers: args.persisted.showConnectServers ?? true,
     servers: [createBuiltinServer(args.builtinUrl), ...remoteServers],
+    tileStyles,
   };
 }
 
@@ -227,6 +300,7 @@ export function createServerRegistry(
       autoConnectToLocalServer: state.autoConnectToLocalServer,
       showConnectServers: state.showConnectServers,
       servers: state.servers.map(copyRecord),
+      tileStyles: copyTileStyles(state.tileStyles),
     };
   }
 
@@ -237,6 +311,26 @@ export function createServerRegistry(
     return state.servers
       .filter((server) => server.source !== "connect")
       .map(copyRecord);
+  }
+
+  function deleteTileStyles(ids: readonly string[]): void {
+    if (ids.length === 0) {
+      return;
+    }
+    const next = { ...state.tileStyles };
+    let changed = false;
+    for (const id of ids) {
+      if (id in next) {
+        delete next[id];
+        changed = true;
+      }
+    }
+    if (changed) {
+      state = {
+        ...state,
+        tileStyles: next,
+      };
+    }
   }
 
   async function persist(): Promise<void> {
@@ -280,6 +374,7 @@ export function createServerRegistry(
         autoConnectToLocalServer: state.autoConnectToLocalServer,
         showConnectServers: state.showConnectServers,
         servers: [...state.servers, record],
+        tileStyles: state.tileStyles,
       };
       await persist();
       notify();
@@ -294,6 +389,12 @@ export function createServerRegistry(
     },
     getShowConnectServers() {
       return state.showConnectServers;
+    },
+    getTileStyle(id) {
+      const style = state.tileStyles[id];
+      return style === undefined
+        ? { ...EMPTY_TILE_STYLE }
+        : { icon: style.icon, color: style.color };
     },
     list() {
       return visibleServers();
@@ -313,10 +414,12 @@ export function createServerRegistry(
       if (nextServers.length === state.servers.length) {
         return false;
       }
+      deleteTileStyles([id]);
       state = {
         autoConnectToLocalServer: state.autoConnectToLocalServer,
         showConnectServers: state.showConnectServers,
         servers: nextServers,
+        tileStyles: state.tileStyles,
       };
       await persist();
       notify();
@@ -334,10 +437,12 @@ export function createServerRegistry(
       if (removedIds.length === 0) {
         return [];
       }
+      deleteTileStyles(removedIds);
       state = {
         autoConnectToLocalServer: state.autoConnectToLocalServer,
         showConnectServers: state.showConnectServers,
         servers: nextServers,
+        tileStyles: state.tileStyles,
       };
       await persist();
       notify();
@@ -367,6 +472,7 @@ export function createServerRegistry(
         autoConnectToLocalServer: state.autoConnectToLocalServer,
         showConnectServers: state.showConnectServers,
         servers: nextServers,
+        tileStyles: state.tileStyles,
       };
       await persist();
       notify();
@@ -380,6 +486,7 @@ export function createServerRegistry(
         autoConnectToLocalServer: value,
         showConnectServers: state.showConnectServers,
         servers: state.servers,
+        tileStyles: state.tileStyles,
       };
       await persist();
       notify();
@@ -392,6 +499,32 @@ export function createServerRegistry(
         autoConnectToLocalServer: state.autoConnectToLocalServer,
         showConnectServers: value,
         servers: state.servers,
+        tileStyles: state.tileStyles,
+      };
+      await persist();
+      notify();
+    },
+    async setTileStyle(id, style) {
+      const normalized = normalizeTileStyle(style);
+      const existing = state.tileStyles[id];
+      const current: DesktopServerTileStyle =
+        existing === undefined
+          ? EMPTY_TILE_STYLE
+          : { icon: existing.icon, color: existing.color };
+      if (tileStylesEqual(current, normalized)) {
+        return;
+      }
+      const nextStyles = { ...state.tileStyles };
+      if (normalized.icon === null && normalized.color === null) {
+        delete nextStyles[id];
+      } else {
+        nextStyles[id] = normalized;
+      }
+      state = {
+        autoConnectToLocalServer: state.autoConnectToLocalServer,
+        showConnectServers: state.showConnectServers,
+        servers: state.servers,
+        tileStyles: nextStyles,
       };
       await persist();
       notify();
@@ -435,6 +568,9 @@ export function createServerRegistry(
         autoConnectToLocalServer: state.autoConnectToLocalServer,
         showConnectServers: state.showConnectServers,
         servers: nextServers,
+        // Style overlay is keyed by id and intentionally untouched by upsert
+        // so connect-sync never clobbers local tile customization.
+        tileStyles: state.tileStyles,
       };
       await persist();
       notify();

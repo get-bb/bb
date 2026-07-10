@@ -18,6 +18,10 @@ export type BbDesktopServerStatus = z.infer<typeof bbDesktopServerStatusSchema>;
 export const bbDesktopServerListEntrySchema = z
   .object({
     active: z.boolean(),
+    /** Favicon palette id, or null for the default (token) tile color. */
+    color: z.string().nullable(),
+    /** Hugeicons registry name, or null for the letter glyph. */
+    icon: z.string().nullable(),
     id: z.string().min(1),
     name: z.string().min(1),
     source: bbDesktopServerSourceSchema,
@@ -85,6 +89,30 @@ export type BbDesktopServerRenameRequest = z.infer<
   typeof bbDesktopServerRenameRequestSchema
 >;
 
+/**
+ * Shell stores icon/color as opaque trimmed strings (max 100). The renderer
+ * validates against ICON_NAMES / FAVICON_COLORS and falls back on unknown
+ * values so version skew either direction stays safe.
+ */
+const bbDesktopServerTileStyleFieldSchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}, z.union([z.string().min(1).max(100), z.null()]));
+
+export const bbDesktopServerSetTileStyleRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    icon: bbDesktopServerTileStyleFieldSchema,
+    color: bbDesktopServerTileStyleFieldSchema,
+  })
+  .strict();
+export type BbDesktopServerSetTileStyleRequest = z.infer<
+  typeof bbDesktopServerSetTileStyleRequestSchema
+>;
+
 export const bbDesktopServerSetAutoConnectRequestSchema = z
   .object({
     autoConnectToLocalServer: z.boolean(),
@@ -122,6 +150,7 @@ export interface BbDesktopServersApi {
   remove(id: string): Promise<void>;
   rename(id: string, name: string): Promise<void>;
   setActive(id: string): Promise<void>;
+  setTileStyle(request: BbDesktopServerSetTileStyleRequest): Promise<void>;
   getAutoConnect(): Promise<boolean>;
   setAutoConnect(autoConnectToLocalServer: boolean): Promise<void>;
   getShowConnectServers(): Promise<boolean>;

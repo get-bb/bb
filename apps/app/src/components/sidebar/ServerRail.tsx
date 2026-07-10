@@ -1,9 +1,15 @@
+import type { CSSProperties } from "react";
 import type { BbDesktopServerListEntry } from "@bb/desktop-contract";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Link } from "react-router-dom";
 import { getDesktopServersApi } from "@/lib/bb-desktop";
+import { FAVICON_COLOR_VALUES } from "@/lib/favicon-color-preference";
+import {
+  resolveServerTileColor,
+  resolveServerTileIcon,
+} from "@/lib/server-tile-style";
 import { useDesktopServerList } from "@/hooks/useDesktopServerList";
 
 /**
@@ -25,6 +31,18 @@ function tileGlyph(name: string): string {
 }
 
 function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
+  const icon = resolveServerTileIcon(server.icon);
+  const color = resolveServerTileColor(server.color);
+  const colorHex = color === null ? undefined : FAVICON_COLOR_VALUES[color];
+  const glyphStyle: CSSProperties | undefined =
+    colorHex === undefined ? undefined : { color: colorHex };
+  const activeBackgroundStyle: CSSProperties | undefined =
+    server.active && colorHex !== undefined
+      ? {
+          backgroundColor: `color-mix(in oklab, ${colorHex} 18%, transparent)`,
+        }
+      : undefined;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -36,9 +54,12 @@ function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
           className={cn(
             "relative flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold",
             server.active
-              ? "bg-sidebar-accent text-sidebar-foreground"
+              ? colorHex === undefined
+                ? "bg-sidebar-accent text-sidebar-foreground"
+                : "text-sidebar-foreground"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
           )}
+          style={activeBackgroundStyle}
           onClick={() => {
             if (server.active) {
               return;
@@ -46,7 +67,15 @@ function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
             void getDesktopServersApi()?.setActive(server.id);
           }}
         >
-          <span aria-hidden="true">{tileGlyph(server.name)}</span>
+          {icon !== null ? (
+            <span aria-hidden="true" className="flex" style={glyphStyle}>
+              <Icon name={icon} className="size-4" />
+            </span>
+          ) : (
+            <span aria-hidden="true" style={glyphStyle}>
+              {tileGlyph(server.name)}
+            </span>
+          )}
           {/* Status stays quiet unless something is wrong. */}
           {server.status === "offline" || server.status === "incompatible" ? (
             <span
