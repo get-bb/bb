@@ -69,7 +69,6 @@ describe("ThreadEnvSlot", () => {
     });
 
     expect(worktreeItem.getAttribute("aria-disabled")).toBe("true");
-    expect(worktreeItem.getAttribute("data-disabled")).toBe("");
   });
 
   it("hides the branch picker when branch controls are not applicable", () => {

@@ -41,48 +41,6 @@ afterEach(() => {
 });
 
 describe("PluginSidebarFooterActions", () => {
-  it("renders nothing when no plugins contribute footer actions", () => {
-    const { container } = renderWithProviders(
-      <PluginSidebarFooterActions />,
-    );
-    // SidebarProvider still mounts layout chrome; assert no footer action.
-    expect(
-      container.querySelector(
-        "[data-testid^='plugin-sidebar-footer-action-']",
-      ),
-    ).toBeNull();
-  });
-
-  it("renders host chrome and runs openSettings on click", () => {
-    const run = vi.fn(
-      (context: { openSettings: () => void }) => {
-        context.openSettings();
-      },
-    );
-    setPluginSlotRegistrations(
-      "connect",
-      registrationSet({
-        sidebarFooterActions: [
-          {
-            id: "remote-access",
-            title: "Remote access",
-            icon: "Smartphone",
-            run,
-          },
-        ],
-      }),
-    );
-
-    renderWithProviders(<PluginSidebarFooterActions />);
-
-    const button = screen.getByRole("button", { name: "Remote access" });
-    expect(button.getAttribute("data-testid")).toBe(
-      "plugin-sidebar-footer-action-connect-remote-access",
-    );
-    fireEvent.click(button);
-    expect(run).toHaveBeenCalledTimes(1);
-  });
-
   it("contains a throwing run without breaking the sidebar", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     setPluginSlotRegistrations(

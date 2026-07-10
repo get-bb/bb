@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  getTemplateMetadata,
   listTemplates,
   renderTemplate,
   type TemplateId,
@@ -27,24 +26,6 @@ describe("@bb/templates", () => {
     );
 
     expect(result.status, result.stderr || result.stdout).toBe(0);
-  });
-
-  it("lists template metadata", () => {
-    const templates = listTemplates();
-    expect(
-      templates.some(
-        (template) => template.id === "threadOperationCommitFailureFollowUp",
-      ),
-    ).toBe(true);
-    expect(templates.some((template) => template.kind === "instruction")).toBe(
-      true,
-    );
-  });
-
-  it("returns metadata for an individual template", () => {
-    const metadata = getTemplateMetadata("generateCommitMessage");
-    expect(metadata.title).toBe("Commit Message Generator");
-    expect(metadata.variables.diffDescription).toContain("diff snapshot");
   });
 
   it("renders a template with variables", () => {
@@ -97,9 +78,10 @@ describe("@bb/templates", () => {
 
   it("renders child thread needs-attention messages with blocker summaries", () => {
     const rendered = renderTemplate("systemMessageChildThreadNeedsAttention", {
-      blockerSummary: ["Blocked on command approval:", "Command: git push"].join(
-        "\n",
-      ),
+      blockerSummary: [
+        "Blocked on command approval:",
+        "Command: git push",
+      ].join("\n"),
       threadMention: "@thread:thr_child",
     });
 

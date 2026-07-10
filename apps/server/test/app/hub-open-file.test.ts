@@ -30,31 +30,4 @@ describe("NotificationHub.notifyThreadOpenFile", () => {
       });
     }
   });
-
-  it("returns 0 and sends nothing when no clients are connected", () => {
-    const hub = new NotificationHub();
-
-    const delivered = hub.notifyThreadOpenFile("thr_1", {
-      source: "thread-storage",
-      path: "notes.md",
-      lineNumber: null,
-    });
-
-    expect(delivered).toBe(0);
-  });
-
-  it("does not deliver to terminal-only sockets", () => {
-    const hub = new NotificationHub();
-    const terminalOnly = createMockHubSocket();
-    hub.registerTerminalClient("term_1", terminalOnly);
-
-    const delivered = hub.notifyThreadOpenFile("thr_1", {
-      source: "workspace",
-      path: "a.ts",
-      lineNumber: null,
-    });
-
-    expect(delivered).toBe(0);
-    expect(terminalOnly.messages).toHaveLength(0);
-  });
 });

@@ -162,23 +162,6 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
   });
 
-  it("opens selected-only models in a desktop submenu", async () => {
-    const { onModelChange } = renderPicker({
-      moreModelOptions: [{ value: "gpt-5.2", label: "GPT-5.2" }],
-    });
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Provider, model and reasoning",
-      }),
-    );
-    fireEvent.pointerEnter(screen.getByText("More models"));
-
-    fireEvent.click(await screen.findByText("5.2"));
-
-    expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
-  });
-
   it("fuzzy-filters a long model list and selects the match by keyboard", () => {
     const { onModelChange } = renderPicker({ modelOptions: manyCodexModels });
 

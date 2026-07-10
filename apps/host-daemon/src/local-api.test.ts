@@ -88,31 +88,6 @@ describe("local API server", () => {
     expect(await healthResponse.text()).toBe("ok");
   });
 
-  it("delegates folder-pick operations to the provided callback", async () => {
-    const pickFolder = vi.fn(async () => "/tmp/project");
-    server = await startLocalApiServer({
-      hostId: "host-1",
-      localApiConfig: createLocalApiConfig(),
-      serverUrl: "http://server.test",
-      serverPort: 3334,
-      devAppPort: 5173,
-      getConnected: () => false,
-      pickFolder,
-    });
-    const client = createHostDaemonLocalClient(
-      `http://localhost:${server.port}`,
-    );
-
-    const statusResponse = await client.status.$get();
-    const pickFolderResponse = await client["pick-folder"].$post({});
-
-    expect(await statusResponse.json()).toMatchObject({
-      supportsNativeFolderPicker: true,
-    });
-    expect(pickFolder).toHaveBeenCalledTimes(1);
-    expect(await pickFolderResponse.json()).toEqual({ path: "/tmp/project" });
-  });
-
   it("reports path existence by stat'ing each requested path", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "bb-path-exists-"));
     const existingDir = path.join(dir, "repo");

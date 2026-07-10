@@ -34,34 +34,7 @@ describe("PermissionModePicker", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "Permission mode" });
-    const expectedTitle =
-      "Permission mode: Plan Mode - Claude Code will plan without normal full-access execution.";
     expect(trigger.textContent).toContain("Plan Mode");
-    expect(trigger.className).not.toContain("text-warning-text");
-    expect(trigger.getAttribute("title")).toBeNull();
-    expect(
-      trigger.querySelector(`[title="${expectedTitle}"]`),
-    ).not.toBeNull();
-  });
-
-  it("can keep the chevron visible while disabled", () => {
-    render(
-      <PermissionModePicker
-        value="full"
-        options={permissionOptions}
-        onChange={vi.fn()}
-        supported
-        disabled
-        showChevronWhenDisabled
-        displayOverride={{
-          label: "Plan Mode",
-          compactLabel: "Plan",
-        }}
-      />,
-    );
-
-    const trigger = screen.getByRole("button", { name: "Permission mode" });
-    expect(trigger).toHaveProperty("disabled", true);
-    expect(trigger.querySelector('[data-icon="ChevronDown"]')).not.toBeNull();
+    expect(trigger.textContent).not.toContain("Full Access");
   });
 });

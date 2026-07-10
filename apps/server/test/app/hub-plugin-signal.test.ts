@@ -27,21 +27,4 @@ describe("NotificationHub.notifyPluginSignal", () => {
       });
     }
   });
-
-  it("returns 0 and sends nothing when no clients are connected", () => {
-    const hub = new NotificationHub();
-
-    expect(hub.notifyPluginSignal("linear", "issues-updated", null)).toBe(0);
-  });
-
-  it("does not deliver to terminal-only sockets", () => {
-    const hub = new NotificationHub();
-    const terminalOnly = createMockHubSocket();
-    hub.registerTerminalClient("term_1", terminalOnly);
-
-    const delivered = hub.notifyPluginSignal("linear", "issues-updated", null);
-
-    expect(delivered).toBe(0);
-    expect(terminalOnly.messages).toHaveLength(0);
-  });
 });

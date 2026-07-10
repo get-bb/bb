@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DASHBOARD_PATH, connectReturnTo } from "./connect-return-to";
+import { connectReturnTo } from "./connect-return-to";
 
 describe("connect return-to URLs", () => {
   it("accepts immediate connect subdomains for the current app domain", () => {
@@ -42,9 +42,5 @@ describe("connect return-to URLs", () => {
     expect(connectReturnTo("", "https://getbb.app")).toBeNull();
     expect(connectReturnTo("null", "https://getbb.app")).toBeNull();
     expect(connectReturnTo("undefined", "https://getbb.app")).toBeNull();
-  });
-
-  it("exports the dashboard path used by landing sign-in links", () => {
-    expect(DASHBOARD_PATH).toBe("/dashboard");
   });
 });

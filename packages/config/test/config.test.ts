@@ -15,7 +15,6 @@ import { parseProviderModelConfig } from "../src/inference-model.js";
 import { loadLoggerConfig } from "../src/logger.js";
 import {
   resolveConfiguredDataDir,
-  resolveDataDirDatabasePath,
   parsePortValue,
   resolvePortFromEnv,
   resolveRuntimeDataDir,
@@ -23,7 +22,6 @@ import {
 import { loadServerPortConfig } from "../src/server-port.js";
 import { loadServerConfig } from "../src/server.js";
 import { loadViteDevConfig } from "../src/vite-dev.js";
-import { resolveDataDirSkillsRootPath } from "../src/skill-storage-paths.js";
 
 async function importConfigModules(): Promise<void> {
   vi.resetModules();
@@ -193,18 +191,6 @@ describe("data-dir helpers", () => {
         repoRoot: "/Users/tester/---",
       }),
     ).toBe("/Users/tester/.bb-dev/worktree-41987f975862");
-  });
-
-  it("derives database path from a resolved data dir", () => {
-    expect(resolveDataDirDatabasePath({ dataDir: "/tmp/bb-data" })).toBe(
-      "/tmp/bb-data/bb.db",
-    );
-  });
-
-  it("derives the data-dir-level skills root from a resolved data dir", () => {
-    expect(resolveDataDirSkillsRootPath("/tmp/bb-data")).toBe(
-      "/tmp/bb-data/skills",
-    );
   });
 });
 

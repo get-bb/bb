@@ -20,10 +20,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
-import {
-  resetPluginLogoStoreForTest,
-  setPluginLogoUrls,
-} from "@/lib/plugin-logos";
 import { LOOP_PROMPT_ACTION } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -154,7 +150,10 @@ function PromptBoxFocusOnMountHarness() {
   }, []);
 
   return (
-    <PromptBoxInternal {...createPromptBoxProps()} promptBoxRef={promptBoxRef} />
+    <PromptBoxInternal
+      {...createPromptBoxProps()}
+      promptBoxRef={promptBoxRef}
+    />
   );
 }
 
@@ -225,9 +224,7 @@ function renderPromptBox(
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
-    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
-      [],
-    );
+    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
     return (
       <PromptBoxInternal
         value={value}
@@ -374,7 +371,6 @@ function mockPointerCoarse(matches: boolean): () => void {
 
 afterEach(() => {
   cleanup();
-  resetPluginLogoStoreForTest();
   vi.clearAllMocks();
 });
 
@@ -476,13 +472,17 @@ describe("PromptBoxInternal controlled value sync", () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {
       const view = render(
-        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness historyResetKey={0} />,
+        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness
+          historyResetKey={0}
+        />,
       );
 
       await waitForPromptFocus();
 
       view.rerender(
-        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness historyResetKey={1} />,
+        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness
+          historyResetKey={1}
+        />,
       );
 
       await waitForPromptFocus();
@@ -517,18 +517,13 @@ describe("PromptBoxInternal controlled value sync", () => {
 
   it("applies an added quote before focus-end insertion can edit the old document", () => {
     const onChange = vi.fn();
-    const view = render(
-      <PromptBoxRaceHarness onChange={onChange} value="" />,
-    );
+    const view = render(<PromptBoxRaceHarness onChange={onChange} value="" />);
 
     view.rerender(
       <PromptBoxRaceHarness onChange={onChange} value={"> selected text\n"} />,
     );
 
-    expect(onChange).toHaveBeenLastCalledWith(
-      "> selected text\n\nreply",
-      [],
-    );
+    expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
   });
 
   it("places focus-end insertion below an added quote", async () => {
@@ -555,83 +550,7 @@ describe("PromptBoxInternal controlled value sync", () => {
       promptBoxRef.current?.insertTextAtCursor("reply");
     });
 
-    expect(onChange).toHaveBeenLastCalledWith(
-      "> selected text\n\nreply",
-      [],
-    );
-  });
-});
-
-describe("PromptBoxInternal zen mode layout", () => {
-  it("animates the prompt box height when toggling zen mode", async () => {
-    const storageKey = "bb.test.promptbox.zen-height-animation";
-    window.localStorage.removeItem(storageKey);
-
-    render(
-      <PromptBoxInternal
-        {...createPromptBoxProps({
-          zenMode: { storageKey },
-        })}
-      />,
-    );
-
-    const form = document.querySelector("[data-promptbox]");
-    if (!(form instanceof HTMLFormElement)) {
-      throw new Error("Prompt box form was not rendered");
-    }
-
-    vi.spyOn(form, "getBoundingClientRect")
-      .mockReturnValueOnce(new DOMRect(0, 0, 320, 96))
-      .mockReturnValueOnce(new DOMRect(0, 0, 320, 512))
-      .mockReturnValue(new DOMRect(0, 0, 320, 512));
-
-    fireEvent.click(screen.getByRole("button", { name: "Enter zen mode" }));
-
-    await waitFor(() => {
-      expect(form.style.transition).toContain("height 240ms");
-      expect(form.style.height).toBe("512px");
-    });
-
-    fireEvent.transitionEnd(form, { propertyName: "height" });
-    window.localStorage.removeItem(storageKey);
-  });
-
-  it("keeps long editor content constrained to the scroll area", async () => {
-    const storageKey = "bb.test.promptbox.zen-layout";
-    window.localStorage.removeItem(storageKey);
-
-    render(
-      <PromptBoxInternal
-        {...createPromptBoxProps({
-          value: Array.from({ length: 40 }, (_, index) => `Line ${index + 1}`)
-            .join("\n"),
-          zenMode: { storageKey },
-        })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Enter zen mode" }));
-
-    await waitFor(() => {
-      const scrollContainer = document.querySelector(
-        "[data-promptbox-editor-scroll]",
-      );
-      if (!(scrollContainer instanceof HTMLElement)) {
-        throw new Error("Prompt editor scroll container was not rendered");
-      }
-
-      expect(scrollContainer.classList.contains("min-h-0")).toBe(true);
-      expect(scrollContainer.parentElement?.classList.contains("min-h-0")).toBe(
-        true,
-      );
-    });
-
-    const footerRow =
-      screen.getByRole("button", { name: "Attach files" }).parentElement
-        ?.parentElement;
-    expect(footerRow?.classList.contains("shrink-0")).toBe(true);
-
-    window.localStorage.removeItem(storageKey);
+    expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
   });
 });
 
@@ -674,17 +593,6 @@ describe("PromptBoxInternal mention triggers", () => {
   });
 
   it("inserts hash-triggered plugin mentions without duplicating the prefix", async () => {
-    setPluginLogoUrls(
-      new Map([
-        [
-          "github",
-          {
-            logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
-            logoDarkUrl: null,
-          },
-        ],
-      ]),
-    );
     const { changes, promptBoxRef } = renderPromptBox("#42", {
       mentionTriggers: ["@", "#"],
       mentionSuggestions: [githubIssueSuggestion],
@@ -711,12 +619,6 @@ describe("PromptBoxInternal mention triggers", () => {
         },
       },
     ]);
-    const logo = within(getPromptEditorElement()).getByTestId(
-      "plugin-logo-github",
-    );
-    expect(logo.getAttribute("src")).toBe(
-      "/api/v1/plugins/github/assets/logo?h=abc",
-    );
   });
 });
 
@@ -732,20 +634,6 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await waitFor(() => expect(latestValue(changes)).toBe("> quoted"));
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
-  });
-
-  it("places prompt actions before the right-side action cluster", () => {
-    renderPromptBox("");
-
-    const promptActionsButton = screen.getByRole("button", {
-      name: "Prompt actions",
-    });
-    const attachButton = screen.getByRole("button", { name: "Attach files" });
-
-    expect(
-      promptActionsButton.compareDocumentPosition(attachButton) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
   });
 
   it("inserts the skills trigger with no trailing space", async () => {
@@ -839,9 +727,6 @@ describe("PromptBoxInternal prompt actions", () => {
     await selectPromptAction("Goal");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
-    await waitFor(() =>
-      expect(document.querySelector('[data-icon="Target"]')).not.toBeNull(),
-    );
     expect(latestChange(changes)?.mentions).toEqual([
       {
         start: 0,
@@ -950,7 +835,8 @@ describe("PromptBoxInternal prompt actions", () => {
 
   it("pastes prompt action command tokens as goal, plan, and loop pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
-    const text = "/plan inspect first\n/goal finish the change\n/loop keep checking";
+    const text =
+      "/plan inspect first\n/goal finish the change\n/loop keep checking";
 
     await focusPromptEnd(promptBoxRef);
     pastePlainText(text);

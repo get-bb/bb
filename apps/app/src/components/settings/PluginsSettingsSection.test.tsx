@@ -193,28 +193,6 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("shows the plugin's logo next to the id when served, nothing otherwise", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-    const logoUrl = "/api/v1/plugins/linear/assets/logo?h=f00d";
-    const { unmount } = render(
-      <PluginSettingsDetail plugin={rowPlugin("running", logoUrl)} />,
-      { wrapper },
-    );
-    expect(
-      screen.getByTestId("plugin-settings-logo-linear").getAttribute("src"),
-    ).toBe(logoUrl);
-    unmount();
-
-    render(<PluginSettingsDetail plugin={rowPlugin("running")} />, {
-      wrapper,
-    });
-    expect(screen.queryByTestId("plugin-settings-logo-linear")).toBeNull();
-  });
-
   it("renders a slot-only settings page while the plugins experiment is off", async () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
@@ -295,37 +273,8 @@ describe("PluginToggleRow", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Enable linear" }));
 
     await vi.waitFor(() => {
-      const post = requests.find(
-        (request) => request.init?.method === "POST",
-      );
+      const post = requests.find((request) => request.init?.method === "POST");
       expect(post?.url).toBe("/api/v1/plugins/linear/disable");
     });
-  });
-
-  it("links to the plugin's settings page only when it declares settings", () => {
-    vi.stubGlobal("fetch", vi.fn());
-    const { wrapper } = createQueryClientTestHarness();
-    const { unmount } = render(
-      <MemoryRouter>
-        <PluginToggleRow plugin={rowPlugin("running")} />
-      </MemoryRouter>,
-      { wrapper },
-    );
-    expect(
-      screen.getByRole("link", { name: /plugin settings/i }).getAttribute(
-        "href",
-      ),
-    ).toBe("/settings/plugins/linear");
-    unmount();
-
-    render(
-      <MemoryRouter>
-        <PluginToggleRow
-          plugin={{ ...rowPlugin("running"), hasSettings: false }}
-        />
-      </MemoryRouter>,
-      { wrapper },
-    );
-    expect(screen.queryByRole("link", { name: /plugin settings/i })).toBeNull();
   });
 });

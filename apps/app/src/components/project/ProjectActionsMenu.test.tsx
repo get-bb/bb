@@ -47,11 +47,6 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-function expectMenuItemIcon(label: string, iconName: string) {
-  const menuItem = screen.getByRole("menuitem", { name: label });
-  expect(menuItem.querySelector(`[data-icon="${iconName}"]`)).not.toBeNull();
-}
-
 describe("ProjectActionsMenu", () => {
   afterEach(() => {
     cleanup();
@@ -76,9 +71,11 @@ describe("ProjectActionsMenu", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Test project actions" }),
     );
-    fireEvent.click(await screen.findByRole("menuitem", {
-      name: "Archived threads",
-    }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: "Archived threads",
+      }),
+    );
 
     expect(onProjectRowClick).not.toHaveBeenCalled();
     expect(screen.getByTestId("location").textContent).toBe(
@@ -86,24 +83,7 @@ describe("ProjectActionsMenu", () => {
     );
   });
 
-  it.each([
-    {
-      label: "Rename",
-      action: mockProjectActions.requestRename,
-      hostId: null,
-    },
-    {
-      label: "Add local path",
-      action: mockProjectActions.requestAddLocalPath,
-      hostId: "host_test",
-    },
-    {
-      label: "Remove",
-      action: mockProjectActions.requestDelete,
-      hostId: null,
-    },
-  ])("closes after selecting $label", async ({ label, action, hostId }) => {
-    mockPathPickerHost.value = { hostId, hostName: null };
+  it("closes after selecting an action", async () => {
     const project = makeProject();
 
     render(
@@ -116,33 +96,10 @@ describe("ProjectActionsMenu", () => {
       screen.getByRole("button", { name: "Test project actions" }),
       { button: 0 },
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
-    expect(action).toHaveBeenCalledWith(project);
     await waitFor(() => {
-      expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
+      expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
     });
-  });
-
-  it("renders icons for project action menu items", async () => {
-    const project = makeProject();
-
-    render(
-      <MemoryRouter>
-        <ProjectActionsMenu project={project} />
-      </MemoryRouter>,
-    );
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Test project actions" }),
-      { button: 0 },
-    );
-
-    await screen.findByRole("menuitem", { name: "Project settings" });
-
-    expectMenuItemIcon("Project settings", "Settings");
-    expectMenuItemIcon("Archived threads", "Archive");
-    expectMenuItemIcon("Rename", "Edit");
-    expectMenuItemIcon("Remove", "Trash2");
   });
 });

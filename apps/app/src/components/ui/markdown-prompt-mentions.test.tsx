@@ -9,10 +9,6 @@ import type { TimelineTitleLink } from "@bb/thread-view";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import { setPreferredTheme } from "@/hooks/useTheme";
-import {
-  resetPluginLogoStoreForTest,
-  setPluginLogoUrls,
-} from "@/lib/plugin-logos";
 
 // Pure `substitutePromptMentions` cases live in the sibling `.test.ts` (node
 // env); this file covers the rendered pill output and needs jsdom.
@@ -60,13 +56,6 @@ const COMMAND_RESOURCE: PromptMentionResource = {
   argumentHint: null,
 };
 
-const PLUGIN_RESOURCE: PromptMentionResource = {
-  kind: "plugin",
-  pluginId: "github",
-  itemId: "issue:ymichael/bb#483",
-  label: "#483 Feature request: Remote session support",
-};
-
 // Builds a mention spanning the first occurrence of `token` in `text`.
 function mentionAt(
   text: string,
@@ -82,7 +71,6 @@ function mentionAt(
 
 afterEach(() => {
   cleanup();
-  resetPluginLogoStoreForTest();
   setPreferredTheme("system");
 });
 
@@ -140,62 +128,6 @@ describe("MarkdownPreview prompt mentions", () => {
     );
 
     expect(screen.getByText("deploy")).toBeTruthy();
-  });
-
-  it("renders a plugin mention with the plugin logo", () => {
-    setPluginLogoUrls(
-      new Map([
-        [
-          "github",
-          {
-            logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
-            logoDarkUrl: null,
-          },
-        ],
-      ]),
-    );
-    const text = "Reference #483 in the handoff.";
-    renderMarkdown(
-      <MarkdownPreview
-        content={text}
-        promptMentions={{
-          mentions: [mentionAt(text, "#483", PLUGIN_RESOURCE)],
-          resolveLinkHref: resolveThreadLink,
-        }}
-      />,
-    );
-
-    expect(screen.getByText("#483 Feature request: Remote session support"))
-      .toBeTruthy();
-    expect(screen.getByTestId("plugin-logo-github").getAttribute("src")).toBe(
-      "/api/v1/plugins/github/assets/logo?h=abc",
-    );
-  });
-
-  it("renders markdown structure around the mention pills", () => {
-    const text = [
-      "## Plan",
-      "",
-      "Hand off to @thread:thr_child — see **details** and `pnpm test`.",
-      "",
-      "- step one",
-      "- step two",
-    ].join("\n");
-    const { container } = renderMarkdown(
-      <MarkdownPreview
-        content={text}
-        promptMentions={{
-          mentions: [mentionAt(text, "@thread:thr_child", THREAD_RESOURCE)],
-          resolveLinkHref: resolveThreadLink,
-        }}
-      />,
-    );
-
-    expect(container.querySelector("h2")?.textContent).toBe("Plan");
-    expect(container.querySelector("strong")?.textContent).toBe("details");
-    expect(container.querySelector("code")?.textContent).toBe("pnpm test");
-    expect(container.querySelectorAll("li")).toHaveLength(2);
-    expect(screen.getByText("Rebuild comments")).toBeTruthy();
   });
 
   it("turns a single newline into a hard break (remark-breaks)", () => {

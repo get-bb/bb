@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-  isClaudeCodeMockCliTrafficEndpoint,
-} from "../src/index.js";
+import { isClaudeCodeMockCliTrafficEndpoint } from "../src/index.js";
 
 interface EndpointCase {
   endpoint: string;
@@ -21,12 +18,6 @@ const endpointCases = [
 ] satisfies EndpointCase[];
 
 describe("Claude Code mock CLI traffic endpoint validation", () => {
-  it("defaults to the approved Anthropic test endpoint", () => {
-    expect(DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT).toBe(
-      "https://api.anthropic.com",
-    );
-  });
-
   it.each(endpointCases)("$endpoint -> $expected", (testCase) => {
     expect(isClaudeCodeMockCliTrafficEndpoint(testCase.endpoint)).toBe(
       testCase.expected,

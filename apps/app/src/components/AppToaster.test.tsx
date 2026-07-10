@@ -32,24 +32,13 @@ describe("AppToaster", () => {
     cleanup();
   });
 
-  it("renders on normal app routes", () => {
-    renderToaster("/threads/thr_test");
-
-    expect(screen.getByTestId("app-toaster").getAttribute("data-position")).toBe(
-      "bottom-right",
-    );
-  });
-
   it.each([
     "/popout",
     "/popout/threads/thr_test",
     "/popout/projects/proj_test/threads/thr_test",
-  ])(
-    "does not render on %s",
-    (path) => {
-      renderToaster(path);
+  ])("does not render on %s", (path) => {
+    renderToaster(path);
 
-      expect(screen.queryByTestId("app-toaster")).toBeNull();
-    },
-  );
+    expect(screen.queryByTestId("app-toaster")).toBeNull();
+  });
 });

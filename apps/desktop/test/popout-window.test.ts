@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserWindowConstructorOptions } from "electron";
 import { createPopoutWindowManager } from "../src/popout-window.js";
-import {
-  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
-  BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
-} from "../src/popout-ipc.js";
+import { BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL } from "../src/popout-ipc.js";
 import {
   shouldHandlePopoutToggleSender,
   shouldHandlePopoutWindowSender,
@@ -515,33 +512,7 @@ describe("createPopoutWindowManager", () => {
     expect(browserWindow?.getBounds().x).toBeGreaterThanOrEqual(1440);
   });
 
-  it("forwards popout mouse passthrough changes to Electron", async () => {
-    const manager = createPopoutWindowManager({
-      appUrl: "http://127.0.0.1:38886",
-      preloadPath: "/tmp/preload.cjs",
-      openExternalUrl() {},
-      openInMainHandler: async () => true,
-    });
-    const showPromise = manager.toggle();
-    const browserWindow = electronMock.createdWindows[0];
-    browserWindow?.emitDidFinishLoad();
-    browserWindow?.resolveLoadUrl();
-    browserWindow?.emitReadyToShow();
-    await showPromise;
-
-    manager.setMouseEventsIgnored({ ignore: true });
-    manager.setMouseEventsIgnored({ ignore: false });
-
-    expect(browserWindow?.ignoreMouseEventsCalls).toEqual([
-      { ignore: true, options: { forward: true } },
-      { ignore: false, options: { forward: true } },
-    ]);
-  });
-
-  it("gates the mouse passthrough channel to the popout webContents", () => {
-    expect(BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL).toBe(
-      "bb-desktop:popout:set-mouse-events-ignored",
-    );
+  it("gates mouse passthrough to the popout webContents", () => {
     expect(shouldHandlePopoutWindowSender(true)).toBe(true);
     expect(shouldHandlePopoutWindowSender(false)).toBe(false);
   });

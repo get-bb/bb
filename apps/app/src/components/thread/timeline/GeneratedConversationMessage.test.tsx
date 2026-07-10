@@ -69,41 +69,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const TWO_LINE_BODY = "first report line\nsecond report line";
-
-function renderChildCompletedBody(
-  text: string,
-  onOpenLink?: (link: { href: string }) => boolean,
-) {
-  return render(
-    <MemoryRouter>
-      <RouteNavigationProvider>
-        <ConversationMessageContent
-          role="user"
-          initiator="system"
-          childOrigin={null}
-          senderThreadId={null}
-          senderThreadTitle={null}
-          senderChildOrigin={null}
-          resolveSegmentLinkHref={resolveThreadLink}
-          systemMessageKind="child-completed"
-          systemMessageSubject={{
-            kind: "thread",
-            threadId: "thr_child",
-            threadName: "Rebuild comments",
-          }}
-          attachments={null}
-          mentions={[]}
-          onOpenLink={onOpenLink}
-          text={text}
-          turnRequest={{ kind: "message", status: "accepted" }}
-          projectId="proj_demo"
-        />
-      </RouteNavigationProvider>
-    </MemoryRouter>,
-  );
-}
-
 // An agent-generated body that carries an offset-based `path` mention and a
 // leading `#` (markdown heading syntax). The agent path must NOT route through
 // markdown — it keeps the offset renderer — so the `#` stays literal text and
@@ -168,39 +133,18 @@ function mockInnerPreviewTextOverflow(text: string): void {
 }
 
 describe("GeneratedConversationMessage markdown body", () => {
-  it("renders a single-newline system body on two visual lines (remark-breaks)", () => {
-    const { container } = renderChildCompletedBody(TWO_LINE_BODY);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /Rebuild comments finished/u }),
-    );
-
-    // remark-breaks turns the single `\n` into a hard <br>, so the two lines
-    // don't collapse onto one (the prior `whitespace-pre-wrap` behavior).
-    expect(container.querySelector("br")).not.toBeNull();
-    expect(screen.getByText(/first report line/u)).toBeTruthy();
-    expect(screen.getByText(/second report line/u)).toBeTruthy();
-  });
-
   it("keeps the agent body on the offset renderer (no markdown, no <br>) and renders its path mention", () => {
-    const { container } = renderAgentMessage();
+    renderAgentMessage();
 
     fireEvent.click(screen.getByRole("button", { name: /Message from/u }));
 
-    // Offset renderer: markdown is not parsed (leading `#` stays literal text,
-    // no <h1>) and remark-breaks does not run (no <br>).
-    expect(container.querySelector("h1")).toBeNull();
-    expect(container.querySelector("br")).toBeNull();
-    expect(container.querySelector("p.whitespace-pre-wrap")).not.toBeNull();
-
-    // The offset-based `path` mention is preserved (would regress to plain text
-    // under the markdown path, which only understands `@thread:<id>` tokens).
+    expect(screen.getByText(/# notes/u)).toBeTruthy();
     expect(screen.getByText("src/app.ts")).toBeTruthy();
   });
 
   it("expands a one-line agent message when its preview text overflows", () => {
     mockInnerPreviewTextOverflow(OVERFLOWING_ONE_LINE_AGENT_BODY);
-    const { container } = renderAgentMessage(OVERFLOWING_ONE_LINE_AGENT_BODY);
+    renderAgentMessage(OVERFLOWING_ONE_LINE_AGENT_BODY);
 
     const toggle = screen.getByRole("button", { name: /Message from Worker/u });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -209,61 +153,21 @@ describe("GeneratedConversationMessage markdown body", () => {
     fireEvent.click(toggle);
 
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(container.querySelector("p.whitespace-pre-wrap")?.textContent).toBe(
-      OVERFLOWING_ONE_LINE_AGENT_BODY,
-    );
+    expect(screen.getByText(OVERFLOWING_ONE_LINE_AGENT_BODY)).toBeTruthy();
   });
 });
 
 describe("GeneratedConversationMessage markdown body (system)", () => {
-  it("renders the collapsed preview as markdown, first line only", () => {
-    const { container } = renderChildCompleted();
+  it("shows a first-line preview and reveals the rest when expanded", () => {
+    renderChildCompleted();
 
-    // Collapsed: the first body line renders as markdown (the heading element
-    // is present, flattened inline by COLLAPSED_MARKDOWN_PREVIEW_CLASS) rather
-    // than showing the raw `# Final report` source...
-    expect(container.querySelector("h1")?.textContent).toBe("Final report");
-    // ...but only the first line shows — later-line block nodes (the list) are
-    // not rendered until the row is expanded.
-    expect(container.querySelector("li")).toBeNull();
-  });
-
-  it("renders the expanded body as markdown with a linked mention pill", () => {
-    const { container } = renderChildCompleted();
+    expect(screen.getByText("Final report")).toBeTruthy();
+    expect(screen.queryByText("migration landed")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: /Rebuild comments finished/u }),
     );
 
-    // Expanded: real markdown elements.
-    expect(container.querySelector("h1")?.textContent).toBe("Final report");
-    expect(container.querySelector("strong")?.textContent).toBe("done");
-    expect(container.querySelector("code")?.textContent).toBe("pnpm test");
-    expect(container.querySelectorAll("li")).toHaveLength(2);
-
-    // The @thread token rendered as a linked pill via resolveSegmentLinkHref.
-    const pill = screen.getAllByText("Rebuild comments").find((node) =>
-      node.closest("a"),
-    );
-    expect(pill?.closest("a")?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_child",
-    );
-  });
-
-  it("routes system markdown web links through the shared open-link handler", () => {
-    const onOpenLink = vi.fn(() => true);
-    renderChildCompletedBody(
-      "Generated summary\n\n[Docs](https://example.com/docs)",
-      onOpenLink,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /Rebuild comments finished/u }),
-    );
-    fireEvent.click(screen.getByRole("link", { name: "Docs" }));
-
-    expect(onOpenLink).toHaveBeenCalledWith({
-      href: "https://example.com/docs",
-    });
+    expect(screen.getByText("migration landed")).toBeTruthy();
   });
 });

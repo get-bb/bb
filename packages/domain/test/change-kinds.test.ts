@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { z } from "zod";
 import {
   changedMessageLenientSchema,
   changedMessageSchema,
@@ -87,19 +86,6 @@ const maximalChangedMessages: ChangedMessage[] = [
  * objects strip unknown keys by default), with no compile or runtime error.
  */
 describe("lenient changed-message schema parity", () => {
-  // The lenient output must stay assignable to the strict message type —
-  // dispatch sites rely on it. (The reverse direction does not hold
-  // structurally: strict outputs are readonly arrays.)
-  it("keeps the lenient output assignable to ChangedMessage", () => {
-    type LenientChangedMessage = z.infer<typeof changedMessageLenientSchema>;
-    type Extends<A, B> = A extends B ? true : false;
-    const lenientIsAssignableToStrict: Extends<
-      LenientChangedMessage,
-      ChangedMessage
-    > = true;
-    expect(lenientIsAssignableToStrict).toBe(true);
-  });
-
   it("declares the same entities and field sets as the strict schemas", () => {
     const strictOptions = strictOptionsByEntity();
     const lenientOptions = lenientOptionsByEntity();

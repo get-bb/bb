@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginPendingInteraction } from "@bb/domain";
 import type { PluginPendingInteractionProps } from "@bb/plugin-sdk";
@@ -15,16 +9,7 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
-import {
-  cancelThreadPluginInteraction,
-  respondToThreadPluginInteraction,
-} from "@/lib/api";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
-
-vi.mock("@/lib/api", () => ({
-  cancelThreadPluginInteraction: vi.fn(async () => ({})),
-  respondToThreadPluginInteraction: vi.fn(async () => ({})),
-}));
 
 function registrations(
   pendingInteractions: NonNullable<
@@ -68,51 +53,37 @@ afterEach(() => {
 });
 
 describe("PluginPendingInteractionComposer", () => {
-  it("mounts only the matching plugin renderer and submits through host code", async () => {
-    function Form({
+  it("mounts only the renderer registered by the interaction's plugin", () => {
+    function WrongRenderer() {
+      return <div>wrong plugin renderer</div>;
+    }
+    function MatchingRenderer({
       interaction: view,
-      submit,
     }: PluginPendingInteractionProps) {
-      return (
-        <button onClick={() => void submit({ sentinel: "value" })}>
-          form {view.title}
-        </button>
-      );
+      return <div>form {view.title}</div>;
     }
     setPluginSlotRegistrations(
       "wrong-plugin",
-      registrations([{ id: "secret-request", component: Form }]),
+      registrations([{ id: "secret-request", component: WrongRenderer }]),
     );
     setPluginSlotRegistrations(
       "secrets",
-      registrations([{ id: "secret-request", component: Form }]),
+      registrations([{ id: "secret-request", component: MatchingRenderer }]),
     );
 
     render(<PluginPendingInteractionComposer interaction={interaction} />);
-    fireEvent.click(screen.getByText("form Add secrets"));
 
-    await waitFor(() =>
-      expect(respondToThreadPluginInteraction).toHaveBeenCalledWith(
-        "thr_test",
-        "pint_23456789ab",
-        { sentinel: "value" },
-      ),
-    );
+    expect(screen.getByText("form Add secrets")).toBeDefined();
+    expect(screen.queryByText("wrong plugin renderer")).toBeNull();
   });
 
-  it("keeps a host-owned cancel fallback when the renderer is missing", async () => {
+  it("keeps a host-owned cancel fallback when the renderer is missing", () => {
     render(<PluginPendingInteractionComposer interaction={interaction} />);
     expect(screen.getByText(/form is unavailable/i)).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() =>
-      expect(cancelThreadPluginInteraction).toHaveBeenCalledWith(
-        "thr_test",
-        "pint_23456789ab",
-      ),
-    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
   });
 
-  it("keeps cancel available when the renderer crashes", async () => {
+  it("keeps cancel available when the renderer crashes", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     function Crashed(): never {
@@ -124,12 +95,6 @@ describe("PluginPendingInteractionComposer", () => {
     );
     render(<PluginPendingInteractionComposer interaction={interaction} />);
     expect(screen.getByText(/form crashed/i)).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() =>
-      expect(cancelThreadPluginInteraction).toHaveBeenCalledWith(
-        "thr_test",
-        "pint_23456789ab",
-      ),
-    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
   });
 });

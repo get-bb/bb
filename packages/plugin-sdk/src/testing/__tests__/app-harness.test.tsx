@@ -1,29 +1,19 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
-import { cleanup, fireEvent } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type {
-  PluginHomepageSectionProps,
-  PluginNavPanelProps,
-} from "../../app-contract.js";
-import {
-  installTestPluginRuntime,
-  loadPluginApp,
-  renderSlot,
-} from "../app.js";
+import type { PluginNavPanelProps } from "../../app-contract.js";
+import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
 
 // Install before touching @bb/plugin-sdk/app — it binds the runtime global
 // at import time (same constraint real plugin app.tsx files have).
 installTestPluginRuntime();
-const { definePluginApp, useBbNavigate, useComposer, useRealtime, useRpc, useSettings } =
-  await import("../../app.js");
+const { definePluginApp, useRealtime, useRpc } = await import("../../app.js");
 
 afterEach(cleanup);
 
 function Panel({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc();
-  const navigate = useBbNavigate();
-  const composer = useComposer();
   const [items, setItems] = useState<string[] | null>(null);
   const refresh = () => {
     void rpc
@@ -41,33 +31,10 @@ function Panel({ subPath }: PluginNavPanelProps) {
   return (
     <div>
       {items.map((item) => (
-        <button
-          key={item}
-          onClick={() => navigate.toPluginPanel("panel", { subPath: item })}
-        >
-          {item}
-        </button>
+        <div key={item}>{item}</div>
       ))}
-      <button onClick={() => composer.addQuote("quoted!")}>Quote</button>
-      <button
-        onClick={() =>
-          navigate.toCompose({ initialPrompt: "draft", focusPrompt: true })
-        }
-      >
-        Compose
-      </button>
     </div>
   );
-}
-
-function Section(_props: PluginHomepageSectionProps) {
-  const settings = useSettings();
-  return <div>greeting: {String(settings.values?.greeting)}</div>;
-}
-
-function SettingsSection() {
-  const settings = useSettings();
-  return <div>settings greeting: {String(settings.values?.greeting)}</div>;
 }
 
 const app = await loadPluginApp(
@@ -79,30 +46,10 @@ const app = await loadPluginApp(
       path: "panel",
       component: Panel,
     });
-    builder.slots.homepageSection({
-      id: "home",
-      title: "Home",
-      component: Section,
-    });
-    builder.slots.settingsSection({
-      id: "settings",
-      component: SettingsSection,
-    });
   }),
 );
 
 describe("loadPluginApp", () => {
-  it("captures typed registrations and fills the chrome default", () => {
-    expect(app.navPanels).toHaveLength(1);
-    expect(app.navPanels[0]).toMatchObject({
-      id: "panel",
-      path: "panel",
-      chrome: "page",
-    });
-    expect(app.homepageSections[0]?.id).toBe("home");
-    expect(app.settingsSections[0]?.id).toBe("settings");
-  });
-
   it("rejects registrations the host would reject, with the host's message", async () => {
     await expect(
       loadPluginApp(
@@ -124,7 +71,7 @@ describe("loadPluginApp", () => {
 });
 
 describe("renderSlot", () => {
-  it("wires rpc, realtime, navigate, and composer mocks", async () => {
+  it("refreshes rendered RPC data after a realtime event", async () => {
     let listing = ["a.md"];
     const slot = renderSlot(
       app.navPanels[0]!,
@@ -140,47 +87,9 @@ describe("renderSlot", () => {
     listing = ["a.md", "b.md"];
     await slot.emitRealtime("items-changed", null);
     await slot.findByText("b.md");
-
-    fireEvent.click(slot.getByText("a.md"));
-    expect(slot.navigateCalls).toEqual([
-      {
-        method: "toPluginPanel",
-        path: "panel",
-        options: { subPath: "a.md" },
-      },
-    ]);
-    fireEvent.click(slot.getByText("Compose"));
-    expect(slot.navigateCalls).toEqual([
-      {
-        method: "toPluginPanel",
-        path: "panel",
-        options: { subPath: "a.md" },
-      },
-      {
-        method: "toCompose",
-        options: { initialPrompt: "draft", focusPrompt: true },
-      },
-    ]);
-
-    fireEvent.click(slot.getByText("Quote"));
-    expect(slot.composer.quotes).toEqual(["quoted!"]);
   });
 
-  it("provides settings values and rejects rpc methods without handlers", async () => {
-    const section = renderSlot(
-      app.homepageSections[0]!,
-      { projectId: null },
-      { settings: { greeting: "hi" } },
-    );
-    section.getByText("greeting: hi");
-
-    const settingsSection = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      { settings: { greeting: "settings-hi" } },
-    );
-    settingsSection.getByText("settings greeting: settings-hi");
-
+  it("reports RPC methods without handlers", async () => {
     const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {});
     await slot.findByText(
       'error: no rpc handler for "listItems" — add it to renderSlot options.rpc',

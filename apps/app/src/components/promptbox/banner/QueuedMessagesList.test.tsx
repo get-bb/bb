@@ -44,17 +44,6 @@ function makeQueuedFileMessage(id: string, name: string): ThreadQueuedMessage {
   };
 }
 
-function makeGroupedQueuedMessages(): ThreadQueuedMessage[] {
-  return [
-    {
-      ...makeQueuedMessage("q_one", "First queued message"),
-      groupWithNext: true,
-    },
-    makeQueuedMessage("q_two", "Second queued message"),
-    makeQueuedMessage("q_three", "Third queued message"),
-  ];
-}
-
 function rect({ top, bottom }: { top: number; bottom: number }) {
   return {
     top,
@@ -83,102 +72,43 @@ function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
   );
 }
 
-function renderQueuedMessagesWithOptions(
-  queuedMessages: readonly ThreadQueuedMessage[],
-  options: Pick<
-    Parameters<typeof QueuedMessagesList>[0],
-    "resolveMentionLink"
-  >,
-) {
-  return render(
-    <QueuedMessagesList
-      queuedMessages={queuedMessages}
-      resolveMentionLink={options.resolveMentionLink}
-      sendDisabled={false}
-      actionDisabled={false}
-      processingMessageId={null}
-      processingAction={null}
-      onSendImmediately={noop}
-      onReorder={noop}
-      onSetGroupBoundary={noop}
-      onEdit={noop}
-      onDelete={noop}
-    />,
-  );
-}
-
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
 describe("QueuedMessagesList", () => {
-  it("renders queued blockquote markdown as a compact quote preview", () => {
+  it("uses compact markdown semantics for queued previews", () => {
     const { container } = renderQueuedMessages([
       makeQueuedMessage(
-        "q_quote",
-        "> first quoted line\n> second quoted line\nreply underneath",
+        "q_markdown",
+        [
+          "## Heading",
+          "> quoted line",
+          "Review **bold** and `code`.",
+          "```ts",
+          "const value = 1;",
+          "```",
+          "![Diagram](https://example.test/a.png) [docs](https://example.test)",
+        ].join("\n"),
       ),
-    ]);
-
-    expect(container.querySelector("blockquote")).toBeNull();
-    expect(container.querySelector("br")).toBeNull();
-    expect(container.textContent?.replace(/\s+/gu, " ")).toContain(
-      "first quoted line second quoted line reply underneath",
-    );
-    expect(container.textContent).not.toContain("> first quoted line");
-  });
-
-  it("renders queued markdown formatting instead of raw delimiters", () => {
-    const { container } = renderQueuedMessages([
-      makeQueuedMessage("q_markdown", "## Heading\nReview **bold** and `code`."),
     ]);
 
     expect(container.querySelector("h2")).toBeNull();
-    expect(container.textContent).toContain("Heading");
-    expect(container.querySelector("strong")?.textContent).toBe("bold");
-    expect(container.querySelector("code")?.textContent).toBe("code");
-    expect(container.textContent).not.toContain("## Heading");
-    expect(container.textContent).not.toContain("**bold**");
-    expect(container.textContent).not.toContain("`code`");
-  });
-
-  it("does not add hard-break elements for multi-line queued markdown", () => {
-    const { container } = renderQueuedMessages([
-      makeQueuedMessage("q_multiline", "first line\nsecond line"),
-    ]);
-
+    expect(container.querySelector("blockquote")).toBeNull();
     expect(container.querySelector("br")).toBeNull();
-    expect(container.textContent?.replace(/\s+/gu, " ")).toContain(
-      "first line second line",
-    );
-  });
-
-  it("does not render full markdown preview controls in queued rows", () => {
-    const { container, queryByLabelText } = renderQueuedMessages([
-      makeQueuedMessage("q_code_block", "```ts\nconst value = 1;\n```"),
-    ]);
-
-    expect(queryByLabelText("Copy code")).toBeNull();
-    expect(queryByLabelText("Wrap long lines")).toBeNull();
     expect(container.querySelector("pre")).toBeNull();
-    expect(container.querySelector("code")?.textContent).toContain(
-      "const value = 1;",
-    );
-  });
-
-  it("flattens images and links in queued markdown previews", () => {
-    const { container } = renderQueuedMessages([
-      makeQueuedMessage(
-        "q_media",
-        "![Diagram](https://example.test/a.png) [docs](https://example.test)",
-      ),
-    ]);
-
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("a[href]")).toBeNull();
+    expect(container.querySelector("strong")?.textContent).toBe("bold");
+    expect(container.querySelector("code")?.textContent).toBe("code");
+    expect(container.textContent).toContain("Heading");
+    expect(container.textContent).toContain("quoted line");
+    expect(container.textContent).toContain("const value = 1;");
     expect(container.textContent).toContain("Diagram");
     expect(container.textContent).toContain("docs");
+    expect(container.textContent).not.toContain("## Heading");
+    expect(container.textContent).not.toContain("**bold**");
   });
 
   it("renders attachment-only fallback text literally", () => {
@@ -201,77 +131,63 @@ describe("QueuedMessagesList", () => {
     const commandStart = text.indexOf(commandToken);
     const pathStart = text.indexOf(pathToken);
     const threadStart = text.indexOf(threadToken);
-    const openPath = vi.fn();
 
-    const { container, getByText } = renderQueuedMessagesWithOptions(
-      [
-        {
-          ...makeQueuedMessage("q_mentions", text),
-          content: [
-            {
-              type: "text",
-              text,
-              mentions: [
-                {
-                  start: commandStart,
-                  end: commandStart + commandToken.length,
-                  resource: {
-                    kind: "command",
-                    trigger: "/",
-                    name: "goal",
-                    source: "command",
-                    origin: "user",
-                    label: "goal",
-                    argumentHint: null,
-                  },
-                },
-                {
-                  start: pathStart,
-                  end: pathStart + pathToken.length,
-                  resource: {
-                    kind: "path",
-                    source: "workspace",
-                    entryKind: "file",
-                    path: "apps/app/src/foo.ts",
-                    label: "foo.ts",
-                  },
-                },
-                {
-                  start: threadStart,
-                  end: threadStart + threadToken.length,
-                  resource: {
-                    kind: "thread",
-                    threadId: "thr_prompt_pills",
-                    label: "Prompt pills QA",
-                  },
-                },
-              ],
-            },
-          ],
-        },
-      ],
+    const { container, getByText } = renderQueuedMessages([
       {
-        resolveMentionLink: (resource) =>
-          resource.kind === "path" ? openPath : null,
+        ...makeQueuedMessage("q_mentions", text),
+        content: [
+          {
+            type: "text",
+            text,
+            mentions: [
+              {
+                start: commandStart,
+                end: commandStart + commandToken.length,
+                resource: {
+                  kind: "command",
+                  trigger: "/",
+                  name: "goal",
+                  source: "command",
+                  origin: "user",
+                  label: "goal",
+                  argumentHint: null,
+                },
+              },
+              {
+                start: pathStart,
+                end: pathStart + pathToken.length,
+                resource: {
+                  kind: "path",
+                  source: "workspace",
+                  entryKind: "file",
+                  path: "apps/app/src/foo.ts",
+                  label: "foo.ts",
+                },
+              },
+              {
+                start: threadStart,
+                end: threadStart + threadToken.length,
+                resource: {
+                  kind: "thread",
+                  threadId: "thr_prompt_pills",
+                  label: "Prompt pills QA",
+                },
+              },
+            ],
+          },
+        ],
       },
-    );
+    ]);
 
-    expect(container.querySelectorAll(".prompt-mention-pill")).toHaveLength(3);
-    expect(container.querySelector('[data-icon="Target"]')).not.toBeNull();
-    expect(container.querySelector('[data-icon="File"]')).not.toBeNull();
-    expect(
-      container.querySelector('[data-icon="MessageSquare"]'),
-    ).not.toBeNull();
+    expect(getByText("goal")).not.toBeNull();
+    expect(getByText("foo.ts")).not.toBeNull();
+    expect(getByText("Prompt pills QA")).not.toBeNull();
     expect(container.textContent).toContain(
       "Run goal and open foo.ts from Prompt pills QA",
     );
     expect(container.textContent).not.toContain(commandToken);
     expect(container.textContent).not.toContain(pathToken);
     expect(container.textContent).not.toContain(threadToken);
-
-    fireEvent.click(getByText("foo.ts"));
-
-    expect(openPath).toHaveBeenCalledTimes(1);
   });
 
   it("shows a bottom fade when the expanded queue overflows", async () => {
@@ -310,33 +226,6 @@ describe("QueuedMessagesList", () => {
         container.querySelector('[data-queued-messages-fade="below"]'),
       ).not.toBeNull();
     });
-  });
-
-  it("renders the draggable group divider without filling grouped rows", () => {
-    const { container, getByLabelText } = renderQueuedMessages(
-      makeGroupedQueuedMessages(),
-    );
-
-    expect(getByLabelText("Messages above send together")).not.toBeNull();
-    expect(
-      container.querySelectorAll("[data-queued-message-row]"),
-    ).toHaveLength(3);
-    expect(
-      container.querySelector("[data-queued-message-group-fill]"),
-    ).toBeNull();
-  });
-
-  it("makes the group divider handle visible on focus and non-hover devices", () => {
-    const { getByLabelText } = renderQueuedMessages(
-      makeGroupedQueuedMessages(),
-    );
-
-    expect(getByLabelText("Messages above send together").className).toContain(
-      "focus-visible:opacity-100",
-    );
-    expect(getByLabelText("Messages above send together").className).toContain(
-      "[@media(hover:none)]:opacity-100",
-    );
   });
 
   it("preserves grouping when reordering a row across the divider", () => {

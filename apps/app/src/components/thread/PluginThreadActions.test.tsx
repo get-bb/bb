@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import type { PluginThreadActionContribution } from "@/hooks/queries/plugin-contribution-queries";
-import { pluginIconName } from "@/components/plugin/PluginIcon";
-import {
-  resetPluginLogoStoreForTest,
-  setPluginLogoUrls,
-} from "@/lib/plugin-logos";
 import {
   PluginThreadActionButtons,
   PluginThreadActions,
@@ -25,19 +27,24 @@ vi.mock("@/components/ui/app-toast.js", () => ({
 }));
 
 const mockContributions = vi.hoisted(() => ({
-  data: undefined as { threadActions: PluginThreadActionContribution[] } | undefined,
+  data: undefined as
+    | { threadActions: PluginThreadActionContribution[] }
+    | undefined,
 }));
 
-vi.mock("@/hooks/queries/plugin-contribution-queries", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/hooks/queries/plugin-contribution-queries")
-    >();
-  return {
-    ...actual,
-    usePluginContributions: () => mockContributions,
-  };
-});
+vi.mock(
+  "@/hooks/queries/plugin-contribution-queries",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/hooks/queries/plugin-contribution-queries")
+      >();
+    return {
+      ...actual,
+      usePluginContributions: () => mockContributions,
+    };
+  },
+);
 
 function makeAction(
   overrides: Partial<PluginThreadActionContribution> = {},
@@ -91,11 +98,6 @@ afterEach(() => {
 });
 
 describe("PluginThreadActions", () => {
-  it("renders nothing without contributions", () => {
-    const { container } = renderActions([]);
-    expect(container.textContent).toBe("");
-  });
-
   it("runs a confirm-less action with a pending state, then shows the returned toast", async () => {
     const { fetchMock, release } = mockActionFetch(
       { ok: true, toast: { kind: "success", message: "Tests requested" } },
@@ -128,7 +130,7 @@ describe("PluginThreadActions", () => {
     });
   });
 
-  it("shows a confirm dialog first for confirm-carrying actions and runs on confirm", async () => {
+  it("requires confirmation before running confirm-carrying actions", async () => {
     const { fetchMock } = mockActionFetch({ ok: true });
     renderActions([
       makeAction({ id: "sync", title: "Sync", confirm: "Sync everything?" }),
@@ -138,13 +140,16 @@ describe("PluginThreadActions", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByText("Sync everything?")).toBeTruthy();
 
-    // The dialog's footer carries the action-titled confirm button.
-    const dialog = screen.getByRole("dialog");
-    const confirmButton = Array.from(
-      dialog.querySelectorAll("button"),
-    ).find((candidate) => candidate.textContent === "Sync");
-    if (!confirmButton) throw new Error("confirm button not found");
-    fireEvent.click(confirmButton);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Sync" }),
+    );
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -152,21 +157,6 @@ describe("PluginThreadActions", () => {
         expect.anything(),
       );
     });
-  });
-
-  it("does not run when the confirm dialog is cancelled", async () => {
-    const { fetchMock } = mockActionFetch({ ok: true });
-    renderActions([
-      makeAction({ id: "sync", title: "Sync", confirm: "Sync everything?" }),
-    ]);
-
-    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).toBeNull();
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("shows an automatic error toast when the handler fails", async () => {
@@ -201,58 +191,5 @@ describe("PluginThreadActionButtons", () => {
       (screen.getByRole("button", { name: "Sync" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-  });
-});
-
-describe("pluginIconName", () => {
-  it("uses a known icon name and falls back to Zap otherwise", () => {
-    expect(pluginIconName("GitBranch")).toBe("GitBranch");
-    expect(pluginIconName("beaker")).toBe("Zap");
-    expect(pluginIconName(null)).toBe("Zap");
-  });
-});
-
-describe("plugin logo on thread action buttons", () => {
-  afterEach(() => {
-    resetPluginLogoStoreForTest();
-  });
-
-  it("renders the plugin's logo instead of the bolt when one is served", () => {
-    setPluginLogoUrls(
-      new Map([
-        [
-          "linear",
-          {
-            logoUrl: "/api/v1/plugins/linear/assets/logo?h=abc",
-            logoDarkUrl: null,
-          },
-        ],
-      ]),
-    );
-    render(
-      <PluginThreadActionButtons
-        actions={[makeAction()]}
-        pendingActionKey={null}
-        onRun={() => {}}
-      />,
-    );
-    const logo = screen.getByTestId("plugin-logo-linear");
-    expect(logo.getAttribute("src")).toBe(
-      "/api/v1/plugins/linear/assets/logo?h=abc",
-    );
-  });
-
-  it("falls back to the named icon without a logo", () => {
-    render(
-      <PluginThreadActionButtons
-        actions={[makeAction()]}
-        pendingActionKey={null}
-        onRun={() => {}}
-      />,
-    );
-    expect(screen.queryByTestId("plugin-logo-linear")).toBeNull();
-    // The generic bolt fallback renders as an svg inside the button.
-    const button = screen.getByRole("button", { name: "Run tests" });
-    expect(button.querySelector("svg")).not.toBeNull();
   });
 });

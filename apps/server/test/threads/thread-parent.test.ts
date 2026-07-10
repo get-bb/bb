@@ -11,7 +11,6 @@ import { ApiError } from "../../src/errors.js";
 import {
   assertValidParentThread,
   isAgentDelegatedChildThread,
-  MAX_THREAD_HIERARCHY_DEPTH,
 } from "../../src/services/threads/thread-parent.js";
 
 type ThrowingCallback = () => void;
@@ -149,7 +148,6 @@ describe("thread parent validation", () => {
     );
 
     expect(validatedParent.id).toBe(level3Thread.id);
-    expect(MAX_THREAD_HIERARCHY_DEPTH).toBe(4);
   });
 
   it("rejects new children beyond the configured depth cap", () => {

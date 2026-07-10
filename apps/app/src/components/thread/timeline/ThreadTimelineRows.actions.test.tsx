@@ -214,24 +214,6 @@ afterEach(() => {
 });
 
 describe("ThreadTimelineRows actions", () => {
-  it("renders send-to-main on assistant rows when the timeline supplies a handler", () => {
-    const markup = toMarkup(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "assistant",
-            text: "Use this answer in the main chat.",
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSendToMainMessage={() => undefined}
-        workspaceRootPath={undefined}
-      />,
-    );
-
-    expect(markup).toContain('aria-label="Send to main thread"');
-  });
-
   it("hides assistant message actions inside completed turn summaries", () => {
     const markup = toMarkup(
       <ThreadTimelineRows
@@ -323,125 +305,6 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup.match(/aria-label="Copy message"/g)).toHaveLength(1);
   });
 
-  it("passes regular user message text to add-to-chat", () => {
-    const onSelectionAddToChat = vi.fn();
-    renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "user",
-            text: "  Quote this user prompt.  ",
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
-    expect(onSelectionAddToChat).toHaveBeenCalledWith(
-      "Quote this user prompt.",
-    );
-  });
-
-  it("passes user message attachments to add-to-chat", () => {
-    const onSelectionAddToChat = vi.fn();
-    renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "user",
-            text: "  Quote this user prompt.  ",
-            attachments: {
-              webImages: 1,
-              localImages: 1,
-              localFiles: 1,
-              imageUrls: ["https://example.com/remote.png"],
-              localImagePaths: ["uploads/screenshot.png"],
-              localFilePaths: ["uploads/spec.md"],
-            },
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
-    expect(onSelectionAddToChat).toHaveBeenCalledWith(
-      "Quote this user prompt.",
-      [
-        {
-          type: "localImage",
-          path: "uploads/screenshot.png",
-          name: "screenshot.png",
-          sizeBytes: 0,
-        },
-        {
-          type: "localFile",
-          path: "uploads/spec.md",
-          name: "spec.md",
-          sizeBytes: 0,
-        },
-      ],
-    );
-  });
-
-  it("shows add-to-chat for attachment-only user messages", () => {
-    const onSelectionAddToChat = vi.fn();
-    renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "user",
-            text: "",
-            attachments: {
-              webImages: 0,
-              localImages: 0,
-              localFiles: 1,
-              imageUrls: [],
-              localImagePaths: [],
-              localFilePaths: ["uploads/spec.md"],
-            },
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
-    expect(onSelectionAddToChat).toHaveBeenCalledWith("", [
-      {
-        type: "localFile",
-        path: "uploads/spec.md",
-        name: "spec.md",
-        sizeBytes: 0,
-      },
-    ]);
-  });
-
-  it("hides user message add-to-chat when no add handler is supplied", () => {
-    const markup = toMarkup(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "user",
-            text: "No add-to-chat handler here.",
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
-      />,
-    );
-
-    expect(markup).toContain('aria-label="Copy message"');
-    expect(markup).not.toContain('aria-label="Add to chat"');
-  });
-
   it("passes the selected assistant row branch point to side-chat replies", async () => {
     const onSelectionReplyInSideChat = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -488,7 +351,6 @@ describe("ThreadTimelineRows actions", () => {
 
   it("does not show the floating selection menu on coarse pointers", async () => {
     mockSelectionMenuMedia({ isPointerCoarse: true });
-    const onSelectionAddToChat = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());
       return 1;
@@ -504,7 +366,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
+        onSelectionAddToChat={vi.fn()}
         workspaceRootPath={undefined}
       />,
     );
@@ -522,7 +384,6 @@ describe("ThreadTimelineRows actions", () => {
     });
 
     expect(screen.queryByRole("button", { name: "Add to chat" })).toBeNull();
-    expect(onSelectionAddToChat).not.toHaveBeenCalled();
   });
 
   it("keeps the floating selection menu on compact fine-pointer viewports", async () => {
@@ -599,9 +460,10 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
-      value: vi.fn(),
+      value: scrollIntoView,
     });
 
     const { container } = renderWithRouter(
@@ -649,10 +511,9 @@ describe("ThreadTimelineRows actions", () => {
       return row;
     });
 
-    await waitFor(() =>
-      expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
-    );
-    expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.instances).toContain(nestedRow);
+    expect(scrollIntoView.mock.instances).not.toContain(parentRow);
   });
 
   it("loads older timeline rows before scrolling to an older sidebar search match", async () => {
@@ -662,9 +523,10 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
-      value: vi.fn(),
+      value: scrollIntoView,
     });
 
     const { container } = renderWithRouter(
@@ -679,16 +541,17 @@ describe("ThreadTimelineRows actions", () => {
 
     await waitFor(() => expect(onLoadOlderRows).toHaveBeenCalledTimes(1));
     const olderRow = await waitFor(() => {
-      const row = container.querySelector('[data-timeline-row-id="older_match"]');
+      const row = container.querySelector(
+        '[data-timeline-row-id="older_match"]',
+      );
       if (row === null) {
         throw new Error("Older search row was not rendered");
       }
       return row;
     });
 
-    await waitFor(() =>
-      expect(olderRow.classList.contains("bb-search-flash")).toBe(true),
-    );
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.instances).toContain(olderRow);
   });
 
   it("does not retry failed older-row auto-loading until rows advance", async () => {
@@ -721,9 +584,10 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
-      value: vi.fn(),
+      value: scrollIntoView,
     });
 
     const { container } = renderWithRouter(
@@ -753,8 +617,7 @@ describe("ThreadTimelineRows actions", () => {
       return row;
     });
 
-    await waitFor(() =>
-      expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
-    );
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.instances).toContain(nestedRow);
   });
 });

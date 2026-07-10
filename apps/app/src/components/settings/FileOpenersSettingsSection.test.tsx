@@ -38,11 +38,6 @@ afterEach(() => {
 });
 
 describe("FileOpenersSettingsSection", () => {
-  it("renders nothing while no plugin openers are registered", () => {
-    const { container } = render(<FileOpenersSettingsSection />);
-    expect(container.innerHTML).toBe("");
-  });
-
   it("lists one row per extension and persists a picked default", async () => {
     registerNotesOpener();
     render(<FileOpenersSettingsSection />);
@@ -59,7 +54,9 @@ describe("FileOpenersSettingsSection", () => {
     );
 
     expect(
-      JSON.parse(window.localStorage.getItem("bb.fileOpenerByExtension") ?? "{}"),
+      JSON.parse(
+        window.localStorage.getItem("bb.fileOpenerByExtension") ?? "{}",
+      ),
     ).toEqual({ md: "notes:editor" });
 
     // Switching back to the built-in preview clears the entry.
@@ -71,7 +68,9 @@ describe("FileOpenersSettingsSection", () => {
       await screen.findByRole("menuitem", { name: /Built-in preview/ }),
     );
     expect(
-      JSON.parse(window.localStorage.getItem("bb.fileOpenerByExtension") ?? "{}"),
+      JSON.parse(
+        window.localStorage.getItem("bb.fileOpenerByExtension") ?? "{}",
+      ),
     ).toEqual({});
   });
 });

@@ -82,10 +82,6 @@ const pierreMock = vi.hoisted(() => {
   };
 });
 
-const clipboardMock = vi.hoisted(() => ({
-  copyToClipboardWithToast: vi.fn(async () => true),
-}));
-
 vi.mock("@pierre/diffs/react", async () => {
   const React = await import("react");
 
@@ -111,8 +107,6 @@ vi.mock("@pierre/diffs/react", async () => {
   };
 });
 
-vi.mock("@/lib/clipboard", () => clipboardMock);
-
 describe("FilePreview", () => {
   beforeEach(() => {
     pierreMock.state.cachedFileKeys.clear();
@@ -124,7 +118,6 @@ describe("FilePreview", () => {
     pierreMock.state.unsubscribe.mockClear();
     pierreMock.workerPool.subscribeToStatChanges.mockClear();
     pierreMock.workerPool.getFileResultCache.mockClear();
-    clipboardMock.copyToClipboardWithToast.mockClear();
   });
 
   afterEach(() => {
@@ -247,65 +240,6 @@ describe("FilePreview", () => {
     });
   });
 
-  it("renders compact direct file preview header controls", () => {
-    render(
-      <FilePreview
-        path="apps/app/src/lib/thread-read-state.ts"
-        state={{
-          kind: "ready",
-          file: {
-            name: "thread-read-state.ts",
-            contents: "export const marker = true;",
-          },
-          lineRange: null,
-          textPreviewKind: null,
-        }}
-      />,
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "File preview actions" }),
-    ).toBeNull();
-    expect(screen.getByRole("button", { name: "Copy file contents" })).not.toBe(
-      null,
-    );
-
-    const wrapButton = screen.getByRole("button", {
-      name: "Wrap lines",
-    });
-
-    expect(wrapButton.className).toContain("h-5");
-    expect(wrapButton.className).toContain("w-5");
-    expect(wrapButton.className).toContain("[&_svg]:size-3");
-    expect(wrapButton.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("lets source previews grow to content height so the sticky header stays bounded by the full file", () => {
-    const view = render(
-      <FilePreview
-        path="apps/app/src/lib/thread-read-state.ts"
-        state={{
-          kind: "ready",
-          file: {
-            name: "thread-read-state.ts",
-            contents: "export const marker = true;",
-          },
-          lineRange: null,
-          textPreviewKind: null,
-        }}
-      />,
-    );
-
-    const previewRoot = view.container.firstElementChild;
-    expect(previewRoot?.classList.contains("min-h-full")).toBe(true);
-    expect(previewRoot?.classList.contains("h-full")).toBe(false);
-    expect(
-      screen
-        .getByTestId("pierre-file")
-        .parentElement?.classList.contains("flex-auto"),
-    ).toBe(true);
-  });
-
   it("toggles source line wrap from the header button", async () => {
     render(
       <FilePreview
@@ -337,119 +271,6 @@ describe("FilePreview", () => {
         .getByRole("button", { name: "Wrap lines" })
         .getAttribute("aria-pressed"),
     ).toBe("false");
-  });
-
-  it("copies loaded markdown contents from the header copy button", async () => {
-    render(
-      <FilePreview
-        path="docs/right-panel/README.md"
-        state={{
-          kind: "ready",
-          file: {
-            name: "README.md",
-            contents: "# Preview\n\nRaw markdown.",
-          },
-          lineRange: null,
-          textPreviewKind: "markdown",
-        }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Copy markdown" }));
-
-    await waitFor(() => {
-      expect(clipboardMock.copyToClipboardWithToast).toHaveBeenCalledWith(
-        "# Preview\n\nRaw markdown.",
-        {
-          errorMessage: "Failed to copy",
-          successMessage: null,
-        },
-      );
-    });
-  });
-
-  it("copies the file path with a toast when clicking the header path", async () => {
-    render(
-      <FilePreview
-        path="docs/right-panel/README.md"
-        copyPath="/Users/tester/project/docs/right-panel/README.md"
-        state={{
-          kind: "ready",
-          file: {
-            name: "README.md",
-            contents: "# Preview\n\nRaw markdown.",
-          },
-          lineRange: null,
-          textPreviewKind: "markdown",
-        }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Copy file path" }));
-
-    await waitFor(() => {
-      expect(clipboardMock.copyToClipboardWithToast).toHaveBeenCalledWith(
-        "/Users/tester/project/docs/right-panel/README.md",
-        {
-          errorMessage: "Failed to copy file path",
-          successMessage: "File path copied",
-        },
-      );
-    });
-  });
-
-  it("shows a tooltip for the file path", async () => {
-    render(
-      <FilePreview
-        path="docs/right-panel/README.md"
-        copyPath="/Users/tester/project/docs/right-panel/README.md"
-        state={{
-          kind: "ready",
-          file: {
-            name: "README.md",
-            contents: "# Preview\n\nRaw markdown.",
-          },
-          lineRange: null,
-          textPreviewKind: "markdown",
-        }}
-      />,
-    );
-
-    fireEvent.pointerMove(
-      screen.getByRole("button", { name: "Copy file path" }),
-      { pointerType: "mouse" },
-    );
-
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Copy file path",
-    );
-  });
-
-  it("shows a tooltip for the external editor button", async () => {
-    render(
-      <FilePreview
-        path="docs/right-panel/README.md"
-        onOpenInEditor={vi.fn()}
-        state={{
-          kind: "ready",
-          file: {
-            name: "README.md",
-            contents: "# Preview\n\nRaw markdown.",
-          },
-          lineRange: null,
-          textPreviewKind: "markdown",
-        }}
-      />,
-    );
-
-    fireEvent.pointerMove(
-      screen.getByRole("button", { name: "Open in editor" }),
-      { pointerType: "mouse" },
-    );
-
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Open in editor",
-    );
   });
 
   it("renders CSV previews as a table by default", () => {

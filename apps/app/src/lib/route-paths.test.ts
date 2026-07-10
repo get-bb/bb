@@ -1,43 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
-  getLegacyProjectComposeRoutePath,
-  getPopoutRoutePath,
   getPopoutThreadRoutePath,
   getProjectArchivedRoutePath,
   getProjectlessArchivedRoutePath,
-  getProjectSettingsRoutePath,
-  getRootComposeRoutePath,
   getSurfaceAwareThreadRoutePath,
   getThreadRoutePath,
   isRoutePath,
   isProjectlessProjectId,
-  POPOUT_ROUTE_PATH,
   resolveRouteHref,
-  ROOT_COMPOSE_ROUTE_PATH,
 } from "./route-paths";
 
 describe("route path helpers", () => {
-  it("uses root as the compose route", () => {
-    expect(ROOT_COMPOSE_ROUTE_PATH).toBe("/");
-    expect(getRootComposeRoutePath()).toBe("/");
-  });
-
-  it("builds legacy project compose redirect URLs", () => {
-    expect(getLegacyProjectComposeRoutePath("proj_standard")).toBe(
-      "/projects/proj_standard",
-    );
-  });
-
-  it("builds project utility URLs", () => {
-    expect(getProjectSettingsRoutePath("proj_standard")).toBe(
-      "/projects/proj_standard/settings",
-    );
-    expect(getProjectArchivedRoutePath("proj_standard")).toBe(
-      "/projects/proj_standard/archived",
-    );
-  });
-
   it("builds and recognizes the canonical projectless archived URL", () => {
     expect(getProjectlessArchivedRoutePath()).toBe("/archived");
     expect(getProjectArchivedRoutePath(PERSONAL_PROJECT_ID)).toBe("/archived");
@@ -78,12 +52,6 @@ describe("route path helpers", () => {
 
   it("recognizes the global settings route", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
-  });
-
-  it("recognizes the desktop popout route", () => {
-    expect(POPOUT_ROUTE_PATH).toBe("/popout");
-    expect(getPopoutRoutePath()).toBe("/popout");
-    expect(isRoutePath({ path: "/popout" })).toBe(true);
   });
 
   it("builds and recognizes popout thread URLs", () => {

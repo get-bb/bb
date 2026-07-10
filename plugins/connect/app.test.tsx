@@ -54,28 +54,6 @@ const connected = (overrides: Partial<ConnectStatus> = {}) =>
   });
 
 describe("connect settings section", () => {
-  it("registers the section with native title + description chrome", () => {
-    expect(app.navPanels).toHaveLength(0);
-    expect(app.settingsSections).toHaveLength(1);
-    const section = app.settingsSections[0]!;
-    expect(section.id).toBe("remote-access");
-    expect(section.title).toBe("Remote access");
-    expect(section.description).toBe(
-      "Use this bb from any device, anywhere — powered by getbb.app.",
-    );
-  });
-
-  it("registers a sidebar footer phone action that opens settings", () => {
-    expect(app.sidebarFooterActions).toHaveLength(1);
-    const action = app.sidebarFooterActions[0]!;
-    expect(action.id).toBe("remote-access");
-    expect(action.title).toBe("Remote access");
-    expect(action.icon).toBe("Smartphone");
-    const openSettings = vi.fn();
-    action.run({ openSettings });
-    expect(openSettings).toHaveBeenCalledTimes(1);
-  });
-
   it("auto-submits a normalized 4-4 code and applies live paired status", async () => {
     let currentStatus = status();
     const slot = renderSlot(

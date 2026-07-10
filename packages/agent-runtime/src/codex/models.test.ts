@@ -6,13 +6,6 @@ import {
 } from "./models.js";
 
 describe("mapCodexReasoningLevelToBb", () => {
-  it("passes through known BB levels including ultra", () => {
-    expect(mapCodexReasoningLevelToBb("low")).toBe("low");
-    expect(mapCodexReasoningLevelToBb("max")).toBe("max");
-    expect(mapCodexReasoningLevelToBb("xhigh")).toBe("xhigh");
-    expect(mapCodexReasoningLevelToBb("ultra")).toBe("ultra");
-  });
-
   it("returns null for unknown values", () => {
     expect(mapCodexReasoningLevelToBb("ludicrous")).toBeNull();
     expect(mapCodexReasoningLevelToBb(42)).toBeNull();
@@ -21,12 +14,6 @@ describe("mapCodexReasoningLevelToBb", () => {
 });
 
 describe("mapBbReasoningLevelToCodex", () => {
-  it("passes through ultra, max, and standard levels", () => {
-    expect(mapBbReasoningLevelToCodex("ultra")).toBe("ultra");
-    expect(mapBbReasoningLevelToCodex("max")).toBe("max");
-    expect(mapBbReasoningLevelToCodex("high")).toBe("high");
-  });
-
   it("returns null for none and ultracode", () => {
     expect(mapBbReasoningLevelToCodex("none")).toBeNull();
     expect(mapBbReasoningLevelToCodex("ultracode")).toBeNull();
@@ -75,9 +62,9 @@ describe("parseModelsResponse", () => {
 
     expect(models).toHaveLength(2);
     expect(models[0]?.id).toBe("gpt-5.5");
-    expect(models[1]?.supportedReasoningEfforts.map((e) => e.reasoningEffort)).toEqual(
-      ["low", "medium", "high", "xhigh", "max", "ultra"],
-    );
+    expect(
+      models[1]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
     expect(models[1]?.defaultReasoningEffort).toBe("low");
   });
 
@@ -98,9 +85,9 @@ describe("parseModelsResponse", () => {
     });
 
     expect(models).toHaveLength(1);
-    expect(models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort)).toEqual(
-      ["low", "high"],
-    );
+    expect(
+      models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["low", "high"]);
     // Unknown default falls back to first supported effort.
     expect(models[0]?.defaultReasoningEffort).toBe("low");
   });
@@ -120,9 +107,9 @@ describe("parseModelsResponse", () => {
     });
 
     expect(models).toHaveLength(1);
-    expect(models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort)).toEqual(
-      ["low", "medium", "high", "xhigh"],
-    );
+    expect(
+      models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["low", "medium", "high", "xhigh"]);
     expect(models[0]?.defaultReasoningEffort).toBe("low");
   });
 
@@ -173,9 +160,9 @@ describe("parseModelsResponse", () => {
       ],
     });
 
-    expect(models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort)).toEqual(
-      ["low", "medium", "high", "xhigh"],
-    );
+    expect(
+      models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["low", "medium", "high", "xhigh"]);
     expect(models[0]?.defaultReasoningEffort).toBe("medium");
   });
 

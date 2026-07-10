@@ -6,18 +6,12 @@ import {
 } from "./absolute-file-path";
 
 describe("getAbsoluteDirname", () => {
-  it("returns the parent directory of a nested file path", () => {
-    expect(
-      getAbsoluteDirname({ path: "/storage/thr_1/current/summary.md" }),
-    ).toBe("/storage/thr_1/current");
-  });
-
-  it("returns the filesystem root for a top-level file", () => {
-    expect(getAbsoluteDirname({ path: "/README.md" })).toBe("/");
-  });
-
-  it("ignores a trailing slash on the input", () => {
-    expect(getAbsoluteDirname({ path: "/storage/thr_1/" })).toBe("/storage");
+  it.each([
+    ["/storage/thr_1/current/summary.md", "/storage/thr_1/current"],
+    ["/README.md", "/"],
+    ["/storage/thr_1/", "/storage"],
+  ])("resolves the parent of %s", (path, expected) => {
+    expect(getAbsoluteDirname({ path })).toBe(expected);
   });
 });
 

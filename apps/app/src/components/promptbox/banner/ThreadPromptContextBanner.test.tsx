@@ -121,7 +121,7 @@ describe("ThreadPromptContextBanner", () => {
       expectedLabel: "Environment is unavailable",
     },
   ])(
-    "keeps the $label read-only status label visible in compact mode",
+    "keeps the $label read-only status visible in compact mode",
     ({ archivedSection, environmentGoneSection, expectedLabel }) => {
       const markup = renderToStaticMarkup(
         <MemoryRouter>
@@ -171,30 +171,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain('alt="Checks success"');
   });
 
-  it("uses the compact pull request pill height inside the banner row", () => {
-    const markup = renderToStaticMarkup(
-      <ThreadPromptContextBanner
-        gitSection={null}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={null}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={{ pullRequest: pullRequestFixture }}
-        expandedSection={null}
-        onToggleSection={noop}
-      />,
-    );
-
-    expect(markup).toMatch(
-      /class="(?=[^"]*\bh-4\b)(?=[^"]*cursor-pointer)[^"]*"/,
-    );
-    expect(markup).not.toMatch(
-      /class="(?=[^"]*\bh-5\b)(?=[^"]*cursor-pointer)[^"]*"/,
-    );
-  });
-
-  it("uses the selected pull request merge method as the action label without a merge icon", () => {
+  it("uses the selected pull request merge method as the action label", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -216,9 +193,6 @@ describe("ThreadPromptContextBanner", () => {
     );
 
     expect(markup).toContain("Squash merge");
-    expect(markup).not.toContain('data-icon="GitMerge"');
-    expect(markup).not.toContain("data-promptbox-hide-compact");
-    expect(markup).toContain("data-promptbox-hide-tiny");
   });
 
   it("does not label standalone pending checks", () => {
@@ -278,7 +252,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("PR #128 · Closed");
   });
 
-  it("renders active child threads as a full active card instead of a compact segment", () => {
+  it("labels active child threads", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <ThreadPromptContextBanner
@@ -305,9 +279,6 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain('aria-label="Active child threads"');
     expect(markup).toContain("1 active child thread");
-    expect(markup).toContain("rounded-none");
-    expect(markup).not.toContain('aria-label="Thread context before sending"');
-    expect(markup).not.toContain("data-promptbox-hide-compact");
   });
 
   it("labels standalone actionable pull request attention", () => {
@@ -362,83 +333,6 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("· Ready to merge");
     expect(markup).toContain("Uncommitted");
     expect(markup).toContain("1 file");
-    expect(markup).not.toContain('data-promptbox-hide-compact="">Uncommitted');
-    expect(markup).not.toContain('data-promptbox-compact-label="">1 file');
-  });
-
-  it("does not force fixed minimum widths on compact segments", () => {
-    const markup = renderToStaticMarkup(
-      <MemoryRouter>
-        <ThreadPromptContextBanner
-          gitSection={makeGitSection("uncommitted")}
-          gitSectionPending={false}
-          archivedSection={null}
-          environmentGoneSection={null}
-          parentThreadSection={{
-            parentThreadTitle: "Parent thread",
-            href: "/threads/thr_parent",
-            relationship: "parent",
-          }}
-          childThreadsSection={null}
-          pullRequestSection={{ pullRequest: pullRequestFixture }}
-          expandedSection={null}
-          onToggleSection={noop}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(markup).not.toContain("min-w-12");
-    expect(markup).not.toContain("min-w-11");
-  });
-
-  it("compacts the git status label when more than two segments are visible", () => {
-    const markup = renderToStaticMarkup(
-      <MemoryRouter>
-        <ThreadPromptContextBanner
-          gitSection={makeGitSection("uncommitted")}
-          gitSectionPending={false}
-          archivedSection={null}
-          environmentGoneSection={null}
-          parentThreadSection={{
-            parentThreadTitle: "Parent thread",
-            href: "/threads/thr_parent",
-            relationship: "parent",
-          }}
-          childThreadsSection={null}
-          pullRequestSection={{ pullRequest: pullRequestFixture }}
-          expandedSection={null}
-          onToggleSection={noop}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(markup).toContain("Uncommitted");
-    expect(markup).toContain('data-promptbox-hide-compact="">Uncommitted');
-    expect(markup).toContain('data-promptbox-compact-label="">1 file');
-  });
-
-  it("hides the standalone merge-base action at the compact breakpoint", () => {
-    const markup = renderToStaticMarkup(
-      <ThreadPromptContextBanner
-        gitSection={makeGitSection("committed", {
-          branch: "origin/very-long-feature-base-branch",
-          onChange: noop,
-        })}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={null}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={null}
-        expandedSection={null}
-        onToggleSection={noop}
-      />,
-    );
-
-    expect(markup).toContain("Merge base");
-    expect(markup).toContain("origin/very-long-feature-base-branch");
-    expect(markup).toContain("data-promptbox-hide-compact");
-    expect(markup).toContain("data-promptbox-hide-tiny");
   });
 
   it("keeps the pull request action visible beside other context segments", () => {

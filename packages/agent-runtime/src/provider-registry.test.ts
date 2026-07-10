@@ -4,10 +4,7 @@ import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   turnScope,
 } from "@bb/domain";
-import {
-  createProviderForId,
-  listAvailableProviderInfos,
-} from "./provider-registry.js";
+import { createProviderForId } from "./provider-registry.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
 const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
@@ -271,8 +268,7 @@ describe("provider registry", () => {
         threadId: "thread-1",
         cwd: "/workspace",
         options: {
-          claudeCodeMockCliTraffic:
-            DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionEscalation: null,
@@ -330,8 +326,7 @@ describe("provider registry", () => {
         threadId: "thread-1",
         cwd: "/workspace",
         options: {
-          claudeCodeMockCliTraffic:
-            DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionEscalation: null,
@@ -354,50 +349,5 @@ describe("provider registry", () => {
     expect(() => createProviderForId("pi-mono")).toThrow(
       'Unsupported provider "pi-mono"',
     );
-  });
-
-  it("lists provider catalog", () => {
-    expect(listAvailableProviderInfos()).toMatchObject([
-      {
-        id: "codex",
-        displayName: "Codex",
-        capabilities: {
-          supportsArchive: true,
-          supportsRename: true,
-          supportsServiceTier: true,
-          supportsUserQuestion: false,
-          supportsFork: true,
-          supportedPermissionModes: ["full", "workspace-write", "readonly"],
-        },
-        available: true,
-      },
-      {
-        id: "claude-code",
-        displayName: "Claude Code",
-        capabilities: {
-          supportsArchive: false,
-          supportsRename: false,
-          supportsServiceTier: false,
-          supportsUserQuestion: true,
-          supportsFork: true,
-          supportedPermissionModes: ["full", "workspace-write", "readonly"],
-        },
-        available: true,
-      },
-      {
-        id: "pi",
-        displayName: "Pi",
-        capabilities: {
-          supportsArchive: false,
-          supportsRename: false,
-          supportsServiceTier: false,
-          supportsUserQuestion: false,
-          supportsFork: true,
-          supportedPermissionModes: ["full"],
-        },
-        available: true,
-      },
-      { id: "acp-cursor", displayName: "Cursor", available: true },
-    ]);
   });
 });

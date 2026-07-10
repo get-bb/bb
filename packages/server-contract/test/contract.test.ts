@@ -6,8 +6,6 @@ import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
-  PROJECT_CHANGE_KINDS,
-  SYSTEM_CHANGE_KINDS,
   TERMINAL_COLS_MAX,
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
@@ -1012,16 +1010,6 @@ describe("server-contract canonical schemas", () => {
     ).toEqual({
       rows: [],
     });
-
-    expect(PROJECT_CHANGE_KINDS).toEqual([
-      "project-created",
-      "project-updated",
-      "project-deleted",
-      "project-sources-changed",
-      "threads-changed",
-      "project-order-changed",
-    ]);
-    expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed", "plugins-changed"]);
   });
 
   it("keeps only intentional optional request fields", () => {

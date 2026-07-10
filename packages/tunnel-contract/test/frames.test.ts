@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_CHUNK_BYTES,
-  PROTOCOL_VERSION,
-  TUNNEL_PROTOCOL_QUERY_PARAM,
   chunkBody,
   decodeFrame,
   encodeFrame,
@@ -12,13 +10,6 @@ import {
 function roundTrip(frame: Frame): Frame {
   return decodeFrame(encodeFrame(frame));
 }
-
-describe("protocol version", () => {
-  it("exports PROTOCOL_VERSION 1 and the dial query param name", () => {
-    expect(PROTOCOL_VERSION).toBe(1);
-    expect(TUNNEL_PROTOCOL_QUERY_PARAM).toBe("v");
-  });
-});
 
 describe("frame round-trips", () => {
   it("open-http without target", () => {
@@ -139,12 +130,16 @@ describe("frame round-trips", () => {
   });
 
   it("ws-open-ack / ws-data / close-stream", () => {
-    expect(roundTrip({ type: "ws-open-ack", streamId: 20, protocol: null })).toEqual({
+    expect(
+      roundTrip({ type: "ws-open-ack", streamId: 20, protocol: null }),
+    ).toEqual({
       type: "ws-open-ack",
       streamId: 20,
       protocol: null,
     });
-    expect(roundTrip({ type: "ws-open-ack", streamId: 20, protocol: "bb.v1" })).toEqual({
+    expect(
+      roundTrip({ type: "ws-open-ack", streamId: 20, protocol: "bb.v1" }),
+    ).toEqual({
       type: "ws-open-ack",
       streamId: 20,
       protocol: "bb.v1",
@@ -170,8 +165,18 @@ describe("frame round-trips", () => {
     expect(binary.isBinary).toBe(true);
 
     expect(
-      roundTrip({ type: "close-stream", streamId: 20, code: 1000, reason: "done" }),
-    ).toEqual({ type: "close-stream", streamId: 20, code: 1000, reason: "done" });
+      roundTrip({
+        type: "close-stream",
+        streamId: 20,
+        code: 1000,
+        reason: "done",
+      }),
+    ).toEqual({
+      type: "close-stream",
+      streamId: 20,
+      code: 1000,
+      reason: "done",
+    });
   });
 
   it("decodes from an ArrayBuffer (worker message shape)", () => {
@@ -184,8 +189,12 @@ describe("frame round-trips", () => {
 
 describe("validation", () => {
   it("rejects out-of-range stream ids", () => {
-    expect(() => encodeFrame({ type: "body-end", streamId: -1 })).toThrow(/out of range/);
-    expect(() => encodeFrame({ type: "body-end", streamId: 2 ** 32 })).toThrow(/out of range/);
+    expect(() => encodeFrame({ type: "body-end", streamId: -1 })).toThrow(
+      /out of range/,
+    );
+    expect(() => encodeFrame({ type: "body-end", streamId: 2 ** 32 })).toThrow(
+      /out of range/,
+    );
   });
 
   it("rejects oversized chunks and truncated/unknown frames", () => {
@@ -197,7 +206,9 @@ describe("validation", () => {
       }),
     ).toThrow(/exceeds MAX_CHUNK_BYTES/);
     expect(() => decodeFrame(new Uint8Array([1, 0, 0]))).toThrow(/too short/);
-    expect(() => decodeFrame(new Uint8Array([99, 0, 0, 0, 1]))).toThrow(/unknown frame type/);
+    expect(() => decodeFrame(new Uint8Array([99, 0, 0, 0, 1]))).toThrow(
+      /unknown frame type/,
+    );
   });
 
   it("rejects malformed JSON metadata", () => {

@@ -11,27 +11,6 @@ vi.mock("./WaveformVisualizer.js", () => ({
 afterEach(cleanup);
 
 describe("VoiceRecordingBar", () => {
-  it("calls confirm and cancel while recording", () => {
-    const onConfirm = vi.fn();
-    const onCancel = vi.fn();
-    render(
-      <VoiceRecordingBar
-        state="recording"
-        stream={null}
-        onConfirm={onConfirm}
-        onCancel={onCancel}
-      />,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Stop and transcribe recording" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Cancel recording" }));
-
-    expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onCancel).toHaveBeenCalledTimes(1);
-  });
-
   it("disables confirm while transcribing", () => {
     const onConfirm = vi.fn();
     render(

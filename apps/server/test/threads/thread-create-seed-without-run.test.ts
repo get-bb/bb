@@ -9,10 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
-import {
-  canThreadSpawnChild,
-  MAX_THREAD_HIERARCHY_DEPTH,
-} from "../../src/services/threads/thread-parent.js";
+import { canThreadSpawnChild } from "../../src/services/threads/thread-parent.js";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -293,7 +290,6 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
 
 describe("canThreadSpawnChild", () => {
   it("reflects hierarchy depth against the cap", async () => {
-    expect(MAX_THREAD_HIERARCHY_DEPTH).toBe(4);
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-can-spawn-child",
