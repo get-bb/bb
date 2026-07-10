@@ -12,18 +12,6 @@ export const THREAD_JUMP_APP_COMMAND_IDS = [
   "thread.jump.9",
 ] as const;
 
-export const MODEL_PICKER_SELECT_APP_COMMAND_IDS = [
-  "modelPicker.select.1",
-  "modelPicker.select.2",
-  "modelPicker.select.3",
-  "modelPicker.select.4",
-  "modelPicker.select.5",
-  "modelPicker.select.6",
-  "modelPicker.select.7",
-  "modelPicker.select.8",
-  "modelPicker.select.9",
-] as const;
-
 export const QUESTION_SELECT_APP_COMMAND_IDS = [
   "question.select.1",
   "question.select.2",
@@ -52,7 +40,6 @@ export const APP_COMMAND_IDS = [
   "diff.toggle",
   "terminal.open",
   "modelPicker.toggle",
-  ...MODEL_PICKER_SELECT_APP_COMMAND_IDS,
   "browser.focusLocation",
   "browser.reload",
   "workspace.openPreferred",

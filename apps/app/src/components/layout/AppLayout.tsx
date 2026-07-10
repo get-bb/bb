@@ -17,6 +17,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
@@ -226,6 +227,10 @@ function SidebarTriggerOverlay({
           className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
           {...triggerProps}
         />
+        <AppCommandShortcutHint
+          shortcut={shortcut}
+          className="absolute left-full ml-1"
+        />
       </div>
     );
   }
@@ -239,6 +244,10 @@ function SidebarTriggerOverlay({
       )}
     >
       <SidebarTrigger {...triggerProps} />
+      <AppCommandShortcutHint
+        shortcut={shortcut}
+        className="absolute left-full ml-1"
+      />
     </div>
   );
 }

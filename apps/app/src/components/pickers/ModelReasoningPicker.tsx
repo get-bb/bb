@@ -10,10 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
-import {
-  MODEL_PICKER_SELECT_APP_COMMAND_IDS,
-  type ReasoningLevel,
-} from "@bb/domain";
+import { type ReasoningLevel } from "@bb/domain";
 import { stripModelBrandPrefix } from "./model-brand-prefix";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
@@ -57,9 +54,8 @@ import {
   useAppCommandContext,
   useAppCommandHandler,
   useAppCommandShortcut,
-  useAppCommandShortcuts,
-  useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 
 interface ModelLabelParts {
   base: string;
@@ -263,9 +259,6 @@ export function ModelReasoningPicker({
   const [open, setOpen] = useState(defaultOpen);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const toggleShortcut = useAppCommandShortcut("modelPicker.toggle");
-  const modelSelectionShortcuts = useAppCommandShortcuts(
-    MODEL_PICKER_SELECT_APP_COMMAND_IDS,
-  );
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -536,35 +529,6 @@ export function ModelReasoningPicker({
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
   );
 
-  const selectableModelRows = useMemo(
-    () => navRows.filter((row) => row.kind === "model"),
-    [navRows],
-  );
-  const selectModelAt = useCallback(
-    (index: number): boolean => {
-      if (!open || disabled) return false;
-      const row = selectableModelRows[index];
-      if (!row) return false;
-      handleModelSelect(row.option.value);
-      return true;
-    },
-    [disabled, handleModelSelect, open, selectableModelRows],
-  );
-  const modelShortcutByValue = useMemo(() => {
-    const shortcuts = new Map<
-      string,
-      { ariaKeyshortcuts: string; label: string }
-    >();
-    selectableModelRows.slice(0, 9).forEach((row, index) => {
-      const command = MODEL_PICKER_SELECT_APP_COMMAND_IDS[index];
-      const shortcut = command
-        ? modelSelectionShortcuts.get(command)
-        : undefined;
-      if (shortcut) shortcuts.set(row.option.value, shortcut);
-    });
-    return shortcuts;
-  }, [modelSelectionShortcuts, selectableModelRows]);
-
   useAppCommandContext("promptAvailable", !disabled);
   useAppCommandContext("modelPickerOpen", open && !disabled);
   useAppCommandHandler("modelPicker.toggle", ({ target }) => {
@@ -582,12 +546,6 @@ export function ModelReasoningPicker({
     setOpen(true);
     return true;
   }, 50);
-  useIndexedAppCommandHandlers(
-    MODEL_PICKER_SELECT_APP_COMMAND_IDS,
-    selectModelAt,
-    50,
-  );
-
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
       // While previewing, the listed levels are the previewed provider's, so
@@ -769,6 +727,10 @@ export function ModelReasoningPicker({
           className="size-3.5 shrink-0 text-muted-foreground"
         />
       )}
+      <AppCommandShortcutHint
+        shortcut={disabled ? null : toggleShortcut}
+        className="ml-1"
+      />
     </Button>
   );
 
@@ -927,7 +889,6 @@ export function ModelReasoningPicker({
                         activeProviderId,
                       )}
                       selected={!isPreviewing && option.value === modelValue}
-                      shortcut={modelShortcutByValue.get(option.value)}
                       onClick={() => handleModelSelect(option.value)}
                     />
                   );
@@ -1237,7 +1198,6 @@ function MenuRowButton({
   isActive,
   id,
   role,
-  shortcut,
   onPointerEnter: callerPointerEnter,
   onKeyDown: callerKeyDown,
 }: {
@@ -1247,7 +1207,6 @@ function MenuRowButton({
   isActive?: boolean;
   id?: string;
   role?: React.AriaRole;
-  shortcut?: { ariaKeyshortcuts: string; label: string };
   onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
   onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }) {
@@ -1266,7 +1225,6 @@ function MenuRowButton({
       // aria-activedescendant, so it carries aria-selected; reasoning/submenu
       // rows keep default button semantics.
       aria-selected={role === "option" ? Boolean(isActive) : undefined}
-      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       onClick={onClick}
       className={cn(
         "relative flex w-full cursor-default select-none items-center justify-between gap-3 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
@@ -1284,14 +1242,6 @@ function MenuRowButton({
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-1.5">
-        {shortcut ? (
-          <kbd
-            aria-hidden="true"
-            className="text-xs font-normal text-subtle-foreground"
-          >
-            {shortcut.label}
-          </kbd>
-        ) : null}
         <Icon
           name="Check"
           className={cn(

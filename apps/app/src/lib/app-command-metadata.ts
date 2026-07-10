@@ -1,5 +1,4 @@
 import {
-  MODEL_PICKER_SELECT_APP_COMMAND_IDS,
   QUESTION_SELECT_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
   type AppCommandId,
@@ -116,13 +115,6 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "modelPicker.toggle",
         "Toggle model picker",
         "Open or close the focused composer's model picker.",
-      ),
-      ...MODEL_PICKER_SELECT_APP_COMMAND_IDS.map((id, index) =>
-        command(
-          id,
-          `Choose model ${index + 1}`,
-          `Choose visible model ${index + 1} while the picker is open.`,
-        ),
       ),
     ],
   },

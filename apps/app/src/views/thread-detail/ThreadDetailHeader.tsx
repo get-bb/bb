@@ -17,6 +17,7 @@ import {
 } from "@/lib/bb-desktop";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
@@ -138,6 +139,10 @@ export function ThreadDetailHeader({
           onClick={onToggleSecondaryPanel}
         >
           <Icon name={rightPanelIconName} />
+          <AppCommandShortcutHint
+            shortcut={panelShortcut}
+            className="absolute right-full mr-1"
+          />
         </Button>
       ) : null}
     </>

@@ -120,7 +120,6 @@ before bb receives them.
 | Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`             | All clients              |
 | Workspace | Open terminal / preferred app | `Mod+Shift+T` / `Mod+O`       | All clients              |
 | Composer  | Toggle model picker           | `Mod+Shift+M`                 | All clients              |
-| Composer  | Choose visible model 1–9      | `Mod+1` … `Mod+9`             | While the picker is open |
 | Browser   | Focus location / reload       | `Mod+L` / `Mod+R`             | Desktop embedded browser |
 | Questions | Choose visible answer 1–9     | `1` … `9`                     | While a question is open |
 

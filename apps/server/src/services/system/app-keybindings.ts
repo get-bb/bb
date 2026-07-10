@@ -6,7 +6,6 @@ import type {
   AppShortcut,
 } from "@bb/domain";
 import {
-  MODEL_PICKER_SELECT_APP_COMMAND_IDS,
   QUESTION_SELECT_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
 } from "@bb/domain";
@@ -95,12 +94,6 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     all: ["mainSurface", "promptAvailable"],
     none: ["modalOpen", "terminalFocus", "browserFocus"],
   }),
-  ...MODEL_PICKER_SELECT_APP_COMMAND_IDS.map((command, index) =>
-    binding(command, String(index + 1), { mod: true }, {
-      all: ["mainSurface", "modelPickerOpen"],
-      none: [],
-    }),
-  ),
   // The picker popover is itself modal. This later, scoped binding lets the
   // same chord close it while the general binding remains blocked by unrelated
   // dialogs.

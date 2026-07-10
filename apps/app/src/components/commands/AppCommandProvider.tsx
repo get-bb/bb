@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import {
@@ -57,6 +58,7 @@ interface AppCommandProviderValue {
 const AppCommandContextValue = createContext<AppCommandProviderValue | null>(
   null,
 );
+const AppCommandModifierHeldContext = createContext(false);
 
 const EMPTY_KEYBINDINGS: AppKeybindings = [];
 
@@ -88,6 +90,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const systemConfig = useSystemConfig();
   const keybindings = systemConfig.data?.keybindings ?? EMPTY_KEYBINDINGS;
   const isDesktop = getBbDesktopInfo() !== null;
+  const [isPrimaryModifierHeld, setIsPrimaryModifierHeld] = useState(false);
   const keybindingsRef = useRef(keybindings);
   const mainSurfaceRef = useRef(!location.pathname.startsWith("/popout"));
   const handlersRef = useRef(
@@ -97,6 +100,28 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     new Map<AppCommandContextKey, Set<symbol>>(),
   );
   const sequenceRef = useRef(0);
+
+  useEffect(() => {
+    const primaryModifier = isMacKeyboardPlatform(browserPlatform())
+      ? "Meta"
+      : "Control";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === primaryModifier) setIsPrimaryModifierHeld(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === primaryModifier) setIsPrimaryModifierHeld(false);
+    };
+    const handleBlur = () => setIsPrimaryModifierHeld(false);
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
 
   useEffect(() => {
     keybindingsRef.current = keybindings;
@@ -249,7 +274,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppCommandContextValue.Provider value={value}>
-      {children}
+      <AppCommandModifierHeldContext.Provider value={isPrimaryModifierHeld}>
+        {children}
+      </AppCommandModifierHeldContext.Provider>
     </AppCommandContextValue.Provider>
   );
 }
@@ -324,6 +351,10 @@ export function useAppCommandShortcut(
       label: formatAppShortcut(shortcut, platform),
     };
   }, [command, value]);
+}
+
+export function useIsAppCommandModifierHeld(): boolean {
+  return useContext(AppCommandModifierHeldContext);
 }
 
 export function useAppCommandShortcuts(

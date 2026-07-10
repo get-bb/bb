@@ -48,6 +48,7 @@ import {
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { FilePreview } from "@/components/secondary-panel/FilePreview";
 import {
@@ -479,6 +480,10 @@ function RootComposeRightPanelToggle({
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
+      <AppCommandShortcutHint
+        shortcut={shortcut}
+        className="absolute right-full mr-1"
+      />
     </Button>
   );
 }

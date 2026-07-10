@@ -67,6 +67,7 @@ import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 export type {
   GitDiffDisplayMode,
@@ -531,6 +532,7 @@ export function ThreadSecondaryPanel({
                 size="icon"
                 className={cn(
                   SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
+                  "relative",
                   usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
                 )}
                 onClick={onClose}
@@ -544,6 +546,10 @@ export function ThreadSecondaryPanel({
                 aria-keyshortcuts={togglePanelShortcut?.ariaKeyshortcuts}
               >
                 <Icon name={togglePanelIconName} />
+                <AppCommandShortcutHint
+                  shortcut={togglePanelShortcut}
+                  className="absolute right-full mr-1"
+                />
               </Button>
             ) : inlinePanelToggle === "reserved" ? (
               // A toggle pinned outside the panel owns show/hide on this surface

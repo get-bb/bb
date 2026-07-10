@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,7 @@ import {
   useAppCommandContext,
   useAppCommandHandler,
   useAppCommandShortcut,
+  useIsAppCommandModifierHeld,
 } from "./AppCommandProvider";
 
 const testState = vi.hoisted(() => ({
@@ -175,6 +176,11 @@ function ShortcutLabel({ command }: { command: AppCommandId }) {
   return <span>{shortcut?.label}</span>;
 }
 
+function ModifierState() {
+  const held = useIsAppCommandModifierHeld();
+  return <span>{held ? "held" : "released"}</span>;
+}
+
 function renderProvider(children: ReactNode) {
   return render(
     <MemoryRouter>
@@ -200,6 +206,19 @@ afterEach(() => {
 });
 
 describe("AppCommandProvider", () => {
+  it("shares primary-modifier hold state and clears it on release or blur", () => {
+    renderProvider(<ModifierState />);
+
+    expect(screen.getByText("released")).toBeDefined();
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyUp(window, { key: "Control" });
+    expect(screen.getByText("released")).toBeDefined();
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    fireEvent.blur(window);
+    expect(screen.getByText("released")).toBeDefined();
+  });
+
   it("presents the web-capable alias when the primary binding is desktop-only", () => {
     renderProvider(
       <>

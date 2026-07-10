@@ -61,6 +61,7 @@ import {
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
   ThreadFolderCreateDialog,
   ThreadFolderRenameDialog,
@@ -1090,23 +1091,27 @@ export function ProjectListActionButtons({
             <span className="min-w-0 flex-1 truncate text-left">
               New thread
             </span>
+            <AppCommandShortcutHint shortcut={newThreadShortcut} />
           </Button>
           {threadSearch ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label={
-                threadSearchShortcut
-                  ? `Search threads (${threadSearchShortcut.label})`
-                  : "Search threads"
-              }
-              aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
-              className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-              onClick={threadSearch.onActivate}
-            >
-              <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-            </Button>
+            <span className="flex shrink-0 items-center gap-1">
+              <AppCommandShortcutHint shortcut={threadSearchShortcut} />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={
+                  threadSearchShortcut
+                    ? `Search threads (${threadSearchShortcut.label})`
+                    : "Search threads"
+                }
+                aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
+                className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+                onClick={threadSearch.onActivate}
+              >
+                <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+              </Button>
+            </span>
           ) : null}
         </div>
       )}

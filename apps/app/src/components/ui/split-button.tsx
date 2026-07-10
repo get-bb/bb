@@ -15,6 +15,7 @@ import {
 const SPLIT_BUTTON_TOOLBAR_CLASS = COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
 
 interface SplitButtonAction {
+  ariaKeyshortcuts?: string;
   groupLabel?: string;
   label: string;
   onSelect: () => void;
@@ -61,6 +62,7 @@ function SplitButton({
           "rounded-r-none border-r-0 pr-1 focus-visible:z-10",
         )}
         aria-label={primaryAction.label}
+        aria-keyshortcuts={primaryAction.ariaKeyshortcuts}
         onClick={primaryAction.onSelect}
       >
         {primaryAction.content ?? primaryAction.label}
