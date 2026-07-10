@@ -9,6 +9,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { usePluginLogoUrl } from "@/lib/plugin-logos";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { isDesktopServersAvailable } from "@/lib/bb-desktop";
 import {
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
@@ -25,6 +26,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
+  { icon: "Laptop", id: "servers", label: "Servers" },
   { icon: "Zap", id: "experiments", label: "Experiments" },
   { icon: "Layers", id: "plugins", label: "Plugins" },
   { icon: "MessageSquare", id: "community", label: "Community" },
@@ -93,6 +95,10 @@ export function useSettingsNavState(): SettingsNavState {
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
+    }
+    if (section.id === "servers") {
+      // Desktop multi-server registry only; older shells omit the surface.
+      return isDesktopServersAvailable();
     }
     if (section.id === "plugins") {
       return pluginsEnabled;

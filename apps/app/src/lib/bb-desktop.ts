@@ -3,6 +3,7 @@ import type {
   BbDesktopBrowserApi,
   BbDesktopWindowState,
   BbDesktopPopoutApi,
+  BbDesktopServersApi,
 } from "@bb/desktop-contract";
 
 // The macOS traffic-light cluster sits in a fixed strip on the left of the
@@ -122,4 +123,17 @@ export function getDesktopPopoutApi(): BbDesktopPopoutApi | null {
 
 export function isDesktopPopoutAvailable(): boolean {
   return getDesktopPopoutApi() !== null;
+}
+
+/**
+ * Multi-server registry surface, or `null` when `window.bbDesktop` is
+ * missing (web) or the shell predates multi-server support. Feature-detect
+ * before rendering Settings → Servers or calling registry methods.
+ */
+export function getDesktopServersApi(): BbDesktopServersApi | null {
+  return getBbDesktopInfo()?.servers ?? null;
+}
+
+export function isDesktopServersAvailable(): boolean {
+  return getDesktopServersApi() !== null;
 }
