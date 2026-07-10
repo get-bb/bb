@@ -33,6 +33,7 @@ import {
   bbDesktopServerIdRequestSchema,
   bbDesktopServerRenameRequestSchema,
   bbDesktopServerSetAutoConnectRequestSchema,
+  bbDesktopServerSetShowConnectServersRequestSchema,
   bbDesktopThemeSchema,
   getDesktopThreadRoutePath,
   type BbDesktopInfo,
@@ -84,12 +85,18 @@ import {
   BB_DESKTOP_SERVERS_ADD_CHANNEL,
   BB_DESKTOP_SERVERS_CHANGED_CHANNEL,
   BB_DESKTOP_SERVERS_GET_AUTO_CONNECT_CHANNEL,
+  BB_DESKTOP_SERVERS_GET_SHOW_CONNECT_SERVERS_CHANNEL,
   BB_DESKTOP_SERVERS_LIST_CHANNEL,
   BB_DESKTOP_SERVERS_REMOVE_CHANNEL,
   BB_DESKTOP_SERVERS_RENAME_CHANNEL,
   BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
   BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
+  BB_DESKTOP_SERVERS_SET_SHOW_CONNECT_SERVERS_CHANNEL,
 } from "./desktop-server-ipc.js";
+import {
+  createConnectServerSync,
+  type ConnectServerSync,
+} from "./connect-server-sync.js";
 import {
   BUILTIN_SERVER_ID,
   createServerRegistry,
@@ -341,6 +348,7 @@ let stoppingForQuit = false;
 let quitting = false;
 let serverRegistry: ServerRegistry | null = null;
 let activeServerState: ActiveServerState | null = null;
+let connectServerSync: ConnectServerSync | null = null;
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
@@ -761,6 +769,9 @@ function setCurrentRuntime(runtime: DesktopRuntime | null): void {
   currentRuntime = runtime;
   if (runtime === null) {
     stopSystemConfigSync();
+  } else {
+    // Local runtime is up — pull Connect account servers into the registry.
+    connectServerSync?.onRuntimeReady();
   }
   refreshApplicationMenu();
   if (runtime?.ownership !== "spawned") {
@@ -1238,6 +1249,8 @@ function registerDesktopServerIpc(): void {
     // Return cached statuses immediately so an offline remote cannot stall
     // settings mounts. Coalesced probes push updates via servers:changed.
     scheduleServerStatusRefresh();
+    // Soft-trigger connect sync when the last attempt is older than 60s.
+    connectServerSync?.onListRequested();
     const browserWindow = BrowserWindow.fromWebContents(event.sender);
     const activeServerId =
       browserWindow === null || activeServerState === null
@@ -1387,6 +1400,32 @@ function registerDesktopServerIpc(): void {
       await serverRegistry.setAutoConnectToLocalServer(
         parsed.data.autoConnectToLocalServer,
       );
+      sendServersChanged();
+    },
+  );
+
+  ipcMain.handle(BB_DESKTOP_SERVERS_GET_SHOW_CONNECT_SERVERS_CHANNEL, (event) => {
+    if (!isApplicationWindowSender(event.sender)) {
+      return true;
+    }
+    return serverRegistry?.getShowConnectServers() ?? true;
+  });
+
+  ipcMain.handle(
+    BB_DESKTOP_SERVERS_SET_SHOW_CONNECT_SERVERS_CHANNEL,
+    async (event, payload) => {
+      if (!isApplicationWindowSender(event.sender)) {
+        return;
+      }
+      if (serverRegistry === null) {
+        return;
+      }
+      const parsed =
+        bbDesktopServerSetShowConnectServersRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      await serverRegistry.setShowConnectServers(parsed.data.showConnectServers);
       sendServersChanged();
     },
   );
@@ -2221,6 +2260,15 @@ async function runDesktopApp(): Promise<void> {
   activeServerState = createActiveServerState({
     defaultServerId: BUILTIN_SERVER_ID,
   });
+  const logger = createDesktopLogger();
+  connectServerSync = createConnectServerSync({
+    getLocalServerUrl: () => currentRuntime?.serverUrl ?? null,
+    registry: serverRegistry,
+    log: (message) => {
+      logger.info(`[desktop] ${message}`);
+    },
+  });
+  connectServerSync.start();
   serverRegistry.onChange(() => {
     refreshApplicationMenuAndProbeStatuses();
     sendServersChanged();

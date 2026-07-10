@@ -225,12 +225,16 @@ export function registerConnectCli(args: {
             "NAME".length,
             ...result.servers.map((s) => s.name.length),
           );
+          const urlWidth = Math.max(
+            "URL".length,
+            ...result.servers.map((s) => s.url.length),
+          );
           const lines = [
-            `${"HANDLE".padEnd(handleWidth)}  ${"NAME".padEnd(nameWidth)}  LIVE  SELF`,
+            `${"HANDLE".padEnd(handleWidth)}  ${"NAME".padEnd(nameWidth)}  ${"URL".padEnd(urlWidth)}  LIVE  SELF`,
             ...result.servers.map((s) => {
               const live = s.live ? "yes" : "no";
               const self = s.handle === result.selfHandle ? "*" : "";
-              return `${s.handle.padEnd(handleWidth)}  ${s.name.padEnd(nameWidth)}  ${live.padEnd(4)}  ${self}`;
+              return `${s.handle.padEnd(handleWidth)}  ${s.name.padEnd(nameWidth)}  ${s.url.padEnd(urlWidth)}  ${live.padEnd(4)}  ${self}`;
             }),
           ];
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
