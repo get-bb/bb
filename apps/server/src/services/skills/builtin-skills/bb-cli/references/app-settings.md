@@ -21,7 +21,8 @@ every window and client sees the same value.
   Command on macOS and Control on Windows/Linux.
 - Reset removes the override and follows bb's current default. Clear stores an
   explicit disabled value.
-- Command contexts and desktop-only policy remain server-owned. Reusing a chord
+- Bindings for non-native actions apply in browser and desktop clients. Command
+  contexts and native-only availability remain server-owned. Reusing a chord
   can be intentional when contexts do not overlap; the UI identifies reuse.
 - New Thread, New Window, New Tab, Close, and Settings in the desktop menu use
   the same resolved shortcuts as renderer commands.

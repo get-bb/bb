@@ -26,7 +26,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 const defaultKeybindings: AppKeybindings = [
   {
     command: "thread.new",
-    desktopOnly: true,
+    desktopOnly: false,
     shortcut: {
       key: "n",
       mod: true,

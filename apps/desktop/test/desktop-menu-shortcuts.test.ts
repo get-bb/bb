@@ -13,7 +13,7 @@ function binding(
 ): AppKeybindings[number] {
   return {
     command,
-    desktopOnly: true,
+    desktopOnly: false,
     shortcut: {
       key,
       mod: modifiers.mod ?? false,

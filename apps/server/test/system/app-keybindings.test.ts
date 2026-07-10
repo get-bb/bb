@@ -16,14 +16,25 @@ describe("app keybindings", () => {
       expect(
         config.keybindings.find((binding) => binding.command === "thread.new"),
       ).toMatchObject({
+        desktopOnly: false,
         shortcut: { key: "n", mod: true, shift: false },
         when: { all: ["mainSurface"], none: ["modalOpen"] },
       });
       expect(
         config.keybindings.find((binding) => binding.command === "window.new"),
       ).toMatchObject({
+        desktopOnly: true,
         shortcut: { key: "n", mod: true, shift: true },
       });
+      expect(
+        config.defaultKeybindings
+          .filter((binding) => binding.desktopOnly)
+          .map((binding) => binding.command),
+      ).toEqual([
+        "browser.focusLocation",
+        "browser.reload",
+        "window.new",
+      ]);
     });
   });
 

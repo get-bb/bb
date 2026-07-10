@@ -57,31 +57,26 @@ const mainWithoutModal = {
   all: ["mainSurface"],
   none: ["modalOpen"],
 } as const;
-const desktopMainWithoutModal = {
-  ...mainWithoutModal,
-  desktopOnly: true,
-} as const;
 
 export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
-  binding("thread.new", "n", { mod: true }, desktopMainWithoutModal),
+  binding("thread.new", "n", { mod: true }, mainWithoutModal),
   binding("thread.search", "k", { mod: true }, mainWithoutModal),
-  binding("settings.open", ",", { mod: true }, desktopMainWithoutModal),
+  binding("settings.open", ",", { mod: true }, mainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),
-  binding("thread.previous", "[", { mod: true, shift: true }, desktopMainWithoutModal),
-  binding("thread.next", "]", { mod: true, shift: true }, desktopMainWithoutModal),
+  binding("thread.previous", "[", { mod: true, shift: true }, mainWithoutModal),
+  binding("thread.next", "]", { mod: true, shift: true }, mainWithoutModal),
   ...THREAD_JUMP_APP_COMMAND_IDS.map((command, index) =>
-    binding(command, String(index + 1), { mod: true }, desktopMainWithoutModal),
+    binding(command, String(index + 1), { mod: true }, mainWithoutModal),
   ),
-  binding("panel.newTab", "t", { mod: true }, desktopMainWithoutModal),
-  binding("panel.close", "w", { mod: true }, desktopMainWithoutModal),
-  binding("panel.toggle", "j", { mod: true }, desktopMainWithoutModal),
-  binding("file.quickOpen", "p", { mod: true }, desktopMainWithoutModal),
+  binding("panel.newTab", "t", { mod: true }, mainWithoutModal),
+  binding("panel.close", "w", { mod: true }, mainWithoutModal),
+  binding("panel.toggle", "j", { mod: true }, mainWithoutModal),
+  binding("file.quickOpen", "p", { mod: true }, mainWithoutModal),
   binding("diff.toggle", "d", { mod: true }, {
     ...mainWithoutModal,
-    desktopOnly: true,
     none: ["modalOpen", "editableFocus", "terminalFocus", "browserFocus"],
   }),
-  binding("terminal.open", "t", { mod: true, shift: true }, desktopMainWithoutModal),
+  binding("terminal.open", "t", { mod: true, shift: true }, mainWithoutModal),
   binding("modelPicker.toggle", "m", { mod: true, shift: true }, {
     all: ["mainSurface", "promptAvailable"],
     none: ["modalOpen", "terminalFocus", "browserFocus"],
@@ -109,12 +104,15 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     desktopOnly: true,
     none: ["modalOpen"],
   }),
-  binding("workspace.openPreferred", "o", { mod: true }, desktopMainWithoutModal),
+  binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),
   ...QUESTION_SELECT_APP_COMMAND_IDS.map((command, index) =>
     binding(command, String(index + 1), {}, {
       all: ["mainSurface", "questionOpen"],
       none: ["modalOpen", "editableFocus"],
     }),
   ),
-  binding("window.new", "n", { mod: true, shift: true }, desktopMainWithoutModal),
+  binding("window.new", "n", { mod: true, shift: true }, {
+    ...mainWithoutModal,
+    desktopOnly: true,
+  }),
 ];

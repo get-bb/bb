@@ -9,7 +9,7 @@ const testState = vi.hoisted(() => ({
   defaultKeybindings: [
     {
       command: "thread.new",
-      desktopOnly: true,
+      desktopOnly: false,
       shortcut: {
         key: "n",
         mod: true,

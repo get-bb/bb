@@ -100,24 +100,25 @@ Settings → Keyboard edits app command shortcuts. Overrides are stored in the
 server database, applied live to every connected window, and kept across
 restarts. Resetting a shortcut removes its override so future bb releases can
 continue to update the default. Clearing a shortcut explicitly disables that
-command. Command context and desktop-only policy remain server-owned and are
-not editable.
+command. Command context and native-only availability remain server-owned and
+are not editable. Actions supported by both clients use the same resolved
+bindings in the browser and desktop app; browsers may still reserve some chords
+before bb receives them.
 
-`Mod` means Command on macOS and Control on Windows/Linux. Desktop-only rows are
-marked in Settings.
+`Mod` means Command on macOS and Control on Windows/Linux.
 
 | Area      | Command                       | Default                       | Availability             |
 | --------- | ----------------------------- | ----------------------------- | ------------------------ |
-| Threads   | New thread                    | `Mod+N`                       | Desktop                  |
+| Threads   | New thread                    | `Mod+N`                       | All clients              |
 | Threads   | Search threads                | `Mod+K`                       | All clients              |
-| Threads   | Previous / next thread        | `Mod+Shift+[` / `Mod+Shift+]` | Desktop                  |
-| Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`             | Desktop                  |
+| Threads   | Previous / next thread        | `Mod+Shift+[` / `Mod+Shift+]` | All clients              |
+| Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`             | All clients              |
 | Window    | New window                    | `Mod+Shift+N`                 | Desktop                  |
-| Window    | Settings                      | `Mod+,`                       | Desktop                  |
+| Window    | Settings                      | `Mod+,`                       | All clients              |
 | Layout    | Toggle sidebar                | `Mod+\`                       | All clients              |
-| Panel     | New tab / close tab / toggle  | `Mod+T` / `Mod+W` / `Mod+J`   | Desktop                  |
-| Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`             | Desktop                  |
-| Workspace | Open terminal / preferred app | `Mod+Shift+T` / `Mod+O`       | Desktop                  |
+| Panel     | New tab / close tab / toggle  | `Mod+T` / `Mod+W` / `Mod+J`   | All clients              |
+| Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`             | All clients              |
+| Workspace | Open terminal / preferred app | `Mod+Shift+T` / `Mod+O`       | All clients              |
 | Composer  | Toggle model picker           | `Mod+Shift+M`                 | All clients              |
 | Composer  | Choose visible model 1–9      | `Mod+1` … `Mod+9`             | While the picker is open |
 | Browser   | Focus location / reload       | `Mod+L` / `Mod+R`             | Desktop embedded browser |

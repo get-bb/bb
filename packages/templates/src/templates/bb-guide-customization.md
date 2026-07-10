@@ -43,7 +43,8 @@ Settings → Keyboard records per-command shortcut overrides. They are persisted
 server-side, applied live to every connected window, and survive restarts.
 Reset removes an override and returns to bb's current default; Clear explicitly
 disables a command. `Mod` means Command on macOS and Control on Windows/Linux.
-Command contexts and desktop-only policy remain server-owned, and desktop menu
+Bindings for non-native actions apply in browser and desktop clients. Command
+contexts and native-only availability remain server-owned, and desktop menu
 accelerators for New Thread, New Window, New Tab, Close, and Settings use the
 same resolved bindings. The complete default table is in docs/configuration.md.
 

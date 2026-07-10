@@ -11,7 +11,7 @@ import {
 const defaults: AppKeybindings = [
   {
     command: "thread.new",
-    desktopOnly: true,
+    desktopOnly: false,
     shortcut: {
       key: "n",
       mod: true,
