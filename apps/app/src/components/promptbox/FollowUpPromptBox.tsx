@@ -23,7 +23,6 @@ import {
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
-import { getMinimizedFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import { MobilePromptBoxMinimizedProvider } from "@/components/promptbox/mobile-promptbox-minimized-context";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
 import {
@@ -98,6 +97,7 @@ const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
   FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
   THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT;
 const MOBILE_PROMPT_MINIMIZE_SCROLL_THRESHOLD_PX = 8;
+const MOBILE_PROMPT_USER_SCROLL_INTENT_WINDOW_MS = 350;
 
 interface MobilePromptBoxMinimizedState {
   isAvailable: boolean;
@@ -117,6 +117,12 @@ function useMobilePromptBoxMinimized(
   const automaticMinimizeArmedRef = useRef(true);
 
   useEffect(() => {
+    if (!isCompactViewport) {
+      setIsMinimized(false);
+    }
+  }, [isCompactViewport]);
+
+  useEffect(() => {
     previousScrollTopRef.current = null;
     upwardScrollDistanceRef.current = 0;
     automaticMinimizeArmedRef.current = true;
@@ -125,6 +131,34 @@ function useMobilePromptBoxMinimized(
     if (!scrollElement) return;
 
     previousScrollTopRef.current = scrollElement.scrollTop;
+    let upwardUserIntentExpiresAt = 0;
+    let previousTouchY: number | null = null;
+    const markUpwardUserIntent = () => {
+      upwardUserIntentExpiresAt =
+        Date.now() + MOBILE_PROMPT_USER_SCROLL_INTENT_WINDOW_MS;
+    };
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) {
+        markUpwardUserIntent();
+      }
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      previousTouchY = event.touches[0]?.clientY ?? null;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const nextTouchY = event.touches[0]?.clientY ?? null;
+      if (
+        previousTouchY !== null &&
+        nextTouchY !== null &&
+        nextTouchY > previousTouchY
+      ) {
+        markUpwardUserIntent();
+      }
+      previousTouchY = nextTouchY;
+    };
+    const clearTouch = () => {
+      previousTouchY = null;
+    };
     const handleScroll = () => {
       const previousScrollTop = previousScrollTopRef.current;
       const nextScrollTop = scrollElement.scrollTop;
@@ -140,7 +174,13 @@ function useMobilePromptBoxMinimized(
         automaticMinimizeArmedRef.current = true;
         return;
       }
-      if (delta >= 0 || !automaticMinimizeArmedRef.current) return;
+      if (
+        delta >= 0 ||
+        !automaticMinimizeArmedRef.current ||
+        Date.now() > upwardUserIntentExpiresAt
+      ) {
+        return;
+      }
 
       upwardScrollDistanceRef.current += Math.abs(delta);
       if (
@@ -153,8 +193,26 @@ function useMobilePromptBoxMinimized(
       setIsMinimized(true);
     };
 
+    scrollElement.addEventListener("wheel", handleWheel, { passive: true });
+    scrollElement.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    scrollElement.addEventListener("touchmove", handleTouchMove, {
+      passive: true,
+    });
+    scrollElement.addEventListener("touchend", clearTouch, { passive: true });
+    scrollElement.addEventListener("touchcancel", clearTouch, {
+      passive: true,
+    });
     scrollElement.addEventListener("scroll", handleScroll, { passive: true });
-    return () => scrollElement.removeEventListener("scroll", handleScroll);
+    return () => {
+      scrollElement.removeEventListener("wheel", handleWheel);
+      scrollElement.removeEventListener("touchstart", handleTouchStart);
+      scrollElement.removeEventListener("touchmove", handleTouchMove);
+      scrollElement.removeEventListener("touchend", clearTouch);
+      scrollElement.removeEventListener("touchcancel", clearTouch);
+      scrollElement.removeEventListener("scroll", handleScroll);
+    };
   }, [getScrollElement, isCompactViewport, resetKey]);
 
   const toggle = useCallback(() => {
@@ -208,6 +266,7 @@ export interface FollowUpComposerProps {
   onChangeMessage: (value: string, mentionRanges: PromptTextMention[]) => void;
   onModifierSubmit: () => void;
   onSubmit: () => void;
+  minimizedPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
   submitMode: FollowUpSubmitMode;
@@ -335,16 +394,14 @@ function FollowUpPromptBoxWithComposer({
         ? {
             isMinimized: mobileMinimized.isMinimized,
             onToggle: mobileMinimized.toggle,
-            placeholder: getMinimizedFollowUpPromptPlaceholder(
-              composer.threadRuntimeDisplayStatus,
-            ),
+            placeholder: composer.minimizedPromptPlaceholder,
           }
         : undefined,
     [
       mobileMinimized.isAvailable,
       mobileMinimized.isMinimized,
       mobileMinimized.toggle,
-      composer.threadRuntimeDisplayStatus,
+      composer.minimizedPromptPlaceholder,
     ],
   );
   const onModifierSubmit = composer.canModifierSubmit
@@ -497,7 +554,9 @@ function FollowUpPromptBoxWithComposer({
           zenMode={{
             layout: "thread",
             storageKey: null,
-            resetKey: zenModeResetKey,
+            resetKey: `${zenModeResetKey}:${
+              mobileMinimized.isAvailable ? "mobile" : "desktop"
+            }`,
             resetOnSubmit: true,
           }}
           footerStart={footerStart}
@@ -523,15 +582,10 @@ function FollowUpPromptBoxWithComposer({
 export const FollowUpPromptBox = memo(function FollowUpPromptBox(
   props: FollowUpPromptBoxProps,
 ) {
-  const isCompactViewport = useIsCompactViewport();
   if (props.composer === null) {
     return <FollowUpPromptBoxStackOnly stack={props.stack} />;
   }
   return (
-    <FollowUpPromptBoxWithComposer
-      key={`${props.zenModeResetKey}:${isCompactViewport ? "mobile" : "desktop"}`}
-      {...props}
-      composer={props.composer}
-    />
+    <FollowUpPromptBoxWithComposer {...props} composer={props.composer} />
   );
 });

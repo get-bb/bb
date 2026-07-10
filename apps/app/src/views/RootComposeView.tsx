@@ -1824,6 +1824,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
   const fixedPanelTabsState = useFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    null,
   );
   const isPersistedSecondaryPanelOpen =
     props.surface === "page" && fixedPanelTabsState.secondary.isOpen;
@@ -1849,18 +1850,23 @@ export function RootComposeView(props: RootComposeViewProps) {
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    null,
   );
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    null,
   );
   const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    null,
   );
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    null,
   );
   const setRootSecondaryPanel = useSetThreadSecondaryPanelSelection(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    null,
   );
   const setRootSecondaryPanelForSurface =
     useCallback<NullableSecondaryPanelChangeHandler>(
@@ -2023,8 +2029,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     selectFileSearchResult,
     updateBrowserTab,
   } = useThreadFileTabs({
-    threadId:
+    panelStateId:
       props.surface === "page" ? ROOT_COMPOSE_FIXED_PANEL_STATE_ID : null,
+    syncThreadId: null,
     environmentId: rootPanelEnvironmentId,
     fileOwnerThreadId: rootPanelThreadId,
     preserveWorkspaceTabsAcrossContexts: true,

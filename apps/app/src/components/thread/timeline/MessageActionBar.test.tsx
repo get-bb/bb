@@ -21,7 +21,9 @@ describe("MessageActionBar", () => {
     expect(findMessageActionTooltipCollisionBoundary(actionBar)).toBe(
       threadWindow,
     );
-    expect(findMessageActionTooltipCollisionBoundary(sidePanel)).toBeUndefined();
+    expect(
+      findMessageActionTooltipCollisionBoundary(sidePanel),
+    ).toBeUndefined();
   });
 
   it("renders the send-to-main action and fires its handler when supplied", () => {
@@ -30,6 +32,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer worth keeping."
         alignment="start"
+        mobileActionDisplay="overflow"
         onSendToMain={onSendToMain}
       />,
     );
@@ -48,6 +51,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="Quote this message."
         alignment="end"
+        mobileActionDisplay="overflow"
         onAddToChat={onAddToChat}
       />,
     );
@@ -70,6 +74,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="Quote this message."
         alignment="end"
+        mobileActionDisplay="overflow"
         addToChatAttachments={[attachment]}
         onAddToChat={onAddToChat}
       />,
@@ -93,6 +98,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText=""
         alignment="end"
+        mobileActionDisplay="overflow"
         addToChatAttachments={[attachment]}
         onAddToChat={onAddToChat}
       />,
@@ -104,7 +110,11 @@ describe("MessageActionBar", () => {
 
   it("omits the send-to-main action when no handler is supplied", () => {
     render(
-      <MessageActionBar messageText="An answer." alignment="start" />,
+      <MessageActionBar
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="overflow"
+      />,
     );
 
     expect(
@@ -118,6 +128,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
+        mobileActionDisplay="overflow"
         onSendToMain={onSendToMain}
         disabled
       />,
@@ -134,6 +145,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
+        mobileActionDisplay="overflow"
         onSideChat={vi.fn()}
       />,
     );
@@ -150,5 +162,32 @@ describe("MessageActionBar", () => {
       "max-md:pointer-coarse:inline-flex",
     );
     expect(overflowTrigger.className).not.toContain("opacity-0");
+  });
+
+  it("shows compact inline mobile actions without an overflow menu when requested", () => {
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onFork={vi.fn()}
+        onSideChat={vi.fn()}
+      />,
+    );
+
+    for (const name of [
+      "Copy message",
+      "Fork into new thread",
+      "Reply in side chat",
+    ]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.className).toContain("max-md:pointer-coarse:size-7");
+      expect(button.className).toContain("max-md:pointer-coarse:opacity-100");
+      expect(button.className).not.toContain("max-md:pointer-coarse:hidden");
+    }
+
+    expect(
+      screen.queryByRole("button", { name: "Message actions" }),
+    ).toBeNull();
   });
 });

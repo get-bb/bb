@@ -48,9 +48,7 @@ function makeWindowSelection({
 }
 
 function mockWindowSelection(args: Parameters<typeof makeWindowSelection>[0]) {
-  vi.spyOn(window, "getSelection").mockReturnValue(
-    makeWindowSelection(args),
-  );
+  vi.spyOn(window, "getSelection").mockReturnValue(makeWindowSelection(args));
 }
 
 function waitForAnimationFrame(): Promise<void> {
@@ -60,6 +58,16 @@ function waitForAnimationFrame(): Promise<void> {
 }
 
 describe("SelectableMessageProse", () => {
+  it("opts selectable prose out of the compact sidebar swipe gesture", () => {
+    const { getByText } = render(
+      <SelectableMessageProse>Selectable answer text</SelectableMessageProse>,
+    );
+
+    expect(
+      getByText("Selectable answer text").closest("[data-no-sidebar-swipe]"),
+    ).not.toBeNull();
+  });
+
   it("reports a selection only after pointer release", async () => {
     const onSelect = vi.fn();
     const { getByText } = render(
@@ -82,6 +90,31 @@ describe("SelectableMessageProse", () => {
     await waitFor(() =>
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({ text: "answer text" }),
+      ),
+    );
+  });
+
+  it("reports a touch long-press selection before pointer release", async () => {
+    const onSelect = vi.fn();
+    const { getByText } = render(
+      <SelectableMessageProse onSelect={onSelect}>
+        Long press selectable answer text
+      </SelectableMessageProse>,
+    );
+    const target = getByText("Long press selectable answer text");
+    const textNode = target.firstChild;
+    expect(textNode).not.toBeNull();
+    mockWindowSelection({
+      node: textNode!,
+      text: "selectable",
+    });
+
+    fireEvent.pointerDown(target, { pointerType: "touch" });
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "selectable" }),
       ),
     );
   });

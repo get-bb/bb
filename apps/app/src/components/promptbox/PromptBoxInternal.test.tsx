@@ -696,10 +696,18 @@ describe("PromptBoxInternal minimized layout", () => {
 
     const form = document.querySelector("[data-promptbox]");
     expect(form?.getAttribute("data-promptbox-minimized")).toBe("");
-    expect(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    const expandButton = screen.getByRole("button", {
+      name: "Make prompt box larger",
+    });
+    const submitButton = screen.getByRole("button", {
+      name: "Submit (Enter)",
+    });
+    expect(expandButton).toBeTruthy();
+    expect(expandButton.classList.contains("size-8")).toBe(true);
+    expect(submitButton.classList.contains("size-8")).toBe(true);
+    expect(expandButton.classList.contains("p-0")).toBe(true);
+    expect(submitButton.classList.contains("p-0")).toBe(true);
+    expect(submitButton.classList.contains("ml-1")).toBe(false);
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
@@ -723,7 +731,7 @@ describe("PromptBoxInternal minimized layout", () => {
     expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it("keeps Markdown and mention pills inside the truncated preview", async () => {
+  it("keeps all Markdown and mention text in the navigable preview", async () => {
     const mentionToken =
       "@apps/app/src/components/promptbox/PromptBoxInternal.tsx";
     const value = [
@@ -770,6 +778,9 @@ describe("PromptBoxInternal minimized layout", () => {
     );
     expect(editor.querySelector("br")).toBeTruthy();
     expect(editor.children.length).toBeGreaterThan(1);
+    expect(editor.textContent).toContain(
+      "A hidden paragraph after the quote",
+    );
   });
 
   it("shows only the smaller control in the normal mobile layout", () => {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isSelectionWithinNode } from "./SelectableMessageProse.js";
+import {
+  isSelectionWithinNode,
+  selectionAnchorFromPointerRelease,
+} from "./SelectableMessageProse.js";
 
 // Minimal fake node tree: a node "contains" another if it is the node itself
 // or appears in its descendant set. Avoids a full DOM while still exercising
@@ -60,5 +63,25 @@ describe("isSelectionWithinNode", () => {
 
   it("rejects a null node or null selection", () => {
     expect(isSelectionWithinNode(null, null)).toBe(false);
+  });
+});
+
+describe("selectionAnchorFromPointerRelease", () => {
+  it("uses the live range instead of a stale touch release point", () => {
+    expect(
+      selectionAnchorFromPointerRelease(
+        { x: 10, y: 20 },
+        { clientX: 30, clientY: 40, pointerType: "touch" },
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps mouse release anchoring", () => {
+    expect(
+      selectionAnchorFromPointerRelease(
+        { x: 10, y: 20 },
+        { clientX: 30, clientY: 40, pointerType: "mouse" },
+      ),
+    ).toEqual({ point: { x: 30, y: 40 }, side: "bottom" });
   });
 });

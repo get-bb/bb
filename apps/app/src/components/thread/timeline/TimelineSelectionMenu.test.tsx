@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu";
 import type { MessageProseSelection } from "./SelectableMessageProse";
 
@@ -25,6 +26,19 @@ function makeSelection(
 function mockCompactViewport() {
   vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
     matches: query === COMPACT_VIEWPORT_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+function mockPointerCoarse() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === POINTER_COARSE_QUERY,
     media: query,
     onchange: null,
     addListener: () => {},
@@ -99,6 +113,42 @@ describe("TimelineSelectionMenu", () => {
 
     expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
     expect(document.body.querySelector('[data-side="top"]')).toBeTruthy();
+  });
+
+  it("uses a compact menu that prefers above coarse-pointer selections", () => {
+    mockPointerCoarse();
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection()}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Add to chat" });
+    expect(button.className).toContain("max-md:pointer-coarse:min-h-7");
+    expect(document.body.querySelector('[data-side="top"]')).toBeTruthy();
+  });
+
+  it("activates a touch action on pointer-up without waiting for click", () => {
+    const onAddToChat = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection()}
+        onAddToChat={onAddToChat}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Add to chat" });
+    fireEvent.pointerDown(button, { pointerType: "touch" });
+    fireEvent.pointerUp(button, { pointerType: "touch" });
+    fireEvent.click(button);
+
+    expect(onAddToChat).toHaveBeenCalledTimes(1);
+    expect(onAddToChat).toHaveBeenCalledWith("selected text");
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it("passes the selection branch point to side-chat replies", () => {

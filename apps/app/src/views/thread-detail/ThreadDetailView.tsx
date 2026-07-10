@@ -467,7 +467,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const { projectId, threadId } = useRouteState();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
-  const fixedPanelTabsState = useFixedPanelTabsState(threadId);
+  const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const isPersistedSecondaryPanelOpenForSurface =
     props.surface === "popout" ? false : isPersistedSecondaryPanelOpen;
@@ -484,12 +484,26 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
-  const touchFixedPanelTabsState = useTouchFixedPanelTabsState(threadId);
-  const setActiveFixedTerminal =
-    useSetFixedRightTerminalActiveTerminal(threadId);
-  const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(threadId);
-  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
-  const setThreadSecondaryPanel = useSetThreadSecondaryPanelSelection(threadId);
+  const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
+    threadId,
+    threadId,
+  );
+  const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
+    threadId,
+    threadId,
+  );
+  const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
+    threadId,
+    threadId,
+  );
+  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(
+    threadId,
+    threadId,
+  );
+  const setThreadSecondaryPanel = useSetThreadSecondaryPanelSelection(
+    threadId,
+    threadId,
+  );
   const setThreadSecondaryPanelForSurface =
     useCallback<NullableSecondaryPanelChangeHandler>(
       (panel) => {
@@ -501,7 +515,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       [props.surface, setThreadSecondaryPanel],
     );
   const toggleDefaultPersistedSecondaryPanel =
-    useToggleThreadSecondaryPanelSelection(threadId);
+    useToggleThreadSecondaryPanelSelection(threadId, threadId);
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "");
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
@@ -596,7 +610,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     sideChatTabs,
     updateBrowserTab,
   } = useThreadFileTabs({
-    threadId,
+    panelStateId: threadId,
+    syncThreadId: threadId,
     environmentId: thread?.environmentId,
     retainedTerminalId,
     storageFiles: threadStorageFiles?.files,

@@ -121,6 +121,38 @@ function renderThreadRow({
 afterEach(cleanup);
 
 describe("ThreadRow", () => {
+  it("keeps the parent-thread disclosure caret visible on mobile", () => {
+    renderThreadRow({
+      thread: createThread({ title: "Parent thread" }),
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: false,
+        childCount: 1,
+        childActivity: {
+          pending: false,
+          working: false,
+          runtimeWorking: false,
+          workflow: false,
+          backgroundAgent: false,
+          backgroundCommand: false,
+          planMode: false,
+          goal: false,
+          unread: false,
+          unreadError: false,
+        },
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    expect(
+      screen
+        .getByRole("button", { name: "Collapse Parent thread threads" })
+        .getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBe("always");
+  });
+
   it("shows an unread error before pending or active work", () => {
     renderThreadRow({
       thread: createThread({

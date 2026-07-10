@@ -91,6 +91,8 @@ import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-cl
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
+const MINIMIZED_PROMPT_ACTION_BUTTON_CLASS =
+  "size-8 p-0 transition-all [&_svg]:size-4";
 const RICH_PASTE_BLOCK_TAGS = new Set([
   "ADDRESS",
   "ARTICLE",
@@ -2643,7 +2645,7 @@ export function PromptBoxInternal({
                 // placeholder position.
                 isZenMode && "min-h-0 flex-1",
                 minimized && !isZenMode && "pr-20",
-                showMinimizedLayout && "h-12 overflow-hidden pb-0 pr-24 pt-2.5",
+                showMinimizedLayout && "h-12 overflow-hidden pb-0 pr-20 pt-2.5",
               )}
               style={{
                 minHeight: isZenMode
@@ -2776,7 +2778,7 @@ export function PromptBoxInternal({
                     event.preventDefault();
                   }}
                   onClick={makePromptBoxLarger}
-                  className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+                  className={MINIMIZED_PROMPT_ACTION_BUTTON_CLASS}
                 >
                   <Icon name="Maximize2" className="size-4" />
                 </Button>
@@ -2824,7 +2826,11 @@ export function PromptBoxInternal({
                   variant="secondary"
                   aria-label="Stop run"
                   onClick={onStop}
-                  className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+                  className={
+                    showMinimizedLayout
+                      ? MINIMIZED_PROMPT_ACTION_BUTTON_CLASS
+                      : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
+                  }
                 >
                   <Icon
                     name="Square"
@@ -2834,13 +2840,14 @@ export function PromptBoxInternal({
               ) : (
                 <Button
                   type="submit"
-                  size="sm"
+                  size={showMinimizedLayout ? "icon" : "sm"}
                   variant="default"
                   aria-label={effectiveSubmitTitle}
                   disabled={!canSubmit}
                   className={cn(
-                    "ml-1",
-                    COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                    showMinimizedLayout
+                      ? MINIMIZED_PROMPT_ACTION_BUTTON_CLASS
+                      : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
                   )}
                 >
                   {isSubmitting ? (

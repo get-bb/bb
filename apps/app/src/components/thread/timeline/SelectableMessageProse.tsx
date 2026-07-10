@@ -133,10 +133,26 @@ export function anchorPointFromMouseEvent(
   return { x: event.clientX, y: event.clientY };
 }
 
+export function usesLiveSelectionRange(
+  pointerType: string | undefined,
+): boolean {
+  return (
+    pointerType !== undefined && pointerType !== "" && pointerType !== "mouse"
+  );
+}
+
 export function selectionAnchorFromPointerRelease(
   startPoint: SelectionAnchorPoint | null,
-  releaseEvent: Pick<MouseEvent, "clientX" | "clientY">,
+  releaseEvent: Pick<MouseEvent, "clientX" | "clientY"> & {
+    pointerType?: string;
+  },
 ): SelectionAnchor | null {
+  // Touch and pen selection handles can keep moving after the initial pointer
+  // release. Anchor those selections from the live Range rect instead of a
+  // release coordinate that becomes stale as the user adjusts the handles.
+  if (usesLiveSelectionRange(releaseEvent.pointerType)) {
+    return null;
+  }
   const releasePoint = anchorPointFromMouseEvent(releaseEvent);
   if (releasePoint === null) {
     return null;
@@ -215,6 +231,7 @@ export function SelectableMessageProse({
     // N messages don't thrash a shared controller.
     let hadSelection = false;
     let pointerIsDown = false;
+    let pointerUsesLiveSelectionRange = false;
     let pointerStartedInNode = false;
     let pointerStartPoint: SelectionAnchorPoint | null = null;
     let pendingReportAnchor: SelectionAnchor | null = null;
@@ -265,7 +282,11 @@ export function SelectableMessageProse({
       }, MULTI_CLICK_SELECTION_REPORT_DELAY_MS);
     };
     const handleSelectionChange = () => {
-      if (pointerIsDown) {
+      // Mouse drag selections wait for release so the menu does not chase the
+      // cursor. Mobile long-press selection is finalized while the touch is
+      // still down, and iOS may cancel rather than release that pointer, so
+      // read touch/pen ranges as soon as Selection reports them.
+      if (pointerIsDown && !pointerUsesLiveSelectionRange) {
         return;
       }
       if (multiClickTimer !== null) {
@@ -281,6 +302,7 @@ export function SelectableMessageProse({
       pointerStartPoint = pointerStartedInNode
         ? anchorPointFromMouseEvent(event)
         : null;
+      pointerUsesLiveSelectionRange = usesLiveSelectionRange(event.pointerType);
       pointerIsDown = true;
     };
     const handlePointerRelease = (event: PointerEvent | MouseEvent) => {
@@ -291,12 +313,14 @@ export function SelectableMessageProse({
         lastPointerReleaseAnchor = anchor;
       }
       pointerIsDown = false;
+      pointerUsesLiveSelectionRange = false;
       pointerStartedInNode = false;
       pointerStartPoint = null;
       scheduleWithAnchor(anchor);
     };
     const handlePointerCancel = () => {
       pointerIsDown = false;
+      pointerUsesLiveSelectionRange = false;
       pointerStartedInNode = false;
       pointerStartPoint = null;
       schedule();
@@ -344,7 +368,14 @@ export function SelectableMessageProse({
   }, []);
 
   return (
-    <div ref={nodeRef} className={className}>
+    <div
+      ref={nodeRef}
+      className={className}
+      // The compact sidebar listens globally for a right-swipe from the main
+      // inset. A long-press text selection uses the same touch sequence, so
+      // keep sidebar swipe recognition out of selectable message prose.
+      data-no-sidebar-swipe
+    >
       {children}
     </div>
   );

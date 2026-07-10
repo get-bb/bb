@@ -160,16 +160,29 @@ export function useThreadTerminalController({
   const environmentQueryId =
     target.kind === "environment" ? target.environmentId : "";
   const fixedPanelStateId = panelStateId ?? terminalTargetId;
-  const fixedPanelTabsState = useFixedPanelTabsState(fixedPanelStateId);
+  const fixedPanelSyncThreadId =
+    target.kind === "thread" ? target.threadId : null;
+  const fixedPanelTabsState = useFixedPanelTabsState(
+    fixedPanelStateId,
+    fixedPanelSyncThreadId,
+  );
   const isRightPanelOpen = fixedPanelTabsState.secondary.isOpen;
-  const activeFixedTerminalId =
-    useActiveFixedRightTerminalId(fixedPanelStateId);
-  const closeFixedSecondaryPanel =
-    useCloseFixedSecondaryPanel(fixedPanelStateId);
-  const setActiveFixedTerminal =
-    useSetFixedRightTerminalActiveTerminal(fixedPanelStateId);
-  const removeFixedTerminalTab =
-    useRemoveFixedRightTerminalTab(fixedPanelStateId);
+  const activeFixedTerminalId = useActiveFixedRightTerminalId(
+    fixedPanelStateId,
+    fixedPanelSyncThreadId,
+  );
+  const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(
+    fixedPanelStateId,
+    fixedPanelSyncThreadId,
+  );
+  const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
+    fixedPanelStateId,
+    fixedPanelSyncThreadId,
+  );
+  const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
+    fixedPanelStateId,
+    fixedPanelSyncThreadId,
+  );
   const uiCreatedTerminalIdsRef = useRef<Set<string>>(new Set());
   const dirtyTerminalIdsRef = useRef<Set<string>>(new Set());
   const closingCleanTerminalIdsRef = useRef<Set<string>>(new Set());

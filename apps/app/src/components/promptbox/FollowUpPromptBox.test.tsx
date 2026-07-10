@@ -42,6 +42,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     minimized,
     onSubmit,
     submission,
+    zenMode,
   }: {
     footerStart?: ReactNode;
     minimized?: {
@@ -51,8 +52,13 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     };
     onSubmit: () => void;
     submission?: { onModifierSubmit?: () => void };
+    zenMode?: { resetKey: string | number };
   }) => (
-    <div data-testid="prompt-box" data-minimized={minimized?.isMinimized}>
+    <div
+      data-testid="prompt-box"
+      data-minimized={minimized?.isMinimized}
+      data-zen-reset-key={zenMode?.resetKey}
+    >
       {footerStart}
       {minimized?.isMinimized ? <span>{minimized.placeholder}</span> : null}
       {minimized ? (
@@ -133,6 +139,7 @@ function createFollowUpPromptBoxProps(
       onChangeMessage: vi.fn(),
       onModifierSubmit: vi.fn(),
       onSubmit: vi.fn(),
+      minimizedPromptPlaceholder: "Ask a follow-up",
       promptPlaceholder: "Ask for a follow-up",
       canModifierSubmit: true,
       submitMode,
@@ -301,6 +308,7 @@ describe("FollowUpPromptBox", () => {
     );
 
     mocks.scrollElement.scrollTop = 190;
+    fireEvent.wheel(mocks.scrollElement, { deltaY: -10 });
     fireEvent.scroll(mocks.scrollElement);
 
     expect(
@@ -319,6 +327,7 @@ describe("FollowUpPromptBox", () => {
     );
 
     mocks.scrollElement.scrollTop = 190;
+    fireEvent.wheel(mocks.scrollElement, { deltaY: -10 });
     fireEvent.scroll(mocks.scrollElement);
     fireEvent.click(
       screen.getByRole("button", { name: "Make prompt box larger" }),
@@ -333,6 +342,7 @@ describe("FollowUpPromptBox", () => {
     mocks.scrollElement.scrollTop = 185;
     fireEvent.scroll(mocks.scrollElement);
     mocks.scrollElement.scrollTop = 170;
+    fireEvent.wheel(mocks.scrollElement, { deltaY: -10 });
     fireEvent.scroll(mocks.scrollElement);
     expect(
       screen.getByRole("button", { name: "Make prompt box larger" }),
@@ -349,5 +359,55 @@ describe("FollowUpPromptBox", () => {
     expect(
       screen.queryByRole("button", { name: "Make prompt box smaller" }),
     ).toBeNull();
+  });
+
+  it("does not minimize for a programmatic upward scroll", () => {
+    mocks.isCompactViewport = true;
+    if (!mocks.scrollElement) throw new Error("Missing scroll element");
+    mocks.scrollElement.scrollTop = 200;
+    render(
+      <FollowUpPromptBox
+        {...createFollowUpPromptBoxProps({ kind: "ready" })}
+      />,
+    );
+
+    mocks.scrollElement.scrollTop = 180;
+    fireEvent.scroll(mocks.scrollElement);
+
+    expect(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the composer mounted across compact breakpoint changes", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const { rerender } = render(<FollowUpPromptBox {...props} />);
+    const initialPromptBox = screen.getByTestId("prompt-box");
+
+    mocks.isCompactViewport = true;
+    rerender(<FollowUpPromptBox {...props} focusEndKey="mobile" />);
+
+    expect(screen.getByTestId("prompt-box")).toBe(initialPromptBox);
+    expect(initialPromptBox.getAttribute("data-zen-reset-key")).toBe(
+      "thr_test:mobile",
+    );
+  });
+
+  it("uses the caller-specific minimized placeholder", () => {
+    mocks.isCompactViewport = true;
+    const props = createFollowUpPromptBoxProps({
+      kind: "blocked",
+      reason: "stopping",
+    });
+    if (props.composer === null) throw new Error("Missing composer");
+    props.composer.minimizedPromptPlaceholder = "Stopping side chat...";
+    props.composer.promptPlaceholder = "Stopping side chat...";
+    render(<FollowUpPromptBox {...props} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    );
+
+    expect(screen.getByText("Stopping side chat...")).toBeTruthy();
   });
 });

@@ -52,7 +52,10 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
   };
 }
 
-function renderMobileRecents(threads: readonly ThreadListEntry[]): string {
+function renderMobileRecents(
+  threads: readonly ThreadListEntry[],
+  showCreatingRow = false,
+): string {
   return renderToStaticMarkup(
     <MemoryRouter>
       <RootComposeMobileRecents
@@ -63,7 +66,7 @@ function renderMobileRecents(threads: readonly ThreadListEntry[]): string {
             ["proj_app", "App"],
           ])
         }
-        showCreatingRow={false}
+        showCreatingRow={showCreatingRow}
         threads={threads}
       />
     </MemoryRouter>,
@@ -71,6 +74,27 @@ function renderMobileRecents(threads: readonly ThreadListEntry[]): string {
 }
 
 describe("RootComposeMobileRecents", () => {
+  it("uses the shared loading spinner for the optimistic creating row", () => {
+    const markup = renderMobileRecents([], true);
+
+    expect(markup).toContain('data-icon="Loading"');
+    expect(markup).not.toContain('data-icon="CircleDashed"');
+  });
+
+  it("uses the same low-emphasis label typography as sidebar sections", () => {
+    const markup = renderMobileRecents([
+      makeThread({
+        id: "thr_project",
+        projectId: "proj_app",
+        title: "Project thread",
+      }),
+    ]);
+
+    expect(markup).toContain(
+      'class="text-xs font-normal leading-5 text-subtle-foreground/75"',
+    );
+  });
+
   it("omits the personal project label from projectless thread rows", () => {
     const markup = renderMobileRecents([
       makeThread({

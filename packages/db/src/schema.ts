@@ -404,6 +404,18 @@ export const threads = sqliteTable(
   ],
 );
 
+// Server-owned tab descriptors for a thread's shared secondary-panel workspace.
+// Presentation state such as active tab, panel visibility, and width remains
+// client-local; this row stores only the ordered durable tab list.
+export const threadTabs = sqliteTable("thread_tabs", {
+  threadId: text("thread_id")
+    .primaryKey()
+    .references(() => threads.id, { onDelete: "cascade" }),
+  tabsJson: text("tabs_json").notNull(),
+  revision: integer("revision").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const threadFolders = sqliteTable(
   "thread_folders",
   {

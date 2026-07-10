@@ -1,4 +1,10 @@
-import { useEffect, useRef, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
@@ -8,7 +14,7 @@ import type { MessageProseSelection } from "./SelectableMessageProse.js";
 // hover-revealed icon-only `MessageActionBar` buttons, the floating menu IS the
 // affordance, so each action shows its label (matching the approved mock).
 const SELECTION_ACTION_BUTTON_CLASS =
-  "inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
+  "inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none max-md:pointer-coarse:min-h-7 max-md:pointer-coarse:px-2 max-md:pointer-coarse:py-1";
 const SELECTION_MENU_CONTENT_CLASS =
   "z-50 flex w-auto items-center gap-0.5 rounded-md border bg-popover p-0.5 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95";
 
@@ -34,6 +40,25 @@ function ActionButton({
   onDismiss: () => void;
   selection: MessageProseSelection;
 }) {
+  const ignoreNextClickRef = useRef(false);
+  const activate = () => {
+    action.onSelect(selection);
+    // Clear the lingering highlight so the source text doesn't read as
+    // "still selected" after the quote/side-chat has been created.
+    window.getSelection()?.removeAllRanges();
+    onDismiss();
+  };
+  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse") return;
+    // Preserve the native touch/pen selection until pointer-up activates the
+    // action. The stored selection remains the source of truth for the action.
+    event.preventDefault();
+    ignoreNextClickRef.current = true;
+  };
+  const handlePointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse" || !ignoreNextClickRef.current) return;
+    activate();
+  };
   return (
     <button
       type="button"
@@ -41,12 +66,17 @@ function ActionButton({
       // Keep the text selection alive through the click so the action still
       // receives the selected text (and the menu stays anchored).
       onMouseDown={(event: MouseEvent) => preventOverlayTriggerSelection(event)}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => {
+        ignoreNextClickRef.current = false;
+      }}
       onClick={() => {
-        action.onSelect(selection);
-        // Clear the lingering highlight so the source text doesn't read as
-        // "still selected" after the quote/side-chat has been created.
-        window.getSelection()?.removeAllRanges();
-        onDismiss();
+        if (ignoreNextClickRef.current) {
+          ignoreNextClickRef.current = false;
+          return;
+        }
+        activate();
       }}
     >
       <Icon
@@ -71,9 +101,6 @@ export function TimelineSelectionMenu({
   onDismiss,
 }: TimelineSelectionMenuProps) {
   const open = selection !== null;
-  const virtualAnchorRef = useRef({
-    getBoundingClientRect: () => new DOMRect(0, 0, 0, 0),
-  });
 
   // Dismiss on scroll/resize rather than re-anchoring: the captured rect goes
   // stale the moment the viewport moves, so closing is the honest behavior.
@@ -87,6 +114,26 @@ export function TimelineSelectionMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open, onDismiss]);
+
+  const anchorSide = selection?.anchorSide ?? "top";
+  const anchorLeft =
+    selection?.anchorPoint?.x ??
+    (selection === null ? 0 : selection.rect.left + selection.rect.width / 2);
+  const anchorTop =
+    selection?.anchorPoint?.y ??
+    (selection === null
+      ? 0
+      : anchorSide === "bottom"
+        ? selection.rect.bottom
+        : selection.rect.top);
+  const virtualAnchor = useMemo(
+    () => ({
+      getBoundingClientRect: () => new DOMRect(anchorLeft, anchorTop, 0, 0),
+    }),
+    [anchorLeft, anchorTop],
+  );
+  const virtualAnchorRef = useRef(virtualAnchor);
+  virtualAnchorRef.current = virtualAnchor;
 
   if (!selection) return null;
 
@@ -113,13 +160,9 @@ export function TimelineSelectionMenu({
   ];
   if (actions.length === 0) return null;
 
-  const { anchorPoint, rect } = selection;
-  const anchorLeft = anchorPoint?.x ?? rect.left + rect.width / 2;
-  const anchorTop = anchorPoint?.y ?? rect.top;
-  const anchorSide = selection.anchorSide ?? "top";
-  virtualAnchorRef.current.getBoundingClientRect = () =>
-    new DOMRect(anchorLeft, anchorTop, 0, 0);
-
+  // Prefer the conventional above-selection placement on every input type.
+  // Radix's collision handling flips the menu below only when the viewport
+  // does not have enough room above the virtual anchor.
   return (
     <PopoverPrimitive.Root
       open

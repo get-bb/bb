@@ -1,6 +1,10 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { useOptionalIsSidebarShowing } from "./sidebar";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  useOptionalIsSidebarShowing,
+} from "./sidebar";
 
 function OptionalSidebarProbe() {
   const isShowing = useOptionalIsSidebarShowing();
@@ -12,5 +16,18 @@ describe("useOptionalIsSidebarShowing", () => {
     expect(renderToString(<OptionalSidebarProbe />)).toContain(
       'data-sidebar-showing="null"',
     );
+  });
+});
+
+describe("SidebarTrigger", () => {
+  it("uses the shared sidebar icon on every viewport", () => {
+    const markup = renderToString(
+      <SidebarProvider>
+        <SidebarTrigger />
+      </SidebarProvider>,
+    );
+
+    expect(markup).toContain('data-icon="PanelLeft"');
+    expect(markup).not.toContain('data-icon="AlignLeft"');
   });
 });

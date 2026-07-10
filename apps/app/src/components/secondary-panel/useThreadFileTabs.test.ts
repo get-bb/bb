@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { TerminalSession } from "@bb/server-contract";
-import { afterEach, describe, expect, it } from "vitest";
+import { createElement, type ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
@@ -18,11 +20,44 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 
+const syncMocks = vi.hoisted(() => ({
+  scheduleLocalThreadTabsMigration: vi.fn(),
+  scheduleThreadTabsDeltaPersistence: vi.fn(),
+  useThreadTabs: vi.fn(() => ({ data: undefined })),
+}));
+
+vi.mock("@/hooks/queries/thread-tabs-query", () => ({
+  useThreadTabs: syncMocks.useThreadTabs,
+}));
+
+vi.mock("@/lib/thread-tabs-sync", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/thread-tabs-sync")>();
+  return {
+    ...actual,
+    hasPendingThreadTabsWrite: () => false,
+    scheduleLocalThreadTabsMigration:
+      syncMocks.scheduleLocalThreadTabsMigration,
+    scheduleThreadTabsDeltaPersistence:
+      syncMocks.scheduleThreadTabsDeltaPersistence,
+  };
+});
+
 type TerminalSessionOverrides = Partial<TerminalSession>;
 
-function terminalSession(
-  overrides: TerminalSessionOverrides,
-): TerminalSession {
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function QueryWrapper({ children }: { children: ReactNode }) {
+  return createElement(QueryClientProvider, { client: queryClient }, children);
+}
+
+function renderThreadHook<Result>(hook: () => Result) {
+  return renderHook(hook, { wrapper: QueryWrapper });
+}
+
+function terminalSession(overrides: TerminalSessionOverrides): TerminalSession {
   return {
     id: "term_1",
     threadId: "thr_1",
@@ -44,11 +79,37 @@ function terminalSession(
 
 afterEach(() => {
   cleanup();
+  queryClient.clear();
   window.localStorage.clear();
   resetPluginSlotStoreForTest();
+  syncMocks.scheduleLocalThreadTabsMigration.mockClear();
+  syncMocks.scheduleThreadTabsDeltaPersistence.mockClear();
+  syncMocks.useThreadTabs.mockClear();
 });
 
 describe("useThreadFileTabs terminal pruning", () => {
+  it("keeps root-compose file tabs local", () => {
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "root-compose",
+        syncThreadId: null,
+        environmentId: "env_root",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => {
+      result.current.openTab({ kind: "new-tab" });
+    });
+
+    expect(syncMocks.useThreadTabs).toHaveBeenCalledWith("", {
+      enabled: false,
+    });
+    expect(syncMocks.scheduleLocalThreadTabsMigration).not.toHaveBeenCalled();
+    expect(syncMocks.scheduleThreadTabsDeltaPersistence).not.toHaveBeenCalled();
+  });
+
   it("drops disconnected terminal tabs when not retained", async () => {
     const threadId = "terminal-prune-unretained";
     const disconnectedTab = createTerminalFixedPanelTab({
@@ -70,9 +131,10 @@ describe("useThreadFileTabs terminal pruning", () => {
       serializeFixedPanelTabsState({ state }),
     );
 
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId,
+        panelStateId: threadId,
+        syncThreadId: threadId,
         environmentId: "env_current",
         storageFiles: undefined,
         terminalSessions: [
@@ -114,9 +176,10 @@ describe("useThreadFileTabs terminal pruning", () => {
       }),
     );
 
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId,
+        panelStateId: threadId,
+        syncThreadId: threadId,
         environmentId: "env_current",
         retainedTerminalId: "term_disconnected",
         storageFiles: undefined,
@@ -162,9 +225,10 @@ describe("useThreadFileTabs active owners", () => {
       serializeFixedPanelTabsState({ state }),
     );
 
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId,
+        panelStateId: threadId,
+        syncThreadId: threadId,
         environmentId: "env_current",
         fileOwnerThreadId: "thr_current",
         preserveWorkspaceTabsAcrossContexts: true,
@@ -200,9 +264,10 @@ describe("useThreadFileTabs active owners", () => {
       }),
     );
 
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId,
+        panelStateId: threadId,
+        syncThreadId: threadId,
         environmentId: "env_root",
         fileOwnerThreadId: "thr_root",
         preserveWorkspaceTabsAcrossContexts: true,
@@ -242,9 +307,10 @@ describe("useThreadFileTabs active owners", () => {
       serializeFixedPanelTabsState({ state }),
     );
 
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId,
+        panelStateId: threadId,
+        syncThreadId: threadId,
         environmentId: "env_current",
         fileOwnerThreadId: "thr_current",
         preserveWorkspaceTabsAcrossContexts: true,
@@ -262,9 +328,10 @@ describe("useThreadFileTabs active owners", () => {
 describe("useThreadFileTabs plugin panel tabs", () => {
   it("opens, focuses identical re-opens (title refreshed), and opens siblings for new params", () => {
     const threadId = "plugin-panel-open";
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId,
+        panelStateId: threadId,
+        syncThreadId: threadId,
         environmentId: "env_1",
         storageFiles: undefined,
         terminalSessions: undefined,
@@ -319,9 +386,10 @@ describe("useThreadFileTabs plugin panel tabs", () => {
 
   it("replaces a transient new-tab like the other launchers", () => {
     const threadId = "plugin-panel-replace-new-tab";
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId,
+        panelStateId: threadId,
+        syncThreadId: threadId,
         environmentId: "env_1",
         storageFiles: undefined,
         terminalSessions: undefined,
@@ -378,9 +446,10 @@ describe("useThreadFileTabs file opener diversion", () => {
   it("diverts working-tree markdown opens to the preferred opener tab", () => {
     registerNotesOpener();
     setDefaultOpener();
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId: "opener-divert",
+        panelStateId: "opener-divert",
+        syncThreadId: "opener-divert",
         environmentId: "env_1",
         storageFiles: undefined,
         terminalSessions: undefined,
@@ -407,7 +476,10 @@ describe("useThreadFileTabs file opener diversion", () => {
     });
     const params = JSON.parse(
       result.current.activePluginPanelTab?.paramsJson ?? "null",
-    ) as { path: string; source: { kind: string; environmentId: string | null } };
+    ) as {
+      path: string;
+      source: { kind: string; environmentId: string | null };
+    };
     expect(params.path).toBe("notes/todo.md");
     expect(params.source).toMatchObject({
       kind: "workspace",
@@ -418,9 +490,10 @@ describe("useThreadFileTabs file opener diversion", () => {
   it("keeps the built-in preview for ref snapshots and unmatched extensions", () => {
     registerNotesOpener();
     setDefaultOpener();
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId: "opener-skip",
+        panelStateId: "opener-skip",
+        syncThreadId: "opener-skip",
         environmentId: "env_1",
         storageFiles: undefined,
         terminalSessions: undefined,
@@ -461,9 +534,10 @@ describe("useThreadFileTabs file opener diversion", () => {
   it("falls back to the built-in preview when the preferred opener is gone", () => {
     // Preference points at an opener that is not registered (plugin removed).
     setDefaultOpener();
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId: "opener-gone",
+        panelStateId: "opener-gone",
+        syncThreadId: "opener-gone",
         environmentId: "env_1",
         storageFiles: undefined,
         terminalSessions: undefined,
@@ -488,9 +562,10 @@ describe("useThreadFileTabs file opener diversion", () => {
   it("honors per-open viewer overrides in both directions", () => {
     registerNotesOpener();
     setDefaultOpener();
-    const { result } = renderHook(() =>
+    const { result } = renderThreadHook(() =>
       useThreadFileTabs({
-        threadId: "opener-override",
+        panelStateId: "opener-override",
+        syncThreadId: "opener-override",
         environmentId: "env_1",
         storageFiles: undefined,
         terminalSessions: undefined,

@@ -19,7 +19,10 @@ import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
-import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
+import {
+  getFollowUpPromptPlaceholder,
+  getMinimizedFollowUpPromptPlaceholder,
+} from "@/components/promptbox/follow-up-placeholder";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -634,6 +637,9 @@ function Row({
   const resolvedPlaceholder =
     promptPlaceholder ??
     getFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
+  const resolvedMinimizedPlaceholder =
+    promptPlaceholder ??
+    getMinimizedFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
   return (
     <PromptStage>
       <FollowUpPromptBox
@@ -658,6 +664,7 @@ function Row({
                 onChangeMessage: handleChangeMessage,
                 onModifierSubmit: noop,
                 onSubmit: noop,
+                minimizedPromptPlaceholder: resolvedMinimizedPlaceholder,
                 promptPlaceholder: resolvedPlaceholder,
                 canModifierSubmit: submitMode.kind === "queue",
                 submitMode,

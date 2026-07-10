@@ -746,6 +746,11 @@ export function SideChatTabContent({
     : isSideChatProvisioning
       ? "Provisioning side chat..."
       : "Reply in the side chat…";
+  const minimizedComposerPlaceholder = isSideChatStopRequested
+    ? "Stopping side chat..."
+    : isSideChatProvisioning
+      ? "Setting up side chat..."
+      : "Reply in the side chat…";
   const handleAttachFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) {
@@ -1101,6 +1106,7 @@ export function SideChatTabContent({
       onChangeMessage: handleChangeMessage,
       onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSubmit,
+      minimizedPromptPlaceholder: minimizedComposerPlaceholder,
       promptPlaceholder: composerPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       submitMode: sideChatSubmitMode,
@@ -1113,6 +1119,7 @@ export function SideChatTabContent({
       handleModifierSubmit,
       handleSubmit,
       isSideChatTurnSubmitting,
+      minimizedComposerPlaceholder,
       promptDraft.attachments,
       promptDraft.mentions,
       promptDraft.text,

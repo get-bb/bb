@@ -58,7 +58,8 @@ import {
 import { pruneTerminalTabsForSessions } from "./terminalPanelTabs";
 
 interface UseThreadFileTabsParams {
-  threadId: string | null | undefined;
+  panelStateId: string | null | undefined;
+  syncThreadId: string | null | undefined;
   environmentId: string | null | undefined;
   fileOwnerThreadId?: string | null;
   preserveWorkspaceTabsAcrossContexts?: boolean;
@@ -247,7 +248,8 @@ function setPrunedSecondaryTabs({
 }
 
 export function useThreadFileTabs({
-  threadId,
+  panelStateId,
+  syncThreadId,
   environmentId,
   fileOwnerThreadId,
   preserveWorkspaceTabsAcrossContexts = false,
@@ -256,17 +258,24 @@ export function useThreadFileTabs({
   storageFiles,
   terminalSessions,
 }: UseThreadFileTabsParams) {
-  const fixedPanelTabsState = useFixedPanelTabsState(threadId);
-  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
-  const recordRecentItem = useRecordThreadRecentItem(threadId);
-  const isThreadResolved = threadId !== null && threadId !== undefined;
+  const fixedPanelTabsState = useFixedPanelTabsState(
+    panelStateId,
+    syncThreadId,
+  );
+  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(
+    panelStateId,
+    syncThreadId,
+  );
+  const recordRecentItem = useRecordThreadRecentItem(panelStateId);
+  const isPanelStateResolved =
+    panelStateId !== null && panelStateId !== undefined;
   const resolvedFileOwnerThreadId =
     fileOwnerThreadId !== undefined
       ? fileOwnerThreadId
-      : isThreadResolved
-        ? threadId
-        : null;
-  const resolvedEnvironmentId = isThreadResolved ? environmentId : undefined;
+      : (syncThreadId ?? null);
+  const resolvedEnvironmentId = isPanelStateResolved
+    ? environmentId
+    : undefined;
 
   useEffect(() => {
     if (!resolvedFileOwnerThreadId) return;
@@ -361,7 +370,7 @@ export function useThreadFileTabs({
   ]);
 
   useEffect(() => {
-    if (!isThreadResolved || !storageFiles) return;
+    if (!isPanelStateResolved || !storageFiles) return;
     updateFixedPanelTabsState((state) => {
       const knownPaths = new Set(storageFiles.map((file) => file.path));
       const pruned = setPrunedSecondaryTabs({
@@ -381,14 +390,14 @@ export function useThreadFileTabs({
       });
     });
   }, [
-    isThreadResolved,
+    isPanelStateResolved,
     resolvedFileOwnerThreadId,
     storageFiles,
     updateFixedPanelTabsState,
   ]);
 
   useEffect(() => {
-    if (!isThreadResolved || terminalSessions === undefined) return;
+    if (!isPanelStateResolved || terminalSessions === undefined) return;
     updateFixedPanelTabsState((state) => {
       const pruned = setPrunedSecondaryTabs({
         activeTabId: state.secondary.activeTabId,
@@ -407,7 +416,7 @@ export function useThreadFileTabs({
       });
     });
   }, [
-    isThreadResolved,
+    isPanelStateResolved,
     retainedTerminalId,
     terminalSessions,
     updateFixedPanelTabsState,

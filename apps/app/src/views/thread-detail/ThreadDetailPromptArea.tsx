@@ -2,7 +2,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
+import {
+  getFollowUpPromptPlaceholder,
+  getMinimizedFollowUpPromptPlaceholder,
+} from "@/components/promptbox/follow-up-placeholder";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -454,6 +457,9 @@ export function ThreadDetailPromptArea({
   const promptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getFollowUpPromptPlaceholder(runtimeDisplayStatus);
+  const minimizedPromptPlaceholder = isStopRequested
+    ? "Stopping thread..."
+    : getMinimizedFollowUpPromptPlaceholder(runtimeDisplayStatus);
   const currentPromptDraft = useMemo(
     () => ({
       text: promptDraft.text,
@@ -595,8 +601,6 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
-
-
   const sendQueuedMessageById = useCallback(
     async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {
       if (!queuedMessagesByIdRef.current.has(messageId)) {
@@ -894,6 +898,7 @@ export function ThreadDetailPromptArea({
       onChangeMessage: promptDraft.setTextAndMentions,
       onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSend,
+      minimizedPromptPlaceholder,
       promptPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       submitMode,
@@ -910,6 +915,7 @@ export function ThreadDetailPromptArea({
       promptDraft.mentions,
       promptDraft.text,
       promptHistoryDrafts,
+      minimizedPromptPlaceholder,
       promptPlaceholder,
       runtimeDisplayStatus,
       submitMode,

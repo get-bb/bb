@@ -1025,7 +1025,12 @@ export function areFixedPanelTabsEquivalent(
         a.threadId === b.threadId
       );
     case "browser":
-      return b.kind === "browser" && a.url === b.url && a.title === b.title;
+      return (
+        b.kind === "browser" &&
+        a.environmentId === b.environmentId &&
+        a.url === b.url &&
+        a.title === b.title
+      );
     case "side-chat":
       return (
         b.kind === "side-chat" &&

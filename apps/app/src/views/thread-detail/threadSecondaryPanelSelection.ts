@@ -48,10 +48,17 @@ export function getOpenFixedSecondaryTab({
 }
 
 export function useSetThreadSecondaryPanelSelection(
-  threadId: ThreadSecondaryPanelThreadId,
+  panelStateId: ThreadSecondaryPanelThreadId,
+  syncThreadId: ThreadSecondaryPanelThreadId,
 ): NullableSecondaryPanelSetter {
-  const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(threadId);
-  const setFixedSecondaryPanelTab = useSetFixedSecondaryPanelTab(threadId);
+  const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(
+    panelStateId,
+    syncThreadId,
+  );
+  const setFixedSecondaryPanelTab = useSetFixedSecondaryPanelTab(
+    panelStateId,
+    syncThreadId,
+  );
 
   return useCallback<NullableSecondaryPanelSetter>(
     (panel) => {
@@ -66,11 +73,21 @@ export function useSetThreadSecondaryPanelSelection(
 }
 
 export function useToggleThreadSecondaryPanelSelection(
-  threadId: ThreadSecondaryPanelThreadId,
+  panelStateId: ThreadSecondaryPanelThreadId,
+  syncThreadId: ThreadSecondaryPanelThreadId,
 ): () => void {
-  const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(threadId);
-  const openFixedSecondaryPanel = useOpenFixedSecondaryPanel(threadId);
-  const fixedPanelTabsState = useFixedPanelTabsState(threadId);
+  const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(
+    panelStateId,
+    syncThreadId,
+  );
+  const openFixedSecondaryPanel = useOpenFixedSecondaryPanel(
+    panelStateId,
+    syncThreadId,
+  );
+  const fixedPanelTabsState = useFixedPanelTabsState(
+    panelStateId,
+    syncThreadId,
+  );
   const isSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
 
   return useCallback(() => {

@@ -163,6 +163,11 @@ import type {
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
 } from "./api-types.js";
+import type {
+  ThreadTabsResponse,
+  UpdateThreadTabsRequest,
+} from "./api/thread-tabs.js";
+import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
 import {
   closeTerminalRequestSchema,
   createThreadFolderRequestSchema,
@@ -814,6 +819,23 @@ export const publicApiRoutes = {
       method: "post",
       request: jsonRequest<PathId, ThreadOpenRequest>(threadOpenRequestSchema),
       response: jsonResponse<ThreadOpenResponse>(),
+    }),
+    tabs: defineRoute({
+      path: "/threads/:id/tabs",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadTabsResponse>(),
+    }),
+    updateTabs: defineRoute({
+      path: "/threads/:id/tabs",
+      method: "put",
+      request: jsonRequest<PathId, UpdateThreadTabsRequest>(
+        updateThreadTabsRequestSchema,
+      ),
+      response: [
+        jsonResponse<ThreadTabsResponse>(),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
     }),
     pin: defineRoute({
       path: "/threads/:id/pin",

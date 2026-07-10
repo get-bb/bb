@@ -20,6 +20,7 @@ import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 interface MessageActionBarProps {
   messageText: string;
   alignment: "start" | "end";
+  mobileActionDisplay: "inline" | "overflow";
   addToChatAttachments?: readonly PromptDraftAttachment[];
   onAddToChat?: (
     text: string,
@@ -54,11 +55,14 @@ interface MessageOverflowAction {
 // an action button reveals the bar). The fork/side-chat buttons mirror
 // CopyButton's own classes so all three read as one consistent affordance.
 const ACTION_BUTTON_CLASS =
-  "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:hidden";
+  "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
 const HOVER_REVEAL_CLASS =
   "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
+const MOBILE_INLINE_ACTION_CLASS =
+  "max-md:pointer-coarse:size-7 max-md:pointer-coarse:opacity-100 max-md:pointer-coarse:disabled:opacity-40 max-md:pointer-coarse:[&_svg]:size-4";
+const MOBILE_OVERFLOW_ACTION_CLASS = "max-md:pointer-coarse:hidden";
 const MOBILE_OVERFLOW_TRIGGER_CLASS =
-  "hidden size-9 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_svg]:size-5";
+  "hidden size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_svg]:size-4";
 const ACTION_TOOLTIP_SIDE = "bottom";
 
 export function findMessageActionTooltipCollisionBoundary(
@@ -78,6 +82,7 @@ export function findMessageActionTooltipCollisionBoundary(
 export function MessageActionBar({
   messageText,
   alignment,
+  mobileActionDisplay,
   addToChatAttachments = [],
   onAddToChat,
   onFork,
@@ -88,8 +93,13 @@ export function MessageActionBar({
   const hasCopy = messageText.length > 0;
   const hasAddToChat =
     (hasCopy || addToChatAttachments.length > 0) && onAddToChat !== undefined;
-  const [collisionBoundary, setCollisionBoundary] =
-    useState<HTMLElement | undefined>();
+  const [collisionBoundary, setCollisionBoundary] = useState<
+    HTMLElement | undefined
+  >();
+  const mobileDirectActionClass =
+    mobileActionDisplay === "inline"
+      ? MOBILE_INLINE_ACTION_CLASS
+      : MOBILE_OVERFLOW_ACTION_CLASS;
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
   }, []);
@@ -174,10 +184,7 @@ export function MessageActionBar({
               <CopyButton
                 text={messageText}
                 label="Copy message"
-                className={cn(
-                  HOVER_REVEAL_CLASS,
-                  "max-md:pointer-coarse:hidden",
-                )}
+                className={cn(HOVER_REVEAL_CLASS, mobileDirectActionClass)}
               />
             </TooltipTrigger>
             <TooltipContent
@@ -193,7 +200,11 @@ export function MessageActionBar({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  HOVER_REVEAL_CLASS,
+                  mobileDirectActionClass,
+                )}
                 onClick={handleAddToChat}
                 aria-label="Add to chat"
               >
@@ -213,7 +224,11 @@ export function MessageActionBar({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  HOVER_REVEAL_CLASS,
+                  mobileDirectActionClass,
+                )}
                 onClick={onFork}
                 disabled={disabled}
                 aria-label="Fork into new thread"
@@ -234,7 +249,11 @@ export function MessageActionBar({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  HOVER_REVEAL_CLASS,
+                  mobileDirectActionClass,
+                )}
                 onClick={onSideChat}
                 disabled={disabled}
                 aria-label="Reply in side chat"
@@ -255,7 +274,11 @@ export function MessageActionBar({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  HOVER_REVEAL_CLASS,
+                  mobileDirectActionClass,
+                )}
                 onClick={onSendToMain}
                 aria-label="Send to main thread"
               >
@@ -270,34 +293,36 @@ export function MessageActionBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className={MOBILE_OVERFLOW_TRIGGER_CLASS}
-              aria-label="Message actions"
-            >
-              <Icon name="MoreHorizontal" className="size-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align={alignment === "end" ? "end" : "start"}
-            mobileTitle="Message actions"
-            className="w-48"
-          >
-            {overflowActions.map((action) => (
-              <DropdownMenuItem
-                key={action.label}
-                disabled={action.disabled}
-                onSelect={action.onSelect}
-                textValue={action.label}
+        {mobileActionDisplay === "overflow" ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={MOBILE_OVERFLOW_TRIGGER_CLASS}
+                aria-label="Message actions"
               >
-                <Icon name={action.icon} aria-hidden="true" />
-                {action.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                <Icon name="MoreHorizontal" className="size-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align={alignment === "end" ? "end" : "start"}
+              mobileTitle="Message actions"
+              className="w-48"
+            >
+              {overflowActions.map((action) => (
+                <DropdownMenuItem
+                  key={action.label}
+                  disabled={action.disabled}
+                  onSelect={action.onSelect}
+                  textValue={action.label}
+                >
+                  <Icon name={action.icon} aria-hidden="true" />
+                  {action.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
     </TooltipProvider>
   );

@@ -1,5 +1,8 @@
+import type { TimelineRow } from "@bb/server-contract";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
+import { ThreadTimelineRows } from "@/components/thread/timeline/ThreadTimelineRows";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style";
+import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
 
 export default {
@@ -152,6 +155,48 @@ a9a0838a feat: enhance workspace changes functionality with new hooks and props
 
 Branch is merge-ready on top of \`f49ae132\`.`;
 
+const MOBILE_REVIEW_THREAD_ID = "thr_mobile_actions_review";
+const mobileReviewRows: TimelineRow[] = [
+  conversationRow({
+    id: "mobile_actions_earlier_user_message",
+    threadId: MOBILE_REVIEW_THREAD_ID,
+    turnId: "turn_mobile_actions_earlier_user",
+    sourceSeqStart: 5,
+    sourceSeqEnd: 5,
+    role: "user",
+    text: "Please tighten the message actions on mobile.",
+  }),
+  conversationRow({
+    id: "mobile_actions_earlier_agent_message",
+    threadId: MOBILE_REVIEW_THREAD_ID,
+    turnId: "turn_mobile_actions_earlier",
+    sourceSeqStart: 10,
+    sourceSeqEnd: 10,
+    role: "assistant",
+    text: "I found the layout branch. I’m checking the responsive action rules before changing the message footer.",
+  }),
+  conversationRow({
+    id: "mobile_actions_latest_user_message",
+    threadId: MOBILE_REVIEW_THREAD_ID,
+    turnId: "turn_mobile_actions_latest_user",
+    sourceSeqStart: 15,
+    sourceSeqEnd: 15,
+    role: "user",
+    text: "Use the same compact rule for my latest message too.",
+  }),
+  conversationRow({
+    id: "mobile_actions_latest_agent_message",
+    threadId: MOBILE_REVIEW_THREAD_ID,
+    turnId: "turn_mobile_actions_latest",
+    sourceSeqStart: 20,
+    sourceSeqEnd: 20,
+    role: "assistant",
+    text: "The mobile footer is ready. Earlier agent messages keep their actions in the overflow menu, while this final response exposes Copy, Fork, and Reply in side chat inline.",
+  }),
+];
+
+const noop = () => undefined;
+
 export function Overview() {
   return (
     <StoryCard>
@@ -168,6 +213,7 @@ export function Overview() {
             attachments={null}
             turnRequest={null}
             showActions={true}
+            mobileActionDisplay="inline"
           />
         </TimelineStage>
       </StoryRow>
@@ -187,9 +233,104 @@ export function Overview() {
             attachments={null}
             turnRequest={null}
             showActions={true}
+            mobileActionDisplay="inline"
           />
         </TimelineStage>
       </StoryRow>
     </StoryCard>
   );
 }
+
+export function MobileActionsAndSelection() {
+  return (
+    <div className="mobile-agent-actions-review mx-auto w-full max-w-[390px] rounded-lg border border-border bg-background p-4">
+      <style>{`
+      /* Force the coarse-pointer presentation for desktop story review. The
+         production component still owns the real mobile media queries. */
+      .mobile-agent-actions-review
+        :is(
+          [data-timeline-row-id="mobile_actions_earlier_agent_message"],
+          [data-timeline-row-id="mobile_actions_earlier_user_message"]
+        )
+        [aria-label="Copy message"],
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_earlier_agent_message"]
+        [aria-label="Fork into new thread"],
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_earlier_agent_message"]
+        [aria-label="Reply in side chat"],
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_earlier_user_message"]
+        [aria-label="Add to chat"] {
+        display: none;
+      }
+
+      .mobile-agent-actions-review
+        :is(
+          [data-timeline-row-id="mobile_actions_earlier_agent_message"],
+          [data-timeline-row-id="mobile_actions_earlier_user_message"]
+        )
+        [aria-label="Message actions"] {
+        display: inline-flex;
+      }
+
+      .mobile-agent-actions-review
+        :is(
+          [data-timeline-row-id="mobile_actions_latest_agent_message"],
+          [data-timeline-row-id="mobile_actions_latest_user_message"]
+        )
+        [aria-label="Copy message"],
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_latest_agent_message"]
+        [aria-label="Fork into new thread"],
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_latest_agent_message"]
+        [aria-label="Reply in side chat"],
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_latest_user_message"]
+        [aria-label="Add to chat"] {
+        width: 1.75rem;
+        height: 1.75rem;
+        opacity: 1;
+      }
+
+      .mobile-agent-actions-review
+        :is(
+          [data-timeline-row-id="mobile_actions_latest_agent_message"],
+          [data-timeline-row-id="mobile_actions_latest_user_message"]
+        )
+        [aria-label="Copy message"] svg,
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_latest_agent_message"]
+        [aria-label="Fork into new thread"] svg,
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_latest_agent_message"]
+        [aria-label="Reply in side chat"] svg,
+      .mobile-agent-actions-review
+        [data-timeline-row-id="mobile_actions_latest_user_message"]
+        [aria-label="Add to chat"] svg {
+        width: 1rem;
+        height: 1rem;
+      }
+    `}</style>
+      <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+        Earlier user and agent messages: overflow menu. Latest user and agent
+        messages: compact inline actions. Drag-select with a mouse or long-press
+        agent text on touch to exercise the floating selection menu.
+      </p>
+      <ThreadTimelineRows
+        canSpawnChild
+        onForkMessage={noop}
+        onSelectionAddToChat={noop}
+        onSelectionReplyInSideChat={noop}
+        onSideChatMessage={noop}
+        threadId={MOBILE_REVIEW_THREAD_ID}
+        threadRuntimeDisplayStatus="idle"
+        timelineRows={mobileReviewRows}
+        workspaceRootPath={undefined}
+      />
+    </div>
+  );
+}
+
+MobileActionsAndSelection.meta = { width: "xsmall" };

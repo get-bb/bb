@@ -61,6 +61,7 @@ import type {
   ThreadListResponse,
   ThreadSearchResponse,
   ThreadResponse,
+  ThreadTabsResponse,
   ThreadWithIncludesResponse,
   PathListIncludeQueryValue,
   BranchListQuery,
@@ -81,12 +82,14 @@ import type {
   UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
+  UpdateThreadTabsRequest,
   UpdateProjectSourceRequest,
   UploadedPromptAttachment,
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
+import { threadTabsResponseSchema } from "@bb/server-contract";
 import {
   providerCliInstallEventSchema,
   type ProviderCliInstallEvent,
@@ -886,6 +889,31 @@ export async function getThread(
 ): Promise<ThreadResponse> {
   return request<ThreadResponse>(
     apiClient.threads[":id"].$get({ param: { id } }, requestOptions(signal)),
+  );
+}
+
+export async function getThreadTabs(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ThreadTabsResponse> {
+  return threadTabsResponseSchema.parse(
+    await request<unknown>(
+      apiClient.threads[":id"].tabs.$get(
+        { param: { id } },
+        requestOptions(signal),
+      ),
+    ),
+  );
+}
+
+export async function updateThreadTabs(
+  id: string,
+  req: UpdateThreadTabsRequest,
+): Promise<ThreadTabsResponse> {
+  return threadTabsResponseSchema.parse(
+    await request<unknown>(
+      apiClient.threads[":id"].tabs.$put({ param: { id }, json: req }),
+    ),
   );
 }
 

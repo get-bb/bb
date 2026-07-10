@@ -698,8 +698,7 @@ const SidebarTrigger = React.forwardRef<
       }}
       {...props}
     >
-      <Icon name="PanelLeft" className="max-md:pointer-coarse:hidden" />
-      <Icon name="AlignLeft" className="hidden max-md:pointer-coarse:block" />
+      <Icon name="PanelLeft" />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );

@@ -116,40 +116,31 @@
 
   /*
    * The minimized mobile composer is a single-line preview of a rich editor,
-   * not a separate plain-text field. Keep only the first top-level block,
-   * flatten its Markdown containers, and turn hard breaks into spaces so the
-   * outer line can own one consistent ellipsis. Mention pills remain
-   * inline-flex: their label can truncate internally when a pill is wider than
-   * the available line, while the parent clips mixed pill/text content.
+   * not a separate plain-text field. Flatten every Markdown block and hard
+   * break into one horizontally scrollable line: the idle edge truncates, but
+   * moving the caret can reveal the entire value instead of landing inside
+   * invisible blocks. Mention pills remain inline-flex so their own labels can
+   * truncate without breaking the line.
    */
-  [data-promptbox-minimized-content] .ProseMirror {
+  [data-promptbox-minimized-content] .ProseMirror[contenteditable] {
+    min-height: 0;
     max-height: 1.7em;
-    overflow: hidden;
-    white-space: nowrap;
-  }
-
-  [data-promptbox-minimized-content] .ProseMirror > * {
-    display: none;
-  }
-
-  [data-promptbox-minimized-content] .ProseMirror > :first-child {
-    display: block;
-    max-width: 100%;
-    margin: 0;
-    overflow: hidden;
-    padding: 0;
-    border: 0;
-    color: inherit;
-    font-size: inherit;
-    font-weight: inherit;
-    line-height: inherit;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   [data-promptbox-minimized-content]
-    .ProseMirror
-    > :first-child
+    .ProseMirror[contenteditable]::-webkit-scrollbar {
+    display: none;
+  }
+
+  [data-promptbox-minimized-content] .ProseMirror[contenteditable] > *,
+  [data-promptbox-minimized-content]
+    .ProseMirror[contenteditable]
     :where(blockquote, h1, h2, h3, h4, h5, h6, li, ol, p, ul) {
     display: inline;
     margin: 0;
@@ -164,23 +155,28 @@
   }
 
   [data-promptbox-minimized-content]
-    .ProseMirror
-    > :first-child:is(blockquote, ol, ul)
-    > :not(:first-child),
+    .ProseMirror[contenteditable]
+    > *
+    + *::before,
   [data-promptbox-minimized-content]
-    .ProseMirror
-    > :first-child
-    li
-    > :not(:first-child) {
-    display: none;
+    .ProseMirror[contenteditable]
+    :where(blockquote, li)
+    > *
+    + *::before,
+  [data-promptbox-minimized-content]
+    .ProseMirror[contenteditable]
+    :where(ol, ul)
+    > li
+    + li::before {
+    content: " ";
   }
 
-  [data-promptbox-minimized-content] .ProseMirror br {
+  [data-promptbox-minimized-content] .ProseMirror[contenteditable] br {
     display: inline;
     content: " ";
   }
 
-  [data-promptbox-minimized-content] .ProseMirror br::after {
+  [data-promptbox-minimized-content] .ProseMirror[contenteditable] br::after {
     content: " ";
   }
 

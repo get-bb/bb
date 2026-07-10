@@ -164,6 +164,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadDefaultExecutionOptionsQueryKey",
     "threadQueryKey",
     "threadSearchQueryKeyPrefix",
+    "threadTabsQueryKey",
     "threadStorageFilePreviewQueryKeyPrefix",
     "threadStorageFilesForThreadQueryKeyPrefix",
     "threadStoragePathsForThreadQueryKeyPrefix",
@@ -223,6 +224,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadQueryKey",
     "threadTimelineQueryKey",
   ],
+  "hooks/cache-owners/thread-tabs-cache-owner.ts": ["threadTabsQueryKey"],
   "hooks/cache-owners/thread-list-cache-owner.ts": [
     "sidebarNavigationQueryKey",
     "threadQueryKey",

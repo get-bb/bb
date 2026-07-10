@@ -2,6 +2,9 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
+import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
@@ -199,7 +202,7 @@ export function RootComposeMobileRecents({
       <div className="mb-1 px-2">
         <h2
           id="root-compose-mobile-recents"
-          className="text-xs font-medium text-muted-foreground"
+          className={CHROME_SECTION_LABEL_CLASS}
         >
           Recent
         </h2>
@@ -212,8 +215,12 @@ export function RootComposeMobileRecents({
           <span className="min-w-0 flex-1 truncate">Creating thread</span>
           <span className="flex size-6 shrink-0 items-center justify-center">
             <Icon
-              name="CircleDashed"
-              className="size-4 shrink-0 animate-spin"
+              name="Loading"
+              className={cn(
+                "shrink-0 animate-spin",
+                SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+                COARSE_POINTER_ICON_SIZE_CLASS,
+              )}
               aria-hidden="true"
             />
           </span>

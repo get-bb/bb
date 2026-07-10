@@ -154,6 +154,15 @@ export type {
   UpdateThreadInput,
 } from "./threads.js";
 
+export {
+  getStoredThreadTabs,
+  replaceStoredThreadTabs,
+} from "./thread-tabs.js";
+export type {
+  ReplaceThreadTabsResult,
+  StoredThreadTabs,
+} from "./thread-tabs.js";
+
 export { getAppSettings, setAppSettings } from "./app-settings.js";
 export { getExperiments, setExperiments } from "./experiments.js";
 export {

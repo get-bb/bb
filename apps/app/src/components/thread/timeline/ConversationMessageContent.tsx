@@ -58,6 +58,8 @@ interface ConversationMessageContentBaseProps {
 
 export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
   role: "user";
+  /** Mobile presentation for the regular user message's action footer. */
+  mobileActionDisplay?: "inline" | "overflow";
   /**
    * `childOrigin` of the thread this row belongs to. Selects the fork leading
    * icon when an agent-initiated thread-start anchor (a fork's seed-without-run
@@ -136,6 +138,8 @@ export interface ConversationMessageContentAssistantProps
   onSelectProse?: (selection: MessageProseSelection | null) => void;
   /** Shows the hover-revealed copy/fork/side-chat action footer. */
   showActions: boolean;
+  /** Mobile presentation for this message's action footer. */
+  mobileActionDisplay: "inline" | "overflow";
   turnRequest: null;
   workspaceRootPath?: string;
 }
@@ -157,6 +161,7 @@ interface UserConversationMessageProps {
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  mobileActionDisplay: "inline" | "overflow";
   onAddToChat?: (text: string) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -184,6 +189,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   showActions: boolean;
+  mobileActionDisplay: "inline" | "overflow";
   text: string;
   workspaceRootPath?: string;
 }
@@ -335,6 +341,7 @@ function UserConversationMessage({
   childOrigin,
   initiator,
   mentions,
+  mobileActionDisplay,
   onAddToChat,
   onOpenLink,
   onOpenLocalFileLink,
@@ -455,6 +462,7 @@ function UserConversationMessage({
             <MessageActionBar
               messageText={messageText}
               alignment="end"
+              mobileActionDisplay={mobileActionDisplay}
               addToChatAttachments={addToChatAttachments}
               onAddToChat={onAddToChat}
             />
@@ -476,6 +484,7 @@ function AssistantConversationMessage({
   onOpenLocalFileLink,
   projectId,
   showActions,
+  mobileActionDisplay,
   text,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
@@ -529,11 +538,19 @@ function AssistantConversationMessage({
           fork on. `disabled` greys both fork and side chat together when the
           thread is at the spawn-depth cap (both spawn a child thread, one guard).
         */
-        <div className="relative h-5">
-          <div className="absolute left-0 top-1">
+        <div
+          className="relative h-5 max-md:pointer-coarse:h-7"
+        >
+          <div
+            className={cn(
+              "absolute left-0 top-1",
+              "max-md:pointer-coarse:top-0",
+            )}
+          >
             <MessageActionBar
               messageText={text}
               alignment="start"
+              mobileActionDisplay={mobileActionDisplay}
               onFork={onFork}
               onSideChat={onSideChat}
               onSendToMain={onSendToMain}
@@ -578,6 +595,7 @@ export function ConversationMessageContent(
         childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
+        mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
         onAddToChat={props.onAddToChat}
         onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -609,6 +627,7 @@ export function ConversationMessageContent(
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
       showActions={props.showActions}
+      mobileActionDisplay={props.mobileActionDisplay}
       sourceSeqEnd={props.sourceSeqEnd}
       sourceSeqStart={props.sourceSeqStart}
       text={text}
