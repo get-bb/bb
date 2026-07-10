@@ -26,6 +26,9 @@ import { getDesktopServersApi } from "@/lib/bb-desktop";
 const SERVERS_SECTION_DESCRIPTION =
   "Servers this desktop app can connect to. The list lives in the desktop app, not on any server.";
 
+const SHOW_CONNECT_LABEL = "Show BB Connect servers";
+const SHOW_CONNECT_DESCRIPTION =
+  "Automatically list every bb paired to your BB Connect account.";
 const AUTO_CONNECT_LABEL = "Auto-connect to local servers";
 const AUTO_CONNECT_DESCRIPTION =
   "When a compatible bb server is already running on this machine, attach to it instead of starting a new one.";
@@ -233,7 +236,9 @@ interface ServersSettingsSectionContentProps {
   onRemove: (server: BbDesktopServerListEntry) => void;
   onRename: (server: BbDesktopServerListEntry, name: string) => void;
   onSetActive: (server: BbDesktopServerListEntry) => void;
+  onShowConnectServersChange: (enabled: boolean) => void;
   servers: BbDesktopServerListEntry[];
+  showConnectServers: boolean;
 }
 
 /** Exported for tests that drive the section without the desktop bridge. */
@@ -244,7 +249,9 @@ export function ServersSettingsSectionContent({
   onRemove,
   onRename,
   onSetActive,
+  onShowConnectServersChange,
   servers,
+  showConnectServers,
 }: ServersSettingsSectionContentProps) {
   const [addUrl, setAddUrl] = useState("");
   const [addName, setAddName] = useState("");
@@ -373,7 +380,17 @@ export function ServersSettingsSectionContent({
           ) : null}
         </form>
 
-        <div className="border-t border-border pt-4">
+        <div className="space-y-4 border-t border-border pt-4">
+          <SettingsWithControl
+            description={SHOW_CONNECT_DESCRIPTION}
+            label={SHOW_CONNECT_LABEL}
+          >
+            <Switch
+              aria-label={SHOW_CONNECT_LABEL}
+              checked={showConnectServers}
+              onCheckedChange={onShowConnectServersChange}
+            />
+          </SettingsWithControl>
           <SettingsWithControl
             description={AUTO_CONNECT_DESCRIPTION}
             label={AUTO_CONNECT_LABEL}
@@ -412,6 +429,7 @@ export function ServersSettingsSection() {
   const [serversApi] = useState(getDesktopServersApi);
   const [servers, setServers] = useState<BbDesktopServerListEntry[]>([]);
   const [autoConnect, setAutoConnect] = useState(false);
+  const [showConnectServers, setShowConnectServers] = useState(true);
 
   useEffect(() => {
     if (serversApi === null) {
@@ -424,6 +442,9 @@ export function ServersSettingsSection() {
     });
     void serversApi.getAutoConnect().then((value) => {
       if (!cancelled) setAutoConnect(value);
+    });
+    void serversApi.getShowConnectServers().then((value) => {
+      if (!cancelled) setShowConnectServers(value);
     });
     const unsubscribe = serversApi.onChange((list) => {
       setServers(list);
@@ -465,7 +486,14 @@ export function ServersSettingsSection() {
       onSetActive={(server) => {
         void serversApi.setActive(server.id);
       }}
+      onShowConnectServersChange={(enabled) => {
+        setShowConnectServers(enabled);
+        void serversApi.setShowConnectServers(enabled).catch(() => {
+          void serversApi.getShowConnectServers().then(setShowConnectServers);
+        });
+      }}
       servers={servers}
+      showConnectServers={showConnectServers}
     />
   );
 }

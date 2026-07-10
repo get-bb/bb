@@ -438,13 +438,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     void navigate(SETTINGS_ROUTE_PATH);
     return true;
   });
-  // Native server rail "+" tile. Settings → Servers section lands separately;
-  // until then open general settings so the user can still manage servers via
-  // the multi-server settings UI when it ships.
+  // Native server rail "+" tile.
   useAppCommandHandler("settings.openServers", () => {
-    // TODO(multi-server): navigate to SETTINGS_ROUTE_PATH + /servers when that
-    // section exists; keep settings.open fallback for older shells.
-    void navigate(SETTINGS_ROUTE_PATH);
+    void navigate(`${SETTINGS_ROUTE_PATH}/servers`);
     return true;
   });
   const {

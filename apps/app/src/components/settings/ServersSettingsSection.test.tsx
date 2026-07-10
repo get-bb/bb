@@ -60,6 +60,8 @@ function createServersApi(
     setActive: vi.fn().mockResolvedValue(undefined),
     getAutoConnect: vi.fn().mockResolvedValue(true),
     setAutoConnect: vi.fn().mockResolvedValue(undefined),
+    getShowConnectServers: vi.fn().mockResolvedValue(true),
+    setShowConnectServers: vi.fn().mockResolvedValue(undefined),
     onChange: vi.fn().mockReturnValue(() => {}),
     ...overrides,
   };
@@ -135,7 +137,9 @@ describe("ServersSettingsSectionContent", () => {
         onRemove={vi.fn()}
         onRename={vi.fn()}
         onSetActive={vi.fn()}
+        onShowConnectServersChange={vi.fn()}
         servers={[]}
+        showConnectServers={true}
       />,
     );
 
@@ -202,6 +206,8 @@ describe("ServersSettingsSectionContent", () => {
         onRemove={vi.fn()}
         onRename={vi.fn()}
         onSetActive={vi.fn()}
+        onShowConnectServersChange={vi.fn()}
+        showConnectServers={true}
         servers={[
           serverEntry({
             id: "builtin",
