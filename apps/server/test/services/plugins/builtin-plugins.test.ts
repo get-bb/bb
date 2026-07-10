@@ -119,6 +119,7 @@ function createService(args: {
   isEnabled?: () => boolean;
   isConnectEnabled?: () => boolean;
   rootDir?: string;
+  watchBuiltinPluginSources?: boolean;
 }): PluginService {
   return createPluginService({
     db: args.db,
@@ -138,6 +139,7 @@ function createService(args: {
         rootDir: args.rootDir ?? fixtureRoot,
       },
     ],
+    watchBuiltinPluginSources: args.watchBuiltinPluginSources,
     loadTimeoutMs: 2000,
   });
 }
@@ -308,6 +310,54 @@ describe("builtin plugin reconciliation", () => {
       stdout: "builtin builtin-fixture",
     });
   });
+
+  it("rebuilds and serves a new builtin app hash after a source edit while Plugins is off", async () => {
+    const mutableRoot = join(workDir, "bb-plugin-hot-builtin");
+    await mkdir(mutableRoot, { recursive: true });
+    await writeFile(
+      join(mutableRoot, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-hot-builtin",
+        version: "0.1.0",
+        type: "module",
+        bb: { server: "./server.ts", app: "./app.tsx" },
+      }),
+    );
+    await writeFile(
+      join(mutableRoot, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(mutableRoot, "app.tsx"),
+      "export default function App() { return <div>before</div>; }\n",
+    );
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "hot",
+      isEnabled: () => false,
+      rootDir: mutableRoot,
+      watchBuiltinPluginSources: true,
+    });
+    await service.start();
+    const before = service.list()[0]?.app.bundle;
+    expect(before).not.toBeNull();
+
+    await writeFile(
+      join(mutableRoot, "app.tsx"),
+      "export default function App() { return <div>after</div>; }\n",
+    );
+    let after = service.list()[0]?.app.bundle;
+    const deadline = Date.now() + 20_000;
+    while (after?.hash === before?.hash && Date.now() < deadline) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+      after = service.list()[0]?.app.bundle;
+    }
+    expect(after?.hash).not.toBe(before?.hash);
+    await expect(
+      readFile(join(mutableRoot, "dist", "app.js"), "utf8"),
+    ).resolves.toContain("after");
+  }, 30_000);
 
   it("rejects unknown builtin install sources clearly", async () => {
     service = createService({ db, dataDir: join(workDir, "data") });

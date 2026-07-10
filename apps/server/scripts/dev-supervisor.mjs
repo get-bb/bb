@@ -12,6 +12,7 @@ void runDevSupervisor({
   childArgs: ["--conditions=source", "--import", "tsx", "src/index.ts"],
   childCommand: process.execPath,
   childCwd: packageRoot,
+  childEnv: { BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD: "1" },
   unexpectedRestartBackoff: DEFAULT_UNEXPECTED_RESTART_BACKOFF,
   serviceName: "server",
 }).catch((error) => {
