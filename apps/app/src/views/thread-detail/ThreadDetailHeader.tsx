@@ -124,26 +124,25 @@ export function ThreadDetailHeader({
         </Button>
       ) : null}
       {showRightPanelToggle ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={`${HEADER_ICON_BUTTON_CLASS} relative`}
-          aria-label={
-            panelShortcut
-              ? `${rightPanelLabel} (${panelShortcut.label})`
-              : rightPanelLabel
-          }
-          aria-keyshortcuts={panelShortcut?.ariaKeyshortcuts}
-          aria-pressed={isSecondaryPanelOpen}
-          onClick={onToggleSecondaryPanel}
-        >
-          <Icon name={rightPanelIconName} />
-          <AppCommandShortcutHint
-            shortcut={panelShortcut}
-            className="absolute right-full mr-1"
-          />
-        </Button>
+        <span className="inline-flex items-center gap-1.5">
+          <AppCommandShortcutHint shortcut={panelShortcut} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={HEADER_ICON_BUTTON_CLASS}
+            aria-label={
+              panelShortcut
+                ? `${rightPanelLabel} (${panelShortcut.label})`
+                : rightPanelLabel
+            }
+            aria-keyshortcuts={panelShortcut?.ariaKeyshortcuts}
+            aria-pressed={isSecondaryPanelOpen}
+            onClick={onToggleSecondaryPanel}
+          >
+            <Icon name={rightPanelIconName} />
+          </Button>
+        </span>
       ) : null}
     </>
   );

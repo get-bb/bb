@@ -216,9 +216,7 @@ import {
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
-import {
-  useAppCommandHandler,
-} from "@/components/commands/AppCommandProvider";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -1261,16 +1259,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     return handleCloseWindowRequest();
   });
   useAppCommandHandler("diff.toggle", () => {
-    if (
-      props.surface !== "page" ||
-      !canUseGitUi
-    ) {
+    if (props.surface !== "page" || !canUseGitUi) {
       return false;
     }
-    if (
-      isSecondaryPanelOpen &&
-      activeFixedSecondaryTab?.kind === "git-diff"
-    ) {
+    if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "git-diff") {
       closeSecondaryPanel();
     } else {
       openSecondaryPanelDiffPanel();
@@ -1924,6 +1916,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     canOpenPreferredFileTarget,
     openPathInPreferredFileTarget,
   ]);
+  const workspaceOpenPath = resolveThreadWorkspaceOpenPath({
+    canOpenWorkspace: canOpenPreferredDirectoryTarget,
+    environment,
+    hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
+  });
   useAppCommandHandler("workspace.openPreferred", () => {
     if (props.surface !== "page") return false;
     if (activeWorkspaceFilePath && handleOpenFileInEditor) {
@@ -1936,6 +1933,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     }
     if (activeStorageFilePath && handleOpenStorageFileInEditor) {
       handleOpenStorageFileInEditor(activeStorageFilePath);
+      return true;
+    }
+    if (workspaceOpenPath && preferredDirectoryTarget) {
+      void openPathInPreferredDirectoryTarget({
+        lineNumber: null,
+        path: workspaceOpenPath,
+      });
       return true;
     }
     return false;
@@ -2199,11 +2203,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       align="end"
     />
   );
-  const workspaceOpenPath = resolveThreadWorkspaceOpenPath({
-    canOpenWorkspace: canOpenPreferredDirectoryTarget,
-    environment,
-    hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
-  });
   const workspaceOpenButton =
     workspaceOpenPath && preferredDirectoryTarget ? (
       <ThreadWorkspaceOpenButton

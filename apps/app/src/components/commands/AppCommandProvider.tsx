@@ -61,6 +61,7 @@ const AppCommandContextValue = createContext<AppCommandProviderValue | null>(
 const AppCommandModifierHeldContext = createContext(false);
 
 const EMPTY_KEYBINDINGS: AppKeybindings = [];
+const SHORTCUT_HINT_HOLD_DELAY_MS = 300;
 
 const EMPTY_CONTEXT: AppCommandContext = {
   mainSurface: false,
@@ -91,6 +92,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const keybindings = systemConfig.data?.keybindings ?? EMPTY_KEYBINDINGS;
   const isDesktop = getBbDesktopInfo() !== null;
   const [isPrimaryModifierHeld, setIsPrimaryModifierHeld] = useState(false);
+  const modifierHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const keybindingsRef = useRef(keybindings);
   const mainSurfaceRef = useRef(!location.pathname.startsWith("/popout"));
   const handlersRef = useRef(
@@ -105,18 +109,35 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     const primaryModifier = isMacKeyboardPlatform(browserPlatform())
       ? "Meta"
       : "Control";
+    const clearModifierHold = () => {
+      if (modifierHoldTimerRef.current !== null) {
+        clearTimeout(modifierHoldTimerRef.current);
+        modifierHoldTimerRef.current = null;
+      }
+      setIsPrimaryModifierHeld(false);
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === primaryModifier) setIsPrimaryModifierHeld(true);
+      if (
+        event.key !== primaryModifier ||
+        modifierHoldTimerRef.current !== null
+      ) {
+        return;
+      }
+      modifierHoldTimerRef.current = setTimeout(() => {
+        modifierHoldTimerRef.current = null;
+        setIsPrimaryModifierHeld(true);
+      }, SHORTCUT_HINT_HOLD_DELAY_MS);
     };
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === primaryModifier) setIsPrimaryModifierHeld(false);
+      if (event.key === primaryModifier) clearModifierHold();
     };
-    const handleBlur = () => setIsPrimaryModifierHeld(false);
+    const handleBlur = () => clearModifierHold();
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("blur", handleBlur);
     return () => {
+      clearModifierHold();
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
@@ -131,41 +152,39 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     mainSurfaceRef.current = !location.pathname.startsWith("/popout");
   }, [location.pathname]);
 
-  const registerHandler = useCallback<AppCommandProviderValue["registerHandler"]>(
-    (command, registration) => {
-      const token = Symbol(command);
-      const registrations = handlersRef.current.get(command) ?? new Map();
-      sequenceRef.current += 1;
-      registrations.set(token, {
-        ...registration,
-        sequence: sequenceRef.current,
-      });
-      handlersRef.current.set(command, registrations);
-      return () => {
-        registrations.delete(token);
-        if (registrations.size === 0) {
-          handlersRef.current.delete(command);
-        }
-      };
-    },
-    [],
-  );
+  const registerHandler = useCallback<
+    AppCommandProviderValue["registerHandler"]
+  >((command, registration) => {
+    const token = Symbol(command);
+    const registrations = handlersRef.current.get(command) ?? new Map();
+    sequenceRef.current += 1;
+    registrations.set(token, {
+      ...registration,
+      sequence: sequenceRef.current,
+    });
+    handlersRef.current.set(command, registrations);
+    return () => {
+      registrations.delete(token);
+      if (registrations.size === 0) {
+        handlersRef.current.delete(command);
+      }
+    };
+  }, []);
 
-  const registerContext = useCallback<AppCommandProviderValue["registerContext"]>(
-    (key, source, active) => {
-      const sources = activeContextsRef.current.get(key) ?? new Set<symbol>();
-      if (active) {
-        sources.add(source);
-        activeContextsRef.current.set(key, sources);
-        return;
-      }
-      sources.delete(source);
-      if (sources.size === 0) {
-        activeContextsRef.current.delete(key);
-      }
-    },
-    [],
-  );
+  const registerContext = useCallback<
+    AppCommandProviderValue["registerContext"]
+  >((key, source, active) => {
+    const sources = activeContextsRef.current.get(key) ?? new Set<symbol>();
+    if (active) {
+      sources.add(source);
+      activeContextsRef.current.set(key, sources);
+      return;
+    }
+    sources.delete(source);
+    if (sources.size === 0) {
+      activeContextsRef.current.delete(key);
+    }
+  }, []);
 
   const dispatch = useCallback(
     (command: AppCommandId, target: EventTarget | null): boolean => {
@@ -264,12 +283,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       registerContext,
       registerHandler,
     }),
-    [
-      dispatch,
-      getShortcut,
-      registerContext,
-      registerHandler,
-    ],
+    [dispatch, getShortcut, registerContext, registerHandler],
   );
 
   return (
@@ -362,10 +376,7 @@ export function useAppCommandShortcuts(
 ): ReadonlyMap<AppCommandId, AppShortcutPresentation> {
   const value = useContext(AppCommandContextValue);
   return useMemo(() => {
-    const presentations = new Map<
-      AppCommandId,
-      AppShortcutPresentation
-    >();
+    const presentations = new Map<AppCommandId, AppShortcutPresentation>();
     const platform = browserPlatform();
     for (const command of commands) {
       const shortcut = value?.getShortcut(command);

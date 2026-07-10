@@ -1,8 +1,4 @@
-import type {
-  AppCommandContext,
-  AppKeybinding,
-  AppShortcut,
-} from "@bb/domain";
+import type { AppCommandContext, AppKeybinding, AppShortcut } from "@bb/domain";
 import { isMacKeyboardPlatform } from "@bb/domain";
 
 export interface AppShortcutPresentation {
@@ -21,7 +17,9 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   ) {
     return true;
   }
-  return target.closest('[contenteditable]:not([contenteditable="false"])') !== null;
+  return (
+    target.closest('[contenteditable]:not([contenteditable="false"])') !== null
+  );
 }
 
 export function matchesAppCommandContext(
@@ -41,10 +39,17 @@ export function formatAppShortcut(
   const useMetaForMod = isMacKeyboardPlatform(platform);
   const showMeta = shortcut.meta || (shortcut.mod && useMetaForMod);
   const showControl = shortcut.control || (shortcut.mod && !useMetaForMod);
-  const key = shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key;
+  const key =
+    shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key;
 
   if (useMetaForMod) {
-    return `${showControl ? "⌃" : ""}${shortcut.alt ? "⌥" : ""}${shortcut.shift ? "⇧" : ""}${showMeta ? "⌘" : ""}${key}`;
+    const parts: string[] = [];
+    if (showControl) parts.push("⌃");
+    if (shortcut.alt) parts.push("⌥");
+    if (shortcut.shift) parts.push("⇧");
+    if (showMeta) parts.push("⌘");
+    parts.push(key);
+    return parts.join(" ");
   }
 
   const parts: string[] = [];
@@ -53,7 +58,7 @@ export function formatAppShortcut(
   if (shortcut.shift) parts.push("Shift");
   if (showMeta) parts.push("Meta");
   parts.push(key);
-  return parts.join("+");
+  return parts.join(" + ");
 }
 
 export function formatAppShortcutAria(
@@ -68,6 +73,8 @@ export function formatAppShortcutAria(
   if (shortcut.alt) parts.push("Alt");
   if (shortcut.shift) parts.push("Shift");
   if (shortcut.meta || (shortcut.mod && useMetaForMod)) parts.push("Meta");
-  parts.push(shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key);
+  parts.push(
+    shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key,
+  );
   return parts.join("+");
 }

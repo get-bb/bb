@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -206,17 +212,24 @@ afterEach(() => {
 });
 
 describe("AppCommandProvider", () => {
-  it("shares primary-modifier hold state and clears it on release or blur", () => {
+  it("shares primary-modifier hold state after 300ms and clears it on release or blur", () => {
+    vi.useFakeTimers();
     renderProvider(<ModifierState />);
 
     expect(screen.getByText("released")).toBeDefined();
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    act(() => vi.advanceTimersByTime(299));
+    expect(screen.getByText("released")).toBeDefined();
+    act(() => vi.advanceTimersByTime(1));
     expect(screen.getByText("held")).toBeDefined();
     fireEvent.keyUp(window, { key: "Control" });
     expect(screen.getByText("released")).toBeDefined();
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByText("held")).toBeDefined();
     fireEvent.blur(window);
     expect(screen.getByText("released")).toBeDefined();
+    vi.useRealTimers();
   });
 
   it("presents the web-capable alias when the primary binding is desktop-only", () => {
@@ -227,8 +240,8 @@ describe("AppCommandProvider", () => {
       </>,
     );
 
-    expect(screen.getByText("Ctrl+Shift+O")).toBeDefined();
-    expect(screen.getByText("Ctrl+Shift+ArrowUp")).toBeDefined();
+    expect(screen.getByText("Ctrl + Shift + O")).toBeDefined();
+    expect(screen.getByText("Ctrl + Shift + ArrowUp")).toBeDefined();
   });
 
   it("falls through declining handlers in priority order", () => {
