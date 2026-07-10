@@ -308,7 +308,9 @@ export function createDesktopWindowFactory(
 
       if (layoutMode === "rail" && args.railLayout !== undefined) {
         const contentView = browserWindow.contentView;
-        const getContentBounds = browserWindow.getContentBounds;
+        // Electron native methods are `this`-sensitive: an unbound reference
+        // throws "Object has been destroyed" when invoked off the instance.
+        const getContentBounds = browserWindow.getContentBounds?.bind(browserWindow);
         if (contentView !== undefined && getContentBounds !== undefined) {
           args.railLayout.installRail({
             hostWindow: {

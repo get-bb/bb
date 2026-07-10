@@ -1222,7 +1222,11 @@ function sendServersChanged(): void {
   for (const browserWindow of BrowserWindow.getAllWindows()) {
     sendServersChangedToWindow(browserWindow);
   }
-  void maybeRecreateWindowsForLayoutMode();
+  maybeRecreateWindowsForLayoutMode().catch((error: unknown) => {
+    // Old windows may already be closed by the time creation fails; surface
+    // the error instead of leaving a silent unhandled rejection.
+    console.error("[desktop] window layout recreation failed:", error);
+  });
 }
 
 function resolveApplicationLayoutMode(): DesktopWindowLayoutMode {
