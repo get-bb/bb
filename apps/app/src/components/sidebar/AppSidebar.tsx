@@ -426,6 +426,8 @@ export function AppSidebar({
             }}
           />
         </SidebarContent>
+          </div>
+        </div>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />
           <SidebarMenu className="flex-row items-center gap-1">
@@ -474,8 +476,6 @@ export function AppSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
-          </div>
-        </div>
         <div
           data-testid="app-sidebar-resize-handle"
           className={cn(
