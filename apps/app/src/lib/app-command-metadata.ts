@@ -62,6 +62,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       command("window.new", "New window", "Open another bb desktop window."),
       command("settings.open", "Open settings", "Open bb settings."),
       command(
+        "settings.openServers",
+        "Open server settings",
+        "Open settings to add or manage bb servers.",
+      ),
+      command(
         "sidebar.toggle",
         "Toggle sidebar",
         "Show or hide the app sidebar.",

@@ -7,6 +7,7 @@ import {
   clipboard,
   globalShortcut,
   ipcMain,
+  Menu,
   nativeImage,
   nativeTheme,
   session,
@@ -34,12 +35,14 @@ import {
   bbDesktopServerRenameRequestSchema,
   bbDesktopServerSetAutoConnectRequestSchema,
   bbDesktopServerSetShowConnectServersRequestSchema,
+  bbDesktopServerSourceSchema,
   bbDesktopThemeSchema,
   getDesktopThreadRoutePath,
   type BbDesktopInfo,
   type BbDesktopPopoutThreadRef,
   type BbDesktopServerListEntry,
   type BbDesktopServerStatus,
+  type BbDesktopThemeResolved,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -155,6 +158,25 @@ import {
 } from "./desktop-browser-view.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
+import {
+  BB_DESKTOP_RAIL_ADD_SERVER_CHANNEL,
+  BB_DESKTOP_RAIL_CONTEXT_MENU_CHANNEL,
+  BB_DESKTOP_RAIL_SET_ACTIVE_CHANNEL,
+} from "./desktop-rail-ipc.js";
+import {
+  shouldUseRailLayout,
+  type DesktopWindowLayoutMode,
+} from "./desktop-rail-layout.js";
+import {
+  getDesktopRailSession,
+  getDesktopRailSessionForWebContents,
+  installDesktopRailSession,
+  setLatestRailTheme,
+} from "./desktop-rail-session.js";
+import {
+  resolveRailTheme,
+  themeModeFromPayload,
+} from "./desktop-rail-theme.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
 import {
@@ -333,8 +355,12 @@ let currentWindowUrl: string | null = null;
 let logViewerIpcHandlersInstalled = false;
 let logViewerLineBuffer: LogLineBuffer | null = null;
 let logViewerPreloadPath: string | null = null;
+let railPreloadPath: string | null = null;
 let logViewerTailer: LogTailer | null = null;
 let logViewerWindow: BrowserWindow | null = null;
+/** Last layout mode used for application windows; drives recreate-on-threshold. */
+let lastApplicationLayoutMode: DesktopWindowLayoutMode = "classic";
+let layoutRecreateInFlight = false;
 let popoutWindowManager: PopoutWindowManager | null = null;
 let popoutPreloadPath: string | null = null;
 let popoutWindowUrl: string | null = null;
@@ -465,13 +491,36 @@ function getCurrentDesktopInfo(): BbDesktopInfo | null {
   });
 }
 
+/**
+ * Main→renderer push target. When the SPA is hosted in a child WebContentsView
+ * (native server rail), the window's own webContents is blank — route to SPA.
+ */
+function sendToDesktopWindowWebContents(
+  browserWindow: {
+    webContents: { id: number; send(channel: string, payload: unknown): void };
+  },
+  channel: string,
+  payload: unknown,
+): void {
+  const railSession = getDesktopRailSession(browserWindow.webContents.id);
+  if (railSession !== null) {
+    railSession.send(channel, payload);
+    return;
+  }
+  browserWindow.webContents.send(channel, payload);
+}
+
 function sendDesktopInfoChanged(): void {
   const info = getCurrentDesktopInfo();
   if (info === null) {
     return;
   }
   for (const browserWindow of BrowserWindow.getAllWindows()) {
-    browserWindow.webContents.send(BB_DESKTOP_INFO_CHANGED_CHANNEL, info);
+    sendToDesktopWindowWebContents(
+      browserWindow,
+      BB_DESKTOP_INFO_CHANGED_CHANNEL,
+      info,
+    );
   }
 }
 
@@ -492,7 +541,8 @@ function getSenderDesktopWindowState(
 function sendDesktopWindowStateChanged(
   browserWindow: DesktopBrowserWindow,
 ): void {
-  browserWindow.webContents.send(
+  sendToDesktopWindowWebContents(
+    browserWindow,
     BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
     getDesktopWindowState(browserWindow),
   );
@@ -567,21 +617,28 @@ function shouldEnableServerDaemonLogsMenu(): boolean {
 const pendingCloseWindowRequests = new Map<number, NodeJS.Timeout>();
 
 function requestRendererWindowClose(browserWindow: BrowserWindow): void {
-  const webContentsId = browserWindow.webContents.id;
-  const pending = pendingCloseWindowRequests.get(webContentsId);
+  // Response comes from the SPA webContents (child view when rail is active).
+  const railSession = getDesktopRailSession(browserWindow.webContents.id);
+  const responseWebContentsId =
+    railSession?.spaWebContentsId ?? browserWindow.webContents.id;
+  const pending = pendingCloseWindowRequests.get(responseWebContentsId);
   if (pending !== undefined) {
     clearTimeout(pending);
   }
   pendingCloseWindowRequests.set(
-    webContentsId,
+    responseWebContentsId,
     setTimeout(() => {
-      pendingCloseWindowRequests.delete(webContentsId);
+      pendingCloseWindowRequests.delete(responseWebContentsId);
       if (!browserWindow.isDestroyed()) {
         browserWindow.close();
       }
     }, CLOSE_WINDOW_REQUEST_TIMEOUT_MS),
   );
-  browserWindow.webContents.send(BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL, null);
+  sendToDesktopWindowWebContents(
+    browserWindow,
+    BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+    null,
+  );
 }
 
 function closeFocusedDetachedDevTools(): void {
@@ -707,8 +764,25 @@ function installCurrentApplicationMenu(): void {
       if (!(browserWindow instanceof BrowserWindow)) {
         return;
       }
+      const railSession = getDesktopRailSession(browserWindow.webContents.id);
+      const target =
+        railSession !== null
+          ? railSession.spaWebContents
+          : browserWindow.webContents;
       if (ignoreCache) {
+        // WebContentsView SPA exposes loadURL/send/openDevTools; use host reload
+        // APIs when the SPA is the main webContents.
+        if (railSession !== null) {
+          const url = railSession.spaWebContents.getURL();
+          void railSession.loadUrl(url);
+          return;
+        }
         browserWindow.webContents.reloadIgnoringCache();
+        return;
+      }
+      if (railSession !== null) {
+        const url = target.getURL();
+        void railSession.loadUrl(url);
         return;
       }
       browserWindow.webContents.reload();
@@ -1025,15 +1099,28 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
       activeServerState.getMostRecentServerId(),
     );
   }
-  registerDesktopContextMenu({ webContents: browserWindow.webContents });
+  const railSession = getDesktopRailSession(webContentsId);
+  if (railSession !== null) {
+    applicationWindowWebContentsIds.add(railSession.spaWebContentsId);
+    // Context menu / focus attach to the SPA child, not the blank host.
+    registerDesktopContextMenu({
+      webContents: railSession.spaWebContents,
+    });
+  } else {
+    registerDesktopContextMenu({ webContents: browserWindow.webContents });
+  }
   browserWindow.on("enter-full-screen", () => {
     sendDesktopWindowStateChanged(browserWindow);
   });
   browserWindow.on("leave-full-screen", () => {
     sendDesktopWindowStateChanged(browserWindow);
+    railSession?.reapplyTrafficLights();
   });
   browserWindow.on("closed", () => {
     applicationWindowWebContentsIds.delete(webContentsId);
+    if (railSession !== null) {
+      applicationWindowWebContentsIds.delete(railSession.spaWebContentsId);
+    }
     activeServerState?.clearWindow(browserWindow.id);
   });
 }
@@ -1042,6 +1129,11 @@ async function loadUrlInApplicationWindow(args: {
   browserWindow: BrowserWindow;
   url: string;
 }): Promise<void> {
+  const railSession = getDesktopRailSession(args.browserWindow.webContents.id);
+  if (railSession !== null) {
+    await railSession.loadUrl(args.url);
+    return;
+  }
   args.browserWindow.webContents.setZoomFactor(1);
   try {
     await args.browserWindow.loadURL(args.url);
@@ -1103,7 +1195,11 @@ async function refreshServerStatuses(): Promise<void> {
   }
 }
 
-function sendServersChangedToWindow(browserWindow: BrowserWindow): void {
+function sendServersChangedToWindow(browserWindow: {
+  id: number;
+  isDestroyed(): boolean;
+  webContents: { id: number; send(channel: string, payload: unknown): void };
+}): void {
   if (
     browserWindow.isDestroyed() ||
     !applicationWindowWebContentsIds.has(browserWindow.webContents.id) ||
@@ -1114,12 +1210,118 @@ function sendServersChangedToWindow(browserWindow: BrowserWindow): void {
   const servers = buildServerListEntries({
     activeServerId: activeServerState.getActiveServerId(browserWindow.id),
   });
-  browserWindow.webContents.send(BB_DESKTOP_SERVERS_CHANGED_CHANNEL, servers);
+  sendToDesktopWindowWebContents(
+    browserWindow,
+    BB_DESKTOP_SERVERS_CHANGED_CHANNEL,
+    servers,
+  );
+  getDesktopRailSession(browserWindow.webContents.id)?.pushServers(servers);
 }
 
 function sendServersChanged(): void {
   for (const browserWindow of BrowserWindow.getAllWindows()) {
     sendServersChangedToWindow(browserWindow);
+  }
+  void maybeRecreateWindowsForLayoutMode();
+}
+
+function resolveApplicationLayoutMode(): DesktopWindowLayoutMode {
+  const serverCount = serverRegistry?.list().length ?? 1;
+  return shouldUseRailLayout(serverCount) ? "rail" : "classic";
+}
+
+/**
+ * When the registry crosses the ≥2-server threshold (or drops below), recreate
+ * open application windows so the layout mode updates. Bounds/URL are restored
+ * via persisted window state + current SPA URL; one visible reload is expected.
+ */
+async function maybeRecreateWindowsForLayoutMode(): Promise<void> {
+  if (
+    layoutRecreateInFlight ||
+    quitting ||
+    desktopWindowFactory === null ||
+    serverRegistry === null
+  ) {
+    return;
+  }
+  const desiredMode = resolveApplicationLayoutMode();
+  if (desiredMode === lastApplicationLayoutMode) {
+    return;
+  }
+
+  const windows = BrowserWindow.getAllWindows().filter(
+    (browserWindow) =>
+      !browserWindow.isDestroyed() &&
+      applicationWindowWebContentsIds.has(browserWindow.webContents.id) &&
+      browserWindow !== logViewerWindow,
+  );
+  if (windows.length === 0) {
+    lastApplicationLayoutMode = desiredMode;
+    return;
+  }
+
+  layoutRecreateInFlight = true;
+  try {
+    const snapshots: Array<{
+      activeServerId: string;
+      bounds: { x: number; y: number; width: number; height: number };
+      isFullScreen: boolean;
+      isMaximized: boolean;
+      url: string | null;
+    }> = [];
+    for (const browserWindow of windows) {
+      const railSession = getDesktopRailSession(browserWindow.webContents.id);
+      const url =
+        railSession !== null
+          ? railSession.spaWebContents.getURL()
+          : browserWindow.webContents.getURL();
+      snapshots.push({
+        activeServerId:
+          activeServerState?.getActiveServerId(browserWindow.id) ??
+          BUILTIN_SERVER_ID,
+        bounds: browserWindow.getBounds(),
+        isFullScreen: browserWindow.isFullScreen(),
+        isMaximized: browserWindow.isMaximized(),
+        url: url.length > 0 ? url : currentWindowUrl,
+      });
+    }
+
+    // Closing removes persisted window-state entries (not quitting). Bounds are
+    // restored below from the in-memory snapshot instead.
+    for (const browserWindow of windows) {
+      browserWindow.close();
+    }
+
+    lastApplicationLayoutMode = desiredMode;
+
+    for (const snapshot of snapshots) {
+      const created = await createApplicationWindow({
+        initialUrl: snapshot.url,
+        stateKey: null,
+      });
+      if (created === null) {
+        continue;
+      }
+      if (created instanceof BrowserWindow) {
+        created.setBounds(snapshot.bounds);
+        if (snapshot.isMaximized) {
+          created.maximize();
+        }
+        if (snapshot.isFullScreen) {
+          created.setFullScreen(true);
+        }
+      }
+      if (activeServerState !== null) {
+        activeServerState.setActiveServerId(
+          created.id,
+          snapshot.activeServerId,
+        );
+        sendServersChangedToWindow(created);
+      }
+    }
+    refreshApplicationMenu();
+  } finally {
+    layoutRecreateInFlight = false;
   }
 }
 
@@ -1225,7 +1427,12 @@ async function setActiveServerForWindow(
       url,
     });
     if (shouldOpenDevTools()) {
-      args.browserWindow.webContents.openDevTools({ mode: "detach" });
+      const railSession = getDesktopRailSession(args.browserWindow.webContents.id);
+      if (railSession !== null) {
+        railSession.openDevTools();
+      } else {
+        args.browserWindow.webContents.openDevTools({ mode: "detach" });
+      }
     }
   } else {
     // Remote servers are pure web loads. Owned local runtime keeps running.
@@ -1432,7 +1639,163 @@ function registerDesktopServerIpc(): void {
 }
 
 function isApplicationWindowSender(webContents: WebContents): boolean {
-  return applicationWindowWebContentsIds.has(webContents.id);
+  if (applicationWindowWebContentsIds.has(webContents.id)) {
+    return true;
+  }
+  // SPA child view may race registration; resolve via host window rail session.
+  const hostWindow = BrowserWindow.fromWebContents(webContents);
+  if (hostWindow === null) {
+    return false;
+  }
+  const railSession = getDesktopRailSession(hostWindow.webContents.id);
+  return railSession !== null && railSession.spaWebContentsId === webContents.id;
+}
+
+function isRailWebContentsSender(webContents: WebContents): boolean {
+  const session = getDesktopRailSessionForWebContents(webContents.id);
+  return session !== null && session.railWebContentsId === webContents.id;
+}
+
+function registerDesktopRailIpc(): void {
+  ipcMain.handle(BB_DESKTOP_RAIL_SET_ACTIVE_CHANNEL, async (event, payload) => {
+    if (!isRailWebContentsSender(event.sender)) {
+      return;
+    }
+    const parsed = bbDesktopServerIdRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    const hostWindow = BrowserWindow.fromWebContents(event.sender);
+    if (hostWindow === null) {
+      return;
+    }
+    await setActiveServerForWindow({
+      browserWindow: hostWindow,
+      serverId: parsed.data.id,
+    });
+  });
+
+  ipcMain.on(BB_DESKTOP_RAIL_ADD_SERVER_CHANNEL, (event) => {
+    if (!isRailWebContentsSender(event.sender)) {
+      return;
+    }
+    const hostWindow = BrowserWindow.fromWebContents(event.sender);
+    if (hostWindow === null) {
+      return;
+    }
+    // SPA handles Settings → Servers when the command is registered; falls
+    // through to settings.open if the section is not yet present.
+    sendToDesktopWindowWebContents(
+      hostWindow,
+      BB_DESKTOP_APP_COMMAND_CHANNEL,
+      "settings.openServers",
+    );
+  });
+
+  const railContextMenuSchema = z
+    .object({
+      id: z.string().min(1),
+      source: bbDesktopServerSourceSchema,
+    })
+    .strict();
+
+  ipcMain.on(BB_DESKTOP_RAIL_CONTEXT_MENU_CHANNEL, (event, payload) => {
+    if (!isRailWebContentsSender(event.sender)) {
+      return;
+    }
+    const parsed = railContextMenuSchema.safeParse(payload);
+    if (!parsed.success || serverRegistry === null) {
+      return;
+    }
+    const hostWindow = BrowserWindow.fromWebContents(event.sender);
+    if (hostWindow === null) {
+      return;
+    }
+    const server = serverRegistry.getServer(parsed.data.id);
+    if (server === null) {
+      return;
+    }
+
+    const template: Parameters<typeof Menu.buildFromTemplate>[0] = [
+      {
+        label: "Switch here",
+        click: () => {
+          void setActiveServerForWindow({
+            browserWindow: hostWindow,
+            serverId: server.id,
+          });
+        },
+      },
+      {
+        label: "Open in browser",
+        click: () => {
+          void shell.openExternal(server.url);
+        },
+      },
+    ];
+
+    if (server.source === "manual") {
+      template.push(
+        { type: "separator" },
+        {
+          label: "Rename…",
+          click: () => {
+            const railSession = getDesktopRailSession(
+              hostWindow.webContents.id,
+            );
+            if (railSession === null) {
+              return;
+            }
+            const promptScript = `(function(){var n=window.prompt(${JSON.stringify("Rename server")},${JSON.stringify(server.name)});return typeof n==="string"?n:null;})()`;
+            void event.sender
+              .executeJavaScript(promptScript)
+              .then((result: unknown) => {
+                if (typeof result !== "string") {
+                  return;
+                }
+                const name = result.trim();
+                if (name.length === 0 || name === server.name) {
+                  return;
+                }
+                void serverRegistry?.rename(server.id, name);
+              });
+          },
+        },
+        {
+          label: "Remove",
+          click: () => {
+            void (async () => {
+              if (serverRegistry === null || activeServerState === null) {
+                return;
+              }
+              const removed = await serverRegistry.remove(server.id);
+              if (!removed) {
+                return;
+              }
+              remoteServerStatuses.delete(server.id);
+              for (const browserWindow of BrowserWindow.getAllWindows()) {
+                if (
+                  !applicationWindowWebContentsIds.has(
+                    browserWindow.webContents.id,
+                  ) ||
+                  activeServerState.getActiveServerId(browserWindow.id) !==
+                    server.id
+                ) {
+                  continue;
+                }
+                void setActiveServerForWindow({
+                  browserWindow,
+                  serverId: BUILTIN_SERVER_ID,
+                });
+              }
+            })();
+          },
+        },
+      );
+    }
+
+    Menu.buildFromTemplate(template).popup({ window: hostWindow });
+  });
 }
 
 function isPopoutWindowSender(webContents: WebContents): boolean {
@@ -1723,7 +2086,12 @@ async function createApplicationWindow(
   });
   registerApplicationWindow(browserWindow);
   if (bbAppLoaded && shouldOpenDevTools()) {
-    browserWindow.webContents.openDevTools({ mode: "detach" });
+    const railSession = getDesktopRailSession(browserWindow.webContents.id);
+    if (railSession !== null) {
+      railSession.openDevTools();
+    } else {
+      browserWindow.webContents.openDevTools({ mode: "detach" });
+    }
   }
   return browserWindow;
 }
@@ -1803,12 +2171,16 @@ function registerDesktopUpdateIpc(): void {
   // traffic lights and inactive title-bar chrome — follows bb's theme
   // rather than the OS appearance. `themeSource` is app-global so a single
   // assignment covers every BrowserWindow, including the log viewer.
+  // Payload may be legacy "light"|"dark" or {mode, canvasColor, inkColor}
+  // for the native server rail (version skew with older SPAs).
   ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
     const parsed = bbDesktopThemeSchema.safeParse(payload);
     if (!parsed.success) {
       return;
     }
-    nativeTheme.themeSource = parsed.data;
+    nativeTheme.themeSource = themeModeFromPayload(parsed.data);
+    const resolved: BbDesktopThemeResolved = resolveRailTheme(parsed.data);
+    setLatestRailTheme(resolved);
   });
 
   ipcMain.on(BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL, (event, payload) => {
@@ -2224,6 +2596,11 @@ async function runDesktopApp(): Promise<void> {
     "dist",
     "log-viewer-preload.cjs",
   );
+  const resolvedRailPreloadPath = join(
+    paths.appPath,
+    "dist",
+    "desktop-rail-preload.cjs",
+  );
   const preloadPath = join(paths.appPath, "dist", "preload.cjs");
   const serverUrl = resolveDesktopServerUrl({ env: process.env });
   builtinServerUrl = serverUrl;
@@ -2239,6 +2616,10 @@ async function runDesktopApp(): Promise<void> {
   assertPathExists({
     label: "log viewer preload script",
     path: resolvedLogViewerPreloadPath,
+  });
+  assertPathExists({
+    label: "server rail preload script",
+    path: resolvedRailPreloadPath,
   });
   assertPathExists({ label: "preload script", path: preloadPath });
   assertPathExists({ label: "app icon", path: iconPath });
@@ -2257,6 +2638,7 @@ async function runDesktopApp(): Promise<void> {
     storagePath: join(userDataPath, SERVER_REGISTRY_FILE_NAME),
   });
   await serverRegistry.load();
+  lastApplicationLayoutMode = resolveApplicationLayoutMode();
   activeServerState = createActiveServerState({
     defaultServerId: BUILTIN_SERVER_ID,
   });
@@ -2305,13 +2687,28 @@ async function runDesktopApp(): Promise<void> {
       const browserWindow = BrowserWindow.getAllWindows().find(
         (candidate) => candidate.webContents.id === hostWebContentsId,
       );
-      browserWindow?.webContents.send(BB_DESKTOP_APP_COMMAND_CHANNEL, command);
+      if (browserWindow === undefined) {
+        return;
+      }
+      sendToDesktopWindowWebContents(
+        browserWindow,
+        BB_DESKTOP_APP_COMMAND_CHANNEL,
+        command,
+      );
     },
     focusHostWebContents(hostWebContentsId) {
       const browserWindow = BrowserWindow.getAllWindows().find(
         (candidate) => candidate.webContents.id === hostWebContentsId,
       );
-      browserWindow?.webContents.focus();
+      if (browserWindow === undefined) {
+        return;
+      }
+      const railSession = getDesktopRailSession(browserWindow.webContents.id);
+      if (railSession !== null) {
+        railSession.spaWebContents.focus();
+        return;
+      }
+      browserWindow.webContents.focus();
     },
     resolveAppCommand(input) {
       return resolveDesktopBrowserAppCommand({
@@ -2322,6 +2719,7 @@ async function runDesktopApp(): Promise<void> {
     },
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
+  registerDesktopRailIpc();
   desktopUpdateService.start();
   desktopAutoUpdateService.start();
 
@@ -2330,6 +2728,9 @@ async function runDesktopApp(): Promise<void> {
       return new BrowserWindow(options);
     },
   };
+  popoutPreloadPath = preloadPath;
+  logViewerPreloadPath = resolvedLogViewerPreloadPath;
+  railPreloadPath = resolvedRailPreloadPath;
   desktopWindowFactory = createDesktopWindowFactory({
     browserWindowCreator,
     createWindowStateKey() {
@@ -2344,10 +2745,33 @@ async function runDesktopApp(): Promise<void> {
       void shell.openExternal(openArgs.url);
     },
     preloadPath,
+    railLayout: {
+      resolveLayoutMode() {
+        return resolveApplicationLayoutMode();
+      },
+      installRail({ hostWindow }) {
+        if (railPreloadPath === null) {
+          throw new Error("Server rail preload path is not configured");
+        }
+        const servers =
+          serverRegistry === null || activeServerState === null
+            ? []
+            : buildServerListEntries({
+                activeServerId: activeServerState.getMostRecentServerId(),
+              });
+        return installDesktopRailSession({
+          hostWindow,
+          initialServers: servers,
+          openExternalUrl(url) {
+            void shell.openExternal(url);
+          },
+          preloadPath,
+          railPreloadPath,
+        });
+      },
+    },
     userDataPath,
   });
-  popoutPreloadPath = preloadPath;
-  logViewerPreloadPath = resolvedLogViewerPreloadPath;
   installLogViewerIpcHandlers();
 
   refreshApplicationMenu();

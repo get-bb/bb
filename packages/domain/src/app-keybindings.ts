@@ -32,6 +32,7 @@ export const APP_COMMAND_IDS = [
   ...THREAD_JUMP_APP_COMMAND_IDS,
   "window.new",
   "settings.open",
+  "settings.openServers",
   "sidebar.toggle",
   "panel.newTab",
   "panel.close",

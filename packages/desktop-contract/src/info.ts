@@ -26,7 +26,30 @@ export type BbDesktopWindowState = z.infer<
   typeof bbDesktopWindowStateSchema
 >;
 
-export const bbDesktopThemeSchema = z.enum(["light", "dark"]);
+export const bbDesktopThemeModeSchema = z.enum(["light", "dark"]);
+export type BbDesktopThemeMode = z.infer<typeof bbDesktopThemeModeSchema>;
+
+/**
+ * Resolved theme push from the SPA. Includes the light/dark mode (for
+ * NSWindow/nativeTheme) plus the computed --canvas/--ink anchors so shell
+ * chrome (server rail) can re-derive surfaces without embedding the full
+ * palette CSS. Older SPAs still send the legacy mode string alone.
+ */
+export const bbDesktopThemeResolvedSchema = z
+  .object({
+    canvasColor: z.string().min(1),
+    inkColor: z.string().min(1),
+    mode: bbDesktopThemeModeSchema,
+  })
+  .strict();
+export type BbDesktopThemeResolved = z.infer<
+  typeof bbDesktopThemeResolvedSchema
+>;
+
+export const bbDesktopThemeSchema = z.union([
+  bbDesktopThemeModeSchema,
+  bbDesktopThemeResolvedSchema,
+]);
 export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
