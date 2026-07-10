@@ -136,6 +136,12 @@ watches and reloads on every save. The manifest is package.json: `bb.server`
 into agent threads; default `skills/`), and `engines.bb` (supported bb
 range). The plugin id is the package name minus `bb-plugin-`.
 
+Plugins can contribute palettes with `bb.themes`: an array of
+`{ id, name, description?, css }`, where `css` is a plugin-relative `.css`
+file. Loaded plugin palettes appear in Settings → Appearance and `bb theme
+list`; their selectable id is `plugin:<plugin-id>:<theme-id>`. Disabling or
+removing the owning plugin makes bb fall back to the default palette.
+
 Logos: drop a logo.svg (or logo.png / logo.webp) in the plugin root and bb
 shows it wherever the plugin's contributions appear — the sidebar entry,
 panel title bar, composer command and mention menus, thread action

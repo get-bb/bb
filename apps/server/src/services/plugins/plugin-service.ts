@@ -10,6 +10,9 @@ import type { DbConnection } from "@bb/db";
 import {
   PLUGIN_SDK_MAJOR,
   PLUGIN_SDK_VERSION,
+  CUSTOM_THEME_CSS_MAX_LENGTH,
+  formatPluginThemeId,
+  type PluginThemeMeta,
   type DynamicTool,
   type Thread,
   type ToolCallResponse,
@@ -369,6 +372,10 @@ export interface PluginService {
   /** React to experiments that affect plugin loading being toggled at runtime. */
   onExperimentsChanged(): Promise<void>;
   list(): PluginListEntry[];
+  /** Palettes declared by currently loaded plugins, ordered by plugin id. */
+  listThemes(): PluginThemeMeta[];
+  /** Read a loaded plugin palette by its globally namespaced id. */
+  readThemeCss(themeId: string): Promise<string | null>;
   /**
    * Install from a source spec: `path:<dir>` (bare paths accepted),
    * `git:<url-ish>@<ref>` (ref required; cloned into the managed dir under
@@ -2068,6 +2075,35 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   return {
     isEnabled: () => deps.isEnabled(),
     isBuiltin: isBuiltinPluginId,
+
+    listThemes() {
+      return [...loaded.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .flatMap(([pluginId, plugin]) =>
+          plugin.manifest.themes.map((theme) => ({
+            id: formatPluginThemeId(pluginId, theme.id),
+            pluginId,
+            name: theme.name,
+            description: theme.description,
+          })),
+        );
+    },
+
+    async readThemeCss(themeId) {
+      for (const [pluginId, plugin] of loaded) {
+        const theme = plugin.manifest.themes.find(
+          (entry) => formatPluginThemeId(pluginId, entry.id) === themeId,
+        );
+        if (!theme) continue;
+        try {
+          const css = await readFile(theme.cssPath, "utf8");
+          return css.length <= CUSTOM_THEME_CSS_MAX_LENGTH ? css : null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    },
 
     events: {
       emitThreadCreated(thread) {

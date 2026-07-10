@@ -124,6 +124,22 @@ export const appThemeSchema = z.object({
 });
 export type AppTheme = z.infer<typeof appThemeSchema>;
 
+/** A palette contributed by a currently loaded plugin. */
+export const pluginThemeMetaSchema = z.object({
+  id: z.string().min(1),
+  pluginId: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().nullable(),
+});
+export type PluginThemeMeta = z.infer<typeof pluginThemeMetaSchema>;
+
+const PLUGIN_THEME_ID_PREFIX = "plugin:";
+
+/** Stable, collision-free palette id persisted for a plugin theme. */
+export function formatPluginThemeId(pluginId: string, themeId: string): string {
+  return `${PLUGIN_THEME_ID_PREFIX}${pluginId}:${themeId}`;
+}
+
 /**
  * The appearance selection a client sends when changing the palette and/or the
  * favicon tint. The server validates `themeId` (built-in id or an existing

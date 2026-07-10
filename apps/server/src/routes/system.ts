@@ -17,6 +17,7 @@ import {
   customThemeNameSchema,
   isBuiltInThemeId,
   type AppKeybindingOverrides,
+  type AppTheme,
 } from "@bb/domain";
 import {
   publicApiRoutes,
@@ -82,7 +83,16 @@ export function registerSystemRoutes(
     }
   }
 
-  function buildSystemConfigResponse() {
+  async function resolveSelectedTheme(
+    themeId: string,
+    faviconColor: AppTheme["faviconColor"],
+  ): Promise<AppTheme> {
+    const pluginCss = await pluginService.readThemeCss(themeId);
+    if (pluginCss !== null) return { themeId, customCss: pluginCss, faviconColor };
+    return resolveAppTheme(themeRoot, themeId, faviconColor);
+  }
+
+  async function buildSystemConfigResponse() {
     const keybindingOverrides = readAppKeybindingOverrides();
     return {
       generalSettings: getAppSettings(deps.db),
@@ -93,12 +103,12 @@ export function registerSystemRoutes(
       defaultKeybindings: DEFAULT_APP_KEYBINDINGS,
       keybindingOverrides,
       experiments: getExperiments(deps.db),
-      appearance: resolveAppTheme(
-        themeRoot,
+      appearance: await resolveSelectedTheme(
         getStoredThemeId(deps.db),
         getStoredFaviconColor(deps.db),
       ),
       customThemes: listCustomThemeNames(themeRoot),
+      pluginThemes: pluginService.listThemes(),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
       primaryHostPlatform: resolvePrimaryHostPlatform(),
@@ -107,7 +117,9 @@ export function registerSystemRoutes(
     };
   }
 
-  get(routes.config, (context) => context.json(buildSystemConfigResponse()));
+  get(routes.config, async (context) =>
+    context.json(await buildSystemConfigResponse()),
+  );
 
   put(routes.generalSettings, (context, payload) => {
     setAppSettings(deps.db, payload);
@@ -143,9 +155,10 @@ export function registerSystemRoutes(
     return context.json(next);
   });
 
-  put(routes.appearance, (context, payload) => {
+  put(routes.appearance, async (context, payload) => {
     const { themeId } = payload;
-    if (!isBuiltInThemeId(themeId)) {
+    const pluginCss = await pluginService.readThemeCss(themeId);
+    if (!isBuiltInThemeId(themeId) && pluginCss === null) {
       if (!customThemeNameSchema.safeParse(themeId).success) {
         throw new ApiError(
           400,
@@ -167,15 +180,19 @@ export function registerSystemRoutes(
     // Broadcast like experiments: every window re-reads /system/config and
     // re-applies the active palette.
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(resolveAppTheme(themeRoot, themeId, faviconColor));
+    return context.json(
+      pluginCss === null
+        ? resolveAppTheme(themeRoot, themeId, faviconColor)
+        : { themeId, customCss: pluginCss, faviconColor },
+    );
   });
 
-  get(routes.themes, (context) =>
+  get(routes.themes, async (context) =>
     context.json({
       dir: themeRoot,
       custom: listCustomThemeNames(themeRoot),
-      active: resolveAppTheme(
-        themeRoot,
+      plugins: pluginService.listThemes(),
+      active: await resolveSelectedTheme(
         getStoredThemeId(deps.db),
         getStoredFaviconColor(deps.db),
       ),

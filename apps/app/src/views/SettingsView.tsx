@@ -13,6 +13,7 @@ import {
   isValidElectronAccelerator,
   type AppTheme,
   type FaviconColorPreference,
+  type PluginThemeMeta,
 } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
@@ -151,6 +152,7 @@ export interface AppearanceSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
   customThemes: readonly string[];
+  pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
   onAppearanceThemeChange: (themeId: string) => void;
   onCreatePalette: () => void;
@@ -175,9 +177,16 @@ export interface GeneralSettingsSectionProps {
   richTextEditing: boolean;
 }
 
-function appPaletteLabel(appearance: AppTheme): string {
+function appPaletteLabel(
+  appearance: AppTheme,
+  pluginThemes: readonly PluginThemeMeta[],
+): string {
   const meta = builtInThemes.find((entry) => entry.id === appearance.themeId);
-  return meta?.name ?? appearance.themeId;
+  return (
+    meta?.name ??
+    pluginThemes.find((entry) => entry.id === appearance.themeId)?.name ??
+    appearance.themeId
+  );
 }
 
 export interface ExperimentsSettingsSectionProps {
@@ -559,6 +568,7 @@ export function AppearanceSettingsSection({
   appearance,
   appearanceDisabled,
   customThemes,
+  pluginThemes,
   faviconColor,
   onAppearanceThemeChange,
   onFaviconColorChange,
@@ -623,7 +633,7 @@ export function AppearanceSettingsSection({
                 disabled={appearanceDisabled}
               >
                 <span className="min-w-0 truncate">
-                  {appPaletteLabel(appearance)}
+                  {appPaletteLabel(appearance, pluginThemes)}
                 </span>
                 <Icon
                   name="ChevronDown"
@@ -662,6 +672,23 @@ export function AppearanceSettingsSection({
                     className={cn(
                       "ml-auto",
                       appearance.themeId !== name && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+              {pluginThemes.map((theme) => (
+                <DropdownMenuItem
+                  key={theme.id}
+                  onSelect={() => onAppearanceThemeChange(theme.id)}
+                >
+                  {theme.name}
+                  <span className="text-muted-foreground">({theme.pluginId})</span>
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      appearance.themeId !== theme.id && "opacity-0",
                       COARSE_POINTER_ICON_SIZE_CLASS,
                     )}
                   />
@@ -1063,6 +1090,7 @@ export function SettingsView() {
           updateAppearanceMutation.isPending
         }
         customThemes={systemConfigQuery.data?.customThemes ?? []}
+        pluginThemes={systemConfigQuery.data?.pluginThemes ?? []}
         faviconColor={appearance.faviconColor}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>

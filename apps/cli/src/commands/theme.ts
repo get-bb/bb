@@ -43,6 +43,7 @@ export function registerThemeCommands(
             active: catalog.active,
             builtInThemes,
             custom: catalog.custom,
+            plugins: catalog.plugins,
             dir: catalog.dir,
           })
         ) {
@@ -66,6 +67,13 @@ export function registerThemeCommands(
           }
         }
         console.log("");
+        console.log("Plugins:");
+        if (catalog.plugins.length === 0) console.log("  (none)");
+        for (const entry of catalog.plugins) {
+          const marker = active === entry.id ? "*" : " ";
+          console.log(`${marker} ${entry.id.padEnd(24)} ${entry.name}`);
+        }
+        console.log("");
         console.log(`Active: ${describeActive(catalog.active)}`);
       }),
     );
@@ -73,8 +81,7 @@ export function registerThemeCommands(
   theme
     .command("set <id>")
     .description(
-      "Switch to a built-in theme or a custom theme by name " +
-        "(a directory under the theme dir with a theme.css)",
+      "Switch to a built-in, custom, or plugin-contributed theme by id",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(

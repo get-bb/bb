@@ -1,8 +1,12 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { getStoredFaviconColor, getStoredThemeId } from "@bb/db";
-import { appThemeSchema } from "@bb/domain";
+import { getStoredFaviconColor, getStoredThemeId, setExperiments } from "@bb/db";
+import {
+  appThemeSchema,
+  defaultExperiments,
+  formatPluginThemeId,
+} from "@bb/domain";
 import {
   themeCatalogResponseSchema,
   systemConfigResponseSchema,
@@ -33,6 +37,7 @@ describe("appearance settings", () => {
         faviconColor: "default",
       });
       expect(body.customThemes).toEqual([]);
+      expect(body.pluginThemes).toEqual([]);
     });
   });
 
@@ -159,9 +164,63 @@ describe("appearance settings", () => {
       );
       expect(catalog.dir).toBe(join(harness.config.dataDir, "theme"));
       expect(catalog.custom).toEqual(["amber", "zephyr"]);
+      expect(catalog.plugins).toEqual([]);
       expect(catalog.active).toEqual({
         themeId: "default",
         customCss: null,
+        faviconColor: "default",
+      });
+    });
+  });
+
+  it("lists and activates palettes shipped by loaded plugins", async () => {
+    await withTestHarness(async (harness) => {
+      setExperiments(harness.db, { ...defaultExperiments, plugins: true });
+      const root = join(harness.config.dataDir, "fixtures", "bb-plugin-palette");
+      await mkdir(join(root, "themes"), { recursive: true });
+      await writeFile(
+        join(root, "package.json"),
+        JSON.stringify({
+          name: "bb-plugin-palette",
+          version: "0.1.0",
+          bb: {
+            server: "./server.ts",
+            themes: [
+              {
+                id: "ocean",
+                name: "Ocean",
+                description: "Deep blue",
+                css: "./themes/ocean.css",
+              },
+            ],
+          },
+        }),
+      );
+      await writeFile(join(root, "server.ts"), "export default function () {}\n");
+      await writeFile(join(root, "themes", "ocean.css"), ":root { --canvas: blue; }");
+      await harness.pluginService.installPath(root);
+
+      const themeId = formatPluginThemeId("palette", "ocean");
+      const catalogResponse = await harness.app.request("/api/v1/settings/themes");
+      const catalog = themeCatalogResponseSchema.parse(await readJson(catalogResponse));
+      expect(catalog.plugins).toEqual([
+        {
+          id: themeId,
+          pluginId: "palette",
+          name: "Ocean",
+          description: "Deep blue",
+        },
+      ]);
+
+      const response = await harness.app.request("/api/v1/settings/appearance", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ themeId }),
+      });
+      expect(response.status).toBe(200);
+      expect(appThemeSchema.parse(await readJson(response))).toEqual({
+        themeId,
+        customCss: ":root { --canvas: blue; }",
         faviconColor: "default",
       });
     });

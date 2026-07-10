@@ -45,6 +45,10 @@ The manifest is `package.json`:
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.
+- `bb.themes` (optional) — contributes palettes to Settings → Appearance and
+  `bb theme list`. Each entry is
+  `{ id, name, description?, css: "./themes/name.css" }`; bb namespaces its
+  selectable id as `plugin:<plugin-id>:<id>`. Only loaded plugins contribute.
 - Logo (optional, convention over configuration) — a `logo.svg`, `logo.png`,
   or `logo.webp` at the plugin root (that precedence) is auto-detected and
   shown wherever bb renders your plugin's contributions: the sidebar entry,

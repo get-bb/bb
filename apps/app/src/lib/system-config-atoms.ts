@@ -22,6 +22,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   },
   appearance: defaultAppTheme,
   customThemes: [],
+  pluginThemes: [],
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   primaryHostPlatform: null,

@@ -23,6 +23,16 @@ const bbManifestFieldSchema = z.object({
   skills: z.array(z.string().min(1)).optional(),
   logo: z.string().min(1).optional(),
   logoDark: z.string().min(1).optional(),
+  themes: z
+    .array(
+      z.object({
+        id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).max(64),
+        name: z.string().min(1),
+        description: z.string().min(1).optional(),
+        css: z.string().min(1),
+      }),
+    )
+    .optional(),
 });
 
 const pluginPackageJsonSchema = z.object({
@@ -63,6 +73,13 @@ export interface PluginManifest {
    * `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp` at the plugin root.
    */
   logoDarkPath: string | undefined;
+  /** CSS palettes declared by `bb.themes`, with manifest-relative paths resolved. */
+  themes: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    cssPath: string;
+  }>;
   /**
    * Absolute skills-root directories auto-imported as the plugin skills
    * tier (design §4.4). Defaults to `<rootDir>/skills`; `bb.skills` entries
@@ -163,6 +180,33 @@ export async function readPluginManifest(
   };
   const logoPath = resolveLogoEntry(bb.logo, "bb.logo");
   const logoDarkPath = resolveLogoEntry(bb.logoDark, "bb.logoDark");
+  const themeIds = new Set<string>();
+  const themes = (bb.themes ?? []).map((theme) => {
+    if (themeIds.has(theme.id)) {
+      throw new Error(`manifest bb.themes contains duplicate id "${theme.id}"`);
+    }
+    themeIds.add(theme.id);
+    if (!theme.css.toLowerCase().endsWith(".css")) {
+      throw new Error(
+        `manifest bb.themes theme "${theme.id}" must point at a .css file`,
+      );
+    }
+    return {
+      id: theme.id,
+      name: theme.name,
+      description: theme.description ?? null,
+      cssPath: resolveEntry(rootDir, theme.css, `bb.themes.${theme.id}.css`),
+    };
+  });
+  for (const theme of themes) {
+    try {
+      await stat(theme.cssPath);
+    } catch {
+      throw new Error(
+        `manifest bb.themes theme "${theme.id}" points at a missing file`,
+      );
+    }
+  }
   return {
     id: derivePluginId(name),
     name,
@@ -178,6 +222,7 @@ export async function readPluginManifest(
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
     logoPath,
     logoDarkPath,
+    themes,
     skillsRootPaths,
     rootDir,
   };
