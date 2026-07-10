@@ -18,6 +18,7 @@ export interface DesktopServerRecord {
 
 export interface ServerRegistrySnapshot {
   autoConnectToLocalServer: boolean;
+  showConnectServers: boolean;
   servers: DesktopServerRecord[];
 }
 
@@ -47,17 +48,42 @@ export interface AddServerRegistryEntryArgs {
   url: string;
 }
 
+export interface UpsertServerRegistryEntryArgs {
+  id: string;
+  name: string;
+  source: Exclude<DesktopServerSource, "builtin">;
+  url: string;
+}
+
 export interface ServerRegistry {
   add(args: AddServerRegistryEntryArgs): Promise<DesktopServerRecord>;
   getAutoConnectToLocalServer(): boolean;
   getServer(id: string): DesktopServerRecord | null;
+  getShowConnectServers(): boolean;
+  /**
+   * Visible servers for list/menu output. When `showConnectServers` is false,
+   * connect-source entries are omitted (they remain in storage/snapshot).
+   */
   list(): DesktopServerRecord[];
   load(): Promise<ServerRegistrySnapshot>;
   onChange(listener: ServerRegistryChangeHandler): ServerRegistryUnsubscribe;
   remove(id: string): Promise<boolean>;
+  /**
+   * Remove entries with the given source whose id is not in `keepIds`.
+   * Returns the removed ids.
+   */
+  removeBySource(
+    source: Exclude<DesktopServerSource, "builtin">,
+    keepIds: ReadonlySet<string>,
+  ): Promise<string[]>;
   rename(id: string, name: string): Promise<boolean>;
   setAutoConnectToLocalServer(value: boolean): Promise<void>;
+  setShowConnectServers(value: boolean): Promise<void>;
   snapshot(): ServerRegistrySnapshot;
+  /**
+   * Insert or replace a remote entry by stable id (used for connect sync).
+   */
+  upsert(args: UpsertServerRegistryEntryArgs): Promise<DesktopServerRecord>;
 }
 
 const persistedServerSourceSchema = z.enum(["manual", "connect"]);
@@ -74,6 +100,8 @@ const persistedServerRecordSchema = z
 const persistedServerRegistrySchema = z
   .object({
     autoConnectToLocalServer: z.boolean(),
+    // Absent on older files → treated as true at the load boundary.
+    showConnectServers: z.boolean().optional(),
     servers: z.array(persistedServerRecordSchema),
   })
   .strict();
@@ -98,6 +126,7 @@ function createBuiltinServer(builtinUrl: string): DesktopServerRecord {
 function createDefaultSnapshot(builtinUrl: string): ServerRegistrySnapshot {
   return {
     autoConnectToLocalServer: true,
+    showConnectServers: true,
     servers: [createBuiltinServer(builtinUrl)],
   };
 }
@@ -107,6 +136,7 @@ function toPersistedRegistry(
 ): PersistedServerRegistry {
   return {
     autoConnectToLocalServer: snapshot.autoConnectToLocalServer,
+    showConnectServers: snapshot.showConnectServers,
     servers: snapshot.servers
       .filter((server) => server.source !== "builtin")
       .map((server) => ({
@@ -138,6 +168,7 @@ function fromPersistedRegistry(args: {
   }
   return {
     autoConnectToLocalServer: args.persisted.autoConnectToLocalServer,
+    showConnectServers: args.persisted.showConnectServers ?? true,
     servers: [createBuiltinServer(args.builtinUrl), ...remoteServers],
   };
 }
@@ -169,6 +200,14 @@ function defaultNameFromUrl(url: string): string {
   }
 }
 
+function copyRecord(server: DesktopServerRecord): DesktopServerRecord {
+  return { ...server };
+}
+
+export function connectServerId(handle: string): string {
+  return `connect:${handle}`;
+}
+
 export function createServerRegistry(
   args: CreateServerRegistryArgs,
 ): ServerRegistry {
@@ -186,8 +225,18 @@ export function createServerRegistry(
   function snapshot(): ServerRegistrySnapshot {
     return {
       autoConnectToLocalServer: state.autoConnectToLocalServer,
-      servers: state.servers.map((server) => ({ ...server })),
+      showConnectServers: state.showConnectServers,
+      servers: state.servers.map(copyRecord),
     };
+  }
+
+  function visibleServers(): DesktopServerRecord[] {
+    if (state.showConnectServers) {
+      return state.servers.map(copyRecord);
+    }
+    return state.servers
+      .filter((server) => server.source !== "connect")
+      .map(copyRecord);
   }
 
   async function persist(): Promise<void> {
@@ -229,21 +278,25 @@ export function createServerRegistry(
       };
       state = {
         autoConnectToLocalServer: state.autoConnectToLocalServer,
+        showConnectServers: state.showConnectServers,
         servers: [...state.servers, record],
       };
       await persist();
       notify();
-      return { ...record };
+      return copyRecord(record);
     },
     getAutoConnectToLocalServer() {
       return state.autoConnectToLocalServer;
     },
     getServer(id) {
       const server = state.servers.find((candidate) => candidate.id === id);
-      return server === undefined ? null : { ...server };
+      return server === undefined ? null : copyRecord(server);
+    },
+    getShowConnectServers() {
+      return state.showConnectServers;
     },
     list() {
-      return state.servers.map((server) => ({ ...server }));
+      return visibleServers();
     },
     load,
     onChange(listener) {
@@ -262,11 +315,33 @@ export function createServerRegistry(
       }
       state = {
         autoConnectToLocalServer: state.autoConnectToLocalServer,
+        showConnectServers: state.showConnectServers,
         servers: nextServers,
       };
       await persist();
       notify();
       return true;
+    },
+    async removeBySource(source, keepIds) {
+      const removedIds: string[] = [];
+      const nextServers = state.servers.filter((server) => {
+        if (server.source !== source || keepIds.has(server.id)) {
+          return true;
+        }
+        removedIds.push(server.id);
+        return false;
+      });
+      if (removedIds.length === 0) {
+        return [];
+      }
+      state = {
+        autoConnectToLocalServer: state.autoConnectToLocalServer,
+        showConnectServers: state.showConnectServers,
+        servers: nextServers,
+      };
+      await persist();
+      notify();
+      return removedIds;
     },
     async rename(id, name) {
       // Builtin name is fixed ("This Mac"); only remote entries are renamable.
@@ -290,6 +365,7 @@ export function createServerRegistry(
       }
       state = {
         autoConnectToLocalServer: state.autoConnectToLocalServer,
+        showConnectServers: state.showConnectServers,
         servers: nextServers,
       };
       await persist();
@@ -302,11 +378,67 @@ export function createServerRegistry(
       }
       state = {
         autoConnectToLocalServer: value,
+        showConnectServers: state.showConnectServers,
+        servers: state.servers,
+      };
+      await persist();
+      notify();
+    },
+    async setShowConnectServers(value) {
+      if (state.showConnectServers === value) {
+        return;
+      }
+      state = {
+        autoConnectToLocalServer: state.autoConnectToLocalServer,
+        showConnectServers: value,
         servers: state.servers,
       };
       await persist();
       notify();
     },
     snapshot,
+    async upsert(upsertArgs) {
+      if (upsertArgs.id === BUILTIN_SERVER_ID) {
+        throw new Error("cannot upsert the builtin server");
+      }
+      const url = upsertArgs.url.trim();
+      const name = normalizeServerName(
+        upsertArgs.name.length > 0 ? upsertArgs.name : defaultNameFromUrl(url),
+      );
+      const record: DesktopServerRecord = {
+        id: upsertArgs.id,
+        name,
+        source: upsertArgs.source,
+        url,
+      };
+      const existingIndex = state.servers.findIndex(
+        (server) => server.id === upsertArgs.id,
+      );
+      let nextServers: DesktopServerRecord[];
+      if (existingIndex === -1) {
+        nextServers = [...state.servers, record];
+      } else {
+        const existing = state.servers[existingIndex];
+        if (
+          existing !== undefined &&
+          existing.name === record.name &&
+          existing.source === record.source &&
+          existing.url === record.url
+        ) {
+          return copyRecord(existing);
+        }
+        nextServers = state.servers.map((server, index) =>
+          index === existingIndex ? record : server,
+        );
+      }
+      state = {
+        autoConnectToLocalServer: state.autoConnectToLocalServer,
+        showConnectServers: state.showConnectServers,
+        servers: nextServers,
+      };
+      await persist();
+      notify();
+      return copyRecord(record);
+    },
   };
 }

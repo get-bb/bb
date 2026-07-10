@@ -94,6 +94,15 @@ export type BbDesktopServerSetAutoConnectRequest = z.infer<
   typeof bbDesktopServerSetAutoConnectRequestSchema
 >;
 
+export const bbDesktopServerSetShowConnectServersRequestSchema = z
+  .object({
+    showConnectServers: z.boolean(),
+  })
+  .strict();
+export type BbDesktopServerSetShowConnectServersRequest = z.infer<
+  typeof bbDesktopServerSetShowConnectServersRequestSchema
+>;
+
 export type BbDesktopServersChangeHandler = (
   servers: BbDesktopServerListEntry[],
 ) => void;
@@ -115,5 +124,7 @@ export interface BbDesktopServersApi {
   setActive(id: string): Promise<void>;
   getAutoConnect(): Promise<boolean>;
   setAutoConnect(autoConnectToLocalServer: boolean): Promise<void>;
+  getShowConnectServers(): Promise<boolean>;
+  setShowConnectServers(showConnectServers: boolean): Promise<void>;
   onChange(listener: BbDesktopServersChangeHandler): BbDesktopServersUnsubscribe;
 }

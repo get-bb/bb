@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BUILTIN_SERVER_ID,
   BUILTIN_SERVER_NAME,
+  connectServerId,
   createServerRegistry,
   SERVER_REGISTRY_FILE_NAME,
 } from "../src/server-registry.js";
@@ -159,5 +160,115 @@ describe("server registry", () => {
     });
 
     expect(snapshots).toEqual([2]);
+  });
+
+  it("hides connect entries from list() when showConnectServers is false", async () => {
+    const tempDir = await createTempDir();
+    const storagePath = join(tempDir.path, SERVER_REGISTRY_FILE_NAME);
+    const registry = createServerRegistry({
+      builtinUrl: "http://127.0.0.1:38886",
+      storagePath,
+    });
+    await registry.load();
+    const connectId = connectServerId("laptop");
+    await registry.upsert({
+      id: connectId,
+      name: "Laptop",
+      source: "connect",
+      url: "https://laptop.getbb.app",
+    });
+    await registry.add({
+      name: "Manual",
+      source: "manual",
+      url: "https://manual.example.com",
+    });
+
+    expect(registry.list().map((s) => s.source).sort()).toEqual([
+      "builtin",
+      "connect",
+      "manual",
+    ]);
+
+    await registry.setShowConnectServers(false);
+    expect(registry.getShowConnectServers()).toBe(false);
+    expect(registry.list().map((s) => s.source).sort()).toEqual([
+      "builtin",
+      "manual",
+    ]);
+    // Still in storage/snapshot for instant re-enable.
+    expect(registry.snapshot().servers.some((s) => s.id === connectId)).toBe(
+      true,
+    );
+    expect(registry.getServer(connectId)?.name).toBe("Laptop");
+
+    const raw = await readFile(storagePath, "utf8");
+    const persisted = JSON.parse(raw) as {
+      showConnectServers: boolean;
+      servers: Array<{ id: string; source: string }>;
+    };
+    expect(persisted.showConnectServers).toBe(false);
+    expect(persisted.servers.some((s) => s.id === connectId)).toBe(true);
+
+    await registry.setShowConnectServers(true);
+    expect(registry.list().some((s) => s.id === connectId)).toBe(true);
+  });
+
+  it("defaults showConnectServers to true for older registry files", async () => {
+    const tempDir = await createTempDir();
+    const storagePath = join(tempDir.path, SERVER_REGISTRY_FILE_NAME);
+    await writeFile(
+      storagePath,
+      JSON.stringify({
+        autoConnectToLocalServer: true,
+        servers: [],
+      }),
+      "utf8",
+    );
+    const registry = createServerRegistry({
+      builtinUrl: "http://127.0.0.1:38886",
+      storagePath,
+    });
+    const snapshot = await registry.load();
+    expect(snapshot.showConnectServers).toBe(true);
+  });
+
+  it("upserts by stable id and removeBySource keeps only listed ids", async () => {
+    const tempDir = await createTempDir();
+    const registry = createServerRegistry({
+      builtinUrl: "http://127.0.0.1:38886",
+      storagePath: join(tempDir.path, SERVER_REGISTRY_FILE_NAME),
+    });
+    await registry.load();
+
+    const a = connectServerId("a");
+    const b = connectServerId("b");
+    await registry.upsert({
+      id: a,
+      name: "A",
+      source: "connect",
+      url: "https://a.getbb.app",
+    });
+    await registry.upsert({
+      id: b,
+      name: "B",
+      source: "connect",
+      url: "https://b.getbb.app",
+    });
+    await registry.upsert({
+      id: a,
+      name: "A2",
+      source: "connect",
+      url: "https://a2.getbb.app",
+    });
+
+    expect(registry.getServer(a)).toMatchObject({
+      name: "A2",
+      url: "https://a2.getbb.app",
+    });
+
+    const removed = await registry.removeBySource("connect", new Set([a]));
+    expect(removed).toEqual([b]);
+    expect(registry.getServer(b)).toBeNull();
+    expect(registry.getServer(a)).not.toBeNull();
   });
 });

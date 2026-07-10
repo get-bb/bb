@@ -926,13 +926,29 @@ describe("connect plugin", () => {
     });
 
     const result = (await harness.callRpc("listAccountServers")) as {
-      servers: Array<{ handle: string; name: string; live: boolean }>;
+      servers: Array<{
+        handle: string;
+        name: string;
+        live: boolean;
+        url: string;
+      }>;
       selfHandle: string;
     };
     expect(result).toEqual({
       servers: [
-        { handle: "sawyer", name: "default", live: true },
-        { handle: "sawyer-desktop", name: "desktop", live: false },
+        {
+          handle: "sawyer",
+          name: "default",
+          live: true,
+          // URL base comes from the pairing credential's serverUrl apex.
+          url: "http://sawyer.localhost:59340",
+        },
+        {
+          handle: "sawyer-desktop",
+          name: "desktop",
+          live: false,
+          url: "http://sawyer-desktop.localhost:59340",
+        },
       ],
       selfHandle: "sawyer",
     });
@@ -1117,6 +1133,8 @@ describe("connect CLI", () => {
     expect(table.exitCode).toBe(0);
     expect(table.stdout).toContain("sawyer");
     expect(table.stdout).toContain("desktop");
+    expect(table.stdout).toContain("http://sawyer.localhost:59342");
+    expect(table.stdout).toContain("http://sawyer-desktop.localhost:59342");
     expect(table.stdout).toContain("yes");
     expect(table.stdout).toContain("no");
 
@@ -1124,11 +1142,15 @@ describe("connect CLI", () => {
     expect(json.exitCode).toBe(0);
     expect(json.stdout).toBeTruthy();
     const parsed = JSON.parse(json.stdout ?? "") as {
-      servers: Array<{ handle: string }>;
+      servers: Array<{ handle: string; url: string }>;
       selfHandle: string;
     };
     expect(parsed.selfHandle).toBe("sawyer");
     expect(parsed.servers).toHaveLength(2);
+    expect(parsed.servers[0]?.url).toBe("http://sawyer.localhost:59342");
+    expect(parsed.servers[1]?.url).toBe(
+      "http://sawyer-desktop.localhost:59342",
+    );
   });
 
   it("expose / shares / unexpose happy path", async () => {

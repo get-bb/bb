@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ConnectCredential } from "./credential.js";
+import { deriveConnectBaseUrl, serverUrlForHandle } from "./redeem.js";
 
 /** One server row from `GET /api/connect/servers` (worker boundary). */
 export const accountServerSchema = z.object({
@@ -14,11 +15,31 @@ export const accountServersResponseSchema = z.object({
 
 export type AccountServer = z.infer<typeof accountServerSchema>;
 
+/** Account server enriched with the connect public URL for that handle. */
+export type AccountServerWithUrl = AccountServer & {
+  url: string;
+};
+
 export type ListAccountServersResult = {
-  servers: AccountServer[];
+  servers: AccountServerWithUrl[];
   /** This bb's routing label so callers can dedupe self. */
   selfHandle: string;
 };
+
+/**
+ * Build public URLs for account servers from the pairing credential's base
+ * (`https://getbb.app` / self-hosted apex) and each server's handle.
+ */
+export function withAccountServerUrls(
+  servers: AccountServer[],
+  credential: ConnectCredential,
+): AccountServerWithUrl[] {
+  const base = deriveConnectBaseUrl(credential.serverUrl);
+  return servers.map((server) => ({
+    ...server,
+    url: serverUrlForHandle(base, server.handle),
+  }));
+}
 
 export type ConnectListErrorCode =
   | "not_paired"

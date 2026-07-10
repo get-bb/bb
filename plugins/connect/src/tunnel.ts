@@ -22,6 +22,7 @@ import type { ConnectCredential, CredentialStore } from "./credential.js";
 import {
   ConnectListError,
   fetchAccountServers,
+  withAccountServerUrls,
   type ListAccountServersResult,
 } from "./list-servers.js";
 import {
@@ -587,7 +588,8 @@ export class ConnectTunnel {
 
   /**
    * List every bb server on the paired account (via the connect gate).
-   * Returns this server's handle so callers can dedupe self.
+   * Returns this server's handle so callers can dedupe self. Each row includes
+   * the public connect URL (`https://<handle>.…`) derived from the credential.
    */
   async listAccountServers(): Promise<ListAccountServersResult> {
     const credential = this.credential;
@@ -597,7 +599,10 @@ export class ConnectTunnel {
         "this bb is not connected to getbb.app — run `bb connect` for how to pair",
       );
     }
-    const servers = await fetchAccountServers(credential);
+    const servers = withAccountServerUrls(
+      await fetchAccountServers(credential),
+      credential,
+    );
     return { servers, selfHandle: credential.handle };
   }
 

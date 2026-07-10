@@ -78,8 +78,8 @@ message agents, or inspect projects, providers, and environments.
   `https://<handle>--<port>.getbb.app` (owner-session-gated, not public);
   `bb connect unexpose <port>` stops sharing; `bb connect shares` lists active
   URLs. `bb connect servers` lists every bb on the paired account (handle,
-  name, live) so callers can discover siblings; `--json` includes `selfHandle`
-  for deduping this server. When you start a local server the user should open
+  name, url, live) so callers can discover siblings; `--json` includes
+  `selfHandle` for deduping this server. When you start a local server the user should open
   remotely, expose the port and give them the share URL. Remote access is owned
   by the builtin `connect` plugin: `bb plugin disable connect` cuts it off
   entirely; with bb connect still enabled, `bb plugin enable connect` restores

@@ -15,6 +15,7 @@ import {
   bbDesktopServerListEntrySchema,
   bbDesktopServerRenameRequestSchema,
   bbDesktopServerSetAutoConnectRequestSchema,
+  bbDesktopServerSetShowConnectServersRequestSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
   type BbDesktopBrowserApi,
@@ -85,11 +86,13 @@ import {
   BB_DESKTOP_SERVERS_ADD_CHANNEL,
   BB_DESKTOP_SERVERS_CHANGED_CHANNEL,
   BB_DESKTOP_SERVERS_GET_AUTO_CONNECT_CHANNEL,
+  BB_DESKTOP_SERVERS_GET_SHOW_CONNECT_SERVERS_CHANNEL,
   BB_DESKTOP_SERVERS_LIST_CHANNEL,
   BB_DESKTOP_SERVERS_REMOVE_CHANNEL,
   BB_DESKTOP_SERVERS_RENAME_CHANNEL,
   BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
   BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
+  BB_DESKTOP_SERVERS_SET_SHOW_CONNECT_SERVERS_CHANNEL,
 } from "./desktop-server-ipc.js";
 import {
   BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
@@ -416,6 +419,32 @@ const bbServersApi: BbDesktopServersApi = {
     try {
       await ipcRenderer.invoke(
         BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
+        parsed.data,
+      );
+    } catch {
+      return;
+    }
+  },
+  async getShowConnectServers(): Promise<boolean> {
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_SERVERS_GET_SHOW_CONNECT_SERVERS_CHANNEL,
+      );
+      return payload === true;
+    } catch {
+      return true;
+    }
+  },
+  async setShowConnectServers(showConnectServers: boolean): Promise<void> {
+    const parsed = bbDesktopServerSetShowConnectServersRequestSchema.safeParse({
+      showConnectServers,
+    });
+    if (!parsed.success) {
+      return;
+    }
+    try {
+      await ipcRenderer.invoke(
+        BB_DESKTOP_SERVERS_SET_SHOW_CONNECT_SERVERS_CHANNEL,
         parsed.data,
       );
     } catch {
