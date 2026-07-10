@@ -42,6 +42,32 @@ const testState = vi.hoisted(() => ({
       when: { all: ["mainSurface" as const], none: [] },
     },
     {
+      command: "thread.previous" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "ArrowUp",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
+      command: "thread.previous" as const,
+      desktopOnly: true,
+      shortcut: {
+        key: "[",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
       command: "thread.search" as const,
       desktopOnly: false,
       shortcut: {
@@ -144,8 +170,8 @@ function FocusScopedHandler({ name }: { name: string }) {
   );
 }
 
-function ShortcutLabel() {
-  const shortcut = useAppCommandShortcut("thread.new");
+function ShortcutLabel({ command }: { command: AppCommandId }) {
+  const shortcut = useAppCommandShortcut(command);
   return <span>{shortcut?.label}</span>;
 }
 
@@ -175,9 +201,15 @@ afterEach(() => {
 
 describe("AppCommandProvider", () => {
   it("presents the web-capable alias when the primary binding is desktop-only", () => {
-    renderProvider(<ShortcutLabel />);
+    renderProvider(
+      <>
+        <ShortcutLabel command="thread.new" />
+        <ShortcutLabel command="thread.previous" />
+      </>,
+    );
 
     expect(screen.getByText("Ctrl+Shift+O")).toBeDefined();
+    expect(screen.getByText("Ctrl+Shift+ArrowUp")).toBeDefined();
   });
 
   it("falls through declining handlers in priority order", () => {

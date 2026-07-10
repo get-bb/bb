@@ -69,8 +69,16 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
   binding("thread.search", "k", { mod: true }, mainWithoutModal),
   binding("settings.open", ",", { mod: true }, mainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),
-  binding("thread.previous", "[", { mod: true, shift: true }, mainWithoutModal),
-  binding("thread.next", "]", { mod: true, shift: true }, mainWithoutModal),
+  binding("thread.previous", "ArrowUp", { mod: true, shift: true }, mainWithoutModal),
+  binding("thread.previous", "[", { mod: true, shift: true }, {
+    ...mainWithoutModal,
+    desktopOnly: true,
+  }),
+  binding("thread.next", "ArrowDown", { mod: true, shift: true }, mainWithoutModal),
+  binding("thread.next", "]", { mod: true, shift: true }, {
+    ...mainWithoutModal,
+    desktopOnly: true,
+  }),
   ...THREAD_JUMP_APP_COMMAND_IDS.map((command, index) =>
     binding(command, String(index + 1), { mod: true }, mainWithoutModal),
   ),

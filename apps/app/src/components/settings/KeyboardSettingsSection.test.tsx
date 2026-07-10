@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppKeybindings } from "@bb/domain";
 import { KeyboardSettingsSection } from "./KeyboardSettingsSection";
@@ -61,7 +67,11 @@ afterEach(() => {
 describe("KeyboardSettingsSection", () => {
   it("records, clears, and resets a command shortcut", () => {
     render(<KeyboardSettingsSection />);
-    expect(screen.queryByText("Desktop")).toBeNull();
+    const defaults = screen.getByLabelText("Default shortcuts for New thread");
+    expect(within(defaults).getByText("Ctrl+Shift+O")).toBeDefined();
+    expect(within(defaults).getByText("Web")).toBeDefined();
+    expect(within(defaults).getByText("Ctrl+N")).toBeDefined();
+    expect(within(defaults).getByText("Desktop")).toBeDefined();
     const recorder = screen.getByRole("button", {
       name: "Record shortcut for New thread, current shortcut Ctrl+N",
     });

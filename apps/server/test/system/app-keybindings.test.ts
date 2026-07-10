@@ -33,10 +33,34 @@ describe("app keybindings", () => {
       });
       expect(
         config.defaultKeybindings
+          .filter((binding) => binding.command === "thread.previous")
+          .map((binding) => ({
+            desktopOnly: binding.desktopOnly,
+            key: binding.shortcut.key,
+          })),
+      ).toEqual([
+        { desktopOnly: false, key: "ArrowUp" },
+        { desktopOnly: true, key: "[" },
+      ]);
+      expect(
+        config.defaultKeybindings
+          .filter((binding) => binding.command === "thread.next")
+          .map((binding) => ({
+            desktopOnly: binding.desktopOnly,
+            key: binding.shortcut.key,
+          })),
+      ).toEqual([
+        { desktopOnly: false, key: "ArrowDown" },
+        { desktopOnly: true, key: "]" },
+      ]);
+      expect(
+        config.defaultKeybindings
           .filter((binding) => binding.desktopOnly)
           .map((binding) => binding.command),
       ).toEqual([
         "thread.new",
+        "thread.previous",
+        "thread.next",
         "browser.focusLocation",
         "browser.reload",
         "window.new",

@@ -111,7 +111,7 @@ before bb receives them.
 | --------- | ----------------------------- | ----------------------------- | ------------------------ |
 | Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`       | Desktop / web            |
 | Threads   | Search threads                | `Mod+K`                       | All clients              |
-| Threads   | Previous / next thread        | `Mod+Shift+[` / `Mod+Shift+]` | All clients              |
+| Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web       |
 | Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`             | All clients              |
 | Window    | New window                    | `Mod+Shift+N`                 | Desktop                  |
 | Window    | Settings                      | `Mod+,`                       | All clients              |

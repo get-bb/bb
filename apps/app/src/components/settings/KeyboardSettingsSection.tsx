@@ -14,6 +14,7 @@ import {
   getAppCommandMetadata,
 } from "@/lib/app-command-metadata";
 import {
+  areAppShortcutsEqual,
   appShortcutFromInput,
   canAssignAppShortcut,
   getCommandShortcut,
@@ -148,6 +149,14 @@ function KeyboardCommandRow({
   const commandBindings = defaults.filter(
     (binding) => binding.command === command,
   );
+  const defaultShortcutBindings = commandBindings.filter(
+    (binding, index) =>
+      commandBindings.findIndex(
+        (candidate) =>
+          candidate.desktopOnly === binding.desktopOnly &&
+          areAppShortcutsEqual(candidate.shortcut, binding.shortcut),
+      ) === index,
+  );
   const desktopOnly =
     commandBindings.length > 0 &&
     commandBindings.every((binding) => binding.desktopOnly);
@@ -166,6 +175,25 @@ function KeyboardCommandRow({
         <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
           {metadata.description}
         </p>
+        {defaultShortcutBindings.length > 1 ? (
+          <div
+            aria-label={`Default shortcuts for ${metadata.label}`}
+            className="mt-1.5 flex flex-wrap items-center gap-1.5"
+          >
+            <span className="text-xs text-subtle-foreground/75">Defaults:</span>
+            {defaultShortcutBindings.map((binding, index) => (
+              <span
+                className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-xs text-foreground"
+                key={`${binding.shortcut.key}:${index}`}
+              >
+                {formatAppShortcut(binding.shortcut, browserPlatform())}
+                <SettingsBadge>
+                  {binding.desktopOnly ? "Desktop" : "Web"}
+                </SettingsBadge>
+              </span>
+            ))}
+          </div>
+        ) : null}
         {conflicts.length > 0 ? (
           <p className="mt-1 text-xs text-warning-text">
             Also used by{" "}
