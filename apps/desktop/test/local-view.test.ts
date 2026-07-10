@@ -30,6 +30,15 @@ const localViewTestCases: LocalViewTestCase[] = [
       title: "Could not open bb",
     },
   },
+  {
+    label: "info",
+    viewModel: {
+      kind: "info",
+      message:
+        "A bb server is already running on this Mac. Connect via Window ▸ Server.",
+      title: "Local server available",
+    },
+  },
 ];
 
 function decodeLocalViewHtml(args: DecodeLocalViewHtmlArgs): string {
