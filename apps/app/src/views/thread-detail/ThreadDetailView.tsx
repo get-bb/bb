@@ -1137,6 +1137,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     handleOpenNewTab();
     return true;
   });
+  useAppCommandHandler("file.quickOpen", () => {
+    if (props.surface !== "page") return false;
+    handleOpenNewTab();
+    return true;
+  });
   useEffect(() => {
     if (props.surface !== "page") {
       return;
@@ -1179,6 +1184,18 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     setActiveFixedTerminal,
     threadId,
   ]);
+  useAppCommandHandler("terminal.open", () => {
+    if (
+      props.surface !== "page" ||
+      !canCreateTerminal ||
+      createTerminal.isPending ||
+      !threadId
+    ) {
+      return false;
+    }
+    handleStartTerminal();
+    return true;
+  });
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
       setActiveFixedTerminal(terminalId);
@@ -1245,8 +1262,25 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     return true;
   });
   useAppCommandHandler("panel.close", () => {
-    if (props.surface !== "page" || getBbDesktopInfo() === null) return false;
+    if (props.surface !== "page") return false;
     return handleCloseWindowRequest();
+  });
+  useAppCommandHandler("diff.toggle", () => {
+    if (
+      props.surface !== "page" ||
+      !canUseGitUi
+    ) {
+      return false;
+    }
+    if (
+      isSecondaryPanelOpen &&
+      activeFixedSecondaryTab?.kind === "git-diff"
+    ) {
+      closeSecondaryPanel();
+    } else {
+      openSecondaryPanelDiffPanel();
+    }
+    return true;
   });
   useEffect(() => {
     if (props.surface !== "page") {
@@ -1895,6 +1929,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     canOpenPreferredFileTarget,
     openPathInPreferredFileTarget,
   ]);
+  useAppCommandHandler("workspace.openPreferred", () => {
+    if (props.surface !== "page") return false;
+    if (activeWorkspaceFilePath && handleOpenFileInEditor) {
+      handleOpenFileInEditor(activeWorkspaceFilePath);
+      return true;
+    }
+    if (activeHostFilePath && handleOpenHostFileInEditor) {
+      handleOpenHostFileInEditor(activeHostFilePath);
+      return true;
+    }
+    if (activeStorageFilePath && handleOpenStorageFileInEditor) {
+      handleOpenStorageFileInEditor(activeStorageFilePath);
+      return true;
+    }
+    return false;
+  });
   const workspaceFileCopyPath = activeWorkspaceFilePath
     ? resolveAbsoluteFilePath({
         path: activeWorkspaceFilePath,

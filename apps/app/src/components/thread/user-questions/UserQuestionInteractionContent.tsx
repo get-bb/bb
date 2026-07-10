@@ -5,6 +5,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import { QUESTION_SELECT_APP_COMMAND_IDS } from "@bb/domain";
 import type {
   PendingInteractionUserQuestionOption,
   PendingInteractionUserQuestionQuestion,
@@ -26,6 +27,12 @@ import {
   type QuestionAnswerState,
   type QuestionFormState,
 } from "./user-question-form-state.js";
+import {
+  useAppCommandContext,
+  useAppCommandShortcuts,
+  useIndexedAppCommandHandlers,
+} from "@/components/commands/AppCommandProvider";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 
 interface UserQuestionAnswerFormProps {
   className?: string;
@@ -46,6 +53,7 @@ interface QuestionOptionRowProps {
   description?: string;
   multiSelect: boolean;
   onSelect: () => void;
+  shortcut?: AppShortcutPresentation;
 }
 
 interface QuestionTabsProps {
@@ -64,11 +72,34 @@ interface QuestionInputBlockProps {
   onFreeTextChange: (value: string) => void;
   /** Cmd/Ctrl+Enter in the free-text box advances/submits (see handleAdvance). */
   onShortcutSubmit: () => void;
+  shortcuts: ReadonlyMap<string, AppShortcutPresentation>;
 }
 
 const OTHER_OPTION_LABEL = "Other…";
 const USER_QUESTION_FREE_TEXT_MIN_HEIGHT = 84;
 const USER_QUESTION_FREE_TEXT_MAX_HEIGHT = 158;
+
+export type QuestionShortcutChoice =
+  | { kind: "option"; value: string }
+  | { kind: "other" }
+  | null;
+
+export function resolveQuestionShortcutChoice(
+  question: PendingInteractionUserQuestionQuestion,
+  index: number,
+): QuestionShortcutChoice {
+  const options = question.options ?? [];
+  const option = options[index];
+  if (option) return { kind: "option", value: option.value };
+  if (
+    index === options.length &&
+    options.length > 0 &&
+    question.allowFreeText
+  ) {
+    return { kind: "other" };
+  }
+  return null;
+}
 
 function QuestionOptionRow({
   checked,
@@ -76,11 +107,13 @@ function QuestionOptionRow({
   description,
   multiSelect,
   onSelect,
+  shortcut,
 }: QuestionOptionRowProps) {
   return (
     <button
       type="button"
       aria-pressed={checked}
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       onClick={onSelect}
       className={cn(
         "flex w-full items-start gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors",
@@ -106,6 +139,14 @@ function QuestionOptionRow({
           </span>
         ) : null}
       </span>
+      {shortcut ? (
+        <kbd
+          aria-hidden="true"
+          className="mt-0.5 shrink-0 text-xs font-normal text-subtle-foreground"
+        >
+          {shortcut.label}
+        </kbd>
+      ) : null}
     </button>
   );
 }
@@ -155,6 +196,7 @@ function QuestionInputBlock({
   onSelectOther,
   onFreeTextChange,
   onShortcutSubmit,
+  shortcuts,
 }: QuestionInputBlockProps) {
   const freeTextRef = useRef<HTMLTextAreaElement>(null);
   const isPointerCoarse = usePointerCoarse();
@@ -197,7 +239,7 @@ function QuestionInputBlock({
         {question.prompt}
       </div>
       <div className="mt-2 space-y-0.5">
-        {options.map((option: PendingInteractionUserQuestionOption) => (
+        {options.map((option: PendingInteractionUserQuestionOption, index) => (
           <QuestionOptionRow
             key={option.value}
             checked={state.selected.includes(option.value)}
@@ -205,6 +247,7 @@ function QuestionInputBlock({
             description={option.description}
             multiSelect={question.multiSelect}
             onSelect={() => onToggleOption(option.value)}
+            shortcut={shortcuts.get(String(index))}
           />
         ))}
         {question.allowFreeText && options.length > 0 ? (
@@ -213,6 +256,7 @@ function QuestionInputBlock({
             label={OTHER_OPTION_LABEL}
             multiSelect={question.multiSelect}
             onSelect={onSelectOther}
+            shortcut={shortcuts.get(String(options.length))}
           />
         ) : null}
       </div>
@@ -255,6 +299,9 @@ export function UserQuestionAnswerForm({
   const [activeInteractionId, setActiveInteractionId] = useState(interactionId);
   const resolvePendingInteraction = useResolveThreadPendingInteraction();
   const stopThread = useStopThread();
+  const questionSelectionShortcuts = useAppCommandShortcuts(
+    QUESTION_SELECT_APP_COMMAND_IDS,
+  );
 
   // Reset the form only when a different interaction takes over. Keyed on the
   // stable interaction id rather than the `questions` array, whose reference
@@ -288,6 +335,14 @@ export function UserQuestionAnswerForm({
       })
     : null;
   const disabled = resolvePendingInteraction.isPending || isResolving;
+  const choiceShortcuts = useMemo(() => {
+    const shortcuts = new Map<string, AppShortcutPresentation>();
+    QUESTION_SELECT_APP_COMMAND_IDS.forEach((command, index) => {
+      const shortcut = questionSelectionShortcuts.get(command);
+      if (shortcut) shortcuts.set(String(index), shortcut);
+    });
+    return shortcuts;
+  }, [questionSelectionShortcuts]);
 
   const updateQuestionState = (
     question: PendingInteractionUserQuestionQuestion,
@@ -356,6 +411,27 @@ export function UserQuestionAnswerForm({
     stopThread.mutate(threadId);
   };
 
+  const selectChoiceAt = (index: number): boolean => {
+    if (disabled || !currentQuestion) return false;
+    const choice = resolveQuestionShortcutChoice(currentQuestion, index);
+    if (choice?.kind === "option") {
+      handleToggleOption(currentQuestion, choice.value);
+      return true;
+    }
+    if (choice?.kind === "other") {
+      handleSelectOther(currentQuestion);
+      return true;
+    }
+    return false;
+  };
+
+  useAppCommandContext("questionOpen", currentQuestion !== null && !disabled);
+  useIndexedAppCommandHandlers(
+    QUESTION_SELECT_APP_COMMAND_IDS,
+    selectChoiceAt,
+    100,
+  );
+
   if (!currentQuestion) {
     return null;
   }
@@ -382,6 +458,7 @@ export function UserQuestionAnswerForm({
         onSelectOther={() => handleSelectOther(currentQuestion)}
         onFreeTextChange={(value) => handleFreeTextChange(currentQuestion, value)}
         onShortcutSubmit={handleAdvance}
+        shortcuts={choiceShortcuts}
       />
       <div className="mt-3 flex items-center justify-between gap-2">
         <Button

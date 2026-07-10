@@ -17,6 +17,7 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -614,6 +615,7 @@ function FilePreviewHeader({
   viewMode,
   onViewModeChange,
 }: FilePreviewHeaderProps) {
+  const openShortcut = useAppCommandShortcut("workspace.openPreferred");
   const showHeaderControls = showLineOverflowToggle || toggleKind !== null;
   const copyFileContentsLabel = getFileContentsCopyLabel(toggleKind);
 
@@ -657,9 +659,21 @@ function FilePreviewHeader({
             {onOpenInEditor ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <OpenInEditorButton onClick={() => onOpenInEditor(path)} />
+                  <OpenInEditorButton
+                    onClick={() => onOpenInEditor(path)}
+                    label={
+                      openShortcut
+                        ? `Open in editor (${openShortcut.label})`
+                        : "Open in editor"
+                    }
+                    aria-keyshortcuts={openShortcut?.ariaKeyshortcuts}
+                  />
                 </TooltipTrigger>
-                <TooltipContent side="bottom">Open in editor</TooltipContent>
+                <TooltipContent side="bottom">
+                  {openShortcut
+                    ? `Open in editor (${openShortcut.label})`
+                    : "Open in editor"}
+                </TooltipContent>
               </Tooltip>
             ) : null}
           </TooltipProvider>

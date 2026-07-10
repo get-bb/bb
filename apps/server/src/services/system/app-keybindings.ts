@@ -21,6 +21,7 @@ interface ShortcutModifiers {
 
 interface BindingOptions {
   all?: readonly AppCommandContextKey[];
+  desktopOnly?: boolean;
   none?: readonly AppCommandContextKey[];
 }
 
@@ -43,6 +44,7 @@ function binding(
 ): AppKeybinding {
   return {
     command,
+    desktopOnly: options.desktopOnly ?? false,
     shortcut: shortcut(key, modifiers),
     when: {
       all: [...(options.all ?? [])],
@@ -55,26 +57,31 @@ const mainWithoutModal = {
   all: ["mainSurface"],
   none: ["modalOpen"],
 } as const;
+const desktopMainWithoutModal = {
+  ...mainWithoutModal,
+  desktopOnly: true,
+} as const;
 
 export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
-  binding("thread.new", "n", { mod: true }, mainWithoutModal),
+  binding("thread.new", "n", { mod: true }, desktopMainWithoutModal),
   binding("thread.search", "k", { mod: true }, mainWithoutModal),
-  binding("settings.open", ",", { mod: true }, mainWithoutModal),
+  binding("settings.open", ",", { mod: true }, desktopMainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),
-  binding("thread.previous", "[", { mod: true, shift: true }, mainWithoutModal),
-  binding("thread.next", "]", { mod: true, shift: true }, mainWithoutModal),
+  binding("thread.previous", "[", { mod: true, shift: true }, desktopMainWithoutModal),
+  binding("thread.next", "]", { mod: true, shift: true }, desktopMainWithoutModal),
   ...THREAD_JUMP_APP_COMMAND_IDS.map((command, index) =>
-    binding(command, String(index + 1), { mod: true }, mainWithoutModal),
+    binding(command, String(index + 1), { mod: true }, desktopMainWithoutModal),
   ),
-  binding("panel.newTab", "t", { mod: true }, mainWithoutModal),
-  binding("panel.close", "w", { mod: true }, mainWithoutModal),
-  binding("panel.toggle", "j", { mod: true }, mainWithoutModal),
-  binding("file.quickOpen", "p", { mod: true }, mainWithoutModal),
+  binding("panel.newTab", "t", { mod: true }, desktopMainWithoutModal),
+  binding("panel.close", "w", { mod: true }, desktopMainWithoutModal),
+  binding("panel.toggle", "j", { mod: true }, desktopMainWithoutModal),
+  binding("file.quickOpen", "p", { mod: true }, desktopMainWithoutModal),
   binding("diff.toggle", "d", { mod: true }, {
     ...mainWithoutModal,
+    desktopOnly: true,
     none: ["modalOpen", "editableFocus", "terminalFocus", "browserFocus"],
   }),
-  binding("terminal.open", "t", { mod: true, shift: true }, mainWithoutModal),
+  binding("terminal.open", "t", { mod: true, shift: true }, desktopMainWithoutModal),
   binding("modelPicker.toggle", "m", { mod: true, shift: true }, {
     all: ["mainSurface", "promptAvailable"],
     none: ["modalOpen", "terminalFocus", "browserFocus"],
@@ -85,20 +92,29 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
       none: [],
     }),
   ),
+  // The picker popover is itself modal. This later, scoped binding lets the
+  // same chord close it while the general binding remains blocked by unrelated
+  // dialogs.
+  binding("modelPicker.toggle", "m", { mod: true, shift: true }, {
+    all: ["mainSurface", "modelPickerOpen"],
+    none: [],
+  }),
   binding("browser.focusLocation", "l", { mod: true }, {
     all: ["mainSurface", "browserFocus"],
+    desktopOnly: true,
     none: ["modalOpen"],
   }),
   binding("browser.reload", "r", { mod: true }, {
     all: ["mainSurface", "browserFocus"],
+    desktopOnly: true,
     none: ["modalOpen"],
   }),
-  binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),
+  binding("workspace.openPreferred", "o", { mod: true }, desktopMainWithoutModal),
   ...QUESTION_SELECT_APP_COMMAND_IDS.map((command, index) =>
     binding(command, String(index + 1), {}, {
       all: ["mainSurface", "questionOpen"],
       none: ["modalOpen", "editableFocus"],
     }),
   ),
-  binding("window.new", "n", { mod: true, shift: true }, mainWithoutModal),
+  binding("window.new", "n", { mod: true, shift: true }, desktopMainWithoutModal),
 ];

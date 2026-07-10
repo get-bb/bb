@@ -6,7 +6,10 @@ import {
   type KeyboardEventHandler,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
+import {
+  isMacKeyboardPlatform,
+  THREAD_JUMP_APP_COMMAND_IDS,
+} from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -52,8 +55,8 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
   useAppCommandShortcuts,
+  useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
-import { isMacKeyboardPlatform } from "@/lib/app-keybindings";
 import { useRouteState } from "@/hooks/useRouteState";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
@@ -112,8 +115,7 @@ export function AppSidebar({
   const threadJumpShortcuts = useAppCommandShortcuts(
     THREAD_JUMP_APP_COMMAND_IDS,
   );
-  const configuredSettingsShortcut = useAppCommandShortcut("settings.open");
-  const settingsShortcut = desktopInfo ? configuredSettingsShortcut : null;
+  const settingsShortcut = useAppCommandShortcut("settings.open");
 
   const focusThreadSearchInput = useCallback(() => {
     if (isPointerCoarse) return;
@@ -242,15 +244,10 @@ export function AppSidebar({
     handleThreadSearchActivate();
     return true;
   });
-  useAppCommandHandler("thread.jump.1", () => activateThreadShortcut(0));
-  useAppCommandHandler("thread.jump.2", () => activateThreadShortcut(1));
-  useAppCommandHandler("thread.jump.3", () => activateThreadShortcut(2));
-  useAppCommandHandler("thread.jump.4", () => activateThreadShortcut(3));
-  useAppCommandHandler("thread.jump.5", () => activateThreadShortcut(4));
-  useAppCommandHandler("thread.jump.6", () => activateThreadShortcut(5));
-  useAppCommandHandler("thread.jump.7", () => activateThreadShortcut(6));
-  useAppCommandHandler("thread.jump.8", () => activateThreadShortcut(7));
-  useAppCommandHandler("thread.jump.9", () => activateThreadShortcut(8));
+  useIndexedAppCommandHandlers(
+    THREAD_JUMP_APP_COMMAND_IDS,
+    activateThreadShortcut,
+  );
   useAppCommandHandler("thread.previous", () => activateAdjacentThread(-1));
   useAppCommandHandler("thread.next", () => activateAdjacentThread(1));
 

@@ -10,7 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
-import type { ReasoningLevel } from "@bb/domain";
+import {
+  MODEL_PICKER_SELECT_APP_COMMAND_IDS,
+  type ReasoningLevel,
+} from "@bb/domain";
 import { stripModelBrandPrefix } from "./model-brand-prefix";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
@@ -50,6 +53,13 @@ import {
   formatModelLoadErrorText,
   ModelLoadErrorMessage,
 } from "./model-load-error-message";
+import {
+  useAppCommandContext,
+  useAppCommandHandler,
+  useAppCommandShortcut,
+  useAppCommandShortcuts,
+  useIndexedAppCommandHandlers,
+} from "@/components/commands/AppCommandProvider";
 
 interface ModelLabelParts {
   base: string;
@@ -251,6 +261,11 @@ export function ModelReasoningPicker({
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const [open, setOpen] = useState(defaultOpen);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const toggleShortcut = useAppCommandShortcut("modelPicker.toggle");
+  const modelSelectionShortcuts = useAppCommandShortcuts(
+    MODEL_PICKER_SELECT_APP_COMMAND_IDS,
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -521,6 +536,58 @@ export function ModelReasoningPicker({
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
   );
 
+  const selectableModelRows = useMemo(
+    () => navRows.filter((row) => row.kind === "model"),
+    [navRows],
+  );
+  const selectModelAt = useCallback(
+    (index: number): boolean => {
+      if (!open || disabled) return false;
+      const row = selectableModelRows[index];
+      if (!row) return false;
+      handleModelSelect(row.option.value);
+      return true;
+    },
+    [disabled, handleModelSelect, open, selectableModelRows],
+  );
+  const modelShortcutByValue = useMemo(() => {
+    const shortcuts = new Map<
+      string,
+      { ariaKeyshortcuts: string; label: string }
+    >();
+    selectableModelRows.slice(0, 9).forEach((row, index) => {
+      const command = MODEL_PICKER_SELECT_APP_COMMAND_IDS[index];
+      const shortcut = command
+        ? modelSelectionShortcuts.get(command)
+        : undefined;
+      if (shortcut) shortcuts.set(row.option.value, shortcut);
+    });
+    return shortcuts;
+  }, [modelSelectionShortcuts, selectableModelRows]);
+
+  useAppCommandContext("promptAvailable", !disabled);
+  useAppCommandContext("modelPickerOpen", open && !disabled);
+  useAppCommandHandler("modelPicker.toggle", ({ target }) => {
+    if (disabled) return false;
+    if (open) {
+      setOpen(false);
+      return true;
+    }
+    if (!(target instanceof HTMLElement)) return false;
+    const targetComposer = target.closest("[data-app-composer]");
+    const pickerComposer = triggerRef.current?.closest("[data-app-composer]");
+    if (targetComposer === null || targetComposer !== pickerComposer) {
+      return false;
+    }
+    setOpen(true);
+    return true;
+  }, 50);
+  useIndexedAppCommandHandlers(
+    MODEL_PICKER_SELECT_APP_COMMAND_IDS,
+    selectModelAt,
+    50,
+  );
+
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
       // While previewing, the listed levels are the previewed provider's, so
@@ -644,10 +711,16 @@ export function ModelReasoningPicker({
   // editable counterpart.
   const trigger = (
     <Button
+      ref={triggerRef}
       type="button"
       variant="ghost"
       size="sm"
-      aria-label="Provider, model and reasoning"
+      aria-label={
+        toggleShortcut
+          ? `Provider, model and reasoning (${toggleShortcut.label})`
+          : "Provider, model and reasoning"
+      }
+      aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
       className={cn(
         OPTION_BASE_CLASS_NAME,
@@ -854,6 +927,7 @@ export function ModelReasoningPicker({
                         activeProviderId,
                       )}
                       selected={!isPreviewing && option.value === modelValue}
+                      shortcut={modelShortcutByValue.get(option.value)}
                       onClick={() => handleModelSelect(option.value)}
                     />
                   );
@@ -1163,6 +1237,7 @@ function MenuRowButton({
   isActive,
   id,
   role,
+  shortcut,
   onPointerEnter: callerPointerEnter,
   onKeyDown: callerKeyDown,
 }: {
@@ -1172,6 +1247,7 @@ function MenuRowButton({
   isActive?: boolean;
   id?: string;
   role?: React.AriaRole;
+  shortcut?: { ariaKeyshortcuts: string; label: string };
   onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
   onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }) {
@@ -1190,6 +1266,7 @@ function MenuRowButton({
       // aria-activedescendant, so it carries aria-selected; reasoning/submenu
       // rows keep default button semantics.
       aria-selected={role === "option" ? Boolean(isActive) : undefined}
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       onClick={onClick}
       className={cn(
         "relative flex w-full cursor-default select-none items-center justify-between gap-3 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
@@ -1206,13 +1283,23 @@ function MenuRowButton({
           <span className="ml-1.5 text-subtle-foreground">{tag}</span>
         ) : null}
       </span>
-      <Icon
-        name="Check"
-        className={cn(
-          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
-          selected ? "opacity-100" : "opacity-0",
-        )}
-      />
+      <span className="flex shrink-0 items-center gap-1.5">
+        {shortcut ? (
+          <kbd
+            aria-hidden="true"
+            className="text-xs font-normal text-subtle-foreground"
+          >
+            {shortcut.label}
+          </kbd>
+        ) : null}
+        <Icon
+          name="Check"
+          className={cn(
+            COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+            selected ? "opacity-100" : "opacity-0",
+          )}
+        />
+      </span>
     </button>
   );
 }

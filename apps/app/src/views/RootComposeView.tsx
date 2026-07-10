@@ -2367,6 +2367,11 @@ export function RootComposeView(props: RootComposeViewProps) {
     handleOpenNewTab();
     return true;
   });
+  useAppCommandHandler("file.quickOpen", () => {
+    if (props.surface !== "page") return false;
+    handleOpenNewTab();
+    return true;
+  });
   const handleToggleSecondaryPanel = useCallback(() => {
     if (isSecondaryPanelOpen) {
       closeSecondaryPanel();
@@ -2427,6 +2432,19 @@ export function RootComposeView(props: RootComposeViewProps) {
     rootPanelTerminalTarget,
     setActiveFixedTerminal,
   ]);
+  useAppCommandHandler("terminal.open", () => {
+    if (
+      props.surface !== "page" ||
+      !canCreateRootTerminal ||
+      rootPanelTerminalTarget === null ||
+      createEnvironmentTerminalMutation.isPending ||
+      createHostPathTerminalMutation.isPending
+    ) {
+      return false;
+    }
+    handleStartTerminal();
+    return true;
+  });
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
       setActiveFixedTerminal(terminalId);
@@ -2518,7 +2536,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     return true;
   });
   useAppCommandHandler("panel.close", () => {
-    if (props.surface !== "page" || getBbDesktopInfo() === null) return false;
+    if (props.surface !== "page") return false;
     return handleCloseWindowRequest();
   });
   useEffect(() => {
@@ -2831,6 +2849,34 @@ export function RootComposeView(props: RootComposeViewProps) {
         });
       }
     : undefined;
+  useAppCommandHandler("workspace.openPreferred", () => {
+    if (props.surface !== "page") return false;
+    if (
+      activeWorkspaceFilePath !== null &&
+      activeWorkspaceFileEnvironmentId !== null &&
+      handleOpenWorkspaceFileInEditor
+    ) {
+      handleOpenWorkspaceFileInEditor(activeWorkspaceFilePath);
+      return true;
+    }
+    if (
+      activeWorkspaceFilePath !== null &&
+      activeWorkspaceFileProjectPreviewId !== null &&
+      handleOpenProjectFileInEditor
+    ) {
+      handleOpenProjectFileInEditor(activeWorkspaceFilePath);
+      return true;
+    }
+    if (activeHostFilePath !== null && handleOpenHostFileInEditor) {
+      handleOpenHostFileInEditor(activeHostFilePath);
+      return true;
+    }
+    if (activeStorageFilePath !== null && handleOpenStorageFileInEditor) {
+      handleOpenStorageFileInEditor(activeStorageFilePath);
+      return true;
+    }
+    return false;
+  });
   const workspaceFileCopyPath = activeWorkspaceFilePath
     ? resolveAbsoluteFilePath({
         path: activeWorkspaceFilePath,

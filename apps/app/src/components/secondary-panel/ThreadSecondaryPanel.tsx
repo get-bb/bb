@@ -251,8 +251,9 @@ export function ThreadSecondaryPanel({
   onToggleConversationCollapse,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
-  const configuredNewTabShortcut = useAppCommandShortcut("panel.newTab");
+  const newTabShortcut = useAppCommandShortcut("panel.newTab");
   const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
+  const diffShortcut = useAppCommandShortcut("diff.toggle");
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
   const visibleFileTabs = fileTabs?.filter((tab) => tab.isHidden !== true);
   const hasActiveFileTab = activeFileTab !== undefined;
@@ -357,7 +358,6 @@ export function ThreadSecondaryPanel({
     threadSecondaryPanelResizingAtom,
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
-  const newTabShortcut = desktopInfo ? configuredNewTabShortcut : null;
   const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
     useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
@@ -480,7 +480,12 @@ export function ThreadSecondaryPanel({
                   usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
                 )}
                 onClick={() => onPanelChange("git-diff")}
-                aria-label="Show diff panel"
+                aria-label={
+                  diffShortcut
+                    ? `Show diff panel (${diffShortcut.label})`
+                    : "Show diff panel"
+                }
+                aria-keyshortcuts={diffShortcut?.ariaKeyshortcuts}
                 aria-pressed={isDiffPanelActive && !hasActiveFileTab}
               >
                 <Icon name="FileDiff" />

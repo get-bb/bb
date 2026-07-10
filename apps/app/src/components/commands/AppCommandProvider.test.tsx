@@ -16,6 +16,7 @@ const testState = vi.hoisted(() => ({
   keybindings: [
     {
       command: "thread.search" as const,
+      desktopOnly: false,
       shortcut: {
         key: "k",
         mod: true,
@@ -28,6 +29,7 @@ const testState = vi.hoisted(() => ({
     },
     {
       command: "question.select.1" as const,
+      desktopOnly: false,
       shortcut: {
         key: "k",
         mod: true,
@@ -80,6 +82,24 @@ function QuestionContext() {
   useAppCommandContext("questionOpen", true);
   return (
     <Handler command="question.select.1" name="question" result={true} />
+  );
+}
+
+function FocusScopedHandler({ name }: { name: string }) {
+  useAppCommandHandler("thread.search", ({ target }) => {
+    if (
+      !(target instanceof HTMLElement) ||
+      target.closest(`[data-command-scope="${name}"]`) === null
+    ) {
+      return false;
+    }
+    testState.calls.push(name);
+    return true;
+  });
+  return (
+    <div data-command-scope={name}>
+      <button type="button">{name}</button>
+    </div>
   );
 }
 
@@ -142,5 +162,30 @@ describe("AppCommandProvider", () => {
 
     expect(dispatchShortcut().defaultPrevented).toBe(false);
     expect(testState.calls).toEqual([]);
+  });
+
+  it("lets equal-priority handlers fall through to the focus-owning instance", () => {
+    renderProvider(
+      <>
+        <FocusScopedHandler name="main" />
+        <FocusScopedHandler name="side" />
+      </>,
+    );
+    const mainButton = document.querySelector<HTMLButtonElement>(
+      '[data-command-scope="main"] button',
+    );
+    expect(mainButton).not.toBeNull();
+    mainButton?.focus();
+
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "k",
+    });
+    mainButton?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual(["main"]);
   });
 });

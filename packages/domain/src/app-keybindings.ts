@@ -94,6 +94,65 @@ export const appShortcutSchema = z
   .strict();
 export type AppShortcut = z.infer<typeof appShortcutSchema>;
 
+export interface AppShortcutInput {
+  altKey: boolean;
+  ctrlKey: boolean;
+  key: string;
+  metaKey: boolean;
+  shiftKey: boolean;
+}
+
+const SHIFTED_KEY_BASES: Readonly<Record<string, string>> = {
+  "~": "`",
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  $: "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+  _: "-",
+  "+": "=",
+  "{": "[",
+  "}": "]",
+  "|": "\\",
+  ":": ";",
+  '"': "'",
+  "<": ",",
+  ">": ".",
+  "?": "/",
+};
+
+function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
+  return input.shiftKey
+    ? (SHIFTED_KEY_BASES[input.key] ?? input.key)
+    : input.key;
+}
+
+export function isMacKeyboardPlatform(platform: string): boolean {
+  return /Mac|iPhone|iPad|iPod/u.test(platform);
+}
+
+export function matchesAppShortcut(
+  input: AppShortcutInput,
+  shortcut: AppShortcut,
+  useMetaForMod: boolean,
+): boolean {
+  const expectedMeta = shortcut.meta || (shortcut.mod && useMetaForMod);
+  const expectedControl = shortcut.control || (shortcut.mod && !useMetaForMod);
+  return (
+    normalizeAppShortcutInputKey(input).toLowerCase() ===
+      shortcut.key.toLowerCase() &&
+    input.metaKey === expectedMeta &&
+    input.ctrlKey === expectedControl &&
+    input.altKey === shortcut.alt &&
+    input.shiftKey === shortcut.shift
+  );
+}
+
 export const appCommandWhenSchema = z
   .object({
     all: z.array(appCommandContextKeySchema),
@@ -105,6 +164,7 @@ export type AppCommandWhen = z.infer<typeof appCommandWhenSchema>;
 export const appKeybindingSchema = z
   .object({
     command: appCommandIdSchema,
+    desktopOnly: z.boolean(),
     shortcut: appShortcutSchema,
     when: appCommandWhenSchema,
   })

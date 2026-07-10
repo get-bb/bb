@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import type { AppCommandContext, AppKeybinding, AppShortcut } from "@bb/domain";
+import {
+  matchesAppShortcut,
+  type AppCommandContext,
+  type AppKeybinding,
+  type AppShortcut,
+} from "@bb/domain";
 import {
   formatAppShortcut,
   formatAppShortcutAria,
   isEditableKeyboardTarget,
   matchesAppCommandContext,
-  matchesAppShortcut,
 } from "./app-keybindings";
 
 const MOD_N: AppShortcut = {
@@ -40,15 +44,15 @@ describe("app keybindings", () => {
       altKey: false,
       shiftKey: false,
     };
-    expect(matchesAppShortcut(base, MOD_N, "MacIntel")).toBe(true);
+    expect(matchesAppShortcut(base, MOD_N, true)).toBe(true);
     expect(
       matchesAppShortcut(
         { ...base, metaKey: false, ctrlKey: true },
         MOD_N,
-        "Win32",
+        false,
       ),
     ).toBe(true);
-    expect(matchesAppShortcut({ ...base, shiftKey: true }, MOD_N, "MacIntel")).toBe(false);
+    expect(matchesAppShortcut({ ...base, shiftKey: true }, MOD_N, true)).toBe(false);
   });
 
   it("matches shifted punctuation against its unshifted binding key", () => {
@@ -62,7 +66,7 @@ describe("app keybindings", () => {
           shiftKey: true,
         },
         { ...MOD_N, key: "[", shift: true },
-        "MacIntel",
+        true,
       ),
     ).toBe(true);
   });
@@ -70,6 +74,7 @@ describe("app keybindings", () => {
   it("requires every positive context and excludes every negative context", () => {
     const binding: AppKeybinding = {
       command: "diff.toggle",
+      desktopOnly: false,
       shortcut: MOD_N,
       when: {
         all: ["mainSurface"],

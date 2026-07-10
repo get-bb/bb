@@ -21,7 +21,10 @@ import {
   APP_SURFACE_DESKTOP,
   APP_SURFACE_ENV_NAME,
 } from "@bb/config/app-surface";
-import { type Experiments } from "@bb/domain";
+import {
+  type AppKeybindings,
+  type Experiments,
+} from "@bb/domain";
 import {
   bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
@@ -107,6 +110,7 @@ import {
   createDesktopBrowserViewManager,
   type DesktopBrowserViewManager,
 } from "./desktop-browser-view.js";
+import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
@@ -264,7 +268,7 @@ interface RefreshPopoutExperimentConfigArgs {
   serverUrl: string;
 }
 
-interface PopoutConfigSync {
+interface SystemConfigSync {
   stop(): void;
 }
 
@@ -276,6 +280,7 @@ const logViewerCopyRequestSchema = z
 
 let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
+let currentAppKeybindings: AppKeybindings = [];
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
@@ -289,9 +294,9 @@ let popoutWindowManager: PopoutWindowManager | null = null;
 let popoutPreloadPath: string | null = null;
 let popoutWindowUrl: string | null = null;
 let popoutHotkeyAccelerator: string | null = null;
-let popoutConfigSync: PopoutConfigSync | null = null;
+let systemConfigSync: SystemConfigSync | null = null;
 let popoutExperimentEnabled = false;
-let popoutConfigRefreshToken = 0;
+let systemConfigRefreshToken = 0;
 const applicationWindowWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
 let stoppingForQuit = false;
@@ -586,7 +591,7 @@ function refreshApplicationMenu(): void {
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
   currentRuntime = runtime;
   if (runtime === null) {
-    stopPopoutConfigSync();
+    stopSystemConfigSync();
   }
   refreshApplicationMenu();
   if (runtime?.ownership !== "spawned") {
@@ -622,7 +627,7 @@ async function fetchSystemConfig(args: FetchSystemConfigArgs) {
   return systemConfigResponseSchema.parse(payload);
 }
 
-function createPopoutConfigSync(serverUrl: string): PopoutConfigSync {
+function createSystemConfigSync(serverUrl: string): SystemConfigSync {
   const realtimeUrl = formatRealtimeUrl(serverUrl);
   const subscribeMessage: ClientMessage = {
     type: "subscribe",
@@ -665,7 +670,7 @@ function createPopoutConfigSync(serverUrl: string): PopoutConfigSync {
         parsed.data.entity === "system" &&
         parsed.data.changes.includes("config-changed")
       ) {
-        void refreshPopoutExperimentConfig({ serverUrl });
+        void refreshSystemConfig({ serverUrl });
       }
     } catch {
       return;
@@ -679,7 +684,7 @@ function createPopoutConfigSync(serverUrl: string): PopoutConfigSync {
     socket = new WebSocket(realtimeUrl);
     socket.addEventListener("open", () => {
       socket?.send(JSON.stringify(subscribeMessage));
-      void refreshPopoutExperimentConfig({ serverUrl });
+      void refreshSystemConfig({ serverUrl });
     });
     socket.addEventListener("message", handleMessage);
     socket.addEventListener("close", scheduleReconnect);
@@ -794,19 +799,20 @@ function applyPopoutExperimentConfig(experiments: Experiments): void {
   registerPopoutHotkey(experiments.popoutChatHotkey);
 }
 
-async function refreshPopoutExperimentConfig(
+async function refreshSystemConfig(
   args: RefreshPopoutExperimentConfigArgs,
 ): Promise<void> {
-  const token = popoutConfigRefreshToken + 1;
-  popoutConfigRefreshToken = token;
+  const token = systemConfigRefreshToken + 1;
+  systemConfigRefreshToken = token;
   try {
     const config = await fetchSystemConfig({ serverUrl: args.serverUrl });
-    if (token !== popoutConfigRefreshToken) {
+    if (token !== systemConfigRefreshToken) {
       return;
     }
+    currentAppKeybindings = config.keybindings;
     applyPopoutExperimentConfig(config.experiments);
   } catch (error) {
-    if (token !== popoutConfigRefreshToken) {
+    if (token !== systemConfigRefreshToken) {
       return;
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -814,16 +820,16 @@ async function refreshPopoutExperimentConfig(
   }
 }
 
-function stopPopoutConfigSync(): void {
-  popoutConfigSync?.stop();
-  popoutConfigSync = null;
+function stopSystemConfigSync(): void {
+  systemConfigSync?.stop();
+  systemConfigSync = null;
   disablePopoutExperimentSurfaces();
 }
 
-function startPopoutConfigSync(serverUrl: string): void {
-  popoutConfigSync?.stop();
-  popoutConfigSync = createPopoutConfigSync(serverUrl);
-  void refreshPopoutExperimentConfig({ serverUrl });
+function startSystemConfigSync(serverUrl: string): void {
+  systemConfigSync?.stop();
+  systemConfigSync = createSystemConfigSync(serverUrl);
+  void refreshSystemConfig({ serverUrl });
 }
 
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
@@ -1166,7 +1172,7 @@ function handleBeforeQuit(event: Event): void {
 }
 
 async function finishQuit(): Promise<void> {
-  stopPopoutConfigSync();
+  stopSystemConfigSync();
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
   desktopBrowserViewManager?.destroyAll();
@@ -1493,7 +1499,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
         serverUrl: existingProbe.serverUrl,
       }),
     );
-    startPopoutConfigSync(existingProbe.serverUrl);
+    startSystemConfigSync(existingProbe.serverUrl);
     refreshApplicationMenu();
     return;
   }
@@ -1514,7 +1520,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   });
   if (runtime !== null) {
     await loadBbApp(runtime.serverUrl);
-    startPopoutConfigSync(runtime.serverUrl);
+    startSystemConfigSync(runtime.serverUrl);
     refreshApplicationMenu();
   }
 }
@@ -1649,7 +1655,27 @@ async function runDesktopApp(): Promise<void> {
   });
   registerDesktopUpdateIpc();
   registerPopoutIpc();
-  desktopBrowserViewManager = createDesktopBrowserViewManager();
+  desktopBrowserViewManager = createDesktopBrowserViewManager({
+    dispatchAppCommand({ command, hostWebContentsId }) {
+      const browserWindow = BrowserWindow.getAllWindows().find(
+        (candidate) => candidate.webContents.id === hostWebContentsId,
+      );
+      browserWindow?.webContents.send(BB_DESKTOP_APP_COMMAND_CHANNEL, command);
+    },
+    focusHostWebContents(hostWebContentsId) {
+      const browserWindow = BrowserWindow.getAllWindows().find(
+        (candidate) => candidate.webContents.id === hostWebContentsId,
+      );
+      browserWindow?.webContents.focus();
+    },
+    resolveAppCommand(input) {
+      return resolveDesktopBrowserAppCommand({
+        input,
+        isMac: process.platform === "darwin",
+        keybindings: currentAppKeybindings,
+      });
+    },
+  });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
   desktopUpdateService.start();
   desktopAutoUpdateService.start();

@@ -166,7 +166,6 @@ import {
   type SidebarThreadSearchPanelController,
 } from "./sidebarThreadSearch";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
-import { getBbDesktopInfo } from "@/lib/bb-desktop";
 
 interface ProjectListProps {
   onNewProject?: () => void;
@@ -1021,9 +1020,7 @@ export function ProjectListActionButtons({
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
-  const [desktopInfo] = useState(getBbDesktopInfo);
-  const configuredNewThreadShortcut = useAppCommandShortcut("thread.new");
-  const newThreadShortcut = desktopInfo ? configuredNewThreadShortcut : null;
+  const newThreadShortcut = useAppCommandShortcut("thread.new");
   const threadSearchShortcut = useAppCommandShortcut("thread.search");
   // One click on the X fully dismisses search — it clears the query and closes
   // the input in a single step (onClose resets the query too). Previously this
