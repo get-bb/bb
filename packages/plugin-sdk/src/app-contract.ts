@@ -1,6 +1,5 @@
-import type {
-  ComponentType,
-} from "react";
+import type { ComponentType } from "react";
+import type { JsonValue } from "@bb/domain";
 
 /**
  * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types plus
@@ -58,6 +57,21 @@ export interface PluginThreadPanelProps {
 export interface PluginComposerAccessoryProps {
   projectId: string | null;
   threadId: string | null;
+}
+
+export interface PluginPendingInteractionView {
+  id: string;
+  threadId: string;
+  title: string;
+  payload: JsonValue;
+  createdAt: number;
+  expiresAt: number | null;
+}
+
+export interface PluginPendingInteractionProps {
+  interaction: PluginPendingInteractionView;
+  submit(value: JsonValue): Promise<void>;
+  cancel(): Promise<void>;
 }
 
 /**
@@ -183,6 +197,12 @@ export interface PluginComposerAccessoryRegistration {
   component: ComponentType<PluginComposerAccessoryProps>;
 }
 
+export interface PluginPendingInteractionRegistration {
+  /** Matches `rendererId` passed to `bb.interactions.request`. */
+  id: string;
+  component: ComponentType<PluginPendingInteractionProps>;
+}
+
 /** Context handed to a `sidebarFooterAction`'s `run`. */
 export interface PluginSidebarFooterActionContext {
   /**
@@ -242,6 +262,7 @@ export interface PluginAppSlots {
   navPanel(registration: PluginNavPanelRegistration): void;
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
   composerAccessory(registration: PluginComposerAccessoryRegistration): void;
+  pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
   ): void;
@@ -404,6 +425,5 @@ type MissingExportName = Exclude<
   keyof PluginSdkApp,
   (typeof PLUGIN_SDK_APP_EXPORT_NAMES)[number]
 >;
-const _assertAllExported: MissingExportName extends never ? true : never =
-  true;
+const _assertAllExported: MissingExportName extends never ? true : never = true;
 void _assertAllExported;

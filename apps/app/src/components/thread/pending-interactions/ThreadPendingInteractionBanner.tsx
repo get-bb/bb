@@ -62,6 +62,9 @@ export function ThreadPendingInteractionBanner({
   interaction,
   threadId,
 }: ThreadPendingInteractionBannerProps) {
+  if (interaction.payload.kind === "plugin") {
+    return null;
+  }
   if (isUserQuestionPendingInteractionPayload(interaction.payload)) {
     return (
       <ThreadUserQuestionPendingInteractionBanner

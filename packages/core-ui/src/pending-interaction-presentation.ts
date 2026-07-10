@@ -32,6 +32,10 @@ export function formatPendingInteractionSummary(
 ): string {
   const { interaction, surface } = args;
 
+  if (interaction.payload.kind === "plugin") {
+    return interaction.payload.title;
+  }
+
   if (!isApprovalPendingInteractionPayload(interaction.payload)) {
     return interaction.payload.questions[0]?.prompt ?? "User answer requested";
   }

@@ -152,7 +152,9 @@ export async function writeHostFile(
     await fs.mkdir(path.dirname(target.writePath), { recursive: true });
   }
   try {
-    await fs.writeFile(target.writePath, contents);
+    await fs.writeFile(target.writePath, contents, {
+      ...(command.mode !== undefined ? { mode: command.mode } : {}),
+    });
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       throw createMissingTargetError(path.dirname(command.path));

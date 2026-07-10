@@ -131,6 +131,9 @@ function formatPermissionSummaryLine(
 export function formatPendingInteractionSubjectDetailLines(
   interaction: PendingInteraction,
 ): string[] {
+  if (interaction.payload.kind === "plugin") {
+    return [];
+  }
   if (!isApprovalPendingInteractionPayload(interaction.payload)) {
     return interaction.payload.questions.map((question) => question.prompt);
   }

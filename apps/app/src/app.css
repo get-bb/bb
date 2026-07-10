@@ -76,6 +76,13 @@
     outline: 2px solid var(--ring);
     outline-offset: 1px;
   }
+
+  /* Keep the drag cursor stable while crossing rows whose normal pointer
+   * cursor would otherwise override the cursor inherited from the body. */
+  body[data-sidebar-dragging="true"],
+  body[data-sidebar-dragging="true"] * {
+    cursor: grabbing !important;
+  }
 }
 
 @layer components {

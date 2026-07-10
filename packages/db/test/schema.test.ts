@@ -72,25 +72,29 @@ describe("db rebuild schema", () => {
       )
       .all();
 
-    expect(columns).toHaveLength(13);
+    expect(columns).toHaveLength(17);
     expect(columns).toEqual(
       expect.arrayContaining([
         { name: "id", type: "text", notNull: 1, primaryKey: 1 },
         { name: "thread_id", type: "text", notNull: 1, primaryKey: 0 },
-        { name: "turn_id", type: "text", notNull: 1, primaryKey: 0 },
-        { name: "provider_id", type: "text", notNull: 1, primaryKey: 0 },
-        { name: "provider_thread_id", type: "text", notNull: 1, primaryKey: 0 },
+        { name: "origin_kind", type: "text", notNull: 1, primaryKey: 0 },
+        { name: "turn_id", type: "text", notNull: 0, primaryKey: 0 },
+        { name: "provider_id", type: "text", notNull: 0, primaryKey: 0 },
+        { name: "provider_thread_id", type: "text", notNull: 0, primaryKey: 0 },
         {
           name: "provider_request_id",
           type: "text",
-          notNull: 1,
+          notNull: 0,
           primaryKey: 0,
         },
+        { name: "plugin_id", type: "text", notNull: 0, primaryKey: 0 },
+        { name: "renderer_id", type: "text", notNull: 0, primaryKey: 0 },
         { name: "status", type: "text", notNull: 1, primaryKey: 0 },
         { name: "payload", type: "text", notNull: 1, primaryKey: 0 },
         { name: "resolution", type: "text", notNull: 0, primaryKey: 0 },
         { name: "status_reason", type: "text", notNull: 0, primaryKey: 0 },
         { name: "created_at", type: "integer", notNull: 1, primaryKey: 0 },
+        { name: "expires_at", type: "integer", notNull: 0, primaryKey: 0 },
         { name: "resolved_at", type: "integer", notNull: 0, primaryKey: 0 },
         { name: "updated_at", type: "integer", notNull: 1, primaryKey: 0 },
       ]),

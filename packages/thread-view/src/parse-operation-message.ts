@@ -122,9 +122,7 @@ function createThreadOperationMetadata(
   };
 }
 
-function threadInterruptedTitle(
-  reason: SystemThreadInterruptedReason,
-): string {
+function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
   switch (reason) {
     case "manual-stop":
       return "Stopped manually";
@@ -519,6 +517,11 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "system/operation") {
+    // Plugin interaction lifecycle events drive composer/realtime state, but
+    // their generic operation rows duplicate the plugin form and briefly
+    // linger as "Plugin interaction pending" after submission.
+    if (decoded.operation === "plugin_interaction") return null;
+
     const threadOperation = createThreadOperationMetadata(decoded);
     const title = threadOperationTitle(threadOperation, threadName);
 

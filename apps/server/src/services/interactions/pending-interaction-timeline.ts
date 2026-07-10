@@ -2,6 +2,7 @@ import { assertNever } from "@bb/core-ui";
 import type {
   ApprovalPendingInteractionResolution,
   PendingInteraction,
+  ProviderPendingInteraction,
   PendingInteractionApprovalSubject,
   PendingInteractionPermissionGrantApprovalSubject,
   ThreadEventItemApprovalStatus,
@@ -14,6 +15,8 @@ import {
   isUserQuestionPendingInteractionPayload,
   isUserQuestionPendingInteractionResolution,
   turnScope,
+  threadScope,
+  isPluginPendingInteraction,
 } from "@bb/domain";
 import { getThread, type DbNotifier, type DbTransaction } from "@bb/db";
 import type { AppDeps } from "../../types.js";
@@ -37,7 +40,7 @@ type ApprovalTimelineItemStatus = Extract<
 >;
 
 function getApprovalResolution(
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
 ): ApprovalPendingInteractionResolution | null {
   if (interaction.resolution === null) {
     return null;
@@ -51,7 +54,7 @@ function getApprovalResolution(
 }
 
 function getUserQuestionResolution(
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
 ): UserQuestionPendingInteractionResolution | null {
   if (interaction.resolution === null) {
     return null;
@@ -66,7 +69,7 @@ function getUserQuestionResolution(
 
 function appendPermissionGrantTimelineEvent(
   deps: Pick<AppDeps, "db" | "hub">,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   subject: PendingInteractionPermissionGrantApprovalSubject,
 ): void {
   const thread = getThread(deps.db, interaction.threadId);
@@ -89,7 +92,7 @@ function appendPermissionGrantTimelineEvent(
 
 function appendPermissionGrantTimelineEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   subject: PendingInteractionPermissionGrantApprovalSubject,
 ): void {
   const thread = getThread(deps.db, interaction.threadId);
@@ -115,7 +118,7 @@ function appendPermissionGrantTimelineEventInTransaction(
 
 function appendUserQuestionTimelineEvent(
   deps: Pick<AppDeps, "db" | "hub">,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
 ): void {
   if (!isUserQuestionPendingInteractionPayload(interaction.payload)) {
     return;
@@ -140,7 +143,7 @@ function appendUserQuestionTimelineEvent(
 
 function appendUserQuestionTimelineEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
 ): void {
   if (!isUserQuestionPendingInteractionPayload(interaction.payload)) {
     return;
@@ -166,7 +169,7 @@ function appendUserQuestionTimelineEventInTransaction(
 
 function appendApprovalItemEvent(
   deps: Pick<AppDeps, "db" | "hub">,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   item: ApprovalTimelineItem,
 ): void {
   const thread = getThread(deps.db, interaction.threadId);
@@ -185,7 +188,7 @@ function appendApprovalItemEvent(
 
 function appendApprovalItemEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   item: ApprovalTimelineItem,
 ): void {
   const thread = getThread(deps.db, interaction.threadId);
@@ -207,7 +210,7 @@ function appendApprovalItemEventInTransaction(
 
 function appendApprovalSubjectItemEvent(
   deps: Pick<AppDeps, "db" | "hub">,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   subject: Exclude<
     PendingInteractionApprovalSubject,
     { kind: "permission_grant" }
@@ -245,7 +248,7 @@ function appendApprovalSubjectItemEvent(
 
 function appendApprovalSubjectItemEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   subject: Exclude<
     PendingInteractionApprovalSubject,
     { kind: "permission_grant" }
@@ -283,7 +286,7 @@ function appendApprovalSubjectItemEventInTransaction(
 
 function appendPermissionGrantLifecycleTimelineEvent(
   deps: Pick<AppDeps, "db" | "hub">,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   subject: PendingInteractionPermissionGrantApprovalSubject,
 ): void {
   switch (interaction.status) {
@@ -298,7 +301,7 @@ function appendPermissionGrantLifecycleTimelineEvent(
 
 function appendPermissionGrantLifecycleTimelineEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   subject: PendingInteractionPermissionGrantApprovalSubject,
 ): void {
   switch (interaction.status) {
@@ -317,7 +320,7 @@ function appendPermissionGrantLifecycleTimelineEventInTransaction(
 
 function appendItemLifecycleTimelineEvent(
   deps: Pick<AppDeps, "db" | "hub">,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   subject: Exclude<
     PendingInteractionApprovalSubject,
     { kind: "permission_grant" }
@@ -360,7 +363,7 @@ function appendItemLifecycleTimelineEvent(
 
 function appendItemLifecycleTimelineEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
   subject: Exclude<
     PendingInteractionApprovalSubject,
     { kind: "permission_grant" }
@@ -405,6 +408,27 @@ export function appendPendingInteractionTimelineEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   interaction: PendingInteraction,
 ): void {
+  if (isPluginPendingInteraction(interaction)) {
+    const thread = getThread(deps.db, interaction.threadId);
+    appendThreadEvent(deps, {
+      threadId: interaction.threadId,
+      environmentId: thread?.environmentId ?? null,
+      type: "system/operation",
+      scope: threadScope(),
+      data: {
+        operation: "plugin_interaction",
+        status: interaction.status,
+        message: "Plugin interaction lifecycle changed",
+        operationId: interaction.id,
+        metadata: {
+          interactionId: interaction.id,
+          pluginId: interaction.origin.pluginId,
+          rendererId: interaction.origin.rendererId,
+        },
+      },
+    });
+    return;
+  }
   if (!isApprovalPendingInteractionPayload(interaction.payload)) {
     appendUserQuestionTimelineEvent(deps, interaction);
     return;
@@ -427,6 +451,30 @@ export function appendPendingInteractionTimelineEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
   interaction: PendingInteraction,
 ): void {
+  if (isPluginPendingInteraction(interaction)) {
+    const thread = getThread(deps.db, interaction.threadId);
+    appendThreadEventInTransaction(deps.db, {
+      threadId: interaction.threadId,
+      environmentId: thread?.environmentId ?? null,
+      type: "system/operation",
+      scope: threadScope(),
+      data: {
+        operation: "plugin_interaction",
+        status: interaction.status,
+        message: "Plugin interaction lifecycle changed",
+        operationId: interaction.id,
+        metadata: {
+          interactionId: interaction.id,
+          pluginId: interaction.origin.pluginId,
+          rendererId: interaction.origin.rendererId,
+        },
+      },
+    });
+    deps.hub.notifyThread(interaction.threadId, ["events-appended"], {
+      eventTypes: ["system/operation"],
+    });
+    return;
+  }
   if (!isApprovalPendingInteractionPayload(interaction.payload)) {
     appendUserQuestionTimelineEventInTransaction(deps, interaction);
     return;

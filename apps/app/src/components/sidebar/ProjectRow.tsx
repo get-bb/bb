@@ -80,15 +80,15 @@ import { getProjectSettingsRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import {
+  CollapsedThreadStatusGlyph,
   ThreadRow,
-  ThreadStatusGlyph,
   type ThreadRowOptions,
 } from "./ThreadRow";
 import {
-  buildChronologicalThreadList,
+  buildFolderThreadList,
   buildProjectThreadGroups,
   CHRONOLOGICAL_CONTAINER_ID,
-  getManualOrderItemKey,
+  getSidebarDndItemId,
   type EnvironmentThreadGroup,
   type ProjectThreadItem,
   type ProjectThreadNode,
@@ -154,11 +154,10 @@ export interface ProjectRowProps {
   projectRowStyle?: CSSProperties;
 }
 
-export interface ProjectThreadTreeProps {
+interface ProjectThreadTreeProps {
   projectId: string;
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
-  folders?: readonly SidebarFolderDefinition[];
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
@@ -168,7 +167,7 @@ export interface ProjectThreadTreeProps {
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
-export interface ChronologicalThreadTreeProps {
+interface FolderThreadTreeProps {
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
   folders?: readonly SidebarFolderDefinition[];
@@ -184,13 +183,13 @@ export interface ChronologicalThreadTreeProps {
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
-export interface ChronologicalFolderThreadSectionsProps extends ChronologicalThreadTreeProps {
+interface ChronologicalFolderThreadSectionsProps extends FolderThreadTreeProps {
   renderAllThreadsSection: (content: ReactNode) => ReactNode;
   renderFoldersSection: (content: ReactNode) => ReactNode;
   renderThreadsSection: (content: ReactNode) => ReactNode;
 }
 
-export type ProjectThreadTreeVariant = "project" | "section";
+type ProjectThreadTreeVariant = "project" | "section";
 
 type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
@@ -242,7 +241,7 @@ interface ThreadTreeItemRowProps {
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
-  manualSort?: ManualThreadTreeDndState;
+  folderDnd?: FolderThreadDndState;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
 }
@@ -264,15 +263,14 @@ interface FolderTreeItemRowProps {
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
-  manualSort?: ManualThreadTreeDndState;
+  folderDnd?: FolderThreadDndState;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
 }
 
-interface ManualThreadTreeDndState {
+interface FolderThreadDndState {
   consumeClickSuppression: ConsumeDragClickSuppression;
   dndContextProps: SidebarReorderDndContextProps;
-  enabled: boolean;
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
   onClickCapture: MouseEventHandler<HTMLElement>;
   // The drop target showing an empty placeholder row while a thread is dragged
@@ -282,18 +280,16 @@ interface ManualThreadTreeDndState {
   dragOverParentKey: string | null;
 }
 
-interface UseManualThreadTreeDndArgs {
+interface UseFolderThreadDndArgs {
   containerId: string;
   enabled: boolean;
   rootItems: readonly ProjectThreadItem[];
 }
 
-type ManualSortableItemKind = "thread" | "folder" | "environment";
-
-interface ManualThreadTreeLookup {
+interface FolderThreadDndLookup {
   folderIdByParentKey: Map<string, string | null>;
   itemIdsByParentKey: Map<string, string[]>;
-  itemKindById: Map<string, ManualSortableItemKind>;
+  itemKindById: Map<string, ProjectThreadItem["kind"]>;
   parentKeyByItemId: Map<string, string>;
   threadByItemId: Map<string, ThreadListEntry>;
 }
@@ -301,7 +297,7 @@ interface ManualThreadTreeLookup {
 // Render key + routing projectId for any item kind. Folders derive from their
 // first nested item, so a folder spanning projects in the Folders view still
 // routes each contained thread to its own project.
-export function getItemKey(item: ProjectThreadItem): string {
+function getItemKey(item: ProjectThreadItem): string {
   switch (item.kind) {
     case "thread":
       return `thread:${item.node.thread.id}`;
@@ -312,7 +308,7 @@ export function getItemKey(item: ProjectThreadItem): string {
   }
 }
 
-export function getItemProjectId(item: ProjectThreadItem): string {
+function getItemProjectId(item: ProjectThreadItem): string {
   switch (item.kind) {
     case "thread":
       return item.node.thread.projectId;
@@ -326,17 +322,11 @@ export function getItemProjectId(item: ProjectThreadItem): string {
   }
 }
 
-function getManualSortableItemKind(
-  item: ProjectThreadItem,
-): ManualSortableItemKind {
-  return item.kind;
-}
-
-function collectManualThreadTreeLookup(
+function collectFolderThreadDndLookup(
   items: readonly ProjectThreadItem[],
   containerId: string,
-): ManualThreadTreeLookup {
-  const lookup: ManualThreadTreeLookup = {
+): FolderThreadDndLookup {
+  const lookup: FolderThreadDndLookup = {
     folderIdByParentKey: new Map([[containerId, null]]),
     itemIdsByParentKey: new Map(),
     itemKindById: new Map(),
@@ -348,12 +338,12 @@ function collectManualThreadTreeLookup(
     siblingItems: readonly ProjectThreadItem[],
     parentKey: string,
   ) => {
-    const itemIds = siblingItems.map(getManualOrderItemKey);
+    const itemIds = siblingItems.map(getSidebarDndItemId);
     lookup.itemIdsByParentKey.set(parentKey, itemIds);
 
     for (const item of siblingItems) {
-      const itemId = getManualOrderItemKey(item);
-      lookup.itemKindById.set(itemId, getManualSortableItemKind(item));
+      const itemId = getSidebarDndItemId(item);
+      lookup.itemKindById.set(itemId, item.kind);
       lookup.parentKeyByItemId.set(itemId, parentKey);
 
       if (item.kind === "thread") {
@@ -369,21 +359,11 @@ function collectManualThreadTreeLookup(
   return lookup;
 }
 
-function hasFolderItems(items: readonly ProjectThreadItem[]): boolean {
-  return items.some(
-    (item) =>
-      item.kind === "folder" ||
-      (item.kind === "thread" && hasFolderItems(item.node.children)) ||
-      (item.kind === "environment" &&
-        item.group.nodes.some((node) => hasFolderItems(node.children))),
-  );
-}
-
 // Resolve where a dragged thread would land. Shared by drag-over (preview +
 // auto-expand) and drag-end (the move) so they never disagree. `toParentKey`
 // is the destination folder key, or the container id for the loose root.
 function resolveThreadDropTarget(
-  lookup: ManualThreadTreeLookup,
+  lookup: FolderThreadDndLookup,
   active: DragEndEvent["active"],
   over: DragEndEvent["over"],
 ): { activeId: string; fromParentKey: string; toParentKey: string } | null {
@@ -417,13 +397,13 @@ function resolveThreadDropTarget(
 // own folder) smooth instead of the inserted row shoving the dragged item down.
 const DRAG_DWELL_MS = 200;
 
-function useManualThreadTreeDnd({
+function useFolderThreadDnd({
   containerId,
   enabled,
   rootItems,
-}: UseManualThreadTreeDndArgs): ManualThreadTreeDndState | null {
+}: UseFolderThreadDndArgs): FolderThreadDndState | null {
   const lookup = useMemo(
-    () => collectManualThreadTreeLookup(rootItems, containerId),
+    () => collectFolderThreadDndLookup(rootItems, containerId),
     [containerId, rootItems],
   );
   const updateThread = useUpdateThread();
@@ -475,7 +455,7 @@ function useManualThreadTreeDnd({
 
       clearDropDwell();
       dwellParentKeyRef.current = targetParentKey;
-      setDragOverParentKey((current) => (current ? null : current));
+      setDragOverParentKey(null);
       if (targetParentKey === null) return;
 
       // Spring-loaded: reveal the placeholder (and expand a collapsed target
@@ -547,7 +527,6 @@ function useManualThreadTreeDnd({
   return {
     consumeClickSuppression,
     dndContextProps,
-    enabled,
     itemIdsByParentKey: lookup.itemIdsByParentKey,
     onClickCapture,
     dragOverParentKey,
@@ -819,22 +798,22 @@ function ProjectThreadTreeGroup({
   );
 }
 
-function ManualSortableList({
+function FolderDndSortableList({
   children,
-  manualSort,
+  folderDnd,
   parentKey,
 }: {
   children: ReactNode;
-  manualSort?: ManualThreadTreeDndState | null;
+  folderDnd?: FolderThreadDndState | null;
   parentKey: string;
 }) {
-  if (!manualSort?.enabled) {
+  if (!folderDnd) {
     return <>{children}</>;
   }
 
   return (
     <SortableContext
-      items={[...(manualSort.itemIdsByParentKey.get(parentKey) ?? [])]}
+      items={[...(folderDnd.itemIdsByParentKey.get(parentKey) ?? [])]}
       strategy={verticalListSortingStrategy}
     >
       {children}
@@ -845,56 +824,44 @@ function ManualSortableList({
 // Registers the loose root as a droppable so drops onto its bare/empty area
 // resolve to the loose container. Drop feedback is the inserted placeholder row
 // (see the loose section), matching how folders preview a drop.
-function ManualDroppableParent({
+function FolderDndDroppableParent({
   children,
-  className,
-  manualSort,
+  folderDnd,
   parentKey,
 }: {
   children: ReactNode;
-  className?: string;
-  manualSort?: ManualThreadTreeDndState | null;
+  folderDnd?: FolderThreadDndState | null;
   parentKey: string;
 }) {
   const { setNodeRef } = useDroppable({
     id: parentKey,
-    disabled: !manualSort?.enabled,
+    disabled: !folderDnd,
   });
 
-  return (
-    <div ref={setNodeRef} className={className}>
-      {children}
-    </div>
-  );
+  return <div ref={setNodeRef}>{children}</div>;
 }
 
-const ManualSortableThreadTreeItemRow = memo(
-  function ManualSortableThreadTreeItemRow({
-    manualSort,
+const FolderDndItemRow = memo(function FolderDndItemRow({
+  folderDnd,
+  ...props
+}: ThreadTreeItemRowProps) {
+  if (!folderDnd || props.item.kind === "environment") {
+    return <ThreadTreeItemRow folderDnd={folderDnd} {...props} />;
+  }
+
+  if (props.item.kind === "folder") {
+    return <DroppableFolderItemRow {...props} folderDnd={folderDnd} />;
+  }
+
+  return <DraggableFolderThreadItemRow {...props} folderDnd={folderDnd} />;
+});
+
+const DraggableFolderThreadItemRow = memo(
+  function DraggableFolderThreadItemRow({
+    folderDnd,
     ...props
-  }: ThreadTreeItemRowProps) {
-    if (!manualSort?.enabled || props.item.kind === "environment") {
-      return <ThreadTreeItemRow manualSort={manualSort} {...props} />;
-    }
-
-    if (props.item.kind === "folder") {
-      return (
-        <ManualDroppableFolderTreeItemRow {...props} manualSort={manualSort} />
-      );
-    }
-
-    return (
-      <ManualDraggableThreadTreeItemRow {...props} manualSort={manualSort} />
-    );
-  },
-);
-
-const ManualDraggableThreadTreeItemRow = memo(
-  function ManualDraggableThreadTreeItemRow({
-    manualSort,
-    ...props
-  }: ThreadTreeItemRowProps & { manualSort: ManualThreadTreeDndState }) {
-    const itemId = getManualOrderItemKey(props.item);
+  }: ThreadTreeItemRowProps & { folderDnd: FolderThreadDndState }) {
+    const itemId = getSidebarDndItemId(props.item);
     const { dragBindings, setNodeRef, style } = useSidebarSortable({
       id: itemId,
       disabled: false,
@@ -903,9 +870,9 @@ const ManualDraggableThreadTreeItemRow = memo(
     return (
       <ThreadTreeItemRow
         {...props}
-        consumeClickSuppression={manualSort.consumeClickSuppression}
+        consumeClickSuppression={folderDnd.consumeClickSuppression}
         dragBindings={dragBindings}
-        manualSort={manualSort}
+        folderDnd={folderDnd}
         sortableRef={setNodeRef}
         sortableStyle={style}
       />
@@ -913,25 +880,23 @@ const ManualDraggableThreadTreeItemRow = memo(
   },
 );
 
-const ManualDroppableFolderTreeItemRow = memo(
-  function ManualDroppableFolderTreeItemRow({
-    manualSort,
-    ...props
-  }: ThreadTreeItemRowProps & { manualSort: ManualThreadTreeDndState }) {
-    const itemId = getManualOrderItemKey(props.item);
-    const { isOver, setNodeRef } = useDroppable({ id: itemId });
+const DroppableFolderItemRow = memo(function DroppableFolderItemRow({
+  folderDnd,
+  ...props
+}: ThreadTreeItemRowProps & { folderDnd: FolderThreadDndState }) {
+  const itemId = getSidebarDndItemId(props.item);
+  const { isOver, setNodeRef } = useDroppable({ id: itemId });
 
-    return (
-      <ThreadTreeItemRow
-        {...props}
-        consumeClickSuppression={manualSort.consumeClickSuppression}
-        isDropTargetActive={isOver}
-        manualSort={manualSort}
-        sortableRef={setNodeRef}
-      />
-    );
-  },
-);
+  return (
+    <ThreadTreeItemRow
+      {...props}
+      consumeClickSuppression={folderDnd.consumeClickSuppression}
+      isDropTargetActive={isOver}
+      folderDnd={folderDnd}
+      sortableRef={setNodeRef}
+    />
+  );
+});
 
 function useArchiveEnvironmentThreadGroupAction({
   environmentId,
@@ -1187,17 +1152,9 @@ function EnvironmentThreadGroupHeader({
               "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
             )}
           >
-            <ThreadStatusGlyph
-              hasPendingInteraction={childActivity.pending}
-              isBackgroundAgentActive={childActivity.backgroundAgent}
-              isBackgroundCommandActive={childActivity.backgroundCommand}
-              isForegroundAgentWorking={childActivity.runtimeWorking}
-              isGoalActive={childActivity.goal}
-              isPlanModeActive={childActivity.planMode}
+            <CollapsedThreadStatusGlyph
+              activity={childActivity}
               isBusy={childActivity.runtimeWorking}
-              isWorkflowActive={childActivity.workflow}
-              showUnreadBadge={childActivity.unread}
-              unreadBadgeTone={childActivity.unreadError ? "error" : "default"}
             />
           </span>
         ) : null}
@@ -1351,7 +1308,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   );
 });
 
-export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
+const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   projectId,
   item,
   depthOffset,
@@ -1369,7 +1326,7 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   consumeClickSuppression,
   dragBindings,
   isDropTargetActive,
-  manualSort,
+  folderDnd,
   sortableRef,
   sortableStyle,
 }: ThreadTreeItemRowProps) {
@@ -1392,7 +1349,7 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
         isDropTargetActive={isDropTargetActive}
-        manualSort={manualSort}
+        folderDnd={folderDnd}
         sortableRef={sortableRef}
         sortableStyle={sortableStyle}
       />
@@ -1477,7 +1434,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   consumeClickSuppression,
   dragBindings,
   isDropTargetActive = false,
-  manualSort,
+  folderDnd,
   sortableRef,
   sortableStyle,
 }: FolderTreeItemRowProps) {
@@ -1496,7 +1453,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   const headerDepth = getThreadRowDepth({ depthOffset, nodeDepth: 0, variant });
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
-  const showDropPreview = manualSort?.dragOverParentKey === folderKey;
+  const showDropPreview = folderDnd?.dragOverParentKey === folderKey;
   const showChildren = !isCollapsed && folder.items.length > 0;
   // Force the children area open while a thread is dragged over this folder so
   // the empty drop-placeholder row is visible even when the folder is empty.
@@ -1540,9 +1497,9 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
         <div className="relative space-y-px">
           <ThreadTreeGroupLine parentRowDepth={headerDepth} />
           {showChildren ? (
-            <ManualSortableList manualSort={manualSort} parentKey={folder.key}>
+            <FolderDndSortableList folderDnd={folderDnd} parentKey={folder.key}>
               {folder.items.map((item) => (
-                <ManualSortableThreadTreeItemRow
+                <FolderDndItemRow
                   key={getItemKey(item)}
                   projectId={getItemProjectId(item)}
                   item={item}
@@ -1558,10 +1515,10 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
                   onRemoveFolder={onRemoveFolder}
                   onToggleThreadCollapsed={onToggleThreadCollapsed}
                   onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-                  manualSort={manualSort}
+                  folderDnd={folderDnd}
                 />
               ))}
-            </ManualSortableList>
+            </FolderDndSortableList>
           ) : null}
           {showDropPreview ? (
             <DropPreviewRow
@@ -1696,9 +1653,9 @@ function ThreadTreeLoadingSkeleton() {
   );
 }
 
-interface ManualThreadTreeItemsProps {
+interface FolderThreadTreeItemsProps {
   items: readonly ProjectThreadItem[];
-  manualSort: ManualThreadTreeDndState | null;
+  folderDnd: FolderThreadDndState | null;
   variant: ProjectThreadTreeVariant;
   // Route every row to this project; omit to derive each row's project from its
   // own thread (the cross-project Folders view).
@@ -1722,9 +1679,9 @@ interface ManualThreadTreeItemsProps {
 // The one place that maps thread-tree items to rows. Every sidebar view
 // (project, chronological, folders) renders through this, so a row-prop
 // change lands once instead of being copied across each view's renderer.
-function ManualThreadTreeItems({
+function FolderThreadTreeItems({
   items,
-  manualSort,
+  folderDnd,
   variant,
   projectId,
   depthOffset = 0,
@@ -1739,9 +1696,9 @@ function ManualThreadTreeItems({
   onViewArchivedThreadsInFolder,
   onRenameFolder,
   onRemoveFolder,
-}: ManualThreadTreeItemsProps) {
+}: FolderThreadTreeItemsProps) {
   const rows = items.map((item) => (
-    <ManualSortableThreadTreeItemRow
+    <FolderDndItemRow
       key={getItemKey(item)}
       projectId={projectId ?? getItemProjectId(item)}
       item={item}
@@ -1757,22 +1714,22 @@ function ManualThreadTreeItems({
       onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
       onRenameFolder={onRenameFolder}
       onRemoveFolder={onRemoveFolder}
-      manualSort={manualSort ?? undefined}
+      folderDnd={folderDnd ?? undefined}
     />
   ));
 
   return (
     <ProjectThreadTreeGroup
       variant={variant}
-      onClickCapture={manualSort?.onClickCapture}
+      onClickCapture={folderDnd?.onClickCapture}
     >
       {sortableParentKey !== undefined ? (
-        <ManualSortableList
-          manualSort={manualSort}
+        <FolderDndSortableList
+          folderDnd={folderDnd}
           parentKey={sortableParentKey}
         >
           {rows}
-        </ManualSortableList>
+        </FolderDndSortableList>
       ) : (
         rows
       )}
@@ -1784,7 +1741,6 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
   compareThreads,
-  folders = EMPTY_FOLDERS,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -1793,19 +1749,13 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ProjectThreadTreeProps) {
-  const groupBy = "none" as const;
   const projectThreads =
     threadListState.status === "ready"
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const rootItems = useMemo(
-    () =>
-      buildProjectThreadGroups(projectThreads, compareThreads, {
-        groupBy,
-        containerId: projectId,
-        folders,
-      }),
-    [compareThreads, projectThreads, groupBy, projectId, folders],
+    () => buildProjectThreadGroups(projectThreads, compareThreads),
+    [compareThreads, projectThreads],
   );
 
   if (threadListState.status === "loading") {
@@ -1838,15 +1788,12 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     );
   }
 
-  // Per-project trees always group by "none", so they never contain folder
-  // items and never enable folder drag-and-drop (folders live only in the
-  // cross-project Folders view; see ChronologicalFolderThreadSections). Rendering
-  // without manual DnD keeps react-query mutations out of a tree that can never
-  // use them.
+  // Per-project trees never contain folder items or enable folder drag-and-drop;
+  // folders live only in the cross-project Folders view below.
   return (
-    <ManualThreadTreeItems
+    <FolderThreadTreeItems
       items={rootItems}
-      manualSort={null}
+      folderDnd={null}
       variant={variant}
       projectId={projectId}
       sortableParentKey={projectId}
@@ -1857,83 +1804,6 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
     />
-  );
-});
-
-// Folders bucket: root threads across all projects, globally ordered by the
-// chosen comparator before folder bucketing, with descendants nested under
-// their parent. Worktree grouping stays off. Derives projectId per row from its
-// own thread so cross-project rows still route correctly.
-export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
-  threadListState,
-  compareThreads,
-  folders = EMPTY_FOLDERS,
-  selectedThreadId,
-  collapsedThreadIds,
-  collapsedEnvironmentIds,
-  onProjectSelect,
-  onToggleThreadCollapsed,
-  onToggleEnvironmentCollapsed,
-}: ChronologicalThreadTreeProps) {
-  const groupBy = "folder" as const;
-  const threads =
-    threadListState.status === "ready"
-      ? threadListState.threads
-      : EMPTY_PROJECT_THREADS;
-  const rootItems = useMemo(
-    () =>
-      buildChronologicalThreadList(threads, compareThreads, {
-        groupBy,
-        containerId: CHRONOLOGICAL_CONTAINER_ID,
-        folders,
-      }),
-    [threads, compareThreads, groupBy, folders],
-  );
-  const manualSort = useManualThreadTreeDnd({
-    containerId: CHRONOLOGICAL_CONTAINER_ID,
-    enabled: hasFolderItems(rootItems),
-    rootItems,
-  });
-
-  if (threadListState.status === "loading") {
-    return <ThreadTreeLoadingSkeleton />;
-  }
-
-  if (rootItems.length === 0) {
-    return (
-      <EmptyState
-        message={
-          threadListState.status === "unavailable"
-            ? "Threads unavailable"
-            : "No threads"
-        }
-        icon={getProjectThreadTreeEmptyStateIcon("section")}
-        className={getProjectThreadTreeEmptyStateClassName("section")}
-        iconClassName="size-3.5 text-subtle-foreground/50"
-        messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
-      />
-    );
-  }
-
-  const tree = (
-    <ManualThreadTreeItems
-      items={rootItems}
-      manualSort={manualSort}
-      variant="section"
-      sortableParentKey={CHRONOLOGICAL_CONTAINER_ID}
-      selectedThreadId={selectedThreadId}
-      collapsedThreadIds={collapsedThreadIds}
-      collapsedEnvironmentIds={collapsedEnvironmentIds}
-      onProjectSelect={onProjectSelect}
-      onToggleThreadCollapsed={onToggleThreadCollapsed}
-      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-    />
-  );
-
-  return manualSort ? (
-    <DndContext {...manualSort.dndContextProps}>{tree}</DndContext>
-  ) : (
-    tree
   );
 });
 
@@ -1956,35 +1826,29 @@ export const ChronologicalFolderThreadSections = memo(
     renderFoldersSection,
     renderThreadsSection,
   }: ChronologicalFolderThreadSectionsProps) {
-    const groupBy = "folder" as const;
     const threads =
       threadListState.status === "ready"
         ? threadListState.threads
         : EMPTY_PROJECT_THREADS;
     const rootItems = useMemo(
-      () =>
-        buildChronologicalThreadList(threads, compareThreads, {
-          groupBy,
-          containerId: CHRONOLOGICAL_CONTAINER_ID,
-          folders,
-        }),
-      [threads, compareThreads, groupBy, folders],
+      () => buildFolderThreadList(threads, compareThreads, folders),
+      [threads, compareThreads, folders],
     );
-    const manualSort = useManualThreadTreeDnd({
+    const folderItems = rootItems.filter((item) => item.kind === "folder");
+    const folderDnd = useFolderThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
-      enabled: hasFolderItems(rootItems),
+      enabled: folderItems.length > 0,
       rootItems,
     });
-    const folderItems = rootItems.filter((item) => item.kind === "folder");
     const hasFolders = folderItems.length > 0;
     const looseItems = rootItems.filter((item) => item.kind !== "folder");
 
-    // No sortableParentKey: the outer ManualSortableList below provides the
+    // No sortableParentKey: the outer FolderDndSortableList below provides the
     // SortableContext spanning both the folders and loose-threads sections.
     const renderItems = (items: readonly ProjectThreadItem[]) => (
-      <ManualThreadTreeItems
+      <FolderThreadTreeItems
         items={items}
-        manualSort={manualSort}
+        folderDnd={folderDnd}
         variant="section"
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
@@ -2015,7 +1879,7 @@ export const ChronologicalFolderThreadSections = memo(
     // with the same inserted placeholder folders use (hiding the empty state so
     // the placeholder reads as the drop slot when the loose list is empty).
     const showLoosePreview =
-      manualSort?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID;
+      folderDnd?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID;
     const threadsListContent =
       threadListState.status === "loading" ? (
         <ThreadTreeLoadingSkeleton />
@@ -2034,9 +1898,9 @@ export const ChronologicalFolderThreadSections = memo(
           messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
         />
       );
-    const threadsContent = manualSort?.enabled ? (
-      <ManualDroppableParent
-        manualSort={manualSort}
+    const threadsContent = folderDnd ? (
+      <FolderDndDroppableParent
+        folderDnd={folderDnd}
         parentKey={CHRONOLOGICAL_CONTAINER_ID}
       >
         {threadsListContent}
@@ -2049,14 +1913,14 @@ export const ChronologicalFolderThreadSections = memo(
             })}
           />
         ) : null}
-      </ManualDroppableParent>
+      </FolderDndDroppableParent>
     ) : (
       threadsListContent
     );
 
     const sections = (
-      <ManualSortableList
-        manualSort={manualSort}
+      <FolderDndSortableList
+        folderDnd={folderDnd}
         parentKey={CHRONOLOGICAL_CONTAINER_ID}
       >
         {hasFolders ? (
@@ -2067,11 +1931,11 @@ export const ChronologicalFolderThreadSections = memo(
         ) : (
           renderAllThreadsSection(threadsContent)
         )}
-      </ManualSortableList>
+      </FolderDndSortableList>
     );
 
-    return manualSort ? (
-      <DndContext {...manualSort.dndContextProps}>{sections}</DndContext>
+    return folderDnd ? (
+      <DndContext {...folderDnd.dndContextProps}>{sections}</DndContext>
     ) : (
       sections
     );
@@ -2212,41 +2076,17 @@ function ProjectRowComponent({
                     "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
                   )}
                 >
-                  <ThreadStatusGlyph
-                    hasPendingInteraction={projectActivity.pending}
-                    isBackgroundAgentActive={projectActivity.backgroundAgent}
-                    isBackgroundCommandActive={
-                      projectActivity.backgroundCommand
-                    }
-                    isForegroundAgentWorking={projectActivity.runtimeWorking}
-                    isGoalActive={projectActivity.goal}
-                    isPlanModeActive={projectActivity.planMode}
+                  <CollapsedThreadStatusGlyph
+                    activity={projectActivity}
                     isBusy={projectActivity.working}
-                    isWorkflowActive={projectActivity.workflow}
-                    showUnreadBadge={projectActivity.unread}
-                    unreadBadgeTone={
-                      projectActivity.unreadError ? "error" : "default"
-                    }
                   />
                 </span>
               ) : null}
               {showProjectRollupGlyph ? (
                 <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-                  <ThreadStatusGlyph
-                    hasPendingInteraction={projectActivity.pending}
-                    isBackgroundAgentActive={projectActivity.backgroundAgent}
-                    isBackgroundCommandActive={
-                      projectActivity.backgroundCommand
-                    }
-                    isForegroundAgentWorking={projectActivity.runtimeWorking}
-                    isGoalActive={projectActivity.goal}
-                    isPlanModeActive={projectActivity.planMode}
+                  <CollapsedThreadStatusGlyph
+                    activity={projectActivity}
                     isBusy={projectActivity.working}
-                    isWorkflowActive={projectActivity.workflow}
-                    showUnreadBadge={projectActivity.unread}
-                    unreadBadgeTone={
-                      projectActivity.unreadError ? "error" : "default"
-                    }
                   />
                 </span>
               ) : null}

@@ -323,6 +323,31 @@ export function ThreadStatusGlyph({
   return null;
 }
 
+interface CollapsedThreadStatusGlyphProps {
+  activity: CollapsedChildActivity;
+  isBusy: boolean;
+}
+
+export function CollapsedThreadStatusGlyph({
+  activity,
+  isBusy,
+}: CollapsedThreadStatusGlyphProps) {
+  return (
+    <ThreadStatusGlyph
+      hasPendingInteraction={activity.pending}
+      isBackgroundAgentActive={activity.backgroundAgent}
+      isBackgroundCommandActive={activity.backgroundCommand}
+      isForegroundAgentWorking={activity.runtimeWorking}
+      isGoalActive={activity.goal}
+      isPlanModeActive={activity.planMode}
+      isBusy={isBusy}
+      isWorkflowActive={activity.workflow}
+      showUnreadBadge={activity.unread}
+      unreadBadgeTone={activity.unreadError ? "error" : "default"}
+    />
+  );
+}
+
 function getThreadUnreadBadgeLabel({
   tone,
 }: ThreadUnreadBadgeLabelArgs): string {

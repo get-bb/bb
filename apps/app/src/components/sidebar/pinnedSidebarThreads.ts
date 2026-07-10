@@ -6,7 +6,7 @@ import {
   type ProjectThreadNode,
 } from "./projectThreadGroups";
 
-export interface PinnedSidebarState {
+interface PinnedSidebarState {
   effectivePinnedThreadIds: Set<string>;
   rootNodes: ProjectThreadNode[];
 }

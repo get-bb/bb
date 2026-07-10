@@ -418,8 +418,15 @@
     {
       "idx": 59,
       "version": "6",
-      "when": 1783633750817,
-      "tag": "0059_tricky_scarlet_spider",
+      "when": 1783626227375,
+      "tag": "0059_stale_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "6",
+      "when": 1783645498098,
+      "tag": "0060_motionless_vivisector",
       "breakpoints": true
     }
   ]

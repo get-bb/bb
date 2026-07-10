@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type MouseEventHandler } from "react";
+import { useCallback, useEffect, useMemo, type MouseEventHandler } from "react";
 import {
   closestCenter,
   KeyboardSensor,
@@ -42,7 +42,15 @@ const SIDEBAR_REORDER_MODIFIERS: Modifier[] = [
   restrictSidebarDragToVerticalAxis,
 ];
 
-export interface UseSidebarReorderDndArgs {
+function setSidebarDraggingCursor(active: boolean): void {
+  if (active) {
+    document.body.dataset.sidebarDragging = "true";
+    return;
+  }
+  delete document.body.dataset.sidebarDragging;
+}
+
+interface UseSidebarReorderDndArgs {
   /**
    * Performs the reorder once a drag settles. The hook clears the drag-click
    * suppression timer before invoking it, so callers only own the reorder.
@@ -67,7 +75,7 @@ export type SidebarReorderDndContextProps = Pick<
   | "modifiers"
 >;
 
-export interface UseSidebarReorderDndResult {
+interface UseSidebarReorderDndResult {
   /** Spread onto the surface's `DndContext`. */
   dndContextProps: SidebarReorderDndContextProps;
   /**
@@ -107,21 +115,30 @@ export function useSidebarReorderDnd({
   );
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
+      setSidebarDraggingCursor(true);
       beginDragClickSuppression();
       onDragStart?.(event);
     },
     [beginDragClickSuppression, onDragStart],
   );
   const handleDragCancel = useCallback(() => {
+    setSidebarDraggingCursor(false);
     clearDragClickSuppressionSoon();
     onDragCancel?.();
   }, [clearDragClickSuppressionSoon, onDragCancel]);
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      setSidebarDraggingCursor(false);
       clearDragClickSuppressionSoon();
       onDragEnd(event);
     },
     [clearDragClickSuppressionSoon, onDragEnd],
+  );
+  useEffect(
+    () => () => {
+      setSidebarDraggingCursor(false);
+    },
+    [],
   );
   const onClickCapture = useCallback<MouseEventHandler<HTMLElement>>(
     (event) => {

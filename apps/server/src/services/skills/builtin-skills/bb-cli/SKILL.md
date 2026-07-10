@@ -224,6 +224,16 @@ For review or fix pipelines, get the environment ID from
 - Use `bb plugin list` if `bb automation ...` is unavailable; the builtin
   automations plugin should be installed and running.
 
+## Secrets
+
+- Use `bb secret request <NAME...> --write-env <path>` when credentials are
+  needed. Batch known names and add `--purpose <text>` plus one
+  `--describe <NAME> <text>` per variable.
+- The user enters values in a secure plugin form; values are written directly
+  to the workspace dotenv file and never returned in CLI output or chat.
+- Treat the returned path and added/updated/unchanged counts as verification.
+  Do not inspect the completed file with `cat`, `sed`, `env`, or similar tools.
+
 ## Theming
 
 - `bb theme` controls the **app-wide color palette** — a set of CSS-variable

@@ -199,12 +199,12 @@ export function deleteThreadFolder(
 
       const now = Date.now();
       const affectedProjects = new Set<string>();
+      tx.update(threads)
+        .set({ folderId: null, updatedAt: now })
+        .where(eq(threads.folderId, input.id))
+        .run();
       for (const thread of matchingThreads) {
         affectedProjects.add(thread.projectId);
-        tx.update(threads)
-          .set({ folderId: null, updatedAt: now })
-          .where(eq(threads.id, thread.id))
-          .run();
         notifier.notifyThread(thread.id, ["title-changed"], {
           projectId: thread.projectId,
         });

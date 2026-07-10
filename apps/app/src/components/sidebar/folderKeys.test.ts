@@ -1,22 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildFolderKey,
-  folderKeyForThreadFolder,
-  normalizeFolderName,
-} from "./folderKeys";
-
-describe("normalizeFolderName", () => {
-  it("trims names without treating slashes as hierarchy", () => {
-    expect(normalizeFolderName(" Work / Q3 ")).toBe("Work / Q3");
-    expect(normalizeFolderName("///")).toBe("///");
-  });
-
-  it("returns null for empty names", () => {
-    expect(normalizeFolderName("   ")).toBeNull();
-    expect(normalizeFolderName(null)).toBeNull();
-    expect(normalizeFolderName(undefined)).toBeNull();
-  });
-});
+import { buildFolderKey, folderKeyForThreadFolder } from "./folderKeys";
 
 describe("buildFolderKey", () => {
   it("namespaces a folder id by its container id", () => {

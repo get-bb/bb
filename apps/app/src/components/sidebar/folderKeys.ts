@@ -1,11 +1,6 @@
 // Pure helpers for sidebar folder row identity. Folder names are display text;
 // membership lives in `thread.folderId`.
 
-export function normalizeFolderName(name: string | null | undefined): string | null {
-  const normalized = (name ?? "").trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
 export function buildFolderKey(containerId: string, folderId: string): string {
   return `${containerId}::${folderId}`;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
@@ -7,13 +7,7 @@ import {
   type NeighborReorderRequest,
 } from "@/lib/neighbor-reorder";
 
-interface HasSameOptimisticOrderArgs<Item> {
-  getId: (item: Item) => string;
-  items: readonly Item[];
-  order: readonly string[];
-}
-
-export interface NeighborReorderSortableCallbacks {
+interface NeighborReorderSortableCallbacks {
   onSettled: () => void;
 }
 
@@ -27,25 +21,10 @@ export interface UseNeighborReorderSortableArgs<Item> {
   ) => void;
 }
 
-export interface UseNeighborReorderSortableResult<Item> {
+interface UseNeighborReorderSortableResult<Item> {
   handleDragEnd: (event: DragEndEvent) => void;
   itemIds: string[];
   renderedItems: readonly Item[];
-}
-
-function hasSameOptimisticOrder<Item>({
-  getId,
-  items,
-  order,
-}: HasSameOptimisticOrderArgs<Item>): boolean {
-  if (order.length !== items.length) {
-    return false;
-  }
-
-  return order.every((id, index) => {
-    const currentItem = items[index];
-    return currentItem !== undefined && id === getId(currentItem);
-  });
 }
 
 export function useNeighborReorderSortable<Item>({
@@ -119,16 +98,6 @@ export function useNeighborReorderSortable<Item>({
     },
     [disabled, getId, onReorder, renderedItems],
   );
-
-  useEffect(() => {
-    if (!optimisticOrder) {
-      return;
-    }
-
-    if (hasSameOptimisticOrder({ getId, items, order: optimisticOrder })) {
-      setOptimisticOrder(null);
-    }
-  }, [getId, items, optimisticOrder]);
 
   return {
     handleDragEnd,

@@ -52,6 +52,7 @@ interface PluginSlotBoundaryProps {
   pluginId: string;
   instanceKey: string;
   children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface PluginSlotBoundaryState {
@@ -80,8 +81,15 @@ class PluginSlotBoundary extends Component<
   }
 
   override render(): ReactNode {
-    if (this.state.crashed || crashedSlotInstances.has(this.props.instanceKey)) {
-      return <CrashedPluginChip pluginId={this.props.pluginId} />;
+    if (
+      this.state.crashed ||
+      crashedSlotInstances.has(this.props.instanceKey)
+    ) {
+      return (
+        this.props.fallback ?? (
+          <CrashedPluginChip pluginId={this.props.pluginId} />
+        )
+      );
     }
     return this.props.children;
   }
@@ -93,6 +101,7 @@ export interface PluginSlotMountProps {
   slotKind: string;
   slotId: string;
   children: ReactNode;
+  crashFallback?: ReactNode;
 }
 
 /**
@@ -109,12 +118,14 @@ export function PluginSlotMount({
   slotKind,
   slotId,
   children,
+  crashFallback,
 }: PluginSlotMountProps) {
   return (
     <PluginContext.Provider value={pluginId}>
       <PluginSlotBoundary
         pluginId={pluginId}
         instanceKey={pluginSlotInstanceKey(pluginId, slotKind, slotId)}
+        fallback={crashFallback}
       >
         <div
           data-bb-plugin-root=""

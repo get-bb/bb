@@ -126,6 +126,72 @@ describe("plugin background services", () => {
     expect(reloaded?.services).toEqual([{ name: "conn", state: "running" }]);
   });
 
+  it("rejects new interactions while a plugin is disposing", async () => {
+    globals.__disposeRequestErrors = [];
+    const requestPluginInteraction = vi.fn(async () => ({
+      outcome: "cancelled" as const,
+      reason: "plugin-disposed" as const,
+    }));
+    const interruptPluginInteractions = vi.fn(() => []);
+    const local = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      pendingInteractions: {
+        requestPluginInteraction,
+        interruptPluginInteractions,
+      },
+      dataDir: join(workDir, "data-dispose-request"),
+      appVersion: "0.9.0",
+      isEnabled: () => true,
+      isConnectEnabled: () => false,
+      loadTimeoutMs: 2000,
+      serviceStopTimeoutMs: 2000,
+    });
+    try {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-dispose-request",
+        serverSource: `
+          export default function plugin(bb: any) {
+            const g = globalThis as any;
+            g.__disposeRequestErrors = g.__disposeRequestErrors ?? [];
+            bb.background.service("request-on-stop", {
+              start(signal: any) {
+                return new Promise<void>((resolve) => {
+                  signal.addEventListener("abort", () => {
+                    void bb.interactions.request({
+                      threadId: "thread-test",
+                      rendererId: "form",
+                      title: "Form",
+                      payload: null,
+                    }).then(
+                      () => g.__disposeRequestErrors.push("unexpected success"),
+                      (error: Error) => g.__disposeRequestErrors.push(error.message),
+                    ).finally(resolve);
+                  }, { once: true });
+                });
+              },
+            });
+          }
+        `,
+      });
+      await local.installPath(rootDir);
+
+      await local.reload("dispose-request");
+
+      expect(requestPluginInteraction).not.toHaveBeenCalled();
+      expect(globals.__disposeRequestErrors).toEqual([
+        'plugin "dispose-request" is disposing',
+      ]);
+    } finally {
+      await local.stop();
+    }
+  });
+
   it("serializes concurrent reloads so a slow-stopping service never double-starts", async () => {
     // Own instance: the stop bound must exceed the service's stop delay so
     // the slow stop is a legitimate (non-hung) dispose in progress.
@@ -244,9 +310,9 @@ describe("plugin background services", () => {
       { timeout: 2000 },
     );
     await vi.waitFor(() => {
-      expect(
-        service.list().find((p) => p.id === "crashy")?.services,
-      ).toEqual([{ name: "flaky", state: "running" }]);
+      expect(service.list().find((p) => p.id === "crashy")?.services).toEqual([
+        { name: "flaky", state: "running" },
+      ]);
     });
   });
 

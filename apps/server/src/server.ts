@@ -288,7 +288,10 @@ export function createApp(
 
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
-    const appSurface = resolveRequestAppSurface(context, deps.config.appSurface);
+    const appSurface = resolveRequestAppSurface(
+      context,
+      deps.config.appSurface,
+    );
     return runWithTelemetryAppSurface(appSurface, next);
   });
   app.use(
@@ -362,6 +365,7 @@ export function createApp(
     db: deps.db,
     hub: deps.hub,
     logger: deps.logger,
+    pendingInteractions: deps.pendingInteractions,
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     isEnabled: () => getExperiments(deps.db).plugins,

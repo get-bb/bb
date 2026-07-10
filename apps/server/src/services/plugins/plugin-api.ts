@@ -10,6 +10,10 @@ import {
   setPluginKvValue,
   type DbConnection,
 } from "@bb/db";
+import {
+  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  type JsonValue,
+} from "@bb/domain";
 import type {
   BbPluginApi,
   PluginAgentToolContext,
@@ -23,6 +27,7 @@ import type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginInteractions,
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
@@ -45,6 +50,7 @@ import type {
 } from "@bb/plugin-sdk";
 import type { BbSdk, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
+import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
 import {
   readPluginSettingsValues,
@@ -306,7 +312,9 @@ function normalizeMentionProviderTriggers(
     return DEFAULT_PLUGIN_MENTION_TRIGGERS;
   }
   if (!Array.isArray(triggers)) {
-    throw new Error(`mention provider "${providerId}" triggers must be an array`);
+    throw new Error(
+      `mention provider "${providerId}" triggers must be an array`,
+    );
   }
   if (triggers.length === 0) {
     throw new Error(
@@ -453,6 +461,14 @@ export function createPluginApi(options: {
   /** Records an agent-tool registration problem as the plugin's status
    * detail; the plugin itself keeps running. */
   reportAgentToolProblem: (message: string) => void;
+  requestInteraction: (args: {
+    threadId: string;
+    rendererId: string;
+    title: string;
+    payload: JsonValue;
+    timeoutMs: number;
+    signal?: AbortSignal;
+  }) => Promise<PluginInteractionResult>;
 }): PluginApiHandle {
   const {
     pluginId,
@@ -465,6 +481,7 @@ export function createPluginApi(options: {
     reportNeedsConfiguration,
     isAgentToolNameTaken,
     reportAgentToolProblem,
+    requestInteraction,
   } = options;
   let invalidated = false;
   let wrappedSdk: BbSdk | undefined;
@@ -504,6 +521,73 @@ export function createPluginApi(options: {
     info: (message) => emitLog("info", message),
     warn: (message) => emitLog("warn", message),
     error: (message) => emitLog("error", message),
+  };
+
+  const interactions: PluginInteractions = {
+    async request(request, requestOptions) {
+      assertLive();
+      if (!request || typeof request !== "object") {
+        throw new Error("interactions.request requires an options object");
+      }
+      if (
+        typeof request.threadId !== "string" ||
+        request.threadId.length === 0
+      ) {
+        throw new Error(
+          "interactions.request threadId must be a non-empty string",
+        );
+      }
+      if (
+        typeof request.rendererId !== "string" ||
+        !/^[a-zA-Z0-9_-]+$/.test(request.rendererId)
+      ) {
+        throw new Error(
+          "interactions.request rendererId must use letters, digits, '-' or '_'",
+        );
+      }
+      if (
+        typeof request.title !== "string" ||
+        request.title.trim().length === 0 ||
+        request.title.trim().length > PLUGIN_INTERACTION_MAX_TITLE_LENGTH
+      ) {
+        throw new Error(
+          `interactions.request title must be 1-${PLUGIN_INTERACTION_MAX_TITLE_LENGTH} characters`,
+        );
+      }
+      let payload: JsonValue;
+      try {
+        const json = JSON.stringify(request.payload);
+        if (json === undefined) throw new Error();
+        if (Buffer.byteLength(json, "utf8") > 64 * 1024) {
+          throw new Error("interactions.request payload exceeds 64 KiB");
+        }
+        payload = JSON.parse(json) as JsonValue;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("64 KiB"))
+          throw error;
+        throw new Error(
+          "interactions.request payload must be JSON-serializable",
+        );
+      }
+      const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
+      if (
+        !Number.isInteger(timeoutMs) ||
+        timeoutMs <= 0 ||
+        timeoutMs > 60 * 60 * 1000
+      ) {
+        throw new Error(
+          "interactions.request timeoutMs must be between 1 and 3600000",
+        );
+      }
+      return requestInteraction({
+        threadId: request.threadId,
+        rendererId: request.rendererId,
+        title: request.title.trim(),
+        payload,
+        timeoutMs,
+        signal: requestOptions?.signal,
+      });
+    },
   };
 
   const kv: PluginKvStorage = {
@@ -1042,6 +1126,7 @@ export function createPluginApi(options: {
     realtime,
     background,
     cli,
+    interactions,
     agents,
     ui,
     status,

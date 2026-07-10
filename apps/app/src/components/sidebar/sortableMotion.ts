@@ -23,12 +23,12 @@ export interface SidebarSortableDragBindings {
   setActivatorNodeRef: (element: HTMLElement | null) => void;
 }
 
-export interface UseSidebarSortableArgs {
+interface UseSidebarSortableArgs {
   id: string;
   disabled: boolean;
 }
 
-export interface UseSidebarSortableResult {
+interface UseSidebarSortableResult {
   dragBindings: SidebarSortableDragBindings;
   setNodeRef: (element: HTMLElement | null) => void;
   style: CSSProperties;

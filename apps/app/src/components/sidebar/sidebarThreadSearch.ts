@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import type { ThreadSearchMatch } from "@bb/server-contract";
 
 export const SIDEBAR_THREAD_SEARCH_LISTBOX_ID =
   "bb-sidebar-thread-search-results";
@@ -46,6 +47,10 @@ export function getSidebarThreadSearchShortcutLabel(): "Cmd+K" | "Ctrl+K" {
 
 export function getSidebarThreadSearchOptionId(rowId: string): string {
   return `${SIDEBAR_THREAD_SEARCH_LISTBOX_ID}-option-${rowId}`;
+}
+
+export function isSidebarThreadTitleMatch(match: ThreadSearchMatch): boolean {
+  return match.sourceKind === "title" || match.sourceKind === "title_fallback";
 }
 
 export function haveSameSidebarThreadSearchNavigationItems(

@@ -464,6 +464,7 @@ const hostWriteFileCommandSchema = z
     contentEncoding: z.enum(["utf8", "base64"]),
     createParents: z.boolean(),
     expectedSha256: z.string().nullable().optional(),
+    mode: z.number().int().min(0).max(0o777).optional(),
   })
   .strict();
 

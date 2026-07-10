@@ -521,6 +521,10 @@ function translateCodexItem(
           result: parsedItem.agentsStates,
         },
       };
+    case "subAgentActivity":
+      // The adapter translates this statefully so it can correlate the
+      // activity with the child turn and close the synthetic delegation row.
+      return { kind: "ignored" };
     case "webSearch": {
       if (shouldIgnoreCodexWebItem(parsedItem)) {
         return { kind: "ignored" };

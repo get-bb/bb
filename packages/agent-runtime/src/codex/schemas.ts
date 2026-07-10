@@ -333,6 +333,19 @@ const codexThreadItemEnvelopeSchema = z
   })
   .passthrough();
 
+export const codexSubAgentActivityItemSchema = z
+  .object({
+    type: z.literal("subAgentActivity"),
+    id: z.string(),
+    kind: z.enum(["started", "interacted", "interrupted"]),
+    agentThreadId: z.string(),
+    agentPath: z.string(),
+  })
+  .passthrough();
+export type CodexSubAgentActivityItem = z.infer<
+  typeof codexSubAgentActivityItemSchema
+>;
+
 export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -412,6 +425,7 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
       agentsStates: z.record(z.string(), z.unknown()),
     })
     .passthrough(),
+  codexSubAgentActivityItemSchema,
   z
     .object({
       type: z.literal("webSearch"),

@@ -12,6 +12,7 @@ import { hasThreadSearchableQuery } from "@/hooks/queries/thread-queries";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   getSidebarThreadSearchOptionId,
+  isSidebarThreadTitleMatch,
   SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
@@ -54,18 +55,13 @@ interface ThreadSearchMessageProps {
 const RECENT_THREAD_LIMIT = 20;
 const EMPTY_MATCHES: readonly ThreadSearchMatch[] = [];
 const EMPTY_FOLDER_NAMES_BY_ID = new Map<string, string>();
-const TITLE_MATCH_KINDS = new Set<ThreadSearchMatch["sourceKind"]>([
-  "title",
-  "title_fallback",
-]);
-
 // The message (non-title) match drives the deep-link target. Mirrors the row's
 // snippet selection so clicking a result lands on the message shown in the row.
 function getMessageMatchSeq(
   matches: readonly ThreadSearchMatch[],
 ): number | null {
   for (const match of matches) {
-    if (!TITLE_MATCH_KINDS.has(match.sourceKind) && match.sourceSeq !== null) {
+    if (!isSidebarThreadTitleMatch(match) && match.sourceSeq !== null) {
       return match.sourceSeq;
     }
   }

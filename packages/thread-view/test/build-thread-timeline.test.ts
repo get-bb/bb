@@ -115,7 +115,7 @@ interface SystemOperationEventArgs {
   operation?: string;
   operationId?: string;
   seq: number;
-  status?: "running" | "completed" | "failed";
+  status?: "running" | "completed" | "failed" | "pending" | "resolved";
 }
 
 interface PermissionGrantLifecycleEventArgs {
@@ -1701,6 +1701,27 @@ describe("buildThreadTimelineFromEvents", () => {
       }),
     ]);
     expect(collectSystemRows(rows)[0]).not.toHaveProperty("parentChange");
+  });
+
+  it("suppresses internal plugin interaction lifecycle operations", () => {
+    const rows = buildTimelineRows([
+      systemOperationEvent({
+        message: "Plugin interaction lifecycle changed",
+        operation: "plugin_interaction",
+        operationId: "pint-test",
+        seq: 1,
+        status: "pending",
+      }),
+      systemOperationEvent({
+        message: "Plugin interaction lifecycle changed",
+        operation: "plugin_interaction",
+        operationId: "pint-test",
+        seq: 2,
+        status: "resolved",
+      }),
+    ]);
+
+    expect(collectSystemRows(rows)).toEqual([]);
   });
 
   it.each([

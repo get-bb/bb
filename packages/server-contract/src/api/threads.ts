@@ -4,6 +4,7 @@ import {
   callerExecutionInputSourceSchema,
   environmentSchema,
   hostSchema,
+  jsonValueSchema,
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
   permissionModeSchema,
@@ -47,12 +48,7 @@ export const sendMessageModeSchema = z.enum([
   "steer",
 ]);
 
-export const threadCreateOriginSchema = z.enum([
-  "app",
-  "cli",
-  "sdk",
-  "plugin",
-]);
+export const threadCreateOriginSchema = z.enum(["app", "cli", "sdk", "plugin"]);
 export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
 
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;
@@ -332,6 +328,13 @@ export const resolvePendingInteractionRequestSchema =
   pendingInteractionResolutionSchema;
 export type ResolvePendingInteractionRequest = z.infer<
   typeof resolvePendingInteractionRequestSchema
+>;
+
+export const respondPluginInteractionRequestSchema = z.object({
+  value: jsonValueSchema,
+});
+export type RespondPluginInteractionRequest = z.infer<
+  typeof respondPluginInteractionRequestSchema
 >;
 
 export const threadQueuedMessageListResponseSchema = z.array(

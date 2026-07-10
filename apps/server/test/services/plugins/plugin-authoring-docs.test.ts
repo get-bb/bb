@@ -11,6 +11,7 @@ import {
   type PluginHttpAuthMode,
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
+  type PluginPendingInteractionProps,
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
@@ -47,6 +48,7 @@ const BB_PLUGIN_API_KEYS = [
   "realtime",
   "background",
   "cli",
+  "interactions",
   "agents",
   "ui",
   "status",
@@ -140,6 +142,7 @@ type SlotPropsByName = {
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
   composerAccessory: PluginComposerAccessoryProps;
+  pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
 };
@@ -154,6 +157,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
+  pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   fileOpener: ["path", "source"],
 } as const satisfies {
@@ -252,9 +256,7 @@ describe("bb-plugin-authoring skill", () => {
   });
 
   it("documents every thread event and its payload fields", () => {
-    for (const [event, fields] of Object.entries(
-      THREAD_EVENT_PAYLOAD_FIELDS,
-    )) {
+    for (const [event, fields] of Object.entries(THREAD_EVENT_PAYLOAD_FIELDS)) {
       expect(skill, `${event} is not documented in the skill`).toContain(
         `"${event}"`,
       );
@@ -294,6 +296,8 @@ describe("bb-plugin-authoring skill", () => {
     expect(skill).toContain("bb.logo");
     expect(skill).toContain("logo-dark.svg");
     expect(skill).toContain("bb.logoDark");
+    expect(skill).toContain("currentColor");
+    expect(skill).toContain("named `icon` hint");
   });
 
   it("documents every frontend slot and its prop fields", () => {

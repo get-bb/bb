@@ -18,6 +18,17 @@ can remain available even when the experiment is off; `connect` additionally
 requires the "bb connect" experiment. Plugin state lives under
 `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file, secrets, logs).
 
+The builtin Secrets plugin provides a secure credential form and guarded
+dotenv reconciliation:
+
+  bb secret request <NAME...> --write-env <path>
+                    [--purpose <text>] [--describe <NAME> <text>]...
+
+The command blocks until the user submits or cancels the form. Secret values
+never appear in command arguments, model-visible output, or persisted
+interaction data; success prints only the path, variable names, and
+added/updated/unchanged counts.
+
   bb plugin install <src>        Install from a local path, builtin:<name>,
                                  git:<url>@<ref>, or npm:<name>@<version>
                                  (npm: needs npm on PATH; installs prompt —
@@ -77,7 +88,8 @@ arrives as the component's subPath prop for panel-internal deep links),
 threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with JSON params), composerAccessory (prompt box
-footer), and fileOpener (register as a per-extension file viewer/editor;
+footer), pendingInteraction (temporarily replace a thread composer with a
+plugin form), and fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
 file link for a one-off choice). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,

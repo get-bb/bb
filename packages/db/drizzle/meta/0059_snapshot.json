@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "dac6d206-4fc0-4c07-abb1-db5016afe793",
+  "id": "f1e725c1-05ee-47e3-9f8a-a770f343dde6",
   "prevId": "c623661e-1ccb-43a8-85b8-f1a97c963f40",
   "tables": {
     "app_settings": {
@@ -1095,32 +1095,54 @@
           "notNull": true,
           "autoincrement": false
         },
+        "origin_kind": {
+          "name": "origin_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'provider'"
+        },
         "turn_id": {
           "name": "turn_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "provider_id": {
           "name": "provider_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "provider_thread_id": {
           "name": "provider_thread_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "provider_request_id": {
           "name": "provider_request_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "plugin_id": {
+          "name": "plugin_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "renderer_id": {
+          "name": "renderer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "status": {
@@ -1156,6 +1178,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "resolved_at": {
@@ -1203,6 +1232,15 @@
         "pending_interactions_status_created_idx": {
           "name": "pending_interactions_status_created_idx",
           "columns": [
+            "status",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "pending_interactions_plugin_status_created_idx": {
+          "name": "pending_interactions_plugin_status_created_idx",
+          "columns": [
+            "plugin_id",
             "status",
             "created_at"
           ],
@@ -2420,58 +2458,6 @@
         "thread_search_segments_thread_id_threads_id_fk": {
           "name": "thread_search_segments_thread_id_threads_id_fk",
           "tableFrom": "thread_search_segments",
-          "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "thread_tabs": {
-      "name": "thread_tabs",
-      "columns": {
-        "thread_id": {
-          "name": "thread_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tabs_json": {
-          "name": "tabs_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "thread_tabs_thread_id_threads_id_fk": {
-          "name": "thread_tabs_thread_id_threads_id_fk",
-          "tableFrom": "thread_tabs",
           "tableTo": "threads",
           "columnsFrom": [
             "thread_id"

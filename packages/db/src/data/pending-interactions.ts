@@ -10,14 +10,26 @@ type PendingInteractionReadConnection = DbConnection | DbTransaction;
 
 export type PendingInteractionRow = typeof pendingInteractions.$inferSelect;
 
-export interface CreatePendingInteractionInput {
+interface CreatePendingInteractionInputBase {
+  expiresAt?: number | null;
   payload: string;
-  providerId: string;
-  providerRequestId: string;
-  providerThreadId: string;
   threadId: string;
-  turnId: string;
 }
+
+export type CreatePendingInteractionInput =
+  | (CreatePendingInteractionInputBase & {
+      originKind?: "provider";
+      providerId: string;
+      providerRequestId: string;
+      providerThreadId: string;
+      turnId: string;
+    })
+  | (CreatePendingInteractionInputBase & {
+      originKind: "plugin";
+      pluginId: string;
+      rendererId: string;
+      turnId: string | null;
+    });
 
 export interface PendingInteractionProviderRequestIdentity {
   providerId: string;
@@ -56,6 +68,12 @@ export interface InterruptPendingInteractionsForThreadIdsArgs {
   resolvedAt?: number;
   statusReason: string;
   threadIds: readonly string[];
+}
+
+export interface InterruptPendingInteractionsForPluginArgs {
+  pluginId: string;
+  resolvedAt?: number;
+  statusReason: string;
 }
 
 const SQLITE_IN_CLAUSE_BATCH_SIZE = 900;
@@ -129,15 +147,21 @@ export function createPendingInteraction(
     .values({
       id: createPendingInteractionId(),
       threadId: input.threadId,
+      originKind: input.originKind ?? "provider",
       turnId: input.turnId,
-      providerId: input.providerId,
-      providerThreadId: input.providerThreadId,
-      providerRequestId: input.providerRequestId,
+      providerId: input.originKind !== "plugin" ? input.providerId : null,
+      providerThreadId:
+        input.originKind !== "plugin" ? input.providerThreadId : null,
+      providerRequestId:
+        input.originKind !== "plugin" ? input.providerRequestId : null,
+      pluginId: input.originKind === "plugin" ? input.pluginId : null,
+      rendererId: input.originKind === "plugin" ? input.rendererId : null,
       status: "pending",
       payload: input.payload,
       resolution: null,
       statusReason: null,
       createdAt: now,
+      expiresAt: input.expiresAt ?? null,
       resolvedAt: null,
       updatedAt: now,
     })
@@ -162,6 +186,7 @@ export function getPendingInteractionByProviderRequest(
       .from(pendingInteractions)
       .where(
         and(
+          eq(pendingInteractions.originKind, "provider"),
           eq(pendingInteractions.providerId, args.providerId),
           eq(pendingInteractions.providerThreadId, args.providerThreadId),
           eq(pendingInteractions.providerRequestId, args.providerRequestId),
@@ -169,6 +194,40 @@ export function getPendingInteractionByProviderRequest(
       )
       .get() ?? null
   );
+}
+
+export function listActivePendingInteractionsForPlugin(
+  db: PendingInteractionReadConnection,
+  pluginId: string,
+): PendingInteractionRow[] {
+  return db
+    .select()
+    .from(pendingInteractions)
+    .where(
+      and(
+        eq(pendingInteractions.originKind, "plugin"),
+        eq(pendingInteractions.pluginId, pluginId),
+        inArray(pendingInteractions.status, ["pending", "resolving"]),
+      ),
+    )
+    .orderBy(desc(pendingInteractions.createdAt))
+    .all();
+}
+
+export function listActivePluginPendingInteractions(
+  db: PendingInteractionReadConnection,
+): PendingInteractionRow[] {
+  return db
+    .select()
+    .from(pendingInteractions)
+    .where(
+      and(
+        eq(pendingInteractions.originKind, "plugin"),
+        inArray(pendingInteractions.status, ["pending", "resolving"]),
+      ),
+    )
+    .orderBy(desc(pendingInteractions.createdAt))
+    .all();
 }
 
 export function getActivePendingInteractionForThread(
@@ -314,11 +373,38 @@ export function interruptPendingInteractionsForThreads(
   args: InterruptPendingInteractionsForThreadsArgs,
 ): PendingInteractionRow[] {
   return interruptPendingInteractionsBatched(db, {
-    extraConditions: [eq(pendingInteractions.providerId, args.providerId)],
+    extraConditions: [
+      eq(pendingInteractions.originKind, "provider"),
+      eq(pendingInteractions.providerId, args.providerId),
+    ],
     resolvedAt: args.resolvedAt,
     statusReason: args.statusReason,
     threadIds: args.threadIds,
   });
+}
+
+export function interruptPendingInteractionsForPlugin(
+  db: PendingInteractionWriteConnection,
+  args: InterruptPendingInteractionsForPluginArgs,
+): PendingInteractionRow[] {
+  const now = Date.now();
+  return db
+    .update(pendingInteractions)
+    .set({
+      status: "interrupted",
+      statusReason: args.statusReason,
+      resolvedAt: args.resolvedAt ?? now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(pendingInteractions.originKind, "plugin"),
+        eq(pendingInteractions.pluginId, args.pluginId),
+        inArray(pendingInteractions.status, ["pending", "resolving"]),
+      ),
+    )
+    .returning()
+    .all();
 }
 
 export function interruptPendingInteractionsForThreadIds(

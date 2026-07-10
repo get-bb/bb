@@ -1,8 +1,8 @@
 import { vi } from "vitest";
 import type {
   Environment,
-  PendingInteraction,
   PendingInteractionApprovalDecision,
+  ProviderPendingInteraction,
   Thread,
 } from "@bb/domain";
 import type {
@@ -32,7 +32,7 @@ interface MakeEnvironmentArgs extends Partial<Environment> {
   hostId: string;
 }
 
-interface MakePendingInteractionArgs extends Partial<PendingInteraction> {
+interface MakePendingInteractionArgs extends Partial<ProviderPendingInteraction> {
   id: string;
   providerId: string;
   threadId: string;
@@ -145,7 +145,7 @@ export function makeEnvironment(overrides: MakeEnvironmentArgs): Environment {
 
 export function makePendingInteraction(
   overrides: MakePendingInteractionArgs,
-): PendingInteraction {
+): ProviderPendingInteraction {
   // The provider request/thread/turn ids are incidental to every assertion, so
   // derive them from the interaction id suffix (`int-foo` -> `request-foo`,
   // `provider-thread-foo`, `turn-foo`) instead of repeating them per call.
@@ -185,7 +185,7 @@ export function makeCommandApprovalPayload(
     "allow_for_session",
     "deny",
   ],
-): PendingInteraction["payload"] {
+): ProviderPendingInteraction["payload"] {
   return {
     kind: "approval",
     subject: {
@@ -203,7 +203,7 @@ export function makeCommandApprovalPayload(
 
 export function makeFileChangeApprovalPayload(
   itemId: string,
-): PendingInteraction["payload"] {
+): ProviderPendingInteraction["payload"] {
   return {
     kind: "approval",
     subject: {
@@ -217,7 +217,7 @@ export function makeFileChangeApprovalPayload(
   };
 }
 
-export function makeUserQuestionPayload(): PendingInteraction["payload"] {
+export function makeUserQuestionPayload(): ProviderPendingInteraction["payload"] {
   return {
     kind: "user_question",
     questions: [
@@ -236,7 +236,7 @@ export function makeUserQuestionPayload(): PendingInteraction["payload"] {
   };
 }
 
-export function makeMultiUserQuestionPayload(): PendingInteraction["payload"] {
+export function makeMultiUserQuestionPayload(): ProviderPendingInteraction["payload"] {
   return {
     kind: "user_question",
     questions: [
@@ -264,7 +264,7 @@ export function makeMultiUserQuestionPayload(): PendingInteraction["payload"] {
 
 export function makePermissionGrantApprovalPayload(
   itemId: string,
-): PendingInteraction["payload"] {
+): ProviderPendingInteraction["payload"] {
   return {
     kind: "approval",
     subject: {

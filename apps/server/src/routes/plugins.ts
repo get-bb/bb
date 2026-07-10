@@ -278,10 +278,16 @@ export function registerPluginRoutes(
         400,
       );
     }
-    const ctx: { cwd?: string; threadId?: string; projectId?: string } = {};
+    const ctx: {
+      cwd?: string;
+      threadId?: string;
+      projectId?: string;
+      signal?: AbortSignal;
+    } = {};
     if (typeof body?.cwd === "string") ctx.cwd = body.cwd;
     if (typeof body?.threadId === "string") ctx.threadId = body.threadId;
     if (typeof body?.projectId === "string") ctx.projectId = body.projectId;
+    ctx.signal = context.req.raw.signal;
     const result = await plugins.runCliCommand(
       context.req.param("id"),
       argv,

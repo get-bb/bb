@@ -7,7 +7,7 @@ import {
   getMinimizedFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -24,6 +24,7 @@ import type {
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
 import {
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
@@ -1194,6 +1195,13 @@ export function ThreadDetailPromptArea({
   );
 
   if (activePendingInteraction && !shouldHideComposer) {
+    if (isPluginPendingInteraction(activePendingInteraction)) {
+      return (
+        <PluginPendingInteractionComposer
+          interaction={activePendingInteraction}
+        />
+      );
+    }
     if (!activePromptMode) {
       return (
         <ThreadPendingInteractionBanner

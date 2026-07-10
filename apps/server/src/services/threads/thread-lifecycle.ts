@@ -1635,7 +1635,7 @@ export function finalizeStoppedThreadInTransaction(
       deps,
       {
         threadIds: [finalizedThread.id],
-        reason: "Thread was deleted while awaiting user interaction",
+        reason: "thread-deleted",
       },
     );
 

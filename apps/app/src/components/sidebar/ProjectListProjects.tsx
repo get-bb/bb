@@ -43,7 +43,7 @@ export interface ProjectListReorderBindings {
   consumeClickSuppression: ConsumeDragClickSuppression;
 }
 
-export interface ProjectListProjectsProps {
+interface ProjectListProjectsProps {
   status: ConnectionAwareQueryStatus;
   rows: ProjectListRowModel[];
   selectedThreadId?: string;

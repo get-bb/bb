@@ -181,6 +181,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
           ...(payload.expectedSha256 !== undefined
             ? { expectedSha256: payload.expectedSha256 }
             : {}),
+          ...(payload.mode !== undefined ? { mode: payload.mode } : {}),
         },
       });
       return context.json(result);

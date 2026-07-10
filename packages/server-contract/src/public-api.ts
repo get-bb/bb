@@ -101,6 +101,7 @@ import type {
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
   ResolvePendingInteractionRequest,
+  RespondPluginInteractionRequest,
   SendMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
@@ -205,6 +206,7 @@ import {
   reorderProjectRequestSchema,
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
+  respondPluginInteractionRequestSchema,
   sendMessageRequestSchema,
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
@@ -878,6 +880,21 @@ export const publicApiRoutes = {
       >(resolvePendingInteractionRequestSchema),
       response: jsonResponse<PendingInteraction>(),
     }),
+    respondToInteraction: defineRoute({
+      path: "/threads/:id/interactions/:interactionId/respond",
+      method: "post",
+      request: jsonRequest<
+        PathThreadInteractionId,
+        RespondPluginInteractionRequest
+      >(respondPluginInteractionRequestSchema),
+      response: jsonResponse<PendingInteraction>(),
+    }),
+    cancelInteraction: defineRoute({
+      path: "/threads/:id/interactions/:interactionId/cancel",
+      method: "post",
+      request: noRequest<PathThreadInteractionId>(),
+      response: jsonResponse<PendingInteraction>(),
+    }),
     archive: defineRoute({
       path: "/threads/:id/archive",
       method: "post",
@@ -1086,7 +1103,6 @@ export const publicApiRoutes = {
       response: jsonResponse<SystemVersionResponse>(),
     }),
   },
-
 };
 
 export type PublicApiSchema = ApiSchemaFromRouteDescriptors<
@@ -1118,10 +1134,7 @@ export function createPublicApiClient(
   baseUrl: string,
   options?: PublicApiClientOptions,
 ) {
-  return hc<PublicApiRoutes>(
-    `${baseUrl}/api/v1`,
-    toHonoClientOptions(options),
-  );
+  return hc<PublicApiRoutes>(`${baseUrl}/api/v1`, toHonoClientOptions(options));
 }
 
 export function createApiClient(
