@@ -1,15 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  applyAppKeybindingOverrides,
   type AppKeybindingOverrides,
   type AppSettings,
   type AppThemeSelection,
   type Experiments,
 } from "@bb/domain";
-import type { SystemConfigResponse } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { invalidateSystemConfig } from "../cache-owners/system-cache-effects";
-import { systemConfigQueryKey } from "../queries/query-keys";
+import {
+  beginKeyboardSettingsCacheTransaction,
+  rollbackKeyboardSettingsCacheTransaction,
+} from "../cache-owners/system-config-cache-owner";
 
 /**
  * Replace the user's opt-in experiments (full object). The server broadcasts
@@ -60,26 +61,13 @@ export function useUpdateKeyboardSettings() {
     },
     mutationFn: (overrides: AppKeybindingOverrides) =>
       api.updateKeyboardSettings(overrides),
-    onMutate: async (overrides) => {
-      const queryKey = systemConfigQueryKey();
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<SystemConfigResponse>(queryKey);
-      if (previous !== undefined) {
-        queryClient.setQueryData<SystemConfigResponse>(queryKey, {
-          ...previous,
-          keybindings: applyAppKeybindingOverrides(
-            previous.defaultKeybindings,
-            overrides,
-          ),
-          keybindingOverrides: overrides,
-        });
-      }
-      return { previous };
-    },
+    onMutate: (overrides) =>
+      beginKeyboardSettingsCacheTransaction({ overrides, queryClient }),
     onError: (_error, _overrides, context) => {
-      if (context?.previous !== undefined) {
-        queryClient.setQueryData(systemConfigQueryKey(), context.previous);
-      }
+      rollbackKeyboardSettingsCacheTransaction({
+        queryClient,
+        transaction: context,
+      });
     },
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
