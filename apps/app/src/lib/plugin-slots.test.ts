@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginNavPanelProps, PluginHomepageSectionProps } from "@bb/plugin-sdk";
+import type {
+  PluginHomepageSectionProps,
+  PluginMessageDirectiveProps,
+  PluginNavPanelProps,
+} from "@bb/plugin-sdk";
 import {
   getPluginSlotSnapshot,
   removePluginSlotRegistrations,
@@ -15,6 +19,9 @@ function SectionComponent(_props: Partial<PluginHomepageSectionProps>) {
 function PanelComponent(_props: PluginNavPanelProps) {
   return null;
 }
+function DirectiveComponent(_props: PluginMessageDirectiveProps) {
+  return null;
+}
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet> = {},
@@ -27,6 +34,7 @@ function registrationSet(
     composerAccessories: [],
     sidebarFooterActions: [],
     fileOpeners: [],
+    messageDirectives: [],
     ...overrides,
   };
 }
@@ -125,5 +133,61 @@ describe("plugin slot store", () => {
     setPluginSlotRegistrations("demo", registrationSet());
     const first = getPluginSlotSnapshot();
     expect(getPluginSlotSnapshot()).toBe(first);
+  });
+
+  it("flattens messageDirectives sorted by plugin id with generation metadata", () => {
+    setPluginSlotRegistrations(
+      "zeta",
+      registrationSet({
+        messageDirectives: [{ id: "z-vis", component: DirectiveComponent }],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "alpha",
+      registrationSet({
+        messageDirectives: [
+          { id: "inline-vis", component: DirectiveComponent },
+          { id: "chart", component: DirectiveComponent },
+        ],
+      }),
+    );
+
+    const snapshot = getPluginSlotSnapshot();
+    expect(
+      snapshot.messageDirectives.map((directive) => ({
+        pluginId: directive.pluginId,
+        id: directive.id,
+        generation: directive.generation,
+      })),
+    ).toEqual([
+      { pluginId: "alpha", id: "inline-vis", generation: 1 },
+      { pluginId: "alpha", id: "chart", generation: 1 },
+      { pluginId: "zeta", id: "z-vis", generation: 1 },
+    ]);
+  });
+
+  it("replaces and removes messageDirectives on reload/uninstall", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        messageDirectives: [
+          { id: "inline-vis", component: DirectiveComponent },
+        ],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        messageDirectives: [{ id: "chart", component: DirectiveComponent }],
+      }),
+    );
+
+    let snapshot = getPluginSlotSnapshot();
+    expect(snapshot.messageDirectives.map((d) => d.id)).toEqual(["chart"]);
+    expect(snapshot.messageDirectives[0]?.generation).toBe(2);
+
+    removePluginSlotRegistrations("demo");
+    snapshot = getPluginSlotSnapshot();
+    expect(snapshot.messageDirectives).toHaveLength(0);
   });
 });

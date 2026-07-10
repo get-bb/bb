@@ -141,12 +141,6 @@ function expectPiBashSnapshotReset(args: ExpectPiBashSnapshotResetArgs): void {
 describe("pi provider adapter", () => {
   // -- Identity & capabilities ---------------------------------------------
 
-  it("has correct identity", () => {
-    const adapter = createPiProviderAdapter();
-    expect(adapter.id).toBe("pi");
-    expect(adapter.displayName).toBe("Pi");
-  });
-
   it("has correct process config", () => {
     const adapter = createPiProviderAdapter();
     expect(adapter.process.command).toBe("node");

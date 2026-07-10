@@ -26,55 +26,7 @@ function listNotesResult(notes: NoteSummary[]) {
   };
 }
 
-describe("simple notes slot registrations", () => {
-  it("registers the installed-style Simple Notes nav panel surface", () => {
-    expect(app.navPanels).toHaveLength(1);
-    expect(app.navPanels[0]).toMatchObject({
-      id: "simple-notes",
-      title: "Simple Notes",
-      path: "simple-notes",
-      chrome: "none",
-    });
-    expect(app.threadPanelActions).toHaveLength(0);
-    expect(app.fileOpeners).toHaveLength(0);
-  });
-});
-
 describe("simple notes nav panel", () => {
-  it("renders recent notes from rpc and deep-links selections", async () => {
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "" },
-      {
-        rpc: {
-          listNotes: () =>
-            listNotesResult([
-              {
-                path: "ideas.md",
-                title: "Ideas",
-                preview: "Research better plugin examples",
-                modifiedAtMs: Date.now(),
-              },
-            ]),
-        },
-      },
-    );
-
-    await slot.findByText("Ideas");
-    slot.getByText("Research better plugin examples");
-    slot.getByText("/Users/me/Notes");
-    expect(slot.rpcCalls).toEqual([{ method: "listNotes", input: null }]);
-
-    fireEvent.click(slot.getByText("Ideas"));
-    expect(slot.navigateCalls).toEqual([
-      {
-        method: "toPluginPanel",
-        path: "simple-notes",
-        options: { subPath: "ideas.md" },
-      },
-    ]);
-  });
-
   it("creates a note over rpc and opens it", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,

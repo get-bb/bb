@@ -16,26 +16,6 @@ function skill(
 }
 
 describe("buildCommandListResponse", () => {
-  it("includes the built-in compact command", () => {
-    const response = buildCommandListResponse({
-      commands: [],
-      limit: 10,
-      offset: 0,
-      query: "compact",
-    });
-
-    expect(response.commands).toEqual([
-      {
-        name: "compact",
-        source: "command",
-        origin: "builtin",
-        description: "Compact context",
-        argumentHint: null,
-      },
-    ]);
-    expect(response.truncated).toBe(false);
-  });
-
   it("keeps the built-in compact row when project commands collide", () => {
     const response = buildCommandListResponse({
       commands: [

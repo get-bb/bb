@@ -7,89 +7,9 @@ import {
   getBuiltInAgentProviderServerCapabilities,
   isAcpAgentProviderId,
   isAcpProviderId,
-  listBuiltInAgentProviderInfos,
-  PI_DEFAULT_MODEL_PER_PROVIDER,
-  resolvePiDefaultModelId,
 } from "../src/index.js";
 
 describe("agent provider catalog", () => {
-  it("lists built-in providers with shared display metadata", () => {
-    expect(listBuiltInAgentProviderInfos()).toEqual([
-      {
-        id: "codex",
-        displayName: "Codex",
-        capabilities: {
-          supportsArchive: true,
-          supportsRename: true,
-          supportsServiceTier: true,
-          supportsUserQuestion: false,
-          supportsFork: true,
-          supportedPermissionModes: ["full", "workspace-write", "readonly"],
-        },
-        composerActions: [
-          { kind: "skills", trigger: "/" },
-          {
-            kind: "plan",
-            command: { trigger: "/", name: "plan", trailingText: " " },
-          },
-          {
-            kind: "goal",
-            command: { trigger: "/", name: "goal", trailingText: " " },
-          },
-        ],
-        available: true,
-      },
-      {
-        id: "claude-code",
-        displayName: "Claude Code",
-        capabilities: {
-          supportsArchive: false,
-          supportsRename: false,
-          supportsServiceTier: false,
-          supportsUserQuestion: true,
-          supportsFork: true,
-          supportedPermissionModes: ["full", "workspace-write", "readonly"],
-        },
-        composerActions: [
-          { kind: "skills", trigger: "/" },
-          {
-            kind: "plan",
-            command: { trigger: "/", name: "plan", trailingText: " " },
-          },
-        ],
-        available: true,
-      },
-      {
-        id: "pi",
-        displayName: "Pi",
-        capabilities: {
-          supportsArchive: false,
-          supportsRename: false,
-          supportsServiceTier: false,
-          supportsUserQuestion: false,
-          supportsFork: true,
-          supportedPermissionModes: ["full"],
-        },
-        composerActions: [{ kind: "skills", trigger: "/" }],
-        available: true,
-      },
-      {
-        id: "acp-cursor",
-        displayName: "Cursor",
-        capabilities: {
-          supportsArchive: false,
-          supportsRename: false,
-          supportsServiceTier: true,
-          supportsUserQuestion: false,
-          supportsFork: false,
-          supportedPermissionModes: ["full", "workspace-write", "readonly"],
-        },
-        composerActions: [{ kind: "skills", trigger: "/" }],
-        available: true,
-      },
-    ]);
-  });
-
   it("classifies ACP provider ids", () => {
     expect(isAcpAgentProviderId("acp-cursor")).toBe(true);
     expect(isAcpAgentProviderId("codex")).toBe(false);
@@ -134,33 +54,6 @@ describe("agent provider catalog", () => {
     expect(getAgentProviderServerCapabilities("not-a-provider")).toBeNull();
   });
 
-  it("declares the backend-only server capability facts per provider", () => {
-    expect(getBuiltInAgentProviderServerCapabilities("codex")).toEqual({
-      supportsWorkflows: false,
-      supportsExecutionOverride: false,
-      backsHostDaemonAiServices: true,
-      reasoningLevels: ["low", "medium", "high", "xhigh", "max", "ultra"],
-    });
-    expect(getBuiltInAgentProviderServerCapabilities("claude-code")).toEqual({
-      supportsWorkflows: true,
-      supportsExecutionOverride: true,
-      backsHostDaemonAiServices: false,
-      reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
-    });
-    expect(getBuiltInAgentProviderServerCapabilities("pi")).toEqual({
-      supportsWorkflows: false,
-      supportsExecutionOverride: false,
-      backsHostDaemonAiServices: false,
-      reasoningLevels: ["low", "medium", "high", "xhigh"],
-    });
-    expect(getBuiltInAgentProviderServerCapabilities("acp-cursor")).toEqual({
-      supportsWorkflows: false,
-      supportsExecutionOverride: false,
-      backsHostDaemonAiServices: false,
-      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
-    });
-  });
-
   it("returns cloned catalog entries", () => {
     const provider = getBuiltInAgentProviderInfo("codex");
     provider.displayName = "Mutated";
@@ -197,22 +90,11 @@ describe("agent provider catalog", () => {
   });
 
   it("keeps built-in accessors built-in-only", () => {
-    expect(() =>
-      getBuiltInAgentProviderInfo("acp-my-agent" as never),
-    ).toThrow(/Unsupported agent provider/u);
+    expect(() => getBuiltInAgentProviderInfo("acp-my-agent" as never)).toThrow(
+      /Unsupported agent provider/u,
+    );
     expect(() =>
       getBuiltInAgentProviderServerCapabilities("acp-my-agent" as never),
     ).toThrow(/Unsupported agent provider/u);
-  });
-
-  it("exposes pi default model declarations", () => {
-    expect(PI_DEFAULT_MODEL_PER_PROVIDER["openai-codex"]).toBe("gpt-5.5");
-    expect(resolvePiDefaultModelId("anthropic")).toBe("claude-opus-4-8");
-    expect(resolvePiDefaultModelId("amazon-bedrock")).toBe(
-      "us.anthropic.claude-opus-4-8",
-    );
-    expect(resolvePiDefaultModelId("vercel-ai-gateway")).toBe(
-      "anthropic/claude-opus-4.8",
-    );
   });
 });

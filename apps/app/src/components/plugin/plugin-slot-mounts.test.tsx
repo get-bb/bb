@@ -1,19 +1,12 @@
 // @vitest-environment jsdom
 
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type {
-  PluginComposerAccessoryProps,
-  PluginHomepageSectionProps,
-  PluginThreadPanelProps,
-} from "@bb/plugin-sdk";
+import type { PluginThreadPanelProps } from "@bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
-import {
-  resetPluginLogoStoreForTest,
-  setPluginLogoUrls,
-} from "@/lib/plugin-logos";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -29,7 +22,6 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginComposerAccessories } from "./PluginComposerAccessories";
 import { PluginHomepageSections } from "./PluginHomepageSections";
-import { PluginSettingsSections } from "./PluginSettingsSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { useComposer } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
@@ -51,6 +43,7 @@ function registrationSet(
     composerAccessories: [],
     sidebarFooterActions: [],
     fileOpeners: [],
+    messageDirectives: [],
     ...overrides,
   };
 }
@@ -58,38 +51,11 @@ function registrationSet(
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
-  resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
 });
 
 describe("PluginHomepageSections", () => {
-  it("renders nothing without registrations (and without a Router)", () => {
-    const { container } = render(<PluginHomepageSections />);
-    expect(container.innerHTML).toBe("");
-  });
-
-  it("renders registered sections with the route project id", () => {
-    function SectionProbe({ projectId }: PluginHomepageSectionProps) {
-      return <div>section projectId: {String(projectId)}</div>;
-    }
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        homepageSections: [
-          { id: "hello", title: "Demo section", component: SectionProbe },
-        ],
-      }),
-    );
-    render(
-      <MemoryRouter initialEntries={["/projects/proj_123"]}>
-        <PluginHomepageSections />
-      </MemoryRouter>,
-    );
-    expect(screen.getByText("Demo section")).toBeDefined();
-    expect(screen.getByText("section projectId: proj_123")).toBeDefined();
-  });
-
   it("contains a crashing section without hiding its sibling", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -120,63 +86,6 @@ describe("PluginHomepageSections", () => {
     expect(screen.getByText("fine section body")).toBeDefined();
   });
 });
-
-describe("PluginSettingsSections", () => {
-  it("contains a crashing section without hiding its sibling", () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    function Crashes(): never {
-      throw new Error("settings section crashed");
-    }
-    function Fine() {
-      return <div>fine settings body</div>;
-    }
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        settingsSections: [
-          { id: "broken", title: "Broken settings", component: Crashes },
-          { id: "fine", title: "Fine settings", component: Fine },
-        ],
-      }),
-    );
-
-    render(<PluginSettingsSections pluginId="demo" />);
-
-    expect(screen.getByText("plugin demo crashed")).toBeDefined();
-    expect(screen.getByText("fine settings body")).toBeDefined();
-  });
-});
-
-describe("PluginComposerAccessories", () => {
-  it("passes the route thread + project context", () => {
-    function AccessoryProbe({
-      projectId,
-      threadId,
-    }: PluginComposerAccessoryProps) {
-      return (
-        <div>
-          accessory {String(projectId)} / {String(threadId)}
-        </div>
-      );
-    }
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        composerAccessories: [{ id: "probe", component: AccessoryProbe }],
-      }),
-    );
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_9"]}>
-        <PluginComposerAccessories />
-      </MemoryRouter>,
-    );
-    expect(
-      screen.getByText(`accessory ${PERSONAL_PROJECT_ID} / thr_9`),
-    ).toBeDefined();
-  });
-});
-
 
 function ThreadDraftViewer({ threadId }: { threadId: string }) {
   const draft = usePromptDraftStorage({
@@ -215,7 +124,10 @@ describe("useComposer", () => {
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
-          <button type="button" onClick={() => composer.addQuote("picked text")}>
+          <button
+            type="button"
+            onClick={() => composer.addQuote("picked text")}
+          >
             {label}-quote
           </button>
           <button
@@ -233,7 +145,11 @@ describe("useComposer", () => {
           <button
             type="button"
             onClick={() =>
-              composer.insertMention({ provider: "bad:colon", id: "x", label: "x" })
+              composer.insertMention({
+                provider: "bad:colon",
+                id: "x",
+                label: "x",
+              })
             }
           >
             {label}-bad-mention
@@ -286,7 +202,11 @@ describe("useComposer", () => {
     expect(screen.getByTestId("draft-text").textContent).toBe("ideas.md ");
     const mentions = JSON.parse(
       screen.getByTestId("draft-mentions").textContent ?? "[]",
-    ) as Array<{ start: number; end: number; resource: Record<string, unknown> }>;
+    ) as Array<{
+      start: number;
+      end: number;
+      resource: Record<string, unknown>;
+    }>;
     expect(mentions).toEqual([
       {
         start: 0,
@@ -357,44 +277,6 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     expect(screen.getByText("board panel body")).toBeDefined();
   });
 
-  it("passes the route splat to the panel as subPath ('' at the root)", () => {
-    function SubPathProbe({ subPath }: { subPath: string }) {
-      return <div>subPath: "{subPath}"</div>;
-    }
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        navPanels: [
-          {
-            id: "board",
-            title: "Demo board",
-            icon: "columns",
-            path: "board",
-            component: SubPathProbe,
-          },
-        ],
-      }),
-    );
-    const { unmount } = render(
-      <MemoryRouter initialEntries={["/plugins/demo/board/work/ideas.md"]}>
-        <Routes>
-          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    expect(screen.getByText('subPath: "work/ideas.md"')).toBeDefined();
-    unmount();
-
-    render(
-      <MemoryRouter initialEntries={["/plugins/demo/board"]}>
-        <Routes>
-          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    expect(screen.getByText('subPath: ""')).toBeDefined();
-  });
-
   it("shows a placeholder for an unknown plugin panel route", () => {
     render(
       <MemoryRouter initialEntries={["/plugins/ghost/board"]}>
@@ -406,42 +288,6 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     expect(
       screen.getByText(/This plugin panel is not available/),
     ).toBeDefined();
-  });
-
-  it("renders the plugin's logo in the sidebar row when one is served, named icon otherwise", () => {
-    setPluginLogoUrls(
-      new Map([
-        ["demo", { logoUrl: "/api/v1/plugins/demo/assets/logo?h=cafe", logoDarkUrl: null }],
-      ]),
-    );
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        navPanels: [
-          { id: "board", title: "Demo board", icon: "Columns", path: "board", component: Board },
-        ],
-      }),
-    );
-    setPluginSlotRegistrations(
-      "plain",
-      registrationSet({
-        navPanels: [
-          { id: "list", title: "Plain list", icon: "Columns", path: "list", component: Board },
-        ],
-      }),
-    );
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <PluginNavSidebarItems />
-      </MemoryRouter>,
-    );
-    expect(
-      screen.getByTestId("plugin-logo-demo").getAttribute("src"),
-    ).toBe("/api/v1/plugins/demo/assets/logo?h=cafe");
-    // No logo → named-icon fallback (an svg, no img).
-    expect(screen.queryByTestId("plugin-logo-plain")).toBeNull();
-    const plainRow = screen.getByText("Plain list").closest("button");
-    expect(plainRow?.querySelector("svg")).not.toBeNull();
   });
 });
 
@@ -475,29 +321,6 @@ describe("plugin panel chrome (shared header + body modes)", () => {
     );
   }
 
-  it("renders logo + title in the header center and headerContent in the actions", () => {
-    setPluginLogoUrls(
-      new Map([
-        ["demo", { logoUrl: "/api/v1/plugins/demo/assets/logo?h=cafe", logoDarkUrl: null }],
-      ]),
-    );
-    function HeaderAccessory() {
-      return <button type="button">Sync now</button>;
-    }
-    const panel = panelSlot({ headerContent: HeaderAccessory });
-    render(
-      <>
-        <PluginPanelHeaderCenter panel={panel} />
-        <PluginPanelHeaderActions panel={panel} subPath="" />
-      </>,
-    );
-    expect(screen.getByText("Demo board")).toBeDefined();
-    expect(
-      screen.getByTestId("plugin-logo-demo").getAttribute("src"),
-    ).toBe("/api/v1/plugins/demo/assets/logo?h=cafe");
-    expect(screen.getByRole("button", { name: "Sync now" })).toBeDefined();
-  });
-
   it("hides a throwing headerContent without breaking the header (no crash chip)", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -514,36 +337,6 @@ describe("plugin panel chrome (shared header + body modes)", () => {
     // The header center survives; the accessory is hidden, not chip-ified.
     expect(screen.getByText("Demo board")).toBeDefined();
     expect(screen.queryByText(/plugin demo crashed/)).toBeNull();
-  });
-
-  it('suppresses headerContent in "none" mode (the plugin owns the body)', () => {
-    function HeaderAccessory() {
-      return <button type="button">ignored</button>;
-    }
-    const panel = panelSlot({
-      chrome: "none",
-      headerContent: HeaderAccessory,
-    });
-    const { container } = render(<PluginPanelHeaderActions panel={panel} subPath="" />);
-    expect(container.innerHTML).toBe("");
-  });
-
-  it('renders the body full-bleed in "none" mode with no heading of its own', () => {
-    function FullBleed() {
-      return <div>full bleed body</div>;
-    }
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        navPanels: [
-          panelSlot({ component: FullBleed, chrome: "none" }),
-        ],
-      }),
-    );
-    renderPanelBody();
-    expect(screen.getByText("full bleed body")).toBeDefined();
-    // The view is body-only: the title lives in the shared app header.
-    expect(screen.queryByRole("heading", { name: "Demo board" })).toBeNull();
   });
 
   it('still contains a crashing "none" panel inside the error boundary', () => {
@@ -591,27 +384,7 @@ describe("plugin thread panel actions", () => {
     );
   }
 
-  it("opens a panel tab with defaults when the action has no run", () => {
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        threadPanelActions: [
-          { id: "issue", title: "Issue", component: PanelProbe },
-        ],
-      }),
-    );
-    const openPluginPanel = vi.fn();
-    render(<ActionsProbe threadId="thr_9" openPluginPanel={openPluginPanel} />);
-    fireEvent.click(screen.getByText("Issue"));
-    expect(openPluginPanel).toHaveBeenCalledWith({
-      pluginId: "demo",
-      actionId: "issue",
-      title: "Issue",
-      paramsJson: null,
-    });
-  });
-
-  it("passes ctx to run; openPanel serializes params and applies the title", () => {
+  it("opens and renders a panel with action context and serialized params", () => {
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
@@ -627,15 +400,28 @@ describe("plugin thread panel actions", () => {
         ],
       }),
     );
-    const openPluginPanel = vi.fn();
-    render(<ActionsProbe threadId="thr_9" openPluginPanel={openPluginPanel} />);
+
+    function ActionHarness() {
+      const [tab, setTab] = useState<ReturnType<
+        typeof createPluginPanelFixedPanelTab
+      > | null>(null);
+      return (
+        <>
+          <ActionsProbe
+            threadId="thr_9"
+            openPluginPanel={(args) =>
+              setTab(createPluginPanelFixedPanelTab(args))
+            }
+          />
+          {tab ? <PluginPanelTabContent tab={tab} threadId="thr_9" /> : null}
+        </>
+      );
+    }
+
+    render(<ActionHarness />);
     fireEvent.click(screen.getByText("Issue"));
-    expect(openPluginPanel).toHaveBeenCalledWith({
-      pluginId: "demo",
-      actionId: "issue",
-      title: "Issue for thr_9",
-      paramsJson: JSON.stringify({ n: 1 }),
-    });
+
+    expect(screen.getByText('panel body for thr_9 / {"n":1}')).toBeDefined();
   });
 
   it("contains a throwing run (sync) and non-serializable params (no open, no crash)", () => {
@@ -684,25 +470,6 @@ describe("plugin thread panel actions", () => {
     expect(screen.queryByText("Issue")).toBeNull();
   });
 
-  it("renders an open tab's component with the thread id and parsed params", () => {
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        threadPanelActions: [
-          { id: "issue", title: "Issue", component: PanelProbe },
-        ],
-      }),
-    );
-    const tab = createPluginPanelFixedPanelTab({
-      actionId: "issue",
-      paramsJson: JSON.stringify({ n: 1 }),
-      pluginId: "demo",
-      title: "Issue #1",
-    });
-    render(<PluginPanelTabContent tab={tab} threadId="thr_9" />);
-    expect(screen.getByText('panel body for thr_9 / {"n":1}')).toBeDefined();
-  });
-
   it("degrades to a placeholder when the tab's action is gone", () => {
     const tab = createPluginPanelFixedPanelTab({
       actionId: "issue",
@@ -730,7 +497,7 @@ describe("plugin file opener tabs", () => {
     );
   }
 
-  it("renders the opener component with parsed path + source", () => {
+  it("renders a registered opener with parsed path and source", () => {
     setPluginSlotRegistrations(
       "notes",
       registrationSet({
@@ -758,7 +525,9 @@ describe("plugin file opener tabs", () => {
       pluginId: "notes",
       title: "todo.md",
     });
+
     render(<PluginPanelTabContent tab={tab} threadId={null} />);
+
     expect(
       screen.getByText("editor notes/todo.md @ workspace:env_1"),
     ).toBeDefined();
@@ -767,7 +536,10 @@ describe("plugin file opener tabs", () => {
   it("degrades to a placeholder when the opener is gone or params are junk", () => {
     const orphanTab = createPluginPanelFixedPanelTab({
       actionId: "file-opener:gone",
-      paramsJson: JSON.stringify({ path: "a.md", source: { kind: "workspace" } }),
+      paramsJson: JSON.stringify({
+        path: "a.md",
+        source: { kind: "workspace" },
+      }),
       pluginId: "ghost",
       title: "a.md",
     });

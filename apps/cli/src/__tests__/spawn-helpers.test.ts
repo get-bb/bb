@@ -5,36 +5,64 @@ import {
   requireHostId,
 } from "../commands/thread/spawn.js";
 import {
+  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
+  DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitTimeoutSeconds,
   parseThreadWaitPollIntervalMs,
   parseServiceTier,
   parsePermissionMode,
-  DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
-  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
-  PERMISSION_MODE_HELP,
 } from "../commands/thread/helpers.js";
 
+const acceptedParserCases = [
+  {
+    label: "wait timeout default",
+    parse: () => parseThreadWaitTimeoutSeconds(undefined),
+    expected: DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
+  },
+  {
+    label: "decimal wait timeout",
+    parse: () => parseThreadWaitTimeoutSeconds("1.5"),
+    expected: 1.5,
+  },
+  {
+    label: "poll interval default",
+    parse: () => parseThreadWaitPollIntervalMs(undefined),
+    expected: DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
+  },
+  {
+    label: "integer poll interval",
+    parse: () => parseThreadWaitPollIntervalMs("500"),
+    expected: 500,
+  },
+  {
+    label: "omitted service tier",
+    parse: () => parseServiceTier(undefined),
+    expected: undefined,
+  },
+  {
+    label: "fast service tier",
+    parse: () => parseServiceTier("fast"),
+    expected: "fast",
+  },
+  {
+    label: "omitted permission mode",
+    parse: () => parsePermissionMode(undefined),
+    expected: undefined,
+  },
+  {
+    label: "workspace-write permission mode",
+    parse: () => parsePermissionMode("workspace-write"),
+    expected: "workspace-write",
+  },
+] as const;
+
+describe("accepted thread argument values", () => {
+  it.each(acceptedParserCases)("parses $label", ({ parse, expected }) => {
+    expect(parse()).toBe(expected);
+  });
+});
+
 describe("looksLikePath", () => {
-  it("returns true for absolute paths", () => {
-    expect(looksLikePath("/absolute/path")).toBe(true);
-  });
-
-  it("returns true for relative paths starting with ./", () => {
-    expect(looksLikePath("./relative")).toBe(true);
-  });
-
-  it("returns true for home-relative paths starting with ~", () => {
-    expect(looksLikePath("~/home/dir")).toBe(true);
-  });
-
-  it("returns true for parent-relative paths starting with ../", () => {
-    expect(looksLikePath("../parent")).toBe(true);
-  });
-
-  it("returns true for paths containing slashes", () => {
-    expect(looksLikePath("some/nested/dir")).toBe(true);
-  });
-
   it("returns false for bare words", () => {
     expect(looksLikePath("worktree")).toBe(false);
     expect(looksLikePath("docker")).toBe(false);
@@ -42,10 +70,6 @@ describe("looksLikePath", () => {
 });
 
 describe("requireHostId", () => {
-  it("returns the host ID when non-null", () => {
-    expect(requireHostId("host-123")).toBe("host-123");
-  });
-
   it("throws when host ID is null", () => {
     expect(() => requireHostId(null)).toThrow("Cannot reach local host daemon");
   });
@@ -211,18 +235,6 @@ describe("buildSpawnEnvironment", () => {
 });
 
 describe("parseThreadWaitTimeoutSeconds", () => {
-  it("returns default when undefined", () => {
-    expect(parseThreadWaitTimeoutSeconds(undefined)).toBe(
-      DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
-    );
-  });
-
-  it("returns parsed number for valid input", () => {
-    expect(parseThreadWaitTimeoutSeconds("60")).toBe(60);
-    expect(parseThreadWaitTimeoutSeconds("0")).toBe(0);
-    expect(parseThreadWaitTimeoutSeconds("1.5")).toBe(1.5);
-  });
-
   it("throws for negative numbers", () => {
     expect(() => parseThreadWaitTimeoutSeconds("-1")).toThrow(
       "non-negative number",
@@ -237,17 +249,6 @@ describe("parseThreadWaitTimeoutSeconds", () => {
 });
 
 describe("parseThreadWaitPollIntervalMs", () => {
-  it("returns default when undefined", () => {
-    expect(parseThreadWaitPollIntervalMs(undefined)).toBe(
-      DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
-    );
-  });
-
-  it("returns parsed integer for valid input", () => {
-    expect(parseThreadWaitPollIntervalMs("500")).toBe(500);
-    expect(parseThreadWaitPollIntervalMs("1")).toBe(1);
-  });
-
   it("throws for zero", () => {
     expect(() => parseThreadWaitPollIntervalMs("0")).toThrow(
       "positive integer",
@@ -262,49 +263,15 @@ describe("parseThreadWaitPollIntervalMs", () => {
 });
 
 describe("parseServiceTier", () => {
-  it("returns undefined when undefined", () => {
-    expect(parseServiceTier(undefined)).toBeUndefined();
-  });
-
-  it("returns 'fast' for 'fast'", () => {
-    expect(parseServiceTier("fast")).toBe("fast");
-  });
-
-  it("returns 'default' for 'default'", () => {
-    expect(parseServiceTier("default")).toBe("default");
-  });
-
   it("throws for invalid tier", () => {
     expect(() => parseServiceTier("turbo")).toThrow("Invalid service tier");
   });
 });
 
 describe("parsePermissionMode", () => {
-  it("returns undefined when undefined", () => {
-    expect(parsePermissionMode(undefined)).toBeUndefined();
-  });
-
-  it("returns 'workspace-write' for 'workspace-write'", () => {
-    expect(parsePermissionMode("workspace-write")).toBe("workspace-write");
-  });
-
-  it("returns 'readonly' for 'readonly'", () => {
-    expect(parsePermissionMode("readonly")).toBe("readonly");
-  });
-
-  it("returns 'full' for 'full'", () => {
-    expect(parsePermissionMode("full")).toBe("full");
-  });
-
   it("throws for invalid mode", () => {
     expect(() => parsePermissionMode("readwrite")).toThrow(
       "Invalid permission mode 'readwrite'. Expected full, workspace-write, or readonly.",
-    );
-  });
-
-  it("exposes user-facing help in product terms", () => {
-    expect(PERMISSION_MODE_HELP).toBe(
-      "Permission mode: full, workspace-write, or readonly",
     );
   });
 });

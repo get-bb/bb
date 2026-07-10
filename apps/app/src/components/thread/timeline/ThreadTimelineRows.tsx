@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
@@ -111,6 +112,15 @@ import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
 } from "@/hooks/cache-owners/thread-list-cache-data";
+import {
+  EMPTY_PLUGIN_SLOT_SNAPSHOT,
+  getPluginSlotSnapshot,
+  subscribePluginSlots,
+} from "@/lib/plugin-slots.js";
+import {
+  buildMessageDirectiveRegistry,
+  MessageDirectiveRegistryProvider,
+} from "@/components/ui/markdown-message-directives.js";
 
 export interface ThreadTimelineRowsProps {
   /**
@@ -1888,6 +1898,18 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById({
     queryClient,
   });
+  // Single plugin-slot subscription for the whole timeline; messages read the
+  // stable registry from context instead of each opening a store subscription.
+  // Provide getServerSnapshot so renderToStaticMarkup / SSR tests work.
+  const messageDirectiveSlots = useSyncExternalStore(
+    subscribePluginSlots,
+    () => getPluginSlotSnapshot().messageDirectives,
+    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageDirectives,
+  );
+  const messageDirectiveRegistry = useMemo(
+    () => buildMessageDirectiveRegistry(messageDirectiveSlots),
+    [messageDirectiveSlots],
+  );
   const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
       // Thread routes are project-scoped; without a project context the
@@ -2020,40 +2042,42 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
 
   return (
-    <TimelineRendererStaticContext.Provider value={staticContextValue}>
-      <LatestActionableAssistantMessageIdContext.Provider
-        value={latestActionableAssistantMessageId}
-      >
-        <LatestActionableUserMessageIdContext.Provider
-          value={latestActionableUserMessageId}
+    <MessageDirectiveRegistryProvider registry={messageDirectiveRegistry}>
+      <TimelineRendererStaticContext.Provider value={staticContextValue}>
+        <LatestActionableAssistantMessageIdContext.Provider
+          value={latestActionableAssistantMessageId}
         >
-          <TimelineTurnStateContext.Provider value={turnStateContextValue}>
-            <AutoHeightContainer>
-              <TimelineRowsList
-                hasOlderTimelineRows={props.hasOlderTimelineRows}
-                isLoadingOlderTimelineRows={props.isLoadingOlderTimelineRows}
-                onLoadOlderRows={props.onLoadOlderRows}
-                rows={rows}
-                scopeActive={scopeActive}
-                showAssistantMessageActions={true}
-                compactActivityIntents={false}
-                spacing="top-level"
-                unreadDividerAutoScroll={props.unreadDividerAutoScroll ?? true}
-                unreadDividerPlacement={props.unreadDividerPlacement ?? null}
-              />
-            </AutoHeightContainer>
-            {hasSelectionActions ? (
-              <TimelineSelectionMenu
-                selection={activeSelection?.selection ?? null}
-                onAddToChat={selectionAddToChatHandler}
-                onReplyInSideChat={handleSelectionReplyInSideChat}
-                onDismiss={dismissSelection}
-              />
-            ) : null}
-          </TimelineTurnStateContext.Provider>
-        </LatestActionableUserMessageIdContext.Provider>
-      </LatestActionableAssistantMessageIdContext.Provider>
-    </TimelineRendererStaticContext.Provider>
+          <LatestActionableUserMessageIdContext.Provider
+            value={latestActionableUserMessageId}
+          >
+            <TimelineTurnStateContext.Provider value={turnStateContextValue}>
+              <AutoHeightContainer>
+                <TimelineRowsList
+                  hasOlderTimelineRows={props.hasOlderTimelineRows}
+                  isLoadingOlderTimelineRows={props.isLoadingOlderTimelineRows}
+                  onLoadOlderRows={props.onLoadOlderRows}
+                  rows={rows}
+                  scopeActive={scopeActive}
+                  showAssistantMessageActions={true}
+                  compactActivityIntents={false}
+                  spacing="top-level"
+                  unreadDividerAutoScroll={props.unreadDividerAutoScroll ?? true}
+                  unreadDividerPlacement={props.unreadDividerPlacement ?? null}
+                />
+              </AutoHeightContainer>
+              {hasSelectionActions ? (
+                <TimelineSelectionMenu
+                  selection={activeSelection?.selection ?? null}
+                  onAddToChat={selectionAddToChatHandler}
+                  onReplyInSideChat={handleSelectionReplyInSideChat}
+                  onDismiss={dismissSelection}
+                />
+              ) : null}
+            </TimelineTurnStateContext.Provider>
+          </LatestActionableUserMessageIdContext.Provider>
+        </LatestActionableAssistantMessageIdContext.Provider>
+      </TimelineRendererStaticContext.Provider>
+    </MessageDirectiveRegistryProvider>
   );
 }
 

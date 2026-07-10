@@ -99,6 +99,41 @@ export interface PluginFileOpenerProps {
   source: PluginFileOpenerSource;
 }
 
+/**
+ * Message context passed to a `messageDirective` component — the assistant
+ * (or nested agent) message that contained the directive.
+ */
+export interface PluginMessageDirectiveMessage {
+  id: string;
+  threadId: string;
+  turnId: string | null;
+  projectId: string | null;
+}
+
+/**
+ * Open a worktree-relative file in the host's workspace file viewer. Returns
+ * true when the host accepted the path; false when the path is invalid or the
+ * viewer declined it.
+ */
+export type PluginMessageDirectiveOpenWorkspaceFile = (path: string) => boolean;
+
+/**
+ * Props passed to a `messageDirective` component. Attributes are untrusted
+ * strings parsed from the directive; the plugin validates its own fields.
+ */
+export interface PluginMessageDirectiveProps {
+  /** Parsed, untrusted directive attributes (e.g. `{ file: "demo.html" }`). */
+  attributes: Readonly<Record<string, string>>;
+  /** Original directive source text (useful for diagnostics / crash fallback). */
+  source: string;
+  message: PluginMessageDirectiveMessage;
+  /**
+   * Opens a worktree-relative file in the host's workspace file viewer. Null
+   * when the message surface has no workspace viewer available.
+   */
+  openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
+}
+
 // ---------------------------------------------------------------------------
 // Slot registrations (the arguments to `app.slots.*`).
 // ---------------------------------------------------------------------------
@@ -108,6 +143,14 @@ export interface PluginFileOpenerProps {
  * digits, `-`, `_`): they ride URLs and persisted panel-tab keys.
  */
 export const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+/**
+ * Message-directive ids must be lowercase kebab-case beginning with a letter
+ * (e.g. `inline-vis` matching `::inline-vis{...}`). Stricter than general
+ * slot ids so directive names stay URL/Markdown-safe and case-stable.
+ */
+export const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN =
+  /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 export interface PluginHomepageSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -252,6 +295,20 @@ export interface PluginFileOpenerRegistration {
   component: ComponentType<PluginFileOpenerProps>;
 }
 
+/**
+ * Register a leaf message directive rendered inside assistant (and nested
+ * agent) message Markdown. `id` is the directive name: `inline-vis` matches
+ * `::inline-vis{file="demo.html"}`.
+ */
+export interface PluginMessageDirectiveRegistration {
+  /**
+   * The directive name. Lowercase kebab-case beginning with a letter
+   * (see {@link PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN}).
+   */
+  id: string;
+  component: ComponentType<PluginMessageDirectiveProps>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -267,6 +324,7 @@ export interface PluginAppSlots {
     registration: PluginSidebarFooterActionRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
+  messageDirective(registration: PluginMessageDirectiveRegistration): void;
 }
 
 export interface PluginAppBuilder {

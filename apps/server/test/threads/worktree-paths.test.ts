@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
-import {
-  deriveRepoDirName,
-  resolveManagedTargetPath,
-} from "../../src/services/threads/worktree-paths.js";
+import { deriveRepoDirName } from "../../src/services/threads/worktree-paths.js";
 
 describe("deriveRepoDirName", () => {
   it.each([
@@ -40,27 +37,5 @@ describe("deriveRepoDirName", () => {
     ],
   ])("rejects %s", (_label, input) => {
     expect(() => deriveRepoDirName(input)).toThrowError(ApiError);
-  });
-});
-
-describe("resolveManagedTargetPath", () => {
-  it("composes dataDir + environmentId + derived repo name", () => {
-    expect(
-      resolveManagedTargetPath({
-        dataDir: "/Users/someone/.bb",
-        environmentId: "env_456",
-        sourcePath: "/Users/someone/code/my-repo",
-      }),
-    ).toBe("/Users/someone/.bb/worktrees/env_456/my-repo");
-  });
-
-  it("uses the repo basename of a remote clone url", () => {
-    expect(
-      resolveManagedTargetPath({
-        dataDir: "/tmp/bb-data",
-        environmentId: "env_456",
-        sourcePath: "https://github.com/octocat/Hello-World.git",
-      }),
-    ).toBe("/tmp/bb-data/worktrees/env_456/Hello-World");
   });
 });

@@ -22,50 +22,7 @@ function listNotesResult(files: MountFile[]) {
   };
 }
 
-describe("markdown editor slot registrations", () => {
-  it("registers the nav panel, thread panel action, and markdown file opener", () => {
-    expect(app.navPanels).toHaveLength(1);
-    expect(app.navPanels[0]).toMatchObject({
-      id: "markdown-editor",
-      title: "Markdown Editor",
-      path: "markdown-editor",
-      chrome: "none",
-    });
-    expect(app.threadPanelActions[0]?.id).toBe("note");
-    expect(app.fileOpeners[0]).toMatchObject({
-      id: "editor",
-      title: "Markdown Editor",
-      extensions: ["md", "mdx", "markdown"],
-    });
-  });
-});
-
 describe("markdown editor nav panel", () => {
-  it("renders the mounted tree from rpc and deep-links notes via toPluginPanel", async () => {
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "" },
-      {
-        rpc: {
-          listNotes: () =>
-            listNotesResult([{ path: "ideas.md", name: "ideas.md" }]),
-        },
-      },
-    );
-    await slot.findByText("ideas.md");
-    slot.getByText("Select a note to start writing.");
-    expect(slot.rpcCalls).toEqual([{ method: "listNotes", input: null }]);
-
-    fireEvent.click(slot.getByText("ideas.md"));
-    expect(slot.navigateCalls).toEqual([
-      {
-        method: "toPluginPanel",
-        path: "markdown-editor",
-        options: { subPath: "0/ideas.md" },
-      },
-    ]);
-  });
-
   it("refetches the tree when the backend publishes notes-changed", async () => {
     let files: MountFile[] = [{ path: "ideas.md", name: "ideas.md" }];
     const slot = renderSlot(
@@ -78,7 +35,9 @@ describe("markdown editor nav panel", () => {
     files = [...files, { path: "todo.md", name: "todo.md" }];
     await slot.emitRealtime("notes-changed", null);
     await slot.findByText("todo.md");
-    expect(slot.rpcCalls.filter((c) => c.method === "listNotes")).toHaveLength(2);
+    expect(slot.rpcCalls.filter((c) => c.method === "listNotes")).toHaveLength(
+      2,
+    );
   });
 
   it("creates a note over rpc and opens it", async () => {

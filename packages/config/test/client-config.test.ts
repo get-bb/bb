@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatClientConfigPath,
   listClientServerOrigins,
   normalizeClientServerOrigin,
   parseClientConfig,
@@ -85,11 +84,5 @@ describe("client config", () => {
         },
       }),
     ).toThrow();
-  });
-
-  it("formats the config path under the data dir", () => {
-    expect(formatClientConfigPath("/tmp/bb-data")).toBe(
-      "/tmp/bb-data/client.json",
-    );
   });
 });

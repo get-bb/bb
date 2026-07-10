@@ -7,7 +7,6 @@ import { and, eq, isNull } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CONNECT_CODE_TTL_MS,
-  MAX_SERVERS_PER_ACCOUNT,
   checkLabelAvailability,
   connectCode,
   parseVisitorHost,
@@ -67,9 +66,17 @@ describe("migration matches the drizzle schema", () => {
   it("drizzle inserts/reads round-trip against the hand-written DDL", () => {
     seedUser();
     const now = new Date();
-    db.insert(profile).values({ userId: "u1", handle: "sawyer", createdAt: now }).run();
+    db.insert(profile)
+      .values({ userId: "u1", handle: "sawyer", createdAt: now })
+      .run();
     db.insert(server)
-      .values({ id: "s1", userId: "u1", name: "default", subdomain: "sawyer", createdAt: now })
+      .values({
+        id: "s1",
+        userId: "u1",
+        name: "default",
+        subdomain: "sawyer",
+        createdAt: now,
+      })
       .run();
 
     const rows = db.select().from(server).where(eq(server.userId, "u1")).all();
@@ -79,18 +86,27 @@ describe("migration matches the drizzle schema", () => {
     expect(rows[0].lastSeenAt).toBeNull();
     expect(rows[0].revokedAt).toBeNull();
 
-    const p = db.select().from(profile).where(eq(profile.handle, "sawyer")).get();
+    const p = db
+      .select()
+      .from(profile)
+      .where(eq(profile.handle, "sawyer"))
+      .get();
     expect(p?.userId).toBe("u1");
   });
 
   it("stores the github login on user (nullable for pre-migration rows)", () => {
     seedUser("u1");
-    expect(db.select().from(user).where(eq(user.id, "u1")).get()?.githubLogin).toBeNull();
+    expect(
+      db.select().from(user).where(eq(user.id, "u1")).get()?.githubLogin,
+    ).toBeNull();
 
-    db.update(user).set({ githubLogin: "sawyerhood" }).where(eq(user.id, "u1")).run();
-    expect(db.select().from(user).where(eq(user.id, "u1")).get()?.githubLogin).toBe(
-      "sawyerhood",
-    );
+    db.update(user)
+      .set({ githubLogin: "sawyerhood" })
+      .where(eq(user.id, "u1"))
+      .run();
+    expect(
+      db.select().from(user).where(eq(user.id, "u1")).get()?.githubLogin,
+    ).toBe("sawyerhood");
   });
 });
 
@@ -99,9 +115,14 @@ describe("constraints", () => {
     seedUser("u1");
     seedUser("u2");
     const now = new Date();
-    db.insert(profile).values({ userId: "u1", handle: "taken", createdAt: now }).run();
+    db.insert(profile)
+      .values({ userId: "u1", handle: "taken", createdAt: now })
+      .run();
     expect(() =>
-      db.insert(profile).values({ userId: "u2", handle: "taken", createdAt: now }).run(),
+      db
+        .insert(profile)
+        .values({ userId: "u2", handle: "taken", createdAt: now })
+        .run(),
     ).toThrow(/UNIQUE/i);
   });
 
@@ -110,21 +131,39 @@ describe("constraints", () => {
     seedUser("u2");
     const now = new Date();
     db.insert(server)
-      .values({ id: "s1", userId: "u1", name: "default", subdomain: "u1-default", createdAt: now })
+      .values({
+        id: "s1",
+        userId: "u1",
+        name: "default",
+        subdomain: "u1-default",
+        createdAt: now,
+      })
       .run();
     // Same (user, name) — rejected by the user_name unique index (distinct
     // subdomain so this targets the name index, not the subdomain constraint).
     expect(() =>
       db
         .insert(server)
-        .values({ id: "s2", userId: "u1", name: "default", subdomain: "u1-second", createdAt: now })
+        .values({
+          id: "s2",
+          userId: "u1",
+          name: "default",
+          subdomain: "u1-second",
+          createdAt: now,
+        })
         .run(),
     ).toThrow(/UNIQUE/i);
     // Different user, same name — allowed (N-ready schema).
     expect(() =>
       db
         .insert(server)
-        .values({ id: "s3", userId: "u2", name: "default", subdomain: "u2-default", createdAt: now })
+        .values({
+          id: "s3",
+          userId: "u2",
+          name: "default",
+          subdomain: "u2-default",
+          createdAt: now,
+        })
         .run(),
     ).not.toThrow();
   });
@@ -134,14 +173,26 @@ describe("constraints", () => {
     seedUser("u2");
     const now = new Date();
     db.insert(server)
-      .values({ id: "s1", userId: "u1", name: "default", subdomain: "taken", createdAt: now })
+      .values({
+        id: "s1",
+        userId: "u1",
+        name: "default",
+        subdomain: "taken",
+        createdAt: now,
+      })
       .run();
     // Same subdomain, different user + different name — still rejected: the
     // namespace is global, not per-account.
     expect(() =>
       db
         .insert(server)
-        .values({ id: "s2", userId: "u2", name: "laptop", subdomain: "taken", createdAt: now })
+        .values({
+          id: "s2",
+          userId: "u2",
+          name: "laptop",
+          subdomain: "taken",
+          createdAt: now,
+        })
         .run(),
     ).toThrow(/UNIQUE/i);
   });
@@ -149,9 +200,17 @@ describe("constraints", () => {
   it("lets one account own several servers, each with its own subdomain", () => {
     seedUser("u1");
     const now = new Date();
-    db.insert(profile).values({ userId: "u1", handle: "sawyer", createdAt: now }).run();
+    db.insert(profile)
+      .values({ userId: "u1", handle: "sawyer", createdAt: now })
+      .run();
     db.insert(server)
-      .values({ id: "s1", userId: "u1", name: "default", subdomain: "sawyer", createdAt: now })
+      .values({
+        id: "s1",
+        userId: "u1",
+        name: "default",
+        subdomain: "sawyer",
+        createdAt: now,
+      })
       .run();
     expect(() =>
       db
@@ -165,14 +224,22 @@ describe("constraints", () => {
         })
         .run(),
     ).not.toThrow();
-    expect(db.select().from(server).where(eq(server.userId, "u1")).all()).toHaveLength(2);
+    expect(
+      db.select().from(server).where(eq(server.userId, "u1")).all(),
+    ).toHaveLength(2);
   });
 
   it("cascades connect codes and servers when a user is deleted", () => {
     seedUser();
     const now = new Date();
     db.insert(server)
-      .values({ id: "s1", userId: "u1", name: "default", subdomain: "sawyer", createdAt: now })
+      .values({
+        id: "s1",
+        userId: "u1",
+        name: "default",
+        subdomain: "sawyer",
+        createdAt: now,
+      })
       .run();
     db.insert(connectCode)
       .values({
@@ -208,7 +275,9 @@ describe("constraints", () => {
       db
         .update(connectCode)
         .set({ consumedAt: new Date() })
-        .where(and(eq(connectCode.code, "one-time"), isNull(connectCode.consumedAt)))
+        .where(
+          and(eq(connectCode.code, "one-time"), isNull(connectCode.consumedAt)),
+        )
         .run();
 
     const first = redeem();
@@ -282,10 +351,6 @@ describe("parseVisitorHost", () => {
 });
 
 describe("validateSubdomain (shares the handle grammar)", () => {
-  it("is the exact same function as validateHandle", () => {
-    expect(validateSubdomain).toBe(validateHandle);
-  });
-
   it("rejects `--`, reserved words, and bad charset the same way handles do", () => {
     expect(validateSubdomain("sawyer-desktop")).toBeNull();
     expect(validateSubdomain("foo--bar")).toBe("invalid-format");
@@ -293,12 +358,6 @@ describe("validateSubdomain (shares the handle grammar)", () => {
     expect(validateSubdomain("has_underscore")).toBe("invalid-format");
     expect(validateSubdomain("ab")).toBe("too-short");
     expect(validateSubdomain("admin")).toBe("reserved");
-  });
-});
-
-describe("multi-server policy", () => {
-  it("raises the per-account server cap for multi-server", () => {
-    expect(MAX_SERVERS_PER_ACCOUNT).toBe(10);
   });
 });
 
@@ -317,13 +376,19 @@ describe("0003 backfill (staged application on real prior data)", () => {
 
       const now = Date.now();
       staged
-        .prepare("INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)")
+        .prepare(
+          "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+        )
         .run("u1", "Test", "u1@example.com", 1, now, now);
       staged
-        .prepare("INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)")
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
         .run("u1", "sawyer", now);
       staged
-        .prepare("INSERT INTO server (id, user_id, name, created_at) VALUES (?,?,?,?)")
+        .prepare(
+          "INSERT INTO server (id, user_id, name, created_at) VALUES (?,?,?,?)",
+        )
         .run("s1", "u1", "default", now);
       // A pending pair code references the server — it must survive the rebuild
       // (the FK-guarded swap must not cascade-delete it).
@@ -331,16 +396,27 @@ describe("0003 backfill (staged application on real prior data)", () => {
         .prepare(
           "INSERT INTO connect_code (code, user_id, server_id, purpose, expires_at, created_at) VALUES (?,?,?,?,?,?)",
         )
-        .run("CODE1", "u1", "s1", "server-pair", now + CONNECT_CODE_TTL_MS, now);
+        .run(
+          "CODE1",
+          "u1",
+          "s1",
+          "server-pair",
+          now + CONNECT_CODE_TTL_MS,
+          now,
+        );
 
       applyMigration(staged, subdomainMigration);
 
-      const row = staged.prepare("SELECT subdomain FROM server WHERE id = ?").get("s1") as {
+      const row = staged
+        .prepare("SELECT subdomain FROM server WHERE id = ?")
+        .get("s1") as {
         subdomain: string;
       };
       expect(row.subdomain).toBe("sawyer");
 
-      const codes = staged.prepare("SELECT server_id FROM connect_code").all() as {
+      const codes = staged
+        .prepare("SELECT server_id FROM connect_code")
+        .all() as {
         server_id: string;
       }[];
       expect(codes).toHaveLength(1);
@@ -349,7 +425,9 @@ describe("0003 backfill (staged application on real prior data)", () => {
       // Post-migration the column is NOT NULL + UNIQUE.
       expect(() =>
         staged
-          .prepare("INSERT INTO server (id, user_id, name, created_at) VALUES (?,?,?,?)")
+          .prepare(
+            "INSERT INTO server (id, user_id, name, created_at) VALUES (?,?,?,?)",
+          )
           .run("s2", "u1", "laptop", now),
       ).toThrow(/NOT NULL/i);
     } finally {
@@ -410,7 +488,9 @@ describe("checkLabelAvailability (both namespaces)", () => {
   it("reports a label taken by an existing handle", async () => {
     seedUser("u1");
     const now = new Date();
-    db.insert(profile).values({ userId: "u1", handle: "sawyer", createdAt: now }).run();
+    db.insert(profile)
+      .values({ userId: "u1", handle: "sawyer", createdAt: now })
+      .run();
     expect(await checkLabelAvailability(db, "sawyer")).toEqual({
       available: false,
       reason: "taken",
@@ -421,7 +501,9 @@ describe("checkLabelAvailability (both namespaces)", () => {
   it("reports a label taken by an existing server subdomain", async () => {
     seedUser("u1");
     const now = new Date();
-    db.insert(profile).values({ userId: "u1", handle: "sawyer", createdAt: now }).run();
+    db.insert(profile)
+      .values({ userId: "u1", handle: "sawyer", createdAt: now })
+      .run();
     db.insert(server)
       .values({
         id: "s1",

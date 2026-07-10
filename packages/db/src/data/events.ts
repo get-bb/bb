@@ -54,6 +54,14 @@ import {
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 
 const isRootTurnStartedEventData = sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`;
+const isNotNestedTurnUsageEvent = sql`NOT EXISTS (
+  SELECT 1
+  FROM events AS nested_turn_started
+  WHERE nested_turn_started.thread_id = ${events.threadId}
+    AND nested_turn_started.turn_id = ${events.turnId}
+    AND nested_turn_started.type = 'turn/started'
+    AND COALESCE(json_extract(nested_turn_started.data, '$.parentToolCallId'), '') <> ''
+)`;
 const isEnvironmentDirectoryUpdateEventData = sql`json_extract(${events.data}, '$.operation') = 'environment_directory_update'`;
 
 export interface InsertEventInput {
@@ -1823,7 +1831,11 @@ function listLatestRowsForContextWindowUsage(
     .select(storedEventRowFields)
     .from(events)
     .where(
-      and(eq(events.threadId, args.threadId), eq(events.type, args.eventType)),
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, args.eventType),
+        isNotNestedTurnUsageEvent,
+      ),
     )
     .orderBy(desc(events.sequence))
     .limit(1)
@@ -1840,6 +1852,7 @@ function listLatestRowsForContextWindowUsage(
       and(
         eq(events.threadId, args.threadId),
         eq(events.type, args.eventType),
+        isNotNestedTurnUsageEvent,
         sql`json_extract(${events.data}, ${args.contextWindowJsonPath}) IS NOT NULL`,
       ),
     )
@@ -2262,28 +2275,39 @@ function pruneLatestRowsForContextWindowUsageBeforeSequence(
     return 0;
   }
 
-  // The timeline needs the latest totals row plus the latest older row that
-  // still carries a non-null modelContextWindow.
+  // The timeline needs the latest root-turn totals row plus the latest older
+  // root-turn row that still carries a non-null modelContextWindow. Usage from
+  // nested turns belongs to subagents and must not replace either report.
   const result = db.run(
-    sql`DELETE FROM events
+    sql`WITH root_usage AS (
+          SELECT usage.id, usage.sequence, usage.data
+          FROM events AS usage
+          WHERE usage.thread_id = ${args.threadId}
+            AND usage.type = ${args.eventType}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM events AS nested_turn_started
+              WHERE nested_turn_started.thread_id = usage.thread_id
+                AND nested_turn_started.turn_id = usage.turn_id
+                AND nested_turn_started.type = 'turn/started'
+                AND COALESCE(json_extract(nested_turn_started.data, '$.parentToolCallId'), '') <> ''
+            )
+        )
+        DELETE FROM events
         WHERE ${events.threadId} = ${args.threadId}
           AND ${events.type} = ${args.eventType}
           AND ${events.sequence} <= ${args.sequenceCutoff}
           AND ${events.id} NOT IN (
-            SELECT latest.id
-            FROM events latest
-            WHERE latest.thread_id = ${args.threadId}
-              AND latest.type = ${args.eventType}
-            ORDER BY latest.sequence DESC
+            SELECT root_usage.id
+            FROM root_usage
+            ORDER BY root_usage.sequence DESC
             LIMIT 1
           )
           AND ${events.id} NOT IN (
-            SELECT latest_context.id
-            FROM events latest_context
-            WHERE latest_context.thread_id = ${args.threadId}
-              AND latest_context.type = ${args.eventType}
-              AND json_extract(latest_context.data, ${args.contextWindowJsonPath}) IS NOT NULL
-            ORDER BY latest_context.sequence DESC
+            SELECT root_usage.id
+            FROM root_usage
+            WHERE json_extract(root_usage.data, ${args.contextWindowJsonPath}) IS NOT NULL
+            ORDER BY root_usage.sequence DESC
             LIMIT 1
           )`,
   );

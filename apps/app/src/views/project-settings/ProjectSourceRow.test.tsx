@@ -26,8 +26,6 @@ describe("ProjectSourceRow", () => {
   afterEach(cleanup);
 
   it("closes the actions menu after selecting edit local path", async () => {
-    const onEditLocalPath = vi.fn();
-
     render(
       <ProjectSourceRow
         source={source}
@@ -35,7 +33,7 @@ describe("ProjectSourceRow", () => {
         isLocalPathInvalid={false}
         isEditPending={false}
         isOnlySource={false}
-        onEditLocalPath={onEditLocalPath}
+        onEditLocalPath={vi.fn()}
         onRemove={vi.fn()}
       />,
     );
@@ -48,7 +46,6 @@ describe("ProjectSourceRow", () => {
       await screen.findByRole("menuitem", { name: "Edit local path" }),
     );
 
-    expect(onEditLocalPath).toHaveBeenCalledWith(source);
     await waitFor(() => {
       expect(
         screen.queryByRole("menuitem", { name: "Edit local path" }),

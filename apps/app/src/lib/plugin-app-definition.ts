@@ -1,10 +1,12 @@
 import {
+  PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN,
   PLUGIN_SLOT_ID_PATTERN,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginComposerAccessoryRegistration,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
+  type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
   type PluginPendingInteractionRegistration,
   type PluginSettingsSectionRegistration,
@@ -46,6 +48,18 @@ function requireSlotId(kind: string, value: unknown): string {
   if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
     throw new Error(
       `${kind}: "id" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
+function requireMessageDirectiveId(kind: string, value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    !PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN.test(value)
+  ) {
+    throw new Error(
+      `${kind}: "id" must match ${String(PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN)}, got ${JSON.stringify(value)}`,
     );
   }
   return value;
@@ -103,6 +117,7 @@ export function collectPluginAppRegistrations(
   const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
+  const messageDirectives: PluginMessageDirectiveRegistration[] = [];
   const seenIds = {
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
@@ -112,6 +127,7 @@ export function collectPluginAppRegistrations(
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
+    messageDirective: new Set<string>(),
   };
 
   definition.setup({
@@ -259,6 +275,15 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      messageDirective(registration) {
+        const kind = "slots.messageDirective";
+        const id = requireMessageDirectiveId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.messageDirective, id);
+        messageDirectives.push({
+          id,
+          component: requireComponent(kind, registration.component),
+        });
+      },
     },
   });
 
@@ -271,6 +296,7 @@ export function collectPluginAppRegistrations(
     pendingInteractions,
     sidebarFooterActions,
     fileOpeners,
+    messageDirectives,
   };
 }
 

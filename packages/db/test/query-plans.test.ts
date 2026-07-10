@@ -300,8 +300,8 @@ describe("slow query index plans", () => {
       logger,
       predicate: (fields) =>
         fields.operation === "run" &&
-        fields.sql.startsWith("DELETE FROM events") &&
-        fields.sql.includes("latest_context"),
+        fields.sql.includes("DELETE FROM events") &&
+        fields.sql.includes("root_usage"),
     });
     assertEmittedQueryPlanUsesIndex({
       db,
@@ -310,11 +310,9 @@ describe("slow query index plans", () => {
       params: [
         thread.id,
         "thread/contextWindowUsage/updated",
+        thread.id,
+        "thread/contextWindowUsage/updated",
         sequenceCutoff,
-        thread.id,
-        "thread/contextWindowUsage/updated",
-        thread.id,
-        "thread/contextWindowUsage/updated",
         "$.contextWindowUsage.modelContextWindow",
       ],
     });

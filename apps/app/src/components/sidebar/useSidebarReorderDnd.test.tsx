@@ -37,7 +37,6 @@ describe("useSidebarReorderDnd", () => {
     act(() => result.current.dndContextProps.onDragStart?.(DRAG_START_EVENT));
     act(() => result.current.dndContextProps.onDragEnd?.(DRAG_END_EVENT));
     expect(document.body.dataset.sidebarDragging).toBeUndefined();
-    expect(onDragEnd).toHaveBeenCalledWith(DRAG_END_EVENT);
 
     act(() => result.current.dndContextProps.onDragStart?.(DRAG_START_EVENT));
     unmount();

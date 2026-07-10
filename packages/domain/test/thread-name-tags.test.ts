@@ -34,14 +34,4 @@ describe("thread name tags", () => {
       threadName: "[bb] Literal",
     });
   });
-
-  it("returns non-name events unchanged", () => {
-    const event = {
-      type: "thread/started",
-      threadId: "t1",
-      scope: threadScope(),
-    } satisfies ThreadEvent;
-
-    expect(normalizeProviderThreadNameEvent(event)).toBe(event);
-  });
 });

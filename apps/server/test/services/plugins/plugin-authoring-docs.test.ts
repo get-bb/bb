@@ -9,6 +9,7 @@ import {
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
+  type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
   type PluginPendingInteractionProps,
@@ -145,6 +146,7 @@ type SlotPropsByName = {
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
+  messageDirective: PluginMessageDirectiveProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -160,6 +162,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   fileOpener: ["path", "source"],
+  messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };

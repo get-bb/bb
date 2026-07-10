@@ -16,6 +16,7 @@ export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 export const BUILTIN_PLUGIN_NAMES = [
   "automations",
   "connect",
+  "inline-vis",
   "secrets",
 ] as const satisfies readonly string[];
 

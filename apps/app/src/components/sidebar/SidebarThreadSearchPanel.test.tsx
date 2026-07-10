@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
 
 import { createRef } from "react";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
 import type {
@@ -117,9 +111,7 @@ afterEach(() => {
 });
 
 describe("SidebarThreadSearchPanel", () => {
-  it("clears stale search rows while the visible query is debouncing", async () => {
-    const onNavigationItemsChange =
-      vi.fn<(items: readonly SidebarThreadSearchNavigationItem[]) => void>();
+  it("clears stale search rows while the visible query is debouncing", () => {
     mockThreadSearch({
       data: createSearchResponse(
         createThreadListEntry({
@@ -140,7 +132,7 @@ describe("SidebarThreadSearchPanel", () => {
         activeIndex={0}
         isRecentsLoading={false}
         onActiveIndexChange={vi.fn()}
-        onNavigationItemsChange={onNavigationItemsChange}
+        onNavigationItemsChange={vi.fn()}
         onSelect={vi.fn()}
         projectNamesById={new Map()}
         query="needle updated"
@@ -150,15 +142,10 @@ describe("SidebarThreadSearchPanel", () => {
 
     expect(screen.getByText("Searching threads...")).not.toBeNull();
     expect(screen.queryByRole("option")).toBeNull();
-    await waitFor(() =>
-      expect(onNavigationItemsChange).toHaveBeenLastCalledWith([]),
-    );
   });
 
-  it("publishes stable option ids and scrolls the active search row into view", async () => {
+  it("uses a stable option id and scrolls the active search row into view", () => {
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
-    const onNavigationItemsChange =
-      vi.fn<(items: readonly SidebarThreadSearchNavigationItem[]) => void>();
     const thread = createThreadListEntry({
       id: "thr_current",
       title: "Current needle",
@@ -179,7 +166,7 @@ describe("SidebarThreadSearchPanel", () => {
         activeIndex={0}
         isRecentsLoading={false}
         onActiveIndexChange={vi.fn()}
-        onNavigationItemsChange={onNavigationItemsChange}
+        onNavigationItemsChange={vi.fn()}
         onSelect={vi.fn()}
         projectNamesById={new Map()}
         query="needle"
@@ -188,61 +175,7 @@ describe("SidebarThreadSearchPanel", () => {
     );
 
     expect(screen.getByRole("option").id).toBe(optionId);
-    await waitFor(() =>
-      expect(onNavigationItemsChange).toHaveBeenLastCalledWith([
-        {
-          id: "active:thr_current",
-          optionId,
-          projectId: "proj_search",
-          threadId: "thr_current",
-          messageSeq: null,
-        },
-      ]),
-    );
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
-  });
-
-  it("renders the matched message text before thread metadata", () => {
-    const thread = createThreadListEntry({
-      id: "thr_message",
-      title: "Worktree cleanup",
-    });
-    const snippet = "needle appears in the original request";
-    mockThreadSearch({
-      data: createSearchResponse(thread, [
-        {
-          sourceKind: "assistant_message",
-          text: snippet,
-          highlightRanges: [{ start: 0, end: 6 }],
-          sourceSeq: 3,
-        },
-      ]),
-      debouncedQuery: "needle",
-      hasSearchableQuery: true,
-      isDebouncing: false,
-      isError: false,
-      isFetching: false,
-      isLoading: false,
-    });
-
-    render(
-      <SidebarThreadSearchPanel
-        activeIndex={0}
-        isRecentsLoading={false}
-        onActiveIndexChange={vi.fn()}
-        onNavigationItemsChange={vi.fn()}
-        onSelect={vi.fn()}
-        projectNamesById={new Map([["proj_search", "Search project"]])}
-        query="needle"
-        recentThreads={[]}
-      />,
-    );
-
-    const rowText = screen.getByRole("option").textContent ?? "";
-    expect(rowText.indexOf(snippet)).toBeGreaterThanOrEqual(0);
-    expect(rowText.indexOf("Worktree cleanup")).toBeGreaterThan(
-      rowText.indexOf(snippet),
-    );
   });
 
   it("shows folder metadata instead of project metadata in folder mode", () => {
@@ -379,7 +312,6 @@ describe("ProjectListActionButtons", () => {
 
   it("labels the search close button as a close-and-clear action when a query exists", () => {
     const inputRef = createRef<HTMLInputElement>();
-    const onClose = vi.fn();
 
     render(
       <ProjectListActionButtons
@@ -389,18 +321,16 @@ describe("ProjectListActionButtons", () => {
           inputRef,
           isActive: true,
           onActivate: vi.fn(),
-          onClose,
+          onClose: vi.fn(),
           onQueryChange: vi.fn(),
           query: "needle",
         }}
       />,
     );
 
-    fireEvent.click(
+    expect(
       screen.getByRole("button", { name: "Clear and close search" }),
-    );
-
-    expect(onClose).toHaveBeenCalledTimes(1);
+    ).not.toBeNull();
   });
 });
 

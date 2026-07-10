@@ -41,25 +41,10 @@ function createSidebarViewStore() {
   return store;
 }
 
-// The combined menu closes only on outside click / Escape, never on a
-// selection. A controlled wrapper starts open and records every open-state
-// change so tests can assert the menu was never asked to close.
-function ControlledDisplayOptionsMenu({
-  onOpenChange,
-}: {
-  onOpenChange: (open: boolean) => void;
-}) {
+function ControlledDisplayOptionsMenu() {
   const [open, setOpen] = useState(true);
 
-  return (
-    <SidebarDisplayOptionsMenu
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        onOpenChange(nextOpen);
-      }}
-    />
-  );
+  return <SidebarDisplayOptionsMenu open={open} onOpenChange={setOpen} />;
 }
 
 function renderMobileViewOptions(children: ReactNode) {
@@ -83,11 +68,7 @@ afterEach(() => {
 
 describe("sidebar display options menu", () => {
   it("switches organization mode and keeps the menu open", async () => {
-    const onOpenChange = vi.fn();
-
-    renderMobileViewOptions(
-      <ControlledDisplayOptionsMenu onOpenChange={onOpenChange} />,
-    );
+    renderMobileViewOptions(<ControlledDisplayOptionsMenu />);
 
     const trigger = screen.getByRole("button", {
       name: "Sidebar display options",
@@ -98,43 +79,39 @@ describe("sidebar display options menu", () => {
     const organizeGroup = await screen.findByRole("radiogroup", {
       name: "Organize by",
     });
-    fireEvent.click(within(organizeGroup).getByRole("radio", { name: "Manual" }));
+    fireEvent.click(
+      within(organizeGroup).getByRole("radio", { name: "Manual" }),
+    );
 
     expect(screen.getByTestId("organization-mode").textContent).toBe(
       "chronological",
     );
-    // A selection never closes the menu.
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("activates a new sort field descending and keeps the menu open", async () => {
-    const onOpenChange = vi.fn();
+    renderMobileViewOptions(<ControlledDisplayOptionsMenu />);
 
-    renderMobileViewOptions(
-      <ControlledDisplayOptionsMenu onOpenChange={onOpenChange} />,
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Created at" }),
     );
-
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Created at" }));
 
     expect(screen.getByTestId("chronological-sort").textContent).toBe(
       "created",
     );
     expect(screen.getByTestId("sort-direction").textContent).toBe("desc");
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
-    // The menu content is still mounted, so a follow-up selection is possible.
     expect(
       screen.queryByRole("menuitem", { name: "Created at" }),
     ).not.toBeNull();
   });
 
   it("flips direction when re-selecting the active sort field", async () => {
-    renderMobileViewOptions(
-      <ControlledDisplayOptionsMenu onOpenChange={vi.fn()} />,
-    );
+    renderMobileViewOptions(<ControlledDisplayOptionsMenu />);
 
     // "Updated at" is the seeded active field (desc); re-selecting it flips.
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Updated at" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Updated at" }),
+    );
 
     expect(screen.getByTestId("chronological-sort").textContent).toBe(
       "updated",
@@ -143,9 +120,7 @@ describe("sidebar display options menu", () => {
   });
 
   it("starts alphabetical ascending", async () => {
-    renderMobileViewOptions(
-      <ControlledDisplayOptionsMenu onOpenChange={vi.fn()} />,
-    );
+    renderMobileViewOptions(<ControlledDisplayOptionsMenu />);
 
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Alphabetical" }),

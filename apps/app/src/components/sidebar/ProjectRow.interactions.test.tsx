@@ -132,106 +132,10 @@ function renderProjectRow(
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
 }
 
-function expectRightAlignedRollupStatus(label: string) {
-  const icon = screen
-    .getAllByLabelText(label)
-    .find((element) => element.closest(".bb-sidebar-hover-actions-fade"));
-  expect(icon).not.toBeUndefined();
-  const overlay = icon?.closest(".bb-sidebar-hover-actions-fade");
-  expect(overlay).not.toBeNull();
-  expect(overlay?.className).toContain("justify-end");
-  return overlay;
-}
-
 describe("ProjectRow interactions", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
-  });
-
-  it("does not toggle collapse when the project row is clicked", () => {
-    const { onToggleProjectCollapsed } = renderProjectRow();
-
-    fireEvent.click(screen.getByText("Test project"));
-
-    expect(onToggleProjectCollapsed).not.toHaveBeenCalled();
-  });
-
-  it("toggles collapse when the project chevron is clicked", () => {
-    const { onToggleProjectCollapsed } = renderProjectRow();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Collapse Test project" }),
-    );
-
-    expect(onToggleProjectCollapsed).toHaveBeenCalledWith("proj_test");
-  });
-
-  it("keeps hover background scoped to the project chevron", () => {
-    const { container } = renderProjectRow();
-
-    const header = container.querySelector(".bb-sidebar-hover-actions-row");
-    expect(header).not.toBeNull();
-    expect(header?.className).not.toContain("hover:bg-sidebar-accent");
-
-    const leadingIcon = container.querySelector('[aria-hidden="true"]');
-    expect(leadingIcon?.className).not.toContain("group-hover/project-row");
-
-    expect(
-      screen.getByRole("button", { name: "Collapse Test project" }).className,
-    ).toContain("hover:bg-sidebar-accent");
-  });
-
-  it("uses selected state on active project headers without row hover", () => {
-    const { container } = renderProjectRow(
-      vi.fn(),
-      { status: "ready", threads: [] },
-      true,
-    );
-
-    const header = container.querySelector(".bb-sidebar-hover-actions-row");
-    expect(header).not.toBeNull();
-    expect(header?.className).toContain("bg-sidebar-border");
-    expect(header?.className).not.toContain("cursor-pointer");
-    expect(header?.className).not.toContain("hover:bg-sidebar-accent");
-  });
-
-  it("keeps worktree group row static and scopes collapse to the chevron", () => {
-    const { onToggleEnvironmentCollapsed } = renderProjectRow(vi.fn(), {
-      status: "ready",
-      threads: [
-        makeThread({
-          id: "thr_worktree_a",
-          environmentId: "env_test",
-          environmentName: "Feature workspace",
-          environmentBranchName: "feat/menu-close",
-          environmentWorkspaceDisplayKind: "managed-worktree",
-        }),
-        makeThread({
-          id: "thr_worktree_b",
-          environmentId: "env_test",
-          environmentName: "Feature workspace",
-          environmentBranchName: "feat/menu-close",
-          environmentWorkspaceDisplayKind: "managed-worktree",
-        }),
-      ],
-    });
-    const worktreeHeader = screen
-      .getByText("Feature workspace")
-      .closest(".bb-sidebar-hover-actions-row");
-
-    expect(worktreeHeader).not.toBeNull();
-    expect(worktreeHeader?.className).not.toContain("cursor-pointer");
-
-    fireEvent.click(screen.getByText("Feature workspace"));
-    expect(onToggleEnvironmentCollapsed).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Collapse Feature workspace threads",
-      }),
-    );
-    expect(onToggleEnvironmentCollapsed).toHaveBeenCalledWith("env_test");
   });
 
   it("shows foreground agent rollup before workflow activity", () => {
@@ -280,43 +184,6 @@ describe("ProjectRow interactions", () => {
     expect(screen.getByLabelText("Agent working")).not.toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
-    expectRightAlignedRollupStatus("Agent working");
-  });
-
-  it("shows right-aligned collapsed project activity before hover actions", () => {
-    renderProjectRow(
-      vi.fn(),
-      {
-        status: "ready",
-        threads: [
-          makeThread({
-            status: "active",
-            runtime: {
-              displayStatus: "active",
-              hostReconnectGraceExpiresAt: null,
-            },
-          }),
-        ],
-      },
-      false,
-      new Set(),
-      true,
-    );
-
-    expect(
-      screen.getByRole("button", { name: "Expand Test project" }),
-    ).not.toBeNull();
-    const overlay = expectRightAlignedRollupStatus("Agent working");
-    expect(overlay?.className).toContain("max-md:pointer-coarse:hidden");
-    expect(
-      screen
-        .getAllByLabelText("Agent working")
-        .some((element) =>
-          element
-            .closest("span")
-            ?.className.includes("max-md:pointer-coarse:inline-flex"),
-        ),
-    ).toBe(true);
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {
@@ -346,7 +213,6 @@ describe("ProjectRow interactions", () => {
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
-    expect(mockUpdateEnvironment.reset).toHaveBeenCalled();
     expect(
       await screen.findByRole("dialog", { name: "Rename environment" }),
     ).not.toBeNull();

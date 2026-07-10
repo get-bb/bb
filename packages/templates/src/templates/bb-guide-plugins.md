@@ -89,9 +89,14 @@ threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with JSON params), composerAccessory (prompt box
 footer), pendingInteraction (temporarily replace a thread composer with a
-plugin form), and fileOpener (register as a per-extension file viewer/editor;
+plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
-file link for a one-off choice). Hooks:
+file link for a one-off choice), and messageDirective (replace a leaf
+`::name{k="v"}` block inside assistant / nested-agent Markdown with a plugin
+component; unknown, disabled, incomplete, code-fenced, or crashing
+directives fall back to the original source; components receive a nullable
+openWorkspaceFile(path) callback for opening a worktree-relative file in the
+host workspace viewer). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
 useBbNavigate, and useComposer (quote selections / insert mention pills
 into the chat composer draft). Components are vendored shadcn source the plugin owns (the
@@ -166,7 +171,8 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, settingsSection,
-navPanel, threadPanelAction, composerAccessory, fileOpener) via
+navPanel, threadPanelAction, composerAccessory, fileOpener,
+messageDirective) via
 definePluginApp, use the hooks
 listed above, and render vendored components; styling is Tailwind against
 the host theme's tokens only (semantic classes like bg-background and
@@ -176,7 +182,11 @@ For the complete authoring reference — exact signatures, working snippets
 for every surface, the reload lifecycle, testing tips, and gotchas — use
 the built-in `bb-plugin-authoring` skill (agents: it loads on demand;
 humans: apps/server/src/services/skills/builtin-skills/bb-plugin-authoring/
-in a checkout). The `examples/plugins/` directory of a bb checkout has four
+in a checkout). The builtin `inline-vis` plugin renders
+`::inline-vis{file="demo.html" height="480"}` through the sidebar's
+path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
+Its card header includes an open-in-sidebar action for the source HTML file.
+The `examples/plugins/` directory of a bb checkout also has
 reference plugins: github (full-stack: gh-CLI-backed issue/PR browser on
 vendored shadcn components), slack-bot (webhook bot), agent-enrichment
-(agent surfaces), small-ux-pack (host-rendered UI).
+(agent surfaces), and small-ux-pack (host-rendered UI).

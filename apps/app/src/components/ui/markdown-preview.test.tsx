@@ -28,14 +28,6 @@ afterEach(() => {
 });
 
 describe("MarkdownPreview", () => {
-  it("syntax-highlights fenced code blocks", () => {
-    const { container } = render(
-      <MarkdownPreview content={"```ts\nconst x = 1;\n```"} />,
-    );
-    expect(container.querySelector(".sh__line")).not.toBeNull();
-    expect(container.querySelector(".sh__token--keyword")).not.toBeNull();
-  });
-
   it("HTML-escapes fenced code so it cannot inject markup", () => {
     const { container } = render(
       <MarkdownPreview
@@ -44,18 +36,6 @@ describe("MarkdownPreview", () => {
     );
     expect(container.querySelector("script")).toBeNull();
     expect(container.textContent).toContain("<script>alert(1)</script>");
-  });
-
-  it("toggles soft wrap on a fenced code block", () => {
-    const { container } = render(
-      <MarkdownPreview content={"```ts\nconst value = 1;\n```"} />,
-    );
-    const pre = container.querySelector("pre");
-    expect(pre?.classList.contains("overflow-x-auto")).toBe(true);
-    expect(pre?.classList.contains("whitespace-pre-wrap")).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Wrap long lines" }));
-    expect(pre?.classList.contains("whitespace-pre-wrap")).toBe(true);
-    expect(pre?.classList.contains("overflow-x-auto")).toBe(false);
   });
 
   it("renders inline-code Markdown file paths as local file links", () => {
@@ -166,24 +146,6 @@ describe("MarkdownPreview", () => {
     fireEvent.click(screen.getByRole("link", { name: "local thread" }));
 
     expect(onOpenLink).toHaveBeenCalledWith({ href });
-  });
-
-  it("lets long local file link labels wrap without making the anchor flex", () => {
-    const href =
-      "file:///Users/brsbl/Moss/Notes/Agent%20Workspaces/Claude%20Workspace/Release%20Readiness%20Inventory%20%E2%80%94%20Next%20Release/Release%20Readiness%20Inventory%20%E2%80%94%20Next%20Release.md";
-
-    render(
-      <MarkdownPreview
-        content={`[${href}](${href})`}
-        linkRouting={workspaceLinkRouting}
-      />,
-    );
-
-    const link = screen.getByRole("link", { name: href });
-
-    expect(link.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
-    expect(link.classList.contains("inline-flex")).toBe(false);
-    expect(link.querySelector('[data-icon="ExternalLink"]')).not.toBeNull();
   });
 
   it("rewrites localhost link hrefs without changing the visible text", () => {

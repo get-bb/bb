@@ -9,6 +9,10 @@ import { fileNameFromPath } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
+import {
+  parseLocalFileHref,
+  resolveRelativeLocalFileHref,
+} from "@/components/ui/markdown-local-file-link.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
 import type {
@@ -34,6 +38,10 @@ import {
   shiftMentionsToTextRange,
 } from "./ConversationMessageMentions.js";
 import type { MarkdownPromptMentions } from "@/components/ui/markdown-prompt-mentions.js";
+import {
+  useMessageDirectiveRegistry,
+  type MarkdownMessageDirectives,
+} from "@/components/ui/markdown-message-directives.js";
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
@@ -475,6 +483,7 @@ function UserConversationMessage({
 
 function AssistantConversationMessage({
   attachmentItems,
+  id,
   onFork,
   onSideChat,
   onSendToMain,
@@ -486,6 +495,8 @@ function AssistantConversationMessage({
   showActions,
   mobileActionDisplay,
   text,
+  threadId,
+  turnId,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
   const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
@@ -514,6 +525,60 @@ function AssistantConversationMessage({
     return routing;
   }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
 
+  // Registry is subscribed once at the timeline root and provided via context;
+  // only assistant (and nested delegation) bodies activate plugin directives.
+  const messageDirectiveRegistry = useMessageDirectiveRegistry();
+  const openDirectiveWorkspaceFile = useMemo<
+    MarkdownMessageDirectives["openWorkspaceFile"]
+  >(() => {
+    if (onOpenLocalFileLink === undefined || workspaceRootPath === undefined) {
+      return null;
+    }
+
+    return (path) => {
+      const href = resolveRelativeLocalFileHref({
+        baseDir: workspaceRootPath,
+        href: path,
+        rootPath: workspaceRootPath,
+      });
+      if (href === null) {
+        return false;
+      }
+      const link = parseLocalFileHref({
+        absoluteLinks: { kind: "contained", rootPath: workspaceRootPath },
+        href,
+      });
+      return link === null ? false : onOpenLocalFileLink(link);
+    };
+  }, [onOpenLocalFileLink, workspaceRootPath]);
+  const messageDirectives = useMemo<
+    MarkdownMessageDirectives | undefined
+  >(() => {
+    if (
+      messageDirectiveRegistry === null ||
+      messageDirectiveRegistry.size === 0
+    ) {
+      return undefined;
+    }
+    return {
+      registry: messageDirectiveRegistry,
+      message: {
+        id,
+        threadId,
+        turnId,
+        projectId: projectId ?? null,
+      },
+      openWorkspaceFile: openDirectiveWorkspaceFile,
+    };
+  }, [
+    messageDirectiveRegistry,
+    id,
+    threadId,
+    turnId,
+    projectId,
+    openDirectiveWorkspaceFile,
+  ]);
+
   return (
     <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
       {/*
@@ -522,7 +587,11 @@ function AssistantConversationMessage({
         side chat).
       */}
       <SelectableMessageProse onSelect={onSelectProse}>
-        <MarkdownPreview content={text} linkRouting={linkRouting} />
+        <MarkdownPreview
+          content={text}
+          linkRouting={linkRouting}
+          messageDirectives={messageDirectives}
+        />
       </SelectableMessageProse>
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}

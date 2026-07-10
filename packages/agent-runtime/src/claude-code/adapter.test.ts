@@ -139,12 +139,6 @@ const invalidClaudeUserQuestionAnswerCases: InvalidClaudeUserQuestionAnswerCase[
 describe("claude-code provider adapter", () => {
   // -- Identity & capabilities ---------------------------------------------
 
-  it("has correct identity", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-    expect(adapter.id).toBe("claude-code");
-    expect(adapter.displayName).toBe("Claude Code");
-  });
-
   it("has correct process config", () => {
     const adapter = createClaudeCodeProviderAdapter();
     expect(adapter.process.command).toBe("node");

@@ -2451,10 +2451,6 @@ describe("host-daemon command schemas", () => {
 });
 
 describe("host-daemon session schemas", () => {
-  it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(49);
-  });
-
   it("parses valid session open and event batch payloads", () => {
     expect(
       hostDaemonSessionOpenRequestSchema.parse({

@@ -499,14 +499,6 @@ describe("SideChatTabContent", () => {
     expect(screen.queryByText("Provisioning side chat...")).toBeNull();
   });
 
-  it("uses the shared follow-up prompt height path when there are no queued messages", () => {
-    renderDraftSideChat();
-
-    expect(screen.getByTestId("side-chat-stack-state").textContent).toBe(
-      "provided",
-    );
-  });
-
   it("keeps permission locked while model controls remain editable", () => {
     renderDraftSideChat();
 
@@ -522,59 +514,13 @@ describe("SideChatTabContent", () => {
     );
   });
 
-  it("loads child execution defaults after a side-chat thread exists", () => {
-    renderSideChat({ threadId: "thr_side" });
-
-    expect(mocks.defaultExecutionOptionsThreadIds).toContain("thr_side");
-  });
-
-  it("renders the side-chat reply anchor as markdown", () => {
-    renderSideChat({
-      threadId: null,
-      sourceMessageText: [
-        "# Anchor",
-        "",
-        "Status: **done** with `pnpm test`.",
-        "",
-        "- one",
-      ].join("\n"),
-    });
-
-    expect(screen.getByRole("heading", { name: "Anchor" })).toBeTruthy();
-    expect(screen.getByText("done").tagName).toBe("STRONG");
-    expect(screen.getByText("pnpm test").tagName).toBe("CODE");
-    expect(screen.getByText("one").closest("li")).not.toBeNull();
-  });
-
-  it("renders a whole-message markdown fence as a full code block in the side-chat reply anchor", () => {
-    const { view } = renderSideChat({
-      threadId: null,
-      sourceMessageText: [
-        "```markdown",
-        "## Status Update",
-        "",
-        "The requested work is **ready**.",
-        "",
-        "- Completed the pass",
-        "```",
-      ].join("\n"),
-    });
-
-    const languageLabel = screen.getByText("markdown");
-    const code = view.container.querySelector("pre code");
-
-    expect(screen.queryByRole("heading", { name: "Status Update" })).toBeNull();
-    expect(languageLabel).toBeTruthy();
-    expect(languageLabel.closest(".max-h-20")).toBeNull();
-    expect(code?.textContent).toContain("## Status Update");
-    expect(code?.textContent).toContain("The requested work is **ready**.");
-    expect(code?.textContent).toContain("- Completed the pass");
-  });
-
   it("creates the side-chat child thread with the first submitted message", async () => {
     mocks.createThreadMutateAsync.mockResolvedValueOnce({ id: "thr_side" });
     const { onSetThreadId } = renderDraftSideChat();
 
+    fireEvent.click(screen.getByRole("button", { name: "Use o4-mini" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use high reasoning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use fast mode" }));
     fireEvent.change(screen.getByTestId("side-chat-composer"), {
       target: { value: "Compare the tradeoffs" },
     });
@@ -594,6 +540,10 @@ describe("SideChatTabContent", () => {
           { type: "text", text: "Compare the tradeoffs", mentions: [] },
         ],
         originKind: "side-chat",
+        model: "o4-mini",
+        permissionMode: "readonly",
+        reasoningLevel: "high",
+        serviceTier: "fast",
         sourceSeqEnd: 9,
         sourceThreadId: "thr_parent",
       }),
@@ -602,31 +552,6 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       threadId: "thr_side",
     });
-  });
-
-  it("uses the selected model options when creating a draft side-chat thread", async () => {
-    mocks.createThreadMutateAsync.mockResolvedValueOnce({ id: "thr_side" });
-    renderDraftSideChat();
-
-    fireEvent.click(screen.getByRole("button", { name: "Use o4-mini" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use high reasoning" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use fast mode" }));
-    fireEvent.change(screen.getByTestId("side-chat-composer"), {
-      target: { value: "Use another model" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
-
-    await waitFor(() =>
-      expect(mocks.createThreadMutateAsync).toHaveBeenCalledTimes(1),
-    );
-    expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: "o4-mini",
-        reasoningLevel: "high",
-        serviceTier: "fast",
-        permissionMode: "readonly",
-      }),
-    );
   });
 
   it("uses the selected model options when sending an existing side-chat message", async () => {
@@ -732,60 +657,6 @@ describe("SideChatTabContent", () => {
     );
   });
 
-  it("wires side-chat mention and command typeahead to the normal hooks", async () => {
-    renderSideChat({ threadId: "thr_side" });
-
-    expect(mocks.promptMentionArgs[mocks.promptMentionArgs.length - 1]).toEqual(
-      {
-        projectId: "proj_parent",
-        options: {
-          currentThreadId: "thr_side",
-          environmentId: null,
-        },
-      },
-    );
-    expect(
-      mocks.commandSuggestionArgs[mocks.commandSuggestionArgs.length - 1],
-    ).toEqual({
-      projectId: "proj_parent",
-      providerId: "codex",
-      skillsTrigger: "/",
-      promptActions: [
-        { kind: "skills", text: "/" },
-        {
-          kind: "loop",
-          command: { trigger: "/", name: "loop", trailingText: " " },
-          text: "/loop ",
-        },
-      ],
-      environmentId: null,
-      query: null,
-    });
-    expect(screen.getByTestId("command-trigger").textContent).toBe("/");
-
-    fireEvent.click(screen.getByRole("button", { name: "Mention query" }));
-    expect(mocks.promptMentionSetQuery).toHaveBeenCalledWith("readme");
-
-    fireEvent.click(screen.getByRole("button", { name: "Command query" }));
-    await waitFor(() =>
-      expect(mocks.commandSuggestionArgs).toContainEqual({
-        projectId: "proj_parent",
-        providerId: "codex",
-        skillsTrigger: "/",
-        promptActions: [
-          { kind: "skills", text: "/" },
-          {
-            kind: "loop",
-            command: { trigger: "/", name: "loop", trailingText: " " },
-            text: "/loop ",
-          },
-        ],
-        environmentId: null,
-        query: "review",
-      }),
-    );
-  });
-
   it("allows active side chats to send modifier-submit steering messages", async () => {
     mocks.threadRuntimeDisplayStatus = "active";
     mocks.sendThreadMessageMutateAsync.mockResolvedValueOnce(undefined);
@@ -852,29 +723,24 @@ describe("SideChatTabContent", () => {
     );
   });
 
-  it("hides send-to-main actions while the side chat is running", () => {
+  it("offers send-to-main actions only while the side chat is idle", () => {
     mocks.threadRuntimeDisplayStatus = "active";
     mocks.threadTimelineRows.push({
       kind: "conversation",
       role: "assistant",
       text: "Side-chat answer",
     });
-    renderSideChat({ threadId: "thr_side" });
+    const { onSetThreadId, view } = renderSideChat({ threadId: "thr_side" });
 
     expect(
       mocks.timelineRowsProps[mocks.timelineRowsProps.length - 1]
         ?.onSendToMainMessage,
     ).toBeUndefined();
-  });
 
-  it("shows send-to-main actions when the side chat is idle", () => {
-    mocks.threadTimelineRows.push({
-      kind: "conversation",
-      role: "assistant",
-      text: "Side-chat answer",
-    });
-    renderSideChat({ threadId: "thr_side" });
-
+    mocks.threadRuntimeDisplayStatus = "idle";
+    view.rerender(
+      buildSideChatElement({ onSetThreadId, threadId: "thr_side" }),
+    );
     expect(
       mocks.timelineRowsProps[mocks.timelineRowsProps.length - 1]
         ?.onSendToMainMessage,

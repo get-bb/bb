@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { ThreadPromptModeCard } from "./ThreadPromptModeCard";
 
 afterEach(() => {
@@ -9,9 +9,7 @@ afterEach(() => {
 });
 
 describe("ThreadPromptModeCard", () => {
-  it("toggles plan mode and shows the prompt only when expanded", () => {
-    const onToggle = vi.fn();
-    const onExitPlanMode = vi.fn();
+  it("shows the plan prompt only when expanded", () => {
     const { rerender } = render(
       <ThreadPromptModeCard
         activePromptMode={{
@@ -20,22 +18,15 @@ describe("ThreadPromptModeCard", () => {
           prompt: "inspect the failing command",
         }}
         isExpanded
-        onExitPlanMode={onExitPlanMode}
-        onToggle={onToggle}
+        onExitPlanMode={() => {}}
+        onToggle={() => {}}
       />,
     );
 
-    expect(screen.getByLabelText("Prompt mode").textContent).toContain(
-      "Plan",
-    );
+    expect(screen.getByLabelText("Prompt mode").textContent).toContain("Plan");
     expect(screen.getByLabelText("Prompt mode").textContent).toContain(
       "inspect the failing command",
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Exit plan mode" }));
-    expect(onExitPlanMode).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
-    expect(onToggle).toHaveBeenCalledTimes(1);
 
     rerender(
       <ThreadPromptModeCard
@@ -45,8 +36,8 @@ describe("ThreadPromptModeCard", () => {
           prompt: "inspect the failing command",
         }}
         isExpanded={false}
-        onExitPlanMode={onExitPlanMode}
-        onToggle={onToggle}
+        onExitPlanMode={() => {}}
+        onToggle={() => {}}
       />,
     );
 

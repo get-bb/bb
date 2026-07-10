@@ -54,7 +54,10 @@ function installAnimationFrameMocks() {
   // rAF is only used by the bottom-restore settle tail; run callbacks
   // synchronously so it never leaks across tests, but it is irrelevant to the
   // row-anchored restore paths under test.
-  vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    vi.fn(() => 1),
+  );
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
 }
 
@@ -147,9 +150,7 @@ function renderTimeline({
 }
 
 function readAnchor(threadId: string) {
-  return getDefaultStore().get(
-    threadTimelineScrollAnchorAtomFamily(threadId),
-  );
+  return getDefaultStore().get(threadTimelineScrollAnchorAtomFamily(threadId));
 }
 
 beforeEach(() => {
@@ -170,19 +171,6 @@ afterEach(() => {
 });
 
 describe("BottomAnchoredScrollBody scroll preservation", () => {
-  it("clips horizontal overflow at the timeline scroll boundary", () => {
-    const { scrollArea } = renderTimeline({
-      threadId: "thread-a",
-      rowIds: ["row-a"],
-    });
-    const scrollContent = requireHTMLElement(scrollArea.firstElementChild);
-    const contentColumn = requireHTMLElement(scrollContent.firstElementChild);
-
-    expect(scrollArea.classList.contains("overflow-x-hidden")).toBe(true);
-    expect(scrollContent.classList.contains("min-w-0")).toBe(true);
-    expect(contentColumn.classList.contains("min-w-0")).toBe(true);
-  });
-
   it("captures the top-most visible row when scrolled mid-timeline", () => {
     const { scrollArea, rowElements } = renderTimeline({
       threadId: "thread-a",
