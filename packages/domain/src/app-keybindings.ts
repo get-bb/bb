@@ -126,7 +126,10 @@ const SHIFTED_KEY_BASES: Readonly<Record<string, string>> = {
   "?": "/",
 };
 
-function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
+export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
+  if (input.key === " " || input.key === "Spacebar") {
+    return "Space";
+  }
   return input.shiftKey
     ? (SHIFTED_KEY_BASES[input.key] ?? input.key)
     : input.key;
@@ -173,3 +176,49 @@ export type AppKeybinding = z.infer<typeof appKeybindingSchema>;
 
 export const appKeybindingsSchema = z.array(appKeybindingSchema).max(256);
 export type AppKeybindings = z.infer<typeof appKeybindingsSchema>;
+
+export const appKeybindingOverrideSchema = z
+  .object({
+    command: appCommandIdSchema,
+    // Null has explicit meaning: disable every default binding for this command.
+    shortcut: appShortcutSchema.nullable(),
+  })
+  .strict();
+export type AppKeybindingOverride = z.infer<typeof appKeybindingOverrideSchema>;
+
+export const appKeybindingOverridesSchema = z
+  .array(appKeybindingOverrideSchema)
+  .max(APP_COMMAND_IDS.length)
+  .superRefine((overrides, context) => {
+    const seen = new Set<AppCommandId>();
+    for (const [index, override] of overrides.entries()) {
+      if (seen.has(override.command)) {
+        context.addIssue({
+          code: "custom",
+          message: `Duplicate override for ${override.command}`,
+          path: [index, "command"],
+        });
+      }
+      seen.add(override.command);
+    }
+  });
+export type AppKeybindingOverrides = z.infer<
+  typeof appKeybindingOverridesSchema
+>;
+
+export function applyAppKeybindingOverrides(
+  defaults: AppKeybindings,
+  overrides: AppKeybindingOverrides,
+): AppKeybindings {
+  return defaults.flatMap((binding) => {
+    const override = overrides.find(
+      (candidate) => candidate.command === binding.command,
+    );
+    if (override === undefined) {
+      return [binding];
+    }
+    return override.shortcut === null
+      ? []
+      : [{ ...binding, shortcut: override.shortcut }];
+  });
+}

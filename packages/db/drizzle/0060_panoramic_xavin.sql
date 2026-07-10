@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `keybinding_overrides` text DEFAULT '[]' NOT NULL;

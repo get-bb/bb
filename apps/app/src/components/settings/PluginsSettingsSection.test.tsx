@@ -45,6 +45,8 @@ function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
+    defaultKeybindings: [],
+    keybindingOverrides: [],
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],

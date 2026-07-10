@@ -11,6 +11,8 @@ import { wsManager } from "./ws";
 const unavailableSystemConfig: SystemConfigResponse = {
   generalSettings: defaultAppSettings,
   keybindings: [],
+  defaultKeybindings: [],
+  keybindingOverrides: [],
   experiments: {
     bbConnect: false,
     claudeCodeMockCliTraffic: false,

@@ -4,22 +4,19 @@ import {
   type BaseWindow,
   type MenuItemConstructorOptions,
 } from "electron";
+import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
 
 export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
-export const OPEN_NEW_TAB_ACCELERATOR = "CmdOrCtrl+T";
 export const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
-export const NEW_THREAD_ACCELERATOR = "CmdOrCtrl+N";
 export const NEW_THREAD_MENU_LABEL = "New Thread";
-export const NEW_WINDOW_ACCELERATOR = "CmdOrCtrl+Shift+N";
 export const NEW_WINDOW_MENU_LABEL = "New Window";
-export const CLOSE_WINDOW_ACCELERATOR = "CmdOrCtrl+W";
 export const CLOSE_WINDOW_MENU_LABEL = "Close Window";
-export const OPEN_SETTINGS_ACCELERATOR = "CmdOrCtrl+,";
 export const OPEN_SETTINGS_MENU_LABEL = "Settings…";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 
 export interface InstallApplicationMenuArgs {
+  accelerators: ApplicationMenuAccelerators;
   openNewTab(): void;
   openNewThread(): void;
   openSettings(): void;
@@ -54,7 +51,7 @@ export function buildApplicationMenuTemplate(
         { role: "about" },
         { type: "separator" },
         {
-          accelerator: OPEN_SETTINGS_ACCELERATOR,
+          accelerator: args.accelerators.openSettings,
           click() {
             args.openSettings();
           },
@@ -74,21 +71,21 @@ export function buildApplicationMenuTemplate(
       label: "File",
       submenu: [
         {
-          accelerator: OPEN_NEW_TAB_ACCELERATOR,
+          accelerator: args.accelerators.openNewTab,
           click() {
             args.openNewTab();
           },
           label: OPEN_NEW_TAB_MENU_LABEL,
         },
         {
-          accelerator: NEW_THREAD_ACCELERATOR,
+          accelerator: args.accelerators.openNewThread,
           click() {
             args.openNewThread();
           },
           label: NEW_THREAD_MENU_LABEL,
         },
         {
-          accelerator: NEW_WINDOW_ACCELERATOR,
+          accelerator: args.accelerators.createNewWindow,
           click() {
             args.createNewWindow();
           },
@@ -96,7 +93,7 @@ export function buildApplicationMenuTemplate(
         },
         { type: "separator" },
         {
-          accelerator: CLOSE_WINDOW_ACCELERATOR,
+          accelerator: args.accelerators.closeWindowOrSideTab,
           click(_menuItem, browserWindow) {
             args.closeWindowOrSideTab(browserWindow);
           },

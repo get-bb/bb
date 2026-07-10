@@ -158,6 +158,7 @@ export const appSettings = sqliteTable("app_settings", {
   caffeinate: integer("caffeinate", { mode: "boolean" })
     .notNull()
     .default(false),
+  keybindingOverrides: text("keybinding_overrides").notNull().default("[]"),
   updatedAt: integer("updated_at").notNull(),
 });
 

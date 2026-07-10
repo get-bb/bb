@@ -1,8 +1,8 @@
 ---
 kind: instruction
 title: bb Guide — Customization
-summary: Command reference for customizing the bb app color palette.
-intent: Provide complete theme command documentation for agents reshaping the app's look.
+summary: Command reference for customizing the bb app color palette and keyboard shortcuts.
+intent: Explain the CLI theme surface and server-backed app customization.
 editingNotes: Keep flags accurate against the CLI implementation. Theme details live in the bb-cli skill's references/theming.md.
 ---
 Customization commands
@@ -36,6 +36,16 @@ system idle sleep while bb is running; turning it off stops that process. It
 only blocks idle sleep: closing a laptop lid or choosing Sleep manually still
 sleeps the Mac. This setting is only shown when the connected primary host
 daemon reports macOS.
+
+Server-backed keyboard shortcuts
+
+Settings → Keyboard records per-command shortcut overrides. They are persisted
+server-side, applied live to every connected window, and survive restarts.
+Reset removes an override and returns to bb's current default; Clear explicitly
+disables a command. `Mod` means Command on macOS and Control on Windows/Linux.
+Command contexts and desktop-only policy remain server-owned, and desktop menu
+accelerators for New Thread, New Window, New Tab, Close, and Settings use the
+same resolved bindings. The complete default table is in docs/configuration.md.
 
 Client-local UI preferences
 

@@ -56,6 +56,10 @@ import {
 import { createLocalViewUrl } from "./local-view.js";
 import { installApplicationMenu } from "./menu.js";
 import {
+  DEFAULT_APPLICATION_MENU_ACCELERATORS,
+  resolveApplicationMenuAccelerators,
+} from "./desktop-menu-shortcuts.js";
+import {
   clearOwnedRuntimePidFile,
   reapStaleOwnedRuntime,
   writeOwnedRuntimePidFile,
@@ -281,6 +285,8 @@ const logViewerCopyRequestSchema = z
 let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
 let currentAppKeybindings: AppKeybindings = [];
+let currentApplicationMenuAccelerators =
+  DEFAULT_APPLICATION_MENU_ACCELERATORS;
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
@@ -540,6 +546,7 @@ function closeFocusedDetachedDevTools(): void {
 
 function refreshApplicationMenu(): void {
   installApplicationMenu({
+    accelerators: currentApplicationMenuAccelerators,
     createNewWindow() {
       void createApplicationWindow({
         initialUrl: currentWindowUrl,
@@ -810,6 +817,10 @@ async function refreshSystemConfig(
       return;
     }
     currentAppKeybindings = config.keybindings;
+    currentApplicationMenuAccelerators = resolveApplicationMenuAccelerators(
+      currentAppKeybindings,
+    );
+    refreshApplicationMenu();
     applyPopoutExperimentConfig(config.experiments);
   } catch (error) {
     if (token !== systemConfigRefreshToken) {

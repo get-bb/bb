@@ -154,7 +154,12 @@ export type {
   UpdateThreadInput,
 } from "./threads.js";
 
-export { getAppSettings, setAppSettings } from "./app-settings.js";
+export {
+  getAppKeybindingOverrides,
+  getAppSettings,
+  setAppKeybindingOverrides,
+  setAppSettings,
+} from "./app-settings.js";
 export { getExperiments, setExperiments } from "./experiments.js";
 export {
   deleteInstalledPlugin,
