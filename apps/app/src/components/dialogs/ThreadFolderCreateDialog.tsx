@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Input } from "@bb/shared-ui/input";
-import { normalizeFolderName } from "@/components/sidebar/folderKeys";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
@@ -118,9 +117,6 @@ function ThreadFolderDialogContent({
 }: ThreadFolderDialogContentProps) {
   const inputId = useId();
   const [name, setName] = useState(initialName);
-  const [folderNameMessage, setFolderNameMessage] = useState<string | null>(
-    null,
-  );
   const [hiddenErrorMessage, setHiddenErrorMessage] = useState<string | null>(
     null,
   );
@@ -134,19 +130,13 @@ function ThreadFolderDialogContent({
 
     const trimmedName = validate(name);
     if (trimmedName === null) return;
-    const normalizedName = normalizeFolderName(trimmedName);
-    if (normalizedName === null) {
-      setFolderNameMessage("Folder name cannot be empty.");
-      return;
-    }
 
     setHiddenErrorMessage(null);
-    onSubmit(normalizedName);
+    onSubmit(trimmedName);
   };
   const displayedServerMessage =
     errorMessage && hiddenErrorMessage !== errorMessage ? errorMessage : null;
-  const displayedMessage =
-    validationMessage ?? folderNameMessage ?? displayedServerMessage;
+  const displayedMessage = validationMessage ?? displayedServerMessage;
 
   return (
     <>
@@ -167,7 +157,6 @@ function ThreadFolderDialogContent({
             disabled={pending}
             onChange={(event) => {
               setName(event.target.value);
-              setFolderNameMessage(null);
               setHiddenErrorMessage(errorMessage ?? null);
               clearMessage();
             }}

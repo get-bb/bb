@@ -19,10 +19,7 @@ export const SIDEBAR_ROW_GLYPH_SLOT_CLASS =
  * Inner styling only — call sites own wrapper, positioning, fade, and the
  * aria-label.
  */
-export const SIDEBAR_UNREAD_DOT_CLASS_BY_TONE: Record<
-  SidebarUnreadDotTone,
-  string
-> = {
+const SIDEBAR_UNREAD_DOT_CLASS_BY_TONE: Record<SidebarUnreadDotTone, string> = {
   default: `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`,
   error: `rounded-full bg-destructive ${COARSE_POINTER_DOT_SIZE_CLASS}`,
 };
@@ -31,11 +28,6 @@ export const SIDEBAR_UNREAD_DOT_CLASS =
   SIDEBAR_UNREAD_DOT_CLASS_BY_TONE.default;
 
 export const SIDEBAR_WORKING_STATUS_COLOR_CLASS = "text-muted-foreground/50";
-
-export const SIDEBAR_SUCCESS_STATUS_COLOR_CLASS = "text-muted-foreground/60";
-
-export const SIDEBAR_SUCCESS_STATUS_ICON_SIZE_CLASS =
-  "size-3.5 max-md:pointer-coarse:size-4";
 
 export const SIDEBAR_SUCCESS_STATUS_DOT_CLASS =
   "size-[5px] rounded-full bg-muted-foreground/60 max-md:pointer-coarse:size-1.5";

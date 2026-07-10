@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, type CSSProperties } from "react";
 import { DndContext } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -6,7 +6,10 @@ import {
 } from "@dnd-kit/sortable";
 import type { NeighborReorderRequest } from "@/lib/neighbor-reorder";
 import { ThreadTreeNodeRow } from "./ProjectRow";
-import { useSidebarSortable } from "./sortableMotion";
+import {
+  useSidebarSortable,
+  type SidebarSortableDragBindings,
+} from "./sortableMotion";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
 import type { ProjectThreadNode } from "./projectThreadGroups";
 import {
@@ -14,7 +17,7 @@ import {
   type UseNeighborReorderSortableArgs,
 } from "./useNeighborReorderSortable";
 
-export interface PinnedThreadRootReorderCallbacks {
+interface PinnedThreadRootReorderCallbacks {
   onSettled: () => void;
 }
 
@@ -49,6 +52,9 @@ interface PinnedRootItemProps extends Omit<
   "disabled"
 > {
   consumeClickSuppression?: () => boolean;
+  dragBindings?: SidebarSortableDragBindings;
+  sortableRef?: (element: HTMLDivElement | null) => void;
+  sortableStyle?: CSSProperties;
 }
 
 function getPinnedRootNodeId(node: ProjectThreadNode): string {
@@ -59,11 +65,14 @@ const PinnedRootItem = memo(function PinnedRootItem({
   collapsedEnvironmentIds,
   collapsedThreadIds,
   consumeClickSuppression,
+  dragBindings,
   node,
   onProjectSelect,
   onToggleEnvironmentCollapsed,
   onToggleThreadCollapsed,
   selectedThreadId,
+  sortableRef,
+  sortableStyle,
 }: PinnedRootItemProps) {
   return (
     <ThreadTreeNodeRow
@@ -79,19 +88,17 @@ const PinnedRootItem = memo(function PinnedRootItem({
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       consumeClickSuppression={consumeClickSuppression}
+      dragBindings={dragBindings}
+      sortableRef={sortableRef}
+      sortableStyle={sortableStyle}
     />
   );
 });
 
 const SortablePinnedRootItem = memo(function SortablePinnedRootItem({
-  collapsedEnvironmentIds,
-  collapsedThreadIds,
   disabled,
   node,
-  onProjectSelect,
-  onToggleEnvironmentCollapsed,
-  onToggleThreadCollapsed,
-  selectedThreadId,
+  ...props
 }: SortablePinnedRootItemProps) {
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
     id: getPinnedRootNodeId(node),
@@ -99,18 +106,9 @@ const SortablePinnedRootItem = memo(function SortablePinnedRootItem({
   });
 
   return (
-    <ThreadTreeNodeRow
-      projectId={node.thread.projectId}
+    <PinnedRootItem
+      {...props}
       node={node}
-      depthOffset={0}
-      isEnvGrouped={false}
-      selectedThreadId={selectedThreadId}
-      collapsedThreadIds={collapsedThreadIds}
-      collapsedEnvironmentIds={collapsedEnvironmentIds}
-      variant="section"
-      onProjectSelect={onProjectSelect}
-      onToggleThreadCollapsed={onToggleThreadCollapsed}
-      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       dragBindings={dragBindings}
       sortableRef={setNodeRef}
       sortableStyle={style}

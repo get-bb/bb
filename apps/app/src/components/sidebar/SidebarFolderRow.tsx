@@ -39,7 +39,7 @@ import {
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
-import { ThreadStatusGlyph } from "./ThreadRow";
+import { CollapsedThreadStatusGlyph } from "./ThreadRow";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 
@@ -170,17 +170,9 @@ function SidebarFolderRowComponent({
               hasActions && "max-md:pointer-coarse:hidden",
             )}
           >
-            <ThreadStatusGlyph
-              hasPendingInteraction={activity.pending}
-              isBackgroundAgentActive={activity.backgroundAgent}
-              isBackgroundCommandActive={activity.backgroundCommand}
-              isForegroundAgentWorking={activity.runtimeWorking}
-              isGoalActive={activity.goal}
-              isPlanModeActive={activity.planMode}
+            <CollapsedThreadStatusGlyph
+              activity={activity}
               isBusy={activity.working}
-              isWorkflowActive={activity.workflow}
-              showUnreadBadge={activity.unread}
-              unreadBadgeTone={activity.unreadError ? "error" : "default"}
             />
           </span>
         ) : null}
@@ -199,17 +191,9 @@ function SidebarFolderRowComponent({
           >
             {showRollupGlyph ? (
               <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-                <ThreadStatusGlyph
-                  hasPendingInteraction={activity.pending}
-                  isBackgroundAgentActive={activity.backgroundAgent}
-                  isBackgroundCommandActive={activity.backgroundCommand}
-                  isForegroundAgentWorking={activity.runtimeWorking}
-                  isGoalActive={activity.goal}
-                  isPlanModeActive={activity.planMode}
+                <CollapsedThreadStatusGlyph
+                  activity={activity}
                   isBusy={activity.working}
-                  isWorkflowActive={activity.workflow}
-                  showUnreadBadge={activity.unread}
-                  unreadBadgeTone={activity.unreadError ? "error" : "default"}
                 />
               </span>
             ) : null}

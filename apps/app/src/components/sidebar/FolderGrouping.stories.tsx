@@ -9,7 +9,7 @@ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider
 import { SidebarStickyStack } from "@/components/ui/sidebar.js";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
-  ChronologicalThreadTree,
+  ChronologicalFolderThreadSections,
   type ProjectThreadListState,
 } from "./ProjectRow";
 import {
@@ -133,7 +133,7 @@ export function ChronologicalFolders() {
         hint="stored folderId groups matching threads across projects"
       >
         <SidebarStage>
-          <ChronologicalThreadTree
+          <ChronologicalFolderThreadSections
             threadListState={projectTree(folderThreads)}
             compareThreads={compareStandardThreads}
             folders={STORY_FOLDERS}
@@ -141,6 +141,9 @@ export function ChronologicalFolders() {
             collapsedEnvironmentIds={new Set()}
             onToggleThreadCollapsed={noop}
             onToggleEnvironmentCollapsed={noop}
+            renderAllThreadsSection={(content) => content}
+            renderFoldersSection={(content) => content}
+            renderThreadsSection={(content) => content}
           />
         </SidebarStage>
       </StoryRow>

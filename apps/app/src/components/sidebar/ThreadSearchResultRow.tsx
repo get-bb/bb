@@ -23,6 +23,7 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";
+import { isSidebarThreadTitleMatch } from "./sidebarThreadSearch";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -49,11 +50,6 @@ interface HighlightedTextProps {
   ranges: ThreadSearchMatch["highlightRanges"];
   text: string;
 }
-
-const TITLE_SOURCE_KINDS = new Set<ThreadSearchMatch["sourceKind"]>([
-  "title",
-  "title_fallback",
-]);
 
 function clampRange(
   range: ThreadSearchMatch["highlightRanges"][number],
@@ -105,14 +101,14 @@ function getTitleMatch(
   matches: readonly ThreadSearchMatch[],
 ): ThreadSearchMatch | undefined {
   return matches.find(
-    (match) => TITLE_SOURCE_KINDS.has(match.sourceKind) && match.text === title,
+    (match) => isSidebarThreadTitleMatch(match) && match.text === title,
   );
 }
 
 function getSnippetMatch(
   matches: readonly ThreadSearchMatch[],
 ): ThreadSearchMatch | undefined {
-  return matches.find((match) => !TITLE_SOURCE_KINDS.has(match.sourceKind));
+  return matches.find((match) => !isSidebarThreadTitleMatch(match));
 }
 
 function isNonEmptyMetadataPart(value: string | null): value is string {

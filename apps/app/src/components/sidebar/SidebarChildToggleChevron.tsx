@@ -3,13 +3,11 @@ import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { SIDEBAR_HOVER_ACTIONS_CLASS } from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export type SidebarChildToggleHandler = () => void;
-
-export interface SidebarChildToggleChevronProps {
+interface SidebarChildToggleChevronProps {
   isCollapsed: boolean;
   expandLabel: string;
   collapseLabel: string;
-  onToggle: SidebarChildToggleHandler;
+  onToggle: () => void;
   revealOnHover?: boolean;
 }
 

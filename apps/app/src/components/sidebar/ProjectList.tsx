@@ -14,7 +14,7 @@ import {
   type Ref,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -140,11 +140,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -182,7 +178,7 @@ interface ProjectListProps {
   threadSearch?: SidebarThreadSearchPanelController;
 }
 
-export interface ProjectListActionButtonsProps {
+interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
   threadSearch?: SidebarThreadSearchInputController;
 }
@@ -289,6 +285,11 @@ type ToggleCollapsedId = (id: string) => void;
 type ToggleCollapsedSidebarSectionId = (
   id: CollapsibleSidebarSectionId,
 ) => void;
+type OpenSidebarMenu =
+  | "projectsDisplayOptions"
+  | "threadsDisplayOptions"
+  | "allThreadsOverflow"
+  | null;
 
 interface TopLevelSidebarSectionProps {
   label: string;
@@ -715,6 +716,15 @@ interface SidebarSortMenuOptionProps {
   onToggle: (sort: SidebarChronologicalSort) => void;
 }
 
+const SIDEBAR_SORT_OPTIONS: readonly {
+  label: string;
+  sort: SidebarChronologicalSort;
+}[] = [
+  { label: "Updated at", sort: "updated" },
+  { label: "Created at", sort: "created" },
+  { label: "Alphabetical", sort: "alpha" },
+];
+
 function SidebarDisplayMenuTrigger({
   ariaLabel,
   buttonRef,
@@ -831,7 +841,9 @@ export function SidebarDisplayOptionsMenu({
   // Mirror of pinOffset for the effect cleanup below, so recording the
   // outgoing position doesn't have to re-run the effect on every pin change.
   const pinOffsetRef = useRef(pinOffset);
-  pinOffsetRef.current = pinOffset;
+  useLayoutEffect(() => {
+    pinOffsetRef.current = pinOffset;
+  }, [pinOffset]);
   useLayoutEffect(() => {
     if (!open || isCompactViewport) {
       return;
@@ -921,27 +933,15 @@ export function SidebarDisplayOptionsMenu({
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
           Sort by
         </DropdownMenuLabel>
-        <SidebarSortMenuOption
-          label="Updated at"
-          sort="updated"
-          selected={selectedSort === "updated"}
-          direction={sortDirection}
-          onToggle={handleSortToggle}
-        />
-        <SidebarSortMenuOption
-          label="Created at"
-          sort="created"
-          selected={selectedSort === "created"}
-          direction={sortDirection}
-          onToggle={handleSortToggle}
-        />
-        <SidebarSortMenuOption
-          label="Alphabetical"
-          sort="alpha"
-          selected={selectedSort === "alpha"}
-          direction={sortDirection}
-          onToggle={handleSortToggle}
-        />
+        {SIDEBAR_SORT_OPTIONS.map((option) => (
+          <SidebarSortMenuOption
+            key={option.sort}
+            {...option}
+            selected={selectedSort === option.sort}
+            direction={sortDirection}
+            onToggle={handleSortToggle}
+          />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1637,49 +1637,39 @@ function ProjectListComponent({
   const [sidebarSectionOrderList, setSidebarSectionOrderList] = useAtom(
     sidebarSectionOrderAtom,
   );
-  const [projectsDisplayOptionsMenuOpen, setProjectsDisplayOptionsMenuOpen] =
-    useState(false);
-  const [threadsDisplayOptionsMenuOpen, setThreadsDisplayOptionsMenuOpen] =
-    useState(false);
-  const [allThreadsOverflowMenuOpen, setAllThreadsOverflowMenuOpen] =
-    useState(false);
-  const handleProjectsDisplayOptionsMenuOpenChange = useCallback(
-    (open: boolean) => {
-      setProjectsDisplayOptionsMenuOpen(open);
-      if (open) {
-        setThreadsDisplayOptionsMenuOpen(false);
-        setAllThreadsOverflowMenuOpen(false);
-      }
+  const [openSidebarMenu, setOpenSidebarMenu] = useState<OpenSidebarMenu>(null);
+  const setSidebarMenuOpen = useCallback(
+    (menu: Exclude<OpenSidebarMenu, null>, open: boolean) => {
+      setOpenSidebarMenu((current) =>
+        open ? menu : current === menu ? null : current,
+      );
     },
     [],
+  );
+  const handleProjectsDisplayOptionsMenuOpenChange = useCallback(
+    (open: boolean) => setSidebarMenuOpen("projectsDisplayOptions", open),
+    [setSidebarMenuOpen],
   );
   const handleThreadsDisplayOptionsMenuOpenChange = useCallback(
-    (open: boolean) => {
-      setThreadsDisplayOptionsMenuOpen(open);
-      if (open) {
-        setProjectsDisplayOptionsMenuOpen(false);
-        setAllThreadsOverflowMenuOpen(false);
-      }
-    },
-    [],
+    (open: boolean) => setSidebarMenuOpen("threadsDisplayOptions", open),
+    [setSidebarMenuOpen],
   );
   const handleAllThreadsOverflowMenuOpenChange = useCallback(
-    (open: boolean) => {
-      setAllThreadsOverflowMenuOpen(open);
-      if (open) {
-        setProjectsDisplayOptionsMenuOpen(false);
-        setThreadsDisplayOptionsMenuOpen(false);
-      }
-    },
-    [],
+    (open: boolean) => setSidebarMenuOpen("allThreadsOverflow", open),
+    [setSidebarMenuOpen],
   );
-  const [organizationMode] = useAtom(sidebarOrganizationModeAtom);
+  const projectsDisplayOptionsMenuOpen =
+    openSidebarMenu === "projectsDisplayOptions";
+  const threadsDisplayOptionsMenuOpen =
+    openSidebarMenu === "threadsDisplayOptions";
+  const allThreadsOverflowMenuOpen = openSidebarMenu === "allThreadsOverflow";
+  const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
-  const [sortDirection] = useAtom(sidebarSortDirectionAtom);
+  const sortDirection = useAtomValue(sidebarSortDirectionAtom);
   const isFolderOrganizationMode = organizationMode === "chronological";
-  const [, setCollapsedFolderList] = useAtom(sidebarCollapsedFoldersAtom);
+  const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
       getSidebarThreadComparator({
@@ -2237,7 +2227,8 @@ function ProjectListComponent({
               label="Pinned"
               collapseControl={{
                 isCollapsed: collapsedSidebarSectionIds.has("pinned"),
-                onToggleCollapsed: () => toggleSidebarSectionCollapsed("pinned"),
+                onToggleCollapsed: () =>
+                  toggleSidebarSectionCollapsed("pinned"),
               }}
             >
               {pinnedSectionContent}
