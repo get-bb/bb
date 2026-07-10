@@ -41,11 +41,12 @@ import {
 } from "./sidebarThreadSearch";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
-  getSidebarThreadShortcutIndex,
   getSidebarThreadShortcutTargets,
   SidebarThreadShortcutKeysContext,
   type SidebarThreadShortcutTarget,
 } from "./sidebarThreadShortcuts";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import { isMacKeyboardPlatform } from "@/lib/app-keybindings";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -186,6 +187,30 @@ export function AppSidebar({
     setThreadShortcutKeysById(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
   }, []);
 
+  const activateThreadShortcut = useCallback((index: number): boolean => {
+    const targets = threadShortcutTargetsRef.current;
+    const target =
+      targets[index] ??
+      getSidebarThreadShortcutTargets(sidebarRef.current)[index];
+    if (!target) return false;
+    target.element.click();
+    return true;
+  }, []);
+
+  useAppCommandHandler("thread.search", () => {
+    handleThreadSearchActivate();
+    return true;
+  });
+  useAppCommandHandler("thread.jump.1", () => activateThreadShortcut(0));
+  useAppCommandHandler("thread.jump.2", () => activateThreadShortcut(1));
+  useAppCommandHandler("thread.jump.3", () => activateThreadShortcut(2));
+  useAppCommandHandler("thread.jump.4", () => activateThreadShortcut(3));
+  useAppCommandHandler("thread.jump.5", () => activateThreadShortcut(4));
+  useAppCommandHandler("thread.jump.6", () => activateThreadShortcut(5));
+  useAppCommandHandler("thread.jump.7", () => activateThreadShortcut(6));
+  useAppCommandHandler("thread.jump.8", () => activateThreadShortcut(7));
+  useAppCommandHandler("thread.jump.9", () => activateThreadShortcut(8));
+
   const handleThreadSearchKeyDown = useCallback<
     KeyboardEventHandler<HTMLDivElement>
   >(
@@ -257,35 +282,19 @@ export function AppSidebar({
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Meta") {
+      const primaryModifier = isMacKeyboardPlatform(navigator.platform)
+        ? "Meta"
+        : "Control";
+      if (event.key === primaryModifier) {
         showThreadShortcuts();
-        return;
       }
-
-      const threadShortcutIndex = getSidebarThreadShortcutIndex(event);
-      if (threadShortcutIndex !== null) {
-        const target = threadShortcutTargetsRef.current[threadShortcutIndex];
-        if (target) {
-          event.preventDefault();
-          target.element.click();
-        }
-        return;
-      }
-
-      if (
-        event.key.toLowerCase() !== "k" ||
-        event.shiftKey ||
-        event.altKey ||
-        (!event.metaKey && !event.ctrlKey)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      handleThreadSearchActivate();
     };
 
     const handleGlobalKeyUp = (event: KeyboardEvent) => {
-      if (event.key === "Meta") {
+      const primaryModifier = isMacKeyboardPlatform(navigator.platform)
+        ? "Meta"
+        : "Control";
+      if (event.key === primaryModifier) {
         hideThreadShortcuts();
       }
     };
@@ -298,7 +307,7 @@ export function AppSidebar({
       window.removeEventListener("keyup", handleGlobalKeyUp);
       window.removeEventListener("blur", hideThreadShortcuts);
     };
-  }, [handleThreadSearchActivate, hideThreadShortcuts, showThreadShortcuts]);
+  }, [hideThreadShortcuts, showThreadShortcuts]);
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>

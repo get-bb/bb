@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
 import type { BbDesktopPopoutApi } from "./popout.js";
+import type { AppCommandId } from "@bb/domain";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
 
@@ -33,6 +34,7 @@ export type BbDesktopWindowStateChangeHandler = (
   state: BbDesktopWindowState,
 ) => void;
 export type BbDesktopOpenNewTabHandler = () => void;
+export type BbDesktopAppCommandHandler = (command: AppCommandId) => void;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
 export interface BbDesktopApi extends BbDesktopInfo {
@@ -72,6 +74,10 @@ export interface BbDesktopApi extends BbDesktopInfo {
    */
   onOpenNewTab?(
     listener: BbDesktopOpenNewTabHandler,
+  ): BbDesktopInfoUnsubscribe;
+  /** Subscribe to native menu commands that are executed by the renderer. */
+  onAppCommand?(
+    listener: BbDesktopAppCommandHandler,
   ): BbDesktopInfoUnsubscribe;
   /**
    * Subscribe to native desktop close-window requests. Return true when the

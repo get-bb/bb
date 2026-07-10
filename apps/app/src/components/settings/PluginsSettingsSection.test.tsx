@@ -44,6 +44,7 @@ function responseJson(body: unknown): Response {
 function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
+    keybindings: [],
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],

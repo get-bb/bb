@@ -212,6 +212,7 @@ import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -2353,6 +2354,10 @@ export function RootComposeView(props: RootComposeViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openTab]);
+  useAppCommandHandler("panel.newTab", () => {
+    handleOpenNewTab();
+    return true;
+  });
   const handleToggleSecondaryPanel = useCallback(() => {
     if (isSecondaryPanelOpen) {
       closeSecondaryPanel();

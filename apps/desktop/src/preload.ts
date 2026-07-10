@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
+import { appCommandIdSchema } from "@bb/domain";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
@@ -9,6 +10,7 @@ import {
   bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
   type BbDesktopApi,
+  type BbDesktopAppCommandHandler,
   type BbDesktopBrowserApi,
   type BbDesktopBrowserOpenTabHandler,
   type BbDesktopBrowserScopedOpenTabHandler,
@@ -52,6 +54,7 @@ import {
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import {
+  BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
@@ -98,6 +101,7 @@ function createInitialDesktopWindowState(): BbDesktopWindowState {
 }
 
 const listeners = new Set<BbDesktopInfoChangeHandler>();
+const appCommandListeners = new Set<BbDesktopAppCommandHandler>();
 const windowStateListeners = new Set<BbDesktopWindowStateChangeHandler>();
 let currentInfo = createInitialDesktopInfo();
 let currentWindowState = createInitialDesktopWindowState();
@@ -350,6 +354,12 @@ const bbDesktopApi: BbDesktopApi = {
       openNewTabListeners.delete(listener);
     };
   },
+  onAppCommand(listener): BbDesktopInfoUnsubscribe {
+    appCommandListeners.add(listener);
+    return () => {
+      appCommandListeners.delete(listener);
+    };
+  },
   onCloseWindowRequest(listener): BbDesktopInfoUnsubscribe {
     closeWindowRequestListeners.add(listener);
     return () => {
@@ -378,6 +388,14 @@ ipcRenderer.on(
 ipcRenderer.on(BB_DESKTOP_OPEN_NEW_TAB_CHANNEL, () => {
   for (const listener of openNewTabListeners) {
     listener();
+  }
+});
+
+ipcRenderer.on(BB_DESKTOP_APP_COMMAND_CHANNEL, (_event, payload: unknown) => {
+  const parsed = appCommandIdSchema.safeParse(payload);
+  if (!parsed.success) return;
+  for (const listener of appCommandListeners) {
+    listener(parsed.data);
   }
 });
 

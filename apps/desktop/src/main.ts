@@ -95,6 +95,7 @@ import {
 } from "./desktop-update-ipc.js";
 import { BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL } from "./desktop-browser-ipc.js";
 import {
+  BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
@@ -545,6 +546,10 @@ function refreshApplicationMenu(): void {
         BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
         null,
       );
+      desktopWindowFactory?.sendToFocusedWindow(BB_DESKTOP_APP_COMMAND_CHANNEL, "panel.newTab");
+    },
+    openNewThread() {
+      desktopWindowFactory?.sendToFocusedWindow(BB_DESKTOP_APP_COMMAND_CHANNEL, "thread.new");
     },
     closeWindowOrSideTab(browserWindow) {
       if (browserWindow === undefined) {

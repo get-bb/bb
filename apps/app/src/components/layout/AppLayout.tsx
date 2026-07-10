@@ -8,7 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { Link, matchPath, useLocation } from "react-router-dom";
+import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -67,6 +67,7 @@ import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -146,6 +147,10 @@ function SidebarStateBridge({
     },
     [setOpen],
   );
+  useAppCommandHandler("sidebar.toggle", () => {
+    handleOpenChange(!open);
+    return true;
+  });
   return (
     <SidebarProvider
       ref={providerRef}
@@ -400,6 +405,17 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const location = useLocation();
+  const navigate = useNavigate();
+  useAppCommandHandler("thread.new", () => {
+    void navigate(getRootComposeRoutePath(), {
+      state: { focusPrompt: true },
+    });
+    return true;
+  });
+  useAppCommandHandler("settings.open", () => {
+    void navigate(SETTINGS_ROUTE_PATH);
+    return true;
+  });
   const {
     projectId,
     threadId,

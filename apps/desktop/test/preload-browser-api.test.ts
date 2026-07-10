@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { AppCommandId } from "@bb/domain";
 import type {
   BbDesktopApi,
   BbDesktopBrowserOpenTabRequest,
@@ -40,6 +41,7 @@ import {
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
 import {
+  BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
@@ -375,6 +377,7 @@ describe("desktop preload browser API", () => {
     const snapshots: BbDesktopBrowserSnapshot[] = [];
     let closeWindowRequestCount = 0;
     let openNewTabCount = 0;
+    const appCommands: AppCommandId[] = [];
     const popoutThreads: BbDesktopPopoutThreadChangedPayload[] = [];
     const windowStates: BbDesktopWindowState[] = [];
     const state: BbDesktopBrowserState = {
@@ -412,6 +415,9 @@ describe("desktop preload browser API", () => {
     });
     api.onOpenNewTab?.(() => {
       openNewTabCount += 1;
+    });
+    api.onAppCommand?.((command) => {
+      appCommands.push(command);
     });
     api.onCloseWindowRequest?.(() => {
       closeWindowRequestCount += 1;
@@ -469,6 +475,14 @@ describe("desktop preload browser API", () => {
       payload: null,
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_APP_COMMAND_CHANNEL,
+      payload: "not-a-command",
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_APP_COMMAND_CHANNEL,
+      payload: "thread.new",
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
       payload: null,
     });
@@ -492,6 +506,7 @@ describe("desktop preload browser API", () => {
     expect(windowStates).toEqual([{ isFullScreen: true }]);
     expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);
+    expect(appCommands).toEqual(["thread.new"]);
     expect(electronMock.sendCalls).toContainEqual({
       channel: BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
       payload: true,

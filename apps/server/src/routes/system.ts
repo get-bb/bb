@@ -34,6 +34,7 @@ import {
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
 import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
+import { DEFAULT_APP_KEYBINDINGS } from "../services/system/app-keybindings.js";
 import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
 
 export function registerSystemRoutes(
@@ -56,6 +57,7 @@ export function registerSystemRoutes(
   function buildSystemConfigResponse() {
     return {
       generalSettings: getAppSettings(deps.db),
+      keybindings: DEFAULT_APP_KEYBINDINGS,
       experiments: getExperiments(deps.db),
       appearance: resolveAppTheme(
         themeRoot,

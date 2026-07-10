@@ -11,15 +11,6 @@ export interface SidebarThreadShortcutTarget {
   threadId: string;
 }
 
-interface SidebarThreadShortcutKeyboardEvent {
-  altKey: boolean;
-  ctrlKey: boolean;
-  defaultPrevented: boolean;
-  key: string;
-  metaKey: boolean;
-  shiftKey: boolean;
-}
-
 export const EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS: ReadonlyMap<string, string> =
   new Map();
 
@@ -56,23 +47,6 @@ export function getSidebarThreadShortcutTargets(
   }
 
   return targets;
-}
-
-export function getSidebarThreadShortcutIndex(
-  event: SidebarThreadShortcutKeyboardEvent,
-): number | null {
-  if (
-    event.defaultPrevented ||
-    !event.metaKey ||
-    event.altKey ||
-    event.ctrlKey ||
-    event.shiftKey ||
-    !/^[1-9]$/.test(event.key)
-  ) {
-    return null;
-  }
-
-  return Number(event.key) - 1;
 }
 
 export function useSidebarThreadShortcutKey(

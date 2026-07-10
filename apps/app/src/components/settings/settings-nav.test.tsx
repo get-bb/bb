@@ -33,6 +33,7 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
+    keybindings: [],
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],

@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import {
-  getSidebarThreadShortcutIndex,
-  getSidebarThreadShortcutTargets,
-} from "./sidebarThreadShortcuts";
+import { getSidebarThreadShortcutTargets } from "./sidebarThreadShortcuts";
 
 function appendShortcutTarget(root: HTMLElement, threadId?: string) {
   const target = document.createElement("a");
@@ -38,23 +35,4 @@ describe("sidebar thread shortcuts", () => {
     );
   });
 
-  it("recognizes only unmodified Command plus a numbered shortcut", () => {
-    const event = {
-      altKey: false,
-      ctrlKey: false,
-      defaultPrevented: false,
-      key: "4",
-      metaKey: true,
-      shiftKey: false,
-    };
-
-    expect(getSidebarThreadShortcutIndex(event)).toBe(3);
-    expect(getSidebarThreadShortcutIndex({ ...event, metaKey: false })).toBe(
-      null,
-    );
-    expect(getSidebarThreadShortcutIndex({ ...event, shiftKey: true })).toBe(
-      null,
-    );
-    expect(getSidebarThreadShortcutIndex({ ...event, key: "0" })).toBe(null);
-  });
 });
