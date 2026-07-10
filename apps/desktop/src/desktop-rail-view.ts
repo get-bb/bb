@@ -49,13 +49,13 @@ export function renderDesktopRailView(args: CreateDesktopRailViewUrlArgs): strin
     :root {
       --canvas: ${escapeHtmlText(theme.canvasColor)};
       --ink: ${escapeHtmlText(theme.inkColor)};
-      /* Match the SPA sidebar surface exactly (theme.css --sidebar formula) so
-         rail + sidebar read as one continuous panel. */
-      --rail-surface: color-mix(
-        in oklch,
-        var(--ink) ${theme.mode === "dark" ? "4.3%" : "2.2%"},
-        var(--canvas)
-      );
+      /* The SPA pushes its resolved --sidebar so rail + sidebar read as one
+         continuous panel on any palette; older SPAs omit it and we fall back
+         to the default theme's sidebar mix. */
+      --rail-surface: ${escapeHtmlText(
+        theme.sidebarColor ??
+          `color-mix(in oklch, var(--ink) ${theme.mode === "dark" ? "4.3%" : "2.2%"}, var(--canvas))`,
+      )};
       color-scheme: ${theme.mode === "dark" ? "dark" : "light"};
     }
 
@@ -199,6 +199,13 @@ export function renderDesktopRailView(args: CreateDesktopRailViewUrlArgs): strin
         const root = document.documentElement;
         root.style.setProperty("--canvas", next.canvasColor);
         root.style.setProperty("--ink", next.inkColor);
+        root.style.setProperty(
+          "--rail-surface",
+          next.sidebarColor ??
+            "color-mix(in oklch, var(--ink) " +
+              (next.mode === "dark" ? "4.3%" : "2.2%") +
+              ", var(--canvas))",
+        );
         root.style.colorScheme = next.mode === "dark" ? "dark" : "light";
       }
 

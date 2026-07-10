@@ -46,6 +46,13 @@ export const bbDesktopThemeResolvedSchema = z
   .object({
     canvasColor: z.string().min(1),
     inkColor: z.string().min(1),
+    /**
+     * Resolved --sidebar surface color. The server rail paints this exactly so
+     * rail + SPA sidebar read as one panel — deriving it shell-side from the
+     * anchors drifts whenever a theme re-anchors the sidebar formula. Optional
+     * for version skew with older SPAs.
+     */
+    sidebarColor: z.string().min(1).optional(),
     mode: bbDesktopThemeModeSchema,
   })
   .strict();

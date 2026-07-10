@@ -28,12 +28,14 @@ export function useDesktopThemeSync(): void {
     const styles = getComputedStyle(root);
     const canvasColor = styles.getPropertyValue("--canvas").trim();
     const inkColor = styles.getPropertyValue("--ink").trim();
+    const sidebarColor = styles.getPropertyValue("--sidebar").trim();
 
     if (canvasColor.length > 0 && inkColor.length > 0) {
       desktopApi.setTheme({
         canvasColor,
         inkColor,
         mode: theme,
+        ...(sidebarColor.length > 0 ? { sidebarColor } : {}),
       });
       return;
     }

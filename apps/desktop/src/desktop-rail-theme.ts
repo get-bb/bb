@@ -39,10 +39,12 @@ export function resolveRailTheme(payload: BbDesktopTheme): BbDesktopThemeResolve
   if (canvasColor.length === 0 || inkColor.length === 0) {
     return defaultRailThemeForMode(payload.mode);
   }
+  const sidebarColor = payload.sidebarColor?.trim() ?? "";
   return {
     canvasColor,
     inkColor,
     mode: payload.mode,
+    ...(sidebarColor.length > 0 ? { sidebarColor } : {}),
   };
 }
 
