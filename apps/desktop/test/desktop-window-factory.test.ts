@@ -115,6 +115,7 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
 }
 
 class FakeDesktopWindow implements DesktopBrowserWindow {
+  public readonly id: number;
   public readonly loadedUrls: string[] = [];
   public readonly options: BrowserWindowConstructorOptions;
   public readonly webContents: FakeDesktopWindowWebContents;
@@ -130,6 +131,8 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
 
   constructor(args: FakeDesktopWindowArgs) {
     this.options = args.options;
+    this.id = FakeDesktopWindow.nextWindowId;
+    FakeDesktopWindow.nextWindowId += 1;
     this.webContents = new FakeDesktopWindowWebContents(
       FakeDesktopWindow.nextWebContentsId,
     );
@@ -142,6 +145,7 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
     };
   }
 
+  private static nextWindowId = 1;
   private static nextWebContentsId = 1;
 
   emitClosed(): void {

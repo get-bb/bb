@@ -9,6 +9,12 @@ import {
   bbDesktopWindowStateSchema,
   bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
+  bbDesktopServerAddRequestSchema,
+  bbDesktopServerAddResultSchema,
+  bbDesktopServerIdRequestSchema,
+  bbDesktopServerListEntrySchema,
+  bbDesktopServerRenameRequestSchema,
+  bbDesktopServerSetAutoConnectRequestSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
   type BbDesktopBrowserApi,
@@ -26,6 +32,11 @@ import {
   type BbDesktopPopoutThreadChangedPayload,
   type BbDesktopPopoutThreadChangedHandler,
   type BbDesktopPopoutUnsubscribe,
+  type BbDesktopServerAddRequest,
+  type BbDesktopServerAddResult,
+  type BbDesktopServerListEntry,
+  type BbDesktopServersApi,
+  type BbDesktopServersChangeHandler,
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
@@ -70,6 +81,16 @@ import {
   BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
 } from "./popout-ipc.js";
+import {
+  BB_DESKTOP_SERVERS_ADD_CHANNEL,
+  BB_DESKTOP_SERVERS_CHANGED_CHANNEL,
+  BB_DESKTOP_SERVERS_GET_AUTO_CONNECT_CHANNEL,
+  BB_DESKTOP_SERVERS_LIST_CHANNEL,
+  BB_DESKTOP_SERVERS_REMOVE_CHANNEL,
+  BB_DESKTOP_SERVERS_RENAME_CHANNEL,
+  BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
+  BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
+} from "./desktop-server-ipc.js";
 import {
   BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
   type BbDesktopSpellcheckApi,
@@ -302,9 +323,125 @@ const bbPopoutApi: BbDesktopPopoutApi = {
   },
 };
 
+const serverChangeListeners = new Set<BbDesktopServersChangeHandler>();
+
+function parseServerListPayload(payload: unknown): BbDesktopServerListEntry[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+  const servers: BbDesktopServerListEntry[] = [];
+  for (const entry of payload) {
+    const parsed = bbDesktopServerListEntrySchema.safeParse(entry);
+    if (parsed.success) {
+      servers.push(parsed.data);
+    }
+  }
+  return servers;
+}
+
+const bbServersApi: BbDesktopServersApi = {
+  async list(): Promise<BbDesktopServerListEntry[]> {
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_SERVERS_LIST_CHANNEL,
+      );
+      return parseServerListPayload(payload);
+    } catch {
+      return [];
+    }
+  },
+  async add(request: BbDesktopServerAddRequest): Promise<BbDesktopServerAddResult> {
+    const parsedRequest = bbDesktopServerAddRequestSchema.safeParse(request);
+    if (!parsedRequest.success) {
+      return { ok: false, reason: "unreachable" };
+    }
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_SERVERS_ADD_CHANNEL,
+        parsedRequest.data,
+      );
+      const parsed = bbDesktopServerAddResultSchema.safeParse(payload);
+      return parsed.success
+        ? parsed.data
+        : { ok: false, reason: "unreachable" };
+    } catch {
+      return { ok: false, reason: "unreachable" };
+    }
+  },
+  async remove(id: string): Promise<void> {
+    const parsed = bbDesktopServerIdRequestSchema.safeParse({ id });
+    if (!parsed.success) {
+      return;
+    }
+    try {
+      await ipcRenderer.invoke(BB_DESKTOP_SERVERS_REMOVE_CHANNEL, parsed.data);
+    } catch {
+      return;
+    }
+  },
+  async rename(id: string, name: string): Promise<void> {
+    const parsed = bbDesktopServerRenameRequestSchema.safeParse({ id, name });
+    if (!parsed.success) {
+      return;
+    }
+    try {
+      await ipcRenderer.invoke(BB_DESKTOP_SERVERS_RENAME_CHANNEL, parsed.data);
+    } catch {
+      return;
+    }
+  },
+  async setActive(id: string): Promise<void> {
+    const parsed = bbDesktopServerIdRequestSchema.safeParse({ id });
+    if (!parsed.success) {
+      return;
+    }
+    try {
+      await ipcRenderer.invoke(
+        BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
+        parsed.data,
+      );
+    } catch {
+      return;
+    }
+  },
+  async getAutoConnect(): Promise<boolean> {
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_SERVERS_GET_AUTO_CONNECT_CHANNEL,
+      );
+      return payload === true;
+    } catch {
+      return true;
+    }
+  },
+  async setAutoConnect(autoConnectToLocalServer: boolean): Promise<void> {
+    const parsed = bbDesktopServerSetAutoConnectRequestSchema.safeParse({
+      autoConnectToLocalServer,
+    });
+    if (!parsed.success) {
+      return;
+    }
+    try {
+      await ipcRenderer.invoke(
+        BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
+        parsed.data,
+      );
+    } catch {
+      return;
+    }
+  },
+  onChange(listener: BbDesktopServersChangeHandler) {
+    serverChangeListeners.add(listener);
+    return () => {
+      serverChangeListeners.delete(listener);
+    };
+  },
+};
+
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
   popout: bbPopoutApi,
+  servers: bbServersApi,
   get lastCheckedAt() {
     return currentInfo.lastCheckedAt;
   },
@@ -468,6 +605,16 @@ ipcRenderer.on(
     }
     for (const listener of popoutThreadChangedListeners) {
       listener(parsed.data);
+    }
+  },
+);
+
+ipcRenderer.on(
+  BB_DESKTOP_SERVERS_CHANGED_CHANNEL,
+  (_event, payload: unknown) => {
+    const servers = parseServerListPayload(payload);
+    for (const listener of serverChangeListeners) {
+      listener(servers);
     }
   },
 );

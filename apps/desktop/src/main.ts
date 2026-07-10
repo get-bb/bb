@@ -29,10 +29,16 @@ import {
   bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
   bbDesktopPopoutThreadRefSchema,
+  bbDesktopServerAddRequestSchema,
+  bbDesktopServerIdRequestSchema,
+  bbDesktopServerRenameRequestSchema,
+  bbDesktopServerSetAutoConnectRequestSchema,
   bbDesktopThemeSchema,
   getDesktopThreadRoutePath,
   type BbDesktopInfo,
   type BbDesktopPopoutThreadRef,
+  type BbDesktopServerListEntry,
+  type BbDesktopServerStatus,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -69,6 +75,32 @@ import {
   waitForCompatibleServer,
   type ServerProbeResult,
 } from "./server-probe.js";
+import {
+  createActiveServerState,
+  type ActiveServerState,
+} from "./active-server-state.js";
+import { addDesktopServer } from "./server-add.js";
+import {
+  BB_DESKTOP_SERVERS_ADD_CHANNEL,
+  BB_DESKTOP_SERVERS_CHANGED_CHANNEL,
+  BB_DESKTOP_SERVERS_GET_AUTO_CONNECT_CHANNEL,
+  BB_DESKTOP_SERVERS_LIST_CHANNEL,
+  BB_DESKTOP_SERVERS_REMOVE_CHANNEL,
+  BB_DESKTOP_SERVERS_RENAME_CHANNEL,
+  BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
+  BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
+} from "./desktop-server-ipc.js";
+import {
+  BUILTIN_SERVER_ID,
+  createServerRegistry,
+  SERVER_REGISTRY_FILE_NAME,
+  type ServerRegistry,
+} from "./server-registry.js";
+import {
+  builtinServerStatus,
+  probeRemoteServerStatuses,
+  SERVER_STATUS_PROBE_TIMEOUT_MS,
+} from "./server-status.js";
 import {
   createDesktopShutdownState,
   registerDesktopShutdownSignalHandlers,
@@ -307,6 +339,15 @@ const applicationWindowWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
 let stoppingForQuit = false;
 let quitting = false;
+let serverRegistry: ServerRegistry | null = null;
+let activeServerState: ActiveServerState | null = null;
+let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
+let desktopBridgePath: string | null = null;
+let desktopUserDataPath: string | null = null;
+let builtinLastProbe: ServerProbeResult | null = null;
+const remoteServerStatuses = new Map<string, BbDesktopServerStatus>();
+let serverStatusRefreshToken = 0;
+let serverStatusProbeInFlight: Promise<void> | null = null;
 
 function resolveDesktopServerUrl(args: ResolveDesktopServerUrlArgs): string {
   const rawPort = args.env.BB_SERVER_PORT?.trim();
@@ -544,12 +585,97 @@ function closeFocusedDetachedDevTools(): void {
   }
 }
 
-function refreshApplicationMenu(): void {
+function getFocusedApplicationWindow(): BrowserWindow | null {
+  const focused = BrowserWindow.getFocusedWindow();
+  if (
+    focused !== null &&
+    !focused.isDestroyed() &&
+    applicationWindowWebContentsIds.has(focused.webContents.id)
+  ) {
+    return focused;
+  }
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (
+      !browserWindow.isDestroyed() &&
+      applicationWindowWebContentsIds.has(browserWindow.webContents.id)
+    ) {
+      return browserWindow;
+    }
+  }
+  return null;
+}
+
+function resolveUrlForServerId(serverId: string): string | null {
+  const server = serverRegistry?.getServer(serverId);
+  if (server === null || server === undefined) {
+    return null;
+  }
+  if (server.source === "builtin") {
+    return resolveDesktopWindowUrl({
+      env: process.env,
+      serverUrl: server.url,
+    });
+  }
+  return server.url;
+}
+
+function resolveInitialUrlForNewWindow(): string | null {
+  if (activeServerState === null) {
+    return currentWindowUrl;
+  }
+  return (
+    resolveUrlForServerId(activeServerState.getMostRecentServerId()) ??
+    currentWindowUrl
+  );
+}
+
+function buildMenuServerItems(): Array<{
+  checked: boolean;
+  id: string;
+  name: string;
+}> {
+  if (serverRegistry === null || activeServerState === null) {
+    return [
+      {
+        checked: true,
+        id: BUILTIN_SERVER_ID,
+        name: "This Mac",
+      },
+    ];
+  }
+  const focusedWindow = getFocusedApplicationWindow();
+  const activeId =
+    focusedWindow === null
+      ? activeServerState.getMostRecentServerId()
+      : activeServerState.getActiveServerId(focusedWindow.id);
+  return serverRegistry.list().map((server) => ({
+    checked: server.id === activeId,
+    id: server.id,
+    name: server.name,
+  }));
+}
+
+function scheduleServerStatusRefresh(): void {
+  // On-demand only (list() / registry or Server-menu interaction). Coalesce
+  // concurrent callers so we never start overlapping HTTP probe batches.
+  if (serverStatusProbeInFlight !== null) {
+    return;
+  }
+  serverStatusProbeInFlight = refreshServerStatuses()
+    .then(() => {
+      sendServersChanged();
+    })
+    .finally(() => {
+      serverStatusProbeInFlight = null;
+    });
+}
+
+function installCurrentApplicationMenu(): void {
   installApplicationMenu({
     accelerators: currentApplicationMenuAccelerators,
     createNewWindow() {
       void createApplicationWindow({
-        initialUrl: currentWindowUrl,
+        initialUrl: resolveInitialUrlForNewWindow(),
         stateKey: null,
       });
     },
@@ -601,8 +727,34 @@ function refreshApplicationMenu(): void {
     openServerDaemonLogs() {
       void openServerDaemonLogs();
     },
+    selectServer(serverId, browserWindow) {
+      // Selecting from the native Server menu is an explicit "menu open"
+      // interaction — refresh remote statuses for SPA onChange listeners.
+      scheduleServerStatusRefresh();
+      const targetWindow =
+        browserWindow instanceof BrowserWindow
+          ? browserWindow
+          : getFocusedApplicationWindow();
+      if (targetWindow === null) {
+        return;
+      }
+      void setActiveServerForWindow({
+        serverId,
+        browserWindow: targetWindow,
+      });
+    },
     serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
+    servers: buildMenuServerItems(),
   });
+}
+
+function refreshApplicationMenu(): void {
+  installCurrentApplicationMenu();
+}
+
+function refreshApplicationMenuAndProbeStatuses(): void {
+  scheduleServerStatusRefresh();
+  installCurrentApplicationMenu();
 }
 
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
@@ -856,6 +1008,12 @@ function startSystemConfigSync(serverUrl: string): void {
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
+  if (activeServerState !== null) {
+    activeServerState.setActiveServerId(
+      browserWindow.id,
+      activeServerState.getMostRecentServerId(),
+    );
+  }
   registerDesktopContextMenu({ webContents: browserWindow.webContents });
   browserWindow.on("enter-full-screen", () => {
     sendDesktopWindowStateChanged(browserWindow);
@@ -865,7 +1023,353 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   });
   browserWindow.on("closed", () => {
     applicationWindowWebContentsIds.delete(webContentsId);
+    activeServerState?.clearWindow(browserWindow.id);
   });
+}
+
+async function loadUrlInApplicationWindow(args: {
+  browserWindow: BrowserWindow;
+  url: string;
+}): Promise<void> {
+  args.browserWindow.webContents.setZoomFactor(1);
+  try {
+    await args.browserWindow.loadURL(args.url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("ERR_ABORTED")) {
+      return;
+    }
+    throw error;
+  }
+}
+
+function buildServerListEntries(args: {
+  activeServerId: string;
+}): BbDesktopServerListEntry[] {
+  if (serverRegistry === null) {
+    return [];
+  }
+  return serverRegistry.list().map((server) => {
+    const status: BbDesktopServerStatus =
+      server.source === "builtin"
+        ? builtinServerStatus({
+            isRuntimeConnected: currentRuntime !== null,
+            lastProbe: builtinLastProbe,
+          })
+        : (remoteServerStatuses.get(server.id) ?? "unknown");
+    return {
+      active: server.id === args.activeServerId,
+      id: server.id,
+      name: server.name,
+      source: server.source,
+      status,
+      url: server.url,
+    };
+  });
+}
+
+async function refreshServerStatuses(): Promise<void> {
+  if (serverRegistry === null) {
+    return;
+  }
+  const token = serverStatusRefreshToken + 1;
+  serverStatusRefreshToken = token;
+  const servers = serverRegistry.list();
+  const remoteStatuses = await probeRemoteServerStatuses({
+    probe: (serverUrl) =>
+      probeBbServer({
+        serverUrl,
+        timeoutMs: SERVER_STATUS_PROBE_TIMEOUT_MS,
+      }),
+    servers,
+  });
+  if (token !== serverStatusRefreshToken) {
+    return;
+  }
+  remoteServerStatuses.clear();
+  for (const [serverId, status] of remoteStatuses) {
+    remoteServerStatuses.set(serverId, status);
+  }
+}
+
+function sendServersChangedToWindow(browserWindow: BrowserWindow): void {
+  if (
+    browserWindow.isDestroyed() ||
+    !applicationWindowWebContentsIds.has(browserWindow.webContents.id) ||
+    activeServerState === null
+  ) {
+    return;
+  }
+  const servers = buildServerListEntries({
+    activeServerId: activeServerState.getActiveServerId(browserWindow.id),
+  });
+  browserWindow.webContents.send(BB_DESKTOP_SERVERS_CHANGED_CHANNEL, servers);
+}
+
+function sendServersChanged(): void {
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    sendServersChangedToWindow(browserWindow);
+  }
+}
+
+async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
+  if (currentRuntime !== null) {
+    return true;
+  }
+  if (desktopBridgePath === null || desktopUserDataPath === null) {
+    return false;
+  }
+
+  const existingProbe = await probeBbServer({
+    serverUrl: builtinServerUrl,
+    timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
+  });
+  builtinLastProbe = existingProbe;
+
+  if (existingProbe.kind === "compatible") {
+    setCurrentRuntime({
+      bbProcess: null,
+      ownership: "attached",
+      serverUrl: existingProbe.serverUrl,
+      userDataPath: null,
+    });
+    // System config / updates stay pinned to the local runtime even when other
+    // windows display remote servers.
+    startSystemConfigSync(existingProbe.serverUrl);
+    return true;
+  }
+
+  if (existingProbe.kind === "incompatible") {
+    return false;
+  }
+
+  const runtime = await startOwnedRuntime({
+    bridgePath: desktopBridgePath,
+    serverUrl: builtinServerUrl,
+    userDataPath: desktopUserDataPath,
+  });
+  if (runtime === null) {
+    return false;
+  }
+  startSystemConfigSync(runtime.serverUrl);
+  return true;
+}
+
+interface SetActiveServerForWindowArgs {
+  browserWindow: BrowserWindow;
+  serverId: string;
+}
+
+async function setActiveServerForWindow(
+  args: SetActiveServerForWindowArgs,
+): Promise<void> {
+  if (serverRegistry === null || activeServerState === null) {
+    return;
+  }
+  const server = serverRegistry.getServer(args.serverId);
+  if (server === null) {
+    return;
+  }
+
+  if (server.source === "builtin") {
+    const attached = await ensureBuiltinRuntimeAttached();
+    if (!attached) {
+      await loadUrlInApplicationWindow({
+        browserWindow: args.browserWindow,
+        url: createLocalViewUrl({
+          viewModel: {
+            details:
+              "Could not connect to the local bb server on this Mac. Check that the port is free or that a compatible bb server is running.",
+            kind: "error",
+            logText: "",
+            title: "Could not connect",
+          },
+        }),
+      });
+      activeServerState.setActiveServerId(args.browserWindow.id, server.id);
+      refreshApplicationMenu();
+      sendServersChanged();
+      return;
+    }
+    const url = resolveDesktopWindowUrl({
+      env: process.env,
+      serverUrl: server.url,
+    });
+    bbAppLoaded = true;
+    // Popout stays pinned to the local runtime URL (not remote servers).
+    if (currentRuntime !== null) {
+      const localUrl = resolveDesktopWindowUrl({
+        env: process.env,
+        serverUrl: currentRuntime.serverUrl,
+      });
+      if (popoutWindowUrl !== localUrl) {
+        popoutWindowManager?.destroy();
+        popoutWindowManager = null;
+        popoutWindowUrl = localUrl;
+      }
+    }
+    currentWindowUrl = url;
+    await loadUrlInApplicationWindow({
+      browserWindow: args.browserWindow,
+      url,
+    });
+    if (shouldOpenDevTools()) {
+      args.browserWindow.webContents.openDevTools({ mode: "detach" });
+    }
+  } else {
+    // Remote servers are pure web loads. Owned local runtime keeps running.
+    currentWindowUrl = server.url;
+    await loadUrlInApplicationWindow({
+      browserWindow: args.browserWindow,
+      url: server.url,
+    });
+  }
+
+  activeServerState.setActiveServerId(args.browserWindow.id, server.id);
+  refreshApplicationMenu();
+  sendServersChanged();
+}
+
+function registerDesktopServerIpc(): void {
+  ipcMain.handle(BB_DESKTOP_SERVERS_LIST_CHANNEL, async (event) => {
+    await refreshServerStatuses();
+    const browserWindow = BrowserWindow.fromWebContents(event.sender);
+    const activeServerId =
+      browserWindow === null || activeServerState === null
+        ? BUILTIN_SERVER_ID
+        : activeServerState.getActiveServerId(browserWindow.id);
+    return buildServerListEntries({ activeServerId });
+  });
+
+  ipcMain.handle(BB_DESKTOP_SERVERS_ADD_CHANNEL, async (_event, payload) => {
+    const registry = serverRegistry;
+    if (registry === null) {
+      return { ok: false as const, reason: "unreachable" as const };
+    }
+    const parsed = bbDesktopServerAddRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return { ok: false as const, reason: "unreachable" as const };
+    }
+    const result = await addDesktopServer({
+      existingUrls: registry.list().map((server) => server.url),
+      persist: async (persistArgs) =>
+        registry.add({
+          name: persistArgs.name,
+          source: persistArgs.source,
+          url: persistArgs.url,
+        }),
+      probe: (serverUrl) =>
+        probeBbServer({
+          serverUrl,
+          timeoutMs: SERVER_STATUS_PROBE_TIMEOUT_MS,
+        }),
+      request: parsed.data,
+      source: "manual",
+    });
+    if (!result.ok) {
+      return result;
+    }
+    // Registry onChange already rebuilt the menu; refresh statuses so the
+    // returned entry and onChange payload include a real probe result.
+    await refreshServerStatuses();
+    sendServersChanged();
+    const listEntry = buildServerListEntries({
+      activeServerId: BUILTIN_SERVER_ID,
+    }).find((entry) => entry.id === result.server.id);
+    if (listEntry === undefined) {
+      return {
+        ok: true as const,
+        server: {
+          active: false,
+          id: result.server.id,
+          name: result.server.name,
+          source: result.server.source,
+          status: "unknown" as const,
+          url: result.server.url,
+        },
+      };
+    }
+    return { ok: true as const, server: listEntry };
+  });
+
+  ipcMain.handle(BB_DESKTOP_SERVERS_REMOVE_CHANNEL, async (_event, payload) => {
+    if (serverRegistry === null || activeServerState === null) {
+      return;
+    }
+    const parsed = bbDesktopServerIdRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    const removed = await serverRegistry.remove(parsed.data.id);
+    if (!removed) {
+      return;
+    }
+    remoteServerStatuses.delete(parsed.data.id);
+    // Windows pointing at the removed server fall back to the builtin entry.
+    for (const browserWindow of BrowserWindow.getAllWindows()) {
+      if (
+        !applicationWindowWebContentsIds.has(browserWindow.webContents.id) ||
+        activeServerState.getActiveServerId(browserWindow.id) !==
+          parsed.data.id
+      ) {
+        continue;
+      }
+      void setActiveServerForWindow({
+        browserWindow,
+        serverId: BUILTIN_SERVER_ID,
+      });
+    }
+  });
+
+  ipcMain.handle(BB_DESKTOP_SERVERS_RENAME_CHANNEL, async (_event, payload) => {
+    if (serverRegistry === null) {
+      return;
+    }
+    const parsed = bbDesktopServerRenameRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    await serverRegistry.rename(parsed.data.id, parsed.data.name);
+  });
+
+  ipcMain.handle(
+    BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
+    async (event, payload) => {
+      const parsed = bbDesktopServerIdRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      const browserWindow = BrowserWindow.fromWebContents(event.sender);
+      if (browserWindow === null) {
+        return;
+      }
+      await setActiveServerForWindow({
+        browserWindow,
+        serverId: parsed.data.id,
+      });
+    },
+  );
+
+  ipcMain.handle(BB_DESKTOP_SERVERS_GET_AUTO_CONNECT_CHANNEL, () => {
+    return serverRegistry?.getAutoConnectToLocalServer() ?? true;
+  });
+
+  ipcMain.handle(
+    BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
+    async (_event, payload) => {
+      if (serverRegistry === null) {
+        return;
+      }
+      const parsed = bbDesktopServerSetAutoConnectRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      await serverRegistry.setAutoConnectToLocalServer(
+        parsed.data.autoConnectToLocalServer,
+      );
+      sendServersChanged();
+    },
+  );
 }
 
 function isApplicationWindowSender(webContents: WebContents): boolean {
@@ -896,7 +1400,15 @@ function shouldHandlePopoutWindowInvoke(event: IpcMainInvokeEvent): boolean {
 }
 
 function getWindowUrlForRoute(path: string): string | null {
-  const baseUrl = currentWindowUrl ?? currentRuntime?.serverUrl;
+  // Routes opened from popout/desktop chrome always target the local runtime,
+  // never a remote server a window may currently be displaying.
+  const baseUrl =
+    currentRuntime !== null
+      ? resolveDesktopWindowUrl({
+          env: process.env,
+          serverUrl: currentRuntime.serverUrl,
+        })
+      : currentWindowUrl;
   if (baseUrl === null || baseUrl === undefined) {
     return null;
   }
@@ -1498,13 +2010,36 @@ interface InitializeRuntimeArgs {
   userDataPath: string;
 }
 
+async function loadLocalServerAlreadyRunningView(): Promise<void> {
+  bbAppLoaded = false;
+  await loadWindowUrl({
+    url: createLocalViewUrl({
+      viewModel: {
+        kind: "info",
+        message:
+          "A bb server is already running on this Mac. Connect to it from the Window ▸ Server menu when you are ready.",
+        title: "Local server available",
+      },
+    }),
+  });
+}
+
 async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   const existingProbe = await probeBbServer({
     serverUrl: args.serverUrl,
     timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
   });
+  builtinLastProbe = existingProbe;
+  const autoConnect =
+    serverRegistry?.getAutoConnectToLocalServer() ?? true;
 
   if (existingProbe.kind === "compatible") {
+    if (!autoConnect) {
+      // Do not silently attach. User connects via Window ▸ Server.
+      refreshApplicationMenu();
+      await loadLocalServerAlreadyRunningView();
+      return;
+    }
     setCurrentRuntime({
       bbProcess: null,
       ownership: "attached",
@@ -1566,7 +2101,7 @@ async function runDesktopApp(): Promise<void> {
       return;
     }
     void createApplicationWindow({
-      initialUrl: currentWindowUrl,
+      initialUrl: resolveInitialUrlForNewWindow(),
       stateKey: null,
     });
   });
@@ -1579,7 +2114,7 @@ async function runDesktopApp(): Promise<void> {
   app.on("activate", () => {
     if (desktopWindowFactory?.hasOpenWindows() === false) {
       void createApplicationWindow({
-        initialUrl: currentWindowUrl,
+        initialUrl: resolveInitialUrlForNewWindow(),
         stateKey: null,
       });
     }
@@ -1587,6 +2122,10 @@ async function runDesktopApp(): Promise<void> {
   app.on("did-become-active", () => {
     void desktopUpdateService?.checkAfterActive();
     void desktopAutoUpdateService?.checkAfterActive();
+  });
+  app.on("browser-window-focus", () => {
+    // Checkmark in Window ▸ Server tracks the focused window's active server.
+    refreshApplicationMenu();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
     if (desktopBrowserViewManager === null) {
@@ -1628,11 +2167,14 @@ async function runDesktopApp(): Promise<void> {
   );
   const preloadPath = join(paths.appPath, "dist", "preload.cjs");
   const serverUrl = resolveDesktopServerUrl({ env: process.env });
+  builtinServerUrl = serverUrl;
+  desktopBridgePath = bridgePath;
   const desktopVersion = getDesktopVersion(process.env.BB_DESKTOP_VERSION);
   const desktopUpdateFeedUrl = resolveDesktopUpdateFeedUrl({
     env: process.env,
   });
   const userDataPath = app.getPath("userData");
+  desktopUserDataPath = userDataPath;
 
   assertPathExists({ label: "bb-app bridge", path: bridgePath });
   assertPathExists({
@@ -1649,6 +2191,19 @@ async function runDesktopApp(): Promise<void> {
     signal: "SIGTERM",
     timeoutMs: 5_000,
     userDataPath,
+  });
+
+  serverRegistry = createServerRegistry({
+    builtinUrl: serverUrl,
+    storagePath: join(userDataPath, SERVER_REGISTRY_FILE_NAME),
+  });
+  await serverRegistry.load();
+  activeServerState = createActiveServerState({
+    defaultServerId: BUILTIN_SERVER_ID,
+  });
+  serverRegistry.onChange(() => {
+    refreshApplicationMenuAndProbeStatuses();
+    sendServersChanged();
   });
 
   desktopUpdateService = createDesktopUpdateService({
@@ -1675,6 +2230,7 @@ async function runDesktopApp(): Promise<void> {
     sendDesktopInfoChanged();
   });
   registerDesktopUpdateIpc();
+  registerDesktopServerIpc();
   registerPopoutIpc();
   desktopBrowserViewManager = createDesktopBrowserViewManager({
     dispatchAppCommand({ command, hostWebContentsId }) {
