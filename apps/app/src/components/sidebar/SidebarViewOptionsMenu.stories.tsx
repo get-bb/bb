@@ -5,7 +5,6 @@ import { SidebarDisplayOptionsMenu } from "./ProjectList";
 import {
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
-  sidebarSortDirectionAtom,
 } from "./sidebarCollapsedAtoms";
 
 export default {
@@ -17,15 +16,12 @@ export default {
 function StateReadout() {
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const sort = useAtomValue(sidebarChronologicalSortAtom);
-  const direction = useAtomValue(sidebarSortDirectionAtom);
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
       <dt className="text-muted-foreground">organize</dt>
       <dd className="font-mono">{organizationMode}</dd>
       <dt className="text-muted-foreground">sort</dt>
       <dd className="font-mono">{sort}</dd>
-      <dt className="text-muted-foreground">direction</dt>
-      <dd className="font-mono">{direction}</dd>
     </dl>
   );
 }
@@ -38,7 +34,6 @@ function InteractiveMenu() {
     const next = createStore();
     next.set(sidebarOrganizationModeAtom, "project");
     next.set(sidebarChronologicalSortAtom, "updated");
-    next.set(sidebarSortDirectionAtom, "desc");
     return next;
   }, []);
 
@@ -64,7 +59,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="interactive"
-        hint="open the menu · toggle Projects/Manual · pick a sort field, click it again to flip ↑/↓ · the menu stays open"
+        hint="open the menu · toggle By project/In one list · pick a fixed-order sort field"
       >
         <InteractiveMenu />
       </StoryRow>

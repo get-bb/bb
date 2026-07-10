@@ -85,70 +85,33 @@ function order(comparator: ThreadComparator, entries: ThreadListEntry[]) {
 }
 
 describe("getSidebarThreadComparator", () => {
-  it("created: desc lists newest first, asc lists oldest first", () => {
+  it("created lists newest first", () => {
     expect(
-      order(
-        getSidebarThreadComparator({ sort: "created", direction: "desc" }),
-        [apple, banana, cherry],
-      ),
-    ).toEqual(["thr_c", "thr_b", "thr_a"]);
-    expect(
-      order(getSidebarThreadComparator({ sort: "created", direction: "asc" }), [
-        apple,
-        banana,
-        cherry,
-      ]),
-    ).toEqual(["thr_a", "thr_b", "thr_c"]);
-  });
-
-  it("updated: desc lists most recent first, asc inverts", () => {
-    expect(
-      order(
-        getSidebarThreadComparator({ sort: "updated", direction: "desc" }),
-        [apple, banana, cherry],
-      ),
-    ).toEqual(["thr_c", "thr_b", "thr_a"]);
-    expect(
-      order(getSidebarThreadComparator({ sort: "updated", direction: "asc" }), [
-        apple,
-        banana,
-        cherry,
-      ]),
-    ).toEqual(["thr_a", "thr_b", "thr_c"]);
-  });
-
-  it("alpha: asc is A→Z and desc is Z→A", () => {
-    expect(
-      order(getSidebarThreadComparator({ sort: "alpha", direction: "asc" }), [
-        cherry,
-        apple,
-        banana,
-      ]),
-    ).toEqual(["thr_a", "thr_b", "thr_c"]);
-    expect(
-      order(getSidebarThreadComparator({ sort: "alpha", direction: "desc" }), [
-        apple,
-        cherry,
-        banana,
-      ]),
+      order(getSidebarThreadComparator("created"), [apple, banana, cherry]),
     ).toEqual(["thr_c", "thr_b", "thr_a"]);
   });
 
-  // Regression: leaf threads and mixed folder/thread items must sort the same
-  // direction, or folders and threads appear in opposite alphabetical order.
-  it("alpha: leaf and item comparators agree in direction", () => {
-    for (const direction of ["asc", "desc"] as const) {
-      const comparator = getSidebarThreadComparator({
-        sort: "alpha",
-        direction,
-      });
-      expect(comparator.compareItems).toBeDefined();
-      const leafSign = Math.sign(comparator(apple, banana));
-      const itemSign = Math.sign(
-        comparator.compareItems!(threadItem(apple), threadItem(banana)),
-      );
-      expect(itemSign).toBe(leafSign);
-    }
+  it("updated lists most recent first", () => {
+    expect(
+      order(getSidebarThreadComparator("updated"), [apple, banana, cherry]),
+    ).toEqual(["thr_c", "thr_b", "thr_a"]);
+  });
+
+  it("alphabetical lists A→Z", () => {
+    expect(
+      order(getSidebarThreadComparator("alpha"), [cherry, apple, banana]),
+    ).toEqual(["thr_a", "thr_b", "thr_c"]);
+  });
+
+  // Regression: leaf threads and mixed folder/thread items must both sort A→Z.
+  it("alphabetical leaf and item comparators agree", () => {
+    const comparator = getSidebarThreadComparator("alpha");
+    expect(comparator.compareItems).toBeDefined();
+    const leafSign = Math.sign(comparator(apple, banana));
+    const itemSign = Math.sign(
+      comparator.compareItems!(threadItem(apple), threadItem(banana)),
+    );
+    expect(itemSign).toBe(leafSign);
   });
 });
 
