@@ -22,7 +22,7 @@ import {
 
 const syncMocks = vi.hoisted(() => ({
   scheduleLocalThreadTabsMigration: vi.fn(),
-  scheduleThreadTabsDeltaPersistence: vi.fn(),
+  scheduleThreadTabsPersistence: vi.fn(),
   useThreadTabs: vi.fn(() => ({ data: undefined })),
 }));
 
@@ -38,8 +38,7 @@ vi.mock("@/lib/thread-tabs-sync", async (importOriginal) => {
     hasPendingThreadTabsWrite: () => false,
     scheduleLocalThreadTabsMigration:
       syncMocks.scheduleLocalThreadTabsMigration,
-    scheduleThreadTabsDeltaPersistence:
-      syncMocks.scheduleThreadTabsDeltaPersistence,
+    scheduleThreadTabsPersistence: syncMocks.scheduleThreadTabsPersistence,
   };
 });
 
@@ -83,7 +82,7 @@ afterEach(() => {
   window.localStorage.clear();
   resetPluginSlotStoreForTest();
   syncMocks.scheduleLocalThreadTabsMigration.mockClear();
-  syncMocks.scheduleThreadTabsDeltaPersistence.mockClear();
+  syncMocks.scheduleThreadTabsPersistence.mockClear();
   syncMocks.useThreadTabs.mockClear();
 });
 
@@ -107,7 +106,7 @@ describe("useThreadFileTabs terminal pruning", () => {
       enabled: false,
     });
     expect(syncMocks.scheduleLocalThreadTabsMigration).not.toHaveBeenCalled();
-    expect(syncMocks.scheduleThreadTabsDeltaPersistence).not.toHaveBeenCalled();
+    expect(syncMocks.scheduleThreadTabsPersistence).not.toHaveBeenCalled();
   });
 
   it("drops disconnected terminal tabs when not retained", async () => {

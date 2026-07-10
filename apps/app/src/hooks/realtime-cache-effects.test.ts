@@ -25,7 +25,6 @@ import {
   threadPromptHistoryQueryKey,
   threadQueryKey,
   threadSearchQueryKey,
-  threadTabsQueryKey,
   terminalsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
@@ -1333,22 +1332,6 @@ describe("createRealtimeCacheEffects", () => {
 
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
 
-    effects.dispose();
-  });
-
-  it("immediately invalidates cached thread tabs for tab changes", () => {
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const tabsKey = threadTabsQueryKey("thr_1");
-    queryClient.setQueryData(tabsKey, { revision: 1, tabs: [] });
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      changes: ["tabs-changed"],
-    });
-
-    expect(queryClient.getQueryState(tabsKey)?.isInvalidated).toBe(true);
     effects.dispose();
   });
 });

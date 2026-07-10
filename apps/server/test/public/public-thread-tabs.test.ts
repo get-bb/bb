@@ -1,15 +1,8 @@
-import {
-  threadTabsResponseSchema,
-  type ThreadTab,
-} from "@bb/server-contract";
+import { threadTabsResponseSchema, type ThreadTab } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { readJson } from "../helpers/json.js";
-import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { seedThreadFixture } from "../helpers/seed.js";
-import {
-  withTestHarness,
-  type TestAppHarness,
-} from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 async function getTabs(
   harness: TestAppHarness,
@@ -88,14 +81,9 @@ const ALL_TAB_KINDS: readonly ThreadTab[] = [
 ];
 
 describe("public thread tabs", () => {
-  it("stores every tab kind, broadcasts changes, and rejects stale writes", async () => {
+  it("stores every tab kind and rejects stale writes", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness);
-      const socket = createMockHubSocket();
-      harness.deps.hub.subscribe(socket, {
-        kind: "thread-detail",
-        threadId: thread.id,
-      });
 
       const initialResponse = await getTabs(harness, thread.id);
       expect(initialResponse.status).toBe(200);
@@ -111,14 +99,6 @@ describe("public thread tabs", () => {
       expect(
         threadTabsResponseSchema.parse(await readJson(updateResponse)),
       ).toEqual({ revision: 1, tabs: ALL_TAB_KINDS });
-      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
-        {
-          changes: ["tabs-changed"],
-          entity: "thread",
-          id: thread.id,
-          type: "changed",
-        },
-      ]);
 
       const staleResponse = await putTabs(harness, thread.id, {
         expectedRevision: 0,
@@ -130,7 +110,6 @@ describe("public thread tabs", () => {
         details: { currentRevision: 1 },
         message: "Thread tabs changed on another client",
       });
-      expect(socket.messages).toHaveLength(1);
 
       const persistedResponse = await getTabs(harness, thread.id);
       expect(

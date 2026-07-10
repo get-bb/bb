@@ -32,10 +32,6 @@ vi.mock("./api", async (importOriginal) => {
   };
 });
 
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useThreadDetailRealtimeSubscription: vi.fn(),
-}));
-
 function createQueryWrapper(queryClient: QueryClient) {
   return function QueryWrapper({ children }: { children: ReactNode }) {
     return createElement(
@@ -167,6 +163,57 @@ describe("fixed panel tab server sync", () => {
     });
   });
 
+  it("uses server tabs when local migration is stale", async () => {
+    const threadId = "sync-stale-migration";
+    const localTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://local.example.com",
+    });
+    const serverTab = createSideChatFixedPanelTab({
+      sourceMessageText: "Saved elsewhere",
+      title: "Server chat",
+    });
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: Date.now(),
+          secondary: {
+            activeTabId: localTab.id,
+            isOpen: true,
+            tabs: [localTab],
+          },
+        }),
+      }),
+    );
+    apiMocks.getThreadTabs
+      .mockResolvedValueOnce({ revision: 0, tabs: [] })
+      .mockResolvedValueOnce({ revision: 1, tabs: [serverTab] });
+    apiMocks.updateThreadTabs.mockRejectedValueOnce(
+      new HttpError({
+        code: "thread_tabs_conflict",
+        message: "changed",
+        status: 409,
+      }),
+    );
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => useFixedPanelTabsState(threadId, threadId),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith(threadId, {
+        expectedRevision: 0,
+        tabs: [localTab],
+      });
+    });
+    await waitFor(() => {
+      expect(apiMocks.getThreadTabs).toHaveBeenCalledTimes(2);
+      expect(result.current.secondary.tabs).toEqual([serverTab]);
+    });
+  });
+
   it("persists tab-list changes but not presentation-only changes", async () => {
     const threadId = "sync-local-updates";
     apiMocks.getThreadTabs.mockResolvedValue({ revision: 2, tabs: [] });
@@ -212,8 +259,8 @@ describe("fixed panel tab server sync", () => {
     expect(apiMocks.updateThreadTabs).not.toHaveBeenCalled();
   });
 
-  it("rebases a local tab change after a concurrent remote write", async () => {
-    const threadId = "sync-conflict-rebase";
+  it("refreshes from the server after a stale local write", async () => {
+    const threadId = "sync-stale-write";
     const originalTab = createThreadInfoFixedPanelTab();
     const localTab = createBrowserFixedPanelTab({
       environmentId: null,
@@ -229,18 +276,13 @@ describe("fixed panel tab server sync", () => {
         revision: 2,
         tabs: [originalTab, concurrentTab],
       });
-    apiMocks.updateThreadTabs
-      .mockRejectedValueOnce(
-        new HttpError({
-          code: "thread_tabs_conflict",
-          message: "changed",
-          status: 409,
-        }),
-      )
-      .mockResolvedValueOnce({
-        revision: 3,
-        tabs: [originalTab, localTab, concurrentTab],
-      });
+    apiMocks.updateThreadTabs.mockRejectedValueOnce(
+      new HttpError({
+        code: "thread_tabs_conflict",
+        message: "changed",
+        status: 409,
+      }),
+    );
     const queryClient = createTestQueryClient();
     const { result } = renderHook(
       () => ({
@@ -264,10 +306,18 @@ describe("fixed panel tab server sync", () => {
     });
 
     await waitFor(() => {
-      expect(apiMocks.updateThreadTabs).toHaveBeenNthCalledWith(2, threadId, {
-        expectedRevision: 2,
-        tabs: [originalTab, concurrentTab, localTab],
+      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith(threadId, {
+        expectedRevision: 1,
+        tabs: [originalTab, localTab],
       });
     });
+    await waitFor(() => {
+      expect(apiMocks.getThreadTabs).toHaveBeenCalledTimes(2);
+      expect(result.current.state.secondary.tabs).toEqual([
+        originalTab,
+        concurrentTab,
+      ]);
+    });
+    expect(apiMocks.updateThreadTabs).toHaveBeenCalledTimes(1);
   });
 });

@@ -21,11 +21,11 @@ import {
 } from "./fixed-panel-tabs-state";
 import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
 import {
-  deriveThreadTabsDelta,
+  areThreadTabListsEquivalent,
   hasPendingThreadTabsWrite,
   reconcileFixedPanelTabsState,
   scheduleLocalThreadTabsMigration,
-  scheduleThreadTabsDeltaPersistence,
+  scheduleThreadTabsPersistence,
 } from "./thread-tabs-sync";
 
 const FIXED_PANEL_TABS_TOUCH_THROTTLE_MS = 60 * 1000;
@@ -253,22 +253,26 @@ export function useUpdateFixedPanelTabsState(
     (update: FixedPanelTabsStateUpdater) => {
       if (!hasThreadId(panelStateId)) return;
       const now = Date.now();
-      let delta: ReturnType<typeof deriveThreadTabsDelta> = null;
+      let tabsToPersist: readonly FixedPanelTab[] | null = null;
       setState((current) => {
         const next = update(current);
         if (next === current) {
           return current;
         }
         const touched = touchFixedPanelTabsState(next, now);
-        delta = deriveThreadTabsDelta(
-          current.secondary.tabs,
-          touched.secondary.tabs,
-        );
+        if (
+          !areThreadTabListsEquivalent(
+            current.secondary.tabs,
+            touched.secondary.tabs,
+          )
+        ) {
+          tabsToPersist = touched.secondary.tabs;
+        }
         return touched;
       });
-      if (delta !== null && hasThreadId(syncThreadId)) {
-        scheduleThreadTabsDeltaPersistence({
-          delta,
+      if (tabsToPersist !== null && hasThreadId(syncThreadId)) {
+        scheduleThreadTabsPersistence({
+          tabs: tabsToPersist,
           queryClient,
           threadId: syncThreadId,
         });

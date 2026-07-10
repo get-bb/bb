@@ -78,7 +78,6 @@ import {
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
   threadSearchQueryKeyPrefix,
-  threadTabsQueryKey,
   terminalsQueryKey,
   threadsQueryKey,
   threadStorageFilePreviewQueryKeyPrefix,
@@ -298,12 +297,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     flush: "debounced",
     dirty: [
       dirtyThreadTerminalQueries, // Terminal panel lists sessions by thread.
-    ],
-  },
-  "tabs-changed": {
-    flush: "immediate",
-    dirty: [
-      dirtyThreadTabsQueries, // Shared panel tabs should appear immediately on other clients.
     ],
   },
 } satisfies ThreadChangeRegistry;
@@ -648,12 +641,6 @@ function dirtyThreadTerminalQueries({
   return threadId
     ? [terminalsQueryKey({ kind: "thread", threadId })]
     : [allTerminalsQueryKeyPrefix()];
-}
-
-function dirtyThreadTabsQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return threadId ? [threadTabsQueryKey(threadId)] : [];
 }
 
 function dirtyThreadStorageQueriesForThread({
