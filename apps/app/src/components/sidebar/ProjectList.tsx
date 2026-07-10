@@ -1088,7 +1088,7 @@ export function ProjectListActionButtons({
             aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
           >
             <Icon name="MessageSquarePlus" />
-            <span className="min-w-0 flex-1 truncate text-left">
+            <span className="min-w-0 truncate text-left">
               New thread
             </span>
             <AppCommandShortcutHint shortcut={newThreadShortcut} />
