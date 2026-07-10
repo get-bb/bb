@@ -117,9 +117,16 @@ function useMobilePromptBoxMinimized(
   const automaticMinimizeArmedRef = useRef(true);
 
   useEffect(() => {
-    if (!isCompactViewport) {
-      setIsMinimized(false);
-    }
+    if (isCompactViewport) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setIsMinimized(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [isCompactViewport]);
 
   useEffect(() => {
@@ -503,9 +510,7 @@ function FollowUpPromptBoxWithComposer({
         );
 
   return (
-    <MobilePromptBoxMinimizedProvider
-      isMinimized={mobileMinimized.isMinimized}
-    >
+    <MobilePromptBoxMinimizedProvider isMinimized={mobileMinimized.isMinimized}>
       <ThreadTimelineScrollToBottomButton
         active={composer.threadRuntimeDisplayStatus === "active"}
       />
@@ -585,7 +590,5 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox(
   if (props.composer === null) {
     return <FollowUpPromptBoxStackOnly stack={props.stack} />;
   }
-  return (
-    <FollowUpPromptBoxWithComposer {...props} composer={props.composer} />
-  );
+  return <FollowUpPromptBoxWithComposer {...props} composer={props.composer} />;
 });

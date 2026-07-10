@@ -668,12 +668,19 @@ describe("ThreadTimelineRows actions", () => {
 
   it("does not let the previously selected row clear a new row selection", async () => {
     const onSelectionReplyInSideChat = vi.fn();
+    const frameCallbacks: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      return window.setTimeout(() => callback(performance.now()), 0);
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
     });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((handle) => {
-      window.clearTimeout(handle);
-    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const flushSelectionFrames = async () => {
+      await act(async () => {
+        while (frameCallbacks.length > 0) {
+          frameCallbacks.shift()?.(performance.now());
+        }
+      });
+    };
 
     renderWithRouter(
       <ThreadTimelineRows
@@ -703,6 +710,7 @@ describe("ThreadTimelineRows actions", () => {
     expect(laterTextNode).not.toBeNull();
     mockWindowSelection({ node: laterTextNode!, text: "later answer" });
     fireEvent(document, new Event("selectionchange"));
+    await flushSelectionFrames();
     await screen.findByRole("button", { name: "Reply in side chat" });
 
     const earlierTextNode = screen.getByText(
@@ -710,10 +718,8 @@ describe("ThreadTimelineRows actions", () => {
     ).firstChild;
     expect(earlierTextNode).not.toBeNull();
     mockWindowSelection({ node: earlierTextNode!, text: "earlier answer" });
-    await act(async () => {
-      fireEvent(document, new Event("selectionchange"));
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-    });
+    fireEvent(document, new Event("selectionchange"));
+    await flushSelectionFrames();
     fireEvent.click(
       await screen.findByRole("button", { name: "Reply in side chat" }),
     );
