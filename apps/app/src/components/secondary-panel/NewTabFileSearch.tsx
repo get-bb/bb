@@ -49,6 +49,7 @@ import {
   LauncherSectionHeader,
 } from "./launcherRow";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 
 export interface NewTabFileSearchProps {
@@ -350,14 +351,7 @@ function NewTabActionTile({
         />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
-      {shortcut ? (
-        <kbd
-          aria-hidden="true"
-          className="shrink-0 text-xs font-normal text-subtle-foreground"
-        >
-          {shortcut.label}
-        </kbd>
-      ) : null}
+      <AppCommandShortcutHint shortcut={shortcut ?? null} />
     </LauncherTile>
   );
 }

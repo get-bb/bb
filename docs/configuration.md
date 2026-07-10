@@ -118,7 +118,8 @@ before bb receives them.
 | Layout    | Toggle sidebar                | `Mod+\`                       | All clients              |
 | Panel     | New tab / close tab / toggle  | `Mod+T` / `Mod+W` / `Mod+J`   | All clients              |
 | Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`             | All clients              |
-| Workspace | Open terminal / preferred app | `Mod+Shift+T` / `Mod+O`       | All clients              |
+| Workspace | Open terminal                 | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop         |
+| Workspace | Open in preferred app         | `Mod+O`                       | All clients              |
 | Composer  | Toggle model picker           | `Mod+Shift+M`                 | All clients              |
 | Browser   | Focus location / reload       | `Mod+L` / `Mod+R`             | Desktop embedded browser |
 | Questions | Choose visible answer 1–9     | `1` … `9`                     | While a question is open |

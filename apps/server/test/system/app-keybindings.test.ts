@@ -55,12 +55,24 @@ describe("app keybindings", () => {
       ]);
       expect(
         config.defaultKeybindings
+          .filter((binding) => binding.command === "terminal.open")
+          .map((binding) => ({
+            desktopOnly: binding.desktopOnly,
+            key: binding.shortcut.key,
+          })),
+      ).toEqual([
+        { desktopOnly: false, key: "Enter" },
+        { desktopOnly: true, key: "t" },
+      ]);
+      expect(
+        config.defaultKeybindings
           .filter((binding) => binding.desktopOnly)
           .map((binding) => binding.command),
       ).toEqual([
         "thread.new",
         "thread.previous",
         "thread.next",
+        "terminal.open",
         "browser.focusLocation",
         "browser.reload",
         "window.new",

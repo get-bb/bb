@@ -89,7 +89,13 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     ...mainWithoutModal,
     none: ["modalOpen", "editableFocus", "terminalFocus", "browserFocus"],
   }),
-  binding("terminal.open", "t", { mod: true, shift: true }, mainWithoutModal),
+  // Browsers reserve Mod+Shift+T for reopening a closed tab before the page
+  // receives the event. Use Enter as the web alias and retain T on desktop.
+  binding("terminal.open", "Enter", { mod: true, shift: true }, mainWithoutModal),
+  binding("terminal.open", "t", { mod: true, shift: true }, {
+    ...mainWithoutModal,
+    desktopOnly: true,
+  }),
   binding("modelPicker.toggle", "m", { mod: true, shift: true }, {
     all: ["mainSurface", "promptAvailable"],
     none: ["modalOpen", "terminalFocus", "browserFocus"],
