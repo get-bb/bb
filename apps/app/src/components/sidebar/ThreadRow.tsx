@@ -58,6 +58,7 @@ import {
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
+import { useSidebarThreadShortcutKey } from "./sidebarThreadShortcuts";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -421,6 +422,7 @@ function ThreadRowComponent({
   const setConversationCollapsed = useSetAtom(
     getThreadConversationCollapsedAtom(thread.id),
   );
+  const shortcutKey = useSidebarThreadShortcutKey(thread.id);
   const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
@@ -524,6 +526,8 @@ function ThreadRowComponent({
     <>
       <NavLink
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
+        data-sidebar-thread-shortcut-target=""
+        data-sidebar-thread-id={thread.id}
         onClick={() => {
           // Selecting a thread/agent row restores its conversation without
           // disturbing any other thread's collapsed conversation state.
@@ -531,6 +535,7 @@ function ThreadRowComponent({
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
+        aria-keyshortcuts={shortcutKey ? `Meta+${shortcutKey}` : undefined}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -548,56 +553,69 @@ function ThreadRowComponent({
         ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
-      <span
-        className={cn(
-          "flex shrink-0 items-center justify-end max-md:pointer-coarse:pointer-events-none",
-          COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-        )}
-      >
+      {shortcutKey ? (
+        <kbd
+          aria-hidden="true"
+          className="pointer-events-none inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent px-1 text-xs font-medium tabular-nums text-muted-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]"
+        >
+          ⌘{shortcutKey}
+        </kbd>
+      ) : (
         <span
           className={cn(
-            "relative shrink-0",
-            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+            "flex shrink-0 items-center justify-end max-md:pointer-coarse:pointer-events-none",
+            COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
           )}
         >
           <span
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
-              SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "absolute inset-0 flex items-center justify-center",
+              "relative shrink-0",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
             )}
           >
-            <ThreadTrailingIndicator
-              hasPendingInteraction={trailingHasPendingInteraction}
-              isBackgroundAgentActive={trailingBackgroundAgentActive}
-              isBackgroundCommandActive={trailingBackgroundCommandActive}
-              isForegroundAgentWorking={trailingRuntimeBusy}
-              isGoalActive={trailingGoalActive}
-              isPlanModeActive={trailingPlanModeActive}
-              isBusy={trailingIsBusy}
-              isWorkflowActive={trailingIsWorkflowActive}
-              showUnreadBadge={trailingShowUnreadBadge}
-              unreadBadgeTone={trailingUnreadBadgeTone}
-            />
-          </span>
-          <div
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-            className={cn(
-              SIDEBAR_HOVER_ACTIONS_CLASS,
-              "absolute inset-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
-            )}
-          >
-            <ThreadActionsMenu
-              thread={thread}
-              triggerClassName={cn(
-                "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+            <span
+              data-sidebar-hover-actions-open={
+                isActionsOpen ? "true" : undefined
+              }
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+                "absolute inset-0 flex items-center justify-center",
               )}
-              onOpenChange={setIsDropdownActionsOpen}
-            />
-          </div>
+            >
+              <ThreadTrailingIndicator
+                hasPendingInteraction={trailingHasPendingInteraction}
+                isBackgroundAgentActive={trailingBackgroundAgentActive}
+                isBackgroundCommandActive={trailingBackgroundCommandActive}
+                isForegroundAgentWorking={trailingRuntimeBusy}
+                isGoalActive={trailingGoalActive}
+                isPlanModeActive={trailingPlanModeActive}
+                isBusy={trailingIsBusy}
+                isWorkflowActive={trailingIsWorkflowActive}
+                showUnreadBadge={trailingShowUnreadBadge}
+                unreadBadgeTone={trailingUnreadBadgeTone}
+              />
+            </span>
+            <div
+              data-sidebar-hover-actions-open={
+                isActionsOpen ? "true" : undefined
+              }
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_CLASS,
+                "absolute inset-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+              )}
+            >
+              <ThreadActionsMenu
+                thread={thread}
+                triggerClassName={cn(
+                  "text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                )}
+                onOpenChange={setIsDropdownActionsOpen}
+              />
+            </div>
+          </span>
         </span>
-      </span>
+      )}
     </>
   );
 
