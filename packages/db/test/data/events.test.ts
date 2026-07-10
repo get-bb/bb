@@ -806,6 +806,63 @@ describe("events", () => {
     ).toEqual([2, 3]);
   });
 
+  it("keeps nested-turn context usage from replacing the root turn report", () => {
+    const { db, thread } = setup();
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-root" }),
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "thread/contextWindowUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-root" }),
+        data: createContextWindowUsageData({
+          modelContextWindow: 200_000,
+          usedTokens: 80_000,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-subagent" }),
+        data: JSON.stringify({ parentToolCallId: "call-subagent" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "thread/contextWindowUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-subagent" }),
+        data: createContextWindowUsageData({
+          modelContextWindow: 200_000,
+          usedTokens: 15_000,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "thread/contextWindowUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-root" }),
+        data: createContextWindowUsageData({
+          modelContextWindow: null,
+          usedTokens: 90_000,
+        }),
+      },
+    ]);
+
+    expect(
+      listContextWindowUsageRows(db, {
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([2, 5]);
+  });
+
   it("lists bounded timeline segment anchors with request shape rules", () => {
     const { db, thread } = setup();
 
@@ -2106,6 +2163,60 @@ describe("events", () => {
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
     ).toEqual([1, 4]);
+  });
+
+  it("preserves root token usage instead of a newer nested-turn report while pruning", () => {
+    const { db, thread } = setup();
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "thread/tokenUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-root" }),
+        data: createTokenUsageData({
+          totalTokens: 80_000,
+          modelContextWindow: 200_000,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "thread/tokenUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-root" }),
+        data: createTokenUsageData({
+          totalTokens: 90_000,
+          modelContextWindow: null,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-subagent" }),
+        data: JSON.stringify({ parentToolCallId: "call-subagent" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "thread/tokenUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-subagent" }),
+        data: createTokenUsageData({
+          totalTokens: 15_000,
+          modelContextWindow: 200_000,
+        }),
+      },
+    ]);
+
+    const removed = pruneTokenUsageEventsBeforeSequence(db, {
+      threadId: thread.id,
+      sequenceCutoff: 4,
+    });
+
+    expect(removed).toBe(1);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
+    ).toEqual([1, 2, 3]);
   });
 
   it("prunes context-window rows before a sequence cutoff but keeps the latest usage row and latest context row", () => {
