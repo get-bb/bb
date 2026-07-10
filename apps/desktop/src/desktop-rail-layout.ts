@@ -1,15 +1,26 @@
 /**
  * Pure layout geometry for the native server rail. The rail is a fixed-left
- * 52px strip; the SPA fills the remaining content area. Traffic lights shift
- * right by the rail width so they clear the strip (Electron 41 uses
- * setWindowButtonPosition; the constructor still accepts trafficLightPosition).
+ * strip; the SPA fills the remaining content area. The rail owns the window's
+ * top-left corner Chrome/Slack-style: the macOS traffic lights sit INSIDE the
+ * rail's top drag strip, so the rail must be wide enough for the ~52px light
+ * cluster plus margins, and the SPA drops its own traffic-light reserve while
+ * the rail is visible (`windowButtonsInRail` on the window-state push).
+ * Electron 41 uses setWindowButtonPosition; the constructor still accepts
+ * trafficLightPosition.
  */
 
-export const DESKTOP_RAIL_WIDTH_PX = 52;
+export const DESKTOP_RAIL_WIDTH_PX = 68;
 export const DESKTOP_RAIL_DRAG_HEIGHT_PX = 48;
 
 /** Matches desktop-window-factory MACOS_TRAFFIC_LIGHT_DIAGONAL_INSET. */
 export const DESKTOP_RAIL_TRAFFIC_LIGHT_BASE_INSET = 18;
+
+/**
+ * Light-cluster inset inside the rail: buttons span ~52px, so x=10 centers
+ * the cluster in a 68px rail (10..62) while y=18 keeps it vertically centered
+ * in the 48px drag strip.
+ */
+export const DESKTOP_RAIL_TRAFFIC_LIGHT_RAIL_INSET_X = 10;
 
 export type DesktopWindowLayoutMode = "classic" | "rail";
 
@@ -41,7 +52,7 @@ export const DESKTOP_RAIL_TRAFFIC_LIGHT_DEFAULT: DesktopTrafficLightPosition = {
 };
 
 export const DESKTOP_RAIL_TRAFFIC_LIGHT_WITH_RAIL: DesktopTrafficLightPosition = {
-  x: DESKTOP_RAIL_TRAFFIC_LIGHT_BASE_INSET + DESKTOP_RAIL_WIDTH_PX,
+  x: DESKTOP_RAIL_TRAFFIC_LIGHT_RAIL_INSET_X,
   y: DESKTOP_RAIL_TRAFFIC_LIGHT_BASE_INSET,
 };
 

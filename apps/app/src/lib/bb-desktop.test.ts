@@ -35,5 +35,18 @@ describe("desktop chrome geometry", () => {
         windowState: { isFullScreen: false },
       }),
     ).toBe(false);
+    // Rail owns the top-left corner: lights render over the rail, no reserve.
+    expect(
+      shouldReserveMacosTrafficLights({
+        desktopInfo: desktopApi,
+        windowState: { isFullScreen: false, windowButtonsInRail: true },
+      }),
+    ).toBe(false);
+    expect(
+      shouldReserveMacosTrafficLights({
+        desktopInfo: desktopApi,
+        windowState: { isFullScreen: false, windowButtonsInRail: false },
+      }),
+    ).toBe(true);
   });
 });

@@ -77,6 +77,10 @@ export function renderDesktopRailView(args: CreateDesktopRailViewUrlArgs): strin
     .drag-top {
       flex: 0 0 ${DESKTOP_RAIL_DRAG_HEIGHT_PX}px;
       height: ${DESKTOP_RAIL_DRAG_HEIGHT_PX}px;
+      /* Chrome-style dividing line under the window-controls strip; the macOS
+         traffic lights render natively over this area. Height matches the
+         SPA's 48px chrome row so the line reads as one continuous edge. */
+      border-bottom: 1px solid color-mix(in oklch, var(--ink) 12%, var(--canvas));
     }
 
     .rail-body {

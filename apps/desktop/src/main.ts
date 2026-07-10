@@ -525,10 +525,15 @@ function sendDesktopInfoChanged(): void {
 }
 
 function getDesktopWindowState(
-  browserWindow: Pick<DesktopBrowserWindow, "isFullScreen"> | null,
+  browserWindow:
+    | Pick<DesktopBrowserWindow, "isFullScreen" | "webContents">
+    | null,
 ): BbDesktopWindowState {
   return {
     isFullScreen: browserWindow?.isFullScreen() ?? false,
+    windowButtonsInRail:
+      browserWindow !== null &&
+      getDesktopRailSession(browserWindow.webContents.id) !== null,
   };
 }
 

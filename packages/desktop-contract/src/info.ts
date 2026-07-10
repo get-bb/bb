@@ -20,6 +20,13 @@ export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
 export const bbDesktopWindowStateSchema = z
   .object({
     isFullScreen: z.boolean(),
+    /**
+     * True when the native server rail owns the window's top-left corner —
+     * the macOS traffic lights render over the rail, so the SPA must NOT
+     * reserve space for them. Optional for version skew: older shells omit it
+     * and the SPA keeps its classic reserve.
+     */
+    windowButtonsInRail: z.boolean().optional(),
   })
   .strict();
 export type BbDesktopWindowState = z.infer<

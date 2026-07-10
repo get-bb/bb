@@ -19,10 +19,15 @@ describe("shouldUseRailLayout", () => {
 });
 
 describe("computeRailLayoutBounds", () => {
-  it("places a 52px rail and insets the SPA", () => {
+  it("places the rail and insets the SPA by the rail width", () => {
     expect(computeRailLayoutBounds({ width: 1200, height: 800 })).toEqual({
       rail: { x: 0, y: 0, width: DESKTOP_RAIL_WIDTH_PX, height: 800 },
-      spa: { x: DESKTOP_RAIL_WIDTH_PX, y: 0, width: 1148, height: 800 },
+      spa: {
+        x: DESKTOP_RAIL_WIDTH_PX,
+        y: 0,
+        width: 1200 - DESKTOP_RAIL_WIDTH_PX,
+        height: 800,
+      },
     });
   });
 
@@ -42,11 +47,15 @@ describe("computeRailLayoutBounds", () => {
 });
 
 describe("trafficLightPositionForLayout", () => {
-  it("shifts traffic lights by the rail width in rail mode", () => {
+  it("tucks traffic lights inside the rail's top strip in rail mode", () => {
     expect(trafficLightPositionForLayout("rail")).toEqual(
       DESKTOP_RAIL_TRAFFIC_LIGHT_WITH_RAIL,
     );
-    expect(DESKTOP_RAIL_TRAFFIC_LIGHT_WITH_RAIL).toEqual({ x: 70, y: 18 });
+    // The ~52px macOS light cluster must fit inside the rail with margin.
+    expect(DESKTOP_RAIL_TRAFFIC_LIGHT_WITH_RAIL).toEqual({ x: 10, y: 18 });
+    expect(DESKTOP_RAIL_TRAFFIC_LIGHT_WITH_RAIL.x + 52).toBeLessThan(
+      DESKTOP_RAIL_WIDTH_PX,
+    );
   });
 
   it("keeps the classic diagonal inset without a rail", () => {
@@ -64,7 +73,12 @@ describe("offsetBrowserBoundsForRail", () => {
         bounds: { x: 100, y: 48, width: 400, height: 500 },
         railWidthPx: DESKTOP_RAIL_WIDTH_PX,
       }),
-    ).toEqual({ x: 152, y: 48, width: 400, height: 500 });
+    ).toEqual({
+      x: 100 + DESKTOP_RAIL_WIDTH_PX,
+      y: 48,
+      width: 400,
+      height: 500,
+    });
   });
 
   it("is a no-op when the rail is hidden", () => {
