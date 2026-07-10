@@ -14,12 +14,17 @@ describe("app keybindings", () => {
       expect(config.keybindingOverrides).toEqual([]);
       expect(config.defaultKeybindings).toEqual(config.keybindings);
       expect(
-        config.keybindings.find((binding) => binding.command === "thread.new"),
-      ).toMatchObject({
-        desktopOnly: false,
-        shortcut: { key: "n", mod: true, shift: false },
-        when: { all: ["mainSurface"], none: ["modalOpen"] },
-      });
+        config.keybindings
+          .filter((binding) => binding.command === "thread.new")
+          .map((binding) => ({
+            desktopOnly: binding.desktopOnly,
+            key: binding.shortcut.key,
+            shift: binding.shortcut.shift,
+          })),
+      ).toEqual([
+        { desktopOnly: false, key: "o", shift: true },
+        { desktopOnly: true, key: "n", shift: false },
+      ]);
       expect(
         config.keybindings.find((binding) => binding.command === "window.new"),
       ).toMatchObject({
@@ -31,6 +36,7 @@ describe("app keybindings", () => {
           .filter((binding) => binding.desktopOnly)
           .map((binding) => binding.command),
       ).toEqual([
+        "thread.new",
         "browser.focusLocation",
         "browser.reload",
         "window.new",

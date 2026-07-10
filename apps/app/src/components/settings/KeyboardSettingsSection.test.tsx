@@ -11,6 +11,19 @@ const testState = vi.hoisted(() => ({
       command: "thread.new",
       desktopOnly: false,
       shortcut: {
+        key: "o",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface"], none: ["modalOpen"] },
+    },
+    {
+      command: "thread.new",
+      desktopOnly: true,
+      shortcut: {
         key: "n",
         mod: true,
         meta: false,
@@ -48,6 +61,7 @@ afterEach(() => {
 describe("KeyboardSettingsSection", () => {
   it("records, clears, and resets a command shortcut", () => {
     render(<KeyboardSettingsSection />);
+    expect(screen.queryByText("Desktop")).toBeNull();
     const recorder = screen.getByRole("button", {
       name: "Record shortcut for New thread, current shortcut Ctrl+N",
     });

@@ -109,7 +109,7 @@ before bb receives them.
 
 | Area      | Command                       | Default                       | Availability             |
 | --------- | ----------------------------- | ----------------------------- | ------------------------ |
-| Threads   | New thread                    | `Mod+N`                       | All clients              |
+| Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`       | Desktop / web            |
 | Threads   | Search threads                | `Mod+K`                       | All clients              |
 | Threads   | Previous / next thread        | `Mod+Shift+[` / `Mod+Shift+]` | All clients              |
 | Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`             | All clients              |

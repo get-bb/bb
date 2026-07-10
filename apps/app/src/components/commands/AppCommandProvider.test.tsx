@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,11 +9,38 @@ import {
   AppCommandProvider,
   useAppCommandContext,
   useAppCommandHandler,
+  useAppCommandShortcut,
 } from "./AppCommandProvider";
 
 const testState = vi.hoisted(() => ({
   calls: [] as string[],
   keybindings: [
+    {
+      command: "thread.new" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "o",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
+      command: "thread.new" as const,
+      desktopOnly: true,
+      shortcut: {
+        key: "n",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
     {
       command: "thread.search" as const,
       desktopOnly: false,
@@ -117,6 +144,11 @@ function FocusScopedHandler({ name }: { name: string }) {
   );
 }
 
+function ShortcutLabel() {
+  const shortcut = useAppCommandShortcut("thread.new");
+  return <span>{shortcut?.label}</span>;
+}
+
 function renderProvider(children: ReactNode) {
   return render(
     <MemoryRouter>
@@ -142,6 +174,12 @@ afterEach(() => {
 });
 
 describe("AppCommandProvider", () => {
+  it("presents the web-capable alias when the primary binding is desktop-only", () => {
+    renderProvider(<ShortcutLabel />);
+
+    expect(screen.getByText("Ctrl+Shift+O")).toBeDefined();
+  });
+
   it("falls through declining handlers in priority order", () => {
     renderProvider(
       <>

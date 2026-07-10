@@ -59,7 +59,13 @@ const mainWithoutModal = {
 } as const;
 
 export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
-  binding("thread.new", "n", { mod: true }, mainWithoutModal),
+  // Browsers reserve Mod+N before the page receives a key event. Keep the
+  // t3code-style alias available in web clients while desktop retains Mod+N.
+  binding("thread.new", "o", { mod: true, shift: true }, mainWithoutModal),
+  binding("thread.new", "n", { mod: true }, {
+    ...mainWithoutModal,
+    desktopOnly: true,
+  }),
   binding("thread.search", "k", { mod: true }, mainWithoutModal),
   binding("settings.open", ",", { mod: true }, mainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),

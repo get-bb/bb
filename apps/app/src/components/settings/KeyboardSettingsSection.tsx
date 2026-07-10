@@ -145,9 +145,12 @@ function KeyboardCommandRow({
   const metadata = getAppCommandMetadata(command);
   const shortcut = getCommandShortcut(defaults, overrides, command);
   const customized = overrides.some((override) => override.command === command);
-  const desktopOnly = defaults.some(
-    (binding) => binding.command === command && binding.desktopOnly,
+  const commandBindings = defaults.filter(
+    (binding) => binding.command === command,
   );
+  const desktopOnly =
+    commandBindings.length > 0 &&
+    commandBindings.every((binding) => binding.desktopOnly);
   const conflicts = customized
     ? getShortcutConflicts(defaults, overrides, command)
     : [];
