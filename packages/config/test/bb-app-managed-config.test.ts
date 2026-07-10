@@ -102,6 +102,36 @@ describe("bbAppManagedConfigSchema", () => {
     });
   });
 
+  it("keeps a supported custom ACP logo path", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          logo: "agent-logos/my-agent.svg",
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents?.[0]?.logo).toBe("agent-logos/my-agent.svg");
+  });
+
+  it("rejects an unsupported custom ACP logo format", () => {
+    const parsed = bbAppManagedConfigSchema.safeParse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          logo: "agent-logos/my-agent.gif",
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("keeps custom ACP reasoningCli config", () => {
     const parsed = bbAppManagedConfigSchema.parse({
       customAcpAgents: [

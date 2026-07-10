@@ -238,7 +238,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       ? "Loading models..."
       : "Submit (Enter)";
   return (
-    <div data-promptbox-shell="" className="w-full">
+    <div data-app-composer="" data-promptbox-shell="" className="w-full">
       {modeConfig.banner ? (
         <div className="mb-2">{modeConfig.banner}</div>
       ) : null}

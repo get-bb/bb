@@ -29,6 +29,7 @@ export function ThreadTerminalPanel({
   return (
     <section
       aria-label="Terminal"
+      data-app-terminal=""
       className="flex h-full min-h-0 min-w-0 flex-col bg-background"
     >
       <div className="min-h-0 flex-1 overflow-hidden bg-background">

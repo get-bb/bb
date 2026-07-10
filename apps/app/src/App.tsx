@@ -31,6 +31,7 @@ import {
   THREAD_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
+import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import {
   POPOUT_QUICK_ASK_HEIGHT,
   POPOUT_SHADOW_MARGIN,
@@ -164,24 +165,26 @@ export function App() {
 
   return (
     <QuickCreateProjectProvider>
-      <RouteNavigationProvider>
-        <ProviderCliHealthToasts />
-        <Routes>
-          <Route
-            path={AUTH_CALLBACK_ROUTE_PATH}
-            element={<AuthCallbackView />}
-          />
-          <Route
-            path={`${POPOUT_ROUTE_PATH}/*`}
-            element={
-              <Suspense fallback={<PopoutRouteFallback />}>
-                <PopoutChatView />
-              </Suspense>
-            }
-          />
-          <Route path="*" element={<AppRoutes />} />
-        </Routes>
-      </RouteNavigationProvider>
+      <AppCommandProvider>
+        <RouteNavigationProvider>
+          <ProviderCliHealthToasts />
+          <Routes>
+            <Route
+              path={AUTH_CALLBACK_ROUTE_PATH}
+              element={<AuthCallbackView />}
+            />
+            <Route
+              path={`${POPOUT_ROUTE_PATH}/*`}
+              element={
+                <Suspense fallback={<PopoutRouteFallback />}>
+                  <PopoutChatView />
+                </Suspense>
+              }
+            />
+            <Route path="*" element={<AppRoutes />} />
+          </Routes>
+        </RouteNavigationProvider>
+      </AppCommandProvider>
     </QuickCreateProjectProvider>
   );
 }

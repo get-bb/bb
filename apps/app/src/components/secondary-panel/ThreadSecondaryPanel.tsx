@@ -64,6 +64,11 @@ import {
 } from "@/lib/bb-desktop";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -247,6 +252,9 @@ export function ThreadSecondaryPanel({
   onToggleConversationCollapse,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
+  const newTabShortcut = useAppCommandShortcut("panel.newTab");
+  const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
+  const diffShortcut = useAppCommandShortcut("diff.toggle");
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
   const visibleFileTabs = fileTabs?.filter((tab) => tab.isHidden !== true);
   const hasActiveFileTab = activeFileTab !== undefined;
@@ -473,7 +481,12 @@ export function ThreadSecondaryPanel({
                   usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
                 )}
                 onClick={() => onPanelChange("git-diff")}
-                aria-label="Show diff panel"
+                aria-label={
+                  diffShortcut
+                    ? `Show diff panel (${diffShortcut.label})`
+                    : "Show diff panel"
+                }
+                aria-keyshortcuts={diffShortcut?.ariaKeyshortcuts}
                 aria-pressed={isDiffPanelActive && !hasActiveFileTab}
               >
                 <Icon name="FileDiff" />
@@ -482,6 +495,7 @@ export function ThreadSecondaryPanel({
             {showNewTabButton ? (
               <NewTabButton
                 onOpenNewTab={onOpenNewTab}
+                shortcut={newTabShortcut}
                 usesDesktopChrome={usesDesktopChrome}
               />
             ) : null}
@@ -518,14 +532,24 @@ export function ThreadSecondaryPanel({
                 size="icon"
                 className={cn(
                   SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
+                  "relative",
                   usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
                 )}
                 onClick={onClose}
                 aria-label={
-                  renderAsDrawer ? "Close right panel" : "Hide right panel"
+                  togglePanelShortcut
+                    ? `${renderAsDrawer ? "Close right panel" : "Hide right panel"} (${togglePanelShortcut.label})`
+                    : renderAsDrawer
+                      ? "Close right panel"
+                      : "Hide right panel"
                 }
+                aria-keyshortcuts={togglePanelShortcut?.ariaKeyshortcuts}
               >
                 <Icon name={togglePanelIconName} />
+                <AppCommandShortcutHint
+                  shortcut={togglePanelShortcut}
+                  className="absolute right-full mr-1"
+                />
               </Button>
             ) : inlinePanelToggle === "reserved" ? (
               // A toggle pinned outside the panel owns show/hide on this surface
@@ -663,10 +687,15 @@ export function ThreadSecondaryPanel({
 
 interface NewTabButtonProps {
   onOpenNewTab: () => void;
+  shortcut: AppShortcutPresentation | null;
   usesDesktopChrome: boolean;
 }
 
-function NewTabButton({ onOpenNewTab, usesDesktopChrome }: NewTabButtonProps) {
+function NewTabButton({
+  onOpenNewTab,
+  shortcut,
+  usesDesktopChrome,
+}: NewTabButtonProps) {
   return (
     <Button
       type="button"
@@ -677,7 +706,10 @@ function NewTabButton({ onOpenNewTab, usesDesktopChrome }: NewTabButtonProps) {
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onOpenNewTab}
-      aria-label="Open new tab"
+      aria-label={
+        shortcut ? `Open new tab (${shortcut.label})` : "Open new tab"
+      }
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
     >
       <Icon name="Plus" />
     </Button>

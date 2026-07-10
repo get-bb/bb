@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "3c35b38b-2142-4123-97ff-1915be799cf2",
+  "id": "05fb2d47-395b-4a11-b37b-da47ddba690d",
   "prevId": "f1e725c1-05ee-47e3-9f8a-a770f343dde6",
   "tables": {
     "app_settings": {
@@ -21,6 +21,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "keybinding_overrides": {
+          "name": "keybinding_overrides",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
         },
         "updated_at": {
           "name": "updated_at",
@@ -2458,58 +2466,6 @@
         "thread_search_segments_thread_id_threads_id_fk": {
           "name": "thread_search_segments_thread_id_threads_id_fk",
           "tableFrom": "thread_search_segments",
-          "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "thread_tabs": {
-      "name": "thread_tabs",
-      "columns": {
-        "thread_id": {
-          "name": "thread_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tabs_json": {
-          "name": "tabs_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "thread_tabs_thread_id_threads_id_fk": {
-          "name": "thread_tabs_thread_id_threads_id_fk",
-          "tableFrom": "thread_tabs",
           "tableTo": "threads",
           "columnsFrom": [
             "thread_id"

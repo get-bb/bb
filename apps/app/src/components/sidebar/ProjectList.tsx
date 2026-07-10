@@ -2,16 +2,13 @@ import {
   memo,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type KeyboardEventHandler,
   type MouseEventHandler,
   type PointerEventHandler,
   type ReactNode,
-  type Ref,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -64,6 +61,7 @@ import {
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
   ThreadFolderCreateDialog,
   ThreadFolderRenameDialog,
@@ -123,25 +121,24 @@ import {
   sidebarCollapsedFoldersAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
-  sidebarSortDirectionAtom,
   type SidebarChronologicalSort,
   type CollapsibleSidebarSectionId,
   type SidebarOrganizationMode,
   type SidebarSectionId,
-  type SidebarSortDirection,
 } from "./sidebarCollapsedAtoms";
 import { folderKeyForThreadFolder } from "./folderKeys";
 import { CHRONOLOGICAL_CONTAINER_ID } from "./projectThreadGroups";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
@@ -165,11 +162,11 @@ import {
   type UseNeighborReorderSortableArgs,
 } from "./useNeighborReorderSortable";
 import {
-  getSidebarThreadSearchShortcutLabel,
   SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
   type SidebarThreadSearchInputController,
   type SidebarThreadSearchPanelController,
 } from "./sidebarThreadSearch";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 
 interface ProjectListProps {
   onNewProject?: () => void;
@@ -516,56 +513,20 @@ function compareProjectThreadItemsByTitleAscending(
     : 0;
 }
 
-function invertNumber(value: number): number {
-  return value === 0 ? 0 : -value;
-}
-
-function invertThreadComparator(
-  compareThreads: ThreadComparator,
+export function getSidebarThreadComparator(
+  sort: SidebarChronologicalSort,
 ): ThreadComparator {
-  return (left, right) => {
-    const result = compareThreads(left, right);
-    return invertNumber(result);
-  };
-}
-
-export function getSidebarThreadComparator({
-  direction,
-  sort,
-}: {
-  direction: SidebarSortDirection;
-  sort: SidebarChronologicalSort;
-}): ThreadComparator {
   const normalizedSort = sort === "none" ? "updated" : sort;
 
   if (normalizedSort === "alpha") {
-    // Title sort's base is *ascending* (A→Z), unlike the time sorts whose
-    // bases descend. So here asc keeps the base and desc inverts it — and the
-    // leaf-thread and mixed folder/thread comparators must apply the same
-    // direction, or folders and threads would sort in opposite order.
-    const comparator: ThreadComparator =
-      direction === "asc"
-        ? compareByTitleAscending
-        : invertThreadComparator(compareByTitleAscending);
-    comparator.compareItems =
-      direction === "asc"
-        ? compareProjectThreadItemsByTitleAscending
-        : (left, right) =>
-            invertNumber(
-              compareProjectThreadItemsByTitleAscending(left, right),
-            );
+    const comparator: ThreadComparator = compareByTitleAscending;
+    comparator.compareItems = compareProjectThreadItemsByTitleAscending;
     return comparator;
   }
 
-  // "created"/"updated" bases list newest / most-recently-active first, so desc
-  // keeps the base and asc inverts it.
-  const baseComparator: ThreadComparator =
-    normalizedSort === "created"
-      ? compareByCreatedAtDescending
-      : compareStandardThreads;
-  return direction === "asc"
-    ? invertThreadComparator(baseComparator)
-    : baseComparator;
+  return normalizedSort === "created"
+    ? compareByCreatedAtDescending
+    : compareStandardThreads;
 }
 
 function ProjectListSectionIconButton({
@@ -651,88 +612,31 @@ function ProjectListThreadsSectionActions({
   );
 }
 
-interface SidebarOrganizeOption {
+// "In one list" is the user-facing name for chronological/drag-ordered mode;
+// the stored atom value stays "chronological".
+const SIDEBAR_ORGANIZE_OPTIONS = [
+  { label: "By project", mode: "project" },
+  { label: "In one list", mode: "chronological" },
+] as const satisfies readonly {
   label: string;
   mode: SidebarOrganizationMode;
-}
+}[];
 
-// "Manual" is the user-facing name for the chronological/drag-ordered mode; the
-// stored atom value stays "chronological".
-const SIDEBAR_ORGANIZE_OPTIONS: readonly SidebarOrganizeOption[] = [
-  { label: "Projects", mode: "project" },
-  { label: "Manual", mode: "chronological" },
-];
-
-interface SidebarOrganizeSegmentedControlProps {
-  value: SidebarOrganizationMode;
-  onChange: (mode: SidebarOrganizationMode) => void;
-}
-
-// Inline segmented control (no shared primitive fits this compact in-menu use).
-// The track sits on the menu's muted fill; the active segment lifts to the
-// popover surface so it reads raised. All colors come from theme tokens.
-function SidebarOrganizeSegmentedControl({
-  value,
-  onChange,
-}: SidebarOrganizeSegmentedControlProps) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Organize by"
-      className="mx-2 my-1 flex items-center gap-0.5 rounded-md bg-muted p-0.5"
-    >
-      {SIDEBAR_ORGANIZE_OPTIONS.map((option) => {
-        const selected = value === option.mode;
-        return (
-          <button
-            key={option.mode}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(option.mode)}
-            className={cn(
-              "flex-1 cursor-pointer rounded-[0.3125rem] px-2 py-1 text-center text-xs outline-none ring-ring focus-visible:ring-2",
-              LIST_HOVER_TRANSITION,
-              selected
-                ? "bg-popover text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-interface SidebarSortMenuOptionProps {
-  direction: SidebarSortDirection;
-  label: string;
-  selected: boolean;
-  sort: SidebarChronologicalSort;
-  // Selecting an inactive field activates it descending; selecting the active
-  // field flips its direction.
-  onToggle: (sort: SidebarChronologicalSort) => void;
-}
-
-const SIDEBAR_SORT_OPTIONS: readonly {
-  label: string;
-  sort: SidebarChronologicalSort;
-}[] = [
+const SIDEBAR_SORT_OPTIONS = [
   { label: "Updated at", sort: "updated" },
   { label: "Created at", sort: "created" },
   { label: "Alphabetical", sort: "alpha" },
-];
+] as const satisfies readonly {
+  label: string;
+  sort: SidebarChronologicalSort;
+}[];
 
 function SidebarDisplayMenuTrigger({
   ariaLabel,
-  buttonRef,
   iconName,
   tooltip,
 }: {
   ariaLabel: string;
-  buttonRef?: Ref<HTMLButtonElement>;
   iconName: IconName;
   tooltip: string;
 }) {
@@ -744,7 +648,6 @@ function SidebarDisplayMenuTrigger({
       <TooltipTrigger asChild>
         <DropdownMenuTrigger asChild>
           <Button
-            ref={buttonRef}
             type="button"
             variant="ghost"
             size="icon"
@@ -767,51 +670,9 @@ function SidebarDisplayMenuTrigger({
   );
 }
 
-function SidebarSortMenuOption({
-  direction,
-  label,
-  selected,
-  sort,
-  onToggle,
-}: SidebarSortMenuOptionProps) {
-  return (
-    <DropdownMenuItem
-      onSelect={(event) => {
-        // The display-options menu stays open across every interaction; it
-        // closes only on outside click / Escape. This holds on the mobile sheet
-        // too (the item's onClick honors defaultPrevented).
-        event.preventDefault();
-        onToggle(sort);
-      }}
-      className="flex items-center justify-between gap-3"
-    >
-      <span className="truncate text-xs">{label}</span>
-      {/* No sort field shows no glyph; the active field shows a single arrow
-          that points down for descending and up for ascending. */}
-      <Icon
-        name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
-        aria-hidden="true"
-        className={cn(
-          COARSE_POINTER_ICON_SIZE_CLASS,
-          selected ? "opacity-100" : "opacity-0",
-        )}
-      />
-    </DropdownMenuItem>
-  );
-}
-
-// Where the open display-options menu's trigger last sat on screen. Toggling
-// the organization mode swaps the sidebar's section tree, so the open menu
-// unmounts with the old tree and a sibling remounts with the new one; the
-// outgoing menu records its trigger rect here so the incoming menu can hold
-// the popover at the same on-screen spot instead of re-anchoring mid-
-// interaction. Only one display-options menu is ever open at a time.
-let lastOpenDisplayMenuTriggerPosition: { x: number; y: number } | null = null;
-
 // Single combined display-options menu (organize + sort) rendered on every
-// section header. Both the organization mode and the sort field/direction are
-// global, so any header's menu drives the whole sidebar. The menu stays open
-// across selections and closes only on outside click / Escape.
+// section header. Both the organization mode and the sort field are
+// global, so any header's menu drives the whole sidebar.
 export function SidebarDisplayOptionsMenu({
   open,
   onOpenChange,
@@ -822,126 +683,55 @@ export function SidebarDisplayOptionsMenu({
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
-  const [sortDirection, setSortDirection] = useAtom(sidebarSortDirectionAtom);
-  // Toggling the organization mode swaps the sidebar's section tree, which
-  // remounts this menu while it is open; Radix then replays the content's
-  // entrance animation, reading as a flash. Suppress the entrance animation
-  // for a menu that mounts already open, until it has closed once.
-  const [mountedWhileOpen, setMountedWhileOpen] = useState(open === true);
-  const isCompactViewport = useIsCompactViewport();
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  // A remounting menu also re-anchors to its new header, which can sit at a
-  // different height — yanking the popover out from under the pointer. Offset
-  // the content back to the outgoing menu's spot until the menu closes; the
-  // next open anchors normally. The mobile drawer is bottom-anchored and never
-  // moves, so it needs no pinning.
-  const [pinOffset, setPinOffset] = useState<{ x: number; y: number } | null>(
-    null,
-  );
-  // Mirror of pinOffset for the effect cleanup below, so recording the
-  // outgoing position doesn't have to re-run the effect on every pin change.
-  const pinOffsetRef = useRef(pinOffset);
-  useLayoutEffect(() => {
-    pinOffsetRef.current = pinOffset;
-  }, [pinOffset]);
-  useLayoutEffect(() => {
-    if (!open || isCompactViewport) {
-      return;
-    }
-    const trigger = triggerRef.current;
-    if (!trigger) {
-      return;
-    }
-    if (mountedWhileOpen && lastOpenDisplayMenuTriggerPosition) {
-      const rect = trigger.getBoundingClientRect();
-      const x = lastOpenDisplayMenuTriggerPosition.x - rect.left;
-      const y = lastOpenDisplayMenuTriggerPosition.y - rect.top;
-      if (x !== 0 || y !== 0) {
-        setPinOffset({ x, y });
-      }
-    }
-    return () => {
-      const rect = trigger.getBoundingClientRect();
-      // Record the EFFECTIVE anchor — trigger position plus any active pin —
-      // so consecutive mode toggles keep the popover at the same visual spot
-      // instead of accumulating drift. A zero rect means the trigger was
-      // already detached; drop the stale position rather than pinning a
-      // future menu to it.
-      const pin = pinOffsetRef.current;
-      lastOpenDisplayMenuTriggerPosition =
-        rect.width > 0 || rect.height > 0
-          ? { x: rect.left + (pin?.x ?? 0), y: rect.top + (pin?.y ?? 0) }
-          : null;
-    };
-  }, [open, isCompactViewport, mountedWhileOpen]);
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (!nextOpen) {
-        setMountedWhileOpen(false);
-        setPinOffset(null);
-      }
-      onOpenChange?.(nextOpen);
-    },
-    [onOpenChange],
-  );
   const selectedSort: SidebarChronologicalSort =
     chronologicalSort === "none" ? "updated" : chronologicalSort;
-  const handleSortToggle = useCallback(
-    (sort: SidebarChronologicalSort) => {
-      if (selectedSort === sort) {
-        // Re-selecting the active field flips its direction.
-        setSortDirection((current) => (current === "desc" ? "asc" : "desc"));
-        return;
-      }
-      // A newly selected field starts in its natural direction: time sorts show
-      // newest first (desc); alphabetical starts A→Z (asc).
-      setChronologicalSort(sort);
-      setSortDirection(sort === "alpha" ? "asc" : "desc");
-    },
-    [selectedSort, setChronologicalSort, setSortDirection],
-  );
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
         ariaLabel="Sidebar display options"
-        buttonRef={triggerRef}
         iconName="SlidersHorizontal"
         tooltip="Display options"
       />
       <DropdownMenuContent
         align="end"
         mobileTitle="Display options"
-        className={cn(
-          "min-w-[13rem]",
-          mountedWhileOpen && "data-[state=open]:animate-none",
-        )}
-        style={
-          pinOffset
-            ? { transform: `translate(${pinOffset.x}px, ${pinOffset.y}px)` }
-            : undefined
-        }
+        className="min-w-[13rem]"
       >
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
-          Organize by
+          Organize
         </DropdownMenuLabel>
-        <SidebarOrganizeSegmentedControl
-          value={organizationMode}
-          onChange={setOrganizationMode}
-        />
+        <DropdownMenuGroup aria-label="Organize">
+          {SIDEBAR_ORGANIZE_OPTIONS.map((option) => (
+            <DropdownMenuCheckboxItem
+              key={option.mode}
+              checked={organizationMode === option.mode}
+              onCheckedChange={() => {
+                // Close before swapping the sidebar section tree so the newly
+                // mounted header cannot inherit an open menu.
+                onOpenChange?.(false);
+                setOrganizationMode(option.mode);
+              }}
+            >
+              {option.label}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
           Sort by
         </DropdownMenuLabel>
-        {SIDEBAR_SORT_OPTIONS.map((option) => (
-          <SidebarSortMenuOption
-            key={option.sort}
-            {...option}
-            selected={selectedSort === option.sort}
-            direction={sortDirection}
-            onToggle={handleSortToggle}
-          />
-        ))}
+        <DropdownMenuGroup aria-label="Sort by">
+          {SIDEBAR_SORT_OPTIONS.map((option) => (
+            <DropdownMenuCheckboxItem
+              key={option.sort}
+              checked={selectedSort === option.sort}
+              onCheckedChange={() => setChronologicalSort(option.sort)}
+            >
+              {option.label}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1231,7 +1021,8 @@ export function ProjectListActionButtons({
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
-  const threadSearchShortcut = getSidebarThreadSearchShortcutLabel();
+  const newThreadShortcut = useAppCommandShortcut("thread.new");
+  const threadSearchShortcut = useAppCommandShortcut("thread.search");
   // One click on the X fully dismisses search — it clears the query and closes
   // the input in a single step (onClose resets the query too). Previously this
   // was a two-step clear-then-close, which felt like the X "needed two presses".
@@ -1289,23 +1080,38 @@ export function ProjectListActionButtons({
             className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
             onClick={onNewChat}
             disabled={isNewChatDisabled}
+            aria-label={
+              newThreadShortcut
+                ? `New thread (${newThreadShortcut.label})`
+                : "New thread"
+            }
+            aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
           >
             <Icon name="MessageSquarePlus" />
-            <span className="min-w-0 flex-1 truncate text-left">
+            <span className="min-w-0 truncate text-left">
               New thread
             </span>
+            <AppCommandShortcutHint shortcut={newThreadShortcut} />
           </Button>
           {threadSearch ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label={`Search threads (${threadSearchShortcut})`}
-              className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-              onClick={threadSearch.onActivate}
-            >
-              <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-            </Button>
+            <span className="flex shrink-0 items-center gap-1">
+              <AppCommandShortcutHint shortcut={threadSearchShortcut} />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={
+                  threadSearchShortcut
+                    ? `Search threads (${threadSearchShortcut.label})`
+                    : "Search threads"
+                }
+                aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
+                className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+                onClick={threadSearch.onActivate}
+              >
+                <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+              </Button>
+            </span>
           ) : null}
         </div>
       )}
@@ -1667,16 +1473,11 @@ function ProjectListComponent({
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
-  const sortDirection = useAtomValue(sidebarSortDirectionAtom);
   const isFolderOrganizationMode = organizationMode === "chronological";
   const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
-    () =>
-      getSidebarThreadComparator({
-        direction: sortDirection,
-        sort: chronologicalSort,
-      }),
-    [chronologicalSort, sortDirection],
+    () => getSidebarThreadComparator(chronologicalSort),
+    [chronologicalSort],
   );
   const collapsedProjectIds = useMemo(
     () => new Set(collapsedProjectIdList),

@@ -2,8 +2,9 @@ import type { WebContentsView } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopBrowserViewBounds } from "@bb/desktop-contract";
 import {
-  createDesktopBrowserViewManager,
+  createDesktopBrowserViewManager as createProductionDesktopBrowserViewManager,
   isAllowedBrowserPermission,
+  type CreateDesktopBrowserViewManagerArgs,
   type DesktopBrowserViewManager,
   type DesktopBrowserHostContentBounds,
   type DesktopBrowserHostContentView,
@@ -11,6 +12,17 @@ import {
   type DesktopBrowserHostWebContentsPayload,
   type DesktopBrowserHostWindow,
 } from "../src/desktop-browser-view.js";
+
+function createDesktopBrowserViewManager(
+  args: Partial<CreateDesktopBrowserViewManagerArgs> = {},
+): DesktopBrowserViewManager {
+  return createProductionDesktopBrowserViewManager({
+    dispatchAppCommand: () => undefined,
+    focusHostWebContents: () => undefined,
+    resolveAppCommand: () => null,
+    ...args,
+  });
+}
 
 interface FakePreventableEvent {
   defaultPrevented: boolean;
@@ -76,7 +88,24 @@ type FakeContextMenuListener = (
   params: FakeContextMenuParams,
 ) => void;
 
+interface FakeInput {
+  alt: boolean;
+  control: boolean;
+  isAutoRepeat: boolean;
+  isComposing: boolean;
+  key: string;
+  meta: boolean;
+  shift: boolean;
+  type: string;
+}
+
+type FakeBeforeInputListener = (
+  event: FakePreventableEvent,
+  input: FakeInput,
+) => void;
+
 interface FakeWebContentsEventMap {
+  "before-input-event": FakeBeforeInputListener;
   "will-frame-navigate": FakeWillFrameNavigateListener;
   "will-navigate": FakeWillNavigateListener;
   "will-redirect": FakeWillRedirectListener;
@@ -233,6 +262,7 @@ const electronMock = vi.hoisted(() => {
       (image: FakeNativeImage) => void
     > = [];
     private readonly listeners: FakeWebContentsListeners = {
+      "before-input-event": [],
       "will-frame-navigate": [],
       "will-navigate": [],
       "will-redirect": [],
@@ -328,6 +358,24 @@ const electronMock = vi.hoisted(() => {
           args.isMainFrame,
         );
       }
+    }
+
+    emitBeforeInput(input: Partial<FakeInput> & Pick<FakeInput, "key">): boolean {
+      const event = new FakePreventableEventImpl();
+      const resolvedInput: FakeInput = {
+        alt: false,
+        control: false,
+        isAutoRepeat: false,
+        isComposing: false,
+        meta: false,
+        shift: false,
+        type: "keyDown",
+        ...input,
+      };
+      for (const listener of this.listeners["before-input-event"]) {
+        listener(event, resolvedInput);
+      }
+      return event.defaultPrevented;
     }
 
     emitDidNavigate(url: string): void {
@@ -648,6 +696,47 @@ function scopedOpenTabPushesOf(
 }
 
 describe("DesktopBrowserViewManager", () => {
+  it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
+    const dispatchAppCommand = vi.fn();
+    const focusHostWebContents = vi.fn();
+    const resolveAppCommand = vi.fn((input: { key: string; metaKey: boolean }) =>
+      input.key === "l" && input.metaKey ? "browser.focusLocation" as const : null,
+    );
+    const manager = createDesktopBrowserViewManager({
+      dispatchAppCommand,
+      focusHostWebContents,
+      partition: "persist:test",
+      resolveAppCommand,
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 50,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const webContents = requireFakeView(0).webContents;
+
+    expect(webContents.emitBeforeInput({ key: "l", meta: true })).toBe(true);
+    expect(focusHostWebContents).toHaveBeenCalledWith(50);
+    expect(dispatchAppCommand).toHaveBeenCalledWith({
+      command: "browser.focusLocation",
+      hostWebContentsId: 50,
+    });
+    expect(
+      webContents.emitBeforeInput({
+        isAutoRepeat: true,
+        key: "l",
+        meta: true,
+      }),
+    ).toBe(false);
+    expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
+  });
+
   it("allows loopback navigation requested from browser chrome", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",

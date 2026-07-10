@@ -62,6 +62,7 @@ export type ProviderComposerAction = z.infer<
 export const providerInfoSchema = z.object({
   id: z.string(),
   displayName: z.string(),
+  logoUrl: z.string().min(1).nullable(),
   capabilities: providerCapabilitiesSchema,
   composerActions: z.array(providerComposerActionSchema),
   available: z.boolean(),

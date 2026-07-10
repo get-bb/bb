@@ -1,13 +1,23 @@
+import { readFile } from "node:fs/promises";
+import { extname, resolve } from "node:path";
+import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   getAppSettings,
+  getAppKeybindingOverrides,
   getExperiments,
   getStoredFaviconColor,
   getStoredThemeId,
   setAppSettings,
+  setAppKeybindingOverrides,
   setExperiments,
   setStoredAppearance,
 } from "@bb/db";
-import { customThemeNameSchema, isBuiltInThemeId } from "@bb/domain";
+import {
+  applyAppKeybindingOverrides,
+  customThemeNameSchema,
+  isBuiltInThemeId,
+  type AppKeybindingOverrides,
+} from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -34,7 +44,14 @@ import {
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
 import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
+import { DEFAULT_APP_KEYBINDINGS } from "../services/system/app-keybindings.js";
 import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
+
+const CUSTOM_ACP_LOGO_CONTENT_TYPES = {
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+} as const;
 
 export function registerSystemRoutes(
   app: Hono,
@@ -53,9 +70,28 @@ export function registerSystemRoutes(
     return hostId === null ? null : deps.hub.getDaemonPlatformForHost(hostId);
   }
 
+  function readAppKeybindingOverrides(): AppKeybindingOverrides {
+    try {
+      return getAppKeybindingOverrides(deps.db);
+    } catch (error) {
+      deps.logger.error(
+        { err: error },
+        "Stored keyboard shortcut overrides are invalid; using defaults",
+      );
+      return [];
+    }
+  }
+
   function buildSystemConfigResponse() {
+    const keybindingOverrides = readAppKeybindingOverrides();
     return {
       generalSettings: getAppSettings(deps.db),
+      keybindings: applyAppKeybindingOverrides(
+        DEFAULT_APP_KEYBINDINGS,
+        keybindingOverrides,
+      ),
+      defaultKeybindings: DEFAULT_APP_KEYBINDINGS,
+      keybindingOverrides,
       experiments: getExperiments(deps.db),
       appearance: resolveAppTheme(
         themeRoot,
@@ -80,6 +116,12 @@ export function registerSystemRoutes(
       reason: "settings-updated",
     });
     return context.json(getAppSettings(deps.db));
+  });
+
+  put(routes.keyboardSettings, (context, payload) => {
+    setAppKeybindingOverrides(deps.db, payload);
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(getAppKeybindingOverrides(deps.db));
   });
 
   put(routes.experiments, (context, payload) => {
@@ -153,6 +195,50 @@ export function registerSystemRoutes(
   get(routes.providers, async (context) =>
     context.json(await listSystemProviderInfos(deps)),
   );
+
+  get(routes.providerLogo, async (context) => {
+    const providerId = context.req.param("id");
+    const agent = deps.config.customAcpAgents.find(
+      (candidate) =>
+        formatCustomAcpAgentProviderId(candidate.id) === providerId,
+    );
+    if (agent?.logo === undefined) {
+      throw new ApiError(
+        404,
+        "provider_logo_not_found",
+        `Provider '${providerId}' has no configured logo.`,
+      );
+    }
+
+    const extension = extname(agent.logo).toLowerCase();
+    const contentType =
+      CUSTOM_ACP_LOGO_CONTENT_TYPES[
+        extension as keyof typeof CUSTOM_ACP_LOGO_CONTENT_TYPES
+      ];
+    if (contentType === undefined) {
+      throw new ApiError(
+        415,
+        "unsupported_provider_logo",
+        `Provider '${providerId}' has an unsupported logo format.`,
+      );
+    }
+
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(resolve(deps.config.dataDir, agent.logo));
+    } catch {
+      throw new ApiError(
+        404,
+        "provider_logo_not_found",
+        `Provider '${providerId}' logo file was not found.`,
+      );
+    }
+    return context.body(new Uint8Array(bytes), 200, {
+      "cache-control": "no-store",
+      "content-type": contentType,
+      "x-content-type-options": "nosniff",
+    });
+  });
 
   get(routes.usageLimits, async (context) =>
     context.json(await getProviderUsageLimits(deps)),

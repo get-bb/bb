@@ -59,6 +59,7 @@ export function providerHasCommandSurface(providerId: string): boolean {
       buildAcpProviderInfo({
         id: providerId,
         displayName: providerId,
+        logoUrl: null,
       }).composerActions,
     );
   }

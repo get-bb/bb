@@ -51,6 +51,7 @@ import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSet
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
+import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -1086,6 +1087,8 @@ export function SettingsView() {
     );
   } else if (activeSection === "usage") {
     content = <UsageLimitsSettingsSection />;
+  } else if (activeSection === "keyboard") {
+    content = <KeyboardSettingsSection />;
   } else if (activeSection === "files") {
     content = (
       <>

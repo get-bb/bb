@@ -40,6 +40,11 @@ message agents, or inspect projects, providers, and environments.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).
+- Settings → Keyboard records server-backed per-command shortcut overrides.
+  Reset returns to bb's current default; Clear disables the command. Non-native
+  actions apply in browser and desktop clients, and desktop menu accelerators
+  use the same resolved bindings. For details, read
+  `references/app-settings.md`.
 
 ## Agent Instructions
 
@@ -97,9 +102,11 @@ message agents, or inspect projects, providers, and environments.
   ACP agent, so overriding `acp-opencode` uses `"id": "opencode"`. This list
   has no set/unset CLI surface, so edit the JSON and run `bb-app config refresh`
   or restart bb. The configured command is local code execution and only works
-  with a co-located daemon. Custom ACP agents can use `modelCli` for CLI model
-  listing/selection, `reasoningCli` for launch-time reasoning flags, and
-  `nativeReasoning` for ACP `session/set_config_option` reasoning.
+  with a co-located daemon. Optional `logo` accepts an SVG, PNG, or WebP path;
+  relative paths resolve from the bb data dir. Custom ACP agents can use
+  `modelCli` for CLI model listing/selection, `reasoningCli` for launch-time
+  reasoning flags, and `nativeReasoning` for ACP `session/set_config_option`
+  reasoning.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files

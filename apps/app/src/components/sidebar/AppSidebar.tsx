@@ -6,6 +6,10 @@ import {
   type KeyboardEventHandler,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  isMacKeyboardPlatform,
+  THREAD_JUMP_APP_COMMAND_IDS,
+} from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -41,11 +45,19 @@ import {
 } from "./sidebarThreadSearch";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
-  getSidebarThreadShortcutIndex,
+  getSidebarThreadNavigationTargets,
   getSidebarThreadShortcutTargets,
   SidebarThreadShortcutKeysContext,
+  type SidebarThreadShortcutPresentation,
   type SidebarThreadShortcutTarget,
 } from "./sidebarThreadShortcuts";
+import {
+  useAppCommandHandler,
+  useAppCommandShortcut,
+  useAppCommandShortcuts,
+  useIndexedAppCommandHandlers,
+} from "@/components/commands/AppCommandProvider";
+import { useRouteState } from "@/hooks/useRouteState";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -78,6 +90,7 @@ export function AppSidebar({
   showTopReserve,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
+  const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
@@ -88,7 +101,7 @@ export function AppSidebar({
   const [threadSearchNavigationItems, setThreadSearchNavigationItems] =
     useState<readonly SidebarThreadSearchNavigationItem[]>([]);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
-    ReadonlyMap<string, string>
+    ReadonlyMap<string, SidebarThreadShortcutPresentation>
   >(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const threadShortcutTargetsRef = useRef<
@@ -99,6 +112,10 @@ export function AppSidebar({
   const threadSearchActiveDescendantId =
     threadSearchNavigationItems[threadSearchActiveIndex]?.optionId;
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const threadJumpShortcuts = useAppCommandShortcuts(
+    THREAD_JUMP_APP_COMMAND_IDS,
+  );
+  const settingsShortcut = useAppCommandShortcut("settings.open");
 
   const focusThreadSearchInput = useCallback(() => {
     if (isPointerCoarse) return;
@@ -177,14 +194,62 @@ export function AppSidebar({
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
     threadShortcutTargetsRef.current = targets;
     setThreadShortcutKeysById(
-      new Map(targets.map((target) => [target.threadId, target.key])),
+      new Map(
+        targets.flatMap((target, index) => {
+          const command = THREAD_JUMP_APP_COMMAND_IDS[index];
+          const shortcut = command
+            ? threadJumpShortcuts.get(command)
+            : undefined;
+          return shortcut ? [[target.threadId, shortcut] as const] : [];
+        }),
+      ),
     );
-  }, []);
+  }, [threadJumpShortcuts]);
 
   const hideThreadShortcuts = useCallback(() => {
     threadShortcutTargetsRef.current = [];
     setThreadShortcutKeysById(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
   }, []);
+
+  const activateThreadShortcut = useCallback((index: number): boolean => {
+    const targets = threadShortcutTargetsRef.current;
+    const target =
+      targets[index] ??
+      getSidebarThreadShortcutTargets(sidebarRef.current)[index];
+    if (!target) return false;
+    target.element.click();
+    return true;
+  }, []);
+
+  const activateAdjacentThread = useCallback(
+    (offset: -1 | 1): boolean => {
+      const targets = getSidebarThreadNavigationTargets(sidebarRef.current);
+      if (targets.length === 0) return false;
+      const activeIndex = targets.findIndex(
+        (target) => target.threadId === activeThreadId,
+      );
+      const nextIndex =
+        activeIndex === -1
+          ? offset === 1
+            ? 0
+            : targets.length - 1
+          : (activeIndex + offset + targets.length) % targets.length;
+      targets[nextIndex]?.element.click();
+      return true;
+    },
+    [activeThreadId],
+  );
+
+  useAppCommandHandler("thread.search", () => {
+    handleThreadSearchActivate();
+    return true;
+  });
+  useIndexedAppCommandHandlers(
+    THREAD_JUMP_APP_COMMAND_IDS,
+    activateThreadShortcut,
+  );
+  useAppCommandHandler("thread.previous", () => activateAdjacentThread(-1));
+  useAppCommandHandler("thread.next", () => activateAdjacentThread(1));
 
   const handleThreadSearchKeyDown = useCallback<
     KeyboardEventHandler<HTMLDivElement>
@@ -257,35 +322,19 @@ export function AppSidebar({
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Meta") {
+      const primaryModifier = isMacKeyboardPlatform(navigator.platform)
+        ? "Meta"
+        : "Control";
+      if (event.key === primaryModifier) {
         showThreadShortcuts();
-        return;
       }
-
-      const threadShortcutIndex = getSidebarThreadShortcutIndex(event);
-      if (threadShortcutIndex !== null) {
-        const target = threadShortcutTargetsRef.current[threadShortcutIndex];
-        if (target) {
-          event.preventDefault();
-          target.element.click();
-        }
-        return;
-      }
-
-      if (
-        event.key.toLowerCase() !== "k" ||
-        event.shiftKey ||
-        event.altKey ||
-        (!event.metaKey && !event.ctrlKey)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      handleThreadSearchActivate();
     };
 
     const handleGlobalKeyUp = (event: KeyboardEvent) => {
-      if (event.key === "Meta") {
+      const primaryModifier = isMacKeyboardPlatform(navigator.platform)
+        ? "Meta"
+        : "Control";
+      if (event.key === primaryModifier) {
         hideThreadShortcuts();
       }
     };
@@ -298,7 +347,7 @@ export function AppSidebar({
       window.removeEventListener("keyup", handleGlobalKeyUp);
       window.removeEventListener("blur", hideThreadShortcuts);
     };
-  }, [handleThreadSearchActivate, hideThreadShortcuts, showThreadShortcuts]);
+  }, [hideThreadShortcuts, showThreadShortcuts]);
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
@@ -377,8 +426,19 @@ export function AppSidebar({
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 asChild
-                aria-label="Settings"
-                tooltip={{ children: "Settings", hidden: false, side: "top" }}
+                aria-label={
+                  settingsShortcut
+                    ? `Settings (${settingsShortcut.label})`
+                    : "Settings"
+                }
+                aria-keyshortcuts={settingsShortcut?.ariaKeyshortcuts}
+                tooltip={{
+                  children: settingsShortcut
+                    ? `Settings (${settingsShortcut.label})`
+                    : "Settings",
+                  hidden: false,
+                  side: "top",
+                }}
                 className={SIDEBAR_FOOTER_ACTION_CLASS}
               >
                 <Link to="/settings" onClick={closeOnMobile}>

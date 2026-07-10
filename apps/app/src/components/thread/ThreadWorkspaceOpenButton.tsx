@@ -8,6 +8,8 @@ import {
   type SplitButtonAction,
 } from "@/components/ui/split-button.js";
 import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 
 interface ThreadWorkspaceOpenButtonProps {
   onOpenPreferredTarget: () => Promise<void>;
@@ -24,6 +26,7 @@ export function ThreadWorkspaceOpenButton({
 }: ThreadWorkspaceOpenButtonProps) {
   const [pendingTargetId, setPendingTargetId] =
     useState<WorkspaceOpenTargetId | null>(null);
+  const shortcut = useAppCommandShortcut("workspace.openPreferred");
   const isPending = pendingTargetId !== null;
 
   const openTarget = useCallback(
@@ -47,7 +50,10 @@ export function ThreadWorkspaceOpenButton({
   }
 
   const primaryAction: SplitButtonAction = {
-    label: `Open workspace in ${preferredTarget.label}`,
+    ariaKeyshortcuts: shortcut?.ariaKeyshortcuts,
+    label: shortcut
+      ? `Open workspace in ${preferredTarget.label} (${shortcut.label})`
+      : `Open workspace in ${preferredTarget.label}`,
     onSelect: () => {
       void openTarget(preferredTarget, onOpenPreferredTarget);
     },
@@ -72,13 +78,19 @@ export function ThreadWorkspaceOpenButton({
   }));
 
   return (
-    <SplitButton
-      disabled={isPending}
-      className="px-1"
-      primaryAction={primaryAction}
-      secondaryActions={secondaryActions}
-      triggerLabel="Choose workspace open target"
-      mobileTitle="Open Workspace"
-    />
+    <span className="relative inline-flex">
+      <SplitButton
+        disabled={isPending}
+        className="px-1"
+        primaryAction={primaryAction}
+        secondaryActions={secondaryActions}
+        triggerLabel="Choose workspace open target"
+        mobileTitle="Open Workspace"
+      />
+      <AppCommandShortcutHint
+        shortcut={shortcut}
+        className="absolute right-full mr-1"
+      />
+    </span>
   );
 }

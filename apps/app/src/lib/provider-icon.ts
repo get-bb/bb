@@ -4,7 +4,7 @@ import {
   isAgentProviderId,
 } from "@bb/agent-providers";
 import type { ComponentType } from "react";
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
 import { GrokIcon } from "@/components/icons/GrokIcon";
@@ -39,13 +39,58 @@ const KNOWN_ACP_BRAND_ICONS: Record<
   omp: OmpIcon,
 };
 
+const configuredProviderLogoIcons = new Map<
+  string,
+  ComponentType<{ className?: string }>
+>();
+
+function getConfiguredProviderLogoIcon(
+  providerId: string,
+  logoUrl: string,
+): ComponentType<{ className?: string }> {
+  const cacheKey = `${providerId}\0${logoUrl}`;
+  const cached = configuredProviderLogoIcons.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const fallbackIcon = getProviderIconInfo(providerId)?.icon;
+  const ProviderLogoIcon: ComponentType<{ className?: string }> = ({
+    className,
+  }) => {
+    const [failed, setFailed] = useState(false);
+    if (failed) {
+      return fallbackIcon === undefined
+        ? null
+        : createElement(fallbackIcon, { className });
+    }
+    return createElement("img", {
+      "aria-hidden": "true",
+      alt: "",
+      className: `${className ?? ""} object-contain`.trim(),
+      onError: () => setFailed(true),
+      src: logoUrl,
+    });
+  };
+  configuredProviderLogoIcons.set(cacheKey, ProviderLogoIcon);
+  return ProviderLogoIcon;
+}
+
 /**
  * Maps closed_internal provider IDs to their brand icon components.
  * Returns undefined for unknown providers so callers can fall back gracefully.
  */
 export function getProviderIconInfo(
   providerId: string,
+  logoUrl: string | null = null,
 ): ProviderIconInfo | undefined {
+  if (logoUrl !== null) {
+    return {
+      icon: getConfiguredProviderLogoIcon(providerId, logoUrl),
+      ariaLabel: "Provider logo",
+    };
+  }
+
   if (!isAgentProviderId(providerId) && isAcpProviderId(providerId)) {
     const slug = providerId.slice(ACP_ID_PREFIX.length);
     const brandIcon = KNOWN_ACP_BRAND_ICONS[slug];

@@ -26,10 +26,12 @@ describe("agent provider catalog", () => {
       buildAcpProviderInfo({
         id: "acp-my-agent",
         displayName: "My Agent",
+        logoUrl: null,
       }),
     ).toEqual({
       id: "acp-my-agent",
       displayName: "My Agent",
+      logoUrl: null,
       capabilities: {
         supportsArchive: false,
         supportsRename: false,

@@ -7,6 +7,10 @@ import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "./sidebarRowClasses";
+import {
+  EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
+  SidebarThreadShortcutKeysContext,
+} from "./sidebarThreadShortcuts";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
@@ -69,21 +73,34 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
 function ThreadRowTestHarness({
   isActive = false,
   options = DEFAULT_OPTIONS,
+  shortcutKey,
   thread,
 }: {
   isActive?: boolean;
   options?: ThreadRowOptions;
+  shortcutKey?: string;
   thread: ThreadListEntry;
 }) {
+  const shortcutKeys = shortcutKey
+    ? new Map([
+        [
+          thread.id,
+          { ariaKeyshortcuts: `Meta+${shortcutKey}`, label: `⌘${shortcutKey}` },
+        ],
+      ])
+    : EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS;
+
   return (
     <MemoryRouter>
-      <ThreadRow
-        projectId={thread.projectId}
-        thread={thread}
-        isActive={isActive}
-        hasComposerDraft={false}
-        options={options}
-      />
+      <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
+        <ThreadRow
+          projectId={thread.projectId}
+          thread={thread}
+          isActive={isActive}
+          hasComposerDraft={false}
+          options={options}
+        />
+      </SidebarThreadShortcutKeysContext.Provider>
     </MemoryRouter>
   );
 }
@@ -91,16 +108,19 @@ function ThreadRowTestHarness({
 function renderThreadRow({
   isActive = false,
   options = DEFAULT_OPTIONS,
+  shortcutKey,
   thread = createThread(),
 }: {
   isActive?: boolean;
   options?: ThreadRowOptions;
+  shortcutKey?: string;
   thread?: ThreadListEntry;
 }) {
   const result = render(
     <ThreadRowTestHarness
       isActive={isActive}
       options={options}
+      shortcutKey={shortcutKey}
       thread={thread}
     />,
   );
@@ -111,6 +131,7 @@ function renderThreadRow({
         <ThreadRowTestHarness
           isActive={isActive}
           options={options}
+          shortcutKey={shortcutKey}
           thread={nextThread}
         />,
       );
@@ -151,6 +172,21 @@ describe("ThreadRow", () => {
         .getByRole("button", { name: "Collapse Parent thread threads" })
         .getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
+  });
+
+  it("shows its Command shortcut in place of the trailing status", () => {
+    renderThreadRow({
+      shortcutKey: "3",
+      thread: createThread({ hasPendingInteraction: true }),
+    });
+
+    expect(screen.getByText("⌘3")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "Open Thread" })
+        .getAttribute("aria-keyshortcuts"),
+    ).toBe("Meta+3");
   });
 
   it("shows an unread error before pending or active work", () => {

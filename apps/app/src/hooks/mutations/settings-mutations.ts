@@ -1,7 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { AppSettings, AppThemeSelection, Experiments } from "@bb/domain";
+import {
+  type AppKeybindingOverrides,
+  type AppSettings,
+  type AppThemeSelection,
+  type Experiments,
+} from "@bb/domain";
 import * as api from "@/lib/api";
 import { invalidateSystemConfig } from "../cache-owners/system-cache-effects";
+import {
+  beginKeyboardSettingsCacheTransaction,
+  rollbackKeyboardSettingsCacheTransaction,
+} from "../cache-owners/system-config-cache-owner";
 
 /**
  * Replace the user's opt-in experiments (full object). The server broadcasts
@@ -36,6 +45,30 @@ export function useUpdateGeneralSettings() {
       errorMessage: "Failed to update general settings.",
     },
     mutationFn: (settings: AppSettings) => api.updateGeneralSettings(settings),
+    onSuccess: () => {
+      invalidateSystemConfig({ queryClient });
+    },
+  });
+}
+
+/** Replace the sparse server-backed keyboard overrides for every app window. */
+export function useUpdateKeyboardSettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to update keyboard shortcuts.",
+    },
+    mutationFn: (overrides: AppKeybindingOverrides) =>
+      api.updateKeyboardSettings(overrides),
+    onMutate: (overrides) =>
+      beginKeyboardSettingsCacheTransaction({ overrides, queryClient }),
+    onError: (_error, _overrides, context) => {
+      rollbackKeyboardSettingsCacheTransaction({
+        queryClient,
+        transaction: context,
+      });
+    },
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

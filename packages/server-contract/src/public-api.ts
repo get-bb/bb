@@ -4,6 +4,7 @@ import type {
   AppTheme,
   AppThemeSelection,
   AppSettings,
+  AppKeybindingOverrides,
   Environment,
   Experiments,
   Host,
@@ -16,6 +17,7 @@ import type {
 } from "@bb/domain";
 import {
   appSettingsSchema,
+  appKeybindingOverridesSchema,
   appThemeSelectionSchema,
   experimentsSchema,
 } from "@bb/domain";
@@ -1042,6 +1044,14 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, AppSettings>(appSettingsSchema),
       response: jsonResponse<AppSettings>(),
     }),
+    keyboardSettings: defineRoute({
+      path: "/settings/keyboard",
+      method: "put",
+      request: jsonRequest<EmptyInput, AppKeybindingOverrides>(
+        appKeybindingOverridesSchema,
+      ),
+      response: jsonResponse<AppKeybindingOverrides>(),
+    }),
     experiments: defineRoute({
       path: "/settings/experiments",
       method: "put",
@@ -1081,6 +1091,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemProviderInfo[]>(),
+    }),
+    providerLogo: defineRoute({
+      path: "/system/providers/:id/logo",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: binaryResponse<Uint8Array>(),
     }),
     usageLimits: defineRoute({
       path: "/system/usage-limits",

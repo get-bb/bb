@@ -1,6 +1,7 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
 import type {
   AppSettings,
+  AppKeybindingOverrides,
   AppTheme,
   AppThemeSelection,
   Environment,
@@ -1843,6 +1844,14 @@ export async function updateGeneralSettings(
 ): Promise<AppSettings> {
   return request<AppSettings>(
     apiClient.settings.general.$put({ json: settings }),
+  );
+}
+
+export async function updateKeyboardSettings(
+  overrides: AppKeybindingOverrides,
+): Promise<AppKeybindingOverrides> {
+  return request<AppKeybindingOverrides>(
+    apiClient.settings.keyboard.$put({ json: overrides }),
   );
 }
 

@@ -48,6 +48,7 @@ import {
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { FilePreview } from "@/components/secondary-panel/FilePreview";
 import {
@@ -212,6 +213,10 @@ import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
+import {
+  useAppCommandHandler,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -457,6 +462,7 @@ function RootComposeRightPanelToggle({
   onToggle,
 }: RootComposeRightPanelToggleProps) {
   const renderAsDrawer = useIsCompactViewport();
+  const shortcut = useAppCommandShortcut("panel.toggle");
   const rightPanelLabel = isOpen ? "Hide right panel" : "Show right panel";
   const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
 
@@ -466,11 +472,18 @@ function RootComposeRightPanelToggle({
       variant="ghost"
       size="icon"
       className={`${HEADER_ICON_BUTTON_CLASS} relative`}
-      aria-label={rightPanelLabel}
+      aria-label={
+        shortcut ? `${rightPanelLabel} (${shortcut.label})` : rightPanelLabel
+      }
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       aria-pressed={isOpen}
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
+      <AppCommandShortcutHint
+        shortcut={shortcut}
+        className="absolute right-full mr-1"
+      />
     </Button>
   );
 }
@@ -2360,6 +2373,16 @@ export function RootComposeView(props: RootComposeViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openTab]);
+  useAppCommandHandler("panel.newTab", () => {
+    if (props.surface !== "page") return false;
+    handleOpenNewTab();
+    return true;
+  });
+  useAppCommandHandler("file.quickOpen", () => {
+    if (props.surface !== "page") return false;
+    handleOpenNewTab();
+    return true;
+  });
   const handleToggleSecondaryPanel = useCallback(() => {
     if (isSecondaryPanelOpen) {
       closeSecondaryPanel();
@@ -2420,6 +2443,19 @@ export function RootComposeView(props: RootComposeViewProps) {
     rootPanelTerminalTarget,
     setActiveFixedTerminal,
   ]);
+  useAppCommandHandler("terminal.open", () => {
+    if (
+      props.surface !== "page" ||
+      !canCreateRootTerminal ||
+      rootPanelTerminalTarget === null ||
+      createEnvironmentTerminalMutation.isPending ||
+      createHostPathTerminalMutation.isPending
+    ) {
+      return false;
+    }
+    handleStartTerminal();
+    return true;
+  });
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
       setActiveFixedTerminal(terminalId);
@@ -2501,6 +2537,15 @@ export function RootComposeView(props: RootComposeViewProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
+  useAppCommandHandler("panel.toggle", () => {
+    if (props.surface !== "page") return false;
+    handleToggleSecondaryPanel();
+    return true;
+  });
+  useAppCommandHandler("panel.close", () => {
+    if (props.surface !== "page") return false;
+    return handleCloseWindowRequest();
+  });
   useEffect(() => {
     if (props.surface !== "page") {
       return;
@@ -2811,6 +2856,34 @@ export function RootComposeView(props: RootComposeViewProps) {
         });
       }
     : undefined;
+  useAppCommandHandler("workspace.openPreferred", () => {
+    if (props.surface !== "page") return false;
+    if (
+      activeWorkspaceFilePath !== null &&
+      activeWorkspaceFileEnvironmentId !== null &&
+      handleOpenWorkspaceFileInEditor
+    ) {
+      handleOpenWorkspaceFileInEditor(activeWorkspaceFilePath);
+      return true;
+    }
+    if (
+      activeWorkspaceFilePath !== null &&
+      activeWorkspaceFileProjectPreviewId !== null &&
+      handleOpenProjectFileInEditor
+    ) {
+      handleOpenProjectFileInEditor(activeWorkspaceFilePath);
+      return true;
+    }
+    if (activeHostFilePath !== null && handleOpenHostFileInEditor) {
+      handleOpenHostFileInEditor(activeHostFilePath);
+      return true;
+    }
+    if (activeStorageFilePath !== null && handleOpenStorageFileInEditor) {
+      handleOpenStorageFileInEditor(activeStorageFilePath);
+      return true;
+    }
+    return false;
+  });
   const workspaceFileCopyPath = activeWorkspaceFilePath
     ? resolveAbsoluteFilePath({
         path: activeWorkspaceFilePath,

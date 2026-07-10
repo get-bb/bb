@@ -10,6 +10,9 @@ import { wsManager } from "./ws";
 // Offline/unavailable app behavior should fail closed independently of server defaults.
 const unavailableSystemConfig: SystemConfigResponse = {
   generalSettings: defaultAppSettings,
+  keybindings: [],
+  defaultKeybindings: [],
+  keybindingOverrides: [],
   experiments: {
     bbConnect: false,
     claudeCodeMockCliTraffic: false,

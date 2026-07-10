@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
-import type { ReasoningLevel } from "@bb/domain";
+import { type ReasoningLevel } from "@bb/domain";
 import { stripModelBrandPrefix } from "./model-brand-prefix";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
@@ -50,6 +50,12 @@ import {
   formatModelLoadErrorText,
   ModelLoadErrorMessage,
 } from "./model-load-error-message";
+import {
+  useAppCommandContext,
+  useAppCommandHandler,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 
 interface ModelLabelParts {
   base: string;
@@ -251,6 +257,8 @@ export function ModelReasoningPicker({
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const [open, setOpen] = useState(defaultOpen);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const toggleShortcut = useAppCommandShortcut("modelPicker.toggle");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -521,6 +529,23 @@ export function ModelReasoningPicker({
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
   );
 
+  useAppCommandContext("promptAvailable", !disabled);
+  useAppCommandContext("modelPickerOpen", open && !disabled);
+  useAppCommandHandler("modelPicker.toggle", ({ target }) => {
+    if (disabled) return false;
+    if (open) {
+      setOpen(false);
+      return true;
+    }
+    if (!(target instanceof HTMLElement)) return false;
+    const targetComposer = target.closest("[data-app-composer]");
+    const pickerComposer = triggerRef.current?.closest("[data-app-composer]");
+    if (targetComposer === null || targetComposer !== pickerComposer) {
+      return false;
+    }
+    setOpen(true);
+    return true;
+  }, 50);
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
       // While previewing, the listed levels are the previewed provider's, so
@@ -644,10 +669,16 @@ export function ModelReasoningPicker({
   // editable counterpart.
   const trigger = (
     <Button
+      ref={triggerRef}
       type="button"
       variant="ghost"
       size="sm"
-      aria-label="Provider, model and reasoning"
+      aria-label={
+        toggleShortcut
+          ? `Provider, model and reasoning (${toggleShortcut.label})`
+          : "Provider, model and reasoning"
+      }
+      aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
       className={cn(
         OPTION_BASE_CLASS_NAME,
@@ -696,6 +727,10 @@ export function ModelReasoningPicker({
           className="size-3.5 shrink-0 text-muted-foreground"
         />
       )}
+      <AppCommandShortcutHint
+        shortcut={disabled ? null : toggleShortcut}
+        className="ml-1"
+      />
     </Button>
   );
 
@@ -1206,13 +1241,15 @@ function MenuRowButton({
           <span className="ml-1.5 text-subtle-foreground">{tag}</span>
         ) : null}
       </span>
-      <Icon
-        name="Check"
-        className={cn(
-          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
-          selected ? "opacity-100" : "opacity-0",
-        )}
-      />
+      <span className="flex shrink-0 items-center gap-1.5">
+        <Icon
+          name="Check"
+          className={cn(
+            COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+            selected ? "opacity-100" : "opacity-0",
+          )}
+        />
+      </span>
     </button>
   );
 }

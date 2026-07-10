@@ -1,5 +1,10 @@
 import { eq } from "drizzle-orm";
-import { defaultAppSettings, type AppSettings } from "@bb/domain";
+import {
+  appKeybindingOverridesSchema,
+  defaultAppSettings,
+  type AppKeybindingOverrides,
+  type AppSettings,
+} from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import { appSettings } from "../schema.js";
 
@@ -30,6 +35,44 @@ export function setAppSettings(
       target: appSettings.id,
       set: {
         caffeinate: settings.caffeinate,
+        updatedAt,
+      },
+    })
+    .run();
+}
+
+export function getAppKeybindingOverrides(
+  db: DbConnection,
+): AppKeybindingOverrides {
+  const row = db
+    .select({ keybindingOverrides: appSettings.keybindingOverrides })
+    .from(appSettings)
+    .where(eq(appSettings.id, APP_SETTINGS_ROW_ID))
+    .get();
+
+  if (row === undefined) {
+    return [];
+  }
+  return appKeybindingOverridesSchema.parse(
+    JSON.parse(row.keybindingOverrides),
+  );
+}
+
+export function setAppKeybindingOverrides(
+  db: DbConnection,
+  overrides: AppKeybindingOverrides,
+): void {
+  const updatedAt = Date.now();
+  db.insert(appSettings)
+    .values({
+      id: APP_SETTINGS_ROW_ID,
+      keybindingOverrides: JSON.stringify(overrides),
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: appSettings.id,
+      set: {
+        keybindingOverrides: JSON.stringify(overrides),
         updatedAt,
       },
     })

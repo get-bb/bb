@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  getSidebarThreadShortcutIndex,
+  getSidebarThreadNavigationTargets,
   getSidebarThreadShortcutTargets,
 } from "./sidebarThreadShortcuts";
 
@@ -36,25 +36,7 @@ describe("sidebar thread shortcuts", () => {
         threadId: `thr_${index + 1}`,
       })),
     );
+    expect(getSidebarThreadNavigationTargets(root)).toHaveLength(10);
   });
 
-  it("recognizes only unmodified Command plus a numbered shortcut", () => {
-    const event = {
-      altKey: false,
-      ctrlKey: false,
-      defaultPrevented: false,
-      key: "4",
-      metaKey: true,
-      shiftKey: false,
-    };
-
-    expect(getSidebarThreadShortcutIndex(event)).toBe(3);
-    expect(getSidebarThreadShortcutIndex({ ...event, metaKey: false })).toBe(
-      null,
-    );
-    expect(getSidebarThreadShortcutIndex({ ...event, shiftKey: true })).toBe(
-      null,
-    );
-    expect(getSidebarThreadShortcutIndex({ ...event, key: "0" })).toBe(null);
-  });
 });

@@ -514,7 +514,11 @@ function FollowUpPromptBoxWithComposer({
       <ThreadTimelineScrollToBottomButton
         active={composer.threadRuntimeDisplayStatus === "active"}
       />
-      <div data-promptbox-shell="" className="space-y-2">
+      <div
+        data-app-composer=""
+        data-promptbox-shell=""
+        className="space-y-2"
+      >
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>

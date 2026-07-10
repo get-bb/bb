@@ -39,6 +39,11 @@ import {
 } from "./browserViewVisibilityCoordinator";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
+import {
+  useAppCommandHandler,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -82,6 +87,8 @@ interface BrowserChromeProps {
   onForward: () => void;
   onReloadOrStop: () => void;
   onOpenExternal: () => void;
+  locationShortcut: AppShortcutPresentation | null;
+  reloadShortcut: AppShortcutPresentation | null;
 }
 
 interface NavButtonProps {
@@ -89,6 +96,7 @@ interface NavButtonProps {
   label: string;
   disabled?: boolean;
   onClick: () => void;
+  shortcut?: AppShortcutPresentation | null;
 }
 
 interface BrowserViewBoundsFromElementArgs {
@@ -197,13 +205,15 @@ function browserPageLoadErrorTitle(args: {
   return "Page unavailable";
 }
 
-function NavButton({ icon, label, disabled, onClick }: NavButtonProps) {
+function NavButton({ icon, label, disabled, onClick, shortcut }: NavButtonProps) {
+  const accessibleLabel = shortcut ? `${label} (${shortcut.label})` : label;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={label}
+      aria-label={accessibleLabel}
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       className={cn(
         "flex shrink-0 items-center justify-center text-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
         COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
@@ -228,6 +238,8 @@ function BrowserChrome({
   onForward,
   onReloadOrStop,
   onOpenExternal,
+  locationShortcut,
+  reloadShortcut,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
@@ -253,6 +265,7 @@ function BrowserChrome({
       <NavButton
         icon={isLoading ? "X" : "RotateCcw"}
         label={isLoading ? "Stop loading" : "Reload"}
+        shortcut={isLoading ? null : reloadShortcut}
         onClick={onReloadOrStop}
       />
       <form onSubmit={onSubmit} className="min-w-0 flex-1">
@@ -293,7 +306,12 @@ function BrowserChrome({
             onFocus={onAddressFocus}
             onBlur={onAddressBlur}
             placeholder="Enter a URL"
-            aria-label="Address and search bar"
+            aria-label={
+              locationShortcut
+                ? `Address and search bar (${locationShortcut.label})`
+                : "Address and search bar"
+            }
+            aria-keyshortcuts={locationShortcut?.ariaKeyshortcuts}
             autoComplete="off"
             spellCheck={false}
             className={cn(
@@ -406,6 +424,8 @@ export function BrowserTabContent({
   threadId,
   onUpdate,
 }: BrowserTabContentProps) {
+  const locationShortcut = useAppCommandShortcut("browser.focusLocation");
+  const reloadShortcut = useAppCommandShortcut("browser.reload");
   const desktopBrowser = useMemo<BbDesktopBrowserApi | null>(
     () => getDesktopBrowserApi(),
     [],
@@ -721,6 +741,27 @@ export function BrowserTabContent({
     desktopBrowser?.reload(tabId);
   }, [desktopBrowser, state?.isLoading, tabId]);
 
+  const handleFocusLocation = useCallback((): boolean => {
+    if (!canShowNativeBrowserView || desktopBrowser === null) return false;
+    setAddressDraft(currentUrl);
+    setIsEditing(true);
+    addressInputRef.current?.focus({ preventScroll: true });
+    window.requestAnimationFrame(() => {
+      addressInputRef.current?.focus({ preventScroll: true });
+      addressInputRef.current?.select();
+    });
+    return true;
+  }, [canShowNativeBrowserView, currentUrl, desktopBrowser]);
+
+  useAppCommandHandler("browser.focusLocation", handleFocusLocation, 100);
+  useAppCommandHandler("browser.reload", () => {
+    if (!canShowNativeBrowserView || desktopBrowser === null || !hasPage) {
+      return false;
+    }
+    desktopBrowser.reload(tabId);
+    return true;
+  }, 100);
+
   const handleOpenExternal = useCallback(() => {
     getBbDesktopInfo()?.openExternalUrl(currentUrl);
   }, [currentUrl]);
@@ -730,7 +771,7 @@ export function BrowserTabContent({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div data-app-browser className="flex h-full min-h-0 flex-col">
       <BrowserChrome
         addressDraft={addressDraft}
         isEditing={isEditing}
@@ -745,6 +786,8 @@ export function BrowserTabContent({
         onForward={() => desktopBrowser.goForward(tabId)}
         onReloadOrStop={handleReloadOrStop}
         onOpenExternal={handleOpenExternal}
+        locationShortcut={locationShortcut}
+        reloadShortcut={reloadShortcut}
       />
       <div ref={contentRef} className="relative min-h-0 flex-1">
         {hasPageLoadError ? (

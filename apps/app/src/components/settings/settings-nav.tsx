@@ -22,6 +22,7 @@ import {
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
   { icon: "Palette", id: "appearance", label: "Appearance" },
+  { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Zap", id: "experiments", label: "Experiments" },
@@ -37,9 +38,7 @@ export type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
 
 export type SettingsSectionId = SettingsNavSection["id"];
 
-export function isSettingsSectionId(
-  value: string,
-): value is SettingsSectionId {
+export function isSettingsSectionId(value: string): value is SettingsSectionId {
   return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
 }
 

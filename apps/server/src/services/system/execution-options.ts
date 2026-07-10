@@ -84,9 +84,14 @@ interface ResolveSystemProviderInfosPlanResult
 }
 
 function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
+  const providerId = formatCustomAcpAgentProviderId(agent.id);
   return buildAcpProviderInfo({
-    id: formatCustomAcpAgentProviderId(agent.id),
+    id: providerId,
     displayName: agent.displayName,
+    logoUrl:
+      agent.logo === undefined
+        ? null
+        : `/api/v1/system/providers/${encodeURIComponent(providerId)}/logo`,
   });
 }
 

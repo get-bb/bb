@@ -14,6 +14,7 @@ import {
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
+import type { AppCommandId, AppShortcutInput } from "@bb/domain";
 import {
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
@@ -105,8 +106,16 @@ export interface DesktopBrowserHostWindow {
   webContents: DesktopBrowserHostWebContents;
 }
 
-interface CreateDesktopBrowserViewManagerArgs {
+export interface DispatchDesktopBrowserAppCommandArgs {
+  command: AppCommandId;
+  hostWebContentsId: number;
+}
+
+export interface CreateDesktopBrowserViewManagerArgs {
+  dispatchAppCommand: (args: DispatchDesktopBrowserAppCommandArgs) => void;
+  focusHostWebContents: (hostWebContentsId: number) => void;
   partition?: string;
+  resolveAppCommand: (input: AppShortcutInput) => AppCommandId | null;
 }
 
 interface HostScopedRequestArgs<TRequest> {
@@ -306,7 +315,7 @@ export function isAllowedBrowserPermission(permission: string): boolean {
 }
 
 export function createDesktopBrowserViewManager(
-  args: CreateDesktopBrowserViewManagerArgs = {},
+  args: CreateDesktopBrowserViewManagerArgs,
 ): DesktopBrowserViewManager {
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
@@ -446,6 +455,34 @@ export function createDesktopBrowserViewManager(
     entry: BrowserViewEntry,
   ): void {
     const webContents = entry.view.webContents;
+
+    webContents.on("before-input-event", (event, input) => {
+      if (
+        input.type !== "keyDown" ||
+        input.isAutoRepeat ||
+        input.isComposing
+      ) {
+        return;
+      }
+      const command = args.resolveAppCommand({
+        altKey: input.alt,
+        ctrlKey: input.control,
+        key: input.key,
+        metaKey: input.meta,
+        shiftKey: input.shift,
+      });
+      if (command === null) return;
+      // Prevent both the untrusted page and Electron's application menu from
+      // also handling a chord that bb resolved as a browser command.
+      event.preventDefault();
+      if (command === "browser.focusLocation") {
+        args.focusHostWebContents(hostWindow.webContents.id);
+      }
+      args.dispatchAppCommand({
+        command,
+        hostWebContentsId: hostWindow.webContents.id,
+      });
+    });
 
     webContents.on("will-frame-navigate", (event) => {
       if (!event.isMainFrame) {

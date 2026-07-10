@@ -297,7 +297,7 @@ export function useThreadCreationOptions(
       providers.map((p) => ({
         value: p.id,
         label: p.displayName,
-        icon: getProviderIconInfo(p.id)?.icon,
+        icon: getProviderIconInfo(p.id, p.logoUrl ?? null)?.icon,
       })),
     [providers],
   );

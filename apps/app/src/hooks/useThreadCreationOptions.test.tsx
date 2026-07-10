@@ -26,6 +26,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
       {
         id: GLOBAL_PROVIDER_ID,
         displayName: "Global Provider",
+        logoUrl: null,
         available: true,
         composerActions: [
           { kind: "skills", trigger: "/" },
@@ -46,6 +47,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
       {
         id: PROJECT_PROVIDER_ID,
         displayName: "Project Provider",
+        logoUrl: null,
         available: true,
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {

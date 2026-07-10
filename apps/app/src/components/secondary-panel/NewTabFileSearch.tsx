@@ -48,6 +48,9 @@ import {
   LauncherRowTrailing,
   LauncherSectionHeader,
 } from "./launcherRow";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 
 export interface NewTabFileSearchProps {
   projectId: string | undefined;
@@ -130,6 +133,7 @@ interface GroupFileSearchSectionsArgs {
 }
 
 interface LauncherTileProps {
+  ariaKeyshortcuts?: string;
   id: string;
   isActive: boolean;
   variant?: LauncherTileVariant;
@@ -146,6 +150,7 @@ interface NewTabActionTileProps {
   isActive: boolean;
   onActivate: () => void;
   onSelect: () => void;
+  shortcut?: AppShortcutPresentation;
 }
 
 interface ShowMoreToggleProps {
@@ -285,6 +290,7 @@ function FileSearchMessage({
  * because they are separate commands rather than part of the file combobox.
  */
 function LauncherTile({
+  ariaKeyshortcuts,
   id,
   isActive,
   variant = "result",
@@ -304,12 +310,13 @@ function LauncherTile({
       id={id}
       role={variant === "result" ? "option" : undefined}
       aria-selected={variant === "result" ? isActive : undefined}
+      aria-keyshortcuts={ariaKeyshortcuts}
       onClick={onSelect}
       onMouseEnter={onActivate}
       title={title}
       className={cn(
         baseClass,
-        "scroll-mt-7",
+        "relative scroll-mt-7",
         isActive ? "bg-state-active" : "hover:bg-state-hover",
       )}
     >
@@ -325,11 +332,13 @@ function NewTabActionTile({
   isActive,
   onActivate,
   onSelect,
+  shortcut,
 }: NewTabActionTileProps) {
   return (
     <LauncherTile
       id={id}
       isActive={isActive}
+      ariaKeyshortcuts={shortcut?.ariaKeyshortcuts}
       variant="action"
       onActivate={onActivate}
       onSelect={onSelect}
@@ -342,6 +351,10 @@ function NewTabActionTile({
         />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
+      <AppCommandShortcutHint
+        shortcut={shortcut ?? null}
+        className="absolute right-2 top-1/2 -translate-y-1/2"
+      />
     </LauncherTile>
   );
 }
@@ -489,6 +502,7 @@ export function NewTabFileSearch({
   recentItemsThreadId,
   showFileSearch = true,
 }: NewTabFileSearchProps) {
+  const quickOpenShortcut = useAppCommandShortcut("file.quickOpen");
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
   const isPointerCoarse = usePointerCoarse();
@@ -681,7 +695,12 @@ export function NewTabFileSearch({
           // navigable Files/Recent options, and the highlighted row is the
           // combobox's active descendant within that controlled listbox.
           role="combobox"
-          aria-label="Search files"
+          aria-label={
+            quickOpenShortcut
+              ? `Search files (${quickOpenShortcut.label})`
+              : "Search files"
+          }
+          aria-keyshortcuts={quickOpenShortcut?.ariaKeyshortcuts}
           aria-autocomplete="list"
           aria-expanded={hasListbox}
           aria-controls={hasListbox ? listboxId : undefined}
@@ -747,6 +766,7 @@ export function NewTabActions({
   onStartTerminal,
   pluginActions,
 }: NewTabActionsProps) {
+  const terminalShortcut = useAppCommandShortcut("terminal.open");
   const showStartSideChatEntry = onStartSideChat !== undefined;
   const showOpenBrowserEntry =
     onOpenBrowser !== undefined &&
@@ -811,6 +831,7 @@ export function NewTabActions({
               isActive={false}
               onActivate={() => undefined}
               onSelect={handleStartTerminal}
+              shortcut={terminalShortcut ?? undefined}
             />
           ) : null}
           {pluginActions?.map((action) => (
