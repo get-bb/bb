@@ -21,10 +21,7 @@ import {
   APP_SURFACE_DESKTOP,
   APP_SURFACE_ENV_NAME,
 } from "@bb/config/app-surface";
-import {
-  type AppKeybindings,
-  type Experiments,
-} from "@bb/domain";
+import { type AppKeybindings, type Experiments } from "@bb/domain";
 import {
   bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
@@ -99,6 +96,7 @@ import {
   createConnectServerSync,
   type ConnectServerSync,
 } from "./connect-server-sync.js";
+import { installConnectDesktopSession } from "./connect-desktop-session.js";
 import {
   BUILTIN_SERVER_ID,
   createServerRegistry,
@@ -326,8 +324,7 @@ const logViewerCopyRequestSchema = z
 let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
 let currentAppKeybindings: AppKeybindings = [];
-let currentApplicationMenuAccelerators =
-  DEFAULT_APPLICATION_MENU_ACCELERATORS;
+let currentApplicationMenuAccelerators = DEFAULT_APPLICATION_MENU_ACCELERATORS;
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
@@ -694,10 +691,16 @@ function installCurrentApplicationMenu(): void {
         BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
         null,
       );
-      desktopWindowFactory?.sendToFocusedWindow(BB_DESKTOP_APP_COMMAND_CHANNEL, "panel.newTab");
+      desktopWindowFactory?.sendToFocusedWindow(
+        BB_DESKTOP_APP_COMMAND_CHANNEL,
+        "panel.newTab",
+      );
     },
     openNewThread() {
-      desktopWindowFactory?.sendToFocusedWindow(BB_DESKTOP_APP_COMMAND_CHANNEL, "thread.new");
+      desktopWindowFactory?.sendToFocusedWindow(
+        BB_DESKTOP_APP_COMMAND_CHANNEL,
+        "thread.new",
+      );
     },
     openSettings() {
       desktopWindowFactory?.sendToFocusedWindow(
@@ -1239,6 +1242,13 @@ async function setActiveServerForWindow(
     }
   } else {
     // Remote servers are pure web loads. Owned local runtime keeps running.
+    if (server.source === "connect" && currentRuntime !== null) {
+      await installConnectDesktopSession({
+        cookieInstaller: session.defaultSession.cookies,
+        localServerUrl: currentRuntime.serverUrl,
+        remoteServerUrl: server.url,
+      });
+    }
     currentWindowUrl = server.url;
     await loadUrlInApplicationWindow({
       browserWindow: args.browserWindow,
@@ -1342,8 +1352,7 @@ function registerDesktopServerIpc(): void {
     for (const browserWindow of BrowserWindow.getAllWindows()) {
       if (
         !applicationWindowWebContentsIds.has(browserWindow.webContents.id) ||
-        activeServerState.getActiveServerId(browserWindow.id) !==
-          parsed.data.id
+        activeServerState.getActiveServerId(browserWindow.id) !== parsed.data.id
       ) {
         continue;
       }
@@ -1377,7 +1386,8 @@ function registerDesktopServerIpc(): void {
       if (serverRegistry === null) {
         return;
       }
-      const parsed = bbDesktopServerSetTileStyleRequestSchema.safeParse(payload);
+      const parsed =
+        bbDesktopServerSetTileStyleRequestSchema.safeParse(payload);
       if (!parsed.success) {
         return;
       }
@@ -1425,7 +1435,8 @@ function registerDesktopServerIpc(): void {
       if (serverRegistry === null) {
         return;
       }
-      const parsed = bbDesktopServerSetAutoConnectRequestSchema.safeParse(payload);
+      const parsed =
+        bbDesktopServerSetAutoConnectRequestSchema.safeParse(payload);
       if (!parsed.success) {
         return;
       }
@@ -1436,12 +1447,15 @@ function registerDesktopServerIpc(): void {
     },
   );
 
-  ipcMain.handle(BB_DESKTOP_SERVERS_GET_SHOW_CONNECT_SERVERS_CHANNEL, (event) => {
-    if (!isApplicationWindowSender(event.sender)) {
-      return true;
-    }
-    return serverRegistry?.getShowConnectServers() ?? true;
-  });
+  ipcMain.handle(
+    BB_DESKTOP_SERVERS_GET_SHOW_CONNECT_SERVERS_CHANNEL,
+    (event) => {
+      if (!isApplicationWindowSender(event.sender)) {
+        return true;
+      }
+      return serverRegistry?.getShowConnectServers() ?? true;
+    },
+  );
 
   ipcMain.handle(
     BB_DESKTOP_SERVERS_SET_SHOW_CONNECT_SERVERS_CHANNEL,
@@ -1457,7 +1471,9 @@ function registerDesktopServerIpc(): void {
       if (!parsed.success) {
         return;
       }
-      await serverRegistry.setShowConnectServers(parsed.data.showConnectServers);
+      await serverRegistry.setShowConnectServers(
+        parsed.data.showConnectServers,
+      );
       sendServersChanged();
     },
   );
@@ -2121,8 +2137,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
     timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
   });
   builtinLastProbe = existingProbe;
-  const autoConnect =
-    serverRegistry?.getAutoConnectToLocalServer() ?? true;
+  const autoConnect = serverRegistry?.getAutoConnectToLocalServer() ?? true;
 
   if (existingProbe.kind === "compatible") {
     if (!autoConnect) {

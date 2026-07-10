@@ -32,6 +32,7 @@ import {
   redeemConnectCode,
   serverUrlForHandle,
 } from "./redeem.js";
+import { fetchDesktopSession, type DesktopSession } from "./desktop-session.js";
 import {
   ShareRegistry,
   shareLoopbackHost,
@@ -100,8 +101,12 @@ export function humanizeTransportError(error: Error, host: string): string {
   const code = (error as NodeJS.ErrnoException).code;
   let reason: string;
   if (code === "ECONNREFUSED") reason = "connection refused";
-  else if (code === "ENOTFOUND" || code === "EAI_AGAIN") reason = "host not found";
-  else if (code === "ETIMEDOUT" || /timed out|timeout|ETIMEDOUT/i.test(error.message))
+  else if (code === "ENOTFOUND" || code === "EAI_AGAIN")
+    reason = "host not found";
+  else if (
+    code === "ETIMEDOUT" ||
+    /timed out|timeout|ETIMEDOUT/i.test(error.message)
+  )
     reason = "timed out";
   else if (code === "ECONNRESET") reason = "connection reset";
   else reason = error.message;
@@ -208,7 +213,8 @@ export class TunnelSession {
   dispose(): void {
     if (this.heartbeat) clearInterval(this.heartbeat);
     for (const s of this.httpStreams.values()) s.abort.abort();
-    for (const s of this.wsStreams.values()) s.socket.close(1001, "tunnel closed");
+    for (const s of this.wsStreams.values())
+      s.socket.close(1001, "tunnel closed");
     this.httpStreams.clear();
     this.wsStreams.clear();
     this.setRemoteClients(0);
@@ -252,7 +258,9 @@ export class TunnelSession {
         return;
       }
       case "body-chunk":
-        this.httpStreams.get(frame.streamId)?.chunks.push(Buffer.from(frame.data));
+        this.httpStreams
+          .get(frame.streamId)
+          ?.chunks.push(Buffer.from(frame.data));
         return;
       case "body-end": {
         const s = this.httpStreams.get(frame.streamId);
@@ -269,7 +277,9 @@ export class TunnelSession {
           s.buffered.push(frame);
           return;
         }
-        s.socket.send(frame.isBinary ? frame.data : Buffer.from(frame.data).toString());
+        s.socket.send(
+          frame.isBinary ? frame.data : Buffer.from(frame.data).toString(),
+        );
         return;
       }
       case "close-stream": {
@@ -538,7 +548,9 @@ export class ConnectTunnel {
         // Raw wire/transport detail goes to the log only; the caller gets a
         // typed ConnectPairError whose code the panel maps to human copy.
         const pairError = asConnectPairError(error);
-        this.options.log.warn(`pair failed (${pairError.code}): ${pairError.message}`);
+        this.options.log.warn(
+          `pair failed (${pairError.code}): ${pairError.message}`,
+        );
         throw pairError;
       }
       const serverUrl = (
@@ -604,6 +616,13 @@ export class ConnectTunnel {
       credential,
     );
     return { servers, selfHandle: credential.handle };
+  }
+
+  async createDesktopSession(): Promise<DesktopSession> {
+    if (this.credential === null) {
+      throw new ConnectListError("not_paired", "this bb is not connected");
+    }
+    return fetchDesktopSession(this.credential);
   }
 
   status(): ConnectStatus {
@@ -791,7 +810,10 @@ export class ConnectTunnel {
     tunnel.on("error", (e: Error) => {
       // Humanize transport failures for the reconnecting card; the raw
       // message still rides the log via the close handler below.
-      this.lastError = humanizeTransportError(e, connectApexHost(credential.serverUrl));
+      this.lastError = humanizeTransportError(
+        e,
+        connectApexHost(credential.serverUrl),
+      );
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
       this.connected = false;

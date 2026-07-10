@@ -4,6 +4,7 @@ import { ConnectPairError } from "./redeem.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
 import type { ListAccountServersResult } from "./list-servers.js";
+import type { DesktopSession } from "./desktop-session.js";
 
 // Panel-facing rpc surface. `server` is optional: the dashboard command
 // carries both --code and --server, but the panel's paste-a-code field only
@@ -28,6 +29,7 @@ export type ConnectRpcHandlers = {
   unexpose(input: unknown): Promise<{ removed: boolean; port: number }>;
   listShares(): Array<{ port: number; url: string }>;
   listAccountServers(): Promise<ListAccountServersResult>;
+  createDesktopSession(): Promise<DesktopSession>;
 };
 
 export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
@@ -72,6 +74,16 @@ export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
       } catch (error) {
         // Stable codes for callers (CLI / panel); raw detail stays on the error
         // message for plugin logs when surfaced elsewhere.
+        if (error instanceof ConnectListError) {
+          throw new Error(error.code);
+        }
+        throw error;
+      }
+    },
+    async createDesktopSession() {
+      try {
+        return await tunnel.createDesktopSession();
+      } catch (error) {
         if (error instanceof ConnectListError) {
           throw new Error(error.code);
         }

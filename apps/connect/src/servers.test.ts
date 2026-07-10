@@ -14,8 +14,10 @@ import {
 } from "@bb/connect-db";
 
 import {
+  createDesktopSessionCookie,
   listAccountServers,
   resolveAccountUserId,
+  verifyDesktopSessionCookie,
   verifyServerCredential,
 } from "./servers.js";
 import { verifyMachineCredential } from "./session.js";
@@ -46,8 +48,13 @@ afterEach(() => {
 const now = new Date("2026-07-01T12:00:00.000Z");
 
 async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function seedUser(id: string): void {
@@ -85,6 +92,30 @@ function seedServer(over: {
     })
     .run();
 }
+
+describe("desktop session cookie", () => {
+  it("round-trips account identity until expiry and rejects tampering", async () => {
+    const expiresAt = now.getTime() + 60_000;
+    const cookie = await createDesktopSessionCookie(
+      "acct-a",
+      "test-secret",
+      expiresAt,
+    );
+    await expect(
+      verifyDesktopSessionCookie(cookie, "test-secret", now.getTime()),
+    ).resolves.toBe("acct-a");
+    await expect(
+      verifyDesktopSessionCookie(cookie, "test-secret", expiresAt),
+    ).resolves.toBeNull();
+    await expect(
+      verifyDesktopSessionCookie(
+        `${cookie.slice(0, -1)}x`,
+        "test-secret",
+        now.getTime(),
+      ),
+    ).resolves.toBeNull();
+  });
+});
 
 describe("listAccountServers", () => {
   it("returns only the authenticated account's rows with live from last_seen_at", async () => {
@@ -239,7 +270,11 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
       false,
       ["sign"],
     );
-    const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(token));
+    const sigBuf = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(token),
+    );
     const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
     const cookieValue = `${token}.${sig}`;
 
