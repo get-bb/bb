@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
 import type { BbDesktopServerListEntry } from "@bb/desktop-contract";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Link } from "react-router-dom";
 import { getDesktopServersApi } from "@/lib/bb-desktop";
+import { useDesktopServerList } from "@/hooks/useDesktopServerList";
+
+/**
+ * Rail column width (w-12). AppLayout widens --sidebar-width by this amount
+ * while the rail is visible so the sidebar content keeps its full width.
+ */
+export const SERVER_RAIL_WIDTH_PX = 48;
 
 const STATUS_LABELS: Record<BbDesktopServerListEntry["status"], string> = {
   connected: "Connected",
@@ -72,25 +78,9 @@ function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
  * web build have no `bbDesktop.servers`, so this renders nothing there.
  */
 export function ServerRail() {
-  const [serversApi] = useState(getDesktopServersApi);
-  const [servers, setServers] = useState<BbDesktopServerListEntry[]>([]);
+  const servers = useDesktopServerList();
 
-  useEffect(() => {
-    if (serversApi === null) {
-      return;
-    }
-    let cancelled = false;
-    void serversApi.list().then((list) => {
-      if (!cancelled) setServers(list);
-    });
-    const unsubscribe = serversApi.onChange(setServers);
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [serversApi]);
-
-  if (serversApi === null || servers.length < 2) {
+  if (servers.length < 2) {
     return null;
   }
 
