@@ -1095,7 +1095,6 @@ export function ProjectListActionButtons({
           </Button>
           {threadSearch ? (
             <span className="flex shrink-0 items-center gap-1">
-              <AppCommandShortcutHint shortcut={threadSearchShortcut} />
               <Button
                 type="button"
                 size="icon"
@@ -1111,6 +1110,7 @@ export function ProjectListActionButtons({
               >
                 <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
               </Button>
+              <AppCommandShortcutHint shortcut={threadSearchShortcut} />
             </span>
           ) : null}
         </div>
