@@ -128,6 +128,18 @@ describe("server registry", () => {
     expect(registry.list()).toHaveLength(1);
   });
 
+  it("never renames the builtin server", async () => {
+    const tempDir = await createTempDir();
+    const registry = createServerRegistry({
+      builtinUrl: "http://127.0.0.1:38886",
+      storagePath: join(tempDir.path, SERVER_REGISTRY_FILE_NAME),
+    });
+    await registry.load();
+
+    expect(await registry.rename(BUILTIN_SERVER_ID, "My Mac")).toBe(false);
+    expect(registry.getServer(BUILTIN_SERVER_ID)?.name).toBe(BUILTIN_SERVER_NAME);
+  });
+
   it("notifies listeners on mutations", async () => {
     const tempDir = await createTempDir();
     const registry = createServerRegistry({

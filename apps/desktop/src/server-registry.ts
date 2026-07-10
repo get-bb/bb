@@ -269,22 +269,17 @@ export function createServerRegistry(
       return true;
     },
     async rename(id, name) {
+      // Builtin name is fixed ("This Mac"); only remote entries are renamable.
+      if (id === BUILTIN_SERVER_ID) {
+        return false;
+      }
       const normalized = normalizeServerName(name);
       let changed = false;
       const nextServers = state.servers.map((server) => {
-        if (server.id !== id) {
+        if (server.id !== id || server.source === "builtin") {
           return server;
         }
         changed = true;
-        // Builtin display name is user-renamable; URL always comes from env.
-        if (server.source === "builtin") {
-          return {
-            id: server.id,
-            name: normalized,
-            source: "builtin" as const,
-            url: args.builtinUrl,
-          };
-        }
         return {
           ...server,
           name: normalized,

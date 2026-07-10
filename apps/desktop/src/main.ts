@@ -1231,8 +1231,13 @@ async function setActiveServerForWindow(
 }
 
 function registerDesktopServerIpc(): void {
-  ipcMain.handle(BB_DESKTOP_SERVERS_LIST_CHANNEL, async (event) => {
-    await refreshServerStatuses();
+  ipcMain.handle(BB_DESKTOP_SERVERS_LIST_CHANNEL, (event) => {
+    if (!isApplicationWindowSender(event.sender)) {
+      return [];
+    }
+    // Return cached statuses immediately so an offline remote cannot stall
+    // settings mounts. Coalesced probes push updates via servers:changed.
+    scheduleServerStatusRefresh();
     const browserWindow = BrowserWindow.fromWebContents(event.sender);
     const activeServerId =
       browserWindow === null || activeServerState === null
@@ -1241,15 +1246,17 @@ function registerDesktopServerIpc(): void {
     return buildServerListEntries({ activeServerId });
   });
 
-  ipcMain.handle(BB_DESKTOP_SERVERS_ADD_CHANNEL, async (_event, payload) => {
+  ipcMain.handle(BB_DESKTOP_SERVERS_ADD_CHANNEL, async (event, payload) => {
+    if (!isApplicationWindowSender(event.sender)) {
+      return { ok: false as const, reason: "unreachable" as const };
+    }
     const registry = serverRegistry;
     if (registry === null) {
       return { ok: false as const, reason: "unreachable" as const };
     }
-    const parsed = bbDesktopServerAddRequestSchema.safeParse(payload);
-    if (!parsed.success) {
-      return { ok: false as const, reason: "unreachable" as const };
-    }
+    // Malformed payloads are a programming error — reject the invoke rather
+    // than disguising them as a probe failure.
+    const parsed = bbDesktopServerAddRequestSchema.parse(payload);
     const result = await addDesktopServer({
       existingUrls: registry.list().map((server) => server.url),
       persist: async (persistArgs) =>
@@ -1263,16 +1270,14 @@ function registerDesktopServerIpc(): void {
           serverUrl,
           timeoutMs: SERVER_STATUS_PROBE_TIMEOUT_MS,
         }),
-      request: parsed.data,
+      request: parsed,
       source: "manual",
     });
     if (!result.ok) {
       return result;
     }
-    // Registry onChange already rebuilt the menu; refresh statuses so the
-    // returned entry and onChange payload include a real probe result.
-    await refreshServerStatuses();
-    sendServersChanged();
+    // Newly added remotes start as unknown until the next status probe batch.
+    scheduleServerStatusRefresh();
     const listEntry = buildServerListEntries({
       activeServerId: BUILTIN_SERVER_ID,
     }).find((entry) => entry.id === result.server.id);
@@ -1292,7 +1297,10 @@ function registerDesktopServerIpc(): void {
     return { ok: true as const, server: listEntry };
   });
 
-  ipcMain.handle(BB_DESKTOP_SERVERS_REMOVE_CHANNEL, async (_event, payload) => {
+  ipcMain.handle(BB_DESKTOP_SERVERS_REMOVE_CHANNEL, async (event, payload) => {
+    if (!isApplicationWindowSender(event.sender)) {
+      return;
+    }
     if (serverRegistry === null || activeServerState === null) {
       return;
     }
@@ -1321,7 +1329,10 @@ function registerDesktopServerIpc(): void {
     }
   });
 
-  ipcMain.handle(BB_DESKTOP_SERVERS_RENAME_CHANNEL, async (_event, payload) => {
+  ipcMain.handle(BB_DESKTOP_SERVERS_RENAME_CHANNEL, async (event, payload) => {
+    if (!isApplicationWindowSender(event.sender)) {
+      return;
+    }
     if (serverRegistry === null) {
       return;
     }
@@ -1335,6 +1346,9 @@ function registerDesktopServerIpc(): void {
   ipcMain.handle(
     BB_DESKTOP_SERVERS_SET_ACTIVE_CHANNEL,
     async (event, payload) => {
+      if (!isApplicationWindowSender(event.sender)) {
+        return;
+      }
       const parsed = bbDesktopServerIdRequestSchema.safeParse(payload);
       if (!parsed.success) {
         return;
@@ -1350,13 +1364,19 @@ function registerDesktopServerIpc(): void {
     },
   );
 
-  ipcMain.handle(BB_DESKTOP_SERVERS_GET_AUTO_CONNECT_CHANNEL, () => {
+  ipcMain.handle(BB_DESKTOP_SERVERS_GET_AUTO_CONNECT_CHANNEL, (event) => {
+    if (!isApplicationWindowSender(event.sender)) {
+      return true;
+    }
     return serverRegistry?.getAutoConnectToLocalServer() ?? true;
   });
 
   ipcMain.handle(
     BB_DESKTOP_SERVERS_SET_AUTO_CONNECT_CHANNEL,
-    async (_event, payload) => {
+    async (event, payload) => {
+      if (!isApplicationWindowSender(event.sender)) {
+        return;
+      }
       if (serverRegistry === null) {
         return;
       }

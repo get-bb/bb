@@ -40,6 +40,7 @@ export type BbDesktopServerAddRequest = z.infer<
 >;
 
 export const bbDesktopServerAddFailureReasonSchema = z.enum([
+  "duplicate",
   "incompatible",
   "unreachable",
 ]);

@@ -111,7 +111,7 @@ describe("addDesktopServer", () => {
       source: "manual",
     });
 
-    expect(result).toEqual({ ok: false, reason: "unreachable" });
+    expect(result).toEqual({ ok: false, reason: "duplicate" });
     expect(probe).not.toHaveBeenCalled();
   });
 });

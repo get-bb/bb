@@ -351,22 +351,14 @@ const bbServersApi: BbDesktopServersApi = {
     }
   },
   async add(request: BbDesktopServerAddRequest): Promise<BbDesktopServerAddResult> {
-    const parsedRequest = bbDesktopServerAddRequestSchema.safeParse(request);
-    if (!parsedRequest.success) {
-      return { ok: false, reason: "unreachable" };
-    }
-    try {
-      const payload: unknown = await ipcRenderer.invoke(
-        BB_DESKTOP_SERVERS_ADD_CHANNEL,
-        parsedRequest.data,
-      );
-      const parsed = bbDesktopServerAddResultSchema.safeParse(payload);
-      return parsed.success
-        ? parsed.data
-        : { ok: false, reason: "unreachable" };
-    } catch {
-      return { ok: false, reason: "unreachable" };
-    }
+    // Client-side shape validation is a programming error surface: throw so
+    // callers do not confuse a bad payload with a probe failure.
+    const parsedRequest = bbDesktopServerAddRequestSchema.parse(request);
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_SERVERS_ADD_CHANNEL,
+      parsedRequest,
+    );
+    return bbDesktopServerAddResultSchema.parse(payload);
   },
   async remove(id: string): Promise<void> {
     const parsed = bbDesktopServerIdRequestSchema.safeParse({ id });

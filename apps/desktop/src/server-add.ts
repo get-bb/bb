@@ -73,8 +73,8 @@ function failureReasonFromProbe(
 
 /**
  * Probe-gates a manual/connect server add. Only compatible http(s) URLs are
- * persisted. Duplicate URLs are treated as unreachable so the renderer can show
- * a single failure path without inventing a third reason.
+ * persisted. Duplicate URLs (trailing-slash variants treated as equal) return
+ * a typed `duplicate` reason without probing.
  */
 export async function addDesktopServer(
   args: AddDesktopServerArgs,
@@ -85,7 +85,7 @@ export async function addDesktopServer(
   }
 
   if (args.existingUrls.some((url) => urlsMatch(url, normalizedUrl))) {
-    return { ok: false, reason: "unreachable" };
+    return { ok: false, reason: "duplicate" };
   }
 
   const probeResult = await args.probe(normalizedUrl);
