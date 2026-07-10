@@ -1935,7 +1935,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           source,
           rootDir: builtin.rootDir,
           version: manifest.version,
-          enabled: existing?.enabled ?? true,
+          enabled: existing?.enabled ?? builtin.defaultEnabled,
         });
       }
     }

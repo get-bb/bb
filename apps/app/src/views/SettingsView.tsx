@@ -1,9 +1,4 @@
-import {
-  useMemo,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import {
   builtInThemes,
@@ -416,10 +411,7 @@ function LocalOpenTargetPreferenceControl({
                 key={target.id}
                 onSelect={() => onTargetChange(target.id)}
               >
-                <WorkspaceOpenTargetIcon
-                  target={target}
-                  className="size-5"
-                />
+                <WorkspaceOpenTargetIcon target={target} className="size-5" />
                 <span className="min-w-0 truncate">{target.label}</span>
                 <Icon
                   name="Check"
@@ -474,8 +466,7 @@ const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const RICH_TEXT_EDITING_SETTING_LABEL =
-  "Markdown formatting in prompt box";
+const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 
 export function RootComposeBehaviorSettingsControl({
@@ -763,6 +754,42 @@ export function GeneralSettingsSection({
           onEnabledChange={onRewriteLocalhostLinksChange}
         />
       </div>
+    </SettingsSection>
+  );
+}
+
+interface ProviderSettingsSectionProps {
+  memoryEnabled: boolean;
+  disabled: boolean;
+  onMemoryEnabledChange: (enabled: boolean) => void;
+  providerId: "codex" | "claude-code";
+}
+
+export function ProviderSettingsSection({
+  memoryEnabled,
+  disabled,
+  onMemoryEnabledChange,
+  providerId,
+}: ProviderSettingsSectionProps) {
+  const isCodex = providerId === "codex";
+  const label = isCodex ? "Codex memory" : "Claude Code memory";
+  return (
+    <SettingsSection title={isCodex ? "Codex" : "Claude Code"}>
+      <SettingsWithControl
+        label={label}
+        description={
+          isCodex
+            ? "Allow Codex to recall existing memories and generate new memories from bb threads."
+            : "Allow Claude Code to read and write its native auto-memory for bb threads."
+        }
+      >
+        <Switch
+          aria-label={label}
+          checked={memoryEnabled}
+          disabled={disabled}
+          onCheckedChange={onMemoryEnabledChange}
+        />
+      </SettingsWithControl>
     </SettingsSection>
   );
 }
@@ -1072,7 +1099,7 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activePluginId, activeSection, hasUnknownSection } =
+  const { activePluginId, activeProviderId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
@@ -1081,6 +1108,30 @@ export function SettingsView() {
   let content: ReactNode = null;
   if (activePluginId !== null) {
     content = <PluginSettingsDetailSection pluginId={activePluginId} />;
+  } else if (activeProviderId !== null) {
+    const isCodex = activeProviderId === "codex";
+    content = (
+      <ProviderSettingsSection
+        providerId={activeProviderId}
+        memoryEnabled={
+          isCodex
+            ? generalSettings.codexMemoryEnabled
+            : generalSettings.claudeCodeMemoryEnabled
+        }
+        disabled={
+          systemConfigQuery.data === undefined ||
+          updateGeneralSettingsMutation.isPending
+        }
+        onMemoryEnabledChange={(enabled) =>
+          updateGeneralSettingsMutation.mutate({
+            ...generalSettings,
+            ...(isCodex
+              ? { codexMemoryEnabled: enabled }
+              : { claudeCodeMemoryEnabled: enabled }),
+          })
+        }
+      />
+    );
   } else if (activeSection === "appearance") {
     content = (
       <AppearanceSettingsSection

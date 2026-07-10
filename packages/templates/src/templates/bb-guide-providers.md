@@ -16,6 +16,15 @@ Use these before spawning threads if you are unsure which provider or model to u
 When provider and model are omitted from bb thread spawn, the project's remembered
 defaults apply.
 
+Provider-native memory can be controlled on the separate Settings → Providers
+→ Codex and Settings → Providers → Claude Code pages. Codex memory controls
+both recall (`memories.use_memories`) and future generation
+(`memories.generate_memories`). Claude Code memory controls native auto-memory
+reads and writes (`autoMemoryEnabled`). Both preferences default on and apply
+when a provider thread is started, resumed, or forked; they do not interrupt
+an active turn. These settings are separate from bb's optional builtin Memory
+plugin.
+
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or

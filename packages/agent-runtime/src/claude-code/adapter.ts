@@ -1107,6 +1107,7 @@ export function createClaudeCodeProviderAdapter(
                 ? { reasoningLevel: command.options.reasoningLevel }
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
+              memoryEnabled: command.options.memoryEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1173,6 +1174,7 @@ export function createClaudeCodeProviderAdapter(
                 ? { reasoningLevel: command.options.reasoningLevel }
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
+              memoryEnabled: command.options.memoryEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1289,6 +1291,7 @@ export function createClaudeCodeProviderAdapter(
                 ? { reasoningLevel: command.options.reasoningLevel }
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
+              memoryEnabled: command.options.memoryEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),

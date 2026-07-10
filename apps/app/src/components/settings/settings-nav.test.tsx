@@ -71,6 +71,22 @@ afterEach(() => {
 });
 
 describe("useSettingsNavState", () => {
+  it("resolves Codex and Claude Code as separate provider pages", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/providers/claude-code"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeProviderId).toBe("claude-code");
+    });
+    expect(result.current.activeSection).toBeNull();
+    expect(
+      result.current.providerEntries.map((provider) => provider.id),
+    ).toEqual(["codex", "claude-code"]);
+  });
+
   it("shows slot-backed plugin settings entries while the plugins experiment is off", async () => {
     vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
     setPluginSlotRegistrations("connect", {

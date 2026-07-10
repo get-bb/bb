@@ -26,6 +26,7 @@ import {
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
+  SETTINGS_PROVIDER_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
@@ -103,8 +104,9 @@ function AppRoutes() {
             path={SETTINGS_SECTION_ROUTE_PATH}
             element={<SettingsView />}
           />
+          <Route path={SETTINGS_PLUGIN_ROUTE_PATH} element={<SettingsView />} />
           <Route
-            path={SETTINGS_PLUGIN_ROUTE_PATH}
+            path={SETTINGS_PROVIDER_ROUTE_PATH}
             element={<SettingsView />}
           />
           <Route
@@ -131,10 +133,7 @@ function AppRoutes() {
             path={PROJECTLESS_THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
           />
-          <Route
-            path={PLUGIN_PANEL_ROUTE_PATH}
-            element={<PluginPanelView />}
-          />
+          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
           <Route
             path="*"
             element={<Navigate to={APP_ROOT_ROUTE_PATH} replace />}

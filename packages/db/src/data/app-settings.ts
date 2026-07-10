@@ -12,7 +12,11 @@ const APP_SETTINGS_ROW_ID = "current";
 
 export function getAppSettings(db: DbConnection): AppSettings {
   const row = db
-    .select({ caffeinate: appSettings.caffeinate })
+    .select({
+      caffeinate: appSettings.caffeinate,
+      codexMemoryEnabled: appSettings.codexMemoryEnabled,
+      claudeCodeMemoryEnabled: appSettings.claudeCodeMemoryEnabled,
+    })
     .from(appSettings)
     .where(eq(appSettings.id, APP_SETTINGS_ROW_ID))
     .get();
@@ -29,12 +33,16 @@ export function setAppSettings(
     .values({
       id: APP_SETTINGS_ROW_ID,
       caffeinate: settings.caffeinate,
+      codexMemoryEnabled: settings.codexMemoryEnabled,
+      claudeCodeMemoryEnabled: settings.claudeCodeMemoryEnabled,
       updatedAt,
     })
     .onConflictDoUpdate({
       target: appSettings.id,
       set: {
         caffeinate: settings.caffeinate,
+        codexMemoryEnabled: settings.codexMemoryEnabled,
+        claudeCodeMemoryEnabled: settings.claudeCodeMemoryEnabled,
         updatedAt,
       },
     })

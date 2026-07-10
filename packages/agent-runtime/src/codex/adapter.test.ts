@@ -1517,6 +1517,28 @@ describe("codex provider adapter", () => {
     expect(JSON.stringify(cmd)).not.toContain("tools.web_search");
   });
 
+  it("buildCommand thread/start disables Codex memory recall and generation", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/start",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      input: [promptTextInput({ text: "hello" })],
+      instructionMode: "append",
+      options: { ...fullProviderExecutionContext, memoryEnabled: false },
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/start",
+      params: {
+        config: {
+          "memories.generate_memories": false,
+          "memories.use_memories": false,
+        },
+      },
+    });
+  });
+
   it("buildCommand thread/start appends instructions as developer instructions", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({
@@ -4007,8 +4029,7 @@ describe("codex provider adapter", () => {
           item: {
             type: "commandExecution",
             id: "child-command",
-            command:
-              "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
+            command: "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
             cwd: "/tmp",
             processId: null,
             source: "agent",
@@ -4077,8 +4098,7 @@ describe("codex provider adapter", () => {
     );
     const followUpAssistant = followUpAssistantEvents.find(
       (event) =>
-        event.type === "item/completed" &&
-        event.item.type === "agentMessage",
+        event.type === "item/completed" && event.item.type === "agentMessage",
     );
     expect(followUpAssistant).toEqual(
       expect.objectContaining({
@@ -5628,8 +5648,7 @@ describe("codex provider adapter", () => {
             },
             {
               reasoningEffort: "ultra",
-              description:
-                "Maximum reasoning with automatic task delegation",
+              description: "Maximum reasoning with automatic task delegation",
             },
           ],
           defaultReasoningEffort: "ultra",

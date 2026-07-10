@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 export interface BuiltinPluginRegistration {
   name: string;
   rootDir: string;
+  defaultEnabled: boolean;
 }
 
 interface ResolveBuiltinPluginRootPathArgs {
@@ -13,13 +14,21 @@ interface ResolveBuiltinPluginRootPathArgs {
 }
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
-export const BUILTIN_PLUGIN_NAMES = [
-  "automations",
-  "connect",
-  "custom-instructions",
-  "inline-vis",
-  "secrets",
-] as const satisfies readonly string[];
+export const BUILTIN_PLUGINS = [
+  { name: "automations", defaultEnabled: true },
+  { name: "connect", defaultEnabled: true },
+  { name: "custom-instructions", defaultEnabled: true },
+  { name: "inline-vis", defaultEnabled: true },
+  { name: "memory", defaultEnabled: false },
+  { name: "secrets", defaultEnabled: true },
+] as const satisfies readonly {
+  name: string;
+  defaultEnabled: boolean;
+}[];
+
+export const BUILTIN_PLUGIN_NAMES = BUILTIN_PLUGINS.map(
+  (plugin) => plugin.name,
+);
 
 const builtinPluginsModuleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,8 +72,8 @@ export function resolveBuiltinPluginRootPath(name: string): string {
 }
 
 export function listBuiltinPluginRegistrations(): BuiltinPluginRegistration[] {
-  return BUILTIN_PLUGIN_NAMES.map((name) => ({
-    name,
-    rootDir: resolveBuiltinPluginRootPath(name),
+  return BUILTIN_PLUGINS.map((plugin) => ({
+    ...plugin,
+    rootDir: resolveBuiltinPluginRootPath(plugin.name),
   }));
 }

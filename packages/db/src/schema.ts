@@ -158,6 +158,14 @@ export const appSettings = sqliteTable("app_settings", {
   caffeinate: integer("caffeinate", { mode: "boolean" })
     .notNull()
     .default(false),
+  codexMemoryEnabled: integer("codex_memory_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  claudeCodeMemoryEnabled: integer("claude_code_memory_enabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(true),
   keybindingOverrides: text("keybinding_overrides").notNull().default("[]"),
   updatedAt: integer("updated_at").notNull(),
 });

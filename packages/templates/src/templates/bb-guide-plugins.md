@@ -22,6 +22,28 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
+The builtin Memory plugin is disabled by default. Enable it with
+`bb plugin enable memory`. Once enabled, it injects a compact global and
+current-project memory index into agent context and progressively discloses
+full records through CLI-only commands. Because its store works across
+providers, we recommend disabling provider-native memory under Settings →
+Providers to avoid duplicate or conflicting stores. Settings → Memory lists
+every global and project memory and supports version-checked edits and soft
+deletion.
+
+  bb memory catalog [--scope project|global|all] [--json]
+  bb memory search <query> [--scope project|global|all] [--json]
+  bb memory get <id> [--scope project|global|all] [--json]
+  bb memory add --scope project|global --name <name> --summary <text>
+                --details <text> --reason <text> [--kind <kind>]
+                [--tag <tag>]... [--importance <0-100>] [--pinned] [--json]
+  bb memory update <id> --expected-version <n> [fields...] [--json]
+  bb memory forget <id> --expected-version <n> --reason <text> [--json]
+  bb memory history <id> [--scope project|global|all] [--json]
+
+Project writes use the invoking CLI's current project. Global writes require
+the explicit `--scope global` flag.
+
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
 

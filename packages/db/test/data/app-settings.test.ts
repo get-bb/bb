@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { defaultAppSettings } from "@bb/domain";
 import {
   createConnection,
   getAppKeybindingOverrides,
@@ -25,13 +26,21 @@ describe("app settings data", () => {
     const overrides = [
       { command: "thread.new" as const, shortcut: null },
     ];
-    setAppSettings(db, { caffeinate: true });
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      caffeinate: true,
+      codexMemoryEnabled: false,
+    });
     setAppKeybindingOverrides(db, overrides);
 
-    expect(getAppSettings(db)).toEqual({ caffeinate: true });
+    expect(getAppSettings(db)).toEqual({
+      ...defaultAppSettings,
+      caffeinate: true,
+      codexMemoryEnabled: false,
+    });
     expect(getAppKeybindingOverrides(db)).toEqual(overrides);
 
-    setAppSettings(db, { caffeinate: false });
+    setAppSettings(db, defaultAppSettings);
     expect(getAppKeybindingOverrides(db)).toEqual(overrides);
   });
 });
