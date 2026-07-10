@@ -121,7 +121,8 @@ bb uses whichever providers you have configured. Common providers:
 
 Custom ACP agents can be configured through `customAcpAgents` in
 `~/.bb/config.json`; see the configuration docs for optional `modelCli` and
-`reasoningCli` or `nativeReasoning` reasoning settings.
+`reasoningCli` or `nativeReasoning` reasoning settings. A `logo`
+field accepts an SVG, PNG, or WebP path for the provider picker icon.
 
 ## Configuration
 

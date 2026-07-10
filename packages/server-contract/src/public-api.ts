@@ -1070,6 +1070,12 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: jsonResponse<SystemProviderInfo[]>(),
     }),
+    providerLogo: defineRoute({
+      path: "/system/providers/:id/logo",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: binaryResponse<Uint8Array>(),
+    }),
     usageLimits: defineRoute({
       path: "/system/usage-limits",
       method: "get",

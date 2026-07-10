@@ -189,6 +189,7 @@ Example:
       "id": "my-agent",
       "displayName": "My Agent",
       "command": "my-agent",
+      "logo": "agent-logos/my-agent.svg",
       "args": ["acp"],
       "env": {
         "MY_AGENT_MODE": "bb"
@@ -227,6 +228,12 @@ which case the custom config wins.
 `command` is the executable name or path. bb runs it directly with the `args`
 array; it is not a shell command line. `env` adds environment variables for the
 agent process. `cwd` is optional; omit it to use the thread workspace directory.
+
+`logo` is optional and accepts an SVG, PNG, or WebP file path. Relative paths
+resolve from the bb data directory (for example,
+`~/.bb/agent-logos/my-agent.svg`); absolute paths are also supported. bb serves
+the file to app clients and uses it in provider and model pickers. Omit `logo`
+to use the built-in brand icon for a known ACP agent or the generic ACP icon.
 
 `modelCli` is optional. When present, `listArgs` are used to ask the agent for
 models, `selectFlag` is the flag bb passes when launching with a selected model,

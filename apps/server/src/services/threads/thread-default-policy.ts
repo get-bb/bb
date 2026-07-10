@@ -148,6 +148,7 @@ function resolveSupportedPermissionMode(
       ? buildAcpProviderInfo({
           id: args.providerId,
           displayName: args.providerId,
+          logoUrl: null,
         })
       : null;
   if (!provider) {

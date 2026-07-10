@@ -174,7 +174,11 @@ function validateProviderPermissionMode(
   const provider = isAgentProviderId(providerId)
     ? getBuiltInAgentProviderInfo(providerId)
     : isAcpProviderId(providerId)
-      ? buildAcpProviderInfo({ id: providerId, displayName: providerId })
+      ? buildAcpProviderInfo({
+          id: providerId,
+          displayName: providerId,
+          logoUrl: null,
+        })
       : null;
   if (!provider) {
     return;

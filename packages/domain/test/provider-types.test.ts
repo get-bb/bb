@@ -5,6 +5,7 @@ describe("provider info schema", () => {
   const baseProviderInfo = {
     id: "codex",
     displayName: "Codex",
+    logoUrl: null,
     capabilities: {
       supportsArchive: true,
       supportsRename: true,

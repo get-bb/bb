@@ -544,6 +544,7 @@ export function createAcpProviderAdapter(
     : buildAcpProviderInfo({
         id: profile.providerId,
         displayName: profile.displayName,
+        logoUrl: null,
       });
   const additionalWorkspaceWriteRoots = opts.additionalWorkspaceWriteRoots;
 

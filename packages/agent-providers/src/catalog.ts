@@ -81,6 +81,7 @@ export interface BuiltInAgentProviderCatalogEntry {
 export interface BuildAcpProviderInfoArgs {
   displayName: string;
   id: string;
+  logoUrl: string | null;
 }
 
 type PiDefaultModelPerProvider = Partial<Record<string, string>>;
@@ -219,6 +220,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       composerActions: CODEX_COMPOSER_ACTIONS,
       displayName: "Codex",
       id: "codex",
+      logoUrl: null,
     },
     serverCapabilities: CODEX_SERVER_CAPABILITIES,
   },
@@ -229,6 +231,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       composerActions: CLAUDE_COMPOSER_ACTIONS,
       displayName: "Claude Code",
       id: "claude-code",
+      logoUrl: null,
     },
     serverCapabilities: CLAUDE_SERVER_CAPABILITIES,
   },
@@ -239,6 +242,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       composerActions: PI_COMPOSER_ACTIONS,
       displayName: "Pi",
       id: "pi",
+      logoUrl: null,
     },
     serverCapabilities: PI_SERVER_CAPABILITIES,
   },
@@ -249,6 +253,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       composerActions: ACP_COMPOSER_ACTIONS,
       displayName: "Cursor",
       id: "acp-cursor",
+      logoUrl: null,
     },
     serverCapabilities: ACP_SERVER_CAPABILITIES,
   },
@@ -314,6 +319,7 @@ function cloneBuiltInAgentProviderInfo(
     composerActions: info.composerActions.map(cloneComposerAction),
     displayName: info.displayName,
     id: info.id,
+    logoUrl: info.logoUrl,
   };
 }
 
@@ -329,6 +335,7 @@ export function buildAcpProviderInfo(
     composerActions: ACP_COMPOSER_ACTIONS.map(cloneComposerAction),
     displayName: args.displayName,
     id: args.id,
+    logoUrl: args.logoUrl,
   };
 }
 

@@ -93,6 +93,7 @@ export function buildKnownAcpProviderInfo(agent: KnownAcpAgent): ProviderInfo {
   return buildAcpProviderInfo({
     id: agent.id,
     displayName: agent.displayName,
+    logoUrl: null,
   });
 }
 
