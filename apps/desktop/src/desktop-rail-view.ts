@@ -49,6 +49,13 @@ export function renderDesktopRailView(args: CreateDesktopRailViewUrlArgs): strin
     :root {
       --canvas: ${escapeHtmlText(theme.canvasColor)};
       --ink: ${escapeHtmlText(theme.inkColor)};
+      /* Match the SPA sidebar surface exactly (theme.css --sidebar formula) so
+         rail + sidebar read as one continuous panel. */
+      --rail-surface: color-mix(
+        in oklch,
+        var(--ink) ${theme.mode === "dark" ? "4.3%" : "2.2%"},
+        var(--canvas)
+      );
       color-scheme: ${theme.mode === "dark" ? "dark" : "light"};
     }
 
@@ -62,7 +69,7 @@ export function renderDesktopRailView(args: CreateDesktopRailViewUrlArgs): strin
       overflow: hidden;
       user-select: none;
       width: ${DESKTOP_RAIL_WIDTH_PX}px;
-      background: var(--canvas);
+      background: var(--rail-surface);
       color: var(--ink);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -106,8 +113,8 @@ export function renderDesktopRailView(args: CreateDesktopRailViewUrlArgs): strin
       margin: 0;
       cursor: default;
       appearance: none;
-      background: color-mix(in oklch, var(--ink) 8%, var(--canvas));
-      color: var(--ink);
+      background: transparent;
+      color: color-mix(in oklch, var(--ink) 72%, var(--canvas));
       font: inherit;
       font-size: 13px;
       font-weight: 600;
@@ -119,61 +126,59 @@ export function renderDesktopRailView(args: CreateDesktopRailViewUrlArgs): strin
 
     .tile:hover,
     .tile-add:hover {
-      background: color-mix(in oklch, var(--ink) 12%, var(--canvas));
+      background: color-mix(in oklch, var(--ink) 7%, var(--canvas));
+      color: var(--ink);
     }
 
     .tile:active,
     .tile-add:active {
-      background: color-mix(in oklch, var(--ink) 16%, var(--canvas));
+      background: color-mix(in oklch, var(--ink) 11%, var(--canvas));
     }
 
     .tile-active {
-      background: color-mix(in oklch, var(--ink) 18%, var(--canvas));
-      box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--ink) 35%, transparent);
+      background: color-mix(in oklch, var(--ink) 11%, var(--canvas));
+      color: var(--ink);
     }
 
     .tile-glyph {
       pointer-events: none;
     }
 
+    /* Status is quiet by default: healthy and still-probing servers show no
+       dot; only offline/incompatible speak up, in muted ink so custom
+       palettes stay coherent. */
     .status {
       position: absolute;
       right: 1px;
       bottom: 1px;
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 999px;
-      border: 1.5px solid var(--canvas);
-      background: color-mix(in oklch, var(--ink) 35%, var(--canvas));
+      border: 1.5px solid var(--rail-surface);
+      background: color-mix(in oklch, var(--ink) 38%, var(--canvas));
     }
 
-    .status-connected {
-      background: oklch(0.72 0.17 145);
+    .status-connected,
+    .status-unknown {
+      display: none;
     }
 
     .status-offline {
-      background: oklch(0.62 0.18 25);
+      background: color-mix(in oklch, var(--ink) 38%, var(--canvas));
     }
 
     .status-incompatible {
       background: oklch(0.78 0.14 85);
     }
 
-    .status-unknown {
-      background: color-mix(in oklch, var(--ink) 35%, var(--canvas));
-    }
-
     .tile-add {
       font-size: 18px;
       font-weight: 500;
-      color: color-mix(in oklch, var(--ink) 70%, var(--canvas));
-      background: transparent;
-      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 18%, transparent);
+      color: color-mix(in oklch, var(--ink) 55%, var(--canvas));
     }
 
     .tile-add:hover {
       color: var(--ink);
-      background: color-mix(in oklch, var(--ink) 8%, var(--canvas));
     }
   </style>
 </head>
