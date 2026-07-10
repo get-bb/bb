@@ -100,13 +100,7 @@ export function shouldReserveMacosTrafficLights({
   desktopInfo: BbDesktopInfoResult;
   windowState: BbDesktopWindowState;
 }): boolean {
-  return (
-    shouldUseMacosDesktopChrome(desktopInfo) &&
-    !windowState.isFullScreen &&
-    // When the native server rail owns the top-left corner the traffic lights
-    // render over the rail, not over the sidebar chrome.
-    windowState.windowButtonsInRail !== true
-  );
+  return shouldUseMacosDesktopChrome(desktopInfo) && !windowState.isFullScreen;
 }
 
 /**

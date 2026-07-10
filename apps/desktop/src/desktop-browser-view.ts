@@ -29,11 +29,6 @@ import {
   resolveWindowOpenAction,
   shouldBlockBrowserRequest,
 } from "./desktop-browser-policy.js";
-import { offsetBrowserBoundsForRail } from "./desktop-rail-layout.js";
-import {
-  getDesktopRailSession,
-  getDesktopRailWidthForHost,
-} from "./desktop-rail-session.js";
 
 // At most this many popup → in-panel tabs may be spawned per view in a sliding
 // window, so a hostile page cannot flood the panel with tabs.
@@ -208,17 +203,7 @@ function send(
   channel: string,
   payload: DesktopBrowserHostWebContentsPayload,
 ): void {
-  if (hostWindow.isDestroyed()) {
-    return;
-  }
-  // SPA may live in a child WebContentsView; never push browser state to the
-  // blank host webContents when a rail session is active.
-  const railSession = getDesktopRailSession(hostWindow.webContents.id);
-  if (railSession !== null) {
-    railSession.send(channel, payload);
-    return;
-  }
-  if (hostWindow.webContents.isDestroyed()) {
+  if (hostWindow.isDestroyed() || hostWindow.webContents.isDestroyed()) {
     return;
   }
   hostWindow.webContents.send(channel, payload);
@@ -245,16 +230,9 @@ function applyEntryDesiredBounds(
   entry: BrowserViewEntry,
   hostWindow: DesktopBrowserHostWindow,
 ): void {
-  // SPA-local bounds from the renderer; offset when a native server rail insets
-  // the SPA child view so native view coordinates stay window-content-local.
-  const railWidthPx = getDesktopRailWidthForHost(hostWindow.webContents.id);
-  const bounds = offsetBrowserBoundsForRail({
-    bounds: entry.desiredBounds,
-    railWidthPx,
-  });
   entry.view.setBounds(
     clampBbDesktopBrowserViewBounds({
-      bounds,
+      bounds: entry.desiredBounds,
       viewport: hostWindowViewportBounds({ hostWindow }),
     }),
   );
