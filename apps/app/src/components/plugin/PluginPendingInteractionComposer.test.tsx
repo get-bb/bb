@@ -25,6 +25,7 @@ function registrations(
     pendingInteractions,
     sidebarFooterActions: [],
     fileOpeners: [],
+    messageDirectives: [],
   };
 }
 

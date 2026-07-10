@@ -28,6 +28,7 @@ function registerNotesOpener() {
         component: NotesEditor,
       },
     ],
+    messageDirectives: [],
   });
 }
 

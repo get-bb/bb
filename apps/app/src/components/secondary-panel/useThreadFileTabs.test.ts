@@ -365,6 +365,7 @@ describe("useThreadFileTabs file opener diversion", () => {
           component: NotesEditor,
         },
       ],
+      messageDirectives: [],
     });
   }
 

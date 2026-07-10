@@ -9,6 +9,7 @@ import {
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
 import {
+  PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN,
   PLUGIN_SLOT_ID_PATTERN,
   type BbContext,
   type BbNavigate,
@@ -19,6 +20,7 @@ import {
   type PluginComposerMention,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
+  type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
   type PluginPendingInteractionRegistration,
   type PluginRpcClient,
@@ -194,6 +196,7 @@ export interface CapturedPluginApp {
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
+  messageDirectives: PluginMessageDirectiveRegistration[];
 }
 
 type PluginAppModule = { default: unknown };
@@ -207,6 +210,18 @@ function requireSlotId(kind: string, value: unknown): string {
   if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
     throw new Error(
       `${kind}: "id" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
+function requireMessageDirectiveId(kind: string, value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    !PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN.test(value)
+  ) {
+    throw new Error(
+      `${kind}: "id" must match ${String(PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN)}, got ${JSON.stringify(value)}`,
     );
   }
   return value;
@@ -265,6 +280,7 @@ function collectRegistrations(
     pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],
+    messageDirectives: [],
   };
   const seenIds = {
     homepageSection: new Set<string>(),
@@ -275,6 +291,7 @@ function collectRegistrations(
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
+    messageDirective: new Set<string>(),
   };
 
   definition.setup({
@@ -416,6 +433,15 @@ function collectRegistrations(
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           extensions,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      messageDirective(registration) {
+        const kind = "slots.messageDirective";
+        const id = requireMessageDirectiveId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.messageDirective, id);
+        captured.messageDirectives.push({
+          id,
           component: requireComponent(kind, registration.component),
         });
       },

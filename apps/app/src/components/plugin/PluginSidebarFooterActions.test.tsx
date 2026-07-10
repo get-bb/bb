@@ -22,6 +22,7 @@ function registrationSet(
     composerAccessories: [],
     sidebarFooterActions: [],
     fileOpeners: [],
+    messageDirectives: [],
     ...overrides,
   };
 }

@@ -69,6 +69,12 @@ import {
   type IndexedPromptMention,
   type MarkdownPromptMentions,
 } from "./markdown-prompt-mentions.js";
+import {
+  buildMessageDirectiveComponent,
+  remarkMessageDirectives,
+  type MarkdownMessageDirectives,
+  type MountedMessageDirective,
+} from "./markdown-message-directives.js";
 import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
@@ -81,6 +87,7 @@ import {
 } from "@/lib/localhost-link-rewrite-preference";
 import { resolveRouteHref } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
+import remarkDirective from "remark-directive";
 
 export interface MarkdownPreviewProps {
   allowHtml?: boolean;
@@ -108,6 +115,13 @@ export interface MarkdownPreviewProps {
    * Absent for assistant and generated bodies; that path is unaffected.
    */
   promptMentions?: MarkdownPromptMentions;
+  /**
+   * Plugin assistant-message directives (`::inline-vis{...}`). Only supplied
+   * for assistant conversation bodies (and nested agent output); user messages
+   * and generic Markdown/file previews omit this so directives stay literal.
+   * Parsing is `remark-directive`; recognized ids mount via PluginSlotMount.
+   */
+  messageDirectives?: MarkdownMessageDirectives;
   urlTransform?: UrlTransform;
 }
 
@@ -133,6 +147,17 @@ interface BuildMarkdownComponentsArgs {
   setExpandedImageUrl: ExpandedImageUrlSetter;
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: ResolvedPromptMentions;
+  messageDirectives?: ResolvedMessageDirectiveRender;
+}
+
+/**
+ * Message-directive props after the remark transform has filled the mount table
+ * for this render (indices match `data-directive-index` on the custom element).
+ */
+interface ResolvedMessageDirectiveRender {
+  mounts: readonly MountedMessageDirective[];
+  message: MarkdownMessageDirectives["message"];
+  openWorkspaceFile: MarkdownMessageDirectives["openWorkspaceFile"];
 }
 
 /**
@@ -190,6 +215,11 @@ interface AreMarkdownThreadMentionsEqualArgs {
 interface AreMarkdownPromptMentionsEqualArgs {
   next: MarkdownPromptMentions | undefined;
   previous: MarkdownPromptMentions | undefined;
+}
+
+interface AreMarkdownMessageDirectivesEqualArgs {
+  next: MarkdownMessageDirectives | undefined;
+  previous: MarkdownMessageDirectives | undefined;
 }
 
 type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
@@ -339,6 +369,22 @@ function areMarkdownPromptMentionsEqual({
   );
 }
 
+function areMarkdownMessageDirectivesEqual({
+  next,
+  previous,
+}: AreMarkdownMessageDirectivesEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.registry === next.registry &&
+    previous.openWorkspaceFile === next.openWorkspaceFile &&
+    previous.message.id === next.message.id &&
+    previous.message.threadId === next.message.threadId &&
+    previous.message.turnId === next.message.turnId &&
+    previous.message.projectId === next.message.projectId
+  );
+}
+
 const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   previous,
   next,
@@ -358,6 +404,10 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   areMarkdownPromptMentionsEqual({
     next: next.promptMentions,
     previous: previous.promptMentions,
+  }) &&
+  areMarkdownMessageDirectivesEqual({
+    next: next.messageDirectives,
+    previous: previous.messageDirectives,
   }) &&
   areMarkdownLinkRoutingsEqual({
     next: next.linkRouting,
@@ -862,6 +912,7 @@ function buildMarkdownComponents({
   setExpandedImageUrl,
   threadMentions,
   promptMentions,
+  messageDirectives,
 }: BuildMarkdownComponentsArgs): Components {
   function MarkdownLink(props: MarkdownAnchorProps) {
     return (
@@ -948,6 +999,14 @@ function buildMarkdownComponents({
       mentions: promptMentions.mentions,
       resolveLinkHref: promptMentions.resolveLinkHref,
       resolveMentionLink: promptMentions.resolveMentionLink,
+    });
+  }
+
+  if (messageDirectives !== undefined) {
+    components["bb-message-directive"] = buildMessageDirectiveComponent({
+      mounts: messageDirectives.mounts,
+      message: messageDirectives.message,
+      openWorkspaceFile: messageDirectives.openWorkspaceFile,
     });
   }
 
@@ -1070,6 +1129,7 @@ function MarkdownPreviewComponent({
   linkRouting,
   threadMentions,
   promptMentions,
+  messageDirectives,
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
@@ -1119,6 +1179,22 @@ function MarkdownPreviewComponent({
     () => splitMarkdownFrontmatter(promptMarkdownContent),
     [promptMarkdownContent],
   );
+  // The remark transform fills this shared mount table on every parse. Keep it
+  // stable while assistant text streams so the custom React component type
+  // also stays stable and an already-complete directive does not remount when
+  // later prose arrives.
+  const messageDirectiveMounts = useMemo(() => {
+    if (messageDirectives === undefined) {
+      return null;
+    }
+    const mounts: MountedMessageDirective[] = [];
+    return {
+      mounts,
+      message: messageDirectives.message,
+      openWorkspaceFile: messageDirectives.openWorkspaceFile,
+      registry: messageDirectives.registry,
+    };
+  }, [messageDirectives]);
   const markdownComponents = useMemo(
     () =>
       buildMarkdownComponents({
@@ -1128,6 +1204,14 @@ function MarkdownPreviewComponent({
         setExpandedImageUrl,
         threadMentions,
         promptMentions: resolvedPromptMentions,
+        messageDirectives:
+          messageDirectiveMounts === null
+            ? undefined
+            : {
+                mounts: messageDirectiveMounts.mounts,
+                message: messageDirectiveMounts.message,
+                openWorkspaceFile: messageDirectiveMounts.openWorkspaceFile,
+              },
       }),
     [
       linkRouting,
@@ -1135,6 +1219,7 @@ function MarkdownPreviewComponent({
       rewriteLocalhostLinks,
       threadMentions,
       resolvedPromptMentions,
+      messageDirectiveMounts,
     ],
   );
   // A mention pipeline activates only when its prop is set. Assistant content
@@ -1144,22 +1229,43 @@ function MarkdownPreviewComponent({
   // provisioning transcripts) and authored prompts both rely on the prior
   // `whitespace-pre-wrap` behavior. The two mention props are mutually exclusive
   // in practice but are honoured independently here.
-  const remarkPlugins = useMemo(
-    (): NonNullable<ReactMarkdownOptions["remarkPlugins"]> => [
+  //
+  // Message directives (assistant only) add `remark-directive` + a host
+  // transformer that rewrites recognized leaf directives into plugin mounts.
+  const remarkPlugins = useMemo((): NonNullable<
+    ReactMarkdownOptions["remarkPlugins"]
+  > => {
+    const plugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [
       remarkGfm,
       // `remark-math` with single-dollar math OFF: micromark pairs any two
       // unescaped `$` on a line, so "$5 to $10" or "$HOME and $PATH" render the
       // span between them as math — and literal dollars dominate chat (#511).
       // Inline math needs `$$x$$`; `$$` on its own lines is still a block.
       [remarkMath, { singleDollarTextMath: false }],
-      ...(threadMentions !== undefined || promptMentions !== undefined
-        ? [remarkBreaks]
-        : []),
-      ...(threadMentions !== undefined ? [remarkThreadMentions] : []),
-      ...(promptMentions !== undefined ? [remarkPromptMentions] : []),
-    ],
-    [threadMentions, promptMentions],
-  );
+    ];
+    if (threadMentions !== undefined || promptMentions !== undefined) {
+      plugins.push(remarkBreaks);
+    }
+    if (threadMentions !== undefined) {
+      plugins.push(remarkThreadMentions);
+    }
+    if (promptMentions !== undefined) {
+      plugins.push(remarkPromptMentions);
+    }
+    if (messageDirectiveMounts !== null) {
+      plugins.push(remarkDirective);
+      // Attacher + options: shared mount table is cleared/refilled each parse
+      // so indices stay aligned with the custom elements below.
+      plugins.push([
+        remarkMessageDirectives,
+        {
+          mounts: messageDirectiveMounts.mounts,
+          registry: messageDirectiveMounts.registry,
+        },
+      ]);
+    }
+    return plugins;
+  }, [threadMentions, promptMentions, messageDirectiveMounts]);
   const resolvedUrlTransform = useMemo(
     () =>
       localFileRouting

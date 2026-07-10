@@ -207,6 +207,7 @@ describe("PluginSettingsDetail settings gating", () => {
       composerAccessories: [],
       sidebarFooterActions: [],
       fileOpeners: [],
+      messageDirectives: [],
     });
     vi.stubGlobal(
       "fetch",

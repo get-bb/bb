@@ -2,7 +2,10 @@
 import { useEffect, useState } from "react";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { PluginNavPanelProps } from "../../app-contract.js";
+import type {
+  PluginMessageDirectiveProps,
+  PluginNavPanelProps,
+} from "../../app-contract.js";
 import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
 
 // Install before touching @bb/plugin-sdk/app — it binds the runtime global
@@ -37,6 +40,20 @@ function Panel({ subPath }: PluginNavPanelProps) {
   );
 }
 
+function InlineVis({
+  attributes,
+  source,
+  message,
+}: PluginMessageDirectiveProps) {
+  return (
+    <div>
+      <span data-testid="file">{attributes.file ?? ""}</span>
+      <span data-testid="source">{source}</span>
+      <span data-testid="thread">{message.threadId}</span>
+    </div>
+  );
+}
+
 const app = await loadPluginApp(
   definePluginApp((builder) => {
     builder.slots.navPanel({
@@ -45,6 +62,10 @@ const app = await loadPluginApp(
       icon: "FileText",
       path: "panel",
       component: Panel,
+    });
+    builder.slots.messageDirective({
+      id: "inline-vis",
+      component: InlineVis,
     });
   }),
 );
@@ -67,6 +88,39 @@ describe("loadPluginApp", () => {
     await expect(loadPluginApp({ default: { nope: true } })).rejects.toThrow(
       "not definePluginApp(...)",
     );
+  });
+
+  it("captures messageDirective registrations", () => {
+    expect(app.messageDirectives).toEqual([
+      { id: "inline-vis", component: InlineVis },
+    ]);
+  });
+
+  it("rejects invalid and duplicate messageDirective ids like the host", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.messageDirective({
+            id: "Inline_Vis",
+            component: InlineVis,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.messageDirective: "id" must match');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.messageDirective({
+            id: "inline-vis",
+            component: InlineVis,
+          });
+          builder.slots.messageDirective({
+            id: "inline-vis",
+            component: InlineVis,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.messageDirective: duplicate id "inline-vis"');
   });
 });
 
@@ -97,5 +151,24 @@ describe("renderSlot", () => {
     expect(slot.rpcCalls).toEqual([
       { method: "listItems", input: { subPath: "" } },
     ]);
+  });
+
+  it("renders a messageDirective with attributes, source, and message", async () => {
+    const slot = renderSlot(app.messageDirectives[0]!, {
+      attributes: { file: "demo.html" },
+      source: '::inline-vis{file="demo.html"}',
+      message: {
+        id: "msg_1",
+        threadId: "thr_1",
+        turnId: "turn_1",
+        projectId: "proj_1",
+      },
+      openWorkspaceFile: null,
+    });
+    expect(slot.getByTestId("file").textContent).toBe("demo.html");
+    expect(slot.getByTestId("source").textContent).toBe(
+      '::inline-vis{file="demo.html"}',
+    );
+    expect(slot.getByTestId("thread").textContent).toBe("thr_1");
   });
 });

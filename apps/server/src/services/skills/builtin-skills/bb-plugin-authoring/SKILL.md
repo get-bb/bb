@@ -445,6 +445,7 @@ export default definePluginApp((app) => {
   app.slots.composerAccessory({ id: "hint", component: Hint });
   app.slots.pendingInteraction({ id: "credentials", component: CredentialForm });
   app.slots.sidebarFooterAction({ id: "remote", title: "Remote access", icon: "Smartphone", run: ({ openSettings }) => openSettings() });
+  app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
 });
 ```
 
@@ -530,6 +531,31 @@ Slot props contracts (versioned, additive-only):
   always use the built-in preview, and a removed/disabled opener degrades
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
   CAS-save the content.
+- `messageDirective` → `{ attributes, source, message,
+  openWorkspaceFile }` — register a leaf
+  assistant-message directive. Registration:
+  `{ id, component }` where `id` is lowercase kebab-case beginning with a
+  letter (e.g. `inline-vis` matches `::inline-vis{file="demo.html"}`).
+  Props: `attributes` is a `Readonly<Record<string, string>>` of untrusted
+  parsed key/values (validate your own fields); `source` is the original
+  directive text (useful for diagnostics); `message` is
+  `{ id, threadId, turnId, projectId }` for the enclosing assistant (or
+  nested agent) message. `openWorkspaceFile` is either
+  `(path: string) => boolean` or `null`; pass it a worktree-relative path to
+  open that file in the host's workspace viewer. It is `null` when the message
+  surface has no workspace viewer, and it returns whether the host accepted
+  the path. **Host behavior / fallbacks:** only assistant and
+  nested agent Markdown activate directives — user messages, file previews,
+  and other Markdown surfaces stay plain. Directives inside inline code or
+  fenced code blocks stay literal. Incomplete streaming directives stay
+  literal until the closing syntax arrives. Unknown, disabled, malformed,
+  conflicting, or crashing directives fall back to rendering the original
+  `source` (the component ErrorBoundary still isolates a throw). Treat
+  attributes as attacker-controlled even though the model emitted them;
+  load workspace data through `bb.sdk.files` with root/host confinement
+  rather than trusting paths. Reference implementation:
+  `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
+  iframe preview, including relative assets and normal web loading).
 
 Hooks:
 
@@ -607,7 +633,8 @@ compact viewports (the host's responsive behavior) — same API.
 
 Crash isolation: each slot mounts inside an ErrorBoundary — a throwing
 component collapses to a "plugin <id> crashed" chip; the rest of the app
-(and other plugins) stay alive.
+(and other plugins) stay alive. For `messageDirective`, a throw falls back
+to the original directive source text instead of blanking the message.
 
 The `run` pattern (threadPanelAction): `run` is the place to resolve
 server state before deciding what to open — e.g. call a backend rpc, then

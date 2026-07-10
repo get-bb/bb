@@ -69,6 +69,10 @@ describe("collectPluginAppRegistrations", () => {
         extensions: ["md", "mdx"],
         component: Component,
       });
+      app.slots.messageDirective({
+        id: "inline-vis",
+        component: Component,
+      });
     });
 
     const registrations = collectPluginAppRegistrations(definition);
@@ -114,6 +118,9 @@ describe("collectPluginAppRegistrations", () => {
         extensions: ["md", "mdx"],
         component: Component,
       },
+    ]);
+    expect(registrations.messageDirectives).toEqual([
+      { id: "inline-vis", component: Component },
     ]);
   });
 
@@ -266,6 +273,65 @@ describe("collectPluginAppRegistrations", () => {
           });
         }),
       /"headerContent" must be a React component/,
+    ],
+    [
+      "message directive with uppercase id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.messageDirective({
+            id: "Inline-Vis",
+            component: Component,
+          });
+        }),
+      /"id" must match/,
+    ],
+    [
+      "message directive with underscore id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.messageDirective({
+            id: "inline_vis",
+            component: Component,
+          });
+        }),
+      /"id" must match/,
+    ],
+    [
+      "message directive with leading digit",
+      () =>
+        definePluginApp((app) => {
+          app.slots.messageDirective({
+            id: "1inline",
+            component: Component,
+          });
+        }),
+      /"id" must match/,
+    ],
+    [
+      "duplicate message directive id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.messageDirective({
+            id: "inline-vis",
+            component: Component,
+          });
+          app.slots.messageDirective({
+            id: "inline-vis",
+            component: Component,
+          });
+        }),
+      /duplicate id/,
+    ],
+    [
+      "message directive missing component",
+      () =>
+        definePluginApp((app) => {
+          app.slots.messageDirective({
+            id: "inline-vis",
+            component: undefined as never,
+          });
+        }),
+      /"component" must be/,
     ],
   ])("rejects %s", (_name, build, message) => {
     expect(() => collectPluginAppRegistrations(build())).toThrow(message);

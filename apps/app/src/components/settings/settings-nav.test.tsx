@@ -77,6 +77,7 @@ describe("useSettingsNavState", () => {
       composerAccessories: [],
       sidebarFooterActions: [],
       fileOpeners: [],
+      messageDirectives: [],
     });
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

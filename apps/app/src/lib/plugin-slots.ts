@@ -4,6 +4,7 @@ import type {
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
+  PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
@@ -27,6 +28,7 @@ export interface PluginRegistrationSet {
   pendingInteractions?: readonly PluginPendingInteractionRegistration[];
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
+  messageDirectives: readonly PluginMessageDirectiveRegistration[];
 }
 
 interface PluginSlotBase {
@@ -56,6 +58,8 @@ export interface PluginSidebarFooterActionSlot
   extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
   extends PluginFileOpenerRegistration, PluginSlotBase {}
+export interface PluginMessageDirectiveSlot
+  extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
@@ -67,6 +71,7 @@ export interface PluginSlotSnapshot {
   pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
+  messageDirectives: readonly PluginMessageDirectiveSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -78,6 +83,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   pendingInteractions: [],
   sidebarFooterActions: [],
   fileOpeners: [],
+  messageDirectives: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -96,6 +102,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     pendingInteractions: PluginPendingInteractionSlot[];
     sidebarFooterActions: PluginSidebarFooterActionSlot[];
     fileOpeners: PluginFileOpenerSlot[];
+    messageDirectives: PluginMessageDirectiveSlot[];
   } = {
     homepageSections: [],
     settingsSections: [],
@@ -105,6 +112,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],
+    messageDirectives: [],
   };
   for (const pluginId of pluginIds) {
     const set = registrationsByPluginId.get(pluginId);
@@ -137,6 +145,9 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.fileOpeners) {
       next.fileOpeners.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.messageDirectives) {
+      next.messageDirectives.push({ ...registration, pluginId, generation });
     }
   }
   return next;
