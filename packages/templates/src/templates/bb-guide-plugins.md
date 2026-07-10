@@ -18,6 +18,10 @@ can remain available even when the experiment is off; `connect` additionally
 requires the "bb connect" experiment. Plugin state lives under
 `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file, secrets, logs).
 
+The builtin Custom instructions plugin adds a multiline editor under Settings
+→ Custom instructions. Saved text is persisted on this bb host and included in
+agent task instructions; blank text contributes nothing.
+
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
 
@@ -138,8 +142,10 @@ panel title bar, composer command and mention menus, thread action
 buttons, and Settings → Plugins. Optional `bb.logo` in the manifest
 relocates the file (svg/png/webp only). An optional dark-theme variant —
 logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while
-the app is in dark mode. Without a logo bb falls back to the contribution's
-named icon. Reload the plugin to pick up logo changes.
+the app is in dark mode. Without a logo bb falls back to each contribution's
+named icon; its Settings entry uses the manifest-level `bb.icon` hint. Unknown
+icon names use the generic fallback. Reload the plugin to pick up logo or icon
+changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 

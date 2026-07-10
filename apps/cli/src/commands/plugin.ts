@@ -6,8 +6,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
-import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
-import { createPluginDevLoop } from "../plugin-dev-loop.js";
+import {
+  buildPluginApp,
+  buildPluginServer,
+  createPluginDevLoop,
+} from "@bb/plugin-build";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
@@ -48,6 +51,13 @@ interface PluginMutationResult {
   error?: string;
   plugin?: PluginEntry;
   plugins?: PluginEntry[];
+}
+
+export function canDevelopPlugin(
+  pluginsExperimentEnabled: boolean,
+  entry: Pick<PluginEntry, "source">,
+): boolean {
+  return pluginsExperimentEnabled || entry.source.startsWith("builtin:");
 }
 
 interface PluginSettingDescriptor {
@@ -435,12 +445,6 @@ export function registerPluginCommands(
         // checkouts).
         const realDir = await realpath(rootDir).catch(() => rootDir);
         const list = await callPlugins<PluginListResponse>(getUrl(), "", "GET");
-        if (!list.enabled) {
-          console.error(
-            'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
-          );
-          process.exit(1);
-        }
         const entry = list.plugins.find(
           (candidate) =>
             candidate.rootDir === rootDir || candidate.rootDir === realDir,
@@ -448,6 +452,12 @@ export function registerPluginCommands(
         if (!entry) {
           console.error(
             `This directory is not installed as a plugin — run \`bb plugin install ${path ?? "."}\` first, then re-run \`bb plugin dev\`.`,
+          );
+          process.exit(1);
+        }
+        if (!canDevelopPlugin(list.enabled, entry)) {
+          console.error(
+            'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
           );
           process.exit(1);
         }

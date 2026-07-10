@@ -8,7 +8,8 @@ import { z } from "zod";
  * `bb plugin build`; unused until the frontend runtime phase). `skills`
  * relocates/filters the auto-imported `skills/` convention directory. `logo`
  * relocates the auto-detected `logo.(svg|png|webp)` root file; `logoDark`
- * does the same for the optional dark-theme variant (`logo-dark.*`).
+ * does the same for the optional dark-theme variant (`logo-dark.*`). `icon`
+ * is a host icon-name hint used when the plugin ships no logo.
  */
 const bbManifestFieldSchema = z.object({
   server: z.string().min(1),
@@ -18,6 +19,7 @@ const bbManifestFieldSchema = z.object({
    * "Remote access"); falls back to the derived plugin id when absent.
    */
   displayName: z.string().min(1).optional(),
+  icon: z.string().min(1).optional(),
   skills: z.array(z.string().min(1)).optional(),
   logo: z.string().min(1).optional(),
   logoDark: z.string().min(1).optional(),
@@ -41,6 +43,8 @@ export interface PluginManifest {
   description: string | null;
   /** `bb.displayName` — human nav/header label; null when not declared. */
   displayName: string | null;
+  /** `bb.icon` — host icon-name hint; null when not declared. */
+  icon: string | null;
   /** semver range from engines.bb, when declared. */
   bbEngineRange: string | undefined;
   /** Absolute path of the backend entry file. */
@@ -83,7 +87,9 @@ export function derivePluginId(packageName: string): string {
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/^-+|-+$/g, "");
   if (id.length === 0) {
-    throw new Error(`cannot derive a plugin id from package name "${packageName}"`);
+    throw new Error(
+      `cannot derive a plugin id from package name "${packageName}"`,
+    );
   }
   return id;
 }
@@ -95,7 +101,9 @@ function resolveEntry(rootDir: string, entry: string, label: string): string {
   }
   const resolved = resolve(rootDir, entry);
   if (resolved !== rootDir && !resolved.startsWith(rootDir + "/")) {
-    throw new Error(`manifest ${label} escapes the plugin directory: "${entry}"`);
+    throw new Error(
+      `manifest ${label} escapes the plugin directory: "${entry}"`,
+    );
   }
   return resolved;
 }
@@ -105,7 +113,9 @@ function resolveEntry(rootDir: string, entry: string, label: string): string {
  * with a human-readable message on any problem — callers map that message
  * onto the plugin's error status.
  */
-export async function readPluginManifest(rootDir: string): Promise<PluginManifest> {
+export async function readPluginManifest(
+  rootDir: string,
+): Promise<PluginManifest> {
   const packageJsonPath = join(rootDir, "package.json");
   let raw: string;
   try {
@@ -132,7 +142,9 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
   try {
     await stat(serverEntry);
   } catch {
-    throw new Error(`manifest bb.server points at a missing file: ${bb.server}`);
+    throw new Error(
+      `manifest bb.server points at a missing file: ${bb.server}`,
+    );
   }
   const skillsRootPaths = (bb.skills ?? ["skills"]).map((entry) =>
     resolveEntry(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),
@@ -160,6 +172,7 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
         ? description
         : null,
     displayName: bb.displayName ?? null,
+    icon: bb.icon ?? null,
     bbEngineRange: engines?.bb,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,

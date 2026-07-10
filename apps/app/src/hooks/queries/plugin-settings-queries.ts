@@ -25,6 +25,8 @@ export interface PluginListItem {
   description: string | null;
   /** `bb.displayName` — human nav/header label; null → fall back to `id`. */
   displayName: string | null;
+  /** `bb.icon` — host icon-name hint; null → use the generic plugin icon. */
+  icon: string | null;
   /** Hash-busted logo asset URL; null when the plugin ships no logo. */
   logoUrl: string | null;
   /** Dark-theme logo variant URL; null when the plugin ships none. */
@@ -54,10 +56,10 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     description: typeof item.description === "string" ? item.description : null,
     // Absent on older servers → fall back to the id in the UI.
     displayName: typeof item.displayName === "string" ? item.displayName : null,
+    icon: typeof item.icon === "string" ? item.icon : null,
     // Absent on older servers → no logo, never a dropped row.
     logoUrl: typeof item.logoUrl === "string" ? item.logoUrl : null,
-    logoDarkUrl:
-      typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
+    logoDarkUrl: typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
     // Absent on older servers → assume no declared settings.
     hasSettings: item.hasSettings === true,
   };

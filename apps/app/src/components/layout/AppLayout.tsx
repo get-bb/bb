@@ -47,6 +47,7 @@ import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
@@ -231,7 +232,10 @@ function SidebarTriggerOverlay({
         />
         <AppCommandShortcutHint
           shortcut={shortcut}
-          className="absolute left-full ml-1"
+          className={cn(
+            "absolute left-full ml-1",
+            MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+          )}
         />
       </div>
     );

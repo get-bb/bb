@@ -54,9 +54,10 @@ The manifest is `package.json`:
   dark-theme variant — `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp`
   at the root (same precedence), or `bb.logoDark` (same rules) — is
   preferred whenever the app is in dark mode, falling back to the light
-  logo. Without a logo, contributions fall back to their named `icon` hint
-  or a generic bolt. Picked up on `bb plugin reload`. Inline icons must use
-  `currentColor` for their stroke/fill and take their color from semantic
+  logo. Without a logo, contributions fall back to their named `icon` hint;
+  the Settings plugin entry uses the manifest-level `bb.icon` hint. Unknown
+  hints use a generic icon. Picked up on `bb plugin reload`. Inline icons
+  must use `currentColor` for their stroke/fill and take their color from semantic
   text-token classes; never hardcode gray or palette values. An SVG loaded
   through `<img>` cannot inherit `currentColor`, so omit the logo and use a
   named `icon` hint when a monochrome glyph should match the surrounding bb

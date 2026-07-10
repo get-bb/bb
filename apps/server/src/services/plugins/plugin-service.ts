@@ -1,3 +1,4 @@
+import { watch, type FSWatcher } from "node:fs";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -15,7 +16,7 @@ import {
 } from "@bb/domain";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
-import { buildPluginApp } from "@bb/plugin-build";
+import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import type { ServerLogger } from "../../types.js";
@@ -161,6 +162,8 @@ export interface PluginListEntry {
    * plugin is not currently loaded (falls back to the id in the UI).
    */
   displayName: string | null;
+  /** `bb.icon` — host icon-name hint; null when not declared or unloaded. */
+  icon: string | null;
   status: PluginRuntimeStatus;
   statusDetail: string | null;
   handlerStats: PluginHandlerStats;
@@ -246,6 +249,8 @@ export interface PluginServiceDeps {
   isConnectEnabled: () => boolean;
   /** Declared first-party plugins installed by default; test-only override. */
   builtinPlugins?: readonly BuiltinPluginRegistration[];
+  /** Managed source-development only: rebuild and reload builtin frontends. */
+  watchBuiltinPluginSources?: boolean;
   /** Factory-execution time box; overridable in tests. */
   loadTimeoutMs?: number;
   /** Bound on awaiting a service's start() promise at dispose; tests shrink it. */
@@ -779,6 +784,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // marker yet) and double-start the plugin's services.
   const lifecycleChains = new Map<string, Promise<void>>();
   const disposingPluginIds = new Set<string>();
+  const builtinSourceWatchers: FSWatcher[] = [];
 
   function withLifecycleLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const previous = lifecycleChains.get(id) ?? Promise.resolve();
@@ -2012,6 +2018,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           enabled: row.enabled,
           description: exposedPlugin?.manifest.description ?? null,
           displayName: exposedPlugin?.manifest.displayName ?? null,
+          icon: exposedPlugin?.manifest.icon ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -2095,11 +2102,51 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     async start() {
       await reconcileBuiltins();
       await loadAll();
+      if (deps.watchBuiltinPluginSources) {
+        for (const builtin of builtinPlugins) {
+          const row = listInstalledPlugins(deps.db).find(
+            (candidate) =>
+              candidate.source === builtinPluginSource(builtin.name),
+          );
+          if (row === undefined) continue;
+          const manifest = await readPluginManifest(builtin.rootDir);
+          const loop = createPluginDevLoop({
+            pluginId: row.id,
+            hasApp: manifest.appEntry !== undefined,
+            buildApp: async () => {
+              await buildPluginApp(builtin.rootDir);
+            },
+            reloadPlugin: async () => {
+              await withLifecycleLock(row.id, async () => {
+                const current = getInstalledPlugin(deps.db, row.id);
+                if (current === undefined || !shouldLoadRow(current)) return;
+                await disposeOne(row.id);
+                await loadOne(current);
+              });
+              await syncCliSkill();
+              notifyPluginsChanged();
+            },
+            log: (message) => logger.info(`plugin ${row.id}: ${message}`),
+          });
+          const watcher = watch(
+            builtin.rootDir,
+            { recursive: true },
+            (_event, filename) => {
+              if (typeof filename === "string" && filename.length > 0) {
+                loop.handleChange(filename);
+              }
+            },
+          );
+          watcher.on("close", () => loop.dispose());
+          builtinSourceWatchers.push(watcher);
+        }
+      }
       await syncCliSkill();
       notifyPluginsChanged();
     },
 
     async stop() {
+      for (const watcher of builtinSourceWatchers.splice(0)) watcher.close();
       await disposeAll();
       await syncCliSkill();
       notifyPluginsChanged();

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { cleanup, render, renderHook, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -16,7 +16,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { useSettingsNavState } from "./settings-nav";
+import { PluginNavIcon, useSettingsNavState } from "./settings-nav";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -93,6 +93,7 @@ describe("useSettingsNavState", () => {
               status: "running",
               statusDetail: null,
               description: null,
+              icon: "EditFile",
               logoUrl: null,
               logoDarkUrl: null,
               hasSettings: false,
@@ -117,5 +118,12 @@ describe("useSettingsNavState", () => {
       "plugins",
     );
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins");
+
+    const icon = render(
+      <PluginNavIcon plugin={result.current.pluginEntries[0]!} />,
+    );
+    expect(
+      icon.container.querySelector('[data-icon="EditFile"]'),
+    ).not.toBeNull();
   });
 });
