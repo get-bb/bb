@@ -81,7 +81,12 @@ function ThreadRowTestHarness({
   thread: ThreadListEntry;
 }) {
   const shortcutKeys = shortcutKey
-    ? new Map([[thread.id, shortcutKey]])
+    ? new Map([
+        [
+          thread.id,
+          { ariaKeyshortcuts: `Meta+${shortcutKey}`, label: `⌘${shortcutKey}` },
+        ],
+      ])
     : EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS;
 
   return (

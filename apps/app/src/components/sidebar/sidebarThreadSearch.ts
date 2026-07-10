@@ -38,13 +38,6 @@ export interface SidebarThreadSearchPanelController {
   query: string;
 }
 
-export function getSidebarThreadSearchShortcutLabel(): "Cmd+K" | "Ctrl+K" {
-  if (typeof navigator === "undefined") {
-    return "Ctrl+K";
-  }
-  return /Mac|iPhone|iPad|iPod/u.test(navigator.platform) ? "Cmd+K" : "Ctrl+K";
-}
-
 export function getSidebarThreadSearchOptionId(rowId: string): string {
   return `${SIDEBAR_THREAD_SEARCH_LISTBOX_ID}-option-${rowId}`;
 }

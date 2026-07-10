@@ -13,15 +13,18 @@ import type {
   AppCommandContextKey,
   AppCommandId,
   AppKeybindings,
+  AppShortcut,
 } from "@bb/domain";
 import { useLocation } from "react-router-dom";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
   formatAppShortcut,
+  formatAppShortcutAria,
   isEditableKeyboardTarget,
   matchesAppCommandContext,
   matchesAppShortcut,
+  type AppShortcutPresentation,
 } from "@/lib/app-keybindings";
 
 export type AppCommandHandler = () => boolean;
@@ -34,7 +37,7 @@ interface AppCommandHandlerRegistration {
 
 interface AppCommandProviderValue {
   dispatch: (command: AppCommandId) => boolean;
-  getShortcutLabel: (command: AppCommandId) => string | null;
+  getShortcut: (command: AppCommandId) => AppShortcut | null;
   registerContext: (
     key: AppCommandContextKey,
     source: symbol,
@@ -161,8 +164,8 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const getShortcutLabel = useCallback(
-    (command: AppCommandId): string | null => {
+  const getShortcut = useCallback(
+    (command: AppCommandId): AppShortcut | null => {
       let binding;
       for (let index = keybindings.length - 1; index >= 0; index -= 1) {
         const candidate = keybindings[index];
@@ -171,9 +174,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           break;
         }
       }
-      return binding
-        ? formatAppShortcut(binding.shortcut, browserPlatform())
-        : null;
+      return binding?.shortcut ?? null;
     },
     [keybindings],
   );
@@ -212,8 +213,18 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   }, [dispatch]);
 
   const value = useMemo<AppCommandProviderValue>(
-    () => ({ dispatch, getShortcutLabel, registerContext, registerHandler }),
-    [dispatch, getShortcutLabel, registerContext, registerHandler],
+    () => ({
+      dispatch,
+      getShortcut,
+      registerContext,
+      registerHandler,
+    }),
+    [
+      dispatch,
+      getShortcut,
+      registerContext,
+      registerHandler,
+    ],
   );
 
   return (
@@ -262,6 +273,37 @@ export function useAppCommandContext(
   }, [active, key, registerContext]);
 }
 
-export function useAppCommandShortcutLabel(command: AppCommandId): string | null {
-  return useAppCommands().getShortcutLabel(command);
+export function useAppCommandShortcut(
+  command: AppCommandId,
+): AppShortcutPresentation | null {
+  const value = useContext(AppCommandContextValue);
+  const shortcut = value?.getShortcut(command);
+  if (!shortcut) return null;
+  const platform = browserPlatform();
+  return {
+    ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
+    label: formatAppShortcut(shortcut, platform),
+  };
+}
+
+export function useAppCommandShortcuts(
+  commands: readonly AppCommandId[],
+): ReadonlyMap<AppCommandId, AppShortcutPresentation> {
+  const value = useContext(AppCommandContextValue);
+  return useMemo(() => {
+    const presentations = new Map<
+      AppCommandId,
+      AppShortcutPresentation
+    >();
+    const platform = browserPlatform();
+    for (const command of commands) {
+      const shortcut = value?.getShortcut(command);
+      if (!shortcut) continue;
+      presentations.set(command, {
+        ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
+        label: formatAppShortcut(shortcut, platform),
+      });
+    }
+    return presentations;
+  }, [commands, value]);
 }

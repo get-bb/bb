@@ -14,12 +14,15 @@ export const NEW_WINDOW_ACCELERATOR = "CmdOrCtrl+Shift+N";
 export const NEW_WINDOW_MENU_LABEL = "New Window";
 export const CLOSE_WINDOW_ACCELERATOR = "CmdOrCtrl+W";
 export const CLOSE_WINDOW_MENU_LABEL = "Close Window";
+export const OPEN_SETTINGS_ACCELERATOR = "CmdOrCtrl+,";
+export const OPEN_SETTINGS_MENU_LABEL = "Settings…";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 
 export interface InstallApplicationMenuArgs {
   openNewTab(): void;
   openNewThread(): void;
+  openSettings(): void;
   closeWindowOrSideTab(browserWindow: BaseWindow | undefined): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
@@ -49,6 +52,14 @@ export function buildApplicationMenuTemplate(
       label: app.name,
       submenu: [
         { role: "about" },
+        { type: "separator" },
+        {
+          accelerator: OPEN_SETTINGS_ACCELERATOR,
+          click() {
+            args.openSettings();
+          },
+          label: OPEN_SETTINGS_MENU_LABEL,
+        },
         { type: "separator" },
         { role: "services" },
         { type: "separator" },

@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { getSidebarThreadShortcutTargets } from "./sidebarThreadShortcuts";
+import {
+  getSidebarThreadNavigationTargets,
+  getSidebarThreadShortcutTargets,
+} from "./sidebarThreadShortcuts";
 
 function appendShortcutTarget(root: HTMLElement, threadId?: string) {
   const target = document.createElement("a");
@@ -33,6 +36,7 @@ describe("sidebar thread shortcuts", () => {
         threadId: `thr_${index + 1}`,
       })),
     );
+    expect(getSidebarThreadNavigationTargets(root)).toHaveLength(10);
   });
 
 });

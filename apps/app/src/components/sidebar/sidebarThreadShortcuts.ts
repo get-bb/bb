@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 
 const SIDEBAR_THREAD_SHORTCUT_TARGET_SELECTOR =
   "[data-sidebar-thread-shortcut-target]";
@@ -11,15 +12,20 @@ export interface SidebarThreadShortcutTarget {
   threadId: string;
 }
 
-export const EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS: ReadonlyMap<string, string> =
-  new Map();
+export type SidebarThreadShortcutPresentation = AppShortcutPresentation;
+
+export const EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS: ReadonlyMap<
+  string,
+  SidebarThreadShortcutPresentation
+> = new Map();
 
 export const SidebarThreadShortcutKeysContext = createContext<
-  ReadonlyMap<string, string>
+  ReadonlyMap<string, SidebarThreadShortcutPresentation>
 >(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
 
-export function getSidebarThreadShortcutTargets(
+function collectSidebarThreadTargets(
   root: HTMLElement | null,
+  limit: number,
 ): SidebarThreadShortcutTarget[] {
   if (!root) {
     return [];
@@ -41,7 +47,7 @@ export function getSidebarThreadShortcutTargets(
       key: String(targets.length + 1),
       threadId,
     });
-    if (targets.length === MAX_SIDEBAR_THREAD_SHORTCUTS) {
+    if (targets.length === limit) {
       break;
     }
   }
@@ -49,8 +55,20 @@ export function getSidebarThreadShortcutTargets(
   return targets;
 }
 
-export function useSidebarThreadShortcutKey(
+export function getSidebarThreadShortcutTargets(
+  root: HTMLElement | null,
+): SidebarThreadShortcutTarget[] {
+  return collectSidebarThreadTargets(root, MAX_SIDEBAR_THREAD_SHORTCUTS);
+}
+
+export function getSidebarThreadNavigationTargets(
+  root: HTMLElement | null,
+): SidebarThreadShortcutTarget[] {
+  return collectSidebarThreadTargets(root, Number.POSITIVE_INFINITY);
+}
+
+export function useSidebarThreadShortcut(
   threadId: string,
-): string | undefined {
+): SidebarThreadShortcutPresentation | undefined {
   return useContext(SidebarThreadShortcutKeysContext).get(threadId);
 }

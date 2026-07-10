@@ -67,7 +67,10 @@ import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
-import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import {
+  useAppCommandHandler,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -195,6 +198,13 @@ function SidebarTriggerOverlay({
   reserveMacosTrafficLights,
   usesDesktopChrome,
 }: SidebarTriggerOverlayProps) {
+  const shortcut = useAppCommandShortcut("sidebar.toggle");
+  const triggerProps = {
+    "aria-label": shortcut
+      ? `Toggle sidebar (${shortcut.label})`
+      : "Toggle sidebar",
+    "aria-keyshortcuts": shortcut?.ariaKeyshortcuts,
+  };
   if (usesDesktopChrome) {
     return (
       <div
@@ -212,7 +222,10 @@ function SidebarTriggerOverlay({
         {/* The overlay's CHROME_ROW_CLASS box-centers the trigger on the shared
             traffic-light axis, matching the sidebar arrows and page-title
             header in desktop chrome. */}
-        <SidebarTrigger className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS} />
+        <SidebarTrigger
+          className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
+          {...triggerProps}
+        />
       </div>
     );
   }
@@ -225,7 +238,7 @@ function SidebarTriggerOverlay({
         BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
       )}
     >
-      <SidebarTrigger />
+      <SidebarTrigger {...triggerProps} />
     </div>
   );
 }

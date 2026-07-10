@@ -551,6 +551,12 @@ function refreshApplicationMenu(): void {
     openNewThread() {
       desktopWindowFactory?.sendToFocusedWindow(BB_DESKTOP_APP_COMMAND_CHANNEL, "thread.new");
     },
+    openSettings() {
+      desktopWindowFactory?.sendToFocusedWindow(
+        BB_DESKTOP_APP_COMMAND_CHANNEL,
+        "settings.open",
+      );
+    },
     closeWindowOrSideTab(browserWindow) {
       if (browserWindow === undefined) {
         // A focused detached DevTools window is the key window but never

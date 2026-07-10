@@ -12,6 +12,11 @@ export interface AppShortcutEvent {
   shiftKey: boolean;
 }
 
+export interface AppShortcutPresentation {
+  ariaKeyshortcuts: string;
+  label: string;
+}
+
 const SHIFTED_KEY_BASES: Readonly<Record<string, string>> = {
   "~": "`",
   "!": "1",
@@ -104,5 +109,21 @@ export function formatAppShortcut(
   if (shortcut.shift) parts.push("Shift");
   if (showMeta) parts.push("Meta");
   parts.push(key);
+  return parts.join("+");
+}
+
+export function formatAppShortcutAria(
+  shortcut: AppShortcut,
+  platform: string,
+): string {
+  const useMetaForMod = isMacKeyboardPlatform(platform);
+  const parts: string[] = [];
+  if (shortcut.control || (shortcut.mod && !useMetaForMod)) {
+    parts.push("Control");
+  }
+  if (shortcut.alt) parts.push("Alt");
+  if (shortcut.shift) parts.push("Shift");
+  if (shortcut.meta || (shortcut.mod && useMetaForMod)) parts.push("Meta");
+  parts.push(shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key);
   return parts.join("+");
 }

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { AppCommandContext, AppKeybinding, AppShortcut } from "@bb/domain";
 import {
   formatAppShortcut,
+  formatAppShortcutAria,
   isEditableKeyboardTarget,
   matchesAppCommandContext,
   matchesAppShortcut,
@@ -98,5 +99,7 @@ describe("app keybindings", () => {
   it("formats platform-specific shortcut labels", () => {
     expect(formatAppShortcut(MOD_N, "MacIntel")).toBe("⌘N");
     expect(formatAppShortcut(MOD_N, "Win32")).toBe("Ctrl+N");
+    expect(formatAppShortcutAria(MOD_N, "MacIntel")).toBe("Meta+N");
+    expect(formatAppShortcutAria(MOD_N, "Win32")).toBe("Control+N");
   });
 });

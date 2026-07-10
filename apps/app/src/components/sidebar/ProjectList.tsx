@@ -161,11 +161,12 @@ import {
   type UseNeighborReorderSortableArgs,
 } from "./useNeighborReorderSortable";
 import {
-  getSidebarThreadSearchShortcutLabel,
   SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
   type SidebarThreadSearchInputController,
   type SidebarThreadSearchPanelController,
 } from "./sidebarThreadSearch";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 
 interface ProjectListProps {
   onNewProject?: () => void;
@@ -1020,7 +1021,10 @@ export function ProjectListActionButtons({
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
-  const threadSearchShortcut = getSidebarThreadSearchShortcutLabel();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const configuredNewThreadShortcut = useAppCommandShortcut("thread.new");
+  const newThreadShortcut = desktopInfo ? configuredNewThreadShortcut : null;
+  const threadSearchShortcut = useAppCommandShortcut("thread.search");
   // One click on the X fully dismisses search — it clears the query and closes
   // the input in a single step (onClose resets the query too). Previously this
   // was a two-step clear-then-close, which felt like the X "needed two presses".
@@ -1078,6 +1082,7 @@ export function ProjectListActionButtons({
             className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
             onClick={onNewChat}
             disabled={isNewChatDisabled}
+            aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
           >
             <Icon name="MessageSquarePlus" />
             <span className="min-w-0 flex-1 truncate text-left">
@@ -1089,7 +1094,12 @@ export function ProjectListActionButtons({
               type="button"
               size="icon"
               variant="ghost"
-              aria-label={`Search threads (${threadSearchShortcut})`}
+              aria-label={
+                threadSearchShortcut
+                  ? `Search threads (${threadSearchShortcut.label})`
+                  : "Search threads"
+              }
+              aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
               className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
               onClick={threadSearch.onActivate}
             >

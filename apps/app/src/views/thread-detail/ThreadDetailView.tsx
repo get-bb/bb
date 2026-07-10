@@ -216,7 +216,10 @@ import {
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
-import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import {
+  useAppCommandContext,
+  useAppCommandHandler,
+} from "@/components/commands/AppCommandProvider";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -1232,6 +1235,19 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
+  useAppCommandContext(
+    "panelOpen",
+    props.surface === "page" && isSecondaryPanelOpen,
+  );
+  useAppCommandHandler("panel.toggle", () => {
+    if (props.surface !== "page") return false;
+    toggleSecondaryPanel();
+    return true;
+  });
+  useAppCommandHandler("panel.close", () => {
+    if (props.surface !== "page" || getBbDesktopInfo() === null) return false;
+    return handleCloseWindowRequest();
+  });
   useEffect(() => {
     if (props.surface !== "page") {
       return;

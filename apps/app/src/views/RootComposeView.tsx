@@ -212,7 +212,11 @@ import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
-import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import {
+  useAppCommandContext,
+  useAppCommandHandler,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -458,6 +462,7 @@ function RootComposeRightPanelToggle({
   onToggle,
 }: RootComposeRightPanelToggleProps) {
   const renderAsDrawer = useIsCompactViewport();
+  const shortcut = useAppCommandShortcut("panel.toggle");
   const rightPanelLabel = isOpen ? "Hide right panel" : "Show right panel";
   const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
 
@@ -467,7 +472,10 @@ function RootComposeRightPanelToggle({
       variant="ghost"
       size="icon"
       className={`${HEADER_ICON_BUTTON_CLASS} relative`}
-      aria-label={rightPanelLabel}
+      aria-label={
+        shortcut ? `${rightPanelLabel} (${shortcut.label})` : rightPanelLabel
+      }
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       aria-pressed={isOpen}
       onClick={onToggle}
     >
@@ -2355,6 +2363,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openTab]);
   useAppCommandHandler("panel.newTab", () => {
+    if (props.surface !== "page") return false;
     handleOpenNewTab();
     return true;
   });
@@ -2499,6 +2508,19 @@ export function RootComposeView(props: RootComposeViewProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
+  useAppCommandContext(
+    "panelOpen",
+    props.surface === "page" && isSecondaryPanelOpen,
+  );
+  useAppCommandHandler("panel.toggle", () => {
+    if (props.surface !== "page") return false;
+    handleToggleSecondaryPanel();
+    return true;
+  });
+  useAppCommandHandler("panel.close", () => {
+    if (props.surface !== "page" || getBbDesktopInfo() === null) return false;
+    return handleCloseWindowRequest();
+  });
   useEffect(() => {
     if (props.surface !== "page") {
       return;

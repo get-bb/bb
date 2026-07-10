@@ -58,7 +58,7 @@ import {
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
-import { useSidebarThreadShortcutKey } from "./sidebarThreadShortcuts";
+import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -422,7 +422,7 @@ function ThreadRowComponent({
   const setConversationCollapsed = useSetAtom(
     getThreadConversationCollapsedAtom(thread.id),
   );
-  const shortcutKey = useSidebarThreadShortcutKey(thread.id);
+  const shortcut = useSidebarThreadShortcut(thread.id);
   const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
@@ -535,7 +535,7 @@ function ThreadRowComponent({
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
-        aria-keyshortcuts={shortcutKey ? `Meta+${shortcutKey}` : undefined}
+        aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -553,12 +553,12 @@ function ThreadRowComponent({
         ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
-      {shortcutKey ? (
+      {shortcut ? (
         <kbd
           aria-hidden="true"
           className="pointer-events-none inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent px-1 text-xs font-medium tabular-nums text-muted-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]"
         >
-          ⌘{shortcutKey}
+          {shortcut.label}
         </kbd>
       ) : (
         <span
