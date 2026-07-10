@@ -316,7 +316,7 @@ function LauncherTile({
       title={title}
       className={cn(
         baseClass,
-        "scroll-mt-7",
+        "relative scroll-mt-7",
         isActive ? "bg-state-active" : "hover:bg-state-hover",
       )}
     >
@@ -351,7 +351,10 @@ function NewTabActionTile({
         />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
-      <AppCommandShortcutHint shortcut={shortcut ?? null} />
+      <AppCommandShortcutHint
+        shortcut={shortcut ?? null}
+        className="absolute right-2 top-1/2 -translate-y-1/2"
+      />
     </LauncherTile>
   );
 }
