@@ -15,7 +15,12 @@ import type {
 } from "@bb/desktop-contract";
 import { FAVICON_COLORS, type FaviconColor } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
-import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  SERVER_TILE_ICON_NAMES,
+  ServerTileIcon,
+  type ServerTileIconName,
+} from "@/lib/server-tile-icons";
 import { Input } from "@bb/shared-ui/input";
 import {
   Popover,
@@ -129,7 +134,7 @@ function ServerTileLogo({
   name,
 }: {
   color: FaviconColor | null;
-  icon: IconName | null;
+  icon: ServerTileIconName | null;
   name: string;
 }) {
   const colorHex = color === null ? undefined : FAVICON_COLOR_VALUES[color];
@@ -145,7 +150,7 @@ function ServerTileLogo({
       style={glyphStyle}
     >
       {icon !== null ? (
-        <Icon name={icon} className="size-4" />
+        <ServerTileIcon name={icon} className="size-4" />
       ) : (
         tileGlyph(name)
       )}
@@ -183,9 +188,11 @@ function ServerTileStylePicker({
   const filteredIcons = useMemo(() => {
     const query = iconQuery.trim().toLowerCase();
     if (query.length === 0) {
-      return ICON_NAMES;
+      return SERVER_TILE_ICON_NAMES;
     }
-    return ICON_NAMES.filter((name) => name.toLowerCase().includes(query));
+    return SERVER_TILE_ICON_NAMES.filter((name) =>
+      name.toLowerCase().includes(query),
+    );
   }, [iconQuery]);
 
   function applyStyle(next: {
@@ -270,7 +277,7 @@ function ServerTileStylePicker({
                   })
                 }
               >
-                <Icon name={name} className="size-4" />
+                <ServerTileIcon name={name} className="size-4" />
               </button>
             ))}
           </div>

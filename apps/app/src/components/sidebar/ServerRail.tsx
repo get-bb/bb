@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Link } from "react-router-dom";
 import { getDesktopServersApi } from "@/lib/bb-desktop";
 import { FAVICON_COLOR_VALUES } from "@/lib/favicon-color-preference";
+import { ServerTileIcon } from "@/lib/server-tile-icons";
 import {
   resolveServerTileColor,
   resolveServerTileIcon,
@@ -69,7 +70,7 @@ function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
         >
           {icon !== null ? (
             <span aria-hidden="true" className="flex" style={glyphStyle}>
-              <Icon name={icon} className="size-4" />
+              <ServerTileIcon name={icon} className="size-4" />
             </span>
           ) : (
             <span aria-hidden="true" style={glyphStyle}>

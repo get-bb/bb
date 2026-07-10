@@ -1,7 +1,10 @@
 import { FAVICON_COLORS, type FaviconColor } from "@bb/domain";
-import { ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
+import {
+  SERVER_TILE_ICON_NAMES,
+  type ServerTileIconName,
+} from "@/lib/server-tile-icons";
 
-const ICON_NAME_SET = new Set<string>(ICON_NAMES);
+const ICON_NAME_SET = new Set<string>(SERVER_TILE_ICON_NAMES);
 const FAVICON_COLOR_SET = new Set<string>(FAVICON_COLORS);
 
 /**
@@ -9,11 +12,13 @@ const FAVICON_COLOR_SET = new Set<string>(FAVICON_COLORS);
  * Unknown icon/color values fall back to defaults (letter glyph / token color)
  * so version skew either direction stays safe.
  */
-export function resolveServerTileIcon(icon: string | null): IconName | null {
+export function resolveServerTileIcon(
+  icon: string | null,
+): ServerTileIconName | null {
   if (icon === null || !ICON_NAME_SET.has(icon)) {
     return null;
   }
-  return icon as IconName;
+  return icon as ServerTileIconName;
 }
 
 export function resolveServerTileColor(
