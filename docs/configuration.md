@@ -29,6 +29,11 @@ value and only shows whether a key is set.
 The Add machine installer may also store a `machineCredential` beside
 `serverUrl` in `config.json`. It is a secret managed by bb connect: do not copy,
 edit, or commit it. It is intentionally omitted from `bb-app config list`.
+At runtime this value is passed to the standalone host daemon and its bundled
+`bb` CLI as `BB_CONNECT_MACHINE_CREDENTIAL` (or the equivalent internal
+`--machine-credential` launcher flag). These are installer-managed transport
+details, not user configuration knobs; re-add the machine instead of setting
+them by hand.
 
 Use `bb-app client ssh-target` to let a local helper open files from a remote
 bb server in local editors. The SSH target is the value that works after
@@ -322,6 +327,22 @@ skills by name, overriding built-ins.
 The **bb connect** experiment (Settings → Experiments, off by default) gates
 remote access for reaching this bb server through getbb.app. It does not enable
 running threads on non-primary hosts.
+
+## Multi-machine Experiment
+
+The **Multi-machine** experiment (Settings → Experiments, off by default)
+enables remote execution hosts. When enabled, Settings → Machines can enroll,
+rename, and remove machines; project settings can add a path or clone source on
+each machine; and thread creation can target any enrolled machine with a usable
+source. The CLI equivalents are `bb machine list`, `bb project source add
+--machine <id-or-name> ...`, and `bb thread spawn --machine <id-or-name> ...`.
+
+The experiment is independent of browser access. Tailscale and bb connect let
+another browser reach the bb server; Multi-machine decides whether that server
+may dispatch work to non-primary host daemons. The Settings → Machines
+installer can use a paired bb connect account to route the daemon and its CLI
+back to the server. Machine credentials remain locally managed as described at
+the top of this document.
 
 ## bb connect
 

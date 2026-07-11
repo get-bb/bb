@@ -12,6 +12,7 @@ Core concepts:
 - Project — maps to a repository. All threads belong to a project.
 - Thread — a single agent conversation. The fundamental unit of work.
 - Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.
+- Machine — an execution host where project sources and thread environments live.
 - Terminal — a persistent PTY session scoped to a thread and its environment. Use terminals for long-running commands such as dev servers.
 - Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.
 
@@ -39,5 +40,6 @@ Run `bb guide <chapter>` for command details:
   agent-configuration  AGENTS.md and skills files that shape agents
   providers            Discovering providers and models
   projects             Project CRUD and sources
+  machines             Listing and targeting execution machines
   customization        Theming the app palette
   plugins              Installing plugins and their contributed bb commands

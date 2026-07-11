@@ -4,6 +4,7 @@ import { maybeReexecViaBbCli } from "./bb-cli-reexec.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerManagerCommands } from "./commands/manager.js";
+import { registerMachineCommands } from "./commands/machine.js";
 import { registerProjectCommands } from "./commands/project.js";
 import { registerPluginCommands } from "./commands/plugin.js";
 import { registerProviderCommands } from "./commands/provider.js";
@@ -79,6 +80,7 @@ registerStatusCommand(program, getUrl, getContext);
 registerProjectCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
+registerMachineCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
@@ -93,7 +95,10 @@ registerGuideCommand(program);
  */
 async function tryPluginCommandProxy(): Promise<void> {
   const knownCommandNames = new Set(
-    program.commands.flatMap((command) => [command.name(), ...command.aliases()]),
+    program.commands.flatMap((command) => [
+      command.name(),
+      ...command.aliases(),
+    ]),
   );
   knownCommandNames.add("help");
   const candidate = pluginProxyCandidate(process.argv[2], knownCommandNames);
@@ -103,7 +108,9 @@ async function tryPluginCommandProxy(): Promise<void> {
     // The candidate may be a plugin command (`bb connect` on a fresh
     // machine is the canonical case) — only the running server can say, so
     // a dead server must not degrade into commander's "unknown command".
-    console.error("bb isn't running — open the bb app, then re-run this command.");
+    console.error(
+      "bb isn't running — open the bb app, then re-run this command.",
+    );
     process.exit(1);
   }
   if (result.outcome === "invalid") return;

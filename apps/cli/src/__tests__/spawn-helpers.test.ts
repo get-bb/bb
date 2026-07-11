@@ -179,6 +179,16 @@ describe("buildSpawnEnvironment", () => {
     ).toThrow("Cannot combine --environment with --new-environment");
   });
 
+  it("throws when --base-branch would otherwise be ignored", () => {
+    expect(() =>
+      buildSpawnEnvironment({
+        defaultPersonalWorkspace: false,
+        baseBranch: "main",
+        hostId: HOST_ID,
+      }),
+    ).toThrow("--base-branch requires --new-environment worktree");
+  });
+
   it("returns unmanaged host with path for path-like --environment", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,

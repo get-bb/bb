@@ -76,7 +76,7 @@ describe("assertUsableHostId", () => {
     ).not.toThrow();
     expectApiError(() => assertUsableHostId(deps, { hostId: secondary.id }), {
       code: "unsupported_host",
-      message: "Only the local host daemon is supported",
+      message: "Non-primary machines require the Multi-machine experiment",
       status: 400,
     });
   });

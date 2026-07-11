@@ -81,7 +81,10 @@ describe("host file routes", () => {
         sessionId: session.id,
         handle: (request) => {
           commands.push(request.command);
-          return { ok: true, result: { outcome: "conflict", currentSha256: null } };
+          return {
+            ok: true,
+            result: { outcome: "conflict", currentSha256: null },
+          };
         },
       });
 
@@ -170,7 +173,7 @@ describe("host file routes", () => {
       expect(blocked.status).toBe(400);
       await expect(readJson(blocked)).resolves.toMatchObject({
         code: "unsupported_host",
-        message: "Only the local host daemon is supported",
+        message: "Non-primary machines require the Multi-machine experiment",
       });
 
       registerHostRpcResponder(harness, {

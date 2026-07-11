@@ -9,6 +9,10 @@ import {
 } from "../../context-env.js";
 import { resolveLocalHostId } from "../../daemon.js";
 import {
+  resolveMachineHostId,
+  resolveMachineTargetOption,
+} from "../machine.js";
+import {
   outputJson,
   parseReasoningLevel,
   prependErrorContext,
@@ -35,6 +39,8 @@ interface ThreadSpawnCommandOptions {
   serviceTier?: string;
   permissionMode?: string;
   parentSelf?: boolean;
+  machine?: string;
+  host?: string;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -96,6 +102,9 @@ export function buildSpawnEnvironment(args: {
   if (environmentValue && newEnvironmentKind) {
     throw new Error("Cannot combine --environment with --new-environment.");
   }
+  if (trimmedBaseBranch && newEnvironmentKind !== "worktree") {
+    throw new Error("--base-branch requires --new-environment worktree.");
+  }
   if (newEnvironmentKind) {
     if (newEnvironmentKind === "worktree") {
       return {
@@ -146,10 +155,7 @@ export function registerSpawnCommand(
     )
     .requiredOption("--prompt <prompt>", "Initial prompt for the thread")
     .option("--json", "Print machine-readable JSON output")
-    .requiredOption(
-      "--project <id>",
-      "Project ID",
-    )
+    .requiredOption("--project <id>", "Project ID")
     .option(
       "--environment <id-or-path>",
       "Existing environment ID or unmanaged workspace path",
@@ -163,9 +169,11 @@ export function registerSpawnCommand(
       "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base.",
     )
     .option(
-      "--parent-thread <id>",
-      "Parent thread ID for worker thread links",
+      "--machine <id-or-name>",
+      "Execution machine ID or unambiguous name",
     )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--parent-thread <id>", "Parent thread ID for worker thread links")
     .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
     .option(
       "--provider <id>",
@@ -191,9 +199,17 @@ export function registerSpawnCommand(
         if (!projectId) {
           throw new Error("Missing required option --project <id>.");
         }
-        const environmentValue = resolveSpawnEnvironmentValue(
-          opts.environment,
-        );
+        const environmentValue = resolveSpawnEnvironmentValue(opts.environment);
+        const machineTarget = resolveMachineTargetOption(opts);
+        if (
+          machineTarget &&
+          environmentValue &&
+          !looksLikePath(environmentValue)
+        ) {
+          throw new Error(
+            "Cannot combine --machine or --host with an existing environment ID; that environment already selects its machine.",
+          );
+        }
         const defaultPersonalWorkspace =
           projectId === PERSONAL_PROJECT_ID &&
           !environmentValue &&
@@ -202,7 +218,14 @@ export function registerSpawnCommand(
           Boolean(opts.newEnvironment) ||
           (!defaultPersonalWorkspace &&
             (!environmentValue || looksLikePath(environmentValue)));
-        const hostId = needsHostId ? await resolveLocalHostId() : null;
+        const hostId = machineTarget
+          ? await resolveMachineHostId({
+              serverUrl: getUrl(),
+              target: machineTarget,
+            })
+          : needsHostId
+            ? await resolveLocalHostId()
+            : null;
         const environment = buildSpawnEnvironment({
           defaultPersonalWorkspace,
           environmentValue,

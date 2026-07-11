@@ -85,10 +85,20 @@ message agents, or inspect projects, providers, and environments.
   entirely; with bb connect still enabled, `bb plugin enable connect` restores
   the command. Settings → Connect shows the current URL, QR code, shared ports,
   re-pair form, and disconnect control.
-- Add remote execution hosts from Settings → Machines. Its one-line installer
-  stores the bb connect machine credential locally and configures both the
-  daemon protocol and agent-launched `bb` CLI to traverse the account gate;
-  revoke a lost machine from the getbb.app dashboard.
+- Add remote execution machines from Settings → Machines. Its one-line
+  installer stores the bb connect machine credential locally and configures
+  both the daemon protocol and agent-launched `bb` CLI to traverse the account
+  gate; revoke a lost machine from the getbb.app dashboard.
+- Run `bb machine list` to see machine names, IDs, connection status, and last
+  seen time (`--json` returns the raw host list). Use `--machine <id-or-name>`
+  (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged
+  workspace, or combine it with `--new-environment worktree`. Do not combine a
+  machine selector with an existing environment ID, which already owns its
+  machine.
+- Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
+  to register a path on another machine. Use `--clone` instead of `--path` to
+  clone the project's remote there; `--remote-url` and `--target-path` are
+  optional clone overrides.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or

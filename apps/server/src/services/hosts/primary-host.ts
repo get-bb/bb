@@ -27,7 +27,7 @@ function unsupportedHostError(): ApiError {
   return new ApiError(
     400,
     "unsupported_host",
-    "Only the local host daemon is supported",
+    "Non-primary machines require the Multi-machine experiment",
   );
 }
 

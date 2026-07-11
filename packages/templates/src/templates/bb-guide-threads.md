@@ -23,12 +23,19 @@ Spawning:
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)
+    --base-branch <branch>         Base branch for a new managed worktree
+    --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
 
   Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
   When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
+  A machine selector accepts an exact ID or an unambiguous name. It works with
+  an unmanaged --environment path, --new-environment worktree, or the personal
+  workspace. It cannot be combined with an existing environment ID because that
+  environment already selects its machine. Without the flag, local/primary
+  machine resolution is unchanged.
 
 Listing:
 

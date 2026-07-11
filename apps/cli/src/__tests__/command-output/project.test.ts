@@ -4,6 +4,7 @@ import {
   collectLogLines,
   collectLogPayloads,
   readlineMocks,
+  resolveLocalHostIdMock,
   runCommand,
   stubServerApi,
 } from "../helpers/command-output-harness.js";
@@ -85,6 +86,132 @@ describe("bb project command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(created);
+  });
+
+  it("bb project source add targets an unambiguous machine name", async () => {
+    const post = vi.fn(async () => ({
+      id: "source-remote",
+      projectId: "proj-1",
+      hostId: "host-remote",
+      type: "local_path",
+      path: "/srv/alpha",
+      isDefault: false,
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.projects.:id.sources.$post": post,
+    });
+
+    await runCommand(
+      [
+        "project",
+        "source",
+        "add",
+        "proj-1",
+        "--machine",
+        "builder",
+        "--path",
+        "/srv/alpha",
+      ],
+      register,
+    );
+
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "proj-1" },
+      json: {
+        hostId: "host-remote",
+        path: "/srv/alpha",
+        type: "local_path",
+      },
+    });
+  });
+
+  it("bb project source add supports clone options through the --host alias", async () => {
+    const post = vi.fn(async () => ({
+      id: "source-clone",
+      projectId: "proj-1",
+      hostId: "host-remote",
+      type: "local_path",
+      path: "/srv/clones/alpha",
+      isDefault: false,
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.projects.:id.sources.$post": post,
+    });
+
+    await runCommand(
+      [
+        "project",
+        "source",
+        "add",
+        "proj-1",
+        "--host",
+        "host-remote",
+        "--clone",
+        "--remote-url",
+        "git@example.test:alpha.git",
+        "--target-path",
+        "/srv/clones/alpha",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "proj-1" },
+      json: {
+        hostId: "host-remote",
+        remoteUrl: "git@example.test:alpha.git",
+        targetPath: "/srv/clones/alpha",
+        type: "clone",
+      },
+    });
+  });
+
+  it("bb project source add rejects clone-only options without --clone", async () => {
+    await expect(
+      runCommand(
+        [
+          "project",
+          "source",
+          "add",
+          "proj-1",
+          "--remote-url",
+          "git@example.test:alpha.git",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: --remote-url and --target-path require --clone.",
+    );
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
   });
 
   it("bb project source update patches the existing source type", async () => {

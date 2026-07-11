@@ -21,7 +21,7 @@ function assertLoopbackRequest(remoteAddress: string | undefined): void {
   throw new ApiError(
     400,
     "unsupported_host",
-    "Only the local host daemon is supported",
+    "This enrollment route is available only from the server machine",
   );
 }
 

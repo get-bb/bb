@@ -1,119 +1,70 @@
 # Using bb on multiple devices
 
-You can run bb on one machine — your desktop, laptop, or workstation — and use
-it from a browser on any other device on the same private network. Phones,
-tablets, other laptops; anything with a browser can be a control surface for
-the same projects and threads.
+There are two separate ways to use more than one device with bb:
 
-The machine running bb does the work. Other devices are just browsers; they do
-not become execution hosts.
+- A browser device is a control surface for one bb server. It can view projects,
+  send prompts, and manage threads, but it does not execute them.
+- An execution machine runs a host daemon. One bb server can dispatch project
+  sources and thread environments across several enrolled machines.
 
-## What you'll need
+You can use either story independently or combine them.
 
-- One machine actually running bb. This is where you start the server.
-- [Tailscale](https://tailscale.com/) installed and signed in on every device
-  you want to use, all on the same tailnet.
-- [MagicDNS](https://tailscale.com/kb/1081/magicdns) enabled (optional, but it
-  gives your bb machine a stable name so you don't have to memorize an IP).
+## Open bb from another browser
 
-## Set it up
+The simplest managed route is **bb connect**. Enable the bb connect experiment,
+pair the server from Settings → Connect (or `bb connect --code ... --server
+...`), then open its getbb.app URL. The server owns the tunnel and reconnects
+after restart.
 
-On the machine running bb, configure `BB_APP_URL` to the URL your other devices
-will use. Replace `<machine>.<tailnet>.ts.net` with that machine's Tailscale
-name:
+For a private network route, install Tailscale on the server machine and browser
+devices, then configure the URL they will open:
 
 ```bash
 npx bb-app config set BB_APP_URL http://<machine>.<tailnet>.ts.net:38886
 ```
 
-If you don't use MagicDNS, the Tailscale IP works too:
+Start bb with `npx bb-app` and open that URL. A Tailscale IP works in place of
+MagicDNS. For microphone and clipboard APIs, put bb behind Tailscale Serve and
+use HTTPS:
 
 ```bash
-npx bb-app config set BB_APP_URL http://<tailscale-ip>:38886
+tailscale serve --bg --https=443 http://127.0.0.1:38886
+npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
 ```
 
-If bb is not already running, start it:
+Tailscale ACLs are the access boundary for this route; do not expose the server
+through Funnel or the public internet. bb connect URLs require the paired
+account owner's session.
 
-```bash
-npx bb-app
-```
-
-Then open that same URL in a browser on any other device. The project list
-should load and you're in.
-
-## Optional: open remote files in a local editor
-
-If you use a remote bb server from another computer and want "Open in Editor"
-to open an editor on the computer in front of you, run bb's local helper on that
-client computer and tell it how to SSH back to the machine running bb.
-
-If bb is already running on the client computer, the local helper is already
-running. Otherwise, start bb there with `npx bb-app`; you can keep using the
-remote bb URL in your browser.
-
-On the client computer, first make sure SSH works:
-
-```bash
-ssh <machine>
-```
-
-Then register that SSH target for the remote bb URL:
+If a browser on another computer should open work-host files in its local
+editor, run bb's local helper there, verify `ssh <work-host>` succeeds, and map
+the server/work-host to that SSH target:
 
 ```bash
 npx bb-app client ssh-target set <bb-server-origin> <ssh-target>
 ```
 
-The SSH target is the value that works after `ssh`. It does not have to match
-the hostname in the bb URL. For example, if you open bb at
-`https://workstation.<tailnet>.ts.net` and `ssh devbox` works, use:
+Phones and tablets need no helper; editor-launch actions are simply unavailable.
 
-```bash
-npx bb-app client ssh-target set https://workstation.<tailnet>.ts.net devbox
-```
+## Add an execution machine
 
-This writes `~/.bb/client.json` on the client computer only. The remote bb
-server does not read that file. Phones and tablets do not need this setup; bb
-continues to work from a browser without a local helper, but local editor
-buttons are unavailable.
+Enable the **Multi-machine** experiment, open Settings → Machines, and choose
+Add machine. Run the generated one-line installer on the computer that should
+execute work. It installs and enrolls a host daemon; when bb connect is paired,
+the installer also configures the machine credential used to reach the server
+through the account gate.
 
-## Optional: use HTTPS for voice and clipboard
+After it connects:
 
-Plain HTTP works for browsing, reading threads, and sending prompts. But some
-browser features — microphone capture for voice input, clipboard access —
-only work on `https://` URLs, even when the traffic is already encrypted by
-Tailscale. This mostly comes up on phones and tablets.
+1. Add that machine's project path or clone source in project settings.
+2. Select the machine when creating a thread, or use `bb thread spawn --machine
+<id-or-name> ...`.
+3. Inspect enrolled machines with `bb machine list`.
 
-If you want those features, [enable HTTPS for your
-tailnet](https://tailscale.com/kb/1153/enabling-https), then put bb behind
-[Tailscale Serve](https://tailscale.com/kb/1242/tailscale-serve):
+Machine names are conveniences and may be duplicated; CLI targeting by name
+requires an unambiguous match. IDs are always accepted. Removing a machine from
+Settings stops bb from dispatching new work to it; revoke a lost machine's bb
+connect access from the getbb.app dashboard as well.
 
-```bash
-tailscale serve --bg --https=443 http://127.0.0.1:38886
-```
-
-Update `BB_APP_URL` to the HTTPS URL:
-
-```bash
-npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
-```
-
-bb picks up the new URL while it is running.
-
-## A note on access
-
-bb has no built-in user authentication on the server today. Tailscale ACLs
-are your access boundary — keep bb on the tailnet, and don't expose it through
-Tailscale Funnel or the public internet.
-
-## If something isn't working
-
-A few quick checks:
-
-1. Open the `/health` endpoint at your bb URL from the device giving you
-   trouble — for example, `http://<machine>.<tailnet>.ts.net:38886/health`.
-   It should return `{"ok":true}`. If it doesn't, that device isn't reaching
-   the server — check Tailscale on both sides.
-2. Make sure `BB_APP_URL` is configured to the same URL you typed into the
-   browser.
-3. Try the Tailscale IP instead of the MagicDNS name (or vice versa).
-4. Phones on cellular are fine as long as Tailscale stays connected.
+Browser access and execution remain independent: opening bb on a laptop does
+not enroll that laptop, and enrolling it as a machine does not expose the bb UI.

@@ -9,6 +9,7 @@ import { createCliBbSdk } from "../client.js";
 import { resolveLocalHostId } from "../daemon.js";
 import { renderBorderlessTable } from "../table.js";
 import { confirmDestructiveAction, outputJson } from "./helpers.js";
+import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
 interface ProjectListCommandOptions {
   json?: boolean;
@@ -35,9 +36,14 @@ interface ProjectDeleteCommandOptions {
 }
 
 interface ProjectSourceAddCommandOptions {
+  clone?: boolean;
   default?: boolean;
+  host?: string;
   json?: boolean;
+  machine?: string;
   path?: string;
+  remoteUrl?: string;
+  targetPath?: string;
 }
 
 interface ProjectSourceUpdateCommandOptions {
@@ -56,6 +62,41 @@ interface ProjectSourceInputOptions {
 }
 
 type ProjectSource = ProjectResponse["sources"][number];
+
+function validateProjectSourceAddOptions(
+  args: ProjectSourceAddCommandOptions,
+): void {
+  if (args.clone && args.path) {
+    throw new Error("Cannot combine --clone with --path.");
+  }
+  if (!args.clone && (args.remoteUrl || args.targetPath)) {
+    throw new Error("--remote-url and --target-path require --clone.");
+  }
+  if (!args.clone && !args.path) {
+    throw new Error("Provide --path or --clone.");
+  }
+}
+
+function buildProjectSourceAddRequest(
+  args: ProjectSourceAddCommandOptions & { hostId: string },
+): CreateProjectSourceRequest {
+  if (args.clone) {
+    return {
+      hostId: args.hostId,
+      type: "clone",
+      ...(args.remoteUrl ? { remoteUrl: args.remoteUrl } : {}),
+      ...(args.targetPath ? { targetPath: args.targetPath } : {}),
+    };
+  }
+  if (!args.path) {
+    throw new Error("Provide --path or --clone.");
+  }
+  return {
+    hostId: args.hostId,
+    path: args.path,
+    type: "local_path",
+  };
+}
 
 async function buildProjectSourceFromOptions(
   args: ProjectSourceInputOptions,
@@ -227,14 +268,31 @@ export function registerProjectCommands(
     .command("add <projectId>")
     .description("Add a source to a project")
     .option("--path <path>", "Local path source")
+    .option("--clone", "Clone the project's Git remote on the machine")
+    .option("--remote-url <url>", "Git remote URL override for --clone")
+    .option("--target-path <path>", "Destination path override for --clone")
+    .option(
+      "--machine <id-or-name>",
+      "Execution machine ID or unambiguous name",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
     .option("--default", "Mark the new source as default")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
         async (projectId: string, opts: ProjectSourceAddCommandOptions) => {
           const sdk = createCliBbSdk(getUrl());
-          const createPayload = await buildProjectSourceFromOptions({
-            path: opts.path,
+          validateProjectSourceAddOptions(opts);
+          const machineTarget = resolveMachineTargetOption(opts);
+          const hostId = machineTarget
+            ? await resolveMachineHostId({
+                serverUrl: getUrl(),
+                target: machineTarget,
+              })
+            : await resolveLocalHostId();
+          const createPayload = buildProjectSourceAddRequest({
+            ...opts,
+            hostId,
           });
           const created = await sdk.projects.sources.add({
             projectId,
