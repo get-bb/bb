@@ -1242,12 +1242,58 @@ async function setActiveServerForWindow(
     }
   } else {
     // Remote servers are pure web loads. Owned local runtime keeps running.
-    if (server.source === "connect" && currentRuntime !== null) {
-      await installConnectDesktopSession({
-        cookieInstaller: session.defaultSession.cookies,
+    if (server.source === "connect") {
+      const localRuntimeReady = await ensureBuiltinRuntimeAttached();
+      const electronWindow = BrowserWindow.fromId(args.browserWindow.id);
+      if (
+        !localRuntimeReady ||
+        currentRuntime === null ||
+        electronWindow === null
+      ) {
+        const detail =
+          !localRuntimeReady || currentRuntime === null
+            ? "The local bb server is unavailable, so the desktop app could not create a Connect session."
+            : "The desktop window is no longer available.";
+        createDesktopLogger().warn(
+          `[desktop] Connect authentication failed: ${detail}`,
+        );
+        await loadUrlInApplicationWindow({
+          browserWindow: args.browserWindow,
+          url: createLocalViewUrl({
+            viewModel: {
+              details: `${detail} Try switching servers again after the local server is running.`,
+              kind: "error",
+              logText: "",
+              title: "Could not authenticate with bb Connect",
+            },
+          }),
+        });
+        return;
+      }
+      const result = await installConnectDesktopSession({
+        cookieStore: electronWindow.webContents.session.cookies,
         localServerUrl: currentRuntime.serverUrl,
         remoteServerUrl: server.url,
       });
+      if (!result.ok) {
+        createDesktopLogger().warn(
+          `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
+        );
+        await loadUrlInApplicationWindow({
+          browserWindow: args.browserWindow,
+          url: createLocalViewUrl({
+            viewModel: {
+              details:
+                "The desktop app could not establish a session for this Connect server. " +
+                `Try switching servers again. (${result.code}: ${result.detail})`,
+              kind: "error",
+              logText: "",
+              title: "Could not authenticate with bb Connect",
+            },
+          }),
+        });
+        return;
+      }
     }
     currentWindowUrl = server.url;
     await loadUrlInApplicationWindow({
