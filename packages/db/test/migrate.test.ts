@@ -273,6 +273,8 @@ const threadSourceOriginMigrationWhen = 1781660000000;
 const threadlessTerminalSessionsMigrationWhen = 1782173519934;
 const threadFoldersMigrationWhen = 1782252763916;
 const queuedMessageGroupingMigrationWhen = 1782273194188;
+const pendingInteractionsMigrationWhen = 1783626227375;
+const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -1176,6 +1178,72 @@ describe("migrate", () => {
           )
           .get(branchLocalThreadSearchMigrationWhen),
       ).toEqual({ count: 0 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("replays pending-interactions migration after branch-local tab history", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client.exec(`
+        DROP TABLE pending_interactions;
+        CREATE TABLE pending_interactions (
+          id text PRIMARY KEY NOT NULL,
+          thread_id text NOT NULL,
+          turn_id text NOT NULL,
+          provider_id text NOT NULL,
+          provider_thread_id text NOT NULL,
+          provider_request_id text NOT NULL,
+          status text NOT NULL,
+          payload text NOT NULL,
+          resolution text,
+          status_reason text,
+          created_at integer NOT NULL,
+          resolved_at integer,
+          updated_at integer NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX pending_interactions_provider_request_idx
+          ON pending_interactions (provider_id, provider_thread_id, provider_request_id);
+        CREATE INDEX pending_interactions_thread_created_idx
+          ON pending_interactions (thread_id, created_at);
+        CREATE INDEX pending_interactions_thread_status_created_idx
+          ON pending_interactions (thread_id, status, created_at);
+        CREATE INDEX pending_interactions_status_created_idx
+          ON pending_interactions (status, created_at);
+      `);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(pendingInteractionsMigrationWhen);
+      db.$client
+        .prepare<InsertMigrationParameters>(
+          `
+            INSERT INTO __drizzle_migrations (hash, created_at)
+            VALUES (?, ?)
+          `,
+        )
+        .run("branch-local-thread-tabs", branchLocalThreadTabsMigrationWhen);
+
+      migrate(db);
+
+      const columns = db.$client
+        .prepare<[], TableNameRow>(
+          "SELECT name FROM pragma_table_info('pending_interactions') ORDER BY cid",
+        )
+        .all()
+        .map((row) => row.name);
+      expect(columns).toContain("origin_kind");
+      expect(columns).toContain("plugin_id");
+      expect(columns).toContain("renderer_id");
+      expect(columns).toContain("expires_at");
+      expect(readAppliedMigrationCreatedAts(db)).toContain(
+        pendingInteractionsMigrationWhen,
+      );
     } finally {
       closeConnection(db);
     }
