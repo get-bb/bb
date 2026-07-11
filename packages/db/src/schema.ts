@@ -166,6 +166,21 @@ export const appSettings = sqliteTable("app_settings", {
   })
     .notNull()
     .default(true),
+  codexSubagentsDisabled: integer("codex_subagents_disabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  claudeCodeSubagentsDisabled: integer("claude_code_subagents_disabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  claudeCodeWorkflowsDisabled: integer("claude_code_workflows_disabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   keybindingOverrides: text("keybinding_overrides").notNull().default("[]"),
   updatedAt: integer("updated_at").notNull(),
 });

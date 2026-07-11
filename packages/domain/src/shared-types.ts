@@ -443,6 +443,9 @@ const runtimeThreadExecutionBaseOptionsSchema = z.object({
   // Optional for legacy command compatibility; the server fills the current
   // provider preference before dispatching new runtime work.
   memoryEnabled: z.boolean().optional(),
+  // Optional for legacy command compatibility; the server fills the current
+  // provider preference before dispatching new runtime work.
+  providerSubagentsEnabled: z.boolean().optional(),
 });
 
 export const runtimeThreadExecutionOptionsSchema =

@@ -115,6 +115,7 @@ export type ProviderExecutionContext = {
    */
   workflowsEnabled: boolean;
   memoryEnabled?: boolean;
+  providerSubagentsEnabled?: boolean;
   instructions?: string;
   envVars?: Record<string, string>;
   skillRoots?: readonly AgentRuntimeSkillRoot[];

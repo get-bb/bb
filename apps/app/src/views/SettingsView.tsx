@@ -761,36 +761,74 @@ export function GeneralSettingsSection({
 
 interface ProviderSettingsSectionProps {
   memoryEnabled: boolean;
+  subagentsDisabled: boolean;
+  workflowsDisabled: boolean;
   disabled: boolean;
   onMemoryEnabledChange: (enabled: boolean) => void;
+  onSubagentsDisabledChange: (disabled: boolean) => void;
+  onWorkflowsDisabledChange: (disabled: boolean) => void;
   providerId: "codex" | "claude-code";
 }
 
 export function ProviderSettingsSection({
   memoryEnabled,
+  subagentsDisabled,
+  workflowsDisabled,
   disabled,
   onMemoryEnabledChange,
+  onSubagentsDisabledChange,
+  onWorkflowsDisabledChange,
   providerId,
 }: ProviderSettingsSectionProps) {
   const isCodex = providerId === "codex";
   const label = isCodex ? "Codex memory" : "Claude Code memory";
   return (
     <SettingsSection title={isCodex ? "Codex" : "Claude Code"}>
-      <SettingsWithControl
-        label={label}
-        description={
-          isCodex
-            ? "Allow Codex to recall existing memories and generate new memories from bb threads."
-            : "Allow Claude Code to read and write its native auto-memory for bb threads."
-        }
-      >
-        <Switch
-          aria-label={label}
-          checked={memoryEnabled}
-          disabled={disabled}
-          onCheckedChange={onMemoryEnabledChange}
-        />
-      </SettingsWithControl>
+      <div className="space-y-4">
+        <SettingsWithControl
+          label={label}
+          description={
+            isCodex
+              ? "Allow Codex to recall existing memories and generate new memories from bb threads."
+              : "Allow Claude Code to read and write its native auto-memory for bb threads."
+          }
+        >
+          <Switch
+            aria-label={label}
+            checked={memoryEnabled}
+            disabled={disabled}
+            onCheckedChange={onMemoryEnabledChange}
+          />
+        </SettingsWithControl>
+        <SettingsWithControl
+          label="Disable provider subagents"
+          description={
+            isCodex
+              ? "Prevent Codex from starting native subagents so agents use bb for delegation."
+              : "Hide Claude Code's native Task tool so agents use bb for delegation."
+          }
+        >
+          <Switch
+            aria-label="Disable provider subagents"
+            checked={subagentsDisabled}
+            disabled={disabled}
+            onCheckedChange={onSubagentsDisabledChange}
+          />
+        </SettingsWithControl>
+        {!isCodex ? (
+          <SettingsWithControl
+            label="Disable Workflow tool"
+            description="Hide Claude Code's native Workflow tool for bb threads."
+          >
+            <Switch
+              aria-label="Disable Workflow tool"
+              checked={workflowsDisabled}
+              disabled={disabled}
+              onCheckedChange={onWorkflowsDisabledChange}
+            />
+          </SettingsWithControl>
+        ) : null}
+      </div>
     </SettingsSection>
   );
 }
@@ -1119,6 +1157,12 @@ export function SettingsView() {
             ? generalSettings.codexMemoryEnabled
             : generalSettings.claudeCodeMemoryEnabled
         }
+        subagentsDisabled={
+          isCodex
+            ? generalSettings.codexSubagentsDisabled
+            : generalSettings.claudeCodeSubagentsDisabled
+        }
+        workflowsDisabled={generalSettings.claudeCodeWorkflowsDisabled}
         disabled={
           systemConfigQuery.data === undefined ||
           updateGeneralSettingsMutation.isPending
@@ -1129,6 +1173,20 @@ export function SettingsView() {
             ...(isCodex
               ? { codexMemoryEnabled: enabled }
               : { claudeCodeMemoryEnabled: enabled }),
+          })
+        }
+        onSubagentsDisabledChange={(disabled) =>
+          updateGeneralSettingsMutation.mutate({
+            ...generalSettings,
+            ...(isCodex
+              ? { codexSubagentsDisabled: disabled }
+              : { claudeCodeSubagentsDisabled: disabled }),
+          })
+        }
+        onWorkflowsDisabledChange={(disabled) =>
+          updateGeneralSettingsMutation.mutate({
+            ...generalSettings,
+            claudeCodeWorkflowsDisabled: disabled,
           })
         }
       />

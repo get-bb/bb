@@ -1539,6 +1539,31 @@ describe("codex provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/start disables Codex native subagents", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/start",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      input: [promptTextInput({ text: "hello" })],
+      instructionMode: "append",
+      options: {
+        ...fullProviderExecutionContext,
+        providerSubagentsEnabled: false,
+      },
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/start",
+      params: {
+        config: {
+          "features.multi_agent": false,
+          "features.multi_agent_v2.max_concurrent_threads_per_session": 1,
+        },
+      },
+    });
+  });
+
   it("buildCommand thread/start appends instructions as developer instructions", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({
