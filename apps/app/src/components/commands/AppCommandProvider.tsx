@@ -61,7 +61,7 @@ const AppCommandContextValue = createContext<AppCommandProviderValue | null>(
 const AppCommandModifierHeldContext = createContext(false);
 
 const EMPTY_KEYBINDINGS: AppKeybindings = [];
-const SHORTCUT_HINT_HOLD_DELAY_MS = 300;
+const SHORTCUT_HINT_HOLD_DELAY_MS = 700;
 
 const EMPTY_CONTEXT: AppCommandContext = {
   mainSurface: false,
