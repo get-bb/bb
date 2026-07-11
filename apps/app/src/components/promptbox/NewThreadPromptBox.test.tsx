@@ -113,7 +113,11 @@ describe("ProjectlessMachineSlot", () => {
   function makeEnvironment(overrides?: {
     value?: string;
     onChange?: (value: string) => void;
-    machines?: { hosts: Host[]; localDaemonHostId: string | null } | null;
+    machines?: {
+      hosts: Host[];
+      localDaemonHostId: string | null;
+      primaryHostId: string | null;
+    } | null;
   }) {
     return {
       value: overrides?.value ?? `host:${host.id}:local`,
@@ -124,7 +128,11 @@ describe("ProjectlessMachineSlot", () => {
       machines:
         overrides && "machines" in overrides
           ? overrides.machines
-          : { hosts: [host, secondHost], localDaemonHostId: host.id },
+          : {
+              hosts: [host, secondHost],
+              localDaemonHostId: host.id,
+              primaryHostId: host.id,
+            },
     };
   }
 
@@ -138,7 +146,11 @@ describe("ProjectlessMachineSlot", () => {
     render(
       <ProjectlessMachineSlot
         environment={makeEnvironment({
-          machines: { hosts: [host], localDaemonHostId: host.id },
+          machines: {
+            hosts: [host],
+            localDaemonHostId: host.id,
+            primaryHostId: host.id,
+          },
         })}
       />,
     );

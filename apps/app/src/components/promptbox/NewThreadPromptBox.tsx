@@ -443,6 +443,7 @@ export function ProjectlessMachineSlot({
     <MachinePickerUI
       hosts={machines.hosts}
       localDaemonHostId={machines.localDaemonHostId}
+      primaryHostId={machines.primaryHostId}
       selectedHostId={
         parsedEnvironment?.type === "host" ? parsedEnvironment.hostId : null
       }
@@ -534,8 +535,12 @@ function ConnectedThreadModeBranch({
   ...rest
 }: ConnectedThreadModeBranchProps) {
   const { data: hosts } = useHosts();
-  const primaryHost = useMemo(() => selectPrimaryHost(hosts), [hosts]);
   const systemConfigQuery = useSystemConfig();
+  const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
+  const primaryHost = useMemo(
+    () => selectPrimaryHost(hosts, primaryHostId),
+    [hosts, primaryHostId],
+  );
   const multiMachineEnabled =
     systemConfigQuery.data?.experiments.multiMachine === true;
   const { isLocalDaemonHost, localDaemonHostId } = useHostDaemon();
@@ -555,9 +560,9 @@ function ConnectedThreadModeBranch({
   const machines = useMemo<EnvironmentPickerMachines | null>(
     () =>
       multiMachineEnabled && hosts
-        ? { hosts, localDaemonHostId }
+        ? { hosts, localDaemonHostId, primaryHostId }
         : null,
-    [multiMachineEnabled, hosts, localDaemonHostId],
+    [multiMachineEnabled, hosts, localDaemonHostId, primaryHostId],
   );
 
   const isHostMode = parsedEnvironment?.type === "host";

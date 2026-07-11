@@ -36,6 +36,9 @@ export interface MachinePickerUIProps {
   /** Host id of the daemon running on this browser's machine, if reachable —
    * its row gets the "this machine" badge and leads the menu. */
   localDaemonHostId: string | null;
+  /** Server-resolved primary host id from `/system/config`; null while it
+   * loads or before any host has enrolled. */
+  primaryHostId: string | null;
   /** Selected host id; an unknown or null id falls back to the primary host. */
   selectedHostId: string | null;
   onChange: (hostId: string) => void;
@@ -56,6 +59,7 @@ export interface MachinePickerUIProps {
 export function MachinePickerUI({
   hosts,
   localDaemonHostId,
+  primaryHostId,
   selectedHostId,
   onChange,
   muted,
@@ -66,8 +70,8 @@ export function MachinePickerUI({
   const selectedHost = useMemo(
     () =>
       hosts.find((host) => host.id === selectedHostId) ??
-      selectPrimaryHost(hosts),
-    [hosts, selectedHostId],
+      selectPrimaryHost(hosts, primaryHostId),
+    [hosts, primaryHostId, selectedHostId],
   );
   // This machine leads; the rest keep server order (stable sort).
   const orderedHosts = useMemo(

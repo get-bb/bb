@@ -57,6 +57,9 @@ export interface EnvironmentPickerMachines {
   /** Host id of the daemon running on this browser's machine, if reachable —
    * its section gets the "this machine" badge and "Work locally" label. */
   localDaemonHostId: string | null;
+  /** Server-resolved primary host id from `/system/config`; null while it
+   * loads or before any host has enrolled. */
+  primaryHostId: string | null;
 }
 
 export interface EnvironmentPickerUIProps {
@@ -146,7 +149,12 @@ export function EnvironmentPickerUI({
   // isn't on the primary host ("Mac Studio · New worktree").
   const selectedMachineName = useMemo(() => {
     if (!isMachineMenu || !machines || parsed?.type !== "host") return null;
-    if (parsed.hostId === selectPrimaryHost(machines.hosts)?.id) return null;
+    if (
+      parsed.hostId ===
+      selectPrimaryHost(machines.hosts, machines.primaryHostId)?.id
+    ) {
+      return null;
+    }
     return (
       machines.hosts.find((machineHost) => machineHost.id === parsed.hostId)
         ?.name ?? null

@@ -69,6 +69,7 @@ function systemConfig(multiMachineEnabled: boolean): SystemConfigResponse {
     pluginThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
+    primaryHostId: "host_primary",
     primaryHostPlatform: "darwin",
     voiceTranscriptionEnabled: false,
     dataDir: "/tmp/bb-test",

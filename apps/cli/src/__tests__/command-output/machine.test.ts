@@ -20,6 +20,7 @@ const hosts: Host[] = [
     type: "persistent",
     status: "connected",
     lastSeenAt: 1_700_000_000_000,
+    lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 2,
   },
@@ -29,6 +30,7 @@ const hosts: Host[] = [
     type: "persistent",
     status: "disconnected",
     lastSeenAt: null,
+    lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 2,
   },
@@ -40,7 +42,17 @@ describe("bb machine command output", () => {
   const register: CommandRegistrar = (program) =>
     registerMachineCommands(program, () => "http://server");
 
+  function stubSystemConfigFetch(multiMachine: boolean): void {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ experiments: { multiMachine } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  }
+
   it("bb machine list --json prints the raw host list", async () => {
+    stubSystemConfigFetch(true);
     stubServerApi({ "v1.hosts.$get": vi.fn(async () => hosts) });
 
     await runCommand(["machine", "list", "--json"], register);
@@ -52,6 +64,7 @@ describe("bb machine command output", () => {
 
   it("bb machine list renders names, IDs, status, and relative last seen", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_700_000_120_000);
+    stubSystemConfigFetch(true);
     stubServerApi({ "v1.hosts.$get": vi.fn(async () => hosts) });
 
     await runCommand(["machine", "list"], register);
@@ -61,6 +74,35 @@ describe("bb machine command output", () => {
       "Name         ID            Status        Last seen\n-----------  ------------  ------------  ---------\nworkstation  host-primary  connected     2m ago\n-----------  ------------  ------------  ---------\nlaptop       host-remote   disconnected  never",
       "",
     ]);
+  });
+
+  it("bb machine list errors when the Multi-machine experiment is off", async () => {
+    stubSystemConfigFetch(false);
+    const listHosts = vi.fn(async () => hosts);
+    stubServerApi({ "v1.hosts.$get": listHosts });
+
+    await expect(runCommand(["machine", "list"], register)).rejects.toThrow(
+      "process.exit:1",
+    );
+
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: Machine commands are behind the Multi-machine experiment — enable it in Settings → Experiments.",
+    );
+    expect(listHosts).not.toHaveBeenCalled();
+  });
+
+  it("bb machine list --json fails the same way with the experiment off", async () => {
+    stubSystemConfigFetch(false);
+    stubServerApi({ "v1.hosts.$get": vi.fn(async () => hosts) });
+
+    await expect(
+      runCommand(["machine", "list", "--json"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.log)).not.toHaveBeenCalled();
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: Machine commands are behind the Multi-machine experiment — enable it in Settings → Experiments.",
+    );
   });
 });
 

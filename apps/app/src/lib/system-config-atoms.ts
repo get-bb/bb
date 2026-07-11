@@ -26,6 +26,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   pluginThemes: [],
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
+  primaryHostId: null,
   primaryHostPlatform: null,
   voiceTranscriptionEnabled: false,
   dataDir: "",

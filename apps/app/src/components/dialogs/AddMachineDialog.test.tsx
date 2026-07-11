@@ -48,10 +48,12 @@ describe("AddMachineDialog", () => {
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
+    // The connect serverUrl differs from the browser origin (bb viewed on
+    // localhost while paired through a tunnel) — the command must use it.
     vi.mocked(api.createConnectMachineCode).mockResolvedValue({
       code: "mc_test456",
       expiresAt: Date.now() + 10 * 60 * 1000,
-      serverUrl: window.location.origin,
+      serverUrl: "https://example.getbb.app",
     });
     vi.mocked(api.listHosts).mockResolvedValue([existingHost]);
 
@@ -60,8 +62,14 @@ describe("AddMachineDialog", () => {
 
     const command = await screen.findByText(/--join-code jc_test123/);
     expect(command.textContent).toContain("--host-id host_new");
-    expect(command.textContent).toContain(`--server ${window.location.origin}`);
+    expect(command.textContent).toContain(
+      "curl -fsSL https://example.getbb.app/install.sh",
+    );
+    expect(command.textContent).toContain(
+      "--server https://example.getbb.app",
+    );
     expect(command.textContent).toContain("--machine-code mc_test456");
+    expect(command.textContent).not.toContain(window.location.origin);
     expect(screen.getByText(/Code expires in \d+:\d{2}/)).toBeDefined();
     expect(
       screen.getByText("Waiting for the machine to connect…"),
@@ -102,6 +110,15 @@ describe("AddMachineDialog", () => {
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
     render(<AddMachineDialog open onOpenChange={vi.fn()} />, { wrapper });
+
+    // No machine code (not connect-paired): the direct/LAN command uses the
+    // browser origin and carries no --machine-code flag.
+    const command = await screen.findByText(/--join-code jc_test123/);
+    expect(command.textContent).toContain(
+      `curl -fsSL ${window.location.origin}/install.sh`,
+    );
+    expect(command.textContent).toContain(`--server ${window.location.origin}`);
+    expect(command.textContent).not.toContain("--machine-code");
 
     await waitFor(() => {
       expect(queryClient.getQueryData<Host[]>(hostsQueryKey())).toHaveLength(2);

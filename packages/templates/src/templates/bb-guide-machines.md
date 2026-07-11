@@ -9,6 +9,7 @@ Machine commands
 
 A machine is a host daemon that can run thread environments. Enable the
 Multi-machine experiment and add remote machines under Settings → Machines.
+`bb machine` commands error until that experiment is enabled.
 
 The Settings installer first uses the exact `bb-app` tarball served by that bb
 server at `/install/bb-app.tgz`; only servers that do not implement the route

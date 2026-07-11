@@ -101,7 +101,7 @@ import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { useHosts } from "@/hooks/queries/host-queries";
+import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
@@ -750,6 +750,21 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   return fallbackHostValue;
 }
 
+/**
+ * The machine the composed thread will run on: the effective selection's host
+ * when it names one, otherwise the primary. Provider-CLI status, update
+ * actions, and submit blocking all key off this host — the primary's CLI
+ * state must not gate work targeted at another machine.
+ */
+export function resolveComposeHostId(
+  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
+  primaryHostId: string | null,
+): string | null {
+  return parsedEnvironment?.type === "host"
+    ? parsedEnvironment.hostId
+    : primaryHostId;
+}
+
 export function buildMobileRecentThreads({
   sidebarNavigation,
 }: BuildMobileRecentThreadsArgs): ThreadListEntry[] {
@@ -969,13 +984,13 @@ export function RootComposeView(props: RootComposeViewProps) {
       ),
     [hostsQuery.data],
   );
-  const primaryHost = useMemo(() => {
-    const hosts = hostsQuery.data;
-    if (!hosts || hosts.length === 0) return null;
-    return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
-  }, [hostsQuery.data]);
-  const primaryHostId = primaryHost?.id ?? null;
   const systemConfigQuery = useSystemConfig();
+  const serverPrimaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
+  const primaryHost = useMemo(
+    () => selectPrimaryHost(hostsQuery.data, serverPrimaryHostId),
+    [hostsQuery.data, serverPrimaryHostId],
+  );
+  const primaryHostId = primaryHost?.id ?? null;
   const multiMachineEnabled =
     systemConfigQuery.data?.experiments.multiMachine === true;
   const knownHostIds = useMemo(
@@ -1199,42 +1214,6 @@ export function RootComposeView(props: RootComposeViewProps) {
 
     promptDraft.setDraft(restoredDraft);
   });
-  const providerCliStatus = useHostProviderCliStatus({
-    hostId: primaryHostId,
-    enabled: primaryHostId !== null,
-  });
-  const refetchProviderCliStatus = providerCliStatus.refetch;
-  const {
-    installLogDialog: providerCliInstallLogDialog,
-    queuedProviders,
-    runningProvider,
-    startInstall,
-  } = useProviderCliInstallRunner({
-    hostId: primaryHostId,
-    onStatusUpdated: () => {
-      void refetchProviderCliStatus();
-    },
-  });
-  const codexCliStatus = providerCliStatus.data?.codex ?? null;
-  const isCodexCliVersionBlocked =
-    selectedProviderId === "codex" &&
-    codexCliStatus?.versionUnsupported === true;
-  const codexCliIssue = useMemo(() => {
-    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
-      return null;
-    }
-    const issue = buildProviderCliIssue({
-      provider: "codex",
-      status: codexCliStatus,
-    });
-    return issue && hasProviderCliAction(issue) ? issue : null;
-  }, [codexCliStatus, isCodexCliVersionBlocked]);
-  const handleUpdateCodexCli = useCallback(() => {
-    if (codexCliIssue === null) {
-      return;
-    }
-    startInstall(codexCliIssue);
-  }, [codexCliIssue, startInstall]);
   const seedHandoffPrompt = promptDraft.setDraft;
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
@@ -1369,6 +1348,48 @@ export function RootComposeView(props: RootComposeViewProps) {
     () => parseEnvironmentValue(effectiveEnvironmentValue),
     [effectiveEnvironmentValue],
   );
+  // Provider-CLI eligibility follows the machine the thread will actually run
+  // on — the selected host when the (already primary-collapsed, multiMachine
+  // aware) effective selection names one, otherwise the primary. An outdated
+  // CLI on the primary must not block submission to a healthy remote machine,
+  // nor the other way around.
+  const composeHostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
+  const providerCliStatus = useHostProviderCliStatus({
+    hostId: composeHostId,
+    enabled: composeHostId !== null,
+  });
+  const refetchProviderCliStatus = providerCliStatus.refetch;
+  const {
+    installLogDialog: providerCliInstallLogDialog,
+    queuedProviders,
+    runningProvider,
+    startInstall,
+  } = useProviderCliInstallRunner({
+    hostId: composeHostId,
+    onStatusUpdated: () => {
+      void refetchProviderCliStatus();
+    },
+  });
+  const codexCliStatus = providerCliStatus.data?.codex ?? null;
+  const isCodexCliVersionBlocked =
+    selectedProviderId === "codex" &&
+    codexCliStatus?.versionUnsupported === true;
+  const codexCliIssue = useMemo(() => {
+    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
+      return null;
+    }
+    const issue = buildProviderCliIssue({
+      provider: "codex",
+      status: codexCliStatus,
+    });
+    return issue && hasProviderCliAction(issue) ? issue : null;
+  }, [codexCliStatus, isCodexCliVersionBlocked]);
+  const handleUpdateCodexCli = useCallback(() => {
+    if (codexCliIssue === null) {
+      return;
+    }
+    startInstall(codexCliIssue);
+  }, [codexCliIssue, startInstall]);
   const [branchSearchQuery, setBranchSearchQuery] = useState("");
   useEffect(() => {
     setBranchSearchQuery("");
@@ -1967,10 +1988,10 @@ export function RootComposeView(props: RootComposeViewProps) {
       if (rootPanelEnvironmentId !== null) {
         return null;
       }
-      const selectedHostId =
-        parsedEnvironment?.type === "host"
-          ? parsedEnvironment.hostId
-          : primaryHostId;
+      const selectedHostId = resolveComposeHostId(
+        parsedEnvironment,
+        primaryHostId,
+      );
       if (selectedHostId === null) {
         return null;
       }

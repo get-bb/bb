@@ -43,6 +43,7 @@ function renderMachineMenu(overrides?: {
     <MachinePickerUI
       hosts={[thisMachine, studio, devVm]}
       localDaemonHostId={thisMachine.id}
+      primaryHostId={thisMachine.id}
       selectedHostId={overrides?.selectedHostId ?? thisMachine.id}
       onChange={overrides?.onChange ?? vi.fn()}
       modal={false}

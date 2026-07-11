@@ -106,6 +106,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         machines={{
           hosts: [thisMachine, studio, devVm],
           localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
         }}
         modal={false}
       />,
@@ -160,6 +161,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         machines={{
           hosts: [thisMachine, staleVm],
           localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
         }}
         modal={false}
       />,
@@ -188,6 +190,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         machines={{
           hosts: [thisMachine, offlineStudio],
           localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
         }}
         modal={false}
       />,
@@ -215,6 +218,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         machines={{
           hosts: [thisMachine, studio, onlineVm],
           localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
         }}
         onRequestMachineSetup={onRequestMachineSetup}
         modal={false}
@@ -242,6 +246,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         machines={{
           hosts: [thisMachine, studio, devVm],
           localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
         }}
         onRequestMachineSetup={vi.fn()}
         modal={false}
@@ -273,7 +278,11 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         sources={machineSources}
         host={thisMachine}
         isLocal
-        machines={{ hosts: [thisMachine], localDaemonHostId: thisMachine.id }}
+        machines={{
+          hosts: [thisMachine],
+          localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
+        }}
         modal={false}
       />,
     );

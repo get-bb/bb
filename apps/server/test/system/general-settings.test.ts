@@ -15,6 +15,8 @@ describe("general settings", () => {
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.generalSettings).toEqual(defaultAppSettings);
+      // A fresh server with no enrolled host is the only null-primary case.
+      expect(body.primaryHostId).toBeNull();
     });
   });
 
@@ -67,6 +69,7 @@ describe("general settings", () => {
         caffeinate: true,
         codexMemoryEnabled: false,
       });
+      expect(parsedConfig.primaryHostId).toBe(host.id);
       expect(parsedConfig.primaryHostPlatform).toBe("darwin");
       await vi.waitFor(() => {
         expect(responder.requests).toHaveLength(1);

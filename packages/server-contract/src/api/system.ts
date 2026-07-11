@@ -100,6 +100,13 @@ export const systemConfigResponseSchema = z.object({
   pluginThemes: z.array(pluginThemeMetaSchema),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
+  /**
+   * The server-resolved primary host (the machine running the server, or the
+   * single known host). Null only on a fresh server where no host has ever
+   * enrolled — clients must not guess a primary from the host list when a
+   * value is present.
+   */
+  primaryHostId: z.string().nullable(),
   primaryHostPlatform: hostPlatformSchema.nullable(),
   voiceTranscriptionEnabled: z.boolean(),
   /** Absolute path of the active bb data directory (where ui/, theme/, the DB live). */

@@ -32,6 +32,7 @@ function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
     pluginThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
+    primaryHostId: null,
     primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
     dataDir: "/tmp/bb-test",

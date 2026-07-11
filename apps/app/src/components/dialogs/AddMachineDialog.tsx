@@ -14,6 +14,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
 import * as api from "@/lib/api";
+import type { ConnectMachineCode } from "@/lib/api";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 interface AddMachineDialogProps {
@@ -52,16 +53,21 @@ function formatCountdown(remainingMs: number): string {
  * the flag names and order here are the contract it must honor
  * (`--join-code`, `--host-id`, `--server`, mapping onto
  * `bb-app host-daemon join`).
+ *
+ * With a machine code (tunnel pairing) the whole command targets the connect
+ * serverUrl the code was minted for — the browser origin may be a localhost
+ * view of a paired server, which the new machine cannot reach. Only the
+ * direct/LAN variant (no machine code) uses the browser origin.
  */
 function pairingCommand(
   joinCode: string,
   hostId: string,
-  machineCode: string | null,
+  machineCode: ConnectMachineCode | null,
 ): string {
-  const origin = window.location.origin;
+  const serverUrl = machineCode?.serverUrl ?? window.location.origin;
   const machineFlag =
-    machineCode === null ? "" : ` --machine-code ${machineCode}`;
-  return `curl -fsSL ${origin}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${origin}${machineFlag}`;
+    machineCode === null ? "" : ` --machine-code ${machineCode.code}`;
+  return `curl -fsSL ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
 }
 
 function AddMachineDialogContent({
@@ -123,11 +129,7 @@ function AddMachineDialogContent({
   const expired = remainingMs !== null && remainingMs <= 0;
   const command =
     joinCode !== null
-      ? pairingCommand(
-          joinCode.joinCode,
-          joinCode.hostId,
-          machineCode?.code ?? null,
-        )
+      ? pairingCommand(joinCode.joinCode, joinCode.hostId, machineCode)
       : null;
 
   return (

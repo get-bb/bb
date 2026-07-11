@@ -269,9 +269,10 @@ export function MachinesSettingsSection() {
   const [removeTarget, setRemoveTarget] = useState<Host | null>(null);
 
   const hosts = hostsQuery.data;
+  const serverPrimaryHostId = systemConfig.data?.primaryHostId ?? null;
   const primaryHostId = useMemo(
-    () => selectPrimaryHost(hosts)?.id ?? null,
-    [hosts],
+    () => selectPrimaryHost(hosts, serverPrimaryHostId)?.id ?? null,
+    [hosts, serverPrimaryHostId],
   );
   const projects = sidebarNavigationQuery.data?.projects;
   const projectCountByHostId = useMemo(() => {

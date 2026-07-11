@@ -10,6 +10,7 @@ import type {
   TerminalSession,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import {
@@ -25,6 +26,7 @@ import {
   readRootComposeFolderTargetFromLocationState,
   readInitialPromptFromLocationState,
   restorePromptDraftAfterOptionChange,
+  resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposePanelThreadId,
   shouldStartComposingFromLocationState,
@@ -572,6 +574,24 @@ describe("isProjectSourceWorktreeUnavailable", () => {
         }),
       ),
     ).toBe(true);
+  });
+});
+
+describe("resolveComposeHostId", () => {
+  it("keys provider-CLI eligibility to the selected remote host, not the primary", () => {
+    expect(
+      resolveComposeHostId(
+        parseEnvironmentValue("host:host_remote:worktree"),
+        "host_primary",
+      ),
+    ).toBe("host_remote");
+  });
+
+  it("falls back to the primary host when no host is selected", () => {
+    expect(
+      resolveComposeHostId(parseEnvironmentValue("reuse:env_1"), "host_primary"),
+    ).toBe("host_primary");
+    expect(resolveComposeHostId(parseEnvironmentValue(""), null)).toBeNull();
   });
 });
 

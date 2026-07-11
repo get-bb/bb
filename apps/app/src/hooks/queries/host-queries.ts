@@ -4,6 +4,7 @@ import type { Host } from "@bb/domain";
 import type { HostDirectoryListing } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { useHostListRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   hostCloneDefaultPathQueryKey,
   hostDirectoryQueryKey,
@@ -32,25 +33,35 @@ export function useHosts(options?: QueryOptions) {
 }
 
 /**
- * The host bb defaults work to: the first connected host, falling back to a
- * stale disconnected one so the UI can still name it. Null before any host
- * has ever connected.
+ * The host bb defaults work to. The server-resolved `primaryHostId` from
+ * `/system/config` is authoritative — with several connected machines the
+ * first-connected guess can crown the wrong one. The connected-first
+ * heuristic remains only for a null id (fresh server, or config still
+ * loading). A non-null id that isn't in the list means the primary isn't
+ * visible here: return null rather than promote another machine.
  */
 export function selectPrimaryHost(
   hosts: readonly Host[] | undefined,
+  primaryHostId: string | null,
 ): Host | null {
   if (!hosts || hosts.length === 0) return null;
+  if (primaryHostId !== null) {
+    return hosts.find((host) => host.id === primaryHostId) ?? null;
+  }
   return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
 }
 
 /**
- * The single host the server runs work on by default; if a stale disconnected
- * host lingers alongside a live one, the connected host wins. Returns null
- * while loading or before any host has ever connected.
+ * The single host the server runs work on by default, resolved server-side.
+ * Returns null while loading or before any host has ever connected.
  */
 export function usePrimaryHost(options?: QueryOptions): Host | null {
   const { data: hosts } = useHosts(options);
-  return useMemo(() => selectPrimaryHost(hosts), [hosts]);
+  const primaryHostId = useSystemConfig(options).data?.primaryHostId ?? null;
+  return useMemo(
+    () => selectPrimaryHost(hosts, primaryHostId),
+    [hosts, primaryHostId],
+  );
 }
 
 /**

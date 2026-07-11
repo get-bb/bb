@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import type { Host } from "@bb/domain";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
+import { action, CliExitError } from "../action.js";
+import { cliFetch, createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 
@@ -67,6 +67,29 @@ export async function resolveMachineHostId(args: {
   return resolveMachineId(hosts, args.target);
 }
 
+/**
+ * Machine surfaces are gated on the server's Multi-machine experiment. The
+ * server is the source of truth, so ask it (like the plugin-proxy experiment
+ * check) instead of listing hosts the UI would never show.
+ */
+async function assertMultiMachineEnabled(serverUrl: string): Promise<void> {
+  const response = await cliFetch(`${serverUrl}/api/v1/system/config`);
+  if (!response.ok) {
+    throw new Error(
+      `Could not read the server config (HTTP ${response.status}).`,
+    );
+  }
+  const config = (await response.json()) as {
+    experiments?: { multiMachine?: unknown };
+  };
+  if (config.experiments?.multiMachine !== true) {
+    throw new CliExitError(
+      "Machine commands are behind the Multi-machine experiment — enable it in Settings → Experiments.",
+      1,
+    );
+  }
+}
+
 export function registerMachineCommands(
   program: Command,
   getUrl: () => string,
@@ -81,6 +104,7 @@ export function registerMachineCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: MachineListCommandOptions) => {
+        await assertMultiMachineEnabled(getUrl());
         const hosts = await createCliBbSdk(getUrl()).hosts.list();
         if (outputJson(opts, hosts)) return;
         if (hosts.length === 0) {

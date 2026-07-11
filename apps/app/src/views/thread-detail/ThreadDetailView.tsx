@@ -2268,7 +2268,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // composer chip.
   const environmentMachinePrefix =
     threadEnvironmentHost !== null &&
-    threadEnvironmentHost.id !== selectPrimaryHost(hostsQuery.data)?.id
+    threadEnvironmentHost.id !==
+      selectPrimaryHost(
+        hostsQuery.data,
+        systemConfigQuery.data?.primaryHostId ?? null,
+      )?.id
       ? `${threadEnvironmentHost.name} · `
       : "";
   const threadEnvironmentIcon = threadEnvironmentDisplay

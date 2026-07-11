@@ -71,11 +71,6 @@ export function registerSystemRoutes(
     context.json({ hasAttention: hasActiveThreadAttention(deps.db) }),
   );
 
-  function resolvePrimaryHostPlatform() {
-    const hostId = resolvePrimaryHostId(deps);
-    return hostId === null ? null : deps.hub.getDaemonPlatformForHost(hostId);
-  }
-
   function readAppKeybindingOverrides(): AppKeybindingOverrides {
     try {
       return getAppKeybindingOverrides(deps.db);
@@ -99,6 +94,7 @@ export function registerSystemRoutes(
 
   async function buildSystemConfigResponse() {
     const keybindingOverrides = readAppKeybindingOverrides();
+    const primaryHostId = resolvePrimaryHostId(deps);
     return {
       generalSettings: getAppSettings(deps.db),
       keybindings: applyAppKeybindingOverrides(
@@ -116,7 +112,11 @@ export function registerSystemRoutes(
       pluginThemes: pluginService.listThemes(),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
-      primaryHostPlatform: resolvePrimaryHostPlatform(),
+      primaryHostId,
+      primaryHostPlatform:
+        primaryHostId === null
+          ? null
+          : deps.hub.getDaemonPlatformForHost(primaryHostId),
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
       dataDir: deps.config.dataDir,
     };

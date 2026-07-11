@@ -15,6 +15,9 @@ const serverClientState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../client.js", async () => {
+  // cliFetch stays real — it delegates to global fetch, which tests stub.
+  const { cliFetch } =
+    await vi.importActual<typeof import("../../client.js")>("../../client.js");
   const { createBbSdk } =
     await vi.importActual<typeof import("@bb/sdk/core")>("@bb/sdk/core");
   const { createHttpTransport } =
@@ -42,7 +45,7 @@ vi.mock("../../client.js", async () => {
       });
     },
   );
-  return { createCliBbSdk };
+  return { cliFetch, createCliBbSdk };
 });
 
 vi.mock("node:readline/promises", () => ({

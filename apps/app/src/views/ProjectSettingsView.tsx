@@ -162,16 +162,16 @@ export function ProjectSettingsView() {
     () => new Map(hosts.map((host) => [host.id, host])),
     [hosts],
   );
-  // Machine-aware add (Mockup E): with several machines, adding a source
-  // first asks which machine. The local host keeps today's picker flow; other
-  // machines go through the guided setup dialog.
-  const showMachineAddMenu = multiMachineEnabled && hosts.length > 1;
+  // Machine surfaces (source-row chrome, the machine-aware add menu from
+  // Mockup E) only appear once there's more than one machine to tell apart —
+  // a single-host setup keeps the pre-experiment UI unchanged.
+  const multipleMachines = multiMachineEnabled && hosts.length > 1;
   const showAddLocalSourceButton =
-    !showMachineAddMenu &&
+    !multipleMachines &&
     pickerHostId != null &&
     !findLocalPathProjectSourceForHost(sources, pickerHostId);
 
-  const addSourceButtons = showMachineAddMenu ? (
+  const addSourceButtons = multipleMachines ? (
     <div className="mt-2 flex gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -255,7 +255,7 @@ export function ProjectSettingsView() {
                   const isInvalid =
                     isPickerHostSource &&
                     isHostPathMissing(pathExistence, source.path);
-                  const machineHost = multiMachineEnabled
+                  const machineHost = multipleMachines
                     ? hostById.get(source.hostId)
                     : undefined;
                   return (
