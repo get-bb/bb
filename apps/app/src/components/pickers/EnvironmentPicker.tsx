@@ -18,6 +18,7 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { selectPrimaryHost } from "@/hooks/queries/host-queries";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { formatRelativeTime } from "@/lib/relative-time";
@@ -472,13 +473,7 @@ function MachineSection({
     <DropdownMenuGroup>
       <DropdownMenuLabel className="text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span
-            aria-hidden
-            className={cn(
-              "size-1.5 shrink-0 rounded-full",
-              connected ? "bg-success" : "border border-muted-foreground",
-            )}
-          />
+          <MachineStatusDot connected={connected} />
           <span className="min-w-0 truncate">{host.name}</span>
           {isThisMachine ? (
             <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>

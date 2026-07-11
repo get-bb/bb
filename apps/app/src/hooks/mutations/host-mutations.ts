@@ -1,0 +1,43 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import * as api from "@/lib/api";
+import { invalidateHostListQueries } from "../cache-owners/mutation-cache-effects";
+
+interface RenameHostRequest {
+  hostId: string;
+  name: string;
+}
+
+/** Renames a machine. Errors render inline in the rename dialog. */
+export function useRenameHost() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      showErrorToast: false,
+    },
+    mutationFn: ({ hostId, name }: RenameHostRequest) =>
+      api.updateHost(hostId, name),
+    onSuccess: () => {
+      invalidateHostListQueries({ queryClient });
+    },
+  });
+}
+
+/**
+ * Removes (revokes + tombstones) a machine. Errors render inline in the
+ * confirmation dialog — the server refuses to remove the primary host — so
+ * the global error toast is suppressed.
+ */
+export function useRemoveHost() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      showErrorToast: false,
+    },
+    mutationFn: (hostId: string) => api.deleteHost(hostId),
+    onSuccess: () => {
+      invalidateHostListQueries({ queryClient });
+    },
+  });
+}

@@ -1,5 +1,6 @@
 import {
   archivedThreadsListQueryKey,
+  hostsQueryKey,
   projectPathsQueryKeyPrefix,
   sidebarNavigationQueryKey,
   threadQueuedMessagesQueryKey,
@@ -39,6 +40,13 @@ interface ProjectSourceInvalidationArg extends QueryClientArg {
 
 interface ThreadFolderArchivedListRemovalArg extends QueryClientArg {
   folderId: string;
+}
+
+/** Host rename/remove: refresh the live host list ahead of the realtime echo. */
+export function invalidateHostListQueries({
+  queryClient,
+}: QueryClientArg): void {
+  queryClient.invalidateQueries({ queryKey: hostsQueryKey() });
 }
 
 export function invalidateProjectListQueries({

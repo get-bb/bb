@@ -3,15 +3,27 @@ import { useParams } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
   isLocalPathProjectSource,
+  type Host,
   type LocalPathProjectSource,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
+import {
+  ProjectMachineSetupDialog,
+  type ProjectMachineSetupDialogTarget,
+} from "@/components/dialogs/ProjectMachineSetupDialog";
 import {
   ProjectSourceDeleteDialog,
   type ProjectSourceDeleteDialogTarget,
 } from "@/components/dialogs/ProjectSourceDeleteDialog";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
   SettingsRowList,
   SettingsSection,
@@ -26,6 +38,8 @@ import {
   isHostPathMissing,
   useHostPathExistence,
 } from "@/hooks/queries/host-path-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
@@ -44,6 +58,17 @@ export function ProjectSettingsView() {
 
   const [deleteTarget, setDeleteTarget] =
     useState<ProjectSourceDeleteDialogTarget | null>(null);
+  const [machineSetupTarget, setMachineSetupTarget] =
+    useState<ProjectMachineSetupDialogTarget | null>(null);
+
+  const systemConfig = useSystemConfig();
+  const multiMachineEnabled =
+    systemConfig.data?.experiments.multiMachine === true;
+  const hostsQuery = useHosts({ enabled: multiMachineEnabled });
+  const hosts = useMemo(
+    () => (multiMachineEnabled ? (hostsQuery.data ?? []) : []),
+    [hostsQuery.data, multiMachineEnabled],
+  );
 
   const deleteSource = useDeleteLocalProjectSource();
   const addLocalSource = useAddLocalProjectSource();
@@ -118,11 +143,82 @@ export function ProjectSettingsView() {
     pickerHostSourcePaths,
   );
 
+  const projectGitRemoteUrl = project?.gitRemoteUrl ?? null;
+  const openMachineSetup = useCallback(
+    (host: Host) => {
+      if (!projectId) return;
+      setMachineSetupTarget({
+        projectId,
+        projectName,
+        gitRemoteUrl: projectGitRemoteUrl,
+        hostId: host.id,
+        hostName: host.name,
+      });
+    },
+    [projectGitRemoteUrl, projectId, projectName],
+  );
+
+  const hostById = useMemo(
+    () => new Map(hosts.map((host) => [host.id, host])),
+    [hosts],
+  );
+  // Machine-aware add (Mockup E): with several machines, adding a source
+  // first asks which machine. The local host keeps today's picker flow; other
+  // machines go through the guided setup dialog.
+  const showMachineAddMenu = multiMachineEnabled && hosts.length > 1;
   const showAddLocalSourceButton =
+    !showMachineAddMenu &&
     pickerHostId != null &&
     !findLocalPathProjectSourceForHost(sources, pickerHostId);
 
-  const addSourceButtons = showAddLocalSourceButton ? (
+  const addSourceButtons = showMachineAddMenu ? (
+    <div className="mt-2 flex gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={addLocalSource.isPending}
+          >
+            Add on a machine
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-64">
+          {hosts.map((host) => {
+            const hasSource = Boolean(
+              findLocalPathProjectSourceForHost(sources, host.id),
+            );
+            const connected = host.status === "connected";
+            return (
+              <DropdownMenuItem
+                key={host.id}
+                disabled={hasSource || !connected}
+                onSelect={() => {
+                  if (host.id === pickerHostId) {
+                    openAddLocalSourcePicker();
+                  } else {
+                    openMachineSetup(host);
+                  }
+                }}
+              >
+                <MachineStatusDot connected={connected} />
+                <span className="min-w-0 flex-1 truncate">{host.name}</span>
+                {hasSource ? (
+                  <span className="shrink-0 text-xs text-subtle-foreground">
+                    Already added
+                  </span>
+                ) : !connected ? (
+                  <span className="shrink-0 text-xs text-subtle-foreground">
+                    Offline
+                  </span>
+                ) : null}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  ) : showAddLocalSourceButton ? (
     <div className="mt-2 flex gap-2">
       <Button
         size="sm"
@@ -159,10 +255,21 @@ export function ProjectSettingsView() {
                   const isInvalid =
                     isPickerHostSource &&
                     isHostPathMissing(pathExistence, source.path);
+                  const machineHost = multiMachineEnabled
+                    ? hostById.get(source.hostId)
+                    : undefined;
                   return (
                     <ProjectSourceRow
                       key={source.id}
                       source={source}
+                      machine={
+                        machineHost
+                          ? {
+                              name: machineHost.name,
+                              connected: machineHost.status === "connected",
+                            }
+                          : null
+                      }
                       canEditLocalPath={isPickerHostSource}
                       isLocalPathInvalid={isInvalid}
                       isEditPending={localSourcePickerPending}
@@ -192,6 +299,14 @@ export function ProjectSettingsView() {
         hostName={localSourcePicker.hostName}
         onOpenChange={localSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={localSourcePicker.submitProjectPath}
+      />
+
+      <ProjectMachineSetupDialog
+        target={machineSetupTarget}
+        onOpenChange={(open) => {
+          if (!open) setMachineSetupTarget(null);
+        }}
+        onComplete={() => setMachineSetupTarget(null)}
       />
 
       <ProjectSourceDeleteDialog

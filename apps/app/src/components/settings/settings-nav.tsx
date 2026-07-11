@@ -28,6 +28,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
+  { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "Laptop", id: "servers", label: "Servers" },
   { icon: "Zap", id: "experiments", label: "Experiments" },
   { icon: "Layers", id: "plugins", label: "Plugins" },
@@ -123,6 +124,10 @@ export function useSettingsNavState(): SettingsNavState {
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
+    }
+    if (section.id === "machines") {
+      // Multi-machine experiment surface (Settings → Machines).
+      return systemConfig.data?.experiments.multiMachine === true;
     }
     if (section.id === "servers") {
       // Desktop multi-server registry only; older shells omit the surface.

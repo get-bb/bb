@@ -17,6 +17,7 @@ import type {
 } from "@bb/domain";
 import type {
   CommandListResponse,
+  CreateHostJoinCodeResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
   CreateThreadFolderRequest,
@@ -1879,4 +1880,26 @@ export async function updateKeyboardSettings(
 
 export async function listHosts(signal?: AbortSignal): Promise<Host[]> {
   return request<Host[]>(apiClient.hosts.$get({}, requestOptions(signal)));
+}
+
+/**
+ * Mints a short-lived join code (and its pre-created host row) for pairing a
+ * new machine to this server. Multi-machine experiment only.
+ */
+export async function createHostJoinCode(
+  signal?: AbortSignal,
+): Promise<CreateHostJoinCodeResponse> {
+  return request<CreateHostJoinCodeResponse>(
+    apiClient.hosts["join-codes"].$post({ json: {} }, requestOptions(signal)),
+  );
+}
+
+export async function updateHost(id: string, name: string): Promise<Host> {
+  return request<Host>(
+    apiClient.hosts[":id"].$patch({ param: { id }, json: { name } }),
+  );
+}
+
+export async function deleteHost(id: string): Promise<void> {
+  await request<{ ok: true }>(apiClient.hosts[":id"].$delete({ param: { id } }));
 }

@@ -48,6 +48,7 @@ import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSetti
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
+import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ServersSettingsSection } from "@/components/settings/ServersSettingsSection";
 import {
   useUpdateGeneralSettings,
@@ -1258,6 +1259,8 @@ export function SettingsView() {
         <FileOpenersSettingsSection />
       </>
     );
+  } else if (activeSection === "machines") {
+    content = <MachinesSettingsSection />;
   } else if (activeSection === "servers") {
     content = <ServersSettingsSection />;
   } else if (activeSection === "experiments") {
