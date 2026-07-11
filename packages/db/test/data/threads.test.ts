@@ -9,6 +9,7 @@ import {
   countNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
+  hasActiveThreadAttention,
   setThreadExecutionOverride,
   hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
@@ -28,6 +29,7 @@ import {
   applyThreadLifecycleEvent,
   requireThreadLifecycleEventApplied,
 } from "../../src/data/threads.js";
+import { createPendingInteraction } from "../../src/data/pending-interactions.js";
 import {
   createThreadFolder,
   deleteThreadFolder,
@@ -64,6 +66,55 @@ function mustCreateThreadFolder(
 }
 
 describe("threads", () => {
+  it("summarizes favicon attention for active sidebar threads", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      const { db, project } = setup();
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      expect(hasActiveThreadAttention(db)).toBe(false);
+
+      vi.setSystemTime(2_000);
+      markThreadAttentionRequested(db, noopNotifier, {
+        threadId: thread.id,
+      });
+      expect(hasActiveThreadAttention(db)).toBe(true);
+
+      updateThread(db, noopNotifier, thread.id, { lastReadAt: 2_000 });
+      expect(hasActiveThreadAttention(db)).toBe(false);
+
+      createPendingInteraction(db, {
+        payload: "{}",
+        providerId: "codex",
+        providerRequestId: "request-1",
+        providerThreadId: "provider-thread-1",
+        threadId: thread.id,
+        turnId: "turn-1",
+      });
+      expect(hasActiveThreadAttention(db)).toBe(true);
+
+      archiveThread(db, noopNotifier, thread.id);
+      expect(hasActiveThreadAttention(db)).toBe(false);
+
+      const sideChat = createThread(db, noopNotifier, {
+        originKind: "side-chat",
+        projectId: project.id,
+        providerId: "codex",
+        sourceThreadId: thread.id,
+      });
+      vi.setSystemTime(3_000);
+      markThreadAttentionRequested(db, noopNotifier, {
+        threadId: sideChat.id,
+      });
+      expect(hasActiveThreadAttention(db)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("creates and retrieves a thread", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {

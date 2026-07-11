@@ -109,6 +109,7 @@ import type {
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SidebarBootstrapResponse,
+  SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
   SystemExecutionOptionsQuery,
@@ -1010,6 +1011,12 @@ export const publicApiRoutes = {
   },
 
   system: {
+    attention: defineRoute({
+      path: "/system/attention",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemAttentionResponse>(),
+    }),
     config: defineRoute({
       path: "/system/config",
       method: "get",

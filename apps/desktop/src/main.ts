@@ -109,6 +109,11 @@ import {
   SERVER_STATUS_PROBE_TIMEOUT_MS,
 } from "./server-status.js";
 import {
+  fetchServerAttention,
+  SERVER_ATTENTION_POLL_INTERVAL_MS,
+  SERVER_ATTENTION_REQUEST_TIMEOUT_MS,
+} from "./server-attention.js";
+import {
   createDesktopShutdownState,
   registerDesktopShutdownSignalHandlers,
 } from "./desktop-shutdown.js";
@@ -353,6 +358,9 @@ let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
 let builtinLastProbe: ServerProbeResult | null = null;
 const remoteServerStatuses = new Map<string, BbDesktopServerStatus>();
+const serverAttentionStates = new Map<string, boolean>();
+let serverAttentionRefreshInFlight: Promise<void> | null = null;
+let serverAttentionRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let serverStatusRefreshToken = 0;
 let serverStatusProbeInFlight: Promise<void> | null = null;
 
@@ -675,6 +683,58 @@ function scheduleServerStatusRefresh(): void {
     .finally(() => {
       serverStatusProbeInFlight = null;
     });
+}
+
+async function refreshServerAttention(): Promise<void> {
+  if (serverRegistry === null) {
+    return;
+  }
+  const entries = await Promise.all(
+    serverRegistry.list().map(async (server) => {
+      const hasAttention = await fetchServerAttention({
+        fetchImpl: (input, init) => session.defaultSession.fetch(input, init),
+        serverUrl: server.url,
+        timeoutMs: SERVER_ATTENTION_REQUEST_TIMEOUT_MS,
+      });
+      return [server.id, hasAttention] as const;
+    }),
+  );
+  serverAttentionStates.clear();
+  for (const [serverId, hasAttention] of entries) {
+    serverAttentionStates.set(serverId, hasAttention ?? false);
+  }
+}
+
+function scheduleServerAttentionRefresh(): void {
+  if (serverAttentionRefreshInFlight !== null) {
+    return;
+  }
+  serverAttentionRefreshInFlight = refreshServerAttention()
+    .then(() => {
+      sendServersChanged();
+    })
+    .finally(() => {
+      serverAttentionRefreshInFlight = null;
+    });
+}
+
+function startServerAttentionPolling(): void {
+  if (serverAttentionRefreshTimer !== null) {
+    return;
+  }
+  scheduleServerAttentionRefresh();
+  serverAttentionRefreshTimer = setInterval(
+    scheduleServerAttentionRefresh,
+    SERVER_ATTENTION_POLL_INTERVAL_MS,
+  );
+}
+
+function stopServerAttentionPolling(): void {
+  if (serverAttentionRefreshTimer === null) {
+    return;
+  }
+  clearInterval(serverAttentionRefreshTimer);
+  serverAttentionRefreshTimer = null;
 }
 
 function installCurrentApplicationMenu(): void {
@@ -1078,6 +1138,7 @@ function buildServerListEntries(args: {
     return {
       active: server.id === args.activeServerId,
       color: tileStyle.color,
+      hasAttention: serverAttentionStates.get(server.id) ?? false,
       icon: tileStyle.icon,
       id: server.id,
       name: server.name,
@@ -1095,9 +1156,29 @@ async function refreshServerStatuses(): Promise<void> {
   const token = serverStatusRefreshToken + 1;
   serverStatusRefreshToken = token;
   const servers = serverRegistry.list();
+  const localServerUrl = currentRuntime?.serverUrl;
+  if (localServerUrl !== undefined) {
+    await Promise.all(
+      servers
+        .filter((server) => server.source === "connect")
+        .map(async (server) => {
+          const result = await installConnectDesktopSession({
+            cookieStore: session.defaultSession.cookies,
+            localServerUrl,
+            remoteServerUrl: server.url,
+          });
+          if (!result.ok) {
+            createDesktopLogger().warn(
+              `[desktop] Connect status authentication failed (${result.code}): ${result.detail}`,
+            );
+          }
+        }),
+    );
+  }
   const remoteStatuses = await probeRemoteServerStatuses({
     probe: (serverUrl) =>
       probeBbServer({
+        fetchImpl: (input, init) => session.defaultSession.fetch(input, init),
         serverUrl,
         timeoutMs: SERVER_STATUS_PROBE_TIMEOUT_MS,
       }),
@@ -1315,6 +1396,7 @@ function registerDesktopServerIpc(): void {
     // Return cached statuses immediately so an offline remote cannot stall
     // settings mounts. Coalesced probes push updates via servers:changed.
     scheduleServerStatusRefresh();
+    scheduleServerAttentionRefresh();
     // Soft-trigger connect sync when the last attempt is older than 60s.
     connectServerSync?.onListRequested();
     const browserWindow = BrowserWindow.fromWebContents(event.sender);
@@ -1366,6 +1448,7 @@ function registerDesktopServerIpc(): void {
         server: {
           active: false,
           color: null,
+          hasAttention: false,
           icon: null,
           id: result.server.id,
           name: result.server.name,
@@ -1394,6 +1477,7 @@ function registerDesktopServerIpc(): void {
       return;
     }
     remoteServerStatuses.delete(parsed.data.id);
+    serverAttentionStates.delete(parsed.data.id);
     // Windows pointing at the removed server fall back to the builtin entry.
     for (const browserWindow of BrowserWindow.getAllWindows()) {
       if (
@@ -1859,6 +1943,7 @@ function handleBeforeQuit(event: Event): void {
 
 async function finishQuit(): Promise<void> {
   stopSystemConfigSync();
+  stopServerAttentionPolling();
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
   desktopBrowserViewManager?.destroyAll();
@@ -2353,6 +2438,7 @@ async function runDesktopApp(): Promise<void> {
   activeServerState = createActiveServerState({
     defaultServerId: BUILTIN_SERVER_ID,
   });
+  startServerAttentionPolling();
   const logger = createDesktopLogger();
   connectServerSync = createConnectServerSync({
     getLocalServerUrl: () => currentRuntime?.serverUrl ?? null,
@@ -2364,6 +2450,7 @@ async function runDesktopApp(): Promise<void> {
   connectServerSync.start();
   serverRegistry.onChange(() => {
     refreshApplicationMenuAndProbeStatuses();
+    scheduleServerAttentionRefresh();
     sendServersChanged();
   });
 

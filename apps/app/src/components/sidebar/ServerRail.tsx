@@ -43,6 +43,10 @@ function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
           backgroundColor: `color-mix(in oklab, ${colorHex} 18%, transparent)`,
         }
       : undefined;
+  const hasConnectivityProblem =
+    server.status === "offline" || server.status === "incompatible";
+  const showsAttention =
+    !server.active && !hasConnectivityProblem && server.hasAttention === true;
 
   return (
     <Tooltip>
@@ -77,12 +81,16 @@ function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
               {tileGlyph(server.name)}
             </span>
           )}
-          {/* Status stays quiet unless something is wrong. */}
-          {server.status === "offline" || server.status === "incompatible" ? (
+          {/* Connectivity problems take precedence over work attention. */}
+          {hasConnectivityProblem || showsAttention ? (
             <span
-              data-testid={`server-rail-status-${server.id}`}
+              data-testid={
+                hasConnectivityProblem
+                  ? `server-rail-status-${server.id}`
+                  : `server-rail-attention-${server.id}`
+              }
               className={cn(
-                "absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full ring-2 ring-sidebar",
+                "absolute right-1.5 top-1.5 size-1.5 rounded-full ring-2 ring-sidebar",
                 server.status === "offline"
                   ? "bg-muted-foreground"
                   : "bg-destructive",
@@ -93,8 +101,9 @@ function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
       </TooltipTrigger>
       <TooltipContent side="right">
         <div className="font-medium">{server.name}</div>
-        <div className="text-muted-foreground">
+        <div className="text-primary-foreground">
           {server.url} · {STATUS_LABELS[server.status]}
+          {showsAttention ? " · Needs attention" : null}
         </div>
       </TooltipContent>
     </Tooltip>
