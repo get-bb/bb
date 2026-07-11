@@ -1,10 +1,5 @@
 import { execFile } from "node:child_process";
-import {
-  mkdir,
-  mkdtemp,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -46,7 +41,9 @@ async function fixture(mode: "development" | "packaged") {
 }
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true })),
+  );
 });
 
 describe.each(["development", "packaged"] as const)(
@@ -54,7 +51,11 @@ describe.each(["development", "packaged"] as const)(
   (mode) => {
     it("resolves and packs a structurally valid npm package", async () => {
       const test = await fixture(mode);
-      const calls: Array<{ command: string; args: readonly string[]; cwd: string }> = [];
+      const calls: Array<{
+        command: string;
+        args: readonly string[];
+        cwd: string;
+      }> = [];
       const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
         calls.push({ command, args, cwd });
         if (command === "pnpm") {
@@ -95,6 +96,41 @@ describe.each(["development", "packaged"] as const)(
       );
       await expect(service.getTarballPath()).resolves.toBe(tarball);
       expect(calls.filter((call) => call.command === "npm")).toHaveLength(1);
+    });
+
+    it("builds a fresh artifact when the protocol changes at the same package version", async () => {
+      const test = await fixture(mode);
+      const calls: Array<{
+        command: string;
+        args: readonly string[];
+        cwd: string;
+      }> = [];
+      const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
+        calls.push({ command, args, cwd });
+        if (command === "pnpm") return "built";
+        return (await execFileAsync(command, [...args], { cwd })).stdout;
+      };
+      const baseOptions = {
+        dataDir: join(test.root, "data"),
+        isDevelopment: mode === "development",
+        commandRunner: runner,
+        serverEntryUrl: pathToFileURL(test.serverEntry).href,
+      };
+
+      const first = await createBbAppArtifactService({
+        ...baseOptions,
+        protocolVersion: 51,
+      }).getTarballPath();
+      const second = await createBbAppArtifactService({
+        ...baseOptions,
+        protocolVersion: 52,
+      }).getTarballPath();
+
+      expect(second).not.toBe(first);
+      expect(calls.filter((call) => call.command === "npm")).toHaveLength(2);
+      expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
+        mode === "development" ? 2 : 0,
+      );
     });
   },
 );

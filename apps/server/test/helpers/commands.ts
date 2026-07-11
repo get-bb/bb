@@ -51,6 +51,19 @@ export interface QueuedCommand<
   rpcRequest?: HostDaemonOnlineRpcRequestMessage;
 }
 
+export function listQueuedCommands(
+  harness: TestAppHarness,
+  type: HostDaemonRpcCommand["type"],
+): HostDaemonRpcCommand[] {
+  return pendingHostRpcRequests
+    .filter(
+      (queued) =>
+        isCapturedRpcForHarness(harness, queued) &&
+        queued.command.type === type,
+    )
+    .map((queued) => hostDaemonRpcCommandSchema.parse(queued.command));
+}
+
 type ManagedWorktreeEnvironmentProvisionCommand = Extract<
   HostDaemonCommand,
   { type: "environment.provision"; workspaceProvisionType: "managed-worktree" }

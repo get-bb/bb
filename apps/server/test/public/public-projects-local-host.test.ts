@@ -8,6 +8,7 @@ import {
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
+  seedHost,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
@@ -16,6 +17,7 @@ import { withTestHarness } from "../helpers/test-app.js";
 
 const projectResponseSchema = z.object({
   id: z.string(),
+  gitRemoteUrl: z.string().nullable(),
   sources: z.array(
     z.object({
       id: z.string(),
@@ -25,6 +27,64 @@ const projectResponseSchema = z.object({
 });
 
 describe("public project local host routes", () => {
+  it("creates projects and local sources when inspection is unavailable", async () => {
+    await withTestHarness(async (harness) => {
+      const offlinePrimary = seedHost(harness.deps, {
+        id: "host-offline-primary",
+      });
+      seedPrimaryHost(harness.deps, offlinePrimary.id);
+
+      const projectResponse = await harness.app.request("/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Offline Project",
+          source: {
+            type: "local_path",
+            hostId: offlinePrimary.id,
+            path: "/tmp/offline-project",
+          },
+        }),
+      });
+      expect(projectResponse.status).toBe(201);
+      const project = projectResponseSchema.parse(
+        await readJson(projectResponse),
+      );
+      expect(project.gitRemoteUrl).toBeNull();
+
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
+      });
+      const offlineSecondary = seedHost(harness.deps, {
+        id: "host-offline-secondary",
+      });
+      const sourceResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/sources`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "local_path",
+            hostId: offlineSecondary.id,
+            path: "/tmp/offline-project-secondary",
+          }),
+        },
+      );
+      expect(sourceResponse.status).toBe(201);
+      await expect(readJson(sourceResponse)).resolves.toMatchObject({
+        hostId: offlineSecondary.id,
+        path: "/tmp/offline-project-secondary",
+      });
+      const refreshed = await harness.app.request(
+        `/api/v1/projects/${project.id}`,
+      );
+      await expect(readJson(refreshed)).resolves.toMatchObject({
+        gitRemoteUrl: null,
+      });
+    });
+  });
+
   it("supports local project source updates and secondary host sources", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-source-1" });

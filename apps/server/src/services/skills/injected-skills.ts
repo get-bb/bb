@@ -146,7 +146,11 @@ function logSkillCollision(args: SkillCollisionLogArgs): void {
 }
 
 function sortDirentsByName(left: Dirent, right: Dirent): number {
-  return left.name.localeCompare(right.name);
+  return compareStringsByCodePoint(left.name, right.name);
+}
+
+function compareStringsByCodePoint(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function normalizeRelativePath(relativePath: string): string {
@@ -188,7 +192,7 @@ export function hashSkillTreeEntries(
   const hash = createHash("sha256");
   hash.update("bb-skill-tree-v1");
   for (const entry of [...entries].sort((left, right) =>
-    left.path.localeCompare(right.path),
+    compareStringsByCodePoint(left.path, right.path),
   )) {
     hash.update("\0file\0");
     hash.update(entry.path);
@@ -546,7 +550,9 @@ function excludeCollisions(
     });
   }
 
-  return resolved.sort((left, right) => left.name.localeCompare(right.name));
+  return resolved.sort((left, right) =>
+    compareStringsByCodePoint(left.name, right.name),
+  );
 }
 
 /**
@@ -668,5 +674,5 @@ export function resolveInjectedSkillSources(
       (source) =>
         source.sourceType === "project" || !projectNames.has(source.name),
     )
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => compareStringsByCodePoint(left.name, right.name));
 }

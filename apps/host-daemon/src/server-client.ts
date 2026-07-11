@@ -406,11 +406,10 @@ export function createServerClient(
     },
 
     async fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree> {
-      if (!usesSecureInternalFetchTransport(options.serverUrl)) {
-        throw new AbortError(
-          `Refusing to fetch skill tree over insecure server URL: ${options.serverUrl}`,
-        );
-      }
+      // Skill trees ride the same authenticated transport as the rest of the
+      // daemon protocol and are hash-verified after download. For a trusted-LAN
+      // setup, that declared network is the boundary even when it uses HTTP.
+      // Attachments and self-update intentionally retain stricter guards.
       const response = await fetchFn(
         buildInternalUrl(`/skills/tree/${encodeURIComponent(treeHash)}`),
         { method: "GET", headers: headers() },

@@ -16,6 +16,7 @@ import {
   updateProject,
   updateProjectSource,
   setProjectGitRemoteUrlIfMissing,
+  isSqliteUniqueConstraintOnColumns,
   type ReorderProjectResult,
 } from "@bb/db";
 import {
@@ -282,6 +283,34 @@ interface ResolvedProjectSource {
   gitRemoteUrl: string | null;
 }
 
+function projectSourceHostConflict(): ApiError {
+  return new ApiError(
+    409,
+    "project_source_host_conflict",
+    "Project already has a source on this host",
+  );
+}
+
+async function inspectProjectGitRemoteBestEffort(
+  deps: AppDeps,
+  args: { hostId: string; path: string },
+): Promise<string | null> {
+  try {
+    const inspection = await callHostRetryableOnlineRpc(deps, {
+      hostId: args.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: { type: "project.inspect", path: args.path },
+    });
+    return inspection.gitRemoteUrl;
+  } catch (error) {
+    deps.logger.warn(
+      { err: error, hostId: args.hostId, path: args.path },
+      "Unable to inspect project source; continuing without a Git remote anchor",
+    );
+    return null;
+  }
+}
+
 interface ResolveEnvironmentPathArgs {
   environmentId: string;
   projectId: string;
@@ -366,21 +395,17 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       requireNonDestroyedHostWithStatus(deps, source.hostId);
       assertUsableHostId(deps, { hostId: source.hostId });
     }
-    const inspection = await callHostRetryableOnlineRpc(deps, {
-      hostId: source.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: { type: "project.inspect", path: source.path },
-    });
+    const gitRemoteUrl = await inspectProjectGitRemoteBestEffort(deps, source);
     const { project } = createProject(deps.db, deps.hub, {
       name: payload.name,
       source,
     });
-    if (inspection.gitRemoteUrl !== null) {
+    if (gitRemoteUrl !== null) {
       setProjectGitRemoteUrlIfMissing(
         deps.db,
         deps.hub,
         project.id,
-        inspection.gitRemoteUrl,
+        gitRemoteUrl,
       );
     }
     return context.json(buildProjectResponses(deps, project.id)[0], 201);
@@ -468,6 +493,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const project = requirePublicStandardProject(deps.db, projectId);
     requireNonDestroyedHostWithStatus(deps, payload.hostId);
     assertUsableHostId(deps, { hostId: payload.hostId });
+    if (getProjectSourceByHost(deps.db, projectId, payload.hostId)) {
+      throw projectSourceHostConflict();
+    }
     let resolved: ResolvedProjectSource;
     if (payload.type === "clone") {
       const remoteUrl = payload.remoteUrl ?? project.gitRemoteUrl;
@@ -491,18 +519,34 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         },
       });
     } else {
-      resolved = await callHostRetryableOnlineRpc(deps, {
-        hostId: payload.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: { type: "project.inspect", path: payload.path },
-      });
+      resolved = {
+        path: payload.path,
+        gitRemoteUrl: await inspectProjectGitRemoteBestEffort(deps, payload),
+      };
     }
-    const source = createProjectSource(deps.db, deps.hub, {
-      projectId,
-      type: "local_path",
-      hostId: payload.hostId,
-      path: resolved.path,
-    });
+    let source;
+    try {
+      source = createProjectSource(deps.db, deps.hub, {
+        projectId,
+        type: "local_path",
+        hostId: payload.hostId,
+        path: resolved.path,
+      });
+    } catch (error) {
+      // A clone can be orphaned only if another request wins this race after
+      // the up-front check; the database constraint remains the backstop.
+      if (
+        error instanceof Error &&
+        isSqliteUniqueConstraintOnColumns(error, {
+          columnNames: ["project_id", "host_id"],
+          indexName: "project_sources_project_host_idx",
+          tableName: "project_sources",
+        })
+      ) {
+        throw projectSourceHostConflict();
+      }
+      throw error;
+    }
     if (resolved.gitRemoteUrl !== null) {
       setProjectGitRemoteUrlIfMissing(
         deps.db,

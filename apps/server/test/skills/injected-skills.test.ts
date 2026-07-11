@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -12,6 +13,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 import {
+  hashSkillTreeEntries,
   readSkillTreeManifest,
   resolveInjectedSkillSources as resolveInjectedSkillSourcesWithRegistry,
   SkillTreeRegistry,
@@ -158,6 +160,31 @@ describe("injected skill source discovery", () => {
 
     await chmod(secondReference, 0o755);
     expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+  });
+
+  it("hashes Unicode paths in locale-independent code-point order", () => {
+    const entries = ["ä", "z", "A", "a"].map((entryPath) => ({
+      path: entryPath,
+      mode: 0o644,
+      bytes: Buffer.from(entryPath),
+    }));
+
+    const expected = createHash("sha256");
+    expected.update("bb-skill-tree-v1");
+    for (const entry of [...entries].sort((left, right) =>
+      left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+    )) {
+      expected.update("\0file\0");
+      expected.update(entry.path);
+      expected.update("\0");
+      expected.update(entry.mode.toString(8));
+      expected.update("\0");
+      expected.update(String(entry.bytes.length));
+      expected.update("\0");
+      expected.update(entry.bytes);
+    }
+
+    expect(hashSkillTreeEntries(entries)).toBe(expected.digest("hex"));
   });
 
   it("aggregates valid data-dir skills", async () => {

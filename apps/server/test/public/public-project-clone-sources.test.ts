@@ -2,6 +2,7 @@ import { countProjectSources, getProject, setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
+  listQueuedCommands,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -38,6 +39,32 @@ function cloneSourceRequest(args: {
 }
 
 describe("project clone sources", () => {
+  it("rejects an already-sourced host before dispatching clone", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-clone-conflict",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+
+      const response = await harness.app.fetch(
+        cloneSourceRequest({
+          projectId: project.id,
+          hostId: host.id,
+          remoteUrl: "ssh://git.example.test/team/repo.git",
+        }),
+      );
+
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "project_source_host_conflict",
+      });
+      expect(listQueuedCommands(harness, "project.clone")).toEqual([]);
+    });
+  });
+
   it("creates resolved sources, anchors origin, and defaults later clones to it", async () => {
     await withTestHarness(async (harness) => {
       const first = seedHostSession(harness.deps, { id: "host-clone-first" });

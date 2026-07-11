@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, stat } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,11 +20,17 @@ export interface CreateBbAppArtifactServiceOptions {
   dataDir: string;
   isDevelopment: boolean;
   commandRunner?: BbAppArtifactCommandRunner;
+  protocolVersion?: number;
   serverEntryUrl?: string;
 }
 
 interface BbAppPackageJson {
   name: string;
+  version: string;
+}
+
+interface BbAppArtifactMetadata {
+  protocolVersion: number;
   version: string;
 }
 
@@ -91,6 +98,8 @@ export function createBbAppArtifactService(
     serverEntryUrl: options.serverEntryUrl ?? import.meta.url,
   });
   const cacheDir = join(options.dataDir, "install-cache");
+  const protocolVersion =
+    options.protocolVersion ?? HOST_DAEMON_PROTOCOL_VERSION;
   let packageJsonPromise: Promise<BbAppPackageJson> | undefined;
 
   function getPackageJson(): Promise<BbAppPackageJson> {
@@ -102,13 +111,37 @@ export function createBbAppArtifactService(
     const packageJson = await getPackageJson();
     const tarballPath = join(
       cacheDir,
-      `bb-app-${safeVersionFilePart(packageJson.version)}.tgz`,
+      `bb-app-${safeVersionFilePart(packageJson.version)}-protocol-${protocolVersion}.tgz`,
     );
-    if (await pathIsFile(tarballPath)) {
+    const metadataPath = `${tarballPath}.json`;
+    let cachedMetadata: BbAppArtifactMetadata | null = null;
+    try {
+      const parsed: unknown = JSON.parse(await readFile(metadataPath, "utf8"));
+      if (
+        parsed !== null &&
+        typeof parsed === "object" &&
+        "version" in parsed &&
+        parsed.version === packageJson.version &&
+        "protocolVersion" in parsed &&
+        parsed.protocolVersion === protocolVersion
+      ) {
+        cachedMetadata = {
+          version: parsed.version,
+          protocolVersion: parsed.protocolVersion,
+        };
+      }
+    } catch {
+      cachedMetadata = null;
+    }
+    if (cachedMetadata && (await pathIsFile(tarballPath))) {
       return tarballPath;
     }
 
     await mkdir(cacheDir, { recursive: true });
+    await Promise.all([
+      rm(tarballPath, { force: true }),
+      rm(metadataPath, { force: true }),
+    ]);
 
     if (options.isDevelopment) {
       const repoRoot = resolve(packageRoot, "../..");
@@ -130,6 +163,11 @@ export function createBbAppArtifactService(
     }
     const packedPath = join(cacheDir, packedName);
     await rename(packedPath, tarballPath);
+    await writeFile(
+      metadataPath,
+      `${JSON.stringify({ version: packageJson.version, protocolVersion })}\n`,
+      "utf8",
+    );
     return tarballPath;
   }
 
@@ -138,7 +176,7 @@ export function createBbAppArtifactService(
       const version = (await getPackageJson()).version;
       const tarballPath = join(
         cacheDir,
-        `bb-app-${safeVersionFilePart(version)}.tgz`,
+        `bb-app-${safeVersionFilePart(version)}-protocol-${protocolVersion}.tgz`,
       );
       const existing = pendingBuilds.get(tarballPath);
       if (existing) {

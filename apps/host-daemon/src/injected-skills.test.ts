@@ -10,6 +10,7 @@ import {
   utimes,
   writeFile,
 } from "node:fs/promises";
+import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -141,7 +142,9 @@ function createTreePayload(
       contentBase64: Buffer.from("#!/bin/sh\necho synced\n").toString("base64"),
     },
   ];
-  entries.sort((left, right) => left.path.localeCompare(right.path));
+  entries.sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+  );
   const hash = createHash("sha256");
   hash.update("bb-skill-tree-v1");
   for (const entry of entries) {
@@ -249,6 +252,74 @@ describe("injected skill staging", () => {
     ]);
   });
 
+  it("rejects fetched tree content that does not match its declared hash", async () => {
+    const dataDir = await makeTempDir();
+    const payload = createTreePayload("tampered-tree");
+    const tampered = {
+      ...payload,
+      entries: payload.entries.map((entry, index) =>
+        index === 0
+          ? {
+              ...entry,
+              contentBase64: Buffer.from("tampered\n").toString("base64"),
+            }
+          : entry,
+      ),
+    };
+
+    await expect(
+      stageInjectedSkillSources({
+        dataDir,
+        fetchSkillTree: async () => tampered,
+        injectedSkillSources: [
+          createTreeSource("tampered-tree", payload.treeHash),
+        ],
+      }),
+    ).rejects.toThrow("Fetched skill tree content hash mismatch");
+  });
+
+  it("verifies Unicode paths with locale-independent code-point ordering", async () => {
+    const dataDir = await makeTempDir();
+    const entries = ["ä", "z", "A", "a"].map((entryPath) => ({
+      path: entryPath,
+      mode: 0o644,
+      contentBase64: Buffer.from(entryPath).toString("base64"),
+    }));
+    entries.push({
+      path: "SKILL.md",
+      mode: 0o644,
+      contentBase64: Buffer.from(
+        "---\nname: unicode-paths\ndescription: Use Unicode paths in tests.\n---\n",
+      ).toString("base64"),
+    });
+    const hash = createHash("sha256");
+    hash.update("bb-skill-tree-v1");
+    for (const entry of [...entries].sort((left, right) =>
+      left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+    )) {
+      const bytes = Buffer.from(entry.contentBase64, "base64");
+      hash.update("\0file\0");
+      hash.update(entry.path);
+      hash.update("\0");
+      hash.update(entry.mode.toString(8));
+      hash.update("\0");
+      hash.update(String(bytes.length));
+      hash.update("\0");
+      hash.update(bytes);
+    }
+    const payload = { treeHash: hash.digest("hex"), entries };
+
+    await expect(
+      stageInjectedSkillSources({
+        dataDir,
+        fetchSkillTree: async () => payload,
+        injectedSkillSources: [
+          createTreeSource("unicode-paths", payload.treeHash),
+        ],
+      }),
+    ).resolves.toMatchObject({ skillRoots: expect.any(Array) });
+  });
+
   it("garbage-collects the least-recently-used trees beyond the store cap", async () => {
     const dataDir = await makeTempDir();
     const payloads = Array.from({ length: 65 }, (_, index) => {
@@ -277,6 +348,73 @@ describe("injected skill staging", () => {
       },
     );
     expect(entries.filter((entry) => entry.isDirectory()).length).toBe(64);
+  });
+
+  it("exempts in-flight tree hashes from garbage collection", async () => {
+    const dataDir = await makeTempDir();
+    const storeRoot = path.join(dataDir, "runtime", "skill-store");
+    const residents = Array.from({ length: 64 }, (_, index) => {
+      const name = index === 0 ? "protected-skill" : `resident-${index}`;
+      return { name, payload: createTreePayload(name, `resident-${index}`) };
+    });
+    for (const { name, payload } of residents) {
+      await stageInjectedSkillSources({
+        dataDir,
+        fetchSkillTree: async () => payload,
+        injectedSkillSources: [createTreeSource(name, payload.treeHash)],
+      });
+    }
+    const protectedTree = residents[0];
+    if (!protectedTree) throw new Error("Expected a protected tree");
+    const protectedRoot = path.join(storeRoot, protectedTree.payload.treeHash);
+    const protectedContentRoot = path.join(protectedRoot, "content");
+    let resumeCollection = (): void => undefined;
+    const collectionBlocked = new Promise<void>((resolve) => {
+      resumeCollection = resolve;
+    });
+    let reportCollectionBlocked = (): void => undefined;
+    const collectionReached = new Promise<void>((resolve) => {
+      reportCollectionBlocked = resolve;
+    });
+    const originalLstat = fs.lstat.bind(fs);
+    const lstatSpy = vi
+      .spyOn(fs, "lstat")
+      .mockImplementation(async (targetPath) => {
+        if (String(targetPath) === protectedContentRoot) {
+          reportCollectionBlocked();
+          await collectionBlocked;
+        }
+        return originalLstat(targetPath);
+      });
+
+    const protectedStage = stageInjectedSkillSources({
+      dataDir,
+      fetchSkillTree: async () => protectedTree.payload,
+      injectedSkillSources: [
+        createTreeSource(protectedTree.name, protectedTree.payload.treeHash),
+      ],
+    });
+    try {
+      await collectionReached;
+      const oldest = new Date(1);
+      await utimes(path.join(protectedRoot, ".last-used"), oldest, oldest);
+      const newcomer = createTreePayload("newcomer");
+      await stageInjectedSkillSources({
+        dataDir,
+        fetchSkillTree: async () => newcomer,
+        injectedSkillSources: [createTreeSource("newcomer", newcomer.treeHash)],
+      });
+      resumeCollection();
+
+      await expect(protectedStage).resolves.toMatchObject({
+        skillRoots: expect.any(Array),
+      });
+      await expect(lstat(protectedRoot)).resolves.toBeDefined();
+    } finally {
+      resumeCollection();
+      await protectedStage.catch(() => undefined);
+      lstatSpy.mockRestore();
+    }
   });
 
   it("creates a shared staged snapshot for Codex, Claude Code, Pi, and ACP", async () => {

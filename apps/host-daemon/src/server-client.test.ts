@@ -119,7 +119,7 @@ describe("createServerClient", () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
-  it("fetches and parses a skill tree over the authenticated internal route", async () => {
+  it("fetches and parses a skill tree over authenticated LAN HTTP", async () => {
     const treeHash = "a".repeat(64);
     const fetchFn = vi.fn<FetchFn>(async (input, init) => {
       const url = new URL(String(input));
@@ -143,7 +143,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "https://bb.example.test",
+      serverUrl: "http://192.168.1.10:3000",
     });
 
     await expect(client.fetchSkillTree(treeHash)).resolves.toEqual({
