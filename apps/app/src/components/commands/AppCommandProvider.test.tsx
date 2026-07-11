@@ -212,20 +212,20 @@ afterEach(() => {
 });
 
 describe("AppCommandProvider", () => {
-  it("shares primary-modifier hold state after 300ms and clears it on release or blur", () => {
+  it("shares primary-modifier hold state after 700ms and clears it on release or blur", () => {
     vi.useFakeTimers();
     renderProvider(<ModifierState />);
 
     expect(screen.getByText("released")).toBeDefined();
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
-    act(() => vi.advanceTimersByTime(299));
+    act(() => vi.advanceTimersByTime(699));
     expect(screen.getByText("released")).toBeDefined();
     act(() => vi.advanceTimersByTime(1));
     expect(screen.getByText("held")).toBeDefined();
     fireEvent.keyUp(window, { key: "Control" });
     expect(screen.getByText("released")).toBeDefined();
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
-    act(() => vi.advanceTimersByTime(300));
+    act(() => vi.advanceTimersByTime(700));
     expect(screen.getByText("held")).toBeDefined();
     fireEvent.blur(window);
     expect(screen.getByText("released")).toBeDefined();
