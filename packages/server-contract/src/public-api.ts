@@ -45,6 +45,8 @@ import type {
 import type {
   CloseTerminalRequest,
   CommandListResponse,
+  CreateHostJoinCodeRequest,
+  CreateHostJoinCodeResponse,
   CreateTerminalRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
@@ -160,6 +162,7 @@ import type {
   UpdateEnvironmentRequest,
   UpdateThreadFolderRequest,
   UpdateTerminalRequest,
+  UpdateHostRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
@@ -178,6 +181,7 @@ import {
   deleteThreadFolderRequestSchema,
   createTerminalRequestSchema,
   createProjectRequestSchema,
+  createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   createThreadRequestSchema,
@@ -233,6 +237,7 @@ import {
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
+  updateHostRequestSchema,
   updateThreadFolderRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
@@ -422,6 +427,14 @@ export const publicApiRoutes = {
   },
 
   hosts: {
+    createJoinCode: defineRoute({
+      path: "/hosts/join-codes",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateHostJoinCodeRequest>(
+        createHostJoinCodeRequestSchema,
+      ),
+      response: jsonResponse<CreateHostJoinCodeResponse>({ status: 201 }),
+    }),
     list: defineRoute({
       path: "/hosts",
       method: "get",
@@ -433,6 +446,18 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<Host>(),
+    }),
+    update: defineRoute({
+      path: "/hosts/:id",
+      method: "patch",
+      request: jsonRequest<PathId, UpdateHostRequest>(updateHostRequestSchema),
+      response: jsonResponse<Host>(),
+    }),
+    delete: defineRoute({
+      path: "/hosts/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ ok: true }>(),
     }),
     directory: defineRoute({
       path: "/hosts/:id/directory",

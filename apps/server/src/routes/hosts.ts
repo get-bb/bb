@@ -1,4 +1,10 @@
 import {
+  closeSession,
+  getExperiments,
+  getNonDestroyedHost,
+  updateHost,
+} from "@bb/db";
+import {
   publicApiRoutes,
   typedRoutes,
   type PublicApiSchema,
@@ -11,7 +17,11 @@ import {
   listPublicHostsWithStatus,
   requireNonDestroyedHostWithStatus,
 } from "../services/lib/entity-lookup.js";
-import { assertUsableHostId } from "../services/hosts/primary-host.js";
+import {
+  assertUsableHostId,
+  resolvePrimaryHostId,
+} from "../services/hosts/primary-host.js";
+import { issuePersistentHostEnrollKey } from "../services/hosts/host-enrollment.js";
 import {
   callHostOnlineRpc,
   callHostRetryableOnlineRpc,
@@ -26,12 +36,49 @@ function providerCliInstallEventsToNdjson(
   return events.map((event) => `${JSON.stringify(event)}\n`).join("");
 }
 
+function assertMultiMachineEnabled(deps: AppDeps): void {
+  if (!getExperiments(deps.db).multiMachine) {
+    throw new ApiError(
+      400,
+      "multi_machine_disabled",
+      "Multi-machine support is disabled",
+    );
+  }
+}
+
+function requireMutableHost(deps: AppDeps, hostId: string) {
+  const host = getNonDestroyedHost(deps.db, hostId);
+  if (!host) {
+    throw new ApiError(404, "host_not_found", "Host not found");
+  }
+  return host;
+}
+
 export function registerHostRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post } = typedRoutes<PublicApiSchema>(app, {
+  const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (message) =>
       new ApiError(400, "invalid_request", message),
   });
   const routes = publicApiRoutes.hosts;
+
+  // UI-driven add-a-machine uses the same trust boundary as the rest of the
+  // public API, so this route intentionally does not require loopback access.
+  post(routes.createJoinCode, async (context, payload) => {
+    assertMultiMachineEnabled(deps);
+    const issued = await issuePersistentHostEnrollKey(deps, {
+      ...(payload.hostName !== undefined
+        ? { hostName: payload.hostName }
+        : {}),
+    });
+    return context.json(
+      {
+        joinCode: issued.enrollKey.key,
+        hostId: issued.hostId,
+        expiresAt: issued.enrollKey.expiresAt,
+      },
+      201,
+    );
+  });
 
   get(routes.list, (context) =>
     context.json(listPublicHostsWithStatus(deps)),
@@ -42,6 +89,47 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
       requireNonDestroyedHostWithStatus(deps, context.req.param("id")),
     ),
   );
+
+  patch(routes.update, (context, payload) => {
+    assertMultiMachineEnabled(deps);
+    const hostId = context.req.param("id");
+    requireMutableHost(deps, hostId);
+    const updated = updateHost(deps.db, deps.hub, hostId, {
+      name: payload.name,
+    });
+    if (!updated) {
+      throw new ApiError(404, "host_not_found", "Host not found");
+    }
+    // Host metadata currently shares the connection-change invalidation path.
+    deps.hub.notifyHost(hostId, ["host-connected"]);
+    return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
+  });
+
+  del(routes.delete, async (context) => {
+    assertMultiMachineEnabled(deps);
+    const hostId = context.req.param("id");
+    const host = requireMutableHost(deps, hostId);
+    if (resolvePrimaryHostId(deps) === hostId) {
+      throw new ApiError(
+        400,
+        "primary_host_removal_refused",
+        "The primary host cannot be removed",
+      );
+    }
+
+    await deps.machineAuth.revokeHostAuthKeys({
+      hostId,
+      hostType: host.type,
+    });
+    const sessionId = deps.hub.getDaemonSessionIdForHost(hostId);
+    if (sessionId) {
+      closeSession(deps.db, deps.hub, sessionId, "expired");
+      deps.hub.closeDaemonSession(sessionId, "expired");
+      deps.terminalSessions.handleDaemonSessionClosed({ sessionId });
+    }
+    updateHost(deps.db, deps.hub, hostId, { destroyedAt: Date.now() });
+    return context.json({ ok: true });
+  });
 
   // Single-level directory listing for the interactive path browser. Omitting
   // `path` lists the host's home directory (resolved on the host).

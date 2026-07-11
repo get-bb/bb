@@ -2200,12 +2200,27 @@ function resolveHostDaemonCommand(
   );
 }
 
-async function createHostDaemonJoinEnv(
+export async function createHostDaemonJoinEnv(
   args: CreateHostDaemonJoinEnvArgs,
 ): Promise<NodeJS.ProcessEnv> {
   const requestedHostId =
     trimToUndefined(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.context.dataDir));
+  const suppliedJoinCode = trimToUndefined(args.env.BB_HOST_ENROLL_KEY);
+  if (suppliedJoinCode !== undefined) {
+    if (requestedHostId === null) {
+      throw new Error("--host-id is required when --join-code is supplied");
+    }
+    await writeManagedConfig({
+      config: { serverUrl: args.serverUrl },
+      dataDir: args.context.dataDir,
+    });
+    return {
+      ...args.env,
+      BB_HOST_ENROLL_KEY: suppliedJoinCode,
+      BB_HOST_ID: requestedHostId,
+    };
+  }
   const enrollKeyResponse = await requestHostEnrollKey({
     requestedHostId,
     serverUrl: args.serverUrl,
@@ -2434,7 +2449,7 @@ export async function runBbHostDaemon(
 
 Usage:
   bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-host-daemon join --server-url <url>
+  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>]
 `);
     return;
   }
@@ -2492,7 +2507,7 @@ Usage:
   bb-app env set <key> <value>
   bb-app client ssh-target set <server-origin> <ssh-target>
   bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-app host-daemon join --server-url <url>
+  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>]
 
 CLI:
   npx --package bb-app bb <command>

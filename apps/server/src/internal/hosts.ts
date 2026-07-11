@@ -1,4 +1,4 @@
-import { createHostId, getHost, upsertHost } from "@bb/db";
+import { getHost, upsertHost } from "@bb/db";
 import { isLoopbackAddress } from "@bb/config/loopback";
 import {
   hostDaemonEnrollKeyRequestSchema,
@@ -11,11 +11,8 @@ import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import { getTrustedRemoteAddress } from "../request-context.js";
 import { assertMatchingExistingHostType } from "../services/hosts/host-type-guard.js";
+import { issuePersistentHostEnrollKey } from "../services/hosts/host-enrollment.js";
 import { requireBearerToken } from "./auth.js";
-
-function resolvePendingHostName(hostId: string): string {
-  return `pending-${hostId.slice(-8)}`;
-}
 
 function assertLoopbackRequest(remoteAddress: string | undefined): void {
   if (remoteAddress && isLoopbackAddress(remoteAddress)) {
@@ -39,29 +36,15 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
     hostDaemonEnrollKeyRequestSchema,
     async (context, payload) => {
       assertLoopbackRequest(getTrustedRemoteAddress(context));
-      const hostId = payload.hostId ?? createHostId();
-      const existing = getHost(deps.db, hostId);
-      assertMatchingExistingHostType({
-        existingHost: existing,
-        requestedHostType: "persistent",
-      });
-
-      upsertHost(deps.db, deps.hub, {
-        id: hostId,
-        name: existing?.name ?? resolvePendingHostName(hostId),
-        type: "persistent",
-      });
-
-      const enrollKey = await deps.machineAuth.issueHostEnrollKey({
-        hostId,
-        hostType: "persistent",
+      const issued = await issuePersistentHostEnrollKey(deps, {
+        ...(payload.hostId ? { hostId: payload.hostId } : {}),
       });
 
       return context.json(
         {
-          enrollKey: enrollKey.key,
-          expiresAt: enrollKey.expiresAt,
-          hostId,
+          enrollKey: issued.enrollKey.key,
+          expiresAt: issued.enrollKey.expiresAt,
+          hostId: issued.hostId,
         },
         201,
       );
