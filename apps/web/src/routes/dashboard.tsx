@@ -19,9 +19,10 @@ import {
   createServerRowFn,
   disconnectFn,
   removeServerFn,
+  revokeMachineFn,
   getDashboard,
 } from "@/server/fns";
-import type { IssuedCode, ServerSummary } from "@/server/api";
+import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
 import bbIcon from "../assets/bb-icon.png";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
 
@@ -32,9 +33,16 @@ interface DashboardSearch {
 // Absent means absent: never surface the literal strings "null"/"undefined" (or
 // empty) as a return target, and omit the key entirely when there is none so the
 // router never re-serializes `?returnTo=null` back into the URL.
-function validateDashboardSearch(search: Record<string, unknown>): DashboardSearch {
+function validateDashboardSearch(
+  search: Record<string, unknown>,
+): DashboardSearch {
   const raw = search.returnTo;
-  if (typeof raw === "string" && raw !== "" && raw !== "null" && raw !== "undefined") {
+  if (
+    typeof raw === "string" &&
+    raw !== "" &&
+    raw !== "null" &&
+    raw !== "undefined"
+  ) {
     return { returnTo: raw };
   }
   return {};
@@ -50,7 +58,10 @@ export const Route = createFileRoute("/dashboard")({
   component: Home,
 });
 
-type ServerState = Extract<ReturnType<typeof Route.useLoaderData>, { authed: true }>;
+type ServerState = Extract<
+  ReturnType<typeof Route.useLoaderData>,
+  { authed: true }
+>;
 
 /* ── layout shell ─────────────────────────────────────────────────── */
 
@@ -60,13 +71,19 @@ function BrandRow() {
       <img src={bbIcon} alt="bb" className="h-[30px] w-[30px] rounded-lg" />
       <div className="leading-tight">
         <b className="block text-sm font-semibold">bb connect</b>
-        <span className="text-xs text-muted-foreground">Your bb, reachable anywhere</span>
+        <span className="text-xs text-muted-foreground">
+          Your bb, reachable anywhere
+        </span>
       </div>
     </div>
   );
 }
 
-const SHELL_WIDTH = { sm: "max-w-[430px]", md: "max-w-[480px]", lg: "max-w-[530px]" } as const;
+const SHELL_WIDTH = {
+  sm: "max-w-[430px]",
+  md: "max-w-[480px]",
+  lg: "max-w-[530px]",
+} as const;
 
 function Shell({
   children,
@@ -95,9 +112,20 @@ function Shell({
   );
 }
 
-function WebCard({ children, className }: { children: React.ReactNode; className?: string }) {
+function WebCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className={cn("rounded-xl border border-border bg-card p-5 sm:p-[22px]", className)}>
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-card p-5 sm:p-[22px]",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -112,7 +140,8 @@ function StatusDot({ state }: { state: "online" | "offline" | "new" }) {
         "inline-block h-2 w-2 shrink-0 rounded-full",
         state === "online" && "bg-success",
         state === "offline" && "bg-warning",
-        state === "new" && "border border-dashed border-subtle-foreground bg-transparent",
+        state === "new" &&
+          "border border-dashed border-subtle-foreground bg-transparent",
       )}
     />
   );
@@ -171,13 +200,21 @@ function ErrorBox({ children }: { children: React.ReactNode }) {
 function BigCode({ code, disabled }: { code: string; disabled?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-[10px] border border-dashed border-border bg-surface-recessed px-4 py-3.5">
-      <code className="select-all font-mono text-2xl font-semibold tracking-[0.18em]">{code}</code>
+      <code className="select-all font-mono text-2xl font-semibold tracking-[0.18em]">
+        {code}
+      </code>
       <CopyButton text={code} disabled={disabled} />
     </div>
   );
 }
 
-function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function Overlay({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim p-4"
@@ -228,7 +265,8 @@ function grammarCopy(err: HandleValidationError): string {
 
 function availabilityCopy(a: LabelAvailability): string | null {
   if (a.available) return null;
-  if (a.reason === "taken") return "That address is already taken. Pick another.";
+  if (a.reason === "taken")
+    return "That address is already taken. Pick another.";
   return grammarCopy(a.error);
 }
 
@@ -255,7 +293,8 @@ function claimErrorCopy(err: string, max: number): string {
 /* ── auth actions ─────────────────────────────────────────────────── */
 
 async function signInWithGithub(returnTo: string | undefined) {
-  const callbackURL = connectReturnTo(returnTo, window.location.origin) ?? DASHBOARD_PATH;
+  const callbackURL =
+    connectReturnTo(returnTo, window.location.origin) ?? DASHBOARD_PATH;
   const res = await fetch("/api/auth/sign-in/social", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -301,8 +340,8 @@ function SignInView({ returnTo }: { returnTo: string | undefined }) {
       <WebCard>
         <h3 className="text-[17px] font-semibold tracking-tight">Sign in</h3>
         <p className="mt-1 mb-4 text-sm text-muted-foreground">
-          Give your bb a private URL and open it from any browser. Your code and data never leave
-          your machine.
+          Give your bb a private URL and open it from any browser. Your code and
+          data never leave your machine.
         </p>
         <Button
           className="w-full justify-center py-[11px]"
@@ -312,7 +351,8 @@ function SignInView({ returnTo }: { returnTo: string | undefined }) {
           Continue with GitHub
         </Button>
         <p className="mt-3 text-center text-xs text-subtle-foreground">
-          Free while in beta · up to {MAX_SERVERS_PER_ACCOUNT} servers per account
+          Free while in beta · up to {MAX_SERVERS_PER_ACCOUNT} servers per
+          account
         </p>
       </WebCard>
     </Shell>
@@ -384,7 +424,9 @@ function ClaimField({
     <Button
       disabled={!canSubmit}
       onClick={() => void submit()}
-      className={layout === "card" ? "w-full justify-center py-[11px]" : undefined}
+      className={
+        layout === "card" ? "w-full justify-center py-[11px]" : undefined
+      }
     >
       {busy ? "Claiming…" : buildSubmitLabel(label)}
     </Button>
@@ -406,10 +448,13 @@ function ClaimField({
           placeholder="your-bb"
           aria-label="Address"
         />
-        <span className="pr-3 font-mono text-sm text-subtle-foreground">.{baseDomain}</span>
+        <span className="pr-3 font-mono text-sm text-subtle-foreground">
+          .{baseDomain}
+        </span>
       </div>
       <p className="mt-2.5 text-xs text-muted-foreground">
-        {previewLead} <code className="font-mono text-foreground">{preview}</code>
+        {previewLead}{" "}
+        <code className="font-mono text-foreground">{preview}</code>
       </p>
       {error && <ErrorBox>{error}</ErrorBox>}
       {layout === "card" ? (
@@ -435,14 +480,19 @@ function ClaimView({ baseDomain }: { baseDomain: string }) {
   return (
     <Shell>
       <WebCard>
-        <h3 className="text-[17px] font-semibold tracking-tight">Pick your address</h3>
+        <h3 className="text-[17px] font-semibold tracking-tight">
+          Pick your address
+        </h3>
         <p className="mt-1 mb-4 text-sm text-muted-foreground">
-          This becomes your bb&rsquo;s permanent URL. Lowercase letters, numbers, and dashes.
+          This becomes your bb&rsquo;s permanent URL. Lowercase letters,
+          numbers, and dashes.
         </p>
         <ClaimField
           layout="card"
           baseDomain={baseDomain}
-          buildSubmitLabel={(l) => (l ? `Claim ${l}.${baseDomain}` : "Claim your address")}
+          buildSubmitLabel={(l) =>
+            l ? `Claim ${l}.${baseDomain}` : "Claim your address"
+          }
           onClaim={async (label) => {
             const r = await claimHandleFn({ data: label });
             if ("ok" in r) {
@@ -484,18 +534,26 @@ function SetupCodePanel({
   // Re-mint in place when the shown code expires.
   useEffect(() => {
     if (!code) return;
-    const t = setTimeout(() => void fetchCode(), Math.max(1000, code.expiresInMs));
+    const t = setTimeout(
+      () => void fetchCode(),
+      Math.max(1000, code.expiresInMs),
+    );
     return () => clearTimeout(t);
   }, [code, fetchCode]);
 
-  const cli = code ? `npx -p bb-app@latest bb connect --code ${code.code} --server ${code.serverUrl}` : "";
+  const cli = code
+    ? `npx -p bb-app@latest bb connect --code ${code.code} --server ${code.serverUrl}`
+    : "";
 
   return (
     <div>
       <BigCode code={code?.code ?? "····–····"} disabled={!code} />
       <p className="mt-2.5 text-xs text-subtle-foreground">
-        Paste in <span className="font-medium text-foreground">Settings → Remote access</span> on
-        your bb{" · "}
+        Paste in{" "}
+        <span className="font-medium text-foreground">
+          Settings → Remote access
+        </span>{" "}
+        on your bb{" · "}
         <button
           className="text-foreground underline underline-offset-2 hover:text-muted-foreground"
           onClick={() => setShowCli((v) => !v)}
@@ -541,7 +599,9 @@ function RepairCodeBlock({ serverId }: { serverId: string }) {
       <BigCode code={code?.code ?? "····–····"} disabled={!code} />
       <p className="mt-2.5 text-xs text-subtle-foreground">
         Re-pairing replaces this bb&rsquo;s credential. Paste in{" "}
-        <span className="font-medium text-foreground">Settings → Remote access</span>
+        <span className="font-medium text-foreground">
+          Settings → Remote access
+        </span>
         {code ? ` · expires in ${minutes(code.expiresInMs)} min` : ""}
       </p>
     </div>
@@ -580,7 +640,9 @@ function ConfirmServerAction({
         {removing ? "Remove this address?" : "Disconnect your bb?"}
       </h4>
       <p className="mb-4 text-sm text-muted-foreground">
-        <b className="font-semibold text-foreground">{server.serverUrl.replace(/^https?:\/\//, "")}</b>{" "}
+        <b className="font-semibold text-foreground">
+          {server.serverUrl.replace(/^https?:\/\//, "")}
+        </b>{" "}
         {removing
           ? "is freed up and can be claimed again. It was never paired, so nothing stops working."
           : "stops working on all devices immediately. Your bb keeps running locally; re-pairing needs a new connect code."}
@@ -605,7 +667,11 @@ function ConfirmServerAction({
 
 /* ── row overflow menu ────────────────────────────────────────────── */
 
-function RowMenu({ items }: { items: { label: string; danger?: boolean; onSelect: () => void }[] }) {
+function RowMenu({
+  items,
+}: {
+  items: { label: string; danger?: boolean; onSelect: () => void }[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative justify-self-center">
@@ -641,7 +707,8 @@ function RowMenu({ items }: { items: { label: string; danger?: boolean; onSelect
                 key={i}
                 className={cn(
                   "block w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-state-hover",
-                  item.danger && "text-destructive-text hover:bg-surface-destructive",
+                  item.danger &&
+                    "text-destructive-text hover:bg-surface-destructive",
                 )}
                 onClick={(e) => {
                   e.preventDefault();
@@ -690,7 +757,11 @@ function ServerRow({
           label: "Pair again…",
           onSelect: () => setPanel((p) => (p === "repair" ? "none" : "repair")),
         },
-        { label: "Disconnect…", danger: true, onSelect: () => setConfirm("disconnect") },
+        {
+          label: "Disconnect…",
+          danger: true,
+          onSelect: () => setConfirm("disconnect"),
+        },
       ]
     : [
         { label: "Copy URL", onSelect: copyUrl },
@@ -698,7 +769,13 @@ function ServerRow({
         // can't be removed; only never-paired secondaries offer Remove.
         ...(server.isPrimary
           ? []
-          : [{ label: "Remove…", danger: true, onSelect: () => setConfirm("remove") }]),
+          : [
+              {
+                label: "Remove…",
+                danger: true,
+                onSelect: () => setConfirm("remove"),
+              },
+            ]),
       ];
 
   const content = (
@@ -709,7 +786,9 @@ function ServerRow({
       <span className="min-w-0">
         <span className="block truncate font-mono text-sm font-medium leading-tight">
           {server.subdomain}
-          <span className="font-normal text-subtle-foreground">.{baseDomain}</span>
+          <span className="font-normal text-subtle-foreground">
+            .{baseDomain}
+          </span>
         </span>
         <span className="mt-px block text-xs text-muted-foreground">
           {server.online ? (
@@ -717,7 +796,9 @@ function ServerRow({
           ) : server.connected ? (
             <>
               <span className="text-warning-text">Offline</span>
-              {server.lastSeenAt != null ? ` · last seen ${relativeTime(server.lastSeenAt)}` : ""}
+              {server.lastSeenAt != null
+                ? ` · last seen ${relativeTime(server.lastSeenAt)}`
+                : ""}
             </>
           ) : (
             <>
@@ -730,7 +811,10 @@ function ServerRow({
         </span>
       </span>
       {server.connected ? (
-        <span className="justify-self-center text-subtle-foreground" aria-hidden>
+        <span
+          className="justify-self-center text-subtle-foreground"
+          aria-hidden
+        >
           <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-4" />
         </span>
       ) : (
@@ -746,7 +830,12 @@ function ServerRow({
   return (
     <>
       {server.connected ? (
-        <a href={url} target="_blank" rel="noreferrer" className={cn(rowClass, "cursor-pointer")}>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className={cn(rowClass, "cursor-pointer")}
+        >
           {content}
         </a>
       ) : (
@@ -781,7 +870,11 @@ function ServerRow({
       )}
 
       {confirm && (
-        <ConfirmServerAction server={server} mode={confirm} onCancel={() => setConfirm(null)} />
+        <ConfirmServerAction
+          server={server}
+          mode={confirm}
+          onCancel={() => setConfirm(null)}
+        />
       )}
     </>
   );
@@ -806,8 +899,8 @@ function ConnectAnotherDialog({
       <Overlay onClose={onClose}>
         <h4 className="mb-1.5 text-[15px] font-semibold">Connect another bb</h4>
         <p className="mb-4 text-sm text-muted-foreground">
-          You&rsquo;ve reached the limit of {state.maxServers} bbs on this account. Disconnect one to
-          add another.
+          You&rsquo;ve reached the limit of {state.maxServers} bbs on this
+          account. Disconnect one to add another.
         </p>
         <div className="flex justify-end">
           <Button variant="outline" onClick={onClose}>
@@ -822,7 +915,9 @@ function ConnectAnotherDialog({
     <Overlay onClose={onClose}>
       {!server ? (
         <>
-          <h4 className="mb-1.5 text-[15px] font-semibold">Connect another bb</h4>
+          <h4 className="mb-1.5 text-[15px] font-semibold">
+            Connect another bb
+          </h4>
           <p className="mb-3 text-sm text-muted-foreground">
             Pick its address — every bb gets its own URL.
           </p>
@@ -873,15 +968,28 @@ function ConnectAnotherDialog({
 /* ── footer ───────────────────────────────────────────────────────── */
 
 function AccountFooter({ state }: { state: ServerState }) {
-  const gh = state.githubLogin ? `https://github.com/${state.githubLogin}` : undefined;
-  const cap = state.servers.length >= 2 ? ` · ${state.servers.length} of ${state.maxServers} bbs` : "";
+  const gh = state.githubLogin
+    ? `https://github.com/${state.githubLogin}`
+    : undefined;
+  const cap =
+    state.servers.length >= 2
+      ? ` · ${state.servers.length} of ${state.maxServers} bbs`
+      : "";
   return (
     <div className="mt-3.5 flex items-center justify-between text-xs">
-      <button className="text-subtle-foreground hover:text-foreground" onClick={() => void signOut()}>
+      <button
+        className="text-subtle-foreground hover:text-foreground"
+        onClick={() => void signOut()}
+      >
         Sign out
       </button>
       {gh ? (
-        <a className="text-subtle-foreground hover:text-foreground" href={gh} target="_blank" rel="noreferrer">
+        <a
+          className="text-subtle-foreground hover:text-foreground"
+          href={gh}
+          target="_blank"
+          rel="noreferrer"
+        >
           {state.handle} · GitHub{cap}
         </a>
       ) : (
@@ -904,7 +1012,8 @@ function AccountDashboard({ state }: { state: ServerState }) {
   // Poll whenever any bb is still unpaired (first run, or a just-claimed row
   // waiting for its machine) so the row flips to Online without a manual reload.
   const waiting =
-    state.servers.some((s: ServerSummary) => !s.connected) || (connectOpen && pendingId != null);
+    state.servers.some((s: ServerSummary) => !s.connected) ||
+    (connectOpen && pendingId != null);
 
   useEffect(() => {
     if (!waiting) return;
@@ -915,7 +1024,9 @@ function AccountDashboard({ state }: { state: ServerState }) {
   // Self-close the connect dialog once the new server pairs.
   useEffect(() => {
     if (pendingId == null) return;
-    if (state.servers.find((s: ServerSummary) => s.id === pendingId)?.connected) {
+    if (
+      state.servers.find((s: ServerSummary) => s.id === pendingId)?.connected
+    ) {
       setConnectOpen(false);
       setPendingId(null);
     }
@@ -934,13 +1045,24 @@ function AccountDashboard({ state }: { state: ServerState }) {
       onServerCreated={(id) => setPendingId(id)}
     />
   );
+  const manageServer =
+    state.servers.find((server: ServerSummary) => server.online) ??
+    state.servers[0] ??
+    null;
+
+  async function revoke(machine: MachineSummary) {
+    await revokeMachineFn({ data: machine.id });
+    await router.invalidate();
+  }
 
   return (
     <Shell top width="md" footer={<AccountFooter state={state} />}>
       {/* Tight padding so each row is a full-bleed, rounded hover target. */}
       <div className="rounded-xl border border-border bg-card p-2 shadow-sm">
         <div className="flex items-center px-1.5 pb-1.5 pl-3 pt-1.5">
-          <h3 className="flex-1 text-[17px] font-semibold tracking-tight">Your bbs</h3>
+          <h3 className="flex-1 text-[17px] font-semibold tracking-tight">
+            Your bbs
+          </h3>
           <button
             className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-recessed hover:text-foreground"
             onClick={() => setConnectOpen(true)}
@@ -950,8 +1072,54 @@ function AccountDashboard({ state }: { state: ServerState }) {
           </button>
         </div>
         {state.servers.map((s: ServerSummary) => (
-          <ServerRow key={s.id} server={s} baseDomain={state.baseDomain} autoPair={single} />
+          <ServerRow
+            key={s.id}
+            server={s}
+            baseDomain={state.baseDomain}
+            autoPair={single}
+          />
         ))}
+      </div>
+      <div className="mt-3 rounded-xl border border-border bg-card p-2 shadow-sm">
+        <div className="flex items-center px-3 pb-1.5 pt-1.5">
+          <h3 className="flex-1 text-[15px] font-semibold tracking-tight">
+            Machines
+          </h3>
+          {manageServer !== null ? (
+            <a
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-recessed hover:text-foreground"
+              href={`${manageServer.serverUrl}/settings/machines`}
+            >
+              Manage machines in bb
+              <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-3" />
+            </a>
+          ) : null}
+        </div>
+        {state.machines.length === 0 ? (
+          <p className="px-3 pb-2 text-xs text-subtle-foreground">
+            Add machines from bb Settings → Machines.
+          </p>
+        ) : (
+          state.machines.map((machine: MachineSummary) => (
+            <div
+              key={machine.id}
+              className="flex items-center gap-3 rounded-lg px-3 py-2.5"
+            >
+              <StatusDot
+                state={machine.lastSeenAt === null ? "new" : "online"}
+              />
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {machine.name ?? `Machine ${machine.id.slice(0, 8)}`}
+              </span>
+              <button
+                className="text-xs text-destructive-text hover:underline"
+                onClick={() => void revoke(machine)}
+              >
+                Revoke
+              </button>
+            </div>
+          ))
+        )}
       </div>
       {dialog}
     </Shell>

@@ -585,6 +585,8 @@ describe("bb-app launcher", () => {
         "48887",
         "--host-type",
         "persistent",
+        "--machine-credential",
+        "bbcm_machine",
       ]),
     ).toEqual({
       options: {
@@ -595,6 +597,7 @@ describe("bb-app launcher", () => {
         hostType: "persistent",
         joinCode: "bbde_supplied",
         json: false,
+        machineCredential: "bbcm_machine",
         serverUrl: "https://bb.example.test",
       },
       positionals: ["host-daemon", "join"],
@@ -610,6 +613,7 @@ describe("bb-app launcher", () => {
       env: {
         BB_HOST_ENROLL_KEY: "bbde_supplied",
         BB_HOST_ID: "host_remote",
+        BB_CONNECT_MACHINE_CREDENTIAL: "bbcm_machine",
       },
       serverUrl: "https://bb.example.test",
     });
@@ -620,7 +624,10 @@ describe("bb-app launcher", () => {
     });
     expect(
       JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
-    ).toMatchObject({ serverUrl: "https://bb.example.test" });
+    ).toMatchObject({
+      machineCredential: "bbcm_machine",
+      serverUrl: "https://bb.example.test",
+    });
   });
 
   it("requires the join-code host ID on a fresh machine", async () => {

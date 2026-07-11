@@ -127,6 +127,7 @@ describe("createServerClient", () => {
       expect(new Headers(init?.headers).get("authorization")).toBe(
         "Bearer host-key",
       );
+      expect(new Headers(init?.headers).get("x-bb-connect-machine")).toBeNull();
       return new Response(
         JSON.stringify({
           treeHash,
@@ -149,6 +150,29 @@ describe("createServerClient", () => {
       treeHash,
       entries: [{ path: "SKILL.md", mode: 0o644, contentBase64: "dHJlZQ==" }],
     });
+  });
+
+  it("adds the connect machine credential to internal HTTP requests", async () => {
+    const treeHash = "b".repeat(64);
+    const fetchFn = vi.fn<FetchFn>(async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer host-key");
+      expect(headers.get("x-bb-connect-machine")).toBe("bbcm_machine");
+      return new Response(JSON.stringify({ treeHash, entries: [] }), {
+        status: 200,
+      });
+    });
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      machineCredential: "bbcm_machine",
+      serverUrl: "https://bb.example.test",
+    });
+
+    await client.fetchSkillTree(treeHash);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
   it("rejects project attachment responses with unexpected byte length", async () => {

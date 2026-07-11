@@ -19,6 +19,7 @@ export interface PrepareRuntimeShellEnvOptions {
    */
   bbExecutablePath?: string;
   hostDaemonPort?: number;
+  machineCredential?: string;
   serverUrl: string;
   inheritedPath?: string;
 }
@@ -382,6 +383,9 @@ export function prepareRuntimeShellEnv(
     // binary (see apps/cli `maybeReexecViaBbCli`).
     BB_CLI: bbExecutablePath,
     BB_SERVER_URL: options.serverUrl,
+    ...(options.machineCredential !== undefined
+      ? { BB_CONNECT_MACHINE_CREDENTIAL: options.machineCredential }
+      : {}),
   };
   assignIfDefined({
     key: "BB_HOST_DAEMON_PORT",

@@ -911,27 +911,29 @@ describe("connect plugin", () => {
   });
 
   it("listAccountServers fetches the worker list and returns selfHandle", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/api/connect/redeem")) {
-        return new Response(
-          JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
-          { status: 200 },
-        );
-      }
-      if (url.includes("/api/connect/servers")) {
-        return new Response(
-          JSON.stringify({
-            servers: [
-              { handle: "sawyer", name: "default", live: true },
-              { handle: "sawyer-desktop", name: "desktop", live: false },
-            ],
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response("not found", { status: 404 });
-    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/connect/redeem")) {
+          return new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          );
+        }
+        if (url.includes("/api/connect/servers")) {
+          return new Response(
+            JSON.stringify({
+              servers: [
+                { handle: "sawyer", name: "default", live: true },
+                { handle: "sawyer-desktop", name: "desktop", live: false },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
     const { harness } = await loadPlugin();
     await harness.callRpc("pair", {
@@ -1027,6 +1029,64 @@ describe("connect plugin", () => {
         headers: { "x-bb-connect-machine": "bbcred_durable" },
       }),
     );
+  });
+
+  it("createMachineCode mints through the apex with the stored server credential", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/connect/redeem")) {
+          return new Response(
+            JSON.stringify({ credential: "bbcred_durable", handle: "sawyer" }),
+            { status: 200 },
+          );
+        }
+        if (url === "https://getbb.app/api/connect/machine-code") {
+          return new Response(
+            JSON.stringify({
+              code: "ABCD-EFGH",
+              expiresInMs: 600_000,
+              serverUrl: "https://sawyer.getbb.app",
+            }),
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "https://sawyer.getbb.app",
+    });
+    const before = Date.now();
+    await expect(harness.callRpc("createMachineCode")).resolves.toMatchObject({
+      code: "ABCD-EFGH",
+      serverUrl: "https://sawyer.getbb.app",
+      expiresAt: expect.any(Number),
+    });
+    const call = fetchMock.mock.calls.find(
+      ([input]) =>
+        String(input) === "https://getbb.app/api/connect/machine-code",
+    );
+    expect(call?.[1]).toEqual({
+      method: "POST",
+      headers: { "x-bb-connect-machine": "bbcred_durable" },
+    });
+    const result = (await harness.callRpc("createMachineCode")) as {
+      expiresAt: number;
+    };
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + 600_000);
+  });
+
+  it("createMachineCode reports not_paired without making a request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await expect(harness.callRpc("createMachineCode")).rejects.toThrow(
+      "not_paired",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("listAccountServers surfaces unauthorized cleanly on 401", async () => {

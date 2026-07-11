@@ -50,6 +50,7 @@ export interface ServerConnectionOptions {
   serverUrl: string;
   hostKey: string;
   logger: HostDaemonLogger;
+  machineCredential?: string;
   serverClient: ServerClient;
   hostId: string;
   hostName: string;

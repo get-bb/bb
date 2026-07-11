@@ -20,6 +20,7 @@ interface CreateWebSocketFixtureArgs {
 
 interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   autoReconnect?: boolean;
+  machineCredential?: string;
 }
 
 interface CreateSessionArgs {
@@ -87,7 +88,12 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
 
 function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
   const sockets: ReconnectingWebSocketLike[] = [];
-  const createWebSocket: CreateReconnectingWebSocket = (urlProvider) => {
+  const headers: Array<Record<string, string> | undefined> = [];
+  const createWebSocket: CreateReconnectingWebSocket = (
+    urlProvider,
+    options,
+  ) => {
+    headers.push(options.headers);
     let readyState = 0;
     const socket: ReconnectingWebSocketLike = {
       get readyState() {
@@ -126,6 +132,7 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
 
   return {
     createWebSocket,
+    headers,
     sockets,
   };
 }
@@ -145,6 +152,9 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     hostType: "persistent",
     instanceId: "instance-server-connection-test",
     logger,
+    ...(args.machineCredential !== undefined
+      ? { machineCredential: args.machineCredential }
+      : {}),
     serverClient: serverClient.serverClient,
     serverUrl: "http://127.0.0.1:3334",
     setSession,
@@ -166,6 +176,27 @@ afterEach(() => {
 });
 
 describe("ServerConnection", () => {
+  it("adds the machine credential to WS dial headers only when configured", async () => {
+    const configured = createConnectionFixture({
+      machineCredential: "bbcm_machine",
+    });
+    const plain = createConnectionFixture();
+    try {
+      await configured.connection.start();
+      await plain.connection.start();
+      expect(configured.webSocket.headers[0]).toEqual({
+        authorization: "Bearer host-key-server-connection-test",
+        "x-bb-connect-machine": "bbcm_machine",
+      });
+      expect(plain.webSocket.headers[0]).toEqual({
+        authorization: "Bearer host-key-server-connection-test",
+      });
+    } finally {
+      await configured.connection.shutdown();
+      await plain.connection.shutdown();
+    }
+  });
+
   it("logs delayed heartbeat timer ticks without logging normal heartbeats", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

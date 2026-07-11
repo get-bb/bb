@@ -146,6 +146,7 @@ interface CreateServerClientOptions {
   serverUrl: string;
   hostKey: string;
   logger: HostDaemonLogger;
+  machineCredential?: string;
   getSessionId: () => string;
   /** Runs before each POST attempt so retryable ordering preconditions can be repaired. */
   beforeInteractiveRequestRegistrationAttempt?: () => Promise<void>;
@@ -296,6 +297,9 @@ export function createServerClient(
     return {
       authorization: `Bearer ${options.hostKey}`,
       "content-type": "application/json",
+      ...(options.machineCredential !== undefined
+        ? { "x-bb-connect-machine": options.machineCredential }
+        : {}),
     };
   }
 

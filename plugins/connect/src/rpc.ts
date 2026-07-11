@@ -5,6 +5,7 @@ import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
 import type { ListAccountServersResult } from "./list-servers.js";
 import type { DesktopSession } from "./desktop-session.js";
+import { MachineCodeError, type MachineCode } from "./machine-code.js";
 
 // Panel-facing rpc surface. `server` is optional: the dashboard command
 // carries both --code and --server, but the panel's paste-a-code field only
@@ -30,6 +31,7 @@ export type ConnectRpcHandlers = {
   listShares(): Array<{ port: number; url: string }>;
   listAccountServers(): Promise<ListAccountServersResult>;
   createDesktopSession(): Promise<DesktopSession>;
+  createMachineCode(): Promise<MachineCode>;
 };
 
 export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
@@ -85,6 +87,16 @@ export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
         return await tunnel.createDesktopSession();
       } catch (error) {
         if (error instanceof ConnectListError) {
+          throw new Error(error.code);
+        }
+        throw error;
+      }
+    },
+    async createMachineCode() {
+      try {
+        return await tunnel.createMachineCode();
+      } catch (error) {
+        if (error instanceof MachineCodeError) {
           throw new Error(error.code);
         }
         throw error;

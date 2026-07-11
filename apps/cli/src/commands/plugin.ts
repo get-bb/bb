@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
+import { cliFetch } from "../client.js";
 import {
   buildPluginApp,
   buildPluginServer,
@@ -82,7 +83,7 @@ async function callPlugins<T>(
   method: "GET" | "POST" | "PUT" | "DELETE",
   body?: unknown,
 ): Promise<T> {
-  const response = await fetch(`${baseUrl}/api/v1/plugins${path}`, {
+  const response = await cliFetch(`${baseUrl}/api/v1/plugins${path}`, {
     method,
     ...(body === undefined
       ? {}

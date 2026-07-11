@@ -12,6 +12,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...actual,
+    createConnectMachineCode: vi.fn(),
     createHostJoinCode: vi.fn(),
     listHosts: vi.fn(),
   };
@@ -46,6 +47,11 @@ describe("AddMachineDialog", () => {
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
+    vi.mocked(api.createConnectMachineCode).mockResolvedValue({
+      code: "mc_test456",
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      serverUrl: window.location.origin,
+    });
     vi.mocked(api.listHosts).mockResolvedValue([existingHost]);
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
@@ -53,9 +59,8 @@ describe("AddMachineDialog", () => {
 
     const command = await screen.findByText(/--join-code jc_test123/);
     expect(command.textContent).toContain("--host-id host_new");
-    expect(command.textContent).toContain(
-      `--server ${window.location.origin}`,
-    );
+    expect(command.textContent).toContain(`--server ${window.location.origin}`);
+    expect(command.textContent).toContain("--machine-code mc_test456");
     expect(screen.getByText(/Code expires in \d+:\d{2}/)).toBeDefined();
     expect(
       screen.getByText("Waiting for the machine to connect…"),
@@ -63,9 +68,7 @@ describe("AddMachineDialog", () => {
 
     // Baseline host list is loaded before the new machine appears.
     await waitFor(() => {
-      expect(
-        queryClient.getQueryData<Host[]>(hostsQueryKey()),
-      ).toHaveLength(1);
+      expect(queryClient.getQueryData<Host[]>(hostsQueryKey())).toHaveLength(1);
     });
 
     act(() => {
@@ -79,7 +82,9 @@ describe("AddMachineDialog", () => {
     expect(
       screen.getByRole("button", { name: "Set up a project on it →" }),
     ).toBeDefined();
-    expect(screen.queryByText("Waiting for the machine to connect…")).toBeNull();
+    expect(
+      screen.queryByText("Waiting for the machine to connect…"),
+    ).toBeNull();
   });
 
   it("ignores hosts that were already known at open time", async () => {
@@ -88,6 +93,7 @@ describe("AddMachineDialog", () => {
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
+    vi.mocked(api.createConnectMachineCode).mockResolvedValue(null);
     vi.mocked(api.listHosts).mockResolvedValue([
       existingHost,
       host({ id: "host_offline", name: "dev-vm", status: "disconnected" }),
@@ -97,9 +103,7 @@ describe("AddMachineDialog", () => {
     render(<AddMachineDialog open onOpenChange={vi.fn()} />, { wrapper });
 
     await waitFor(() => {
-      expect(
-        queryClient.getQueryData<Host[]>(hostsQueryKey()),
-      ).toHaveLength(2);
+      expect(queryClient.getQueryData<Host[]>(hostsQueryKey())).toHaveLength(2);
     });
 
     // A pre-existing machine reconnecting is not the machine being added.

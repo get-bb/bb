@@ -89,9 +89,10 @@ describe("parseClientProtocolVersion", () => {
 // ── gate worker (mocked session + DO stub) ──────────────────────────────────
 
 vi.mock("./session.js", () => ({
+  markMachineSeen: vi.fn(),
   parseCookie: vi.fn(),
   resolveLabel: vi.fn(),
-  verifyMachineCredential: vi.fn(),
+  verifyMachineCredentialDetails: vi.fn(),
   verifySessionCookie: vi.fn(),
 }));
 
@@ -123,9 +124,10 @@ vi.mock("drizzle-orm/d1", () => ({
 }));
 
 import {
+  markMachineSeen,
   parseCookie,
   resolveLabel,
-  verifyMachineCredential,
+  verifyMachineCredentialDetails,
   verifySessionCookie,
 } from "./session.js";
 import {
@@ -140,7 +142,8 @@ import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
 
 const mockParseCookie = vi.mocked(parseCookie);
 const mockResolveLabel = vi.mocked(resolveLabel);
-const mockVerifyMachine = vi.mocked(verifyMachineCredential);
+const mockMarkMachineSeen = vi.mocked(markMachineSeen);
+const mockVerifyMachine = vi.mocked(verifyMachineCredentialDetails);
 const mockVerifySession = vi.mocked(verifySessionCookie);
 const mockServeWithCache = vi.mocked(serveWithCache);
 const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
@@ -266,6 +269,97 @@ describe("POST /api/connect/desktop-session", () => {
     expect(response.status).toBe(200);
     expect(mockHandleCreateDesktopSession).toHaveBeenCalledTimes(1);
     expect(captured).toHaveLength(0);
+  });
+});
+
+describe("machine gate auth", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    mockMarkMachineSeen.mockResolvedValue(true);
+  });
+
+  it("rejects /internal without a machine credential", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/internal/session/open"),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(403);
+    expect(captured).toHaveLength(0);
+  });
+
+  it("rejects bogus and cross-tenant machine credentials", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    mockVerifyMachine.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      machineId: "machine-other",
+      userId: OTHER,
+    });
+    const bogus = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/internal/session/open", {
+        headers: { "x-bb-connect-machine": "bogus" },
+      }),
+      env as never,
+      ctx,
+    );
+    const crossTenant = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/internal/session/open", {
+        headers: { "x-bb-connect-machine": "bbcm_other" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(bogus.status).toBe(403);
+    expect(crossTenant.status).toBe(403);
+    expect(captured).toHaveLength(0);
+  });
+
+  it("forwards /internal and /api/v1 for the owner with the header stripped", async () => {
+    mockVerifyMachine.mockResolvedValue({
+      machineId: "machine-owner",
+      userId: OWNER,
+    });
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const internal = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/internal/session/open", {
+        headers: { "x-bb-connect-machine": "bbcm_owner" },
+      }),
+      env as never,
+      ctx,
+    );
+    const api = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+        headers: { "x-bb-connect-machine": "bbcm_owner" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(internal.status).toBe(200);
+    expect(api.status).toBe(200);
+    expect(captured).toHaveLength(2);
+    expect(
+      captured.every(
+        (request) => request.headers.get("x-bb-connect-machine") === null,
+      ),
+    ).toBe(true);
+    expect(mockMarkMachineSeen).toHaveBeenCalledWith(
+      "machine-owner",
+      expect.anything(),
+    );
+  });
+
+  it("forwards GET /install.sh without session or machine auth", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("script"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/install.sh"),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("script");
+    expect(captured).toHaveLength(1);
+    expect(mockVerifyMachine).not.toHaveBeenCalled();
   });
 });
 
@@ -466,7 +560,10 @@ describe("gate worker share hosts", () => {
 
   it("does not apply machine-credential branch on share hosts", async () => {
     mockParseCookie.mockReturnValue(null);
-    mockVerifyMachine.mockResolvedValue(OWNER);
+    mockVerifyMachine.mockResolvedValue({
+      machineId: "machine-owner",
+      userId: OWNER,
+    });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
       visitorRequest("sawyer--8000.getbb.app", "/internal/ws", {

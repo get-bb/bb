@@ -44,9 +44,7 @@ export function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
   if (parsed !== undefined) {
     return parsed;
   }
-  throw new Error(
-    `${args.name} must be one of ${formatAppSurfaceValues()}`,
-  );
+  throw new Error(`${args.name} must be one of ${formatAppSurfaceValues()}`);
 }
 
 export function parseOptionalPortEnvValue(
@@ -259,6 +257,15 @@ export const BB_BRIDGE_DIR_ENV = defineEnvVar<string | undefined>({
   description:
     "Directory containing provider bridge bundles for the host daemon runtime",
   name: "BB_BRIDGE_DIR",
+  parse: parseOptionalTrimmedStringEnvValue,
+});
+
+export const BB_CONNECT_MACHINE_CREDENTIAL_ENV = defineEnvVar<
+  string | undefined
+>({
+  description:
+    "Daemon-managed bb connect credential for traversing the public machine gate",
+  name: "BB_CONNECT_MACHINE_CREDENTIAL",
   parse: parseOptionalTrimmedStringEnvValue,
 });
 

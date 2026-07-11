@@ -70,11 +70,24 @@ export interface AccountState {
   githubLogin: string | null;
   /** Per-account server ceiling, surfaced in the footer as "N of MAX bbs". */
   maxServers: number;
+  machines: MachineSummary[];
+}
+
+export interface MachineSummary {
+  id: string;
+  name: string | null;
+  lastSeenAt: number | null;
+  createdAt: number;
 }
 
 type ServerRow = typeof server.$inferSelect;
 
-function toServerSummary(srv: ServerRow, handle: string, baseDomain: string, now: number): ServerSummary {
+function toServerSummary(
+  srv: ServerRow,
+  handle: string,
+  baseDomain: string,
+  now: number,
+): ServerSummary {
   const lastSeenMs = srv.lastSeenAt?.getTime() ?? null;
   const connected = srv.credentialHash != null && srv.revokedAt == null;
   return {
@@ -83,7 +96,10 @@ function toServerSummary(srv: ServerRow, handle: string, baseDomain: string, now
     name: srv.name,
     isPrimary: srv.subdomain === handle,
     connected,
-    online: connected && lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+    online:
+      connected &&
+      lastSeenMs != null &&
+      now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
     lastSeenAt: lastSeenMs,
     version: srv.version,
     createdAt: srv.createdAt.getTime(),
@@ -104,7 +120,11 @@ async function resolveServer(
       .where(and(eq(server.id, serverId), eq(server.userId, userId)))
       .get();
   }
-  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const prof = await db
+    .select()
+    .from(profile)
+    .where(eq(profile.userId, userId))
+    .get();
   if (!prof) return undefined;
   const primary = await db
     .select()
@@ -112,14 +132,27 @@ async function resolveServer(
     .where(and(eq(server.userId, userId), eq(server.subdomain, prof.handle)))
     .get();
   if (primary) return primary;
-  const all = await db.select().from(server).where(eq(server.userId, userId)).all();
-  return [...all].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+  const all = await db
+    .select()
+    .from(server)
+    .where(eq(server.userId, userId))
+    .all();
+  return [...all].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  )[0];
 }
 
 /** Product-state read for the dashboard: every server the account owns. */
-export async function getAccountState(deps: Deps, userId: string): Promise<AccountState> {
+export async function getAccountState(
+  deps: Deps,
+  userId: string,
+): Promise<AccountState> {
   const { db, baseDomain } = deps;
-  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const prof = await db
+    .select()
+    .from(profile)
+    .where(eq(profile.userId, userId))
+    .get();
   const userRow = await db
     .select({ githubLogin: user.githubLogin })
     .from(user)
@@ -134,23 +167,78 @@ export async function getAccountState(deps: Deps, userId: string): Promise<Accou
     maxServers: MAX_SERVERS_PER_ACCOUNT,
   };
 
+  const machineRows = await db
+    .select({
+      id: machine.id,
+      name: machine.name,
+      lastSeenAt: machine.lastSeenAt,
+      createdAt: machine.createdAt,
+    })
+    .from(machine)
+    .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
+    .all();
+  const machines = machineRows
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      lastSeenAt: row.lastSeenAt?.getTime() ?? null,
+      createdAt: row.createdAt.getTime(),
+    }))
+    .sort((left, right) => left.createdAt - right.createdAt);
+
   if (!prof) {
-    return { handle: null, servers: [], ...base };
+    return { handle: null, machines, servers: [], ...base };
   }
 
-  const serverRows = await db.select().from(server).where(eq(server.userId, userId)).all();
+  const serverRows = await db
+    .select()
+    .from(server)
+    .where(eq(server.userId, userId))
+    .all();
 
   const servers = serverRows
     .map((srv) => toServerSummary(srv, prof.handle, baseDomain, now))
     .sort((a, b) =>
-      a.isPrimary !== b.isPrimary ? (a.isPrimary ? -1 : 1) : a.createdAt - b.createdAt,
+      a.isPrimary !== b.isPrimary
+        ? a.isPrimary
+          ? -1
+          : 1
+        : a.createdAt - b.createdAt,
     );
 
-  return { handle: prof.handle, servers, ...base };
+  return { handle: prof.handle, machines, servers, ...base };
+}
+
+export async function revokeMachine(
+  deps: Pick<Deps, "db">,
+  userId: string,
+  machineId: string,
+): Promise<{ ok: true } | { error: "not-found" }> {
+  const existing = await deps.db
+    .select({ id: machine.id })
+    .from(machine)
+    .where(
+      and(
+        eq(machine.id, machineId),
+        eq(machine.userId, userId),
+        isNull(machine.revokedAt),
+      ),
+    )
+    .get();
+  if (!existing) return { error: "not-found" };
+  await deps.db
+    .update(machine)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(machine.id, machineId), eq(machine.userId, userId)))
+    .run();
+  return { ok: true };
 }
 
 /** Live label-availability check for the claim UIs (handle + "connect another"). */
-export async function checkAvailability(deps: Deps, rawLabel: string): Promise<LabelAvailability> {
+export async function checkAvailability(
+  deps: Deps,
+  rawLabel: string,
+): Promise<LabelAvailability> {
   return checkLabelAvailability(deps.db, rawLabel);
 }
 
@@ -169,7 +257,11 @@ export async function claimHandle(
   rawHandle: string,
 ): Promise<{ ok: true; handle: string } | { error: ClaimError }> {
   const { db } = deps;
-  const existing = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const existing = await db
+    .select()
+    .from(profile)
+    .where(eq(profile.userId, userId))
+    .get();
   if (existing) return { error: "already-claimed" };
 
   // One namespace for handles + subdomains, so validate/collision-check both.
@@ -188,7 +280,13 @@ export async function claimHandle(
   try {
     await db
       .insert(server)
-      .values({ id: crypto.randomUUID(), userId, name: "default", subdomain: handle, createdAt: now })
+      .values({
+        id: crypto.randomUUID(),
+        userId,
+        name: "default",
+        subdomain: handle,
+        createdAt: now,
+      })
       .run();
   } catch {
     return { error: "taken" };
@@ -208,10 +306,18 @@ export async function createServer(
   rawLabel: string,
 ): Promise<{ ok: true; server: ServerSummary } | { error: CreateServerError }> {
   const { db, baseDomain } = deps;
-  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const prof = await db
+    .select()
+    .from(profile)
+    .where(eq(profile.userId, userId))
+    .get();
   if (!prof) return { error: "no-handle" };
 
-  const owned = await db.select().from(server).where(eq(server.userId, userId)).all();
+  const owned = await db
+    .select()
+    .from(server)
+    .where(eq(server.userId, userId))
+    .all();
   if (owned.length >= MAX_SERVERS_PER_ACCOUNT) return { error: "server-limit" };
 
   const avail = await checkLabelAvailability(db, rawLabel);
@@ -234,14 +340,21 @@ export async function createServer(
   // (concurrent claims could each see room and all insert). Deleting our own
   // row on overflow keeps the ceiling atomic without a transaction, mirroring
   // redeemMachineCode's re-check-at-the-atomic-step pattern.
-  const afterCount = await db.select().from(server).where(eq(server.userId, userId)).all();
+  const afterCount = await db
+    .select()
+    .from(server)
+    .where(eq(server.userId, userId))
+    .all();
   if (afterCount.length > MAX_SERVERS_PER_ACCOUNT) {
     await db.delete(server).where(eq(server.id, id)).run();
     return { error: "server-limit" };
   }
   const created = await db.select().from(server).where(eq(server.id, id)).get();
   if (!created) return { error: "taken" };
-  return { ok: true, server: toServerSummary(created, prof.handle, baseDomain, Date.now()) };
+  return {
+    ok: true,
+    server: toServerSummary(created, prof.handle, baseDomain, Date.now()),
+  };
 }
 
 export interface IssuedCode {
@@ -305,7 +418,12 @@ export async function createConnectCode(
       createdAt: nowDate,
     })
     .run();
-  return { code, expiresInMs: CONNECT_CODE_TTL_MS, serverUrl, serverId: srv.id };
+  return {
+    code,
+    expiresInMs: CONNECT_CODE_TTL_MS,
+    serverUrl,
+    serverId: srv.id,
+  };
 }
 
 /** Mint a one-time machine-pair code (dashboard "Add machine"). */
@@ -313,9 +431,15 @@ export async function createMachineCode(
   deps: Deps,
   userId: string,
   serverId?: string,
-): Promise<{ code: string; expiresInMs: number; serverUrl: string } | { error: string }> {
+): Promise<
+  { code: string; expiresInMs: number; serverUrl: string } | { error: string }
+> {
   const { db, baseDomain } = deps;
-  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const prof = await db
+    .select()
+    .from(profile)
+    .where(eq(profile.userId, userId))
+    .get();
   if (!prof) return { error: "no-handle" };
 
   // The machine credential is account-scoped, but the install one-liner names a
@@ -323,8 +447,14 @@ export async function createMachineCode(
   const srv = await resolveServer(db, userId, serverId);
   if (!srv) return { error: "no-server" };
 
-  const active = await db.select().from(machine).where(eq(machine.userId, userId)).all();
-  if (active.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_ACCOUNT) {
+  const active = await db
+    .select()
+    .from(machine)
+    .where(eq(machine.userId, userId))
+    .all();
+  if (
+    active.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_ACCOUNT
+  ) {
     return { error: "machine-limit" };
   }
 
@@ -348,6 +478,41 @@ export async function createMachineCode(
     expiresInMs: CONNECT_CODE_TTL_MS,
     serverUrl: `https://${srv.subdomain}.${baseDomain}`,
   };
+}
+
+/**
+ * Mint a machine code for the exact bb identified by its durable tunnel
+ * credential. This is the server-to-cloud half of the in-product one-command
+ * flow; no browser session is involved.
+ */
+export async function createMachineCodeForServerCredential(
+  deps: Deps,
+  credential: string,
+): Promise<
+  | { code: string; expiresInMs: number; serverUrl: string }
+  | { error: string; status: number }
+> {
+  const presented = credential.trim();
+  if (!presented) return { error: "unauthorized", status: 401 };
+  const srv = await deps.db
+    .select({ id: server.id, userId: server.userId })
+    .from(server)
+    .where(
+      and(
+        eq(server.credentialHash, await sha256Hex(presented)),
+        isNull(server.revokedAt),
+      ),
+    )
+    .get();
+  if (!srv) return { error: "unauthorized", status: 401 };
+  const result = await createMachineCode(deps, srv.userId, srv.id);
+  if ("error" in result) {
+    return {
+      error: result.error,
+      status: result.error === "machine-limit" ? 409 : 404,
+    };
+  }
+  return result;
 }
 
 /**
@@ -395,7 +560,11 @@ export async function removeServer(
   serverId: string,
 ): Promise<{ ok: true } | { error: string }> {
   const { db } = deps;
-  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const prof = await db
+    .select()
+    .from(profile)
+    .where(eq(profile.userId, userId))
+    .get();
   const srv = await db
     .select()
     .from(server)
@@ -403,7 +572,8 @@ export async function removeServer(
     .get();
   if (!srv) return { error: "not-found" };
   if (prof && srv.subdomain === prof.handle) return { error: "is-primary" };
-  if (srv.credentialHash != null && srv.revokedAt == null) return { error: "connected" };
+  if (srv.credentialHash != null && srv.revokedAt == null)
+    return { error: "connected" };
 
   await db.delete(server).where(eq(server.id, srv.id)).run();
   return { ok: true };
@@ -439,24 +609,38 @@ export async function redeemConnectCode(
   deps: Pick<Deps, "db" | "baseDomain">,
   code: string,
 ): Promise<
-  | { credential: string; serverId: string; handle: string | null; tunnelUrl: string | null }
+  | {
+      credential: string;
+      serverId: string;
+      handle: string | null;
+      tunnelUrl: string | null;
+    }
   | { error: string; status: number }
 > {
   const { db, baseDomain } = deps;
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { error: "missing-code", status: 400 };
 
-  const row = await db.select().from(connectCode).where(eq(connectCode.code, normalized)).get();
-  if (!row || row.serverId == null) return { error: "invalid-code", status: 404 };
+  const row = await db
+    .select()
+    .from(connectCode)
+    .where(eq(connectCode.code, normalized))
+    .get();
+  if (!row || row.serverId == null)
+    return { error: "invalid-code", status: 404 };
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
-  if (row.expiresAt.getTime() < Date.now()) return { error: "expired", status: 410 };
+  if (row.expiresAt.getTime() < Date.now())
+    return { error: "expired", status: 410 };
 
   const consumed = await db
     .update(connectCode)
     .set({ consumedAt: new Date() })
-    .where(and(eq(connectCode.code, normalized), isNull(connectCode.consumedAt)))
+    .where(
+      and(eq(connectCode.code, normalized), isNull(connectCode.consumedAt)),
+    )
     .run();
-  if (rowsChanged(consumed) === 0) return { error: "already-used", status: 409 };
+  if (rowsChanged(consumed) === 0)
+    return { error: "already-used", status: 409 };
 
   const credential = generateToken("bbcred_", 32);
   await db
@@ -465,8 +649,16 @@ export async function redeemConnectCode(
     .where(eq(server.id, row.serverId))
     .run();
 
-  const srv = await db.select().from(server).where(eq(server.id, row.serverId)).get();
-  const prof = await db.select().from(profile).where(eq(profile.userId, row.userId)).get();
+  const srv = await db
+    .select()
+    .from(server)
+    .where(eq(server.id, row.serverId))
+    .get();
+  const prof = await db
+    .select()
+    .from(profile)
+    .where(eq(profile.userId, row.userId))
+    .get();
   // Routing label of the redeemed server (not necessarily the account handle).
   const handle = srv?.subdomain ?? prof?.handle ?? null;
   return {
@@ -480,39 +672,60 @@ export async function redeemConnectCode(
 
 /**
  * Redeem a machine-pair code (called by the daemon join). Consumes the code,
- * creates a machine row, returns the durable machine credential once. Worker-only.
+ * creates a machine row, and returns the durable machine credential once.
  */
 export async function redeemMachineCode(
-  env: Env,
+  deps: Pick<Deps, "db" | "baseDomain">,
   code: string,
 ): Promise<
-  | { credential: string; machineId: string; handle: string | null; serverUrl: string | null }
+  | {
+      credential: string;
+      machineId: string;
+      handle: string | null;
+      serverUrl: string | null;
+    }
   | { error: string; status: number }
 > {
-  const db = drizzle(env.DB);
+  const { db, baseDomain } = deps;
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { error: "missing-code", status: 400 };
 
-  const row = await db.select().from(connectCode).where(eq(connectCode.code, normalized)).get();
-  if (!row || row.purpose !== "machine-pair") return { error: "invalid-code", status: 404 };
+  const row = await db
+    .select()
+    .from(connectCode)
+    .where(eq(connectCode.code, normalized))
+    .get();
+  if (!row || row.purpose !== "machine-pair")
+    return { error: "invalid-code", status: 404 };
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
-  if (row.expiresAt.getTime() < Date.now()) return { error: "expired", status: 410 };
+  if (row.expiresAt.getTime() < Date.now())
+    return { error: "expired", status: 410 };
 
   // Re-check the cap here, not just at code creation: createMachineCode's
   // count is a TOCTOU (N codes each minted while under the limit could all
   // redeem past it). Checked before consuming so a rejected redeem leaves the
   // code usable.
-  const machines = await db.select().from(machine).where(eq(machine.userId, row.userId)).all();
-  if (machines.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_ACCOUNT) {
+  const machines = await db
+    .select()
+    .from(machine)
+    .where(eq(machine.userId, row.userId))
+    .all();
+  if (
+    machines.filter((m) => m.revokedAt == null).length >=
+    MAX_MACHINES_PER_ACCOUNT
+  ) {
     return { error: "machine-limit", status: 409 };
   }
 
   const consumed = await db
     .update(connectCode)
     .set({ consumedAt: new Date() })
-    .where(and(eq(connectCode.code, normalized), isNull(connectCode.consumedAt)))
+    .where(
+      and(eq(connectCode.code, normalized), isNull(connectCode.consumedAt)),
+    )
     .run();
-  if (consumed.meta.changes === 0) return { error: "already-used", status: 409 };
+  if (rowsChanged(consumed) === 0)
+    return { error: "already-used", status: 409 };
 
   const credential = generateToken("bbcm_", 32);
   const machineId = crypto.randomUUID();
@@ -526,7 +739,11 @@ export async function redeemMachineCode(
     })
     .run();
 
-  const prof = await db.select().from(profile).where(eq(profile.userId, row.userId)).get();
+  const prof = await db
+    .select()
+    .from(profile)
+    .where(eq(profile.userId, row.userId))
+    .get();
   // Echo the server the "Add machine" flow targeted (carried on the code);
   // fall back to the primary handle for codes minted before serverId was set.
   const targetServer =
@@ -538,6 +755,6 @@ export async function redeemMachineCode(
     credential,
     machineId,
     handle: prof?.handle ?? null,
-    serverUrl: label ? `https://${label}.${env.BASE_DOMAIN}` : null,
+    serverUrl: label ? `https://${label}.${baseDomain}` : null,
   };
 }

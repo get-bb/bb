@@ -2,11 +2,17 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { profile, schema, server, user } from "@bb/connect-db";
+import { machine, profile, schema, server, user } from "@bb/connect-db";
 
-import { resolveLabel } from "./session.js";
+import {
+  MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
+  markMachineSeen,
+  resolveLabel,
+  verifyMachineCredentialDetails,
+} from "./session.js";
 
 // Real in-memory SQLite (never mock the DB). resolveLabel accepts any Drizzle
 // SQLite database (the widened ConnectDb type), so the better-sqlite3 driver
@@ -75,7 +81,9 @@ function seedServer(over: {
 describe("resolveLabel — label → server row (multi-server)", () => {
   it("resolves the primary bb by its backfilled handle-label subdomain", async () => {
     seedUser("acct-a");
-    db.insert(profile).values({ userId: "acct-a", handle: "sawyer", createdAt: now }).run();
+    db.insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
+      .run();
     const seen = new Date(now.getTime() - 60_000);
     seedServer({
       id: "srv-primary",
@@ -99,8 +107,15 @@ describe("resolveLabel — label → server row (multi-server)", () => {
 
   it("resolves a second bb on the same account by its own claimed subdomain", async () => {
     seedUser("acct-a");
-    db.insert(profile).values({ userId: "acct-a", handle: "sawyer", createdAt: now }).run();
-    seedServer({ id: "srv-primary", userId: "acct-a", name: "default", subdomain: "sawyer" });
+    db.insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
+      .run();
+    seedServer({
+      id: "srv-primary",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+    });
     seedServer({
       id: "srv-desktop",
       userId: "acct-a",
@@ -121,8 +136,18 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   it("keeps cross-tenant isolation: a label resolves to its owning account only", async () => {
     seedUser("acct-a");
     seedUser("acct-b");
-    seedServer({ id: "srv-a", userId: "acct-a", name: "default", subdomain: "sawyer" });
-    seedServer({ id: "srv-b", userId: "acct-b", name: "default", subdomain: "morgan" });
+    seedServer({
+      id: "srv-a",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+    });
+    seedServer({
+      id: "srv-b",
+      userId: "acct-b",
+      name: "default",
+      subdomain: "morgan",
+    });
 
     const a = await resolveLabel("sawyer", db, { fresh: true });
     const b = await resolveLabel("morgan", db, { fresh: true });
@@ -136,7 +161,12 @@ describe("resolveLabel — label → server row (multi-server)", () => {
 
   it("returns null for an unclaimed label", async () => {
     seedUser("acct-a");
-    seedServer({ id: "srv-a", userId: "acct-a", name: "default", subdomain: "sawyer" });
+    seedServer({
+      id: "srv-a",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+    });
     expect(await resolveLabel("nobody", db, { fresh: true })).toBeNull();
   });
 
@@ -153,5 +183,67 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     const resolved = await resolveLabel("sawyer", db, { fresh: true });
     expect(resolved?.server.credentialHash).toBeNull();
     expect(resolved?.server.revokedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("machine credential presence", () => {
+  it("verifies the owning machine and throttles lastSeenAt writes", async () => {
+    seedUser("acct-machine");
+    const credential = `bbcm_${crypto.randomUUID()}`;
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(credential),
+    );
+    const credentialHash = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    db.insert(machine)
+      .values({
+        id: "machine-presence",
+        userId: "acct-machine",
+        credentialHash,
+        createdAt: new Date(0),
+      })
+      .run();
+
+    await expect(
+      verifyMachineCredentialDetails(credential, db),
+    ).resolves.toEqual({
+      machineId: "machine-presence",
+      userId: "acct-machine",
+    });
+    expect(await markMachineSeen("machine-presence", db, 10_000)).toBe(true);
+    expect(
+      db
+        .select()
+        .from(machine)
+        .where(eq(machine.id, "machine-presence"))
+        .get()
+        ?.lastSeenAt?.getTime(),
+    ).toBe(10_000);
+
+    expect(
+      await markMachineSeen(
+        "machine-presence",
+        db,
+        10_000 + MACHINE_LAST_SEEN_WRITE_INTERVAL_MS - 1,
+      ),
+    ).toBe(false);
+    expect(
+      db
+        .select()
+        .from(machine)
+        .where(eq(machine.id, "machine-presence"))
+        .get()
+        ?.lastSeenAt?.getTime(),
+    ).toBe(10_000);
+
+    expect(
+      await markMachineSeen(
+        "machine-presence",
+        db,
+        10_000 + MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
+      ),
+    ).toBe(true);
   });
 });

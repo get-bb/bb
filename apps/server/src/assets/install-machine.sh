@@ -4,9 +4,9 @@ set -eu
 
 usage() {
   cat >&2 <<'EOF'
-Usage: install.sh --join-code <code> --host-id <host-id> --server <url>
+Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>]
 
-All three options are required.
+The first three options are required. --machine-code is required through bb connect.
 EOF
   exit 2
 }
@@ -14,16 +14,18 @@ EOF
 join_code=
 host_id=
 server_url=
+machine_code=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --join-code|--host-id|--server)
+    --join-code|--host-id|--server|--machine-code)
       [ "$#" -ge 2 ] || usage
       [ -n "$2" ] || usage
       case "$1" in
         --join-code) join_code=$2 ;;
         --host-id) host_id=$2 ;;
         --server) server_url=$2 ;;
+        --machine-code) machine_code=$2 ;;
       esac
       shift 2
       ;;
@@ -92,6 +94,61 @@ data_dir=${BB_DATA_DIR:-"$HOME/.bb"}
 mkdir -p "$data_dir"
 mkdir -p "$data_dir/logs"
 
+machine_credential=
+if [ -n "$machine_code" ]; then
+  connect_apex=$(node -e '
+    const url = new URL(process.argv[1]);
+    const labels = url.hostname.split(".");
+    if (labels.length < 3) process.exit(2);
+    url.hostname = labels.slice(1).join(".");
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    process.stdout.write(url.origin);
+  ' "$server_url") || {
+    echo "Could not derive the bb connect apex from $server_url." >&2
+    exit 1
+  }
+  echo "Authorizing this machine with bb connect..."
+  redeem_response=$(curl -fsS \
+    -X POST \
+    -H 'content-type: application/json' \
+    --data "{\"code\":\"$machine_code\"}" \
+    "$connect_apex/api/connect/redeem-machine") || {
+    echo "Could not redeem the bb connect machine code." >&2
+    exit 1
+  }
+  machine_credential=$(printf '%s' "$redeem_response" | node -e '
+    let input = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => { input += chunk; });
+    process.stdin.on("end", () => {
+      const body = JSON.parse(input);
+      if (typeof body.credential !== "string" || !body.credential.startsWith("bbcm_")) {
+        process.exit(2);
+      }
+      process.stdout.write(body.credential);
+    });
+  ') || {
+    echo "The bb connect machine-code response was invalid." >&2
+    exit 1
+  }
+  node -e '
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const [dataDir, serverUrl, credential] = process.argv.slice(1);
+    const configPath = path.join(dataDir, "config.json");
+    let config = {};
+    try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    config.serverUrl = serverUrl;
+    config.machineCredential = credential;
+    const temporary = `${configPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(temporary, configPath);
+  ' "$data_dir" "$server_url" "$machine_credential"
+fi
+
 already_joined=no
 if [ -f "$data_dir/auth.json" ] && [ -f "$data_dir/config.json" ]; then
   if node -e '
@@ -114,12 +171,16 @@ join_pid=
 if [ "$already_joined" = no ]; then
   join_log="$data_dir/install-join.log"
   echo "Joining $server_url as $host_id..."
-  # Extension point for S10: pass --machine-credential here once the launcher
-  # join contract accepts it. The server URL is already scheme-agnostic.
+  if [ -n "$machine_credential" ]; then
+    machine_args="--machine-credential $machine_credential"
+  else
+    machine_args=
+  fi
+  # shellcheck disable=SC2086 -- machine credential tokens contain no spaces.
   BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
     --join-code "$join_code" \
     --host-id "$host_id" \
-    --server-url "$server_url" >"$join_log" 2>&1 &
+    --server-url "$server_url" $machine_args >"$join_log" 2>&1 &
   join_pid=$!
   echo "$join_pid" >"$data_dir/install-daemon.pid"
 

@@ -114,6 +114,7 @@ export interface CreateHostDaemonAppOptions {
   appUrl?: string;
   devAppPort?: number;
   logger: HostDaemonLogger;
+  machineCredential?: string;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -303,6 +304,7 @@ export async function createHostDaemonApp(
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
     logger: options.logger,
+    machineCredential: options.machineCredential,
     getSessionId: () => {
       if (!sessionState.value) {
         throw new Error("Server session is not open");
@@ -739,6 +741,7 @@ export async function createHostDaemonApp(
     dataDir: options.dataDir,
     instanceId: options.instanceId,
     logger: options.logger,
+    machineCredential: options.machineCredential,
     serverClient,
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),

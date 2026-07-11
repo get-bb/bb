@@ -27,7 +27,10 @@ interface AddMachineDialogProps {
  * countdown, and flips to "connected" live when the new machine's daemon
  * appears in the host list.
  */
-export function AddMachineDialog({ open, onOpenChange }: AddMachineDialogProps) {
+export function AddMachineDialog({
+  open,
+  onOpenChange,
+}: AddMachineDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -50,9 +53,15 @@ function formatCountdown(remainingMs: number): string {
  * (`--join-code`, `--host-id`, `--server`, mapping onto
  * `bb-app host-daemon join`).
  */
-function pairingCommand(joinCode: string, hostId: string): string {
+function pairingCommand(
+  joinCode: string,
+  hostId: string,
+  machineCode: string | null,
+): string {
   const origin = window.location.origin;
-  return `curl -fsSL ${origin}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${origin}`;
+  const machineFlag =
+    machineCode === null ? "" : ` --machine-code ${machineCode}`;
+  return `curl -fsSL ${origin}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${origin}${machineFlag}`;
 }
 
 function AddMachineDialogContent({
@@ -63,7 +72,13 @@ function AddMachineDialogContent({
   const hostsQuery = useHosts();
   const mintJoinCode = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: () => api.createHostJoinCode(),
+    mutationFn: async () => {
+      const [join, machine] = await Promise.all([
+        api.createHostJoinCode(),
+        api.createConnectMachineCode(),
+      ]);
+      return { join, machine };
+    },
   });
   const mint = mintJoinCode.mutate;
   useEffect(() => {
@@ -98,12 +113,21 @@ function AddMachineDialogContent({
     return () => window.clearTimeout(timeout);
   }, [copied]);
 
-  const joinCode = mintJoinCode.data ?? null;
-  const remainingMs = joinCode !== null ? joinCode.expiresAt - now : null;
+  const joinCode = mintJoinCode.data?.join ?? null;
+  const machineCode = mintJoinCode.data?.machine ?? null;
+  const expiresAt =
+    joinCode === null
+      ? null
+      : Math.min(joinCode.expiresAt, machineCode?.expiresAt ?? Infinity);
+  const remainingMs = expiresAt !== null ? expiresAt - now : null;
   const expired = remainingMs !== null && remainingMs <= 0;
   const command =
     joinCode !== null
-      ? pairingCommand(joinCode.joinCode, joinCode.hostId)
+      ? pairingCommand(
+          joinCode.joinCode,
+          joinCode.hostId,
+          machineCode?.code ?? null,
+        )
       : null;
 
   return (
@@ -111,8 +135,8 @@ function AddMachineDialogContent({
       <DialogHeader>
         <DialogTitle>Add a machine</DialogTitle>
         <DialogDescription>
-          Run this on the machine you want to add. It pairs the machine to
-          this server and keeps it available for your projects.
+          Run this on the machine you want to add. It pairs the machine to this
+          server and keeps it available for your projects.
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
@@ -176,9 +200,8 @@ function AddMachineDialogContent({
               ) : null}
             </div>
             <p className="text-xs text-subtle-foreground/75">
-              The install script is coming soon — for now the flags map onto{" "}
-              <code className="font-mono">bb-app host-daemon join</code> on the
-              other machine.
+              This installs bb, enrolls the daemon, and configures it to
+              reconnect automatically on the other machine.
             </p>
           </div>
         ) : (
@@ -218,7 +241,11 @@ function AddMachineDialogContent({
         </div>
       </div>
       <DialogFooter>
-        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => onOpenChange(false)}
+        >
           Done
         </Button>
       </DialogFooter>

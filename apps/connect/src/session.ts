@@ -18,7 +18,11 @@ interface CacheEntry<T> {
 const labelCache = new Map<string, CacheEntry<ResolvedServer | null>>();
 const sessionCache = new Map<string, CacheEntry<string | null>>();
 
-function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string, now: number): T | undefined {
+function cacheGet<T>(
+  map: Map<string, CacheEntry<T>>,
+  key: string,
+  now: number,
+): T | undefined {
   const hit = map.get(key);
   if (hit && hit.expires > now) return hit.value;
   if (hit) map.delete(key);
@@ -129,7 +133,11 @@ export async function verifySessionCookie(
     false,
     ["sign"],
   );
-  const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(token));
+  const sigBuf = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(token),
+  );
   const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
   if (!constantTimeEqual(providedSig, expectedSig)) {
     sessionCache.set(decoded, { value: null, expires: now + SESSION_TTL_MS });
@@ -146,39 +154,73 @@ export async function verifySessionCookie(
   return userId;
 }
 
-const machineCache = new Map<string, CacheEntry<string | null>>();
+const machineLastSeenWrites = new Map<string, number>();
+export const MACHINE_LAST_SEEN_WRITE_INTERVAL_MS = 60_000;
 
 async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
  * Verify a bb-connect machine credential (presented by a daemon on the
  * `x-bb-connect-machine` header) against D1. Returns the owning userId when the
- * credential matches a non-revoked machine. Cached per-isolate like sessions.
+ * credential matches a non-revoked machine. Successful verification is not
+ * cached: dashboard revocation is the lost-machine recovery hatch and must
+ * take effect on the next request.
  */
 export async function verifyMachineCredential(
   credential: string,
   db: ConnectDb,
 ): Promise<string | null> {
-  if (!credential) return null;
-  const now = Date.now();
-  const cached = cacheGet(machineCache, credential, now);
-  if (cached !== undefined) return cached;
+  return (await verifyMachineCredentialDetails(credential, db))?.userId ?? null;
+}
 
+export async function verifyMachineCredentialDetails(
+  credential: string,
+  db: ConnectDb,
+): Promise<{ machineId: string; userId: string } | null> {
+  if (!credential) return null;
   const hash = await sha256Hex(credential);
   const row = await db
-    .select({ userId: machine.userId })
+    .select({ machineId: machine.id, userId: machine.userId })
     .from(machine)
     .where(and(eq(machine.credentialHash, hash), isNull(machine.revokedAt)))
     .get();
-  const userId = row?.userId ?? null;
-  machineCache.set(credential, { value: userId, expires: now + SESSION_TTL_MS });
-  return userId;
+  return row ?? null;
 }
 
-export function parseCookie(header: string | null, name: string): string | null {
+/** Best-effort liveness write, capped to one D1 update per machine per minute/isolate. */
+export async function markMachineSeen(
+  machineId: string,
+  db: ConnectDb,
+  now: number = Date.now(),
+): Promise<boolean> {
+  const previous = machineLastSeenWrites.get(machineId);
+  if (
+    previous !== undefined &&
+    now - previous < MACHINE_LAST_SEEN_WRITE_INTERVAL_MS
+  ) {
+    return false;
+  }
+  machineLastSeenWrites.set(machineId, now);
+  await db
+    .update(machine)
+    .set({ lastSeenAt: new Date(now) })
+    .where(and(eq(machine.id, machineId), isNull(machine.revokedAt)))
+    .run();
+  return true;
+}
+
+export function parseCookie(
+  header: string | null,
+  name: string,
+): string | null {
   if (!header) return null;
   for (const part of header.split(";")) {
     const eq = part.indexOf("=");

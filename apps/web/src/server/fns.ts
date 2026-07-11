@@ -8,6 +8,7 @@ import {
   depsFromEnv,
   disconnectServer,
   removeServer,
+  revokeMachine,
   getAccountState,
   type AccountState,
 } from "./api.js";
@@ -18,13 +19,18 @@ import { getSessionUserId } from "./current-user.server.js";
 // createServerFn, so the client receives RPC stubs and none of the server-only
 // imports (D1, better-auth, cloudflare:workers) land in the client bundle.
 
-export type DashboardState = { authed: false } | ({ authed: true } & AccountState);
+export type DashboardState =
+  | { authed: false }
+  | ({ authed: true } & AccountState);
 
 export const getDashboard = createServerFn({ method: "GET" }).handler(
   async (): Promise<DashboardState> => {
     const userId = await getSessionUserId();
     if (!userId) return { authed: false };
-    return { authed: true, ...(await getAccountState(depsFromEnv(getEnv()), userId)) };
+    return {
+      authed: true,
+      ...(await getAccountState(depsFromEnv(getEnv()), userId)),
+    };
   },
 );
 
@@ -75,7 +81,9 @@ export const createMachineCodeFn = createServerFn({ method: "POST" })
   });
 
 export const disconnectFn = createServerFn({ method: "POST" })
-  .validator((input: { serverId: string }) => ({ serverId: String(input.serverId) }))
+  .validator((input: { serverId: string }) => ({
+    serverId: String(input.serverId),
+  }))
   .handler(async ({ data }) => {
     const userId = await getSessionUserId();
     if (!userId) return { error: "unauthenticated" as const };
@@ -84,10 +92,21 @@ export const disconnectFn = createServerFn({ method: "POST" })
   });
 
 export const removeServerFn = createServerFn({ method: "POST" })
-  .validator((input: { serverId: string }) => ({ serverId: String(input.serverId) }))
+  .validator((input: { serverId: string }) => ({
+    serverId: String(input.serverId),
+  }))
   .handler(async ({ data }) => {
     const userId = await getSessionUserId();
     if (!userId) return { error: "unauthenticated" as const };
     if (!data.serverId) return { error: "not-found" as const };
     return removeServer(depsFromEnv(getEnv()), userId, data.serverId);
+  });
+
+export const revokeMachineFn = createServerFn({ method: "POST" })
+  .validator((machineId: string) => String(machineId))
+  .handler(async ({ data: machineId }) => {
+    const userId = await getSessionUserId();
+    if (!userId) return { error: "unauthenticated" as const };
+    if (!machineId) return { error: "not-found" as const };
+    return revokeMachine(depsFromEnv(getEnv()), userId, machineId);
   });

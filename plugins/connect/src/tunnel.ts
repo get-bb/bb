@@ -19,6 +19,7 @@ import {
 } from "@bb/tunnel-contract";
 import type { PluginLogger } from "@bb/plugin-sdk";
 import type { ConnectCredential, CredentialStore } from "./credential.js";
+import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
 import {
   ConnectListError,
   fetchAccountServers,
@@ -623,6 +624,13 @@ export class ConnectTunnel {
       throw new ConnectListError("not_paired", "this bb is not connected");
     }
     return fetchDesktopSession(this.credential);
+  }
+
+  async createMachineCode() {
+    if (this.credential === null) {
+      throw new MachineCodeError("not_paired");
+    }
+    return fetchMachineCode(this.credential);
   }
 
   status(): ConnectStatus {

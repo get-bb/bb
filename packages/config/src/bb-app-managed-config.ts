@@ -134,6 +134,7 @@ export const bbAppManagedConfigSchema = z
     config: bbAppManagedConfigValuesSchema.optional(),
     customAcpAgents: customAcpAgentsSchema.optional(),
     customModels: z.array(customProviderModelSchema).optional(),
+    machineCredential: z.string().min(1).optional(),
     serverUrl: z.string().min(1).optional(),
   })
   .strict();
@@ -143,6 +144,7 @@ const bbAppManagedConfigBoundarySchema = z
     config: bbAppManagedConfigValuesSchema.optional(),
     customAcpAgents: z.array(z.unknown()).optional(),
     customModels: z.array(customProviderModelSchema).optional(),
+    machineCredential: z.string().min(1).optional(),
     serverUrl: z.string().min(1).optional(),
   })
   .strict();
@@ -211,10 +213,7 @@ export function parseBbAppManagedConfig(
   options: ParseBbAppManagedConfigOptions = {},
 ): BbAppManagedConfig {
   const parsed = bbAppManagedConfigBoundarySchema.parse(rawConfig);
-  const customAcpAgents = parseCustomAcpAgents(
-    parsed.customAcpAgents,
-    options,
-  );
+  const customAcpAgents = parseCustomAcpAgents(parsed.customAcpAgents, options);
   const config: BbAppManagedConfig = {};
   if (parsed.config !== undefined) {
     config.config = parsed.config;
@@ -227,6 +226,9 @@ export function parseBbAppManagedConfig(
   }
   if (parsed.serverUrl !== undefined) {
     config.serverUrl = parsed.serverUrl;
+  }
+  if (parsed.machineCredential !== undefined) {
+    config.machineCredential = parsed.machineCredential;
   }
   return config;
 }

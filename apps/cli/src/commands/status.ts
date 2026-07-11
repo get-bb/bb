@@ -5,7 +5,7 @@ import {
   resolveContextSnapshot,
   type ContextSnapshot,
 } from "../context-env.js";
-import { createCliBbSdk } from "../client.js";
+import { cliFetch, createCliBbSdk } from "../client.js";
 import { outputJson } from "./helpers.js";
 import {
   type ThreadEnvironmentInfo,
@@ -66,7 +66,7 @@ export function registerStatusCommand(
         // Best-effort: the data dir comes from system config (where theme/,
         // plugins, and the DB live). Works without any project/thread context.
         try {
-          const response = await fetch(`${getUrl()}/api/v1/system/config`);
+          const response = await cliFetch(`${getUrl()}/api/v1/system/config`);
           if (response.ok) {
             const config = (await response.json()) as { dataDir?: unknown };
             if (typeof config.dataDir === "string") {

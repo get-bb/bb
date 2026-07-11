@@ -271,6 +271,11 @@ export class ServerConnection {
           authorization: buildHostDaemonWebSocketAuthorizationHeader(
             this.options.hostKey,
           ),
+          ...(this.options.machineCredential !== undefined
+            ? {
+                "x-bb-connect-machine": this.options.machineCredential,
+              }
+            : {}),
         },
         maxRetries: Number.POSITIVE_INFINITY,
         protocols: buildHostDaemonWebSocketProtocols(),

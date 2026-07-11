@@ -85,6 +85,10 @@ message agents, or inspect projects, providers, and environments.
   entirely; with bb connect still enabled, `bb plugin enable connect` restores
   the command. Settings → Connect shows the current URL, QR code, shared ports,
   re-pair form, and disconnect control.
+- Add remote execution hosts from Settings → Machines. Its one-line installer
+  stores the bb connect machine credential locally and configures both the
+  daemon protocol and agent-launched `bb` CLI to traverse the account gate;
+  revoke a lost machine from the getbb.app dashboard.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or

@@ -3,8 +3,9 @@ import { RESERVED_HANDLES, parseVisitorHost, schema } from "@bb/connect-db";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
+  markMachineSeen,
   resolveLabel,
-  verifyMachineCredential,
+  verifyMachineCredentialDetails,
   verifySessionCookie,
 } from "./session.js";
 import {
@@ -22,6 +23,7 @@ const SESSION_COOKIE = "__Secure-better-auth.session_token";
 
 /** Internal header: gate → TunnelDO, share target (port string). Never trust visitors. */
 export const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
+export const MACHINE_CREDENTIAL_HEADER = "x-bb-connect-machine";
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -264,19 +266,45 @@ export default {
     if (url.pathname.startsWith("/__"))
       return text("bb connect: not found\n", 404);
 
-    // Daemon → server traffic. Share hosts are visitor-only — no machine path.
-    const MACHINE_HEADER = "x-bb-connect-machine";
-    if (url.pathname.startsWith("/internal")) {
+    // The bootstrap script is inert without both one-time codes. It must be
+    // reachable before the new machine has a browser session or credential.
+    if (request.method === "GET" && url.pathname === "/install.sh") {
       if (target !== null) return text("bb connect: not found\n", 404);
-      const machineCred = request.headers.get(MACHINE_HEADER) ?? "";
-      const machineUserId = await verifyMachineCredential(machineCred, db);
-      if (machineUserId == null || machineUserId !== resolved.userId) {
-        return text("bb connect: machine not authorized\n", 403);
-      }
       const headers = new Headers(request.headers);
-      headers.delete(MACHINE_HEADER);
+      headers.delete(MACHINE_CREDENTIAL_HEADER);
       headers.delete(TUNNEL_TARGET_HEADER);
       return stub.fetch(new Request(request, { headers }));
+    }
+
+    // Daemon + machine CLI traffic. Share hosts are visitor-only. The bb
+    // server still verifies the daemon host key underneath this gate check.
+    const isMachinePath =
+      url.pathname.startsWith("/internal") ||
+      url.pathname === "/api/v1" ||
+      url.pathname.startsWith("/api/v1/");
+    if (target !== null && url.pathname.startsWith("/internal")) {
+      return text("bb connect: not found\n", 404);
+    }
+    const presentedMachineCredential = request.headers.get(
+      MACHINE_CREDENTIAL_HEADER,
+    );
+    if (isMachinePath && presentedMachineCredential !== null) {
+      if (target !== null) return text("bb connect: not found\n", 404);
+      const verified = await verifyMachineCredentialDetails(
+        presentedMachineCredential,
+        db,
+      );
+      if (verified == null || verified.userId !== resolved.userId) {
+        return text("bb connect: machine not authorized\n", 403);
+      }
+      ctx.waitUntil(markMachineSeen(verified.machineId, db));
+      const headers = new Headers(request.headers);
+      headers.delete(MACHINE_CREDENTIAL_HEADER);
+      headers.delete(TUNNEL_TARGET_HEADER);
+      return stub.fetch(new Request(request, { headers }));
+    }
+    if (url.pathname.startsWith("/internal")) {
+      return text("bb connect: machine not authorized\n", 403);
     }
 
     // Visitor request — require a session owned by this server's account.

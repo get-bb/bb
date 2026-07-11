@@ -8,6 +8,7 @@ interface EnrollHostArgs {
   hostId: string;
   hostName: string;
   hostType: HostDaemonEnrollRequest["hostType"];
+  machineCredential?: string;
   serverUrl: string;
   token: string;
 }
@@ -38,6 +39,9 @@ export async function enrollDaemonHost(
     headers: {
       authorization: `Bearer ${args.token}`,
       "content-type": "application/json",
+      ...(args.machineCredential !== undefined
+        ? { "x-bb-connect-machine": args.machineCredential }
+        : {}),
     },
     body: JSON.stringify({
       hostId: args.hostId,

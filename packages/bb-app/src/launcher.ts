@@ -15,10 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import {
-  APP_SURFACE_ENV_NAME,
-  APP_SURFACE_WEB,
-} from "@bb/config/app-surface";
+import { APP_SURFACE_ENV_NAME, APP_SURFACE_WEB } from "@bb/config/app-surface";
 import {
   BB_APP_MANAGED_CONFIG_KEYS,
   bbAppManagedEnvFileSchema,
@@ -225,6 +222,7 @@ export interface LauncherCliOptions {
   hostId?: string;
   hostType?: string;
   joinCode?: string;
+  machineCredential?: string;
   json?: boolean;
   serverPort?: string;
   serverUrl?: string;
@@ -645,6 +643,7 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
       "host-id": { type: "string" },
       "host-type": { type: "string" },
       "join-code": { type: "string" },
+      "machine-credential": { type: "string" },
       "server-port": { type: "string" },
       "server-url": { type: "string" },
       help: { short: "h", type: "boolean" },
@@ -662,6 +661,9 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   const hostId = readStringOption(parsed.values["host-id"]);
   const hostType = readStringOption(parsed.values["host-type"]);
   const joinCode = readStringOption(parsed.values["join-code"]);
+  const machineCredential = readStringOption(
+    parsed.values["machine-credential"],
+  );
   const serverPort = readStringOption(parsed.values["server-port"]);
   const serverUrl = chooseServerUrlOption(
     readStringOption(parsed.values["server-url"]),
@@ -684,6 +686,9 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   }
   if (joinCode !== undefined) {
     options.joinCode = joinCode;
+  }
+  if (machineCredential !== undefined) {
+    options.machineCredential = machineCredential;
   }
   if (serverPort !== undefined) {
     options.serverPort = serverPort;
@@ -735,6 +740,9 @@ function createEnvFromOptions(
   if (args.options.joinCode !== undefined) {
     env.BB_HOST_ENROLL_KEY = args.options.joinCode;
   }
+  if (args.options.machineCredential !== undefined) {
+    env.BB_CONNECT_MACHINE_CREDENTIAL = args.options.machineCredential;
+  }
   if (args.options.enrollKey !== undefined) {
     env.BB_HOST_ENROLL_KEY = args.options.enrollKey;
   }
@@ -755,6 +763,11 @@ function applyManagedConfigEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...args.env,
+    ...(args.config.machineCredential !== undefined
+      ? {
+          BB_CONNECT_MACHINE_CREDENTIAL: args.config.machineCredential,
+        }
+      : {}),
     ...args.config.config,
     ...args.envFile.env,
   };
@@ -918,6 +931,9 @@ function mergeManagedConfig(
   if (patchConfig.serverUrl !== undefined) {
     nextConfig.serverUrl = patchConfig.serverUrl;
   }
+  if (patchConfig.machineCredential !== undefined) {
+    nextConfig.machineCredential = patchConfig.machineCredential;
+  }
 
   if (patchConfig.config !== undefined) {
     nextConfig.config = {
@@ -942,6 +958,9 @@ function pruneManagedConfig(
   const nextConfig: ManagedConfigForWrite = {};
   if (config.serverUrl !== undefined) {
     nextConfig.serverUrl = config.serverUrl;
+  }
+  if (config.machineCredential !== undefined) {
+    nextConfig.machineCredential = config.machineCredential;
   }
   if (config.config !== undefined && Object.keys(config.config).length > 0) {
     nextConfig.config = config.config;
@@ -2207,12 +2226,18 @@ export async function createHostDaemonJoinEnv(
     trimToUndefined(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.context.dataDir));
   const suppliedJoinCode = trimToUndefined(args.env.BB_HOST_ENROLL_KEY);
+  const machineCredential = trimToUndefined(
+    args.env.BB_CONNECT_MACHINE_CREDENTIAL,
+  );
   if (suppliedJoinCode !== undefined) {
     if (requestedHostId === null) {
       throw new Error("--host-id is required when --join-code is supplied");
     }
     await writeManagedConfig({
-      config: { serverUrl: args.serverUrl },
+      config: {
+        serverUrl: args.serverUrl,
+        ...(machineCredential !== undefined ? { machineCredential } : {}),
+      },
       dataDir: args.context.dataDir,
     });
     return {
@@ -2236,7 +2261,10 @@ export async function createHostDaemonJoinEnv(
   }
 
   await writeManagedConfig({
-    config: { serverUrl: args.serverUrl },
+    config: {
+      serverUrl: args.serverUrl,
+      ...(machineCredential !== undefined ? { machineCredential } : {}),
+    },
     dataDir: args.context.dataDir,
   });
 
@@ -2253,8 +2281,7 @@ async function runBundledCliCommand(
   // Prefer the daemon-injected absolute CLI when present so packaged `bb`
   // trampolines match the running host daemon (dev workspace or this install).
   const bbCliOverride = trimToUndefined(args.env.BB_CLI);
-  const cliPath =
-    bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
+  const cliPath = bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
   const childProcess = spawn(cliPath, args.args, {
     cwd: process.cwd(),
     env: createCliEnv({ context: args.context, env: args.env }),
@@ -2449,7 +2476,7 @@ export async function runBbHostDaemon(
 
 Usage:
   bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>]
+  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--machine-credential <credential>]
 `);
     return;
   }
@@ -2507,7 +2534,7 @@ Usage:
   bb-app env set <key> <value>
   bb-app client ssh-target set <server-origin> <ssh-target>
   bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>]
+  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--machine-credential <credential>]
 
 CLI:
   npx --package bb-app bb <command>

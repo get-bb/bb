@@ -130,6 +130,62 @@ while :; do sleep 1; done
     process.kill(daemonPid, "SIGTERM");
   });
 
+  it("redeems and persists a connect machine code before joining through the tunnel", () => {
+    const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
+    writeExecutable(
+      join(fixture.binDir, "curl"),
+      '#!/bin/sh\nprintf \'%s\' \'{"credential":"bbcm_durable","machineId":"machine-1"}\'\n',
+    );
+    writeExecutable(
+      join(fixture.binDir, "bb-app"),
+      `#!/bin/sh
+printf '%s\n' "$@" >"${invocationPath}"
+printf '%s\n' '{"hostId":"host-test","hostKey":"secret","hostType":"persistent"}' >"$BB_DATA_DIR/auth.json"
+while :; do sleep 1; done
+`,
+    );
+    const result = spawnSync(
+      "sh",
+      [
+        SCRIPT_PATH.pathname,
+        "--join-code",
+        "join-secret",
+        "--host-id",
+        "host-test",
+        "--server",
+        "https://sawyer.getbb.app",
+        "--machine-code",
+        "MACH-INE1",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BB_DATA_DIR: fixture.dataDir,
+          BB_INSTALL_SKIP_SERVICE: "1",
+          HOME: fixture.homeDir,
+          PATH: `${fixture.binDir}${delimiter}${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(invocationPath, "utf8")).toContain(
+      "--machine-credential\nbbcm_durable",
+    );
+    expect(
+      JSON.parse(readFileSync(join(fixture.dataDir, "config.json"), "utf8")),
+    ).toEqual({
+      machineCredential: "bbcm_durable",
+      serverUrl: "https://sawyer.getbb.app",
+    });
+    const daemonPid = Number(
+      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+    );
+    process.kill(daemonPid, "SIGTERM");
+  });
+
   it("installs an idempotent macOS launch agent for joined state", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);

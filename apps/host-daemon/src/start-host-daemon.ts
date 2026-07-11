@@ -47,6 +47,7 @@ export interface StartHostDaemonOptions {
   hostType?: HostType;
   enableLocalApi?: boolean;
   localApi?: HostDaemonLocalApiOverrides;
+  machineCredential?: string;
   logger?: HostDaemonLogger;
   createInstanceId?: () => string;
   acquireLock?: typeof acquireDaemonLock;
@@ -129,6 +130,7 @@ export async function startHostDaemon(
           hostName: identity.hostName,
           hostType,
           serverUrl,
+          machineCredential: options.machineCredential,
           token:
             options.enrollKey ??
             (() => {
@@ -197,6 +199,7 @@ export async function startHostDaemon(
         hostDaemonPort: localApiConfig?.port,
         inheritedPath: (await resolveUserShellPath()) ?? process.env.PATH,
         serverUrl,
+        machineCredential: options.machineCredential,
       });
     const runtimeShellEnv = await resolveRuntimeShellEnv();
     const runtimeShellEnvResolvedAtMs = Date.now();
@@ -204,6 +207,7 @@ export async function startHostDaemon(
       dataDir,
       serverUrl,
       hostKey,
+      machineCredential: options.machineCredential,
       bridgeBundleDir: options.bridgeBundleDir,
       hostType,
       hostId: identity.hostId,

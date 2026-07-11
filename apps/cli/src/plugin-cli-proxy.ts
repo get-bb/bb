@@ -2,6 +2,7 @@ import {
   resolveContextProjectId,
   resolveContextThreadId,
 } from "./context-env.js";
+import { cliFetch } from "./client.js";
 
 /**
  * Plugin-contributed `bb` subcommands (server design §4.4). The CLI fetches
@@ -36,7 +37,7 @@ export async function fetchPluginCliContributions(
 ): Promise<PluginCliContributionsResult> {
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/v1/plugins/contributions`, {
+    response = await cliFetch(`${baseUrl}/api/v1/plugins/contributions`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
@@ -81,7 +82,7 @@ export async function findDisabledPluginForCommand(
   statusDetail: string | null;
 } | null> {
   try {
-    const response = await fetch(`${baseUrl}/api/v1/plugins`, {
+    const response = await cliFetch(`${baseUrl}/api/v1/plugins`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return null;
@@ -110,9 +111,7 @@ export async function findDisabledPluginForCommand(
           enabled: match.enabled,
           status: typeof match.status === "string" ? match.status : null,
           statusDetail:
-            typeof match.statusDetail === "string"
-              ? match.statusDetail
-              : null,
+            typeof match.statusDetail === "string" ? match.statusDetail : null,
         };
   } catch {
     return null;
@@ -152,7 +151,7 @@ export async function runPluginCliCommand(
 ): Promise<number> {
   const threadId = resolveContextThreadId();
   const projectId = resolveContextProjectId();
-  const response = await fetch(
+  const response = await cliFetch(
     `${baseUrl}/api/v1/plugins/${encodeURIComponent(pluginId)}/cli`,
     {
       method: "POST",
@@ -180,10 +179,14 @@ export async function runPluginCliCommand(
     return 1;
   }
   if (typeof result.stdout === "string" && result.stdout.length > 0) {
-    process.stdout.write(result.stdout.endsWith("\n") ? result.stdout : `${result.stdout}\n`);
+    process.stdout.write(
+      result.stdout.endsWith("\n") ? result.stdout : `${result.stdout}\n`,
+    );
   }
   if (typeof result.stderr === "string" && result.stderr.length > 0) {
-    process.stderr.write(result.stderr.endsWith("\n") ? result.stderr : `${result.stderr}\n`);
+    process.stderr.write(
+      result.stderr.endsWith("\n") ? result.stderr : `${result.stderr}\n`,
+    );
   }
   return result.exitCode;
 }
