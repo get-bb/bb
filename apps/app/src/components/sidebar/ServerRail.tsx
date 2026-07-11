@@ -101,7 +101,7 @@ function ServerTile({ server }: { server: BbDesktopServerListEntry }) {
       </TooltipTrigger>
       <TooltipContent side="right">
         <div className="font-medium">{server.name}</div>
-        <div className="text-primary-foreground">
+        <div className="text-inherit">
           {server.url} · {STATUS_LABELS[server.status]}
           {showsAttention ? " · Needs attention" : null}
         </div>

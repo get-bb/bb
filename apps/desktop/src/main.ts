@@ -15,6 +15,7 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   type WebContents,
+  webContents as electronWebContents,
 } from "electron";
 import { autoUpdater } from "electron-updater";
 import {
@@ -163,6 +164,11 @@ import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
 import {
+  createDesktopServerViewCache,
+  type DesktopServerViewCache,
+} from "./desktop-server-view-cache.js";
+import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
+import {
   createPopoutWindowManager,
   type PopoutWindowManager,
 } from "./popout-window.js";
@@ -243,6 +249,7 @@ interface LoadWindowUrlArgs {
 
 interface CreateApplicationWindowArgs {
   initialUrl: string | null;
+  primaryServerId: string;
   stateKey: WindowStateKey | null;
 }
 
@@ -328,6 +335,7 @@ const logViewerCopyRequestSchema = z
 
 let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
+let desktopServerViewCache: DesktopServerViewCache | null = null;
 let currentAppKeybindings: AppKeybindings = [];
 let currentApplicationMenuAccelerators = DEFAULT_APPLICATION_MENU_ACCELERATORS;
 let desktopUpdateService: DesktopUpdateService | null = null;
@@ -472,13 +480,89 @@ function getCurrentDesktopInfo(): BbDesktopInfo | null {
   });
 }
 
+function isRegisteredApplicationWindow(browserWindow: BrowserWindow): boolean {
+  return applicationWindowWebContentsIds.has(browserWindow.webContents.id);
+}
+
+function resolveApplicationWindow(
+  webContents: WebContents,
+): BrowserWindow | null {
+  return (
+    desktopServerViewCache?.getHostWindow(webContents.id) ??
+    BrowserWindow.fromWebContents(webContents)
+  );
+}
+
+function sendToActiveApplicationRenderer(
+  browserWindow: BrowserWindow,
+  channel: string,
+  payload: unknown,
+): void {
+  const target =
+    desktopServerViewCache?.getActiveWebContents(browserWindow) ??
+    browserWindow.webContents;
+  if (!target.isDestroyed()) {
+    target.send(channel, payload);
+  }
+}
+
+function sendToAllApplicationRenderers(
+  browserWindow: BrowserWindow,
+  channel: string,
+  payload: unknown,
+): void {
+  const targets = desktopServerViewCache?.getAllWebContents(browserWindow) ?? [
+    browserWindow.webContents,
+  ];
+  for (const target of targets) {
+    if (!target.isDestroyed()) {
+      target.send(channel, payload);
+    }
+  }
+}
+
+function registerApplicationRendererReloadShortcut(
+  browserWindow: BrowserWindow,
+  webContents: WebContents,
+): void {
+  webContents.on("before-input-event", (event, input) => {
+    const shortcut = resolveDesktopReloadShortcut(input);
+    if (shortcut === null) {
+      return;
+    }
+    const cache = desktopServerViewCache;
+    if (
+      cache !== null &&
+      cache.getActiveWebContents(browserWindow).id !== webContents.id
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (cache !== null) {
+      cache.reload(browserWindow, shortcut === "force-reload");
+    } else if (shortcut === "force-reload") {
+      webContents.reloadIgnoringCache();
+    } else {
+      webContents.reload();
+    }
+  });
+}
+
 function sendDesktopInfoChanged(): void {
   const info = getCurrentDesktopInfo();
   if (info === null) {
     return;
   }
   for (const browserWindow of BrowserWindow.getAllWindows()) {
-    browserWindow.webContents.send(BB_DESKTOP_INFO_CHANGED_CHANNEL, info);
+    if (isRegisteredApplicationWindow(browserWindow)) {
+      sendToAllApplicationRenderers(
+        browserWindow,
+        BB_DESKTOP_INFO_CHANGED_CHANNEL,
+        info,
+      );
+    } else {
+      browserWindow.webContents.send(BB_DESKTOP_INFO_CHANGED_CHANNEL, info);
+    }
   }
 }
 
@@ -493,13 +577,14 @@ function getDesktopWindowState(
 function getSenderDesktopWindowState(
   event: IpcMainInvokeEvent,
 ): BbDesktopWindowState {
-  return getDesktopWindowState(BrowserWindow.fromWebContents(event.sender));
+  return getDesktopWindowState(resolveApplicationWindow(event.sender));
 }
 
 function sendDesktopWindowStateChanged(
   browserWindow: DesktopBrowserWindow,
 ): void {
-  browserWindow.webContents.send(
+  sendToAllApplicationRenderers(
+    browserWindow as BrowserWindow,
     BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
     getDesktopWindowState(browserWindow),
   );
@@ -574,7 +659,9 @@ function shouldEnableServerDaemonLogsMenu(): boolean {
 const pendingCloseWindowRequests = new Map<number, NodeJS.Timeout>();
 
 function requestRendererWindowClose(browserWindow: BrowserWindow): void {
-  const webContentsId = browserWindow.webContents.id;
+  const webContentsId =
+    desktopServerViewCache?.getActiveWebContents(browserWindow).id ??
+    browserWindow.webContents.id;
   const pending = pendingCloseWindowRequests.get(webContentsId);
   if (pending !== undefined) {
     clearTimeout(pending);
@@ -588,7 +675,11 @@ function requestRendererWindowClose(browserWindow: BrowserWindow): void {
       }
     }, CLOSE_WINDOW_REQUEST_TIMEOUT_MS),
   );
-  browserWindow.webContents.send(BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL, null);
+  sendToActiveApplicationRenderer(
+    browserWindow,
+    BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+    null,
+  );
 }
 
 function closeFocusedDetachedDevTools(): void {
@@ -642,6 +733,10 @@ function resolveInitialUrlForNewWindow(): string | null {
     resolveUrlForServerId(activeServerState.getMostRecentServerId()) ??
     currentWindowUrl
   );
+}
+
+function resolveInitialServerIdForNewWindow(): string {
+  return activeServerState?.getMostRecentServerId() ?? BUILTIN_SERVER_ID;
 }
 
 function buildMenuServerItems(): Array<{
@@ -743,40 +838,56 @@ function installCurrentApplicationMenu(): void {
     createNewWindow() {
       void createApplicationWindow({
         initialUrl: resolveInitialUrlForNewWindow(),
+        primaryServerId: resolveInitialServerIdForNewWindow(),
         stateKey: null,
       });
     },
     openNewTab() {
-      desktopWindowFactory?.sendToFocusedWindow(
-        BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
-        null,
-      );
-      desktopWindowFactory?.sendToFocusedWindow(
-        BB_DESKTOP_APP_COMMAND_CHANNEL,
-        "panel.newTab",
-      );
+      const browserWindow = getFocusedApplicationWindow();
+      if (browserWindow !== null) {
+        sendToActiveApplicationRenderer(
+          browserWindow,
+          BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+          null,
+        );
+        sendToActiveApplicationRenderer(
+          browserWindow,
+          BB_DESKTOP_APP_COMMAND_CHANNEL,
+          "panel.newTab",
+        );
+      }
     },
     openNewThread() {
-      desktopWindowFactory?.sendToFocusedWindow(
-        BB_DESKTOP_APP_COMMAND_CHANNEL,
-        "thread.new",
-      );
+      const browserWindow = getFocusedApplicationWindow();
+      if (browserWindow !== null) {
+        sendToActiveApplicationRenderer(
+          browserWindow,
+          BB_DESKTOP_APP_COMMAND_CHANNEL,
+          "thread.new",
+        );
+      }
     },
     openSettings() {
-      desktopWindowFactory?.sendToFocusedWindow(
-        BB_DESKTOP_APP_COMMAND_CHANNEL,
-        "settings.open",
-      );
+      const browserWindow = getFocusedApplicationWindow();
+      if (browserWindow !== null) {
+        sendToActiveApplicationRenderer(
+          browserWindow,
+          BB_DESKTOP_APP_COMMAND_CHANNEL,
+          "settings.open",
+        );
+      }
     },
     reloadWindow(browserWindow, ignoreCache) {
       if (!(browserWindow instanceof BrowserWindow)) {
         return;
       }
-      if (ignoreCache) {
+      if (desktopServerViewCache !== null) {
+        desktopServerViewCache.reload(browserWindow, ignoreCache);
+      } else if (ignoreCache) {
         browserWindow.webContents.reloadIgnoringCache();
-        return;
+      } else {
+        browserWindow.webContents.reload();
       }
-      browserWindow.webContents.reload();
     },
     closeWindowOrSideTab(browserWindow) {
       if (browserWindow === undefined) {
@@ -1081,14 +1192,22 @@ function startSystemConfigSync(serverUrl: string): void {
   void refreshSystemConfig({ serverUrl });
 }
 
-function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
+function registerApplicationWindow(
+  browserWindow: DesktopBrowserWindow,
+  primaryServerId: string,
+): void {
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
+  desktopServerViewCache?.registerWindow({
+    hostWindow: browserWindow as BrowserWindow,
+    primaryServerId,
+  });
+  registerApplicationRendererReloadShortcut(
+    browserWindow as BrowserWindow,
+    (browserWindow as BrowserWindow).webContents,
+  );
   if (activeServerState !== null) {
-    activeServerState.setActiveServerId(
-      browserWindow.id,
-      activeServerState.getMostRecentServerId(),
-    );
+    activeServerState.setActiveServerId(browserWindow.id, primaryServerId);
   }
   registerDesktopContextMenu({ webContents: browserWindow.webContents });
   browserWindow.on("enter-full-screen", () => {
@@ -1107,9 +1226,12 @@ async function loadUrlInApplicationWindow(args: {
   browserWindow: BrowserWindow;
   url: string;
 }): Promise<void> {
-  args.browserWindow.webContents.setZoomFactor(1);
+  const webContents =
+    desktopServerViewCache?.getActiveWebContents(args.browserWindow) ??
+    args.browserWindow.webContents;
+  webContents.setZoomFactor(1);
   try {
-    await args.browserWindow.loadURL(args.url);
+    await webContents.loadURL(args.url);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("ERR_ABORTED")) {
@@ -1208,7 +1330,11 @@ function sendServersChangedToWindow(browserWindow: {
   const servers = buildServerListEntries({
     activeServerId: activeServerState.getActiveServerId(browserWindow.id),
   });
-  browserWindow.webContents.send(BB_DESKTOP_SERVERS_CHANGED_CHANNEL, servers);
+  sendToAllApplicationRenderers(
+    browserWindow as BrowserWindow,
+    BB_DESKTOP_SERVERS_CHANGED_CHANNEL,
+    servers,
+  );
 }
 
 function sendServersChanged(): void {
@@ -1275,6 +1401,7 @@ async function setActiveServerForWindow(
   if (server === null) {
     return;
   }
+  let targetUrl: string;
 
   if (server.source === "builtin") {
     const attached = await ensureBuiltinRuntimeAttached();
@@ -1296,7 +1423,7 @@ async function setActiveServerForWindow(
       sendServersChanged();
       return;
     }
-    const url = resolveDesktopWindowUrl({
+    targetUrl = resolveDesktopWindowUrl({
       env: process.env,
       serverUrl: server.url,
     });
@@ -1313,14 +1440,7 @@ async function setActiveServerForWindow(
         popoutWindowUrl = localUrl;
       }
     }
-    currentWindowUrl = url;
-    await loadUrlInApplicationWindow({
-      browserWindow: args.browserWindow,
-      url,
-    });
-    if (shouldOpenDevTools()) {
-      args.browserWindow.webContents.openDevTools({ mode: "detach" });
-    }
+    currentWindowUrl = targetUrl;
   } else {
     // Remote servers are pure web loads. Owned local runtime keeps running.
     if (server.source === "connect") {
@@ -1376,11 +1496,39 @@ async function setActiveServerForWindow(
         return;
       }
     }
-    currentWindowUrl = server.url;
+    targetUrl = server.url;
+  }
+
+  if (desktopServerViewCache !== null) {
+    const activation = await desktopServerViewCache.activate({
+      hostWindow: args.browserWindow,
+      serverId: server.id,
+      url: targetUrl,
+    });
+    if (
+      activation.previousRendererWebContentsId !==
+      activation.rendererWebContentsId
+    ) {
+      desktopBrowserViewManager?.setRendererActive(
+        activation.previousRendererWebContentsId,
+        false,
+      );
+      desktopBrowserViewManager?.setRendererActive(
+        activation.rendererWebContentsId,
+        true,
+      );
+    }
+  } else {
     await loadUrlInApplicationWindow({
       browserWindow: args.browserWindow,
-      url: server.url,
+      url: targetUrl,
     });
+  }
+  currentWindowUrl = targetUrl;
+  if (shouldOpenDevTools()) {
+    desktopServerViewCache
+      ?.getActiveWebContents(args.browserWindow)
+      .openDevTools({ mode: "detach" });
   }
 
   activeServerState.setActiveServerId(args.browserWindow.id, server.id);
@@ -1399,7 +1547,7 @@ function registerDesktopServerIpc(): void {
     scheduleServerAttentionRefresh();
     // Soft-trigger connect sync when the last attempt is older than 60s.
     connectServerSync?.onListRequested();
-    const browserWindow = BrowserWindow.fromWebContents(event.sender);
+    const browserWindow = resolveApplicationWindow(event.sender);
     const activeServerId =
       browserWindow === null || activeServerState === null
         ? BUILTIN_SERVER_ID
@@ -1478,6 +1626,7 @@ function registerDesktopServerIpc(): void {
     }
     remoteServerStatuses.delete(parsed.data.id);
     serverAttentionStates.delete(parsed.data.id);
+    desktopServerViewCache?.removeServer(parsed.data.id);
     // Windows pointing at the removed server fall back to the builtin entry.
     for (const browserWindow of BrowserWindow.getAllWindows()) {
       if (
@@ -1538,7 +1687,7 @@ function registerDesktopServerIpc(): void {
       if (!parsed.success) {
         return;
       }
-      const browserWindow = BrowserWindow.fromWebContents(event.sender);
+      const browserWindow = resolveApplicationWindow(event.sender);
       if (browserWindow === null) {
         return;
       }
@@ -1610,7 +1759,11 @@ function registerDesktopServerIpc(): void {
 }
 
 function isApplicationWindowSender(webContents: WebContents): boolean {
-  return applicationWindowWebContentsIds.has(webContents.id);
+  return (
+    applicationWindowWebContentsIds.has(webContents.id) ||
+    (desktopServerViewCache !== null &&
+      desktopServerViewCache.getHostWindow(webContents.id) !== null)
+  );
 }
 
 function isPopoutWindowSender(webContents: WebContents): boolean {
@@ -1663,14 +1816,16 @@ async function openPopoutThreadInMain(
     return false;
   }
   const path = getDesktopThreadRoutePath(thread);
-  if (
-    desktopWindowFactory.sendToFirstWindow(
+  const firstWindow = BrowserWindow.getAllWindows().find((browserWindow) =>
+    isRegisteredApplicationWindow(browserWindow),
+  );
+  if (firstWindow !== undefined) {
+    sendToActiveApplicationRenderer(
+      firstWindow,
       BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
-      {
-        url: path,
-      },
-    )
-  ) {
+      { url: path },
+    );
+    firstWindow.focus();
     return true;
   }
   const url = getWindowUrlForRoute(path);
@@ -1679,6 +1834,7 @@ async function openPopoutThreadInMain(
   }
   const browserWindow = await createApplicationWindow({
     initialUrl: url,
+    primaryServerId: BUILTIN_SERVER_ID,
     stateKey: null,
   });
   return browserWindow !== null;
@@ -1899,7 +2055,7 @@ async function createApplicationWindow(
     initialUrl: args.initialUrl,
     stateKey: args.stateKey,
   });
-  registerApplicationWindow(browserWindow);
+  registerApplicationWindow(browserWindow, args.primaryServerId);
   if (bbAppLoaded && shouldOpenDevTools()) {
     browserWindow.webContents.openDevTools({ mode: "detach" });
   }
@@ -1947,6 +2103,7 @@ async function finishQuit(): Promise<void> {
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
   desktopBrowserViewManager?.destroyAll();
+  desktopServerViewCache?.destroyAll();
   await desktopWindowFactory?.persistOpenWindows();
   await stopOwnedRuntime();
 }
@@ -1997,7 +2154,7 @@ function registerDesktopUpdateIpc(): void {
       pendingCloseWindowRequests.delete(event.sender.id);
     }
     if (payload === false) {
-      BrowserWindow.fromWebContents(event.sender)?.close();
+      resolveApplicationWindow(event.sender)?.close();
     }
   });
   // The in-app browser tab hands off the current address to the system
@@ -2339,6 +2496,7 @@ async function runDesktopApp(): Promise<void> {
     }
     void createApplicationWindow({
       initialUrl: resolveInitialUrlForNewWindow(),
+      primaryServerId: resolveInitialServerIdForNewWindow(),
       stateKey: null,
     });
   });
@@ -2352,6 +2510,7 @@ async function runDesktopApp(): Promise<void> {
     if (desktopWindowFactory?.hasOpenWindows() === false) {
       void createApplicationWindow({
         initialUrl: resolveInitialUrlForNewWindow(),
+        primaryServerId: resolveInitialServerIdForNewWindow(),
         stateKey: null,
       });
     }
@@ -2480,6 +2639,22 @@ async function runDesktopApp(): Promise<void> {
   registerDesktopUpdateIpc();
   registerDesktopServerIpc();
   registerPopoutIpc();
+  desktopServerViewCache = createDesktopServerViewCache({
+    onRendererCreated({ hostWindow, webContents }) {
+      applicationWindowWebContentsIds.add(webContents.id);
+      registerDesktopContextMenu({ webContents });
+      registerApplicationRendererReloadShortcut(hostWindow, webContents);
+      desktopBrowserViewManager?.setRendererActive(webContents.id, false);
+    },
+    onRendererDestroyed({ webContentsId }) {
+      applicationWindowWebContentsIds.delete(webContentsId);
+      desktopBrowserViewManager?.releaseRenderer(webContentsId);
+    },
+    openExternalUrl(url) {
+      void shell.openExternal(url);
+    },
+    preloadPath,
+  });
   desktopBrowserViewManager = createDesktopBrowserViewManager({
     dispatchAppCommand({ command, hostWebContentsId }) {
       const browserWindow = BrowserWindow.getAllWindows().find(
@@ -2488,13 +2663,25 @@ async function runDesktopApp(): Promise<void> {
       if (browserWindow === undefined) {
         return;
       }
-      browserWindow.webContents.send(BB_DESKTOP_APP_COMMAND_CHANNEL, command);
+      sendToActiveApplicationRenderer(
+        browserWindow,
+        BB_DESKTOP_APP_COMMAND_CHANNEL,
+        command,
+      );
     },
     focusHostWebContents(hostWebContentsId) {
       const browserWindow = BrowserWindow.getAllWindows().find(
         (candidate) => candidate.webContents.id === hostWebContentsId,
       );
-      browserWindow?.webContents.focus();
+      if (browserWindow !== undefined) {
+        desktopServerViewCache?.getActiveWebContents(browserWindow).focus();
+      }
+    },
+    sendToRenderer(rendererWebContentsId, channel, payload) {
+      const target = electronWebContents.fromId(rendererWebContentsId);
+      if (target !== undefined && !target.isDestroyed()) {
+        target.send(channel, payload);
+      }
     },
     resolveAppCommand(input) {
       return resolveDesktopBrowserAppCommand({
@@ -2504,7 +2691,11 @@ async function runDesktopApp(): Promise<void> {
       });
     },
   });
-  registerDesktopBrowserIpc(desktopBrowserViewManager);
+  registerDesktopBrowserIpc(
+    desktopBrowserViewManager,
+    (webContentsId) =>
+      desktopServerViewCache?.getHostWindow(webContentsId) ?? null,
+  );
   desktopUpdateService.start();
   desktopAutoUpdateService.start();
 
@@ -2539,7 +2730,7 @@ async function runDesktopApp(): Promise<void> {
     initialUrl: currentWindowUrl,
   });
   for (const browserWindow of restoredWindows) {
-    registerApplicationWindow(browserWindow);
+    registerApplicationWindow(browserWindow, BUILTIN_SERVER_ID);
   }
   await initializeRuntime({ bridgePath, serverUrl, userDataPath });
 }

@@ -32,15 +32,13 @@ function menuArgs(
     reloadWindow,
     selectServer: () => {},
     serverDaemonLogsMenuEnabled: false,
-    servers: [
-      { checked: true, id: "builtin-local", name: "This Mac" },
-    ],
+    servers: [{ checked: true, id: "builtin-local", name: "This Mac" }],
     ...overrides,
   };
 }
 
 describe("application menu", () => {
-  it("keeps reload menu actions click-only so app command chords do not collide", () => {
+  it("shows reload shortcuts without globally stealing browser commands", () => {
     const reloadWindow = vi.fn();
     const template = buildApplicationMenuTemplate(menuArgs(reloadWindow));
     const viewMenu = template.find((item) => item.label === "View");
@@ -49,8 +47,10 @@ describe("application menu", () => {
     const forceReload = submenu.find((item) => item.label === "Force Reload");
     const focusedWindow = {} as BaseWindow;
 
-    expect(reload?.accelerator).toBeUndefined();
-    expect(forceReload?.accelerator).toBeUndefined();
+    expect(reload?.accelerator).toBe("CommandOrControl+R");
+    expect(reload?.registerAccelerator).toBe(false);
+    expect(forceReload?.accelerator).toBe("CommandOrControl+Shift+R");
+    expect(forceReload?.registerAccelerator).toBe(false);
     reload?.click?.({} as never, focusedWindow, {} as never);
     forceReload?.click?.({} as never, focusedWindow, {} as never);
     expect(reloadWindow).toHaveBeenNthCalledWith(1, focusedWindow, false);

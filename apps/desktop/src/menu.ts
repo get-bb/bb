@@ -14,6 +14,8 @@ export const CLOSE_WINDOW_MENU_LABEL = "Close Window";
 export const OPEN_SETTINGS_MENU_LABEL = "Settings…";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
+export const RELOAD_ACCELERATOR = "CommandOrControl+R";
+export const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
 export const SERVER_MENU_LABEL = "Server";
 
 export interface ApplicationMenuServerItem {
@@ -34,10 +36,7 @@ export interface InstallApplicationMenuArgs {
   closeWindowOrSideTab(browserWindow: BaseWindow | undefined): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
-  selectServer(
-    serverId: string,
-    browserWindow: BaseWindow | undefined,
-  ): void;
+  selectServer(serverId: string, browserWindow: BaseWindow | undefined): void;
   serverDaemonLogsMenuEnabled: boolean;
   servers: ApplicationMenuServerItem[];
 }
@@ -163,13 +162,17 @@ export function buildApplicationMenuTemplate(
       label: "View",
       submenu: [
         {
+          accelerator: RELOAD_ACCELERATOR,
           label: "Reload",
+          registerAccelerator: false,
           click(_menuItem, browserWindow) {
             args.reloadWindow(browserWindow, false);
           },
         },
         {
+          accelerator: FORCE_RELOAD_ACCELERATOR,
           label: "Force Reload",
+          registerAccelerator: false,
           click(_menuItem, browserWindow) {
             args.reloadWindow(browserWindow, true);
           },
