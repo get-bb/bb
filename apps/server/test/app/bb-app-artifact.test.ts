@@ -7,22 +7,32 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createBbAppArtifactService,
-  resolveBbAppPackageRoot,
+  resolveBbAppPackage,
   type BbAppArtifactCommandRunner,
 } from "../../src/services/install/bb-app-artifact.js";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
 
-async function fixture(mode: "development" | "packaged") {
+// Layouts the server actually runs from. Detection must not depend on
+// NODE_ENV: CI's integration harness runs repo sources with a production env.
+const MODES = ["repo-src", "repo-dist", "packaged"] as const;
+type Mode = (typeof MODES)[number];
+
+function isRepoMode(mode: Mode): boolean {
+  return mode !== "packaged";
+}
+
+async function fixture(mode: Mode) {
   const root = await mkdtemp(join(tmpdir(), `bb-artifact-${mode}-`));
   roots.push(root);
-  const packageRoot =
-    mode === "development" ? join(root, "packages/bb-app") : root;
+  const packageRoot = isRepoMode(mode) ? join(root, "packages/bb-app") : root;
   const serverEntry =
-    mode === "development"
+    mode === "repo-src"
       ? join(root, "apps/server/src/server.ts")
-      : join(root, "server/dist/server.js");
+      : mode === "repo-dist"
+        ? join(root, "apps/server/dist/server.js")
+        : join(root, "server/dist/server.js");
   await mkdir(dirname(serverEntry), { recursive: true });
   await mkdir(join(packageRoot, "dist"), { recursive: true });
   await writeFile(serverEntry, "// fixture\n");
@@ -46,91 +56,85 @@ afterEach(async () => {
   );
 });
 
-describe.each(["development", "packaged"] as const)(
-  "bb-app artifact service (%s)",
-  (mode) => {
-    it("resolves and packs a structurally valid npm package", async () => {
-      const test = await fixture(mode);
-      const calls: Array<{
-        command: string;
-        args: readonly string[];
-        cwd: string;
-      }> = [];
-      const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
-        calls.push({ command, args, cwd });
-        if (command === "pnpm") {
-          return "built";
-        }
-        const result = await execFileAsync(command, [...args], { cwd });
-        return result.stdout;
-      };
-      expect(
-        resolveBbAppPackageRoot({
-          isDevelopment: mode === "development",
-          serverEntryUrl: pathToFileURL(test.serverEntry).href,
-        }),
-      ).toBe(test.packageRoot);
-      const service = createBbAppArtifactService({
-        dataDir: join(test.root, "data"),
-        isDevelopment: mode === "development",
-        commandRunner: runner,
-        serverEntryUrl: pathToFileURL(test.serverEntry).href,
-      });
-
-      const tarball = await service.getTarballPath();
-      await expect(service.getVersion()).resolves.toBe("1.2.3-test");
-      const listing = (
-        await execFileAsync("tar", ["-tzf", tarball])
-      ).stdout.split("\n");
-      expect(listing).toContain("package/package.json");
-      expect(listing).toContain("package/dist/bb-app.js");
-      expect(listing).toContain("package/README.md");
-      expect(listing).not.toContain("package/private.txt");
-      const packageJson = JSON.parse(
-        (await execFileAsync("tar", ["-xOzf", tarball, "package/package.json"]))
-          .stdout,
-      );
-      expect(packageJson.version).toBe("1.2.3-test");
-      expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
-        mode === "development" ? 1 : 0,
-      );
-      await expect(service.getTarballPath()).resolves.toBe(tarball);
-      expect(calls.filter((call) => call.command === "npm")).toHaveLength(1);
+describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
+  it("resolves and packs a structurally valid npm package", async () => {
+    const test = await fixture(mode);
+    const calls: Array<{
+      command: string;
+      args: readonly string[];
+      cwd: string;
+    }> = [];
+    const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
+      calls.push({ command, args, cwd });
+      if (command === "pnpm") {
+        return "built";
+      }
+      const result = await execFileAsync(command, [...args], { cwd });
+      return result.stdout;
+    };
+    const resolved = await resolveBbAppPackage(
+      pathToFileURL(test.serverEntry).href,
+    );
+    expect(resolved.root).toBe(test.packageRoot);
+    expect(resolved.layout).toBe(isRepoMode(mode) ? "repo" : "packaged");
+    const service = createBbAppArtifactService({
+      dataDir: join(test.root, "data"),
+      commandRunner: runner,
+      serverEntryUrl: pathToFileURL(test.serverEntry).href,
     });
 
-    it("builds a fresh artifact when the protocol changes at the same package version", async () => {
-      const test = await fixture(mode);
-      const calls: Array<{
-        command: string;
-        args: readonly string[];
-        cwd: string;
-      }> = [];
-      const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
-        calls.push({ command, args, cwd });
-        if (command === "pnpm") return "built";
-        return (await execFileAsync(command, [...args], { cwd })).stdout;
-      };
-      const baseOptions = {
-        dataDir: join(test.root, "data"),
-        isDevelopment: mode === "development",
-        commandRunner: runner,
-        serverEntryUrl: pathToFileURL(test.serverEntry).href,
-      };
+    const tarball = await service.getTarballPath();
+    await expect(service.getVersion()).resolves.toBe("1.2.3-test");
+    const listing = (
+      await execFileAsync("tar", ["-tzf", tarball])
+    ).stdout.split("\n");
+    expect(listing).toContain("package/package.json");
+    expect(listing).toContain("package/dist/bb-app.js");
+    expect(listing).toContain("package/README.md");
+    expect(listing).not.toContain("package/private.txt");
+    const packageJson = JSON.parse(
+      (await execFileAsync("tar", ["-xOzf", tarball, "package/package.json"]))
+        .stdout,
+    );
+    expect(packageJson.version).toBe("1.2.3-test");
+    expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
+      isRepoMode(mode) ? 1 : 0,
+    );
+    await expect(service.getTarballPath()).resolves.toBe(tarball);
+    expect(calls.filter((call) => call.command === "npm")).toHaveLength(1);
+  });
 
-      const first = await createBbAppArtifactService({
-        ...baseOptions,
-        protocolVersion: 51,
-      }).getTarballPath();
-      const second = await createBbAppArtifactService({
-        ...baseOptions,
-        protocolVersion: 52,
-      }).getTarballPath();
+  it("builds a fresh artifact when the protocol changes at the same package version", async () => {
+    const test = await fixture(mode);
+    const calls: Array<{
+      command: string;
+      args: readonly string[];
+      cwd: string;
+    }> = [];
+    const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
+      calls.push({ command, args, cwd });
+      if (command === "pnpm") return "built";
+      return (await execFileAsync(command, [...args], { cwd })).stdout;
+    };
+    const baseOptions = {
+      dataDir: join(test.root, "data"),
+      commandRunner: runner,
+      serverEntryUrl: pathToFileURL(test.serverEntry).href,
+    };
 
-      expect(second).not.toBe(first);
-      expect(calls.filter((call) => call.command === "npm")).toHaveLength(2);
-      expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
-        mode === "development" ? 2 : 0,
-      );
-    });
-  },
-);
+    const first = await createBbAppArtifactService({
+      ...baseOptions,
+      protocolVersion: 51,
+    }).getTarballPath();
+    const second = await createBbAppArtifactService({
+      ...baseOptions,
+      protocolVersion: 52,
+    }).getTarballPath();
+
+    expect(second).not.toBe(first);
+    expect(calls.filter((call) => call.command === "npm")).toHaveLength(2);
+    expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
+      isRepoMode(mode) ? 2 : 0,
+    );
+  });
+});

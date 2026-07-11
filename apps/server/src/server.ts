@@ -300,7 +300,6 @@ export function createApp(
     options?.bbAppArtifactService ??
     createBbAppArtifactService({
       dataDir: deps.config.dataDir,
-      isDevelopment: deps.config.isDevelopment,
       serverEntryUrl: import.meta.url,
     });
 

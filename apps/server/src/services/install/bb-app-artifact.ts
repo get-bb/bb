@@ -18,7 +18,6 @@ export interface BbAppArtifactCommandRunner {
 
 export interface CreateBbAppArtifactServiceOptions {
   dataDir: string;
-  isDevelopment: boolean;
   commandRunner?: BbAppArtifactCommandRunner;
   protocolVersion?: number;
   serverEntryUrl?: string;
@@ -67,14 +66,44 @@ async function readBbAppPackageJson(
   return { name: parsed.name, version: parsed.version };
 }
 
-export function resolveBbAppPackageRoot(args: {
-  isDevelopment: boolean;
-  serverEntryUrl: string;
-}): string {
-  const serverEntryDir = dirname(fileURLToPath(args.serverEntryUrl));
-  return args.isDevelopment
-    ? resolve(serverEntryDir, "../../../packages/bb-app")
-    : resolve(serverEntryDir, "../..");
+export interface ResolvedBbAppPackage {
+  layout: "packaged" | "repo";
+  packageJson: BbAppPackageJson;
+  root: string;
+}
+
+/**
+ * Locates the bb-app package by probing the layouts the server actually runs
+ * from and validating each candidate's package.json, instead of trusting
+ * NODE_ENV: a source checkout can run with a production env (CI integration
+ * harness) and a packaged install always sits two levels above the server
+ * entry. The layout also decides the build strategy — a repo checkout must
+ * build bb-app before packing, a packaged install just packs itself.
+ */
+export async function resolveBbAppPackage(
+  serverEntryUrl: string,
+): Promise<ResolvedBbAppPackage> {
+  const serverEntryDir = dirname(fileURLToPath(serverEntryUrl));
+  const candidates: readonly { layout: "packaged" | "repo"; root: string }[] = [
+    { layout: "packaged", root: resolve(serverEntryDir, "../..") },
+    {
+      layout: "repo",
+      root: resolve(serverEntryDir, "../../../packages/bb-app"),
+    },
+  ];
+  for (const candidate of candidates) {
+    try {
+      const packageJson = await readBbAppPackageJson(candidate.root);
+      return { ...candidate, packageJson };
+    } catch {
+      // Try the next layout.
+    }
+  }
+  throw new Error(
+    `Unable to locate the bb-app package from ${serverEntryDir}; tried ${candidates
+      .map((candidate) => candidate.root)
+      .join(", ")}`,
+  );
 }
 
 function safeVersionFilePart(version: string): string {
@@ -93,22 +122,20 @@ export function createBbAppArtifactService(
   options: CreateBbAppArtifactServiceOptions,
 ): BbAppArtifactService {
   const commandRunner = options.commandRunner ?? defaultCommandRunner;
-  const packageRoot = resolveBbAppPackageRoot({
-    isDevelopment: options.isDevelopment,
-    serverEntryUrl: options.serverEntryUrl ?? import.meta.url,
-  });
+  const serverEntryUrl = options.serverEntryUrl ?? import.meta.url;
   const cacheDir = join(options.dataDir, "install-cache");
   const protocolVersion =
     options.protocolVersion ?? HOST_DAEMON_PROTOCOL_VERSION;
-  let packageJsonPromise: Promise<BbAppPackageJson> | undefined;
+  let resolvedPackagePromise: Promise<ResolvedBbAppPackage> | undefined;
 
-  function getPackageJson(): Promise<BbAppPackageJson> {
-    packageJsonPromise ??= readBbAppPackageJson(packageRoot);
-    return packageJsonPromise;
+  function getResolvedPackage(): Promise<ResolvedBbAppPackage> {
+    resolvedPackagePromise ??= resolveBbAppPackage(serverEntryUrl);
+    return resolvedPackagePromise;
   }
 
   async function buildTarball(): Promise<string> {
-    const packageJson = await getPackageJson();
+    const resolved = await getResolvedPackage();
+    const { packageJson, root: packageRoot } = resolved;
     const tarballPath = join(
       cacheDir,
       `bb-app-${safeVersionFilePart(packageJson.version)}-protocol-${protocolVersion}.tgz`,
@@ -143,7 +170,7 @@ export function createBbAppArtifactService(
       rm(metadataPath, { force: true }),
     ]);
 
-    if (options.isDevelopment) {
+    if (resolved.layout === "repo") {
       const repoRoot = resolve(packageRoot, "../..");
       await commandRunner(
         "pnpm",
@@ -173,7 +200,7 @@ export function createBbAppArtifactService(
 
   return {
     async getTarballPath(): Promise<string> {
-      const version = (await getPackageJson()).version;
+      const version = (await getResolvedPackage()).packageJson.version;
       const tarballPath = join(
         cacheDir,
         `bb-app-${safeVersionFilePart(version)}-protocol-${protocolVersion}.tgz`,
@@ -189,7 +216,7 @@ export function createBbAppArtifactService(
       return build;
     },
     async getVersion(): Promise<string> {
-      return (await getPackageJson()).version;
+      return (await getResolvedPackage()).packageJson.version;
     },
   };
 }
