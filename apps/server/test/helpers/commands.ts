@@ -1,4 +1,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { createHash } from "node:crypto";
+import { isUtf8 } from "node:buffer";
+import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import { eq } from "drizzle-orm";
 import { hostDaemonSessions } from "@bb/db";
 import {
@@ -8,10 +12,7 @@ import {
   hostDaemonServerWsMessageSchema,
   parseHostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
-import {
-  type HostType,
-  type ThreadEvent,
-} from "@bb/domain";
+import { type HostType, type ThreadEvent } from "@bb/domain";
 import type {
   HostDaemonCommand,
   HostDaemonEventEnvelope,
@@ -121,6 +122,99 @@ interface TestHostRpcSocket {
   send(data: string): void;
 }
 
+function isRuntimeWorkspaceFileCommand(command: HostDaemonRpcCommand): boolean {
+  if (command.type === "host.list_files") {
+    return command.path.endsWith(path.join(".bb", "skills"));
+  }
+  if (command.type !== "host.read_file") return false;
+  return (
+    command.path.endsWith(path.join(".bb", "AGENTS.md")) ||
+    command.path.includes(`${path.sep}.bb${path.sep}skills${path.sep}`)
+  );
+}
+
+function respondToRuntimeWorkspaceFileCommand(
+  deps: Pick<TestAppHarness, "hub">,
+  args: RegisterTestHostRpcCaptureArgs,
+  message: HostDaemonOnlineRpcRequestMessage,
+): boolean {
+  const command = message.command;
+  if (!isRuntimeWorkspaceFileCommand(command)) return false;
+
+  if (command.type === "host.list_files") {
+    let files: Array<{ name: string; path: string }> = [];
+    try {
+      files = readdirSync(command.path, { withFileTypes: true })
+        .filter((entry) => !entry.isSymbolicLink() && entry.isDirectory())
+        .flatMap((entry) => {
+          const skillFilePath = path.join(command.path, entry.name, "SKILL.md");
+          try {
+            return lstatSync(skillFilePath).isFile()
+              ? [{ name: "SKILL.md", path: `${entry.name}/SKILL.md` }]
+              : [];
+          } catch {
+            return [];
+          }
+        })
+        .slice(0, command.limit);
+    } catch {
+      files = [];
+    }
+    deps.hub.recordHostOnlineRpcResponse({
+      message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+        type: "host-rpc.response",
+        requestId: message.requestId,
+        commandType: command.type,
+        ok: true,
+        result: { files, truncated: false },
+      }),
+      sessionId: args.sessionId,
+    });
+    return true;
+  }
+
+  if (command.type !== "host.read_file") return false;
+  let bytes: Buffer;
+  let modifiedAtMs: number;
+  try {
+    const stat = lstatSync(command.path);
+    bytes = readFileSync(command.path);
+    modifiedAtMs = stat.mtimeMs;
+  } catch {
+    deps.hub.recordHostOnlineRpcResponse({
+      message: {
+        type: "host-rpc.response",
+        requestId: message.requestId,
+        commandType: command.type,
+        ok: false,
+        errorCode: "ENOENT",
+        errorMessage: `Path does not exist: ${command.path}`,
+      },
+      sessionId: args.sessionId,
+    });
+    return true;
+  }
+  const contentEncoding = isUtf8(bytes) ? "utf8" : "base64";
+  deps.hub.recordHostOnlineRpcResponse({
+    message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+      type: "host-rpc.response",
+      requestId: message.requestId,
+      commandType: command.type,
+      ok: true,
+      result: {
+        path: command.path,
+        content: bytes.toString(contentEncoding),
+        contentEncoding,
+        modifiedAtMs,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        sizeBytes: bytes.length,
+      },
+    }),
+    sessionId: args.sessionId,
+  });
+  return true;
+}
+
 function buildDefaultBranchListResult(
   selectedBranch: string | undefined,
 ): HostDaemonOnlineRpcResult<"host.list_branches"> {
@@ -191,9 +285,7 @@ function nextTestRpcCursor(
   hostId: string,
 ): number {
   void deps;
-  const previousCursor = Math.max(
-    testRpcCursorByHost.get(hostId) ?? 0,
-  );
+  const previousCursor = Math.max(testRpcCursorByHost.get(hostId) ?? 0);
   const nextCursor = previousCursor + 0.0001;
   testRpcCursorByHost.set(hostId, nextCursor);
   return nextCursor;
@@ -218,6 +310,9 @@ export function registerTestHostRpcCapture(
         return;
       }
       const command = hostDaemonRpcCommandSchema.parse(message.command);
+      if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
+        return;
+      }
       if (command.type === "host.list_branches") {
         deps.hub.recordHostOnlineRpcResponse({
           message: hostDaemonOnlineRpcResponseMessageSchema.parse({

@@ -41,9 +41,15 @@ export interface ResolveInjectedSkillSourcesArgs {
    * plugin-vs-plugin name collisions.
    */
   pluginSkillsRootPaths?: readonly string[];
+  projectSkillSources?: readonly ProjectInjectedSkillSource[];
   projectSkillsRootPath?: string;
   skillTreeRegistry: SkillTreeRegistry;
 }
+
+export type ProjectInjectedSkillSource = Extract<
+  HostDaemonInjectedSkillSource,
+  { kind: "workspace-path" }
+>;
 
 export interface SkillTreeEntry {
   bytes: Buffer;
@@ -316,6 +322,70 @@ function readSkillCandidate(
   };
 }
 
+export function resolveProjectSkillSourceFromContent(
+  logger: ServerLogger,
+  args: {
+    candidatePath: string;
+    content: string;
+    directoryName: string;
+  },
+): ProjectInjectedSkillSource | null {
+  if (!hasSupportedFrontmatterDelimiter(args.content)) {
+    logInvalidSkill({
+      candidatePath: args.candidatePath,
+      logger,
+      reason: "SKILL.md frontmatter must start with a plain --- delimiter",
+      sourceType: "project",
+    });
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = matter(args.content);
+  } catch (error) {
+    logInvalidSkill({
+      candidatePath: args.candidatePath,
+      logger,
+      reason:
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "Invalid SKILL.md frontmatter",
+      sourceType: "project",
+    });
+    return null;
+  }
+
+  const frontmatter = skillFrontmatterSchema.safeParse(parsed.data);
+  if (!frontmatter.success) {
+    logInvalidSkill({
+      candidatePath: args.candidatePath,
+      logger,
+      reason: compactZodIssues(frontmatter.error.issues),
+      sourceType: "project",
+    });
+    return null;
+  }
+  if (frontmatter.data.name !== args.directoryName) {
+    logInvalidSkill({
+      candidatePath: args.candidatePath,
+      logger,
+      reason: "Frontmatter name must match the skill directory name",
+      sourceType: "project",
+    });
+    return null;
+  }
+
+  return {
+    kind: "workspace-path",
+    sourceType: "project",
+    name: frontmatter.data.name,
+    description: frontmatter.data.description,
+    sourceRootPath: args.candidatePath,
+    skillFilePath: toSkillFilePath(args.candidatePath),
+  };
+}
+
 function readSkillsRoot(
   args: SkillRootScanArgs,
 ): HostDaemonInjectedSkillSource[] {
@@ -487,15 +557,25 @@ function excludeCollisions(
  * so earlier roots override later roots.
  *
  * Server-owned sources are registered as content-addressed trees. Project
- * sources remain workspace paths until their enumeration moves daemon-side.
+ * sources remain workspace paths so the target daemon stages their full trees
+ * directly from its workspace after the server enumerates their metadata.
  */
 export function resolveInjectedSkillSources(
   logger: ServerLogger,
   args: ResolveInjectedSkillSourcesArgs,
 ): HostDaemonInjectedSkillSource[] {
   const { skillTreeRegistry } = args;
-  const projectSources =
+  if (
+    args.projectSkillSources !== undefined &&
     args.projectSkillsRootPath !== undefined
+  ) {
+    throw new Error(
+      "Specify projectSkillSources or projectSkillsRootPath, not both",
+    );
+  }
+  const projectSources = args.projectSkillSources
+    ? [...args.projectSkillSources]
+    : args.projectSkillsRootPath !== undefined
       ? readSkillsRoot({
           logger,
           skillTreeRegistry,

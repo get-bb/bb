@@ -3387,6 +3387,19 @@ describe("public thread data routes", () => {
               result: { providerThreadId: "provider-immediate-reprovision" },
             };
           }
+          if (request.command.type === "host.list_files") {
+            return {
+              ok: true,
+              result: { files: [], truncated: false },
+            };
+          }
+          if (request.command.type === "host.read_file") {
+            return {
+              ok: false,
+              errorCode: "ENOENT",
+              errorMessage: `Path does not exist: ${request.command.path}`,
+            };
+          }
           throw new Error(`Unexpected RPC command ${request.command.type}`);
         },
       });

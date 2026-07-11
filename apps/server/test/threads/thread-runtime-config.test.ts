@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +11,7 @@ import {
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   defaultAppSettings,
+  defaultExperiments,
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
@@ -27,10 +29,16 @@ import {
 import {
   seedEnvironment,
   seedHostSession,
+  seedPrimaryHost,
   seedProjectWithSource,
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
+import {
+  registerHostRpcResponder,
+  type HostRpcResponder,
+} from "../helpers/host-rpc.js";
+import type { TestAppHarness } from "../helpers/test-app.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -80,6 +88,61 @@ async function writeWorkspaceAgentInstructions(
   const bbDir = path.join(args.workspacePath, ".bb");
   await mkdir(bbDir, { recursive: true });
   await writeFile(path.join(bbDir, "AGENTS.md"), args.content, "utf8");
+}
+
+function registerRemoteRuntimeFileResponder(
+  harness: TestAppHarness,
+  args: {
+    files: ReadonlyMap<string, string>;
+    hostId: string;
+    sessionId: string;
+  },
+): HostRpcResponder {
+  return registerHostRpcResponder(harness, {
+    hostId: args.hostId,
+    sessionId: args.sessionId,
+    handle: ({ command }) => {
+      if (command.type === "host.list_files") {
+        const prefix = `${command.path}${path.sep}`;
+        const files = [...args.files.keys()]
+          .filter((filePath) => filePath.startsWith(prefix))
+          .map((filePath) => path.relative(command.path, filePath))
+          .filter((relativePath) => {
+            const segments = relativePath.split(path.sep);
+            return segments.length === 2 && segments[1] === "SKILL.md";
+          })
+          .sort()
+          .slice(0, command.limit)
+          .map((relativePath) => ({
+            name: path.basename(relativePath),
+            path: relativePath.split(path.sep).join("/"),
+          }));
+        return { ok: true, result: { files, truncated: false } };
+      }
+      if (command.type === "host.read_file") {
+        const content = args.files.get(command.path);
+        if (content === undefined) {
+          return {
+            ok: false,
+            errorCode: "ENOENT",
+            errorMessage: `Path does not exist: ${command.path}`,
+          };
+        }
+        const bytes = Buffer.from(content, "utf8");
+        return {
+          ok: true,
+          result: {
+            path: command.path,
+            content,
+            contentEncoding: "utf8",
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+            sizeBytes: bytes.length,
+          },
+        };
+      }
+      throw new Error(`Unexpected remote runtime RPC ${command.type}`);
+    },
+  });
 }
 
 describe("thread runtime config", () => {
@@ -1155,10 +1218,11 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("appends workspace .bb/AGENTS.md instructions to the standard agent instructions", async () => {
+  it("keeps local-host workspace .bb/AGENTS.md instructions unchanged", async () => {
     await withTestHarness(async (harness) => {
       const hostId = "host-runtime-agents-md";
       seedHostSession(harness.deps, { id: hostId });
+      seedPrimaryHost(harness.deps, hostId);
       const workspacePath = path.join(
         harness.config.dataDir,
         "agents-md-workspace",
@@ -1206,6 +1270,203 @@ describe("thread runtime config", () => {
       );
       expect(runtimeConfig.instructions).toContain(
         "Always run the smoke test before pushing.",
+      );
+    });
+  });
+
+  it("reads workspace .bb/AGENTS.md from a non-primary host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-runtime-agents-primary",
+      });
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-runtime-agents-remote",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
+      });
+      const workspacePath = "/remote/runtime-agents-workspace";
+      const agentInstructionsPath = path.join(
+        workspacePath,
+        ".bb",
+        "AGENTS.md",
+      );
+      const responder = registerRemoteRuntimeFileResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        files: new Map([
+          [
+            agentInstructionsPath,
+            "\n# Remote Rules\n\nRead me from the remote daemon.\n",
+          ],
+        ]),
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: workspacePath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        {
+          thread,
+          environment,
+        },
+      );
+
+      expect(runtimeConfig.instructions).toContain(
+        "# Remote Rules\n\nRead me from the remote daemon.",
+      );
+      expect(responder.requests).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            command: expect.objectContaining({
+              type: "host.read_file",
+              path: agentInstructionsPath,
+              rootPath: workspacePath,
+            }),
+          }),
+        ]),
+      );
+    });
+  });
+
+  it("treats a missing remote workspace .bb/AGENTS.md as null", async () => {
+    await withTestHarness(async (harness) => {
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-runtime-missing-agents-primary",
+      });
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-runtime-missing-agents-remote",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
+      });
+      const workspacePath = "/remote/runtime-missing-agents-workspace";
+      registerRemoteRuntimeFileResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        files: new Map(),
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: workspacePath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        { thread, environment },
+      );
+
+      expect(runtimeConfig.instructions).not.toContain(
+        "The following workspace instructions come from .bb/AGENTS.md:",
+      );
+    });
+  });
+
+  it("enumerates project skills through a non-primary host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-runtime-skills-primary",
+      });
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-runtime-skills-remote",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
+      });
+      const workspacePath = "/remote/runtime-skills-workspace";
+      const skillRootPath = path.join(
+        workspacePath,
+        ".bb",
+        "skills",
+        "remote-review",
+      );
+      const skillFilePath = path.join(skillRootPath, "SKILL.md");
+      const responder = registerRemoteRuntimeFileResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        files: new Map([
+          [
+            skillFilePath,
+            [
+              "---",
+              "name: remote-review",
+              "description: Review code on the remote host.",
+              "---",
+              "",
+              "# Remote Review",
+            ].join("\n"),
+          ],
+        ]),
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: workspacePath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        { thread, environment },
+      );
+
+      expect(runtimeConfig.injectedSkillSources).toContainEqual({
+        kind: "workspace-path",
+        sourceType: "project",
+        name: "remote-review",
+        description: "Review code on the remote host.",
+        sourceRootPath: skillRootPath,
+        skillFilePath,
+      });
+      expect(responder.requests).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            command: expect.objectContaining({
+              type: "host.list_files",
+              path: path.join(workspacePath, ".bb", "skills"),
+            }),
+          }),
+          expect.objectContaining({
+            command: expect.objectContaining({
+              type: "host.read_file",
+              path: skillFilePath,
+              rootPath: workspacePath,
+            }),
+          }),
+        ]),
       );
     });
   });
