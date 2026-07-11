@@ -87,6 +87,8 @@ export interface FilePreviewProps {
   headerMode?: FilePreviewHeaderMode;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
   markdownLinkRouting?: MarkdownLinkRouting;
   statusLabel?: WorkspaceFilePreviewStatusLabel | null;
 }
@@ -112,6 +114,8 @@ interface FilePreviewHeaderProps {
   copyPath: string | null;
   rawContents: string | null;
   onOpenInEditor?: (path: string) => void;
+  onRefresh?: () => void;
+  isRefreshing: boolean;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
   toggleKind: FilePreviewToggleKind | null;
   showLineOverflowToggle: boolean;
@@ -430,6 +434,8 @@ export function FilePreview({
   headerMode = "file",
   onSelectionAddToChat,
   onOpenInEditor,
+  onRefresh,
+  isRefreshing = false,
   markdownLinkRouting,
   statusLabel = null,
 }: FilePreviewProps) {
@@ -503,6 +509,8 @@ export function FilePreview({
           copyPath={copyPath}
           rawContents={rawContents}
           onOpenInEditor={onOpenInEditor}
+          onRefresh={onRefresh}
+          isRefreshing={isRefreshing}
           statusLabel={statusLabel}
           toggleKind={toggleKind}
           showLineOverflowToggle={showLineOverflowToggle}
@@ -608,6 +616,8 @@ function FilePreviewHeader({
   copyPath,
   rawContents,
   onOpenInEditor,
+  onRefresh,
+  isRefreshing,
   statusLabel,
   toggleKind,
   showLineOverflowToggle,
@@ -643,6 +653,35 @@ function FilePreviewHeader({
             </span>
           )}
           <TooltipProvider delayDuration={300}>
+            {onRefresh ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+                      "shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+                    )}
+                    onClick={onRefresh}
+                    disabled={isRefreshing}
+                    aria-label={
+                      isRefreshing ? "Refreshing file" : "Refresh file"
+                    }
+                  >
+                    <Icon
+                      name={isRefreshing ? "Spinner" : "RotateCcw"}
+                      className={cn(isRefreshing && "animate-spin")}
+                      aria-hidden
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {isRefreshing ? "Refreshing file" : "Refresh file"}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             {rawContents === null ? null : (
               <Tooltip>
                 <TooltipTrigger asChild>

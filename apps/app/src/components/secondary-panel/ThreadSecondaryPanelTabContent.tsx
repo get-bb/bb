@@ -318,7 +318,9 @@ export function WorkspaceFilePreviewTabContent({
   const {
     data: workspaceFilePreview,
     error: workspaceFilePreviewError,
+    isFetching: isWorkspaceFilePreviewFetching,
     isLoading: isWorkspaceFilePreviewLoading,
+    refetch: refetchWorkspaceFilePreview,
   } = useEnvironmentFilePreview(environmentId, activePath, source);
 
   return (
@@ -333,10 +335,12 @@ export function WorkspaceFilePreviewTabContent({
           : null
       }
       isLoading={isWorkspaceFilePreviewLoading}
+      isRefreshing={isWorkspaceFilePreviewFetching}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      onRefresh={() => void refetchWorkspaceFilePreview()}
       statusLabel={statusLabel}
     />
   );
@@ -353,7 +357,9 @@ export function ProjectFilePreviewTabContent({
   const {
     data: projectFilePreview,
     error: projectFilePreviewError,
+    isFetching: isProjectFilePreviewFetching,
     isLoading: isProjectFilePreviewLoading,
+    refetch: refetchProjectFilePreview,
   } = useProjectFilePreview(projectId, activePath);
 
   return (
@@ -363,9 +369,11 @@ export function ProjectFilePreviewTabContent({
       error={projectFilePreviewError}
       filePreview={projectFilePreview}
       isLoading={isProjectFilePreviewLoading}
+      isRefreshing={isProjectFilePreviewFetching}
       lineRange={lineRange}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      onRefresh={() => void refetchProjectFilePreview()}
       statusLabel={null}
     />
   );
@@ -384,7 +392,9 @@ export function HostFilePreviewTabContent({
   const {
     data: hostFilePreview,
     error: hostFilePreviewError,
+    isFetching: isHostFilePreviewFetching,
     isLoading: isHostFilePreviewLoading,
+    refetch: refetchHostFilePreview,
   } = useThreadHostFilePreview(threadId, environmentId, activePath);
 
   return (
@@ -395,10 +405,12 @@ export function HostFilePreviewTabContent({
       filePreview={hostFilePreview}
       htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
       isLoading={isHostFilePreviewLoading}
+      isRefreshing={isHostFilePreviewFetching}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      onRefresh={() => void refetchHostFilePreview()}
       statusLabel={null}
     />
   );
@@ -416,7 +428,9 @@ export function ThreadStorageFilePreviewTabContent({
   const {
     data: threadStorageFilePreview,
     error: threadStorageFilePreviewError,
+    isFetching: isThreadStorageFilePreviewFetching,
     isLoading: isThreadStorageFilePreviewLoading,
+    refetch: refetchThreadStorageFilePreview,
   } = useThreadStorageFilePreview(threadId, activePath);
 
   return (
@@ -426,10 +440,12 @@ export function ThreadStorageFilePreviewTabContent({
       error={threadStorageFilePreviewError}
       filePreview={threadStorageFilePreview}
       isLoading={isThreadStorageFilePreviewLoading}
+      isRefreshing={isThreadStorageFilePreviewFetching}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      onRefresh={() => void refetchThreadStorageFilePreview()}
       threadId={threadId}
     />
   );

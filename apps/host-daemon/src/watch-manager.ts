@@ -334,7 +334,15 @@ export class WatchManager {
       if (workspaceWatchKindsIncludeLocalState(pendingKinds)) {
         const nextLocalFingerprint =
           await args.workspace.getLocalStateFingerprint();
+        // A real workspace file event must reach live content consumers even
+        // when the git-status summary is unchanged. For example, replacing one
+        // line with another repeatedly produces the same path/status/numstat
+        // fingerprint, but open file previews and diffs still need to refetch.
+        const workspaceContentChanged = pendingKinds.includes(
+          "workspace-content-changed",
+        );
         if (
+          workspaceContentChanged ||
           args.workspaceWatchState.lastLocalFingerprint !== nextLocalFingerprint
         ) {
           args.workspaceWatchState.lastLocalFingerprint = nextLocalFingerprint;

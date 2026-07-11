@@ -216,7 +216,7 @@ describe("WatchManager", () => {
     expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
   });
 
-  it("suppresses workspace change notifications when the local fingerprint is unchanged", async () => {
+  it("reports workspace content changes when the local fingerprint is unchanged", async () => {
     let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
     const workspace = createFakeWorkspace("/tmp/env-watch");
     const { hostWatcher } = createFakeHostWatcher({
@@ -249,6 +249,51 @@ describe("WatchManager", () => {
     watchWorkspaceArgs?.onChange({
       changedPaths: ["/tmp/env-watch/README.md"],
       changeKinds: ["workspace-content-changed"],
+      kind: "workspace-status-changed",
+      environmentId: "env-watch",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+      changeKinds: ["work-status-changed"],
+      environmentId: "env-watch",
+    });
+  });
+
+  it("suppresses git metadata notifications when the local fingerprint is unchanged", async () => {
+    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
+    const workspace = createFakeWorkspace("/tmp/env-watch");
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watchWorkspaceArgs = args;
+        return () => undefined;
+      },
+    });
+    const onWorkspaceStatusChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: vi.fn(async () => workspace),
+      onWorkspaceStatusChanged,
+    });
+
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env-watch",
+          workspaceContext: {
+            workspacePath: "/tmp/env-watch",
+            workspaceProvisionType: "unmanaged",
+          },
+        },
+      ],
+      threadStorageTargets: [],
+    });
+
+    watchWorkspaceArgs?.onChange({
+      changedPaths: ["/tmp/env-watch/.git/index"],
+      changeKinds: ["workspace-git-changed"],
       kind: "workspace-status-changed",
       environmentId: "env-watch",
     });

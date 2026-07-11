@@ -125,6 +125,46 @@ describe("FilePreview", () => {
     vi.useRealTimers();
   });
 
+  it("offers a manual file refresh action", () => {
+    const onRefresh = vi.fn();
+
+    render(
+      <FilePreview
+        path="README.md"
+        onRefresh={onRefresh}
+        state={{
+          kind: "ready",
+          file: { name: "README.md", contents: "# Preview" },
+          lineRange: null,
+          textPreviewKind: "markdown",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh file" }));
+
+    expect(onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("disables the manual refresh action while a refresh is running", () => {
+    render(
+      <FilePreview
+        path="README.md"
+        onRefresh={() => undefined}
+        isRefreshing
+        state={{ kind: "loading" }}
+      />,
+    );
+
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Refreshing file",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
   it("rerenders the code view when the Pierre worker pool advances", async () => {
     render(
       <FilePreview

@@ -29,10 +29,12 @@ interface FilePreviewBaseProps {
   error?: Error | null;
   filePreview: FilePreview | undefined;
   isLoading: boolean;
+  isRefreshing?: boolean;
   lineRange?: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
+  onRefresh?: () => void;
 }
 
 interface ThreadStorageFilePreviewProps extends FilePreviewBaseProps {
@@ -103,10 +105,12 @@ export function SecondaryPanelFilePreview({
   filePreview,
   htmlPreviewUrl = null,
   isLoading,
+  isRefreshing = false,
   lineRange = null,
   markdownLinkRouting,
   onSelectionAddToChat,
   onOpenInEditor,
+  onRefresh,
   statusLabel = null,
 }: SecondaryPanelFilePreviewProps) {
   if (error) {
@@ -117,6 +121,8 @@ export function SecondaryPanelFilePreview({
         copyPath={copyPath}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
         statusLabel={statusLabel}
         state={{ kind: isNotFound ? "not-found" : "error" }}
       />
@@ -130,6 +136,8 @@ export function SecondaryPanelFilePreview({
         copyPath={copyPath}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
         statusLabel={statusLabel}
         state={{ kind: "loading" }}
       />
@@ -144,6 +152,8 @@ export function SecondaryPanelFilePreview({
           copyPath={copyPath}
           onSelectionAddToChat={onSelectionAddToChat}
           onOpenInEditor={onOpenInEditor}
+          onRefresh={onRefresh}
+          isRefreshing={isRefreshing}
           statusLabel={statusLabel}
           state={{
             kind: "iframe",
@@ -161,6 +171,8 @@ export function SecondaryPanelFilePreview({
         copyPath={copyPath}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
         statusLabel={statusLabel}
         state={{
           kind: "html",
@@ -184,6 +196,8 @@ export function SecondaryPanelFilePreview({
           copyPath={copyPath}
           onSelectionAddToChat={onSelectionAddToChat}
           onOpenInEditor={onOpenInEditor}
+          onRefresh={onRefresh}
+          isRefreshing={isRefreshing}
           statusLabel={statusLabel}
           state={{ kind: "empty" }}
         />
@@ -195,6 +209,8 @@ export function SecondaryPanelFilePreview({
         copyPath={copyPath}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
         markdownLinkRouting={markdownLinkRouting}
         statusLabel={statusLabel}
         state={{
@@ -214,6 +230,8 @@ export function SecondaryPanelFilePreview({
         copyPath={copyPath}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
         statusLabel={statusLabel}
         state={{ kind: "image", url: filePreview.url }}
       />
@@ -227,6 +245,8 @@ export function SecondaryPanelFilePreview({
         copyPath={copyPath}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
         statusLabel={statusLabel}
         state={{ kind: "video", url: filePreview.url }}
       />
@@ -239,6 +259,8 @@ export function SecondaryPanelFilePreview({
       copyPath={copyPath}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      onRefresh={onRefresh}
+      isRefreshing={isRefreshing}
       statusLabel={statusLabel}
       state={{
         kind: "error",
@@ -254,10 +276,12 @@ export function ThreadStorageFilePreview({
   error,
   filePreview,
   isLoading,
+  isRefreshing,
   lineRange,
   markdownLinkRouting,
   onSelectionAddToChat,
   onOpenInEditor,
+  onRefresh,
   threadId,
 }: ThreadStorageFilePreviewProps) {
   return (
@@ -268,10 +292,12 @@ export function ThreadStorageFilePreview({
       filePreview={filePreview}
       htmlPreviewUrl={buildThreadStorageRawContentUrl(threadId, activePath)}
       isLoading={isLoading}
+      isRefreshing={isRefreshing}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      onRefresh={onRefresh}
     />
   );
 }
