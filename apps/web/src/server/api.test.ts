@@ -25,6 +25,7 @@ import {
   getAccountState,
   redeemConnectCode,
   redeemMachineCode,
+  revokeMachineForServerCredential,
   revokeMachine,
 } from "./api.js";
 import { sha256Hex } from "./tokens.js";
@@ -519,6 +520,17 @@ describe("server-authenticated machine-code round trip", () => {
     expect(redeemed.credential.startsWith("bbcm_")).toBe(true);
     expect(redeemed.serverUrl).toBe("https://sawyer-desktop.getbb.app");
     expect(db.select().from(machine).all()).toHaveLength(1);
+    await expect(
+      revokeMachineForServerCredential(
+        deps,
+        serverCredential,
+        redeemed.machineId,
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(
+      db.select().from(machine).where(eq(machine.id, redeemed.machineId)).get()
+        ?.revokedAt,
+    ).not.toBeNull();
     await expect(redeemMachineCode(deps, minted.code)).resolves.toMatchObject({
       error: "already-used",
       status: 409,

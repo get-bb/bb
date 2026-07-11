@@ -22,6 +22,7 @@ interface CreateWebSocketFixtureArgs {
 
 interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   autoReconnect?: boolean;
+  connectMachineId?: string;
   machineCredential?: string;
   protocolSelfUpdater?: ProtocolSelfUpdater;
   onSelfUpdateInstalled?: () => void | Promise<void>;
@@ -163,6 +164,9 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     ...(args.machineCredential !== undefined
       ? { machineCredential: args.machineCredential }
       : {}),
+    ...(args.connectMachineId !== undefined
+      ? { connectMachineId: args.connectMachineId }
+      : {}),
     serverClient: serverClient.serverClient,
     serverUrl: "http://127.0.0.1:3334",
     protocolSelfUpdater: args.protocolSelfUpdater,
@@ -255,6 +259,20 @@ describe("ServerConnection", () => {
     } finally {
       await configured.connection.shutdown();
       await plain.connection.shutdown();
+    }
+  });
+
+  it("reports the connect machine id when opening a session", async () => {
+    const fixture = createConnectionFixture({
+      connectMachineId: "machine-cloud-1",
+    });
+    try {
+      await fixture.connection.start();
+      expect(fixture.openSession).toHaveBeenCalledWith(
+        expect.objectContaining({ connectMachineId: "machine-cloud-1" }),
+      );
+    } finally {
+      await fixture.connection.shutdown();
     }
   });
 

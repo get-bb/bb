@@ -119,11 +119,8 @@ export function assertUsableHostId(
     return;
   }
 
-  requireNonDestroyedHostWithStatus(deps, args.hostId);
-  const isPublicHost = listPublicHosts(deps.db).some(
-    (host) => host.id === args.hostId,
-  );
-  if (!isPublicHost) {
+  const host = requireNonDestroyedHostWithStatus(deps, args.hostId);
+  if (host.type !== "persistent") {
     throw unusableHostError();
   }
 }

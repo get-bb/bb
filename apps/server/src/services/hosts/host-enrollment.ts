@@ -5,6 +5,7 @@ import { assertMatchingExistingHostType } from "./host-type-guard.js";
 type HostEnrollmentDeps = Pick<AppDeps, "db" | "machineAuth">;
 
 export interface IssuePersistentHostEnrollKeyArgs {
+  enrollSource: "loopback" | "public-multi-machine";
   hostId?: string;
 }
 
@@ -25,6 +26,7 @@ export async function issuePersistentHostEnrollKey(
   });
 
   const enrollKey = await deps.machineAuth.issueHostEnrollKey({
+    enrollSource: args.enrollSource,
     hostId,
     hostType: "persistent",
   });

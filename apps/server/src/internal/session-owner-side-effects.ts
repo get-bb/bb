@@ -52,6 +52,11 @@ export interface HandleDaemonSocketClosedArgs {
   sessionId: string;
 }
 
+export interface HandleHostRemovedArgs {
+  hostId: string;
+  sessionId: string;
+}
+
 interface CompleteDaemonDisconnectGraceArgs {
   hostId: string;
 }
@@ -119,9 +124,6 @@ export function handleDaemonSocketClosed(
 ): void {
   deps.logger.info({ sessionId: args.sessionId }, "Daemon WebSocket closed");
   deps.hub.unregisterDaemon(args.sessionId);
-  deps.terminalSessions.handleDaemonSessionClosed({
-    sessionId: args.sessionId,
-  });
 
   const session = deps.db
     .select()
@@ -131,6 +133,9 @@ export function handleDaemonSocketClosed(
   if (!session || session.status !== "active") {
     return;
   }
+  deps.terminalSessions.handleDaemonSessionClosed({
+    sessionId: args.sessionId,
+  });
 
   // Close the session immediately so host availability reflects the disconnect.
   // Active turns are reconciled only after a same-process reconnect has had the
@@ -154,6 +159,46 @@ export function handleDaemonSocketClosed(
         hostId: session.hostId,
       }),
   );
+}
+
+/**
+ * Host removal is an immediate, terminal disconnect: it cannot use the normal
+ * reconnect grace because the host is tombstoned in the same request. Closing
+ * the DB session first makes the later WebSocket close callback a no-op for
+ * owner side-effects, so this explicit path performs them exactly once.
+ */
+export function handleHostRemoved(
+  deps: DaemonSocketClosedDeps,
+  args: HandleHostRemovedArgs,
+): void {
+  const session = deps.db
+    .select()
+    .from(hostDaemonSessions)
+    .where(eq(hostDaemonSessions.id, args.sessionId))
+    .get();
+  if (
+    !session ||
+    session.status !== "active" ||
+    session.hostId !== args.hostId
+  ) {
+    return;
+  }
+
+  closeSession(deps.db, deps.hub, args.sessionId, "expired");
+  deps.hub.closeDaemonSession(args.sessionId, "expired");
+  deps.terminalSessions.handleDaemonSessionClosed({
+    sessionId: args.sessionId,
+  });
+  interruptPendingInteractionsForHostThreads(deps, {
+    hostId: args.hostId,
+    reason: DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON,
+  });
+  interruptActiveThreadsForHost(deps, {
+    hostId: args.hostId,
+    reason: "host-daemon-restarted",
+  });
+  settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
+  notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
 }
 
 function completeDaemonDisconnectGrace(

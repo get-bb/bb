@@ -52,6 +52,7 @@ export interface ServerConnectionOptions {
   hostKey: string;
   logger: HostDaemonLogger;
   machineCredential?: string;
+  connectMachineId?: string;
   serverClient: ServerClient;
   protocolSelfUpdater?: ProtocolSelfUpdater;
   onSelfUpdateInstalled?: () => void | Promise<void>;

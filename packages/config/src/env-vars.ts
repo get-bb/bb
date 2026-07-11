@@ -269,6 +269,12 @@ export const BB_CONNECT_MACHINE_CREDENTIAL_ENV = defineEnvVar<
   parse: parseOptionalTrimmedStringEnvValue,
 });
 
+export const BB_CONNECT_MACHINE_ID_ENV = defineEnvVar<string>({
+  description: "Cloud machine identifier paired with the bb connect credential",
+  name: "BB_CONNECT_MACHINE_ID",
+  parse: parseNonEmptyStringEnvValue,
+});
+
 export const BB_HOST_ENROLL_KEY_ENV = defineEnvVar<string | undefined>({
   description:
     "One-time enrollment token used to bootstrap a host daemon with the bb server",

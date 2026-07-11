@@ -13,6 +13,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DownloadMacosRouteImport } from './routes/download.macos'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
+import { Route as ApiConnectRevokeMachineRouteImport } from './routes/api.connect.revoke-machine'
 import { Route as ApiConnectRedeemMachineRouteImport } from './routes/api.connect.redeem-machine'
 import { Route as ApiConnectRedeemRouteImport } from './routes/api.connect.redeem'
 import { Route as ApiConnectMachineCodeRouteImport } from './routes/api.connect.machine-code'
@@ -36,6 +37,11 @@ const DownloadMacosRoute = DownloadMacosRouteImport.update({
 const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
   id: '/api/subscribe',
   path: '/api/subscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiConnectRevokeMachineRoute = ApiConnectRevokeMachineRouteImport.update({
+  id: '/api/connect/revoke-machine',
+  path: '/api/connect/revoke-machine',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiConnectRedeemMachineRoute = ApiConnectRedeemMachineRouteImport.update({
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
+  '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
+  '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
+  '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/api/connect/machine-code'
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
+    | '/api/connect/revoke-machine'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/api/connect/machine-code'
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
+    | '/api/connect/revoke-machine'
   id:
     | '__root__'
     | '/'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/api/connect/machine-code'
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
+    | '/api/connect/revoke-machine'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -132,6 +144,7 @@ export interface RootRouteChildren {
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute
   ApiConnectRedeemRoute: typeof ApiConnectRedeemRoute
   ApiConnectRedeemMachineRoute: typeof ApiConnectRedeemMachineRoute
+  ApiConnectRevokeMachineRoute: typeof ApiConnectRevokeMachineRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/api/subscribe'
       fullPath: '/api/subscribe'
       preLoaderRoute: typeof ApiSubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/connect/revoke-machine': {
+      id: '/api/connect/revoke-machine'
+      path: '/api/connect/revoke-machine'
+      fullPath: '/api/connect/revoke-machine'
+      preLoaderRoute: typeof ApiConnectRevokeMachineRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/connect/redeem-machine': {
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,
   ApiConnectRedeemRoute: ApiConnectRedeemRoute,
   ApiConnectRedeemMachineRoute: ApiConnectRedeemMachineRoute,
+  ApiConnectRevokeMachineRoute: ApiConnectRevokeMachineRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -328,7 +328,8 @@ export function createApp(
   app.use("*", compress());
   app.onError((error) => errorToResponse(error, deps.logger));
   app.get("/health", (context) => context.json({ ok: true }));
-  app.get("/install.sh", async () => {
+  app.get("/install.sh", async (context) => {
+    if (!getExperiments(deps.db).multiMachine) return context.notFound();
     const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH);
     return new Response(script, {
       headers: {
@@ -337,16 +338,18 @@ export function createApp(
       },
     });
   });
-  app.get("/install/version", async (context) =>
-    context.json({
+  app.get("/install/version", async (context) => {
+    if (!getExperiments(deps.db).multiMachine) return context.notFound();
+    return context.json({
       version: await bbAppArtifactService.getVersion(),
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-    }),
-  );
+    });
+  });
   // bb-app is public on npm. A paired tunnel can expose an unpublished build
   // slightly before release; serving the exact server build is an accepted
   // tradeoff so remote daemons cannot be stranded by protocol skew.
-  app.get("/install/bb-app.tgz", async () => {
+  app.get("/install/bb-app.tgz", async (context) => {
+    if (!getExperiments(deps.db).multiMachine) return context.notFound();
     const tarball = await readFile(await bbAppArtifactService.getTarballPath());
     return new Response(tarball, {
       headers: {
@@ -426,7 +429,7 @@ export function createApp(
   registerProjectRoutes(publicApi, deps);
   registerThreadFolderRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
-  registerHostRoutes(publicApi, deps);
+  registerHostRoutes(publicApi, deps, pluginService);
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);

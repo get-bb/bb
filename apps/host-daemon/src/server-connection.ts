@@ -214,6 +214,7 @@ export class ServerConnection {
         instanceId: this.options.instanceId,
         hostName: this.options.hostName,
         hostType: this.options.hostType,
+        connectMachineId: this.options.connectMachineId,
         dataDir: this.options.dataDir,
         activeThreads: this.options.getActiveThreads?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],

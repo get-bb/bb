@@ -148,7 +148,7 @@ while :; do sleep 1; done
       },
     );
 
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
       "host-daemon",
       "join",
@@ -191,8 +191,11 @@ while :; do sleep 1; done
         },
       },
     );
-    expect(result.status).toBe(0);
-    const npmInvocation = readFileSync(join(fixture.dataDir, "npm.log"), "utf8");
+    expect(result.status, result.stderr).toBe(0);
+    const npmInvocation = readFileSync(
+      join(fixture.dataDir, "npm.log"),
+      "utf8",
+    );
     expect(npmInvocation).toMatch(/^install -g \/.*bb-app\..*\.tgz$/mu);
     expect(npmInvocation).not.toContain("bb-app\n");
     const daemonPid = Number(
@@ -226,7 +229,7 @@ while :; do sleep 1; done
         },
       },
     );
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toBe(
       "install -g bb-app\n",
     );
@@ -277,12 +280,14 @@ while :; do sleep 1; done
     );
 
     expect(result.status).toBe(0);
-    expect(readFileSync(invocationPath, "utf8")).toContain(
-      "--machine-credential\nbbcm_durable",
+    expect(readFileSync(invocationPath, "utf8")).not.toContain("bbcm_durable");
+    expect(readFileSync(invocationPath, "utf8")).not.toContain(
+      "--machine-credential",
     );
     expect(
       JSON.parse(readFileSync(join(fixture.dataDir, "config.json"), "utf8")),
     ).toEqual({
+      connectMachineId: "machine-1",
       machineCredential: "bbcm_durable",
       serverUrl: "https://sawyer.getbb.app",
     });

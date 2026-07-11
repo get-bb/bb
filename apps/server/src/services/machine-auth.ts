@@ -26,6 +26,7 @@ const machineCredentialMetadataSchema = z
   .object({
     hostId: z.string().min(1),
     hostType: hostTypeSchema,
+    enrollSource: z.enum(["loopback", "public-multi-machine"]).optional(),
   })
   .strict();
 
@@ -36,6 +37,7 @@ export type MachineCredentialMetadata = z.infer<
 export interface IssueHostEnrollKeyArgs {
   hostId: string;
   hostType: HostType;
+  enrollSource: "loopback" | "public-multi-machine";
 }
 
 export interface RevokeHostEnrollKeysArgs {
@@ -69,6 +71,7 @@ export interface IssueHostEnrollKeyResult {
 }
 
 export interface EnrollHostArgs {
+  allowPublicEnrollment: boolean;
   hostId: string;
   hostType: HostType;
   token: string;
@@ -355,6 +358,7 @@ export async function createMachineAuthService(
       await ensureReady();
     },
     async enrollHost({
+      allowPublicEnrollment,
       hostId,
       hostType,
       token,
@@ -372,17 +376,28 @@ export async function createMachineAuthService(
       ) {
         return null;
       }
+      if (
+        verified.metadata.enrollSource === "public-multi-machine" &&
+        !allowPublicEnrollment
+      ) {
+        return null;
+      }
+
+      const hostMetadata: MachineCredentialMetadata = {
+        hostId: verified.metadata.hostId,
+        hostType: verified.metadata.hostType,
+      };
 
       // Create the replacement key before revoking prior daemon-host keys so
       // reenrollment does not strand the host if key creation fails mid-flow.
-      const hostKey = await createDaemonHostKey(verified.metadata);
+      const hostKey = await createDaemonHostKey(hostMetadata);
       await disableOtherActiveDaemonHostKeysForHost(
-        verified.metadata,
+        hostMetadata,
         hostKey.keyId,
       );
       return {
         hostKey: hostKey.key,
-        metadata: verified.metadata,
+        metadata: hostMetadata,
       };
     },
     async issueDaemonHostKey({
@@ -396,11 +411,13 @@ export async function createMachineAuthService(
       return created.key;
     },
     async issueHostEnrollKey({
+      enrollSource,
       hostId,
       hostType,
     }: IssueHostEnrollKeyArgs): Promise<IssueHostEnrollKeyResult> {
       await ensureReady();
       const metadata = {
+        enrollSource,
         hostId,
         hostType,
       };

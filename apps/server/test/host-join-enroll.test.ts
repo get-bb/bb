@@ -12,7 +12,11 @@ import { TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY } from "../src/request-context.js";
 import { registerInternalHostRoutes } from "../src/internal/hosts.js";
 import type { AppDeps } from "../src/types.js";
 import { readJson } from "./helpers/json.js";
-import { createTestAppHarness, testLogger, withTestHarness } from "./helpers/test-app.js";
+import {
+  createTestAppHarness,
+  testLogger,
+  withTestHarness,
+} from "./helpers/test-app.js";
 
 interface CreateHostRouteAppArgs {
   deps: AppDeps;
@@ -108,6 +112,30 @@ describe("host enroll routes", () => {
         code: "unsupported_host",
       });
       expect(getHost(harness.db, "host_remote_enroll_key")).toBeNull();
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("rejects machine-gated enroll-key requests even from loopback", async () => {
+    const harness = await createTestAppHarness({ appUrl: undefined });
+    const app = createInternalHostRouteApp({
+      deps: harness.deps,
+      trustedRemoteAddress: "127.0.0.1",
+    });
+    try {
+      const response = await app.request("/hosts/enroll-key", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bb-gate-auth": "machine",
+        },
+        body: JSON.stringify({ hostId: "host_forbidden_machine" }),
+      });
+      expect(response.status).toBe(403);
+      expect(await readJson(response)).toMatchObject({
+        code: "machine_host_management_forbidden",
+      });
     } finally {
       await harness.cleanup();
     }

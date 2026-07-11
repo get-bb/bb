@@ -8,6 +8,7 @@ import {
   BB_BRIDGE_DIR_ENV,
   BB_CLI_DIR_ENV,
   BB_CONNECT_MACHINE_CREDENTIAL_ENV,
+  BB_CONNECT_MACHINE_ID_ENV,
   BB_HOST_ENROLL_KEY_ENV,
   BB_HOST_DAEMON_AUTO_UPDATE_ENV,
   BB_HOST_ID_ENV,
@@ -20,6 +21,7 @@ export interface HostDaemonEntrypointConfig {
   BB_BRIDGE_DIR?: string;
   BB_CLI_DIR?: string;
   BB_CONNECT_MACHINE_CREDENTIAL?: string;
+  BB_CONNECT_MACHINE_ID?: string;
   BB_HOST_ENROLL_KEY?: string;
   BB_HOST_DAEMON_AUTO_UPDATE?: boolean;
   BB_HOST_ID?: string;
@@ -59,6 +61,11 @@ export function loadHostDaemonEntrypointConfig(
     definition: BB_CONNECT_MACHINE_CREDENTIAL_ENV,
     env: loader.env,
   });
+  const connectMachineId = readOptionalEnvVar({
+    context: loader.context,
+    definition: BB_CONNECT_MACHINE_ID_ENV,
+    env: loader.env,
+  });
   const hostId = readOptionalEnvVar({
     context: loader.context,
     definition: BB_HOST_ID_ENV,
@@ -79,6 +86,11 @@ export function loadHostDaemonEntrypointConfig(
     key: "BB_BRIDGE_DIR",
     target: config,
     value: bridgeDir,
+  });
+  assignIfDefined({
+    key: "BB_CONNECT_MACHINE_ID",
+    target: config,
+    value: connectMachineId,
   });
   assignIfDefined({
     key: "BB_CLI_DIR",

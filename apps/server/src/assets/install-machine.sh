@@ -108,30 +108,31 @@ else
     exit 1
   fi
   package_url="${server_url%/}/install/bb-app.tgz"
-  package_file=$(mktemp "${TMPDIR:-/tmp}/bb-app.XXXXXX.tgz")
+  package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
+  package_file="$package_dir/bb-app.tgz"
   package_status=$(curl -sS -L -o "$package_file" -w '%{http_code}' "$package_url") || {
-    rm -f "$package_file"
+    rm -rf "$package_dir"
     echo "Could not download the server's bb-app package from $package_url." >&2
     exit 1
   }
   if [ "$package_status" = 404 ]; then
-    rm -f "$package_file"
+    rm -rf "$package_dir"
     echo "The server does not provide its bb-app package; falling back to the npm registry..."
     install_source=bb-app
   elif [ "$package_status" -ge 200 ] && [ "$package_status" -lt 300 ]; then
     install_source=$package_file
     echo "Installing bb-app $server_version from the server..."
   else
-    rm -f "$package_file"
+    rm -rf "$package_dir"
     echo "Could not download the server's bb-app package (HTTP $package_status)." >&2
     exit 1
   fi
   if ! npm install -g "$install_source"; then
-    rm -f "$package_file"
+    rm -rf "$package_dir"
     echo "Could not install bb-app globally. Fix npm global-install permissions, then rerun this command." >&2
     exit 1
   fi
-  rm -f "$package_file"
+  rm -rf "$package_dir"
   if ! command -v bb-app >/dev/null 2>&1; then
     echo "npm installed bb-app, but its global bin directory is not on PATH." >&2
     echo "Add npm's global bin directory to PATH, then rerun this command." >&2
@@ -150,7 +151,6 @@ data_dir=${BB_DATA_DIR:-"$HOME/.bb"}
 mkdir -p "$data_dir"
 mkdir -p "$data_dir/logs"
 
-machine_credential=
 if [ -n "$machine_code" ]; then
   connect_apex=$(node -e '
     const url = new URL(process.argv[1]);
@@ -174,7 +174,7 @@ if [ -n "$machine_code" ]; then
     echo "Could not redeem the bb connect machine code." >&2
     exit 1
   }
-  machine_credential=$(printf '%s' "$redeem_response" | node -e '
+  printf '%s' "$redeem_response" | node -e '
     let input = "";
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (chunk) => { input += chunk; });
@@ -183,26 +183,27 @@ if [ -n "$machine_code" ]; then
       if (typeof body.credential !== "string" || !body.credential.startsWith("bbcm_")) {
         process.exit(2);
       }
-      process.stdout.write(body.credential);
+      if (typeof body.machineId !== "string" || body.machineId.length === 0) {
+        process.exit(2);
+      }
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const [dataDir, serverUrl] = process.argv.slice(1);
+      const configPath = path.join(dataDir, "config.json");
+      let config = {};
+      try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); }
+      catch (error) { if (error.code !== "ENOENT") throw error; }
+      config.serverUrl = serverUrl;
+      config.machineCredential = body.credential;
+      config.connectMachineId = body.machineId;
+      const temporary = `${configPath}.${process.pid}.tmp`;
+      fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+      fs.renameSync(temporary, configPath);
     });
-  ') || {
+  ' "$data_dir" "$server_url" || {
     echo "The bb connect machine-code response was invalid." >&2
     exit 1
   }
-  node -e '
-    const fs = require("node:fs");
-    const path = require("node:path");
-    const [dataDir, serverUrl, credential] = process.argv.slice(1);
-    const configPath = path.join(dataDir, "config.json");
-    let config = {};
-    try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); }
-    catch (error) { if (error.code !== "ENOENT") throw error; }
-    config.serverUrl = serverUrl;
-    config.machineCredential = credential;
-    const temporary = `${configPath}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-    fs.renameSync(temporary, configPath);
-  ' "$data_dir" "$server_url" "$machine_credential"
 fi
 
 already_joined=no
@@ -227,17 +228,11 @@ join_pid=
 if [ "$already_joined" = no ]; then
   join_log="$data_dir/install-join.log"
   echo "Joining $server_url as $host_id..."
-  if [ -n "$machine_credential" ]; then
-    machine_args="--machine-credential $machine_credential"
-  else
-    machine_args=
-  fi
-  # shellcheck disable=SC2086 -- machine credential tokens contain no spaces.
   BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
     --auto-update \
     --join-code "$join_code" \
     --host-id "$host_id" \
-    --server-url "$server_url" $machine_args >"$join_log" 2>&1 &
+    --server-url "$server_url" >"$join_log" 2>&1 &
   join_pid=$!
   echo "$join_pid" >"$data_dir/install-daemon.pid"
 

@@ -8,6 +8,7 @@ interface EnrollHostArgs {
   hostId: string;
   hostName: string;
   hostType: HostDaemonEnrollRequest["hostType"];
+  connectMachineId?: string;
   machineCredential?: string;
   serverUrl: string;
   token: string;
@@ -47,6 +48,9 @@ export async function enrollDaemonHost(
       hostId: args.hostId,
       hostName: args.hostName,
       hostType: args.hostType,
+      ...(args.connectMachineId !== undefined
+        ? { connectMachineId: args.connectMachineId }
+        : {}),
     }),
   });
 

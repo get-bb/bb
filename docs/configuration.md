@@ -26,14 +26,14 @@ npx bb-app env unset OPENAI_API_KEY
 `bb-app config list` shows non-secret values. `bb-app env list` redacts every
 value and only shows whether a key is set.
 
-The Add machine installer may also store a `machineCredential` beside
-`serverUrl` in `config.json`. It is a secret managed by bb connect: do not copy,
-edit, or commit it. It is intentionally omitted from `bb-app config list`.
-At runtime this value is passed to the standalone host daemon and its bundled
-`bb` CLI as `BB_CONNECT_MACHINE_CREDENTIAL` (or the equivalent internal
-`--machine-credential` launcher flag). These are installer-managed transport
-details, not user configuration knobs; re-add the machine instead of setting
-them by hand.
+The Add machine installer may also store a `machineCredential` and its
+`connectMachineId` beside `serverUrl` in `config.json`. The credential is a
+secret managed by bb connect: do not copy, edit, or commit it. Both fields are
+intentionally omitted from `bb-app config list`. At runtime they are passed to
+the standalone host daemon and its bundled `bb` CLI as
+`BB_CONNECT_MACHINE_CREDENTIAL` and `BB_CONNECT_MACHINE_ID`. These are
+installer-managed transport details, not user configuration knobs; re-add the
+machine instead of setting them by hand.
 
 Use `bb-app client ssh-target` to let a local helper open files from a remote
 bb server in local editors. The SSH target is the value that works after

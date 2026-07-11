@@ -1,9 +1,4 @@
-import {
-  closeSession,
-  getExperiments,
-  getNonDestroyedHost,
-  updateHost,
-} from "@bb/db";
+import { getExperiments, getNonDestroyedHost, updateHost } from "@bb/db";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -11,8 +6,13 @@ import {
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
+import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
+import {
+  getGateAuthKind,
+  type GateAuthHeaderReader,
+} from "../request-context.js";
 import {
   listPublicHostsWithStatus,
   requireNonDestroyedHostWithStatus,
@@ -27,13 +27,12 @@ import {
   callHostOnlineRpc,
   callHostRetryableOnlineRpc,
 } from "../services/hosts/online-rpc.js";
+import { handleHostRemoved } from "../internal/session-owner-side-effects.js";
 
 const PROVIDER_CLI_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const FOLDER_PICKER_TIMEOUT_MS = 10 * 60 * 1000;
 
-function providerCliInstallEventsToNdjson(
-  events: readonly unknown[],
-): string {
+function providerCliInstallEventsToNdjson(events: readonly unknown[]): string {
   return events.map((event) => `${JSON.stringify(event)}\n`).join("");
 }
 
@@ -55,7 +54,50 @@ function requireMutableHost(deps: AppDeps, hostId: string) {
   return host;
 }
 
-export function registerHostRoutes(app: Hono, deps: AppDeps): void {
+function assertHostManagementAllowed(context: GateAuthHeaderReader): void {
+  if (getGateAuthKind(context) === "machine") {
+    throw new ApiError(
+      403,
+      "machine_host_management_forbidden",
+      "Machine credentials cannot manage hosts",
+    );
+  }
+}
+
+async function revokeConnectMachineCredential(
+  deps: AppDeps,
+  plugins: PluginService,
+  machineId: string,
+): Promise<void> {
+  try {
+    const connectPlugin = plugins
+      .list()
+      .find((plugin) => plugin.source === "builtin:connect");
+    if (!connectPlugin) throw new Error("connect plugin is not installed");
+    const handler = plugins.getRpcHandler(connectPlugin.id, "revokeMachine");
+    if (handler.outcome !== "found") {
+      throw new Error(`connect plugin revoke handler is ${handler.outcome}`);
+    }
+    const result = await plugins.invokeRpcHandler(
+      connectPlugin.id,
+      "revokeMachine",
+      handler.value,
+      { machineId },
+    );
+    if (!result.ok) throw new Error(result.error);
+  } catch (error) {
+    deps.logger.error(
+      { err: error, machineId },
+      "Host was removed locally, but its bb connect machine credential could not be revoked. Revoke this machine manually from the getbb.app dashboard.",
+    );
+  }
+}
+
+export function registerHostRoutes(
+  app: Hono,
+  deps: AppDeps,
+  plugins: PluginService,
+): void {
   const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (message) =>
       new ApiError(400, "invalid_request", message),
@@ -65,8 +107,11 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
   // UI-driven add-a-machine uses the same trust boundary as the rest of the
   // public API, so this route intentionally does not require loopback access.
   post(routes.createJoinCode, async (context) => {
+    assertHostManagementAllowed(context);
     assertMultiMachineEnabled(deps);
-    const issued = await issuePersistentHostEnrollKey(deps, {});
+    const issued = await issuePersistentHostEnrollKey(deps, {
+      enrollSource: "public-multi-machine",
+    });
     return context.json(
       {
         joinCode: issued.enrollKey.key,
@@ -77,9 +122,7 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.list, (context) =>
-    context.json(listPublicHostsWithStatus(deps)),
-  );
+  get(routes.list, (context) => context.json(listPublicHostsWithStatus(deps)));
 
   get(routes.get, (context) =>
     context.json(
@@ -88,6 +131,7 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
   );
 
   patch(routes.update, (context, payload) => {
+    assertHostManagementAllowed(context);
     assertMultiMachineEnabled(deps);
     const hostId = context.req.param("id");
     requireMutableHost(deps, hostId);
@@ -103,6 +147,7 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
   });
 
   del(routes.delete, async (context) => {
+    assertHostManagementAllowed(context);
     assertMultiMachineEnabled(deps);
     const hostId = context.req.param("id");
     const host = requireMutableHost(deps, hostId);
@@ -120,11 +165,16 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
     });
     const sessionId = deps.hub.getDaemonSessionIdForHost(hostId);
     if (sessionId) {
-      closeSession(deps.db, deps.hub, sessionId, "expired");
-      deps.hub.closeDaemonSession(sessionId, "expired");
-      deps.terminalSessions.handleDaemonSessionClosed({ sessionId });
+      handleHostRemoved(deps, { hostId, sessionId });
     }
     updateHost(deps.db, deps.hub, hostId, { destroyedAt: Date.now() });
+    if (host.connectMachineId !== null) {
+      await revokeConnectMachineCredential(
+        deps,
+        plugins,
+        host.connectMachineId,
+      );
+    }
     return context.json({ ok: true });
   });
 

@@ -21,6 +21,7 @@ const pairInputSchema = z.object({
 const portInputSchema = z.object({
   port: z.number().int().min(1).max(65535),
 });
+const revokeMachineInputSchema = z.object({ machineId: z.string().min(1) });
 
 export type ConnectRpcHandlers = {
   pair(input: unknown): Promise<ConnectStatus>;
@@ -32,6 +33,7 @@ export type ConnectRpcHandlers = {
   listAccountServers(): Promise<ListAccountServersResult>;
   createDesktopSession(): Promise<DesktopSession>;
   createMachineCode(): Promise<MachineCode>;
+  revokeMachine(input: unknown): Promise<{ ok: true }>;
 };
 
 export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
@@ -101,6 +103,11 @@ export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
         }
         throw error;
       }
+    },
+    async revokeMachine(input: unknown) {
+      const args = revokeMachineInputSchema.parse(input);
+      await tunnel.revokeMachine(args.machineId);
+      return { ok: true };
     },
   };
 }

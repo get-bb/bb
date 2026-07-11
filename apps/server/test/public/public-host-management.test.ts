@@ -2,6 +2,7 @@ import {
   getEnvironment,
   getHost,
   getSessionById,
+  getThread,
   setExperiments,
   updateHost,
 } from "@bb/db";
@@ -10,6 +11,7 @@ import {
   createHostJoinCodeResponseSchema,
   type CreateHostJoinCodeResponse,
 } from "@bb/server-contract";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import { readJson } from "../helpers/json.js";
 import {
@@ -18,6 +20,7 @@ import {
   seedPrimaryHost,
   seedProjectWithSource,
   seedSession,
+  seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -70,6 +73,7 @@ describe("public host management", () => {
             "content-type": "application/json",
           },
           body: JSON.stringify({
+            connectMachineId: "machine-cloud-1",
             hostId: issued.hostId,
             hostName: "Build Machine",
             hostType: "persistent",
@@ -78,10 +82,39 @@ describe("public host management", () => {
       );
 
       expect(enrollResponse.status).toBe(201);
+      const enrolled = (await readJson(enrollResponse)) as { hostKey: string };
       expect(getHost(harness.db, issued.hostId)).toMatchObject({
+        connectMachineId: "machine-cloud-1",
         name: "Build Machine",
         type: "persistent",
       });
+
+      const sessionResponse = await harness.app.request(
+        "/internal/session/open",
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${enrolled.hostKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            activeThreads: [],
+            connectMachineId: "machine-cloud-2",
+            dataDir: "/tmp/remote-bb",
+            hostId: issued.hostId,
+            hostName: "Build Machine",
+            hostType: "persistent",
+            instanceId: "instance-cloud-2",
+            loadedEnvironments: [],
+            platform: "linux",
+            protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          }),
+        },
+      );
+      expect(sessionResponse.status).toBe(201);
+      expect(getHost(harness.db, issued.hostId)?.connectMachineId).toBe(
+        "machine-cloud-2",
+      );
     });
   });
 
@@ -93,6 +126,111 @@ describe("public host management", () => {
       expect(await readJson(response)).toMatchObject({
         code: "multi_machine_disabled",
       });
+    });
+  });
+
+  it("rejects a public join code after multi-machine is disabled", async () => {
+    await withTestHarness(async (harness) => {
+      enableMultiMachine(harness.db);
+      const issued = await createJoinCode(harness.app);
+      setExperiments(harness.db, defaultExperiments);
+
+      const response = await harness.app.request("/internal/hosts/enroll", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${issued.joinCode}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          hostId: issued.hostId,
+          hostName: "Disabled Machine",
+          hostType: "persistent",
+        }),
+      });
+
+      expect(response.status).toBe(401);
+      expect(getHost(harness.db, issued.hostId)).toBeNull();
+    });
+  });
+
+  it("rejects a forged connect machine id at enrollment", async () => {
+    await withTestHarness(async (harness) => {
+      enableMultiMachine(harness.db);
+      const issued = await createJoinCode(harness.app);
+      const response = await harness.app.request("/internal/hosts/enroll", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${issued.joinCode}`,
+          "content-type": "application/json",
+          "x-bb-gate-auth": "machine",
+          "x-bb-gate-machine-id": "machine-authenticated",
+        },
+        body: JSON.stringify({
+          connectMachineId: "machine-forged",
+          hostId: issued.hostId,
+          hostName: "Forged Machine",
+          hostType: "persistent",
+        }),
+      });
+      expect(response.status).toBe(403);
+      expect(await readJson(response)).toMatchObject({
+        code: "connect_machine_id_mismatch",
+      });
+      expect(getHost(harness.db, issued.hostId)).toBeNull();
+    });
+  });
+
+  it("rejects machine-gated host-management mutations", async () => {
+    await withTestHarness(async (harness) => {
+      enableMultiMachine(harness.db);
+      const host = seedHost(harness.deps, { id: "host_machine_forbidden" });
+      const requests = [
+        harness.app.request(`${API}/hosts/join-codes`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-gate-auth": "machine",
+          },
+          body: JSON.stringify({}),
+        }),
+        harness.app.request(`${API}/hosts/${host.id}`, {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-gate-auth": "machine",
+          },
+          body: JSON.stringify({ name: "forbidden" }),
+        }),
+        harness.app.request(`${API}/hosts/${host.id}`, {
+          method: "DELETE",
+          headers: { "x-bb-gate-auth": "machine" },
+        }),
+      ];
+      for (const response of await Promise.all(requests)) {
+        expect(response.status).toBe(403);
+        expect(await readJson(response)).toMatchObject({
+          code: "machine_host_management_forbidden",
+        });
+      }
+      expect(getHost(harness.db, host.id)).toMatchObject({
+        destroyedAt: null,
+        name: host.name,
+      });
+    });
+  });
+
+  it("allows session-gated join-code minting", async () => {
+    await withTestHarness(async (harness) => {
+      enableMultiMachine(harness.db);
+      const response = await harness.app.request(`${API}/hosts/join-codes`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bb-gate-auth": "session",
+        },
+        body: JSON.stringify({}),
+      });
+      expect(response.status).toBe(201);
     });
   });
 
@@ -160,11 +298,17 @@ describe("public host management", () => {
         hostId: host.id,
         projectId: project.id,
       });
+      const activeThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "active",
+      });
       const hostKey = await harness.deps.machineAuth.issueDaemonHostKey({
         hostId: host.id,
         hostType: "persistent",
       });
       const enrollKey = await harness.deps.machineAuth.issueHostEnrollKey({
+        enrollSource: "loopback",
         hostId: host.id,
         hostType: "persistent",
       });
@@ -194,6 +338,7 @@ describe("public host management", () => {
         id: environment.id,
         hostId: host.id,
       });
+      expect(getThread(harness.db, activeThread.id)?.status).toBe("error");
 
       const staleEnrollResponse = await harness.app.request(
         "/internal/hosts/enroll",
@@ -235,6 +380,47 @@ describe("public host management", () => {
         code: "primary_host_removal_refused",
       });
       expect(getHost(harness.db, primary.id)?.destroyedAt).toBeNull();
+    });
+  });
+
+  it("asks the connect plugin to revoke the removed host's cloud machine", async () => {
+    await withTestHarness(async (harness) => {
+      enableMultiMachine(harness.db);
+      const primary = seedHost(harness.deps, { id: "host_primary" });
+      seedPrimaryHost(harness.deps, primary.id);
+      const host = seedHost(harness.deps, {
+        connectMachineId: "machine-cloud-remove",
+        id: "host_cloud_remove",
+      });
+      await harness.pluginService.start();
+      const connectPlugin = harness.pluginService
+        .list()
+        .find((plugin) => plugin.source === "builtin:connect");
+      expect(connectPlugin).toBeDefined();
+      if (!connectPlugin) throw new Error("connect plugin was not installed");
+      const revokeHandler = vi.fn(async () => ({ ok: true }));
+      vi.spyOn(harness.pluginService, "getRpcHandler").mockReturnValue({
+        outcome: "found",
+        value: revokeHandler,
+      });
+      const invoke = vi
+        .spyOn(harness.pluginService, "invokeRpcHandler")
+        .mockResolvedValue({ ok: true, result: { ok: true } });
+
+      try {
+        const response = await harness.app.request(`${API}/hosts/${host.id}`, {
+          method: "DELETE",
+        });
+        expect(response.status).toBe(200);
+        expect(invoke).toHaveBeenCalledWith(
+          connectPlugin.id,
+          "revokeMachine",
+          revokeHandler,
+          { machineId: "machine-cloud-remove" },
+        );
+      } finally {
+        await harness.pluginService.stop();
+      }
     });
   });
 });

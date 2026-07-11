@@ -4,6 +4,8 @@ import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 import { cacheKey } from "./cache";
 import { parseClientProtocolVersion } from "./tunnel-do";
 import {
+  GATE_AUTH_HEADER,
+  GATE_MACHINE_ID_HEADER,
   TUNNEL_TARGET_HEADER,
   cacheNamespace,
   dashboardSignInUrl,
@@ -52,6 +54,18 @@ describe("requestForTunnelDo", () => {
     });
     const out = requestForTunnelDo(req, null);
     expect(out.headers.get(TUNNEL_TARGET_HEADER)).toBeNull();
+  });
+
+  it("strips a forged gate auth header and stamps the authenticated kind", () => {
+    const req = new Request("https://sawyer.getbb.app/", {
+      headers: {
+        [GATE_AUTH_HEADER]: "machine",
+        [GATE_MACHINE_ID_HEADER]: "forged-machine",
+      },
+    });
+    const out = requestForTunnelDo(req, null, "session");
+    expect(out.headers.get(GATE_AUTH_HEADER)).toBe("session");
+    expect(out.headers.get(GATE_MACHINE_ID_HEADER)).toBeNull();
   });
 });
 
@@ -343,10 +357,57 @@ describe("machine gate auth", () => {
         (request) => request.headers.get("x-bb-connect-machine") === null,
       ),
     ).toBe(true);
+    expect(
+      captured.every(
+        (request) => request.headers.get(GATE_AUTH_HEADER) === "machine",
+      ),
+    ).toBe(true);
+    expect(
+      captured.every(
+        (request) =>
+          request.headers.get(GATE_MACHINE_ID_HEADER) === "machine-owner",
+      ),
+    ).toBe(true);
     expect(mockMarkMachineSeen).toHaveBeenCalledWith(
       "machine-owner",
       expect.anything(),
     );
+  });
+
+  it("forbids machine credentials from minting join codes", async () => {
+    mockVerifyMachine.mockResolvedValue({
+      machineId: "machine-owner",
+      userId: OWNER,
+    });
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/hosts/join-codes", {
+        method: "POST",
+        headers: { "x-bb-connect-machine": "bbcm_owner" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(403);
+    expect(captured).toHaveLength(0);
+  });
+
+  it("forbids machine credentials from minting loopback enroll keys", async () => {
+    mockVerifyMachine.mockResolvedValue({
+      machineId: "machine-owner",
+      userId: OWNER,
+    });
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/internal/hosts/enroll-key", {
+        method: "POST",
+        headers: { "x-bb-connect-machine": "bbcm_owner" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(403);
+    expect(captured).toHaveLength(0);
   });
 
   it.each(["/install.sh", "/install/version", "/install/bb-app.tgz"])(
@@ -415,6 +476,21 @@ describe("gate worker share hosts", () => {
       ctx,
       expect.any(Function),
     );
+  });
+
+  it("strips forged gate auth and stamps session-authenticated forwards", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/hosts/join-codes", {
+        method: "POST",
+        headers: { [GATE_AUTH_HEADER]: "machine" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(GATE_AUTH_HEADER)).toBe("session");
   });
 
   it("forwards a share host on a non-primary label (single-dash subdomain)", async () => {

@@ -1,0 +1,1 @@
+ALTER TABLE `hosts` ADD `connect_machine_id` text;

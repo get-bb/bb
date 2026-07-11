@@ -70,9 +70,17 @@ export interface SeedTurnStartedArgs {
 
 export function seedHost(
   deps: Pick<AppDeps, "db" | "hub">,
-  args: { id?: string; name?: string; type?: "persistent" } = {},
+  args: {
+    connectMachineId?: string;
+    id?: string;
+    name?: string;
+    type?: "persistent";
+  } = {},
 ) {
   return upsertHost(deps.db, deps.hub, {
+    ...(args.connectMachineId !== undefined
+      ? { connectMachineId: args.connectMachineId }
+      : {}),
     id: args.id,
     name: args.name ?? "Test Host",
     type: args.type ?? "persistent",

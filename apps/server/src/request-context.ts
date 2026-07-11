@@ -7,6 +7,13 @@ import {
 import type { Context } from "hono";
 
 export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
+export const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
+export const GATE_MACHINE_ID_HEADER_NAME = "x-bb-gate-machine-id";
+export type GateAuthKind = "machine" | "session";
+
+export interface GateAuthHeaderReader {
+  req: { header(name: string): string | undefined };
+}
 
 export interface TrustedRemoteAddressReader {
   get(key: typeof TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY): string | undefined;
@@ -35,9 +42,23 @@ export function getTrustedRemoteAddress(
   return context.get(TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY);
 }
 
+export function getGateAuthKind(
+  context: GateAuthHeaderReader,
+): GateAuthKind | null {
+  const value = context.req.header(GATE_AUTH_HEADER_NAME);
+  return value === "machine" || value === "session" ? value : null;
+}
+
+export function getGateMachineId(context: GateAuthHeaderReader): string | null {
+  const value = context.req.header(GATE_MACHINE_ID_HEADER_NAME)?.trim();
+  return value ? value : null;
+}
+
 export function resolveRequestAppSurface(
   context: Context,
   fallback: AppSurface,
 ): AppSurface {
-  return parseAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ?? fallback;
+  return (
+    parseAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ?? fallback
+  );
 }

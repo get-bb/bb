@@ -116,6 +116,7 @@ export interface CreateHostDaemonAppOptions {
   devAppPort?: number;
   logger: HostDaemonLogger;
   machineCredential?: string;
+  connectMachineId?: string;
   autoUpdate?: boolean;
   installUpdateTarball?: (tarballPath: string) => Promise<void>;
   releaseLock: () => Promise<void>;
@@ -746,6 +747,7 @@ export async function createHostDaemonApp(
     instanceId: options.instanceId,
     logger: options.logger,
     machineCredential: options.machineCredential,
+    connectMachineId: options.connectMachineId,
     serverClient,
     protocolSelfUpdater: createProtocolSelfUpdater({
       dataDir: options.dataDir,

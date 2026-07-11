@@ -78,6 +78,7 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   instanceId: z.string().min(1),
   hostName: z.string().min(1),
   hostType: hostTypeSchema,
+  connectMachineId: z.string().min(1).optional(),
   platform: hostPlatformSchema,
   dataDir: z.string().min(1),
   // Accept any version at the schema boundary so the server can return an
@@ -95,6 +96,7 @@ export const hostDaemonEnrollRequestSchema = z
     hostId: z.string().min(1),
     hostName: z.string().min(1),
     hostType: hostTypeSchema,
+    connectMachineId: z.string().min(1).optional(),
   })
   .strict();
 export type HostDaemonEnrollRequest = z.infer<

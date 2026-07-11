@@ -223,7 +223,6 @@ export interface LauncherCliOptions {
   hostId?: string;
   hostType?: string;
   joinCode?: string;
-  machineCredential?: string;
   json?: boolean;
   serverPort?: string;
   serverUrl?: string;
@@ -645,7 +644,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
       "host-id": { type: "string" },
       "host-type": { type: "string" },
       "join-code": { type: "string" },
-      "machine-credential": { type: "string" },
       "server-port": { type: "string" },
       "server-url": { type: "string" },
       help: { short: "h", type: "boolean" },
@@ -666,9 +664,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   const hostId = readStringOption(parsed.values["host-id"]);
   const hostType = readStringOption(parsed.values["host-type"]);
   const joinCode = readStringOption(parsed.values["join-code"]);
-  const machineCredential = readStringOption(
-    parsed.values["machine-credential"],
-  );
   const serverPort = readStringOption(parsed.values["server-port"]);
   const serverUrl = chooseServerUrlOption(
     readStringOption(parsed.values["server-url"]),
@@ -691,9 +686,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   }
   if (joinCode !== undefined) {
     options.joinCode = joinCode;
-  }
-  if (machineCredential !== undefined) {
-    options.machineCredential = machineCredential;
   }
   if (serverPort !== undefined) {
     options.serverPort = serverPort;
@@ -748,9 +740,6 @@ function createEnvFromOptions(
   if (args.options.joinCode !== undefined) {
     env.BB_HOST_ENROLL_KEY = args.options.joinCode;
   }
-  if (args.options.machineCredential !== undefined) {
-    env.BB_CONNECT_MACHINE_CREDENTIAL = args.options.machineCredential;
-  }
   if (args.options.enrollKey !== undefined) {
     env.BB_HOST_ENROLL_KEY = args.options.enrollKey;
   }
@@ -775,6 +764,9 @@ function applyManagedConfigEnv(
       ? {
           BB_CONNECT_MACHINE_CREDENTIAL: args.config.machineCredential,
         }
+      : {}),
+    ...(args.config.connectMachineId !== undefined
+      ? { BB_CONNECT_MACHINE_ID: args.config.connectMachineId }
       : {}),
     ...args.config.config,
     ...args.envFile.env,
@@ -942,6 +934,9 @@ function mergeManagedConfig(
   if (patchConfig.machineCredential !== undefined) {
     nextConfig.machineCredential = patchConfig.machineCredential;
   }
+  if (patchConfig.connectMachineId !== undefined) {
+    nextConfig.connectMachineId = patchConfig.connectMachineId;
+  }
 
   if (patchConfig.config !== undefined) {
     nextConfig.config = {
@@ -969,6 +964,9 @@ function pruneManagedConfig(
   }
   if (config.machineCredential !== undefined) {
     nextConfig.machineCredential = config.machineCredential;
+  }
+  if (config.connectMachineId !== undefined) {
+    nextConfig.connectMachineId = config.connectMachineId;
   }
   if (config.config !== undefined && Object.keys(config.config).length > 0) {
     nextConfig.config = config.config;
@@ -2237,6 +2235,7 @@ export async function createHostDaemonJoinEnv(
   const machineCredential = trimToUndefined(
     args.env.BB_CONNECT_MACHINE_CREDENTIAL,
   );
+  const connectMachineId = trimToUndefined(args.env.BB_CONNECT_MACHINE_ID);
   if (suppliedJoinCode !== undefined) {
     if (requestedHostId === null) {
       throw new Error("--host-id is required when --join-code is supplied");
@@ -2245,6 +2244,7 @@ export async function createHostDaemonJoinEnv(
       config: {
         serverUrl: args.serverUrl,
         ...(machineCredential !== undefined ? { machineCredential } : {}),
+        ...(connectMachineId !== undefined ? { connectMachineId } : {}),
       },
       dataDir: args.context.dataDir,
     });
@@ -2272,6 +2272,7 @@ export async function createHostDaemonJoinEnv(
     config: {
       serverUrl: args.serverUrl,
       ...(machineCredential !== undefined ? { machineCredential } : {}),
+      ...(connectMachineId !== undefined ? { connectMachineId } : {}),
     },
     dataDir: args.context.dataDir,
   });
@@ -2484,7 +2485,7 @@ export async function runBbHostDaemon(
 
 Usage:
   bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
-  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--machine-credential <credential>] [--auto-update]
+  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--auto-update]
 `);
     return;
   }
@@ -2542,7 +2543,7 @@ Usage:
   bb-app env set <key> <value>
   bb-app client ssh-target set <server-origin> <ssh-target>
   bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
-  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--machine-credential <credential>] [--auto-update]
+  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--auto-update]
 
 CLI:
   npx --package bb-app bb <command>

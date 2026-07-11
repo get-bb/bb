@@ -1089,6 +1089,44 @@ describe("connect plugin", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("revokeMachine uses the stored server credential", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_durable",
+          handle: "sawyer",
+        });
+      }
+      if (url === "https://getbb.app/api/connect/revoke-machine") {
+        return Response.json({ ok: true });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "https://sawyer.getbb.app",
+    });
+
+    await expect(
+      harness.callRpc("revokeMachine", { machineId: "machine-1" }),
+    ).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://getbb.app/api/connect/revoke-machine",
+      expect.objectContaining({
+        body: JSON.stringify({ machineId: "machine-1" }),
+        headers: {
+          "content-type": "application/json",
+          "x-bb-connect-machine": "bbcred_durable",
+        },
+        method: "POST",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
   it("listAccountServers surfaces unauthorized cleanly on 401", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

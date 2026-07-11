@@ -515,6 +515,28 @@ export async function createMachineCodeForServerCredential(
   return result;
 }
 
+export async function revokeMachineForServerCredential(
+  deps: Pick<Deps, "db">,
+  credential: string,
+  machineId: string,
+): Promise<{ ok: true } | { error: string; status: number }> {
+  const presented = credential.trim();
+  if (!presented) return { error: "unauthorized", status: 401 };
+  const srv = await deps.db
+    .select({ userId: server.userId })
+    .from(server)
+    .where(
+      and(
+        eq(server.credentialHash, await sha256Hex(presented)),
+        isNull(server.revokedAt),
+      ),
+    )
+    .get();
+  if (!srv) return { error: "unauthorized", status: 401 };
+  const result = await revokeMachine(deps, srv.userId, machineId);
+  return "error" in result ? { error: result.error, status: 404 } : result;
+}
+
 /**
  * Revoke ONE server's credential and sever its live tunnel. Server-scoped: only
  * the target row is cleared and only its TunnelDO (keyed by subdomain) is closed,

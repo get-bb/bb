@@ -109,11 +109,13 @@ describe("machine auth service", () => {
       hostType: "persistent",
     });
     const joinMaterial = await harness.machineAuth.issueHostEnrollKey({
+      enrollSource: "loopback",
       hostId,
       hostType: "persistent",
     });
 
     const reenrolled = await harness.machineAuth.enrollHost({
+      allowPublicEnrollment: true,
       hostId,
       hostType: "persistent",
       token: joinMaterial.key,
@@ -142,6 +144,7 @@ describe("machine auth service", () => {
   it("prunes expired machine auth rows", async () => {
     const harness = await createMachineAuthHarness();
     await harness.machineAuth.issueHostEnrollKey({
+      enrollSource: "loopback",
       hostId: "host_expired_key",
       hostType: "persistent",
     });

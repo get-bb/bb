@@ -20,12 +20,15 @@ function logger() {
   } satisfies HostDaemonLogger;
 }
 
-async function createFixture(args: {
-  enabled?: boolean;
-  protocolVersion?: number;
-  installFailure?: Error;
-  now?: () => number;
-} = {}) {
+async function createFixture(
+  args: {
+    enabled?: boolean;
+    protocolVersion?: number;
+    installFailure?: Error;
+    now?: () => number;
+    serverUrl?: string;
+  } = {},
+) {
   const dataDir = await mkdtemp(join(tmpdir(), "bb-self-update-test-"));
   roots.push(dataDir);
   const installTarball = vi.fn(async () => {
@@ -53,28 +56,55 @@ async function createFixture(args: {
     installTarball,
     logger: testLogger,
     now: args.now,
-    serverUrl: "https://server.example.test",
+    serverUrl: args.serverUrl ?? "https://server.example.test",
   });
   return { fetchFn, installTarball, logger: testLogger, updater };
 }
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true })),
+  );
 });
 
 describe("protocol self-update", () => {
   it("installs exactly once when the server protocol is newer and enabled", async () => {
     const test = await createFixture();
-    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("updated");
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
     expect(test.fetchFn).toHaveBeenCalledTimes(2);
     expect(test.installTarball).toHaveBeenCalledOnce();
   });
 
   it("does nothing when auto-update is disabled", async () => {
     const test = await createFixture({ enabled: false });
-    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("skipped");
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "skipped",
+    );
     expect(test.fetchFn).not.toHaveBeenCalled();
     expect(test.installTarball).not.toHaveBeenCalled();
+  });
+
+  it("refuses auto-update over non-loopback HTTP", async () => {
+    const test = await createFixture({
+      serverUrl: "http://server.example.test",
+    });
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
+    expect(test.fetchFn).not.toHaveBeenCalled();
+    expect(test.installTarball).not.toHaveBeenCalled();
+    expect(test.logger.error).toHaveBeenCalledWith(
+      { serverUrl: "http://server.example.test" },
+      expect.stringContaining("insecure transport"),
+    );
+  });
+
+  it("allows auto-update over loopback HTTP", async () => {
+    const test = await createFixture({ serverUrl: "http://127.0.0.1:38886" });
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+    expect(test.installTarball).toHaveBeenCalledOnce();
   });
 
   it("refuses equal protocol reinstalls and downgrades", async () => {
@@ -83,7 +113,9 @@ describe("protocol self-update", () => {
       HOST_DAEMON_PROTOCOL_VERSION - 1,
     ]) {
       const test = await createFixture({ protocolVersion });
-      await expect(test.updater.handleProtocolMismatch()).resolves.toBe("skipped");
+      await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+        "skipped",
+      );
       expect(test.installTarball).not.toHaveBeenCalled();
     }
   });
@@ -91,9 +123,13 @@ describe("protocol self-update", () => {
   it("persists and enforces the fifteen-minute attempt rate limit", async () => {
     let now = 10_000;
     const test = await createFixture({ now: () => now });
-    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("updated");
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
     now += SELF_UPDATE_MIN_INTERVAL_MS - 1;
-    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("skipped");
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "skipped",
+    );
     expect(test.installTarball).toHaveBeenCalledOnce();
   });
 
@@ -103,7 +139,9 @@ describe("protocol self-update", () => {
       now: () => 25_000,
     });
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
-    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("skipped");
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "skipped",
+    );
     expect(test.installTarball).toHaveBeenCalledOnce();
     expect(test.logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ err: expect.any(Error) }),

@@ -24,6 +24,8 @@ const SESSION_COOKIE = "__Secure-better-auth.session_token";
 /** Internal header: gate → TunnelDO, share target (port string). Never trust visitors. */
 export const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
 export const MACHINE_CREDENTIAL_HEADER = "x-bb-connect-machine";
+export const GATE_AUTH_HEADER = "x-bb-gate-auth";
+export const GATE_MACHINE_ID_HEADER = "x-bb-gate-machine-id";
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -183,13 +185,33 @@ export function offlinePage(lastSeenAt: Date | null): Response {
 export function requestForTunnelDo(
   request: Request,
   target: string | null,
+  authKind?: "machine" | "session",
 ): Request {
   const headers = new Headers(request.headers);
   headers.delete(TUNNEL_TARGET_HEADER);
+  headers.delete(MACHINE_CREDENTIAL_HEADER);
+  headers.delete(GATE_AUTH_HEADER);
+  headers.delete(GATE_MACHINE_ID_HEADER);
   if (target !== null) {
     headers.set(TUNNEL_TARGET_HEADER, target);
   }
+  if (authKind !== undefined) {
+    headers.set(GATE_AUTH_HEADER, authKind);
+  }
   return new Request(request, { headers });
+}
+
+function isHostManagementMutation(request: Request, pathname: string): boolean {
+  if (request.method === "POST" && pathname === "/internal/hosts/enroll-key") {
+    return true;
+  }
+  if (request.method === "POST" && pathname === "/api/v1/hosts/join-codes") {
+    return true;
+  }
+  return (
+    (request.method === "PATCH" || request.method === "DELETE") &&
+    /^\/api\/v1\/hosts\/[^/]+$/u.test(pathname)
+  );
 }
 
 /** Cache namespace for the full visitor host label (bare handle or share). */
@@ -277,6 +299,8 @@ export default {
       const headers = new Headers(request.headers);
       headers.delete(MACHINE_CREDENTIAL_HEADER);
       headers.delete(TUNNEL_TARGET_HEADER);
+      headers.delete(GATE_AUTH_HEADER);
+      headers.delete(GATE_MACHINE_ID_HEADER);
       return stub.fetch(new Request(request, { headers }));
     }
 
@@ -301,10 +325,17 @@ export default {
       if (verified == null || verified.userId !== resolved.userId) {
         return text("bb connect: machine not authorized\n", 403);
       }
+      if (isHostManagementMutation(request, url.pathname)) {
+        return text("bb connect: machine cannot manage hosts\n", 403);
+      }
       ctx.waitUntil(markMachineSeen(verified.machineId, db));
       const headers = new Headers(request.headers);
       headers.delete(MACHINE_CREDENTIAL_HEADER);
       headers.delete(TUNNEL_TARGET_HEADER);
+      headers.delete(GATE_AUTH_HEADER);
+      headers.delete(GATE_MACHINE_ID_HEADER);
+      headers.set(GATE_AUTH_HEADER, "machine");
+      headers.set(GATE_MACHINE_ID_HEADER, verified.machineId);
       return stub.fetch(new Request(request, { headers }));
     }
     if (url.pathname.startsWith("/internal")) {
@@ -336,7 +367,7 @@ export default {
       return text("bb connect: not your server\n", 403);
     }
 
-    const doRequest = requestForTunnelDo(request, target);
+    const doRequest = requestForTunnelDo(request, target, "session");
 
     // WebSocket upgrades (bb's /ws, terminals) can't be cached — proxy directly.
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {

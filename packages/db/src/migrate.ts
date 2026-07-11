@@ -1250,6 +1250,50 @@ function repairBranchLocalQueuedGroupingBeforeThreadFolders(
   markMigrationApplied(db, threadFoldersMigration);
 }
 
+const STAGED_CONNECT_MACHINE_ID_COLUMN = "_bb_connect_machine_id_pending";
+
+function stageExistingConnectMachineIdColumn(
+  db: DbConnection,
+  migrationsFolder: string,
+): boolean {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "hosts") ||
+    !columnExists(db, "hosts", "connect_machine_id")
+  ) {
+    return false;
+  }
+
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0065_empty_leper_queen",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) {
+    return false;
+  }
+
+  db.$client.exec(
+    `ALTER TABLE hosts RENAME COLUMN connect_machine_id TO ${STAGED_CONNECT_MACHINE_ID_COLUMN}`,
+  );
+  return true;
+}
+
+function restoreStagedConnectMachineIdColumn(db: DbConnection): void {
+  if (!columnExists(db, "hosts", STAGED_CONNECT_MACHINE_ID_COLUMN)) {
+    return;
+  }
+  if (!columnExists(db, "hosts", "connect_machine_id")) {
+    db.$client.exec(
+      `ALTER TABLE hosts RENAME COLUMN ${STAGED_CONNECT_MACHINE_ID_COLUMN} TO connect_machine_id`,
+    );
+    return;
+  }
+  db.$client.exec(
+    `UPDATE hosts SET connect_machine_id = ${STAGED_CONNECT_MACHINE_ID_COLUMN};
+     ALTER TABLE hosts DROP COLUMN ${STAGED_CONNECT_MACHINE_ID_COLUMN};`,
+  );
+}
+
 function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
   if (!tableExists(db, "__drizzle_migrations")) {
     return;
@@ -1446,7 +1490,15 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     );
     skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);
     repairBranchLocalQueuedGroupingBeforeThreadFolders(db, migrationsFolder);
-    drizzleMigrate(db, { migrationsFolder });
+    const stagedConnectMachineId = stageExistingConnectMachineIdColumn(
+      db,
+      migrationsFolder,
+    );
+    try {
+      drizzleMigrate(db, { migrationsFolder });
+    } finally {
+      if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
+    }
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);
   } finally {

@@ -91,10 +91,15 @@ export function createBbAppArtifactService(
     serverEntryUrl: options.serverEntryUrl ?? import.meta.url,
   });
   const cacheDir = join(options.dataDir, "install-cache");
-  const packageJsonPromise = readBbAppPackageJson(packageRoot);
+  let packageJsonPromise: Promise<BbAppPackageJson> | undefined;
+
+  function getPackageJson(): Promise<BbAppPackageJson> {
+    packageJsonPromise ??= readBbAppPackageJson(packageRoot);
+    return packageJsonPromise;
+  }
 
   async function buildTarball(): Promise<string> {
-    const packageJson = await packageJsonPromise;
+    const packageJson = await getPackageJson();
     const tarballPath = join(
       cacheDir,
       `bb-app-${safeVersionFilePart(packageJson.version)}.tgz`,
@@ -130,7 +135,7 @@ export function createBbAppArtifactService(
 
   return {
     async getTarballPath(): Promise<string> {
-      const version = (await packageJsonPromise).version;
+      const version = (await getPackageJson()).version;
       const tarballPath = join(
         cacheDir,
         `bb-app-${safeVersionFilePart(version)}.tgz`,
@@ -146,7 +151,7 @@ export function createBbAppArtifactService(
       return build;
     },
     async getVersion(): Promise<string> {
-      return (await packageJsonPromise).version;
+      return (await getPackageJson()).version;
     },
   };
 }

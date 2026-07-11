@@ -154,6 +154,7 @@ interface CreateServerClientOptions {
 }
 
 interface OpenSessionArgs {
+  connectMachineId?: string;
   hostId: string;
   hostName: string;
   hostType: HostDaemonSessionOpenRequest["hostType"];
@@ -185,7 +186,7 @@ export interface ServerClient {
 
 const INTERACTIVE_REQUEST_REGISTRATION_RETRIES = 5;
 
-function usesSecureInternalFetchTransport(serverUrl: string): boolean {
+export function usesSecureInternalFetchTransport(serverUrl: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(serverUrl);
@@ -342,6 +343,9 @@ export function createServerClient(
         instanceId: args.instanceId,
         hostName: args.hostName,
         hostType: args.hostType,
+        ...(args.connectMachineId !== undefined
+          ? { connectMachineId: args.connectMachineId }
+          : {}),
         platform: resolveHostPlatform(),
         dataDir: args.dataDir,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,

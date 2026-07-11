@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
+import { usesSecureInternalFetchTransport } from "./server-client.js";
 
 const execFileAsync = promisify(execFile);
 export const SELF_UPDATE_MIN_INTERVAL_MS = 15 * 60 * 1000;
@@ -99,6 +100,13 @@ export function createProtocolSelfUpdater(
         );
         return "skipped";
       }
+      if (!usesSecureInternalFetchTransport(options.serverUrl)) {
+        options.logger.error(
+          { serverUrl: options.serverUrl },
+          "Refusing daemon auto-update over insecure transport; install the server's bb-app package manually. Keeping the current daemon running and retrying normally.",
+        );
+        return "failed";
+      }
 
       try {
         const versionUrl = new URL("/install/version", options.serverUrl);
@@ -131,7 +139,10 @@ export function createProtocolSelfUpdater(
           attemptedAt - lastAttempt < SELF_UPDATE_MIN_INTERVAL_MS
         ) {
           options.logger.warn(
-            { attemptedAt: lastAttempt, minIntervalMs: SELF_UPDATE_MIN_INTERVAL_MS },
+            {
+              attemptedAt: lastAttempt,
+              minIntervalMs: SELF_UPDATE_MIN_INTERVAL_MS,
+            },
             "Daemon self-update is rate-limited; keeping the current daemon running.",
           );
           return "skipped";
