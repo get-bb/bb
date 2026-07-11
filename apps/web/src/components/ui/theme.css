@@ -756,25 +756,25 @@ body.sidebar-resizing [data-sidebar="panel"] {
   /*
    * Icon counterpart to `.animate-shine`: `background-clip: text` only shimmers
    * glyphs, so for an SVG icon we sweep the same bright band as a mask instead
-   * (the icon dims to ~45% at the edges with a full-opacity band moving across),
-   * matching the "Thinking..." text shimmer.
+   * (the icon retains 45% opacity at the edges with a full-opacity band moving
+   * across). The longer cycle keeps this small status cue from pulling focus.
    */
   .animate-shine-icon {
     -webkit-mask-image: linear-gradient(
       90deg,
-      rgba(0, 0, 0, 0.15) 0%,
+      rgba(0, 0, 0, 0.45) 0%,
       rgba(0, 0, 0, 1) 50%,
-      rgba(0, 0, 0, 0.15) 100%
+      rgba(0, 0, 0, 0.45) 100%
     );
     mask-image: linear-gradient(
       90deg,
-      rgba(0, 0, 0, 0.15) 0%,
+      rgba(0, 0, 0, 0.45) 0%,
       rgba(0, 0, 0, 1) 50%,
-      rgba(0, 0, 0, 0.15) 100%
+      rgba(0, 0, 0, 0.45) 100%
     );
     -webkit-mask-size: 200% 100%;
     mask-size: 200% 100%;
-    animation: shine-mask 2s linear infinite;
+    animation: shine-mask 2.6s linear infinite;
   }
 
   /* Empty-state bb mark: a clean foreground-colored silhouette. Its parent
