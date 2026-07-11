@@ -176,6 +176,8 @@
   <a href="#later">10. Fast-follows (explicitly not v1)</a>
 </nav>
 
+<div class="callout good"><b>Status (2026-07-11): v1 implemented.</b> All six milestones landed on <code>bb/multi-daemon-setup-support-thr_tqsxqmfdmz</code> as S1–S11 commits (execution routing + experiment, skill sync, machine-resident reads, host management routes, clone flow, composer picker, guided setup dialog, Machines pane + add-machine dialog, install script, connect daemon credentials + gate, CLI + docs). Every step was live-verified on a two-daemon rig (second daemon with fresh identity over loopback) including browser QA of the picker, guided setup (success + error paths), and Machines pane; full repo typecheck + test suite green. <b>Deferred:</b> real staging tunnel verification for the connect path (needs a published bb-app artifact + staging gate/web deploys — the gate auth matrix is fully covered by workerd tests meanwhile).</div>
+
 <h2 id="decisions"><span class="num">1</span>Locked product decisions</h2>
 <p>Settled with Sawyer, 2026-07-11. These are the shared vision — changes to any of these should be deliberate.</p>
 <table class="decision-table">
