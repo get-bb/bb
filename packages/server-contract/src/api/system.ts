@@ -7,6 +7,7 @@ import {
   availableModelSchema,
   experimentsSchema,
   featureFlagsSchema,
+  pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
 import { hostPlatformSchema } from "@bb/host-daemon-contract";
@@ -95,6 +96,8 @@ export const systemConfigResponseSchema = z.object({
    * so the Settings picker can offer them alongside the built-ins.
    */
   customThemes: z.array(z.string()),
+  /** Palettes contributed by currently loaded plugins. */
+  pluginThemes: z.array(pluginThemeMetaSchema),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
   primaryHostPlatform: hostPlatformSchema.nullable(),
@@ -113,6 +116,8 @@ export const themeCatalogResponseSchema = z.object({
   dir: z.string(),
   /** Discovered custom theme names (each has a `theme.css`). */
   custom: z.array(z.string()),
+  /** Palettes contributed by currently loaded plugins. */
+  plugins: z.array(pluginThemeMetaSchema),
   /** The active palette, resolved server-side. */
   active: appThemeSchema,
 });

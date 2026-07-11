@@ -1,0 +1,764 @@
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import type {
+  BbDesktopServerAddFailureReason,
+  BbDesktopServerListEntry,
+  BbDesktopServerStatus,
+  BbDesktopServersApi,
+} from "@bb/desktop-contract";
+import { FAVICON_COLORS, type FaviconColor } from "@bb/domain";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  SERVER_TILE_ICON_NAMES,
+  ServerTileIcon,
+  type ServerTileIconName,
+} from "@/lib/server-tile-icons";
+import { Input } from "@bb/shared-ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@bb/shared-ui/popover";
+import { Switch } from "@bb/shared-ui/switch";
+import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  SettingsBadge,
+  SettingsSection,
+  SettingsWithControl,
+} from "@/components/ui/settings-section";
+import { getDesktopServersApi } from "@/lib/bb-desktop";
+import { FAVICON_COLOR_VALUES } from "@/lib/favicon-color-preference";
+import {
+  resolveServerTileColor,
+  resolveServerTileIcon,
+} from "@/lib/server-tile-style";
+
+const SERVERS_SECTION_DESCRIPTION =
+  "Servers this desktop app can connect to. The list lives in the desktop app, not on any server.";
+
+const SHOW_CONNECT_LABEL = "Show BB Connect servers";
+const SHOW_CONNECT_DESCRIPTION =
+  "Automatically list every bb paired to your BB Connect account.";
+const AUTO_CONNECT_LABEL = "Auto-connect to local servers";
+const AUTO_CONNECT_DESCRIPTION =
+  "When a compatible bb server is already running on this machine, attach to it instead of starting a new one.";
+
+const ADD_FAILURE_MESSAGES: Record<BbDesktopServerAddFailureReason, string> = {
+  duplicate: "Already in your list",
+  incompatible: "That URL responds but is not a compatible bb server",
+  unreachable: "Could not reach a bb server at that URL",
+};
+
+const COLOR_SWATCH_LABELS: Record<FaviconColor, string> = {
+  red: "Red",
+  orange: "Orange",
+  yellow: "Yellow",
+  green: "Green",
+  teal: "Teal",
+  blue: "Blue",
+  purple: "Purple",
+  pink: "Pink",
+};
+
+interface ServerStatusDisplay {
+  dotClass: string;
+  label: string;
+  textClass: string;
+}
+
+function serverStatusDisplay(status: BbDesktopServerStatus): ServerStatusDisplay {
+  switch (status) {
+    case "connected":
+      return {
+        label: "Connected",
+        dotClass: "bg-success",
+        textClass: "text-success",
+      };
+    case "offline":
+      return {
+        label: "Offline",
+        dotClass: "bg-muted-foreground",
+        textClass: "text-muted-foreground",
+      };
+    case "incompatible":
+      return {
+        label: "Incompatible",
+        dotClass: "bg-destructive",
+        textClass: "text-destructive",
+      };
+    case "unknown":
+      return {
+        label: "checking…",
+        dotClass: "bg-muted-foreground",
+        textClass: "text-muted-foreground",
+      };
+  }
+}
+
+function partitionServers(servers: BbDesktopServerListEntry[]): {
+  builtin: BbDesktopServerListEntry[];
+  connect: BbDesktopServerListEntry[];
+  manual: BbDesktopServerListEntry[];
+} {
+  const builtin: BbDesktopServerListEntry[] = [];
+  const connect: BbDesktopServerListEntry[] = [];
+  const manual: BbDesktopServerListEntry[] = [];
+  for (const server of servers) {
+    if (server.source === "builtin") {
+      builtin.push(server);
+    } else if (server.source === "connect") {
+      connect.push(server);
+    } else {
+      manual.push(server);
+    }
+  }
+  return { builtin, connect, manual };
+}
+
+function tileGlyph(name: string): string {
+  const first = [...name.trim()][0];
+  return first === undefined ? "?" : first.toUpperCase();
+}
+
+function ServerTileLogo({
+  color,
+  icon,
+  name,
+}: {
+  color: FaviconColor | null;
+  icon: ServerTileIconName | null;
+  name: string;
+}) {
+  const colorHex = color === null ? undefined : FAVICON_COLOR_VALUES[color];
+  const glyphStyle: CSSProperties | undefined =
+    colorHex === undefined ? undefined : { color: colorHex };
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground",
+      )}
+      style={glyphStyle}
+    >
+      {icon !== null ? (
+        <ServerTileIcon name={icon} className="size-4" />
+      ) : (
+        tileGlyph(name)
+      )}
+    </span>
+  );
+}
+
+interface ServerTileStylePickerProps {
+  onSetTileStyle: (style: {
+    icon: string | null;
+    color: string | null;
+  }) => void;
+  server: BbDesktopServerListEntry;
+}
+
+function ServerTileStylePicker({
+  onSetTileStyle,
+  server,
+}: ServerTileStylePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [iconQuery, setIconQuery] = useState("");
+  // Local draft so icon+color picks compose before servers:changed lands.
+  const [draft, setDraft] = useState<{
+    icon: string | null;
+    color: string | null;
+  }>({ icon: server.icon, color: server.color });
+
+  useEffect(() => {
+    setDraft({ icon: server.icon, color: server.color });
+  }, [server.icon, server.color]);
+
+  const resolvedIcon = resolveServerTileIcon(draft.icon);
+  const resolvedColor = resolveServerTileColor(draft.color);
+
+  const filteredIcons = useMemo(() => {
+    const query = iconQuery.trim().toLowerCase();
+    if (query.length === 0) {
+      return SERVER_TILE_ICON_NAMES;
+    }
+    return SERVER_TILE_ICON_NAMES.filter((name) =>
+      name.toLowerCase().includes(query),
+    );
+  }, [iconQuery]);
+
+  function applyStyle(next: {
+    icon: string | null;
+    color: string | null;
+  }): void {
+    setDraft(next);
+    onSetTileStyle(next);
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setIconQuery("");
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Customize ${server.name} icon`}
+          className="rounded-md outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+          data-testid={`server-tile-customize-${server.id}`}
+        >
+          <ServerTileLogo
+            color={resolvedColor}
+            icon={resolvedIcon}
+            name={server.name}
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-72 space-y-3 p-3"
+        mobileTitle={`Customize ${server.name}`}
+        sideOffset={6}
+      >
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-foreground">Icon</p>
+          <Input
+            aria-label="Search icons"
+            className="h-7 text-xs"
+            onChange={(event) => setIconQuery(event.target.value)}
+            placeholder="Search icons…"
+            value={iconQuery}
+          />
+          <div className="grid max-h-40 grid-cols-6 gap-1 overflow-y-auto pr-0.5">
+            <button
+              type="button"
+              aria-label="Letter"
+              aria-pressed={resolvedIcon === null}
+              className={cn(
+                "flex size-8 items-center justify-center rounded-md text-xs font-semibold text-muted-foreground hover:bg-accent",
+                resolvedIcon === null && "bg-accent text-foreground",
+              )}
+              onClick={() =>
+                applyStyle({
+                  icon: null,
+                  color: draft.color,
+                })
+              }
+            >
+              {tileGlyph(server.name)}
+            </button>
+            {filteredIcons.map((name) => (
+              <button
+                key={name}
+                type="button"
+                aria-label={name}
+                aria-pressed={resolvedIcon === name}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+                  resolvedIcon === name && "bg-accent text-foreground",
+                )}
+                onClick={() =>
+                  applyStyle({
+                    icon: name,
+                    color: draft.color,
+                  })
+                }
+              >
+                <ServerTileIcon name={name} className="size-4" />
+              </button>
+            ))}
+          </div>
+          {filteredIcons.length === 0 ? (
+            <p className="text-xs text-subtle-foreground">No icons match.</p>
+          ) : null}
+        </div>
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-xs font-medium text-foreground">Color</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="Default color"
+              aria-pressed={resolvedColor === null}
+              className={cn(
+                "flex size-6 items-center justify-center rounded-full border border-border bg-background text-[10px] font-medium text-muted-foreground hover:border-foreground/40",
+                resolvedColor === null &&
+                  "ring-2 ring-ring ring-offset-1 ring-offset-background",
+              )}
+              onClick={() =>
+                applyStyle({
+                  icon: draft.icon,
+                  color: null,
+                })
+              }
+            >
+              A
+            </button>
+            {FAVICON_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                aria-label={COLOR_SWATCH_LABELS[color]}
+                aria-pressed={resolvedColor === color}
+                className={cn(
+                  "size-6 rounded-full border border-border/60 hover:scale-105",
+                  resolvedColor === color &&
+                    "ring-2 ring-ring ring-offset-1 ring-offset-background",
+                )}
+                style={{ backgroundColor: FAVICON_COLOR_VALUES[color] }}
+                onClick={() =>
+                  applyStyle({
+                    icon: draft.icon,
+                    color,
+                  })
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+interface ServerRowProps {
+  onRemove: (server: BbDesktopServerListEntry) => void;
+  onRename: (server: BbDesktopServerListEntry, name: string) => void;
+  onSetActive: (server: BbDesktopServerListEntry) => void;
+  onSetTileStyle: (
+    server: BbDesktopServerListEntry,
+    style: { icon: string | null; color: string | null },
+  ) => void;
+  server: BbDesktopServerListEntry;
+}
+
+function ServerRow({
+  onRemove,
+  onRename,
+  onSetActive,
+  onSetTileStyle,
+  server,
+}: ServerRowProps) {
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(server.name);
+  const status = serverStatusDisplay(server.status);
+  const canRename = server.source === "manual";
+  const canRemove = server.source === "manual";
+
+  function commitRename(): void {
+    const trimmed = renameDraft.trim();
+    setRenaming(false);
+    if (trimmed.length === 0 || trimmed === server.name) {
+      setRenameDraft(server.name);
+      return;
+    }
+    onRename(server, trimmed);
+  }
+
+  function handleRenameKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitRename();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setRenameDraft(server.name);
+      setRenaming(false);
+    }
+  }
+
+  return (
+    <div
+      className="group flex items-start gap-3 py-2.5 first:pt-0 last:pb-0"
+      data-testid={`server-row-${server.id}`}
+    >
+      <ServerTileStylePicker
+        onSetTileStyle={(style) => onSetTileStyle(server, style)}
+        server={server}
+      />
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          {renaming && canRename ? (
+            <Input
+              aria-label={`Rename ${server.name}`}
+              autoFocus
+              className="h-7 max-w-xs text-xs"
+              onBlur={commitRename}
+              onChange={(event) => setRenameDraft(event.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              value={renameDraft}
+            />
+          ) : canRename ? (
+            <button
+              className="min-w-0 truncate text-left text-sm font-medium text-foreground hover:underline"
+              onClick={() => {
+                setRenameDraft(server.name);
+                setRenaming(true);
+              }}
+              type="button"
+            >
+              {server.name}
+            </button>
+          ) : (
+            <span className="min-w-0 truncate text-sm font-medium text-foreground">
+              {server.name}
+            </span>
+          )}
+          {server.source === "builtin" ? (
+            <SettingsBadge>Built-in</SettingsBadge>
+          ) : null}
+          {server.active ? <SettingsBadge>Active</SettingsBadge> : null}
+        </div>
+        <p className="truncate font-mono text-xs text-subtle-foreground/75">
+          {server.url}
+        </p>
+        <div className={cn("flex items-center gap-1.5 text-xs", status.textClass)}>
+          <span
+            aria-hidden
+            className={cn("size-1.5 shrink-0 rounded-full", status.dotClass)}
+          />
+          <span>{status.label}</span>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {!server.active ? (
+          <Button
+            aria-label={`Switch to ${server.name}`}
+            className="h-7 px-2 text-xs opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:pointer-coarse:opacity-100"
+            onClick={() => onSetActive(server)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Switch to this server
+          </Button>
+        ) : null}
+        {canRemove ? (
+          <Button
+            aria-label={`Remove ${server.name}`}
+            className="size-7 text-muted-foreground hover:text-destructive"
+            onClick={() => onRemove(server)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Icon name="X" className="size-3.5" />
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ServerGroup({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <section>
+      {title !== undefined ? (
+        <h3 className="mb-2 text-xs font-medium text-subtle-foreground">
+          {title}
+        </h3>
+      ) : null}
+      <div className="divide-y divide-border">{children}</div>
+    </section>
+  );
+}
+
+interface ServersSettingsSectionContentProps {
+  autoConnect: boolean;
+  onAdd: (input: { name: string; url: string }) => Promise<string | null>;
+  onAutoConnectChange: (enabled: boolean) => void;
+  onRemove: (server: BbDesktopServerListEntry) => void;
+  onRename: (server: BbDesktopServerListEntry, name: string) => void;
+  onSetActive: (server: BbDesktopServerListEntry) => void;
+  onSetTileStyle: (
+    server: BbDesktopServerListEntry,
+    style: { icon: string | null; color: string | null },
+  ) => void;
+  onShowConnectServersChange: (enabled: boolean) => void;
+  servers: BbDesktopServerListEntry[];
+  showConnectServers: boolean;
+}
+
+/** Exported for tests that drive the section without the desktop bridge. */
+export function ServersSettingsSectionContent({
+  autoConnect,
+  onAdd,
+  onAutoConnectChange,
+  onRemove,
+  onRename,
+  onSetActive,
+  onSetTileStyle,
+  onShowConnectServersChange,
+  servers,
+  showConnectServers,
+}: ServersSettingsSectionContentProps) {
+  const [addUrl, setAddUrl] = useState("");
+  const [addName, setAddName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const { builtin, connect, manual } = partitionServers(servers);
+
+  async function handleAdd(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (adding) return;
+    const url = addUrl.trim();
+    if (url.length === 0) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      const error = await onAdd({
+        name: addName.trim(),
+        url,
+      });
+      if (error !== null) {
+        setAddError(error);
+        return;
+      }
+      setAddUrl("");
+      setAddName("");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  return (
+    <SettingsSection
+      description={SERVERS_SECTION_DESCRIPTION}
+      title="Servers"
+    >
+      <div className="space-y-5">
+        <div className="space-y-4">
+          {builtin.length > 0 ? (
+            <ServerGroup>
+              {builtin.map((server) => (
+                <ServerRow
+                  key={server.id}
+                  onRemove={onRemove}
+                  onRename={onRename}
+                  onSetActive={onSetActive}
+                  onSetTileStyle={onSetTileStyle}
+                  server={server}
+                />
+              ))}
+            </ServerGroup>
+          ) : null}
+          {connect.length > 0 ? (
+            <ServerGroup title="BB Connect — synced from your account">
+              {connect.map((server) => (
+                <ServerRow
+                  key={server.id}
+                  onRemove={onRemove}
+                  onRename={onRename}
+                  onSetActive={onSetActive}
+                  onSetTileStyle={onSetTileStyle}
+                  server={server}
+                />
+              ))}
+            </ServerGroup>
+          ) : null}
+          {manual.length > 0 ? (
+            <ServerGroup title="Added manually">
+              {manual.map((server) => (
+                <ServerRow
+                  key={server.id}
+                  onRemove={onRemove}
+                  onRename={onRename}
+                  onSetActive={onSetActive}
+                  onSetTileStyle={onSetTileStyle}
+                  server={server}
+                />
+              ))}
+            </ServerGroup>
+          ) : null}
+          {servers.length === 0 ? (
+            <p className="text-sm text-subtle-foreground">No servers yet.</p>
+          ) : null}
+        </div>
+
+        <form className="space-y-2.5 border-t border-border pt-4" onSubmit={(event) => {
+          void handleAdd(event);
+        }}>
+          <p className="text-sm font-normal text-foreground">Add server…</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              aria-label="Server URL"
+              className="h-7 flex-1 font-mono text-xs"
+              disabled={adding}
+              onChange={(event) => {
+                setAddUrl(event.target.value);
+                if (addError !== null) setAddError(null);
+              }}
+              placeholder="https://bb.example.com"
+              required
+              type="text"
+              value={addUrl}
+            />
+            <Input
+              aria-label="Server name (optional)"
+              className="h-7 sm:w-40 text-xs"
+              disabled={adding}
+              onChange={(event) => setAddName(event.target.value)}
+              placeholder="Name (optional)"
+              value={addName}
+            />
+            <Button
+              aria-busy={adding}
+              className="h-7 shrink-0 px-2.5 text-xs"
+              disabled={adding || addUrl.trim().length === 0}
+              size="sm"
+              type="submit"
+              variant="outline"
+            >
+              {adding ? (
+                <Icon name="Spinner" className="size-3.5 animate-spin" />
+              ) : null}
+              {adding ? "Checking" : "Add"}
+            </Button>
+          </div>
+          {addError !== null ? (
+            <p className="text-xs text-destructive" role="alert">
+              {addError}
+            </p>
+          ) : null}
+        </form>
+
+        <div className="space-y-4 border-t border-border pt-4">
+          <SettingsWithControl
+            description={SHOW_CONNECT_DESCRIPTION}
+            label={SHOW_CONNECT_LABEL}
+          >
+            <Switch
+              aria-label={SHOW_CONNECT_LABEL}
+              checked={showConnectServers}
+              onCheckedChange={onShowConnectServersChange}
+            />
+          </SettingsWithControl>
+          <SettingsWithControl
+            description={AUTO_CONNECT_DESCRIPTION}
+            label={AUTO_CONNECT_LABEL}
+          >
+            <Switch
+              aria-label={AUTO_CONNECT_LABEL}
+              checked={autoConnect}
+              onCheckedChange={onAutoConnectChange}
+            />
+          </SettingsWithControl>
+        </div>
+      </div>
+    </SettingsSection>
+  );
+}
+
+async function addServer(
+  api: BbDesktopServersApi,
+  input: { name: string; url: string },
+): Promise<string | null> {
+  const result = await api.add({
+    url: input.url,
+    ...(input.name.length > 0 ? { name: input.name } : {}),
+  });
+  if (result.ok) {
+    return null;
+  }
+  return ADD_FAILURE_MESSAGES[result.reason];
+}
+
+/**
+ * Settings → Servers: desktop multi-server registry. Hidden when
+ * `window.bbDesktop.servers` is absent (web build or older shell).
+ */
+export function ServersSettingsSection() {
+  const [serversApi] = useState(getDesktopServersApi);
+  const [servers, setServers] = useState<BbDesktopServerListEntry[]>([]);
+  const [autoConnect, setAutoConnect] = useState(false);
+  const [showConnectServers, setShowConnectServers] = useState(true);
+
+  useEffect(() => {
+    if (serversApi === null) {
+      return;
+    }
+    let cancelled = false;
+
+    void serversApi.list().then((list) => {
+      if (!cancelled) setServers(list);
+    });
+    void serversApi.getAutoConnect().then((value) => {
+      if (!cancelled) setAutoConnect(value);
+    });
+    void serversApi.getShowConnectServers().then((value) => {
+      if (!cancelled) setShowConnectServers(value);
+    });
+    const unsubscribe = serversApi.onChange((list) => {
+      setServers(list);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [serversApi]);
+
+  if (serversApi === null) {
+    return null;
+  }
+
+  return (
+    <ServersSettingsSectionContent
+      autoConnect={autoConnect}
+      onAdd={(input) => addServer(serversApi, input)}
+      onAutoConnectChange={(enabled) => {
+        setAutoConnect(enabled);
+        void serversApi.setAutoConnect(enabled).catch(() => {
+          void serversApi.getAutoConnect().then(setAutoConnect);
+        });
+      }}
+      onRemove={(server) => {
+        // No blocking confirm: Electron's window.confirm is unreliable, the
+        // button is hover-revealed, and re-adding a server is one URL paste.
+        void serversApi.remove(server.id);
+      }}
+      onRename={(server, name) => {
+        void serversApi.rename(server.id, name);
+      }}
+      onSetActive={(server) => {
+        void serversApi.setActive(server.id);
+      }}
+      onSetTileStyle={(server, style) => {
+        void serversApi.setTileStyle({
+          id: server.id,
+          icon: style.icon,
+          color: style.color,
+        });
+      }}
+      onShowConnectServersChange={(enabled) => {
+        setShowConnectServers(enabled);
+        void serversApi.setShowConnectServers(enabled).catch(() => {
+          void serversApi.getShowConnectServers().then(setShowConnectServers);
+        });
+      }}
+      servers={servers}
+      showConnectServers={showConnectServers}
+    />
+  );
+}
+
+export { ADD_FAILURE_MESSAGES };

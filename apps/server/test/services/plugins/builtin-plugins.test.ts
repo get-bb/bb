@@ -18,7 +18,10 @@ import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
-import { BUILTIN_PLUGIN_NAMES } from "../../../src/services/plugins/builtin-registry.js";
+import {
+  BUILTIN_PLUGIN_NAMES,
+  BUILTIN_PLUGINS,
+} from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
 import { testLogger } from "../../helpers/test-app.js";
 
@@ -50,6 +53,7 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
   // source tree must carry one packaged plugin per BUILTIN_PLUGIN_NAMES
   // entry — a name added to the registry is covered here automatically.
   for (const name of BUILTIN_PLUGIN_NAMES) {
+    const hasApp = name !== "memory";
     const sourceRoot = join(sourceModuleDir, "builtin-plugins", name);
     await mkdir(join(sourceRoot, "dist"), { recursive: true });
     await mkdir(join(sourceRoot, "skills", name), { recursive: true });
@@ -62,8 +66,11 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
           version: "0.1.0",
           type: "module",
           bb: {
+            ...(name === "memory"
+              ? { displayName: "Memory", icon: "Brain" }
+              : {}),
             server: "./src/server.ts",
-            app: "./app.tsx",
+            ...(hasApp ? { app: "./app.tsx" } : {}),
             skills: ["skills"],
           },
         },
@@ -75,10 +82,12 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
       join(sourceRoot, "src", "server.ts"),
       `throw new Error("packaged builtin should not load source");\n`,
     );
-    await writeFile(
-      join(sourceRoot, "app.tsx"),
-      `throw new Error("packaged builtin should not build app source");\n`,
-    );
+    if (hasApp) {
+      await writeFile(
+        join(sourceRoot, "app.tsx"),
+        `throw new Error("packaged builtin should not build app source");\n`,
+      );
+    }
     await writeFile(
       join(sourceRoot, "dist", "server.js"),
       `export default function plugin() {
@@ -94,16 +103,21 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
         2,
       )}\n`,
     );
-    await writeFile(join(sourceRoot, "dist", "app.js"), `export default {};\n`);
-    await writeFile(join(sourceRoot, "dist", "app.css"), `/* built */\n`);
-    await writeFile(
-      join(sourceRoot, "dist", "app.meta.json"),
-      `${JSON.stringify(
-        { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
-        null,
-        2,
-      )}\n`,
-    );
+    if (hasApp) {
+      await writeFile(
+        join(sourceRoot, "dist", "app.js"),
+        `export default {};\n`,
+      );
+      await writeFile(join(sourceRoot, "dist", "app.css"), `/* built */\n`);
+      await writeFile(
+        join(sourceRoot, "dist", "app.meta.json"),
+        `${JSON.stringify(
+          { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
+          null,
+          2,
+        )}\n`,
+      );
+    }
     await writeFile(
       join(sourceRoot, "skills", name, "SKILL.md"),
       `---\nname: ${name}\n---\n`,
@@ -116,9 +130,11 @@ function createService(args: {
   dataDir: string;
   db: DbConnection;
   builtinName?: string;
+  defaultEnabled?: boolean;
   isEnabled?: () => boolean;
   isConnectEnabled?: () => boolean;
   rootDir?: string;
+  watchBuiltinPluginSources?: boolean;
 }): PluginService {
   return createPluginService({
     db: args.db,
@@ -136,8 +152,10 @@ function createService(args: {
       {
         name: args.builtinName ?? "fixture",
         rootDir: args.rootDir ?? fixtureRoot,
+        defaultEnabled: args.defaultEnabled ?? true,
       },
     ],
+    watchBuiltinPluginSources: args.watchBuiltinPluginSources,
     loadTimeoutMs: 2000,
   });
 }
@@ -153,6 +171,13 @@ describe("builtin plugin reconciliation", () => {
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
+  });
+
+  it("declares memory as builtin and disabled by default", () => {
+    expect(BUILTIN_PLUGINS).toContainEqual({
+      name: "memory",
+      defaultEnabled: false,
+    });
   });
 
   afterEach(async () => {
@@ -171,11 +196,49 @@ describe("builtin plugin reconciliation", () => {
         id: "builtin-fixture",
         source: "builtin:fixture",
         version: "0.1.0",
+        icon: "EditFile",
         enabled: true,
         status: "running",
       },
     ]);
     expect(loadCount()).toBe(1);
+  });
+
+  it("installs a default-disabled builtin without loading it", async () => {
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      defaultEnabled: false,
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "builtin-fixture",
+        source: "builtin:fixture",
+        enabled: false,
+        status: "disabled",
+      },
+    ]);
+    expect(loadCount()).toBe(0);
+
+    await service.setEnabled("builtin-fixture", true);
+    expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", enabled: true, status: "running" },
+    ]);
+    expect(loadCount()).toBe(1);
+
+    await service.stop();
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      defaultEnabled: false,
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", enabled: true, status: "running" },
+    ]);
   });
 
   it("loads the builtin connect plugin only while the bb connect experiment is on", async () => {
@@ -309,6 +372,54 @@ describe("builtin plugin reconciliation", () => {
     });
   });
 
+  it("rebuilds and serves a new builtin app hash after a source edit while Plugins is off", async () => {
+    const mutableRoot = join(workDir, "bb-plugin-hot-builtin");
+    await mkdir(mutableRoot, { recursive: true });
+    await writeFile(
+      join(mutableRoot, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-hot-builtin",
+        version: "0.1.0",
+        type: "module",
+        bb: { server: "./server.ts", app: "./app.tsx" },
+      }),
+    );
+    await writeFile(
+      join(mutableRoot, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(mutableRoot, "app.tsx"),
+      "export default function App() { return <div>before</div>; }\n",
+    );
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "hot",
+      isEnabled: () => false,
+      rootDir: mutableRoot,
+      watchBuiltinPluginSources: true,
+    });
+    await service.start();
+    const before = service.list()[0]?.app.bundle;
+    expect(before).not.toBeNull();
+
+    await writeFile(
+      join(mutableRoot, "app.tsx"),
+      "export default function App() { return <div>after</div>; }\n",
+    );
+    let after = service.list()[0]?.app.bundle;
+    const deadline = Date.now() + 20_000;
+    while (after?.hash === before?.hash && Date.now() < deadline) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+      after = service.list()[0]?.app.bundle;
+    }
+    expect(after?.hash).not.toBe(before?.hash);
+    await expect(
+      readFile(join(mutableRoot, "dist", "app.js"), "utf8"),
+    ).resolves.toContain("after");
+  }, 30_000);
+
   it("rejects unknown builtin install sources clearly", async () => {
     service = createService({ db, dataDir: join(workDir, "data") });
 
@@ -428,5 +539,21 @@ describe("builtin plugin packaging", () => {
     ).resolves.toBeTruthy();
     await expect(stat(join(connectRoot, "src"))).rejects.toThrow();
     await expect(stat(join(connectRoot, "node_modules"))).rejects.toThrow();
+
+    const memoryRoot = join(targetRoot, "memory");
+    const memoryPackageJson = JSON.parse(
+      await readFile(join(memoryRoot, "package.json"), "utf8"),
+    );
+    expect(memoryPackageJson.bb).toMatchObject({
+      displayName: "Memory",
+      icon: "Brain",
+      server: "./dist/server.js",
+      skills: ["skills"],
+    });
+    expect(memoryPackageJson.bb).not.toHaveProperty("app");
+    await expect(
+      stat(join(memoryRoot, "dist", "server.js")),
+    ).resolves.toBeTruthy();
+    await expect(stat(join(memoryRoot, "dist", "app.js"))).rejects.toThrow();
   });
 });

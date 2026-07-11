@@ -48,6 +48,7 @@ function systemConfig(): SystemConfigResponse {
     experiments: defaultExperiments,
     appearance: defaultAppTheme,
     customThemes: [],
+    pluginThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
     primaryHostPlatform: null,

@@ -16,3 +16,4 @@ export {
   buildPluginServer,
   type PluginServerBuildResult,
 } from "./build-plugin-server.js";
+export * from "./plugin-dev-loop.js";

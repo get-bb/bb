@@ -6,10 +6,7 @@ import {
   type KeyboardEventHandler,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  isMacKeyboardPlatform,
-  THREAD_JUMP_APP_COMMAND_IDS,
-} from "@bb/domain";
+import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -28,6 +25,7 @@ import {
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
+import { ServerRail } from "./ServerRail";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
@@ -55,6 +53,7 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
   useAppCommandShortcuts,
+  useIsAppCommandModifierHeld,
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -115,6 +114,7 @@ export function AppSidebar({
   const threadJumpShortcuts = useAppCommandShortcuts(
     THREAD_JUMP_APP_COMMAND_IDS,
   );
+  const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
 
   const focusThreadSearchInput = useCallback(() => {
@@ -321,33 +321,16 @@ export function AppSidebar({
   );
 
   useEffect(() => {
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      const primaryModifier = isMacKeyboardPlatform(navigator.platform)
-        ? "Meta"
-        : "Control";
-      if (event.key === primaryModifier) {
-        showThreadShortcuts();
-      }
-    };
-
-    const handleGlobalKeyUp = (event: KeyboardEvent) => {
-      const primaryModifier = isMacKeyboardPlatform(navigator.platform)
-        ? "Meta"
-        : "Control";
-      if (event.key === primaryModifier) {
-        hideThreadShortcuts();
-      }
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    window.addEventListener("keyup", handleGlobalKeyUp);
-    window.addEventListener("blur", hideThreadShortcuts);
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
-      window.removeEventListener("keyup", handleGlobalKeyUp);
-      window.removeEventListener("blur", hideThreadShortcuts);
-    };
-  }, [hideThreadShortcuts, showThreadShortcuts]);
+    if (isAppCommandModifierHeld) {
+      showThreadShortcuts();
+      return;
+    }
+    hideThreadShortcuts();
+  }, [
+    hideThreadShortcuts,
+    isAppCommandModifierHeld,
+    showThreadShortcuts,
+  ]);
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
@@ -383,6 +366,11 @@ export function AppSidebar({
             />
           </div>
         ) : null}
+        {/* Server rail (desktop multi-server) sits left of everything below
+            the chrome row and collapses with the sidebar by construction. */}
+        <div className="flex min-h-0 flex-1">
+          <ServerRail />
+          <div className="flex min-w-0 flex-1 flex-col">
         <div
           data-testid="app-sidebar-primary-actions"
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
@@ -420,6 +408,8 @@ export function AppSidebar({
             }}
           />
         </SidebarContent>
+          </div>
+        </div>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />
           <SidebarMenu className="flex-row items-center gap-1">

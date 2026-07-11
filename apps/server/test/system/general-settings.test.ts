@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { getAppSettings, setAppSettings } from "@bb/db";
-import { appSettingsSchema } from "@bb/domain";
+import { appSettingsSchema, defaultAppSettings } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { schedulePrimaryHostCaffeinateReconciliation } from "../../src/services/system/app-settings.js";
 import { readJson } from "../helpers/json.js";
@@ -14,7 +14,7 @@ describe("general settings", () => {
       const response = await harness.app.request("/api/v1/system/config");
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
-      expect(body.generalSettings).toEqual({ caffeinate: false });
+      expect(body.generalSettings).toEqual(defaultAppSettings);
     });
   });
 
@@ -40,19 +40,33 @@ describe("general settings", () => {
       const put = await harness.app.request("/api/v1/settings/general", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ caffeinate: true }),
+        body: JSON.stringify({
+          ...defaultAppSettings,
+          caffeinate: true,
+          codexMemoryEnabled: false,
+        }),
       });
       expect(put.status).toBe(200);
       expect(appSettingsSchema.parse(await readJson(put))).toEqual({
+        ...defaultAppSettings,
         caffeinate: true,
+        codexMemoryEnabled: false,
       });
-      expect(getAppSettings(harness.db)).toEqual({ caffeinate: true });
+      expect(getAppSettings(harness.db)).toEqual({
+        ...defaultAppSettings,
+        caffeinate: true,
+        codexMemoryEnabled: false,
+      });
 
       const config = await harness.app.request("/api/v1/system/config");
       const parsedConfig = systemConfigResponseSchema.parse(
         await readJson(config),
       );
-      expect(parsedConfig.generalSettings).toEqual({ caffeinate: true });
+      expect(parsedConfig.generalSettings).toEqual({
+        ...defaultAppSettings,
+        caffeinate: true,
+        codexMemoryEnabled: false,
+      });
       expect(parsedConfig.primaryHostPlatform).toBe("darwin");
       await vi.waitFor(() => {
         expect(responder.requests).toHaveLength(1);
@@ -64,7 +78,7 @@ describe("general settings", () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       seedPrimaryHost(harness.deps, host.id);
-      setAppSettings(harness.db, { caffeinate: true });
+      setAppSettings(harness.db, { ...defaultAppSettings, caffeinate: true });
 
       const responder = registerHostRpcResponder(harness, {
         hostId: host.id,
@@ -106,7 +120,11 @@ describe("general settings", () => {
       const response = await harness.app.request("/api/v1/settings/general", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ caffeinate: true, unused: true }),
+        body: JSON.stringify({
+          ...defaultAppSettings,
+          caffeinate: true,
+          unused: true,
+        }),
       });
       expect(response.status).toBe(400);
     });

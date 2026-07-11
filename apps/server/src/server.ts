@@ -370,6 +370,8 @@ export function createApp(
     appVersion: deps.config.appVersion,
     isEnabled: () => getExperiments(deps.db).plugins,
     isConnectEnabled: () => getExperiments(deps.db).bbConnect,
+    watchBuiltinPluginSources:
+      process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
   // Bridge the thread lifecycle seams to this service's plugins (§4.5).
   setPluginThreadEventEmitter(pluginService.events);

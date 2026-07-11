@@ -1,9 +1,4 @@
-import {
-  useMemo,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import {
   builtInThemes,
@@ -13,6 +8,7 @@ import {
   isValidElectronAccelerator,
   type AppTheme,
   type FaviconColorPreference,
+  type PluginThemeMeta,
 } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
@@ -52,6 +48,7 @@ import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSetti
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
+import { ServersSettingsSection } from "@/components/settings/ServersSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -151,6 +148,7 @@ export interface AppearanceSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
   customThemes: readonly string[];
+  pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
   onAppearanceThemeChange: (themeId: string) => void;
   onCreatePalette: () => void;
@@ -175,9 +173,16 @@ export interface GeneralSettingsSectionProps {
   richTextEditing: boolean;
 }
 
-function appPaletteLabel(appearance: AppTheme): string {
+function appPaletteLabel(
+  appearance: AppTheme,
+  pluginThemes: readonly PluginThemeMeta[],
+): string {
   const meta = builtInThemes.find((entry) => entry.id === appearance.themeId);
-  return meta?.name ?? appearance.themeId;
+  return (
+    meta?.name ??
+    pluginThemes.find((entry) => entry.id === appearance.themeId)?.name ??
+    appearance.themeId
+  );
 }
 
 export interface ExperimentsSettingsSectionProps {
@@ -407,10 +412,7 @@ function LocalOpenTargetPreferenceControl({
                 key={target.id}
                 onSelect={() => onTargetChange(target.id)}
               >
-                <WorkspaceOpenTargetIcon
-                  target={target}
-                  className="size-5"
-                />
+                <WorkspaceOpenTargetIcon target={target} className="size-5" />
                 <span className="min-w-0 truncate">{target.label}</span>
                 <Icon
                   name="Check"
@@ -465,8 +467,7 @@ const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const RICH_TEXT_EDITING_SETTING_LABEL =
-  "Markdown formatting in prompt box";
+const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 
 export function RootComposeBehaviorSettingsControl({
@@ -559,6 +560,7 @@ export function AppearanceSettingsSection({
   appearance,
   appearanceDisabled,
   customThemes,
+  pluginThemes,
   faviconColor,
   onAppearanceThemeChange,
   onFaviconColorChange,
@@ -623,7 +625,7 @@ export function AppearanceSettingsSection({
                 disabled={appearanceDisabled}
               >
                 <span className="min-w-0 truncate">
-                  {appPaletteLabel(appearance)}
+                  {appPaletteLabel(appearance, pluginThemes)}
                 </span>
                 <Icon
                   name="ChevronDown"
@@ -662,6 +664,23 @@ export function AppearanceSettingsSection({
                     className={cn(
                       "ml-auto",
                       appearance.themeId !== name && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+              {pluginThemes.map((theme) => (
+                <DropdownMenuItem
+                  key={theme.id}
+                  onSelect={() => onAppearanceThemeChange(theme.id)}
+                >
+                  {theme.name}
+                  <span className="text-muted-foreground">({theme.pluginId})</span>
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      appearance.themeId !== theme.id && "opacity-0",
                       COARSE_POINTER_ICON_SIZE_CLASS,
                     )}
                   />
@@ -736,6 +755,42 @@ export function GeneralSettingsSection({
           onEnabledChange={onRewriteLocalhostLinksChange}
         />
       </div>
+    </SettingsSection>
+  );
+}
+
+interface ProviderSettingsSectionProps {
+  memoryEnabled: boolean;
+  disabled: boolean;
+  onMemoryEnabledChange: (enabled: boolean) => void;
+  providerId: "codex" | "claude-code";
+}
+
+export function ProviderSettingsSection({
+  memoryEnabled,
+  disabled,
+  onMemoryEnabledChange,
+  providerId,
+}: ProviderSettingsSectionProps) {
+  const isCodex = providerId === "codex";
+  const label = isCodex ? "Codex memory" : "Claude Code memory";
+  return (
+    <SettingsSection title={isCodex ? "Codex" : "Claude Code"}>
+      <SettingsWithControl
+        label={label}
+        description={
+          isCodex
+            ? "Allow Codex to recall existing memories and generate new memories from bb threads."
+            : "Allow Claude Code to read and write its native auto-memory for bb threads."
+        }
+      >
+        <Switch
+          aria-label={label}
+          checked={memoryEnabled}
+          disabled={disabled}
+          onCheckedChange={onMemoryEnabledChange}
+        />
+      </SettingsWithControl>
     </SettingsSection>
   );
 }
@@ -1045,7 +1100,7 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activePluginId, activeSection, hasUnknownSection } =
+  const { activePluginId, activeProviderId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
@@ -1054,6 +1109,30 @@ export function SettingsView() {
   let content: ReactNode = null;
   if (activePluginId !== null) {
     content = <PluginSettingsDetailSection pluginId={activePluginId} />;
+  } else if (activeProviderId !== null) {
+    const isCodex = activeProviderId === "codex";
+    content = (
+      <ProviderSettingsSection
+        providerId={activeProviderId}
+        memoryEnabled={
+          isCodex
+            ? generalSettings.codexMemoryEnabled
+            : generalSettings.claudeCodeMemoryEnabled
+        }
+        disabled={
+          systemConfigQuery.data === undefined ||
+          updateGeneralSettingsMutation.isPending
+        }
+        onMemoryEnabledChange={(enabled) =>
+          updateGeneralSettingsMutation.mutate({
+            ...generalSettings,
+            ...(isCodex
+              ? { codexMemoryEnabled: enabled }
+              : { claudeCodeMemoryEnabled: enabled }),
+          })
+        }
+      />
+    );
   } else if (activeSection === "appearance") {
     content = (
       <AppearanceSettingsSection
@@ -1063,6 +1142,7 @@ export function SettingsView() {
           updateAppearanceMutation.isPending
         }
         customThemes={systemConfigQuery.data?.customThemes ?? []}
+        pluginThemes={systemConfigQuery.data?.pluginThemes ?? []}
         faviconColor={appearance.faviconColor}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
@@ -1103,6 +1183,8 @@ export function SettingsView() {
         <FileOpenersSettingsSection />
       </>
     );
+  } else if (activeSection === "servers") {
+    content = <ServersSettingsSection />;
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection

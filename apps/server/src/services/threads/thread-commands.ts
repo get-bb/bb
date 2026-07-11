@@ -1,4 +1,10 @@
-import { environments, events, getExperiments, threads } from "@bb/db";
+import {
+  environments,
+  events,
+  getAppSettings,
+  getExperiments,
+  threads,
+} from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   getBuiltInAgentProviderInfo,
@@ -96,7 +102,7 @@ export interface ThreadStartCommandArgs {
 
 interface PreparedTurnSubmitCommandBuildArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
-  deps: Pick<AppDeps, "config">;
+  deps: Pick<AppDeps, "config" | "db">;
   environmentId: string;
   execution: ResolvedThreadExecutionOptions;
   permissionEscalation: PermissionEscalation;
@@ -135,6 +141,7 @@ interface RuntimeExecutionOptionsArgs {
   input: PromptInput[];
   permissionEscalation: PermissionEscalation;
   providerId: string;
+  memoryEnabled: boolean;
 }
 
 interface BuildExecutionOptionsArgs {
@@ -201,9 +208,7 @@ function buildAcpLaunchSpecForProviderId(
     return normalizeHostDaemonAcpLaunchSpec(agent);
   }
   const knownAgent = findKnownAcpAgentForProviderId(providerId);
-  return knownAgent
-    ? normalizeHostDaemonAcpLaunchSpec(knownAgent)
-    : undefined;
+  return knownAgent ? normalizeHostDaemonAcpLaunchSpec(knownAgent) : undefined;
 }
 
 function resolveClaudeCodeMockCliTrafficConfig(
@@ -213,6 +218,16 @@ function resolveClaudeCodeMockCliTrafficConfig(
     enabled: getExperiments(deps.db).claudeCodeMockCliTraffic,
     endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   };
+}
+
+function resolveProviderMemoryEnabled(
+  deps: Pick<AppDeps, "db">,
+  providerId: string,
+): boolean {
+  const settings = getAppSettings(deps.db);
+  if (providerId === "codex") return settings.codexMemoryEnabled;
+  if (providerId === "claude-code") return settings.claudeCodeMemoryEnabled;
+  return false;
 }
 
 function toRuntimeExecutionOptions(
@@ -232,6 +247,7 @@ function toRuntimeExecutionOptions(
       : {}),
     claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
     workflowsEnabled: resolveWorkflowsEnabledPolicy(args.providerId),
+    memoryEnabled: args.memoryEnabled,
   };
   if (args.execution.permissionMode === "full") {
     return {
@@ -292,6 +308,7 @@ export async function buildThreadStartCommand(
     options: toRuntimeExecutionOptions({
       ...args,
       claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
+      memoryEnabled: resolveProviderMemoryEnabled(deps, args.providerId),
       input: args.input,
     }),
     instructions: runtimeContext.instructions,
@@ -324,6 +341,10 @@ function buildPreparedTurnSubmitCommandPayload(
       claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
       input: args.input,
       providerId: args.runtimeContext.providerId,
+      memoryEnabled: resolveProviderMemoryEnabled(
+        args.deps,
+        args.runtimeContext.providerId,
+      ),
     }),
     target: args.target,
     resumeContext: {

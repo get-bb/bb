@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "02762b60-0d94-44c8-9306-10c046ac024f",
+  "id": "b24ccdaa-815a-4c25-af85-fd10d8fc5fc7",
   "prevId": "05fb2d47-395b-4a11-b37b-da47ddba690d",
   "tables": {
     "app_settings": {
@@ -21,6 +21,22 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "codex_memory_enabled": {
+          "name": "codex_memory_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "claude_code_memory_enabled": {
+          "name": "claude_code_memory_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
         },
         "keybinding_overrides": {
           "name": "keybinding_overrides",
@@ -2466,58 +2482,6 @@
         "thread_search_segments_thread_id_threads_id_fk": {
           "name": "thread_search_segments_thread_id_threads_id_fk",
           "tableFrom": "thread_search_segments",
-          "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "thread_tabs": {
-      "name": "thread_tabs",
-      "columns": {
-        "thread_id": {
-          "name": "thread_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tabs_json": {
-          "name": "tabs_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "thread_tabs_thread_id_threads_id_fk": {
-          "name": "thread_tabs_thread_id_threads_id_fk",
-          "tableFrom": "thread_tabs",
           "tableTo": "threads",
           "columnsFrom": [
             "thread_id"

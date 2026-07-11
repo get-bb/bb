@@ -20,11 +20,7 @@ import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  Delete02Icon,
-  PencilEdit02Icon,
-  SidebarLeftIcon,
-} from "@hugeicons/core-free-icons";
+import { PencilEdit02Icon, SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -219,16 +215,10 @@ function TiptapEditor({
 
 // --- the editor pane over one note ------------------------------------------
 
-function baseName(notePath: string): string {
-  return notePath.replace(/\.md$/i, "");
-}
-
 type PaneState =
   | { phase: "loading" }
   | { phase: "error"; message: string }
   | { phase: "ready"; initialContent: string };
-
-type SaveState = "idle" | "dirty" | "saving" | "saved";
 
 const AUTOSAVE_MS = 700;
 
@@ -256,7 +246,6 @@ function NoteEditorPane({
   notePath,
   onListChanged,
   onRenamed,
-  onDeleted,
   sidebarCollapsed,
   onToggleSidebar,
 }: {
@@ -264,17 +253,14 @@ function NoteEditorPane({
   notePath: string;
   onListChanged: () => void;
   onRenamed: (path: string) => void;
-  onDeleted: () => void;
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
 }) {
   const rpc = useRpc();
   const [pane, setPane] = useState<PaneState>({ phase: "loading" });
-  const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
-  const [displayName, setDisplayName] = useState(() => baseName(notePath));
 
   // Live editing state kept outside React so keystrokes don't re-render.
   const livePathRef = useRef(notePath); // updated in place as the file renames
@@ -282,14 +268,11 @@ function NoteEditorPane({
   const savedContentRef = useRef("");
   const sha256Ref = useRef<string | null>(null);
   const savingRef = useRef(false);
-  const deletingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onListChangedRef = useRef(onListChanged);
   onListChangedRef.current = onListChanged;
   const onRenamedRef = useRef(onRenamed);
   onRenamedRef.current = onRenamed;
-  const onDeletedRef = useRef(onDeleted);
-  onDeletedRef.current = onDeleted;
   const doSaveRef = useRef<(options?: { force?: boolean }) => Promise<void>>(
     async () => {},
   );
@@ -304,7 +287,6 @@ function NoteEditorPane({
         return;
       }
       savingRef.current = true;
-      setSaveState("saving");
       setSaveError(null);
       const content = markdownRef.current;
       const expected = sha256Ref.current;
@@ -318,26 +300,22 @@ function NoteEditorPane({
         })) as SaveResult;
         if (result.outcome === "conflict") {
           setConflict(true);
-          setSaveState("dirty");
           return;
         }
         savedContentRef.current = content;
         sha256Ref.current = result.sha256;
         setConflict(false);
-        setSaveState("saved");
         onListChangedRef.current();
         const renamed = (await rpc.call("renameToTitle", {
           path: livePathRef.current,
         })) as { path: string };
         if (renamed.path !== livePathRef.current) {
           livePathRef.current = renamed.path;
-          setDisplayName(baseName(renamed.path));
           onRenamedRef.current(renamed.path);
           onListChangedRef.current();
         }
       } catch (error) {
         setSaveError(error instanceof Error ? error.message : String(error));
-        setSaveState("dirty");
       } finally {
         savingRef.current = false;
       }
@@ -355,13 +333,11 @@ function NoteEditorPane({
   }, []);
 
   // Load on mount (the parent remounts this pane per note via a key) and on an
-  // explicit conflict reload. On unmount, flush unsaved edits + settle the name
-  // — unless the note is being deleted (don't resurrect it).
+  // explicit conflict reload. On unmount, flush unsaved edits + settle the name.
   useEffect(() => {
     let alive = true;
     const loadPath = livePathRef.current;
     setPane({ phase: "loading" });
-    setSaveState("idle");
     setSaveError(null);
     setConflict(false);
     rpc
@@ -387,7 +363,6 @@ function NoteEditorPane({
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-      if (deletingRef.current) return;
       const pending = markdownRef.current;
       const dirty = pending !== savedContentRef.current;
       const path = livePathRef.current;
@@ -420,49 +395,16 @@ function NoteEditorPane({
     }
   }, []);
 
-  const handleDelete = useCallback(() => {
-    const label = baseName(livePathRef.current);
-    if (!window.confirm(`Delete “${label}”? This cannot be undone.`)) return;
-    deletingRef.current = true;
-    void rpc
-      .call("deleteNote", { path: livePathRef.current })
-      .catch(() => {})
-      .finally(() => onDeletedRef.current());
-  }, [rpc]);
-
-  const statusLabel =
-    saveState === "saving"
-      ? "Saving…"
-      : saveState === "dirty"
-        ? "Edited"
-        : saveState === "saved"
-          ? "Saved"
-          : "";
-
   return (
     <div
-      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col"
       onKeyDown={handleKeyDown}
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        {sidebarCollapsed ? (
+      {sidebarCollapsed ? (
+        <div className="absolute left-2 top-2 z-10">
           <SidebarButton onClick={onToggleSidebar} label="Show sidebar" />
-        ) : null}
-        <span className="min-w-0 truncate text-sm font-medium">
-          {displayName}
-        </span>
-        <span className="text-xs text-muted-foreground">{statusLabel}</span>
-        <div className="flex-1" />
-        <button
-          type="button"
-          onClick={handleDelete}
-          aria-label="Delete note"
-          title="Delete note"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <HugeiconsIcon icon={Delete02Icon} size={18} strokeWidth={1.8} />
-        </button>
-      </div>
+        </div>
+      ) : null}
       {conflict ? (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-4 py-1.5 text-xs">
           <span>This note changed on disk since it was opened.</span>
@@ -501,11 +443,7 @@ function NoteEditorPane({
           }}
           onMarkdownChange={(markdown) => {
             markdownRef.current = markdown;
-            if (markdown === savedContentRef.current) {
-              setSaveState("saved");
-              return;
-            }
-            setSaveState("dirty");
+            if (markdown === savedContentRef.current) return;
             scheduleSave();
           }}
         />
@@ -623,7 +561,9 @@ function NotesList({
                     {note.title || "Untitled"}
                   </span>
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="shrink-0">{formatTime(note.modifiedAtMs)}</span>
+                    <span className="shrink-0">
+                      {formatTime(note.modifiedAtMs)}
+                    </span>
                     {note.preview ? (
                       <span className="truncate">{note.preview}</span>
                     ) : (
@@ -666,7 +606,10 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
     setCollapsed((current) => {
       const next = !current;
       try {
-        localStorage.setItem("bb-simple-notes:sidebar-collapsed", next ? "1" : "0");
+        localStorage.setItem(
+          "bb-simple-notes:sidebar-collapsed",
+          next ? "1" : "0",
+        );
       } catch {
         // ignore storage failures
       }
@@ -743,11 +686,6 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
     [navigate],
   );
 
-  const handleDeleted = useCallback(() => {
-    navigate.toPluginPanel("simple-notes", { subPath: "", replace: true });
-    refresh();
-  }, [navigate, refresh]);
-
   const newNote = useCallback(() => {
     rpc
       .call("createNote", { name: "Untitled" })
@@ -777,7 +715,6 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
           notePath={open.path}
           onListChanged={refresh}
           onRenamed={handleRenamed}
-          onDeleted={handleDeleted}
           sidebarCollapsed={collapsed}
           onToggleSidebar={toggleSidebar}
         />

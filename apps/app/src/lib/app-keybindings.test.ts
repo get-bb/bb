@@ -51,7 +51,9 @@ describe("app keybindings", () => {
         false,
       ),
     ).toBe(true);
-    expect(matchesAppShortcut({ ...base, shiftKey: true }, MOD_N, true)).toBe(false);
+    expect(matchesAppShortcut({ ...base, shiftKey: true }, MOD_N, true)).toBe(
+      false,
+    );
   });
 
   it("matches shifted punctuation against its unshifted binding key", () => {
@@ -97,12 +99,14 @@ describe("app keybindings", () => {
     editor.append(child);
     expect(isEditableKeyboardTarget(input)).toBe(true);
     expect(isEditableKeyboardTarget(child)).toBe(true);
-    expect(isEditableKeyboardTarget(document.createElement("button"))).toBe(false);
+    expect(isEditableKeyboardTarget(document.createElement("button"))).toBe(
+      false,
+    );
   });
 
   it("formats platform-specific shortcut labels", () => {
-    expect(formatAppShortcut(MOD_N, "MacIntel")).toBe("⌘N");
-    expect(formatAppShortcut(MOD_N, "Win32")).toBe("Ctrl+N");
+    expect(formatAppShortcut(MOD_N, "MacIntel")).toBe("⌘ N");
+    expect(formatAppShortcut(MOD_N, "Win32")).toBe("Ctrl + N");
     expect(formatAppShortcutAria(MOD_N, "MacIntel")).toBe("Meta+N");
     expect(formatAppShortcutAria(MOD_N, "Win32")).toBe("Control+N");
   });

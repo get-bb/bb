@@ -228,6 +228,7 @@ function AppearanceSettingsStory() {
       appearance={state.appearance}
       appearanceDisabled={false}
       customThemes={["Monochrome Lab", "Low Contrast"]}
+      pluginThemes={[]}
       faviconColor={state.appearance.faviconColor}
       onAppearanceThemeChange={(themeId) =>
         state.setAppearance((current) => ({ ...current, themeId }))

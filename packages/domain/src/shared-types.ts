@@ -137,10 +137,7 @@ export type PromptMentionCommandTrigger = z.infer<
   typeof promptMentionCommandTriggerSchema
 >;
 
-export const promptMentionCommandSourceValues = [
-  "skill",
-  "command",
-] as const;
+export const promptMentionCommandSourceValues = ["skill", "command"] as const;
 export const promptMentionCommandSourceSchema = z.enum(
   promptMentionCommandSourceValues,
 );
@@ -443,6 +440,9 @@ const runtimeThreadExecutionBaseOptionsSchema = z.object({
    * policy), never defaulted downstream.
    */
   workflowsEnabled: z.boolean(),
+  // Optional for legacy command compatibility; the server fills the current
+  // provider preference before dispatching new runtime work.
+  memoryEnabled: z.boolean().optional(),
 });
 
 export const runtimeThreadExecutionOptionsSchema =

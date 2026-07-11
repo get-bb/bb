@@ -37,10 +37,7 @@ import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
-import {
-  mapBbReasoningLevelToCodex,
-  parseModelsResponse,
-} from "./models.js";
+import { mapBbReasoningLevelToCodex, parseModelsResponse } from "./models.js";
 import {
   buildShellEnvironmentPolicyConfig,
   extractResultText,
@@ -779,6 +776,8 @@ function buildCodexConfig(
     );
   }
   config["features.default_mode_request_user_input"] = false;
+  config["memories.use_memories"] = args.options?.memoryEnabled ?? true;
+  config["memories.generate_memories"] = args.options?.memoryEnabled ?? true;
   if (args.options?.permissionMode === "workspace-write") {
     const writableRoots = combineWorkspaceWriteRoots(
       args.gitWritableRoots,

@@ -22,6 +22,7 @@ export interface BuildSessionOptionsArgs {
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
   workflowsEnabled: boolean;
+  memoryEnabled?: boolean;
 }
 
 interface ResolveExecutableOnPathArgs {
@@ -68,14 +69,10 @@ function toSdkEffort(
   return reasoningLevel;
 }
 
-function buildFlagSettings(
-  params: BuildSessionOptionsArgs,
-): Settings | undefined {
-  if (!params.workflowsEnabled) {
-    return undefined;
-  }
+function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
   return {
-    enableWorkflows: true,
+    autoMemoryEnabled: params.memoryEnabled ?? true,
+    ...(params.workflowsEnabled ? { enableWorkflows: true } : {}),
     ...(params.reasoningLevel === "ultracode" ? { ultracode: true } : {}),
   };
 }
@@ -248,7 +245,7 @@ export function buildSessionOptions(
     ...(params.reasoningLevel
       ? { thinking: SUMMARIZED_ADAPTIVE_THINKING }
       : {}),
-    ...(flagSettings ? { settings: flagSettings } : {}),
+    settings: flagSettings,
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     ...(sandbox ? { sandbox } : {}),

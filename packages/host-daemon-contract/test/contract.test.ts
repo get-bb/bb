@@ -686,6 +686,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread runtime options may omit mock CLI traffic settings unless the server explicitly enables Claude traffic replay.",
   "hostDaemonCommandSchema.options.claudeCodePermissionMode":
     "thread runtime options may omit the Claude Code native permission override unless a provider command requests plan mode.",
+  "hostDaemonCommandSchema.options.memoryEnabled":
+    "legacy runtime commands may omit provider memory policy; current servers always send the persisted provider preference.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec":

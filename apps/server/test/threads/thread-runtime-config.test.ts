@@ -3,11 +3,13 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   markThreadDeleted,
+  setAppSettings,
   setExperiments,
   setThreadExecutionOverride,
 } from "@bb/db";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  defaultAppSettings,
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
@@ -758,6 +760,56 @@ describe("thread runtime config", () => {
         enabled: true,
         endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
       });
+    });
+  });
+
+  it("resolves native memory preferences independently for Codex and Claude Code", async () => {
+    await withTestHarness(async (harness) => {
+      setAppSettings(harness.db, {
+        ...defaultAppSettings,
+        codexMemoryEnabled: false,
+        claudeCodeMemoryEnabled: true,
+      });
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-provider-memory-settings",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+
+      async function build(providerId: "codex" | "claude-code") {
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId,
+        });
+        const execution = await resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: {
+            model: providerId === "codex" ? "gpt-5" : "claude-sonnet-4-6",
+            source: "client/turn/requested",
+          },
+        });
+        return buildThreadStartCommand(harness.deps, {
+          environment,
+          execution,
+          fork: null,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId,
+          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+      }
+
+      expect((await build("codex")).options.memoryEnabled).toBe(false);
+      expect((await build("claude-code")).options.memoryEnabled).toBe(true);
     });
   });
 

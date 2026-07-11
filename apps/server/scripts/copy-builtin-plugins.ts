@@ -79,13 +79,20 @@ async function writeRuntimePackageJson(args: {
 
 async function copyBuiltinPlugin(args: {
   build: boolean;
-  name: (typeof BUILTIN_PLUGIN_NAMES)[number];
+  name: string;
   sourceRoot: string;
   targetRoot: string;
 }): Promise<void> {
   if (args.build) {
     await buildPluginServer(args.sourceRoot);
-    await buildPluginApp(args.sourceRoot);
+    const raw = await readFile(
+      path.join(args.sourceRoot, "package.json"),
+      "utf8",
+    );
+    const packageJson = pluginPackageJsonSchema.parse(JSON.parse(raw));
+    if (packageJson.bb.app !== undefined) {
+      await buildPluginApp(args.sourceRoot);
+    }
   }
 
   const targetDir = path.join(args.targetRoot, args.name);

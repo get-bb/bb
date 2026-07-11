@@ -14,6 +14,13 @@ export const CLOSE_WINDOW_MENU_LABEL = "Close Window";
 export const OPEN_SETTINGS_MENU_LABEL = "Settings…";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
+export const SERVER_MENU_LABEL = "Server";
+
+export interface ApplicationMenuServerItem {
+  checked: boolean;
+  id: string;
+  name: string;
+}
 
 export interface InstallApplicationMenuArgs {
   accelerators: ApplicationMenuAccelerators;
@@ -27,7 +34,12 @@ export interface InstallApplicationMenuArgs {
   closeWindowOrSideTab(browserWindow: BaseWindow | undefined): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
+  selectServer(
+    serverId: string,
+    browserWindow: BaseWindow | undefined,
+  ): void;
   serverDaemonLogsMenuEnabled: boolean;
+  servers: ApplicationMenuServerItem[];
 }
 
 function createServerDaemonLogsMenuItems(
@@ -43,6 +55,36 @@ function createServerDaemonLogsMenuItems(
       },
     },
   ];
+}
+
+function serverMenuAccelerator(index: number): string | undefined {
+  if (index < 0 || index > 8) {
+    return undefined;
+  }
+  return `Command+Control+${index + 1}`;
+}
+
+function createServerMenuItems(
+  args: InstallApplicationMenuArgs,
+): MenuItemConstructorOptions[] {
+  if (args.servers.length === 0) {
+    return [
+      {
+        enabled: false,
+        label: "No Servers",
+      },
+    ];
+  }
+
+  return args.servers.map((server, index) => ({
+    accelerator: serverMenuAccelerator(index),
+    checked: server.checked,
+    click(_menuItem, browserWindow) {
+      args.selectServer(server.id, browserWindow);
+    },
+    label: server.name,
+    type: "radio" as const,
+  }));
 }
 
 export function buildApplicationMenuTemplate(
@@ -149,6 +191,11 @@ export function buildApplicationMenuTemplate(
       submenu: [
         { role: "minimize" },
         { role: "zoom" },
+        { type: "separator" },
+        {
+          label: SERVER_MENU_LABEL,
+          submenu: createServerMenuItems(args),
+        },
         { type: "separator" },
         { role: "front" },
       ],

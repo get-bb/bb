@@ -77,9 +77,16 @@ process.stdout.write(
 );
 process.stdout.write(`@bb/desktop: user-data ${desktopUserDataDir}\n`);
 
+// Extra Chromium/Electron switches for dev automation (e.g.
+// BB_DESKTOP_ELECTRON_ARGS="--remote-debugging-port=9223" for CDP-driven QA).
+const extraElectronArgs = (process.env.BB_DESKTOP_ELECTRON_ARGS ?? "")
+  .split(" ")
+  .map((arg) => arg.trim())
+  .filter((arg) => arg.length > 0);
+
 const child = spawn(
   electronBinary,
-  [`--user-data-dir=${desktopUserDataDir}`, "."],
+  [`--user-data-dir=${desktopUserDataDir}`, ...extraElectronArgs, "."],
   {
     cwd: process.cwd(),
     env: childEnv,

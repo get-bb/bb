@@ -20,6 +20,7 @@ export const SETTINGS_ROUTE_PATH = "/settings";
 // plugin management bucket and /settings/plugins/:id a plugin's own page.
 export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
+export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
@@ -99,6 +100,10 @@ export function getSettingsPluginRoutePath(pluginId: string): string {
   return `/settings/plugins/${encodeURIComponent(pluginId)}`;
 }
 
+export function getSettingsProviderRoutePath(providerId: string): string {
+  return `/settings/providers/${encodeURIComponent(providerId)}`;
+}
+
 export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
 }
@@ -170,6 +175,7 @@ const baseRoutePatterns: readonly string[] = [
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
+  SETTINGS_PROVIDER_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,

@@ -119,6 +119,7 @@ async function startDesktopSmokeServer(
             themeId: "default",
           },
           customThemes: [],
+          pluginThemes: [],
           dataDir: args.dataDir,
           experiments: {
             bbConnect: false,

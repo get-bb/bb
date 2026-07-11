@@ -575,6 +575,7 @@ describe("bridge", () => {
 
     expect(options.effort).toBe("xhigh");
     expect(options.settings).toEqual({
+      autoMemoryEnabled: true,
       enableWorkflows: true,
       ultracode: true,
     });
@@ -595,10 +596,13 @@ describe("bridge", () => {
     );
 
     expect(options.effort).toBe("high");
-    expect(options.settings).toEqual({ enableWorkflows: true });
+    expect(options.settings).toEqual({
+      autoMemoryEnabled: true,
+      enableWorkflows: true,
+    });
   });
 
-  it("passes no flag settings when workflows are not enabled", () => {
+  it("passes the memory setting when workflows are not enabled", () => {
     const options = buildSessionOptions(
       {
         workflowsEnabled: false,
@@ -612,7 +616,23 @@ describe("bridge", () => {
       {},
     );
 
-    expect(options.settings).toBeUndefined();
+    expect(options.settings).toEqual({ autoMemoryEnabled: true });
+  });
+
+  it("disables Claude auto-memory reads and writes", () => {
+    const options = buildSessionOptions(
+      {
+        workflowsEnabled: false,
+        memoryEnabled: false,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+      },
+      {},
+    );
+
+    expect(options.settings).toEqual({ autoMemoryEnabled: false });
   });
 
   it("leaves standard sessions on the default Claude tool preset", () => {

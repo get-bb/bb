@@ -6,11 +6,7 @@ import {
   createFakePluginHost,
   type FakePluginHost,
 } from "@bb/plugin-sdk/testing";
-import {
-  decodeFrame,
-  encodeFrame,
-  type Frame,
-} from "@bb/tunnel-contract";
+import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 import { deriveConnectBaseUrl, serverUrlForHandle } from "./redeem.js";
 import {
   headersForLoopbackRequest,
@@ -68,13 +64,10 @@ describe("headersForLoopbackRequest", () => {
     });
 
     expect(
-      headersForLoopbackRequest(
-        [["Origin", "https://evil.example"]],
-        {
-          publicOrigin: "https://sawyer.getbb.app",
-          loopbackOrigin: "http://127.0.0.1:38886",
-        },
-      ),
+      headersForLoopbackRequest([["Origin", "https://evil.example"]], {
+        publicOrigin: "https://sawyer.getbb.app",
+        loopbackOrigin: "http://127.0.0.1:38886",
+      }),
     ).toEqual({ Origin: "https://evil.example" });
   });
 
@@ -209,7 +202,10 @@ describe("isBareBbRealtimeWs", () => {
 // ---------------------------------------------------------------------------
 
 async function listen(
-  handler: (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => void,
+  handler: (
+    req: import("node:http").IncomingMessage,
+    res: import("node:http").ServerResponse,
+  ) => void,
 ): Promise<{ server: Server; origin: string; port: number }> {
   const server = createServer(handler);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -240,10 +236,7 @@ function collectFrames(ws: NodeWebSocket): Frame[] {
   return frames;
 }
 
-async function waitFor(
-  pred: () => boolean,
-  timeoutMs = 2000,
-): Promise<void> {
+async function waitFor(pred: () => boolean, timeoutMs = 2000): Promise<void> {
   const start = Date.now();
   while (!pred()) {
     if (Date.now() - start > timeoutMs) {
@@ -279,12 +272,13 @@ describe("TunnelSession routing", () => {
     cleanups.push(
       () =>
         new Promise<void>((resolve) => primary.server.close(() => resolve())),
-      () =>
-        new Promise<void>((resolve) => share.server.close(() => resolve())),
+      () => new Promise<void>((resolve) => share.server.close(() => resolve())),
     );
 
     const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
-    await new Promise<void>((resolve) => wss.once("listening", () => resolve()));
+    await new Promise<void>((resolve) =>
+      wss.once("listening", () => resolve()),
+    );
     const wssAddr = wss.address();
     if (wssAddr === null || typeof wssAddr === "string") {
       throw new Error("expected TCP address");
@@ -350,7 +344,9 @@ describe("TunnelSession routing", () => {
       headers: [["Origin", "https://sawyer.getbb.app"]],
       hasBody: false,
     });
-    await waitFor(() => frames.some((f) => f.type === "body-end" && f.streamId === 1));
+    await waitFor(() =>
+      frames.some((f) => f.type === "body-end" && f.streamId === 1),
+    );
     expect(primaryHits).toEqual(["GET /hello"]);
     expect(shareHits).toEqual([]);
 
@@ -368,7 +364,9 @@ describe("TunnelSession routing", () => {
       hasBody: false,
       target: String(share.port),
     });
-    await waitFor(() => frames.some((f) => f.type === "body-end" && f.streamId === 2));
+    await waitFor(() =>
+      frames.some((f) => f.type === "body-end" && f.streamId === 2),
+    );
     expect(shareHits).toHaveLength(1);
     expect(shareHits[0]).toContain("GET /app");
     expect(shareHits[0]).toContain(`host=127.0.0.1:${share.port}`);
@@ -386,7 +384,9 @@ describe("TunnelSession routing", () => {
       hasBody: false,
       target: "59999",
     });
-    await waitFor(() => frames.some((f) => f.type === "resp-head" && f.streamId === 3));
+    await waitFor(() =>
+      frames.some((f) => f.type === "resp-head" && f.streamId === 3),
+    );
     const head = frames.find((f) => f.type === "resp-head" && f.streamId === 3);
     expect(head).toMatchObject({ type: "resp-head", status: 404 });
     const bodyChunks = frames.filter(
@@ -421,11 +421,14 @@ describe("TunnelSession routing", () => {
       res.end(gzippedBody);
     });
     cleanups.push(
-      () => new Promise<void>((resolve) => origin.server.close(() => resolve())),
+      () =>
+        new Promise<void>((resolve) => origin.server.close(() => resolve())),
     );
 
     const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
-    await new Promise<void>((resolve) => wss.once("listening", () => resolve()));
+    await new Promise<void>((resolve) =>
+      wss.once("listening", () => resolve()),
+    );
     const wssAddr = wss.address();
     if (wssAddr === null || typeof wssAddr === "string") {
       throw new Error("expected TCP address");
@@ -476,8 +479,12 @@ describe("TunnelSession routing", () => {
       headers: [],
       hasBody: false,
     });
-    await waitFor(() => frames.some((f) => f.type === "body-end" && f.streamId === 21));
-    const head = frames.find((f) => f.type === "resp-head" && f.streamId === 21);
+    await waitFor(() =>
+      frames.some((f) => f.type === "body-end" && f.streamId === 21),
+    );
+    const head = frames.find(
+      (f) => f.type === "resp-head" && f.streamId === 21,
+    );
     if (head?.type !== "resp-head") throw new Error("missing resp-head");
     expect(head.status).toBe(200);
     const headerNames = head.headers.map(([name]) => name.toLowerCase());
@@ -487,7 +494,9 @@ describe("TunnelSession routing", () => {
     const relayedBody = Buffer.concat(
       frames
         .filter((f) => f.type === "body-chunk" && f.streamId === 21)
-        .map((f) => (f.type === "body-chunk" ? Buffer.from(f.data) : Buffer.alloc(0))),
+        .map((f) =>
+          f.type === "body-chunk" ? Buffer.from(f.data) : Buffer.alloc(0),
+        ),
     ).toString();
     expect(relayedBody).toBe(plainBody);
 
@@ -501,12 +510,16 @@ describe("TunnelSession routing", () => {
       headers: [["If-None-Match", 'W/"v1"']],
       hasBody: false,
     });
-    await waitFor(() => frames.some((f) => f.type === "body-end" && f.streamId === 22));
+    await waitFor(() =>
+      frames.some((f) => f.type === "body-end" && f.streamId === 22),
+    );
     const revalidated = frames.find(
       (f) => f.type === "resp-head" && f.streamId === 22,
     );
     expect(revalidated).toMatchObject({ type: "resp-head", status: 304 });
-    expect(frames.some((f) => f.type === "body-chunk" && f.streamId === 22)).toBe(false);
+    expect(
+      frames.some((f) => f.type === "body-chunk" && f.streamId === 22),
+    ).toBe(false);
   });
 
   it("tracks remoteClients for bare-handle /ws streams", async () => {
@@ -525,7 +538,9 @@ describe("TunnelSession routing", () => {
     );
 
     const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
-    await new Promise<void>((resolve) => wss.once("listening", () => resolve()));
+    await new Promise<void>((resolve) =>
+      wss.once("listening", () => resolve()),
+    );
     const wssAddr = wss.address();
     if (wssAddr === null || typeof wssAddr === "string") {
       throw new Error("expected TCP address");
@@ -894,6 +909,150 @@ describe("connect plugin", () => {
     expect(removed).toEqual({ removed: true, port: 8000 });
     expect(await harness.callRpc("listShares")).toEqual([]);
   });
+
+  it("listAccountServers fetches the worker list and returns selfHandle", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return new Response(
+          JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/connect/servers")) {
+        return new Response(
+          JSON.stringify({
+            servers: [
+              { handle: "sawyer", name: "default", live: true },
+              { handle: "sawyer-desktop", name: "desktop", live: false },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.localhost:59340",
+      baseUrl: "https://getbb.app",
+    });
+
+    const result = (await harness.callRpc("listAccountServers")) as {
+      servers: Array<{
+        handle: string;
+        name: string;
+        live: boolean;
+        url: string;
+      }>;
+      selfHandle: string;
+    };
+    expect(result).toEqual({
+      servers: [
+        {
+          handle: "sawyer",
+          name: "default",
+          live: true,
+          // URL base comes from the pairing credential's serverUrl apex.
+          url: "http://sawyer.localhost:59340",
+        },
+        {
+          handle: "sawyer-desktop",
+          name: "desktop",
+          live: false,
+          url: "http://sawyer-desktop.localhost:59340",
+        },
+      ],
+      selfHandle: "sawyer",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://sawyer.localhost:59340/api/connect/servers",
+      expect.objectContaining({
+        method: "GET",
+        headers: { "x-bb-connect-machine": "bbcred_live" },
+      }),
+    );
+  });
+
+  it("listAccountServers when unpaired returns a typed not_paired code", async () => {
+    const { harness } = await loadPlugin();
+    await expect(harness.callRpc("listAccountServers")).rejects.toThrow(
+      "not_paired",
+    );
+  });
+
+  it("createDesktopSession exchanges the stored credential without returning it", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return new Response(
+          JSON.stringify({ credential: "bbcred_durable", handle: "sawyer" }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/connect/desktop-session")) {
+        return new Response(
+          JSON.stringify({
+            cookie: {
+              domain: ".getbb.app",
+              expiresAt: 2_000_000,
+              name: "__Secure-bb-connect.desktop_session",
+              value: "short-lived-signed-cookie",
+            },
+          }),
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "https://sawyer.getbb.app",
+    });
+    await expect(harness.callRpc("createDesktopSession")).resolves.toEqual({
+      cookie: {
+        domain: ".getbb.app",
+        expiresAt: 2_000_000,
+        name: "__Secure-bb-connect.desktop_session",
+        value: "short-lived-signed-cookie",
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://sawyer.getbb.app/api/connect/desktop-session",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "x-bb-connect-machine": "bbcred_durable" },
+      }),
+    );
+  });
+
+  it("listAccountServers surfaces unauthorized cleanly on 401", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return new Response(
+          JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.localhost:59341",
+      baseUrl: "https://getbb.app",
+    });
+    await expect(harness.callRpc("listAccountServers")).rejects.toThrow(
+      "unauthorized",
+    );
+  });
 });
 
 describe("connect CLI", () => {
@@ -991,6 +1150,68 @@ describe("connect CLI", () => {
     const result = await harness.runCli(["expose", "8000"]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("not connected to getbb.app");
+  });
+
+  it("servers when unpaired errors clearly", async () => {
+    const { harness } = await loadCli();
+    const result = await harness.runCli(["servers"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("not connected to getbb.app");
+  });
+
+  it("servers lists account servers as a table or json", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return new Response(
+          JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/connect/servers")) {
+        return new Response(
+          JSON.stringify({
+            servers: [
+              { handle: "sawyer", name: "default", live: true },
+              { handle: "sawyer-desktop", name: "desktop", live: false },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli();
+    await harness.runCli([
+      "--code",
+      "ABCD",
+      "--server",
+      "http://sawyer.localhost:59342",
+    ]);
+
+    const table = await harness.runCli(["servers"]);
+    expect(table.exitCode).toBe(0);
+    expect(table.stdout).toContain("sawyer");
+    expect(table.stdout).toContain("desktop");
+    expect(table.stdout).toContain("http://sawyer.localhost:59342");
+    expect(table.stdout).toContain("http://sawyer-desktop.localhost:59342");
+    expect(table.stdout).toContain("yes");
+    expect(table.stdout).toContain("no");
+
+    const json = await harness.runCli(["servers", "--json"]);
+    expect(json.exitCode).toBe(0);
+    expect(json.stdout).toBeTruthy();
+    const parsed = JSON.parse(json.stdout ?? "") as {
+      servers: Array<{ handle: string; url: string }>;
+      selfHandle: string;
+    };
+    expect(parsed.selfHandle).toBe("sawyer");
+    expect(parsed.servers).toHaveLength(2);
+    expect(parsed.servers[0]?.url).toBe("http://sawyer.localhost:59342");
+    expect(parsed.servers[1]?.url).toBe(
+      "http://sawyer-desktop.localhost:59342",
+    );
   });
 
   it("expose / shares / unexpose happy path", async () => {

@@ -29,6 +29,7 @@ function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],
+    pluginThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
     primaryHostPlatform: null,

@@ -68,12 +68,12 @@ describe("KeyboardSettingsSection", () => {
   it("records, clears, and resets a command shortcut", () => {
     render(<KeyboardSettingsSection />);
     const defaults = screen.getByLabelText("Default shortcuts for New thread");
-    expect(within(defaults).getByText("Ctrl+Shift+O")).toBeDefined();
+    expect(within(defaults).getByText("Ctrl + Shift + O")).toBeDefined();
     expect(within(defaults).getByText("Web")).toBeDefined();
-    expect(within(defaults).getByText("Ctrl+N")).toBeDefined();
+    expect(within(defaults).getByText("Ctrl + N")).toBeDefined();
     expect(within(defaults).getByText("Desktop")).toBeDefined();
     const recorder = screen.getByRole("button", {
-      name: "Record shortcut for New thread, current shortcut Ctrl+N",
+      name: "Record shortcut for New thread, current shortcut Ctrl + N",
     });
 
     fireEvent.click(recorder);

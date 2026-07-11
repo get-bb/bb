@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { cleanup, render, renderHook, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -16,7 +16,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { useSettingsNavState } from "./settings-nav";
+import { PluginNavIcon, useSettingsNavState } from "./settings-nav";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -39,6 +39,7 @@ function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],
+    pluginThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
     primaryHostPlatform: null,
@@ -70,6 +71,22 @@ afterEach(() => {
 });
 
 describe("useSettingsNavState", () => {
+  it("resolves Codex and Claude Code as separate provider pages", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/providers/claude-code"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeProviderId).toBe("claude-code");
+    });
+    expect(result.current.activeSection).toBeNull();
+    expect(
+      result.current.providerEntries.map((provider) => provider.id),
+    ).toEqual(["codex", "claude-code"]);
+  });
+
   it("shows slot-backed plugin settings entries while the plugins experiment is off", async () => {
     vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
     setPluginSlotRegistrations("connect", {
@@ -93,6 +110,7 @@ describe("useSettingsNavState", () => {
               status: "running",
               statusDetail: null,
               description: null,
+              icon: "EditFile",
               logoUrl: null,
               logoDarkUrl: null,
               hasSettings: false,
@@ -117,5 +135,12 @@ describe("useSettingsNavState", () => {
       "plugins",
     );
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins");
+
+    const icon = render(
+      <PluginNavIcon plugin={result.current.pluginEntries[0]!} />,
+    );
+    expect(
+      icon.container.querySelector('[data-icon="EditFile"]'),
+    ).not.toBeNull();
   });
 });

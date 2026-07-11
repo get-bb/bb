@@ -58,10 +58,7 @@ export function ThreadWorkspaceOpenButton({
       void openTarget(preferredTarget, onOpenPreferredTarget);
     },
     content: (
-      <WorkspaceOpenTargetIcon
-        target={preferredTarget}
-        className="size-5"
-      />
+      <WorkspaceOpenTargetIcon target={preferredTarget} className="size-5" />
     ),
   };
   const secondaryActions: SplitButtonAction[] = targets.map((target) => ({
@@ -78,7 +75,8 @@ export function ThreadWorkspaceOpenButton({
   }));
 
   return (
-    <span className="relative inline-flex">
+    <span className="inline-flex items-center gap-1.5">
+      <AppCommandShortcutHint shortcut={shortcut} />
       <SplitButton
         disabled={isPending}
         className="px-1"
@@ -86,10 +84,6 @@ export function ThreadWorkspaceOpenButton({
         secondaryActions={secondaryActions}
         triggerLabel="Choose workspace open target"
         mobileTitle="Open Workspace"
-      />
-      <AppCommandShortcutHint
-        shortcut={shortcut}
-        className="absolute right-full mr-1"
       />
     </span>
   );

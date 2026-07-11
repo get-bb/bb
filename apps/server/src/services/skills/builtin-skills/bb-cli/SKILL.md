@@ -77,12 +77,14 @@ message agents, or inspect projects, providers, and environments.
   Port sharing: `bb connect expose <port>` publishes a local HTTP port at
   `https://<handle>--<port>.getbb.app` (owner-session-gated, not public);
   `bb connect unexpose <port>` stops sharing; `bb connect shares` lists active
-  URLs. When you start a local server the user should open remotely, expose
-  the port and give them the share URL. Remote access is owned by the builtin
-  `connect` plugin: `bb plugin disable connect` cuts it off entirely; with bb
-  connect still enabled, `bb plugin enable connect` restores the command.
-  Settings → Connect shows the current URL, QR code, shared ports, re-pair
-  form, and disconnect control.
+  URLs. `bb connect servers` lists every bb on the paired account (handle,
+  name, url, live) so callers can discover siblings; `--json` includes
+  `selfHandle` for deduping this server. When you start a local server the user should open
+  remotely, expose the port and give them the share URL. Remote access is owned
+  by the builtin `connect` plugin: `bb plugin disable connect` cuts it off
+  entirely; with bb connect still enabled, `bb plugin enable connect` restores
+  the command. Settings → Connect shows the current URL, QR code, shared ports,
+  re-pair form, and disconnect control.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or
@@ -121,7 +123,7 @@ or artifacts, validation performed, and blockers.
 - Use `bb thread wait <thread-id>` when you explicitly need to block until a
   thread finishes. It defaults to waiting for `idle` for up to 20 minutes;
   pass `--status` or `--event` for a different target, and `--timeout
-  <seconds>` when you need a shorter or longer budget.
+<seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
 - By default, `bb thread tell` **queues** the message: if the agent is still
@@ -182,6 +184,20 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
+
+## Memory
+
+- The builtin `memory` plugin is disabled by default. Enable it with
+  `bb plugin enable memory` before using `bb memory ...`.
+- Use `bb memory catalog` to inspect the compact index, `bb memory search
+<query>` to find candidates, and `bb memory get <id>` to progressively
+  disclose a full record.
+- Use `bb memory add --scope project ...` for repository-specific knowledge.
+  Global writes require an explicit `--scope global` and should be reserved
+  for durable preferences or facts that apply across projects.
+- Mutations use optimistic concurrency: pass the current record version to
+  `bb memory update <id> --expected-version <n>` or `bb memory forget <id>
+--expected-version <n> --reason <text>`.
 
 ## Automations
 

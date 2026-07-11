@@ -1,0 +1,300 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  SERVER_OFFLINE_AFTER_MS,
+  machine,
+  schema,
+  server,
+  session,
+  user,
+} from "@bb/connect-db";
+
+import {
+  createDesktopSessionCookie,
+  listAccountServers,
+  resolveAccountUserId,
+  verifyDesktopSessionCookie,
+  verifyServerCredential,
+} from "./servers.js";
+import { verifyMachineCredential } from "./session.js";
+
+// Real in-memory SQLite (never mock the DB). Same harness as session.test.ts.
+const MIGRATIONS_DIR = fileURLToPath(
+  new URL("../../../packages/connect-db/migrations", import.meta.url),
+);
+
+let sqlite: Database.Database;
+let db: ReturnType<typeof drizzle>;
+
+beforeEach(() => {
+  sqlite = new Database(":memory:");
+  sqlite.pragma("foreign_keys = ON");
+  for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
+    if (!file.endsWith(".sql")) continue;
+    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+  }
+  db = drizzle(sqlite, { schema });
+});
+
+afterEach(() => {
+  sqlite.close();
+  vi.restoreAllMocks();
+});
+
+const now = new Date("2026-07-01T12:00:00.000Z");
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function seedUser(id: string): void {
+  db.insert(user)
+    .values({
+      id,
+      name: id,
+      email: `${id}@example.com`,
+      emailVerified: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+}
+
+function seedServer(over: {
+  id: string;
+  userId: string;
+  name: string;
+  subdomain: string;
+  credentialHash?: string | null;
+  revokedAt?: Date | null;
+  lastSeenAt?: Date | null;
+}): void {
+  db.insert(server)
+    .values({
+      id: over.id,
+      userId: over.userId,
+      name: over.name,
+      subdomain: over.subdomain,
+      credentialHash: "credentialHash" in over ? over.credentialHash : "hash",
+      revokedAt: over.revokedAt ?? null,
+      lastSeenAt: over.lastSeenAt ?? null,
+      createdAt: now,
+    })
+    .run();
+}
+
+describe("desktop session cookie", () => {
+  it("round-trips account identity until expiry and rejects tampering", async () => {
+    const expiresAt = now.getTime() + 60_000;
+    const cookie = await createDesktopSessionCookie(
+      "acct-a",
+      "test-secret",
+      expiresAt,
+    );
+    await expect(
+      verifyDesktopSessionCookie(cookie, "test-secret", now.getTime()),
+    ).resolves.toBe("acct-a");
+    await expect(
+      verifyDesktopSessionCookie(cookie, "test-secret", expiresAt),
+    ).resolves.toBeNull();
+    await expect(
+      verifyDesktopSessionCookie(
+        `${cookie.slice(0, -1)}x`,
+        "test-secret",
+        now.getTime(),
+      ),
+    ).resolves.toBeNull();
+  });
+});
+
+describe("listAccountServers", () => {
+  it("returns only the authenticated account's rows with live from last_seen_at", async () => {
+    seedUser("acct-a");
+    seedUser("acct-b");
+    const liveAt = new Date(now.getTime() - 30_000);
+    const staleAt = new Date(now.getTime() - SERVER_OFFLINE_AFTER_MS - 1_000);
+
+    seedServer({
+      id: "s1",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+      lastSeenAt: liveAt,
+    });
+    seedServer({
+      id: "s2",
+      userId: "acct-a",
+      name: "desktop",
+      subdomain: "sawyer-desktop",
+      lastSeenAt: staleAt,
+    });
+    seedServer({
+      id: "s3",
+      userId: "acct-b",
+      name: "default",
+      subdomain: "other",
+      lastSeenAt: liveAt,
+    });
+
+    const listed = await listAccountServers(db, "acct-a", now.getTime());
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        { handle: "sawyer", name: "default", live: true },
+        { handle: "sawyer-desktop", name: "desktop", live: false },
+      ]),
+    );
+    expect(listed).toHaveLength(2);
+    expect(listed.find((s) => s.handle === "other")).toBeUndefined();
+  });
+
+  it("falls back name to handle and treats unpaired/revoked as not live", async () => {
+    seedUser("acct-a");
+    seedServer({
+      id: "s1",
+      userId: "acct-a",
+      name: "   ",
+      subdomain: "empty-name",
+      credentialHash: "hash",
+      lastSeenAt: now,
+    });
+    seedServer({
+      id: "s2",
+      userId: "acct-a",
+      name: "revoked",
+      subdomain: "revoked-box",
+      credentialHash: "hash",
+      revokedAt: now,
+      lastSeenAt: now,
+    });
+    seedServer({
+      id: "s3",
+      userId: "acct-a",
+      name: "never",
+      subdomain: "never-paired",
+      credentialHash: null,
+      lastSeenAt: null,
+    });
+
+    const listed = await listAccountServers(db, "acct-a", now.getTime());
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        { handle: "empty-name", name: "empty-name", live: true },
+        { handle: "revoked-box", name: "revoked", live: false },
+        { handle: "never-paired", name: "never", live: false },
+      ]),
+    );
+  });
+});
+
+describe("verifyServerCredential / resolveAccountUserId", () => {
+  it("authenticates a non-revoked server tunnel credential to its owner", async () => {
+    seedUser("acct-a");
+    const plaintext = "bbcred_server_secret";
+    seedServer({
+      id: "s1",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+      credentialHash: await sha256Hex(plaintext),
+    });
+
+    expect(await verifyServerCredential(plaintext, db)).toBe("acct-a");
+    expect(await verifyServerCredential("wrong", db)).toBeNull();
+  });
+
+  it("authenticates a machine credential and isolates cross-account rows", async () => {
+    seedUser("acct-a");
+    seedUser("acct-b");
+    const machinePlain = "bbcm_machine_a";
+    db.insert(machine)
+      .values({
+        id: "m1",
+        userId: "acct-a",
+        name: "laptop",
+        credentialHash: await sha256Hex(machinePlain),
+        createdAt: now,
+        revokedAt: null,
+      })
+      .run();
+    seedServer({
+      id: "s-a",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+      lastSeenAt: now,
+    });
+    seedServer({
+      id: "s-b",
+      userId: "acct-b",
+      name: "default",
+      subdomain: "other",
+      lastSeenAt: now,
+    });
+
+    expect(await verifyMachineCredential(machinePlain, db)).toBe("acct-a");
+
+    const req = new Request("https://sawyer.getbb.app/api/connect/servers", {
+      headers: { "x-bb-connect-machine": machinePlain },
+    });
+    const userId = await resolveAccountUserId(req, "secret", db);
+    expect(userId).toBe("acct-a");
+    const listed = await listAccountServers(db, userId!, now.getTime());
+    expect(listed.map((s) => s.handle)).toEqual(["sawyer"]);
+  });
+
+  it("returns null (unauthorized) when no credential or session is presented", async () => {
+    const req = new Request("https://sawyer.getbb.app/api/connect/servers");
+    expect(await resolveAccountUserId(req, "secret", db)).toBeNull();
+  });
+
+  it("accepts a valid owner session cookie", async () => {
+    seedUser("acct-a");
+    // verifySessionCookie checks HMAC(token, secret) then session row by token.
+    // Use a real HMAC so the signature path succeeds.
+    const token = "sess_token_abc";
+    const secret = "test-better-auth-secret";
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sigBuf = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(token),
+    );
+    const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+    const cookieValue = `${token}.${sig}`;
+
+    db.insert(session)
+      .values({
+        id: "sess1",
+        token,
+        // Must be relative to wall clock: verifySessionCookie uses Date.now().
+        expiresAt: new Date(Date.now() + 60_000),
+        userId: "acct-a",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    const req = new Request("https://sawyer.getbb.app/api/connect/servers", {
+      headers: {
+        cookie: `__Secure-better-auth.session_token=${cookieValue}`,
+      },
+    });
+    expect(await resolveAccountUserId(req, secret, db)).toBe("acct-a");
+  });
+});
