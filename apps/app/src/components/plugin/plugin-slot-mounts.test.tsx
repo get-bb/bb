@@ -277,6 +277,38 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     expect(screen.getByText("board panel body")).toBeDefined();
   });
 
+  it("keeps the sidebar entry active on nested plugin panel routes", () => {
+    setPluginSlotRegistrations(
+      "simple-notes",
+      registrationSet({
+        navPanels: [
+          {
+            id: "simple-notes",
+            title: "Simple notes",
+            icon: "note",
+            path: "simple-notes",
+            component: Board,
+          },
+        ],
+      }),
+    );
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/plugins/simple-notes/simple-notes/bb-plugin-marketplaces-and-compatible-updates.md",
+        ]}
+      >
+        <PluginNavSidebarItems />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Simple notes" }).getAttribute(
+        "aria-current",
+      ),
+    ).toBe("page");
+  });
+
   it("shows a placeholder for an unknown plugin panel route", () => {
     render(
       <MemoryRouter initialEntries={["/plugins/ghost/board"]}>
