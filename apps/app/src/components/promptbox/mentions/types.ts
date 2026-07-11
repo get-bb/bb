@@ -57,6 +57,8 @@ export type PromptMentionSuggestion =
       providerLabel: string;
       title: string;
       subtitle: string | null;
+      /** Named shared-UI icon hint supplied by the plugin item. */
+      icon: string | null;
       replacement: string;
     };
 

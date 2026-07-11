@@ -894,8 +894,20 @@ describe("PromptBoxInternal mention triggers", () => {
     providerLabel: "GitHub issues",
     title: "#42 Fix login bug",
     subtitle: "owner/repo",
+    icon: null,
     replacement: "#42 Fix login bug",
   };
+
+  it("renders a plugin mention's named icon hint", async () => {
+    const suggestion = { ...githubIssueSuggestion, icon: "FileText" };
+    const { promptBoxRef } = renderPromptBox("@fix", {
+      mentionSuggestions: [suggestion],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const row = await screen.findByRole("button", { name: /Fix login bug/u });
+    expect(row.querySelector('[data-icon="FileText"]')).not.toBeNull();
+  });
 
   it("reports hash mention queries with the active trigger", async () => {
     const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#42", {

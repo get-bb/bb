@@ -126,6 +126,46 @@ export default async function plugin(bb: BbPluginApi) {
     );
   }
 
+  async function listNoteSummaries(): Promise<{
+    root: string;
+    notes: NoteSummary[];
+    error: string | null;
+  }> {
+    const root = await getRoot();
+    let entries;
+    try {
+      entries = await readdir(root, { withFileTypes: true });
+    } catch (error) {
+      return {
+        root,
+        notes: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    const notes: NoteSummary[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !/\.md$/i.test(entry.name)) continue;
+      const full = path.join(root, entry.name);
+      try {
+        const [info, content] = await Promise.all([
+          stat(full),
+          readFile(full, "utf8"),
+        ]);
+        const title = deriveTitle(content, entry.name.replace(/\.md$/i, ""));
+        notes.push({
+          path: entry.name,
+          title,
+          preview: derivePreview(content, title),
+          modifiedAtMs: info.mtimeMs,
+        });
+      } catch {
+        // Skip files that vanish or can't be read mid-listing.
+      }
+    }
+    notes.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
+    return { root, notes, error: null };
+  }
+
   // --- rpc ------------------------------------------------------------------
 
   bb.rpc.register({
@@ -134,39 +174,7 @@ export default async function plugin(bb: BbPluginApi) {
       notes: NoteSummary[];
       error: string | null;
     }> {
-      const root = await getRoot();
-      let entries;
-      try {
-        entries = await readdir(root, { withFileTypes: true });
-      } catch (error) {
-        return {
-          root,
-          notes: [],
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-      const notes: NoteSummary[] = [];
-      for (const entry of entries) {
-        if (!entry.isFile() || !/\.md$/i.test(entry.name)) continue;
-        const full = path.join(root, entry.name);
-        try {
-          const [info, content] = await Promise.all([
-            stat(full),
-            readFile(full, "utf8"),
-          ]);
-          const title = deriveTitle(content, entry.name.replace(/\.md$/i, ""));
-          notes.push({
-            path: entry.name,
-            title,
-            preview: derivePreview(content, title),
-            modifiedAtMs: info.mtimeMs,
-          });
-        } catch {
-          // Skip files that vanish or can't be read mid-listing.
-        }
-      }
-      notes.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
-      return { root, notes, error: null };
+      return listNoteSummaries();
     },
 
     async readNote(input: { path?: unknown }) {
@@ -271,6 +279,44 @@ export default async function plugin(bb: BbPluginApi) {
       }
       await rename(path.join(root, name), path.join(root, desired));
       return { path: desired };
+    },
+  });
+
+  // --- @ mentions -----------------------------------------------------------
+
+  bb.ui.registerMentionProvider({
+    id: "note",
+    label: "Simple Notes",
+    async search({ query }) {
+      const needle = query.trim().toLowerCase();
+      const { notes } = await listNoteSummaries();
+      return notes
+        .filter(
+          (note) =>
+            needle.length === 0 ||
+            note.title.toLowerCase().includes(needle) ||
+            note.preview.toLowerCase().includes(needle) ||
+            note.path.toLowerCase().includes(needle),
+        )
+        .slice(0, 25)
+        .map((note) => ({
+          id: note.path,
+          title: note.title,
+          subtitle: note.preview || note.path,
+          icon: "FileText",
+        }));
+    },
+    async resolve(itemId) {
+      const root = await getRoot();
+      const name = requireNoteName(itemId);
+      const file = await bb.sdk.files.read({
+        path: path.join(root, name),
+        rootPath: root,
+      });
+      const title = deriveTitle(file.content, name.replace(/\.md$/i, ""));
+      return {
+        context: `Simple Note "${title}" (${name}):\n\n${file.content}`,
+      };
     },
   });
 }

@@ -24,6 +24,7 @@ export function buildPluginMentionSuggestions(
         providerLabel: group.label,
         title,
         subtitle: item.subtitle,
+        icon: item.icon,
         replacement: title,
       });
     }

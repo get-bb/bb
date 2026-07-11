@@ -267,7 +267,7 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
     return (
       <PluginIcon
         pluginId={item.pluginId}
-        icon={null}
+        icon={item.icon}
         className={ROW_ICON_CLASS}
       />
     );

@@ -12,7 +12,7 @@ const GROUPS: PluginMentionSearchGroup[] = [
         itemId: "issues:ISS-42",
         title: "Fix login bug",
         subtitle: "In progress",
-        icon: null,
+        icon: "FileText",
       },
       {
         itemId: "issues:ISS-43",
@@ -48,6 +48,7 @@ describe("buildPluginMentionSuggestions", () => {
         providerLabel: "Linear issues",
         title: "Fix login bug",
         subtitle: "In progress",
+        icon: "FileText",
         replacement: "Fix login bug",
       },
       {
@@ -58,6 +59,7 @@ describe("buildPluginMentionSuggestions", () => {
         providerLabel: "Linear issues",
         title: "Ship mention providers",
         subtitle: null,
+        icon: null,
         replacement: "Ship mention providers",
       },
       {
@@ -68,6 +70,7 @@ describe("buildPluginMentionSuggestions", () => {
         providerLabel: "Docs",
         title: "Onboarding",
         subtitle: null,
+        icon: null,
         replacement: "Onboarding",
       },
     ]);

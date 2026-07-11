@@ -16,6 +16,9 @@ from the installed notes plugin used in bb.
   version of the first markdown line.
 - **Markdown todos**: typing `[ ]`, `[x]`, or `- [ ]` creates task-list
   checkboxes in the rich editor.
+- **Chat mentions**: typing `@` in the composer searches note titles,
+  previews, and filenames. The selected note resolves to its latest content
+  when the message is sent.
 
 Install from a bb checkout:
 
