@@ -41,6 +41,21 @@ export const hostDirectoryListingSchema = z.object({
 });
 export type HostDirectoryListing = z.infer<typeof hostDirectoryListingSchema>;
 
+/** Project name is sent so the daemon can derive its host-local checkout path. */
+export const hostCloneDefaultPathQuerySchema = z.object({
+  projectId: z.string().min(1),
+});
+export type HostCloneDefaultPathQuery = z.infer<
+  typeof hostCloneDefaultPathQuerySchema
+>;
+
+export const hostCloneDefaultPathResponseSchema = z
+  .object({ path: z.string().min(1) })
+  .strict();
+export type HostCloneDefaultPathResponse = z.infer<
+  typeof hostCloneDefaultPathResponseSchema
+>;
+
 export const createHostJoinCodeRequestSchema = z
   .object({
     hostName: z.string().optional(),

@@ -8,7 +8,6 @@ import {
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
-  seedHost,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
@@ -30,13 +29,15 @@ describe("public project local host routes", () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-source-1" });
       seedPrimaryHost(harness.deps, host.id);
-      const secondaryHost = seedHost(harness.deps, { id: "host-source-2" });
+      const { host: secondaryHost } = seedHostSession(harness.deps, {
+        id: "host-source-2",
+      });
       setExperiments(harness.db, {
         ...defaultExperiments,
         multiMachine: true,
       });
 
-      const projectResponse = await harness.app.request("/api/v1/projects", {
+      const projectResponsePromise = harness.app.request("/api/v1/projects", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -50,13 +51,22 @@ describe("public project local host routes", () => {
           },
         }),
       });
+      const createInspection = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "project.inspect",
+      );
+      await reportQueuedCommandSuccess(harness, createInspection, {
+        path: "/tmp/project-sources",
+        gitRemoteUrl: "ssh://git.example.test/project-sources.git",
+      });
+      const projectResponse = await projectResponsePromise;
       const project = projectResponseSchema.parse(
         await readJson(projectResponse),
       );
       const defaultSourceId = project.sources[0]?.id;
       expect(defaultSourceId).toBeTruthy();
 
-      const createSourceResponse = await harness.app.request(
+      const createSourceResponsePromise = harness.app.request(
         `/api/v1/projects/${project.id}/sources`,
         {
           method: "POST",
@@ -70,11 +80,28 @@ describe("public project local host routes", () => {
           }),
         },
       );
+      const addInspection = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "project.inspect" &&
+          command.path === "/tmp/project-sources-2",
+      );
+      await reportQueuedCommandSuccess(harness, addInspection, {
+        path: "/tmp/project-sources-2",
+        gitRemoteUrl: "ssh://git.example.test/ignored-different-origin.git",
+      });
+      const createSourceResponse = await createSourceResponsePromise;
       expect(createSourceResponse.status).toBe(201);
       await expect(readJson(createSourceResponse)).resolves.toMatchObject({
         hostId: secondaryHost.id,
         path: "/tmp/project-sources-2",
         type: "local_path",
+      });
+      const anchoredProjectResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}`,
+      );
+      await expect(readJson(anchoredProjectResponse)).resolves.toMatchObject({
+        gitRemoteUrl: "ssh://git.example.test/project-sources.git",
       });
 
       const updateSourceResponse = await harness.app.request(

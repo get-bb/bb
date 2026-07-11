@@ -7,6 +7,7 @@ export {
   listPublicProjects,
   markProjectDeleted,
   reorderProject,
+  setProjectGitRemoteUrlIfMissing,
   updateProject,
   deleteProject,
 } from "./projects.js";

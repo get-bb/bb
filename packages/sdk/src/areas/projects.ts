@@ -23,9 +23,9 @@ export interface ProjectDeleteArgs {
   projectId: string;
 }
 
-export interface ProjectSourceAddArgs extends CreateProjectSourceRequest {
+export type ProjectSourceAddArgs = CreateProjectSourceRequest & {
   projectId: string;
-}
+};
 
 export interface ProjectSourceUpdateArgs extends UpdateProjectSourceRequest {
   projectId: string;
@@ -79,10 +79,14 @@ function projectUpdateJson(args: ProjectUpdateArgs): UpdateProjectRequest {
 function projectSourceAddJson(
   args: ProjectSourceAddArgs,
 ): CreateProjectSourceRequest {
+  if (args.type === "local_path") {
+    return { hostId: args.hostId, path: args.path, type: args.type };
+  }
   return {
     hostId: args.hostId,
-    path: args.path,
     type: args.type,
+    ...(args.remoteUrl !== undefined ? { remoteUrl: args.remoteUrl } : {}),
+    ...(args.targetPath !== undefined ? { targetPath: args.targetPath } : {}),
   };
 }
 

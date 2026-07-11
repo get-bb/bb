@@ -16,6 +16,7 @@ import { ApiError } from "../errors.js";
 import {
   listPublicHostsWithStatus,
   requireNonDestroyedHostWithStatus,
+  requirePublicStandardProject,
 } from "../services/lib/entity-lookup.js";
 import {
   assertUsableHostId,
@@ -142,6 +143,23 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
       command: {
         type: "host.browse_directory",
         ...(query.path ? { path: query.path } : {}),
+      },
+    });
+    return context.json(result);
+  });
+
+  // Discovery only: resolves the daemon-local checkout convention without
+  // touching the filesystem or starting a clone.
+  get(routes.cloneDefaultPath, async (context, query) => {
+    const hostId = context.req.param("id");
+    assertUsableHostId(deps, { hostId });
+    const project = requirePublicStandardProject(deps.db, query.projectId);
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "project.clone_default_path",
+        projectSlug: project.name,
       },
     });
     return context.json(result);

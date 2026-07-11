@@ -15,6 +15,7 @@ import {
   reorderProject,
   updateProject,
   updateProjectSource,
+  setProjectGitRemoteUrlIfMissing,
   type ReorderProjectResult,
 } from "@bb/db";
 import {
@@ -47,6 +48,7 @@ import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import { runLiveHostCommand } from "../services/hosts/live-command.js";
 import {
   createDaemonFileContentResponse,
   remapDaemonFileRouteError,
@@ -82,6 +84,7 @@ import {
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
 type ProjectResponseRow = ProjectResponseProjectFields;
+const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
 
 function toProjectResponseProjectFields(
   project: ProjectResponseRow,
@@ -90,6 +93,7 @@ function toProjectResponseProjectFields(
     id: project.id,
     kind: project.kind,
     name: project.name,
+    gitRemoteUrl: project.gitRemoteUrl,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   };
@@ -273,6 +277,11 @@ interface ResolvedHostPath {
   path: string;
 }
 
+interface ResolvedProjectSource {
+  path: string;
+  gitRemoteUrl: string | null;
+}
+
 interface ResolveEnvironmentPathArgs {
   environmentId: string;
   projectId: string;
@@ -357,10 +366,23 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       requireNonDestroyedHostWithStatus(deps, source.hostId);
       assertUsableHostId(deps, { hostId: source.hostId });
     }
+    const inspection = await callHostRetryableOnlineRpc(deps, {
+      hostId: source.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: { type: "project.inspect", path: source.path },
+    });
     const { project } = createProject(deps.db, deps.hub, {
       name: payload.name,
       source,
     });
+    if (inspection.gitRemoteUrl !== null) {
+      setProjectGitRemoteUrlIfMissing(
+        deps.db,
+        deps.hub,
+        project.id,
+        inspection.gitRemoteUrl,
+      );
+    }
     return context.json(buildProjectResponses(deps, project.id)[0], 201);
   });
 
@@ -442,15 +464,53 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.createSource, async (context, payload) => {
-    requirePublicStandardProject(deps.db, context.req.param("id"));
-    if (payload.type === "local_path") {
-      requireNonDestroyedHostWithStatus(deps, payload.hostId);
-      assertUsableHostId(deps, { hostId: payload.hostId });
+    const projectId = context.req.param("id");
+    const project = requirePublicStandardProject(deps.db, projectId);
+    requireNonDestroyedHostWithStatus(deps, payload.hostId);
+    assertUsableHostId(deps, { hostId: payload.hostId });
+    let resolved: ResolvedProjectSource;
+    if (payload.type === "clone") {
+      const remoteUrl = payload.remoteUrl ?? project.gitRemoteUrl;
+      if (!remoteUrl) {
+        throw new ApiError(
+          400,
+          "missing_git_remote",
+          "A remoteUrl is required because this project has no git remote anchor",
+        );
+      }
+      resolved = await runLiveHostCommand(deps, {
+        hostId: payload.hostId,
+        timeoutMs: PROJECT_CLONE_TIMEOUT_MS,
+        command: {
+          type: "project.clone",
+          remoteUrl,
+          projectSlug: project.name,
+          ...(payload.targetPath !== undefined
+            ? { targetPath: payload.targetPath }
+            : {}),
+        },
+      });
+    } else {
+      resolved = await callHostRetryableOnlineRpc(deps, {
+        hostId: payload.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: { type: "project.inspect", path: payload.path },
+      });
     }
     const source = createProjectSource(deps.db, deps.hub, {
-      projectId: context.req.param("id"),
-      ...payload,
+      projectId,
+      type: "local_path",
+      hostId: payload.hostId,
+      path: resolved.path,
     });
+    if (resolved.gitRemoteUrl !== null) {
+      setProjectGitRemoteUrlIfMissing(
+        deps.db,
+        deps.hub,
+        projectId,
+        resolved.gitRemoteUrl,
+      );
+    }
     return context.json(source, 201);
   });
 

@@ -56,6 +56,11 @@ import {
 import { WorkspaceError } from "@bb/host-workspace";
 import { squashMerge } from "./command-handlers/workspace.js";
 import {
+  cloneProject,
+  inspectProjectPath,
+  resolveProjectCloneDefaultPath,
+} from "./command-handlers/project.js";
+import {
   requireResolvedWorkspaceForCommand,
   resolveWorkspaceForCommand,
   workspaceResolutionFailureFromError,
@@ -154,7 +159,9 @@ async function installProviderCliOnHost(
   options: CommandDispatchOptions,
 ): Promise<HostDaemonOnlineRpcResult<"provider_cli.install">> {
   try {
-    const env = providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv());
+    const env = providerCliEnvFromShellEnv(
+      options.runtimeManager.getShellEnv(),
+    );
     return {
       events: await readProviderCliInstallEvents(
         streamProviderCliInstall({
@@ -268,6 +275,15 @@ const commandHandlers: CommandHandlerMap = {
   "codex.inference.complete": completeCodexInference,
   "codex.voice.transcribe": transcribeCodexVoice,
   "environment.provision": provisionEnvironment,
+  "project.clone": (command, options) =>
+    cloneProject({
+      dataDir: options.dataDir,
+      projectSlug: command.projectSlug,
+      remoteUrl: command.remoteUrl,
+      ...(command.targetPath !== undefined
+        ? { targetPath: command.targetPath }
+        : {}),
+    }),
   "environment.provision.cancel": cancelEnvironmentProvision,
   "environment.destroy": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
@@ -344,6 +360,10 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_paths": listHostPaths,
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
+  "project.inspect": async (command) => inspectProjectPath(command.path),
+  "project.clone_default_path": async (command, options) => ({
+    path: resolveProjectCloneDefaultPath(options.dataDir, command.projectSlug),
+  }),
   "host.pick_folder": pickHostFolder,
   "host.caffeinate": async (command, options) =>
     getCaffeinateManager(options).setEnabled(command.enabled),

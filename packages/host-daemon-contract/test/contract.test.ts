@@ -202,6 +202,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       "/home/me/missing": false,
     },
   },
+  "project.inspect": {
+    path: "/home/me/project",
+    gitRemoteUrl: "git@example.com:me/project.git",
+  },
+  "project.clone_default_path": {
+    path: "/home/me/.bb/checkouts/project",
+  },
   "host.pick_folder": {
     path: "/home/me/project",
   },
@@ -451,6 +458,10 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   },
   "environment.provision.cancel": {
     aborted: true,
+  },
+  "project.clone": {
+    path: "/home/me/.bb/checkouts/project",
+    gitRemoteUrl: "git@example.com:me/project.git",
   },
   "environment.destroy": {},
   "workspace.commit": {

@@ -233,6 +233,7 @@ function dropRewindAddedTables(db: DbConnection): void {
     .run();
   // threads.origin_plugin_id was added by 0051; rewind it the same way.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
+  dropProjectGitRemoteUrlColumn(db);
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -393,6 +394,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropProjectGitRemoteUrlColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`
     DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
@@ -414,6 +416,15 @@ function dropPost0023Tables(db: DbConnection): void {
   }
 
   dropThreadFolderSchema(db);
+}
+
+function dropProjectGitRemoteUrlColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(projects)")
+    .all();
+  if (columns.some((column) => column.name === "git_remote_url")) {
+    db.$client.prepare("ALTER TABLE projects DROP COLUMN git_remote_url").run();
+  }
 }
 
 /**

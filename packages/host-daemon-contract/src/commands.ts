@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 50 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 51 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -516,6 +516,29 @@ const hostPathsExistCommandSchema = pathsExistRequestSchema
   })
   .strict();
 
+const projectInspectCommandSchema = z
+  .object({
+    type: z.literal("project.inspect"),
+    path: z.string().min(1),
+  })
+  .strict();
+
+const projectCloneDefaultPathCommandSchema = z
+  .object({
+    type: z.literal("project.clone_default_path"),
+    projectSlug: z.string().min(1),
+  })
+  .strict();
+
+const projectCloneCommandSchema = z
+  .object({
+    type: z.literal("project.clone"),
+    remoteUrl: z.string().min(1),
+    projectSlug: z.string().min(1),
+    targetPath: z.string().min(1).optional(),
+  })
+  .strict();
+
 const hostPickFolderCommandSchema = z
   .object({
     type: z.literal("host.pick_folder"),
@@ -984,6 +1007,11 @@ const turnSubmitResultSchema = z.object({
   appliedAs: z.enum(["new-turn", "steer"]),
 });
 const emptyCommandResultSchema = z.object({});
+const projectPathResultSchema = z.object({ path: z.string().min(1) }).strict();
+const projectInspectResultSchema = projectPathResultSchema
+  .extend({ gitRemoteUrl: z.string().min(1).nullable() })
+  .strict();
+const projectCloneResultSchema = projectInspectResultSchema;
 const codexInferenceCompleteResultSchema = z.object({
   model: z.string().min(1),
   value: jsonObjectSchema,
@@ -1207,6 +1235,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: "when-initiated",
     envLane: "write",
   }),
+  "project.clone": defineHostDaemonCommandDescriptor({
+    type: "project.clone",
+    schema: projectCloneCommandSchema,
+    resultSchema: projectCloneResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "environment.provision.cancel": defineHostDaemonCommandDescriptor({
     type: "environment.provision.cancel",
     schema: environmentProvisionCancelCommandSchema,
@@ -1283,6 +1320,24 @@ export const hostDaemonCommandRegistry = {
     type: "host.paths_exist",
     schema: hostPathsExistCommandSchema,
     resultSchema: pathsExistResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "project.inspect": defineHostDaemonCommandDescriptor({
+    type: "project.inspect",
+    schema: projectInspectCommandSchema,
+    resultSchema: projectInspectResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "project.clone_default_path": defineHostDaemonCommandDescriptor({
+    type: "project.clone_default_path",
+    schema: projectCloneDefaultPathCommandSchema,
+    resultSchema: projectPathResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

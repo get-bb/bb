@@ -42,15 +42,26 @@ const createLocalPathProjectSourceRequestSchema = z
   })
   .strict();
 
-export const createProjectSourceRequestSchema =
-  createLocalPathProjectSourceRequestSchema;
+const cloneProjectSourceRequestSchema = z
+  .object({
+    hostId: z.string().min(1),
+    type: z.literal("clone"),
+    targetPath: localProjectPathRequestSchema.optional(),
+    remoteUrl: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const createProjectSourceRequestSchema = z.discriminatedUnion("type", [
+  createLocalPathProjectSourceRequestSchema,
+  cloneProjectSourceRequestSchema,
+]);
 export type CreateProjectSourceRequest = z.infer<
   typeof createProjectSourceRequestSchema
 >;
 
 export const createProjectRequestSchema = z.object({
   name: z.string().min(1),
-  source: createProjectSourceRequestSchema,
+  source: createLocalPathProjectSourceRequestSchema,
 });
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
 

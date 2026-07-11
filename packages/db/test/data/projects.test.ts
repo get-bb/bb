@@ -6,10 +6,12 @@ import { noopNotifier } from "../../src/notifier.js";
 import {
   createProject,
   ensurePersonalProject,
+  getProject,
   listProjects,
   listPublicProjects,
   markProjectDeleted,
   reorderProject,
+  setProjectGitRemoteUrlIfMissing,
 } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 
@@ -24,6 +26,39 @@ function setup() {
 }
 
 describe("projects", () => {
+  it("sets a git remote anchor only while it is missing", () => {
+    const { db, host } = setup();
+    const { project } = createProject(db, noopNotifier, {
+      name: "anchored-project",
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/anchored-project",
+      },
+    });
+
+    expect(project.gitRemoteUrl).toBeNull();
+    expect(
+      setProjectGitRemoteUrlIfMissing(
+        db,
+        noopNotifier,
+        project.id,
+        "ssh://git.example.test/first.git",
+      )?.gitRemoteUrl,
+    ).toBe("ssh://git.example.test/first.git");
+    expect(
+      setProjectGitRemoteUrlIfMissing(
+        db,
+        noopNotifier,
+        project.id,
+        "ssh://git.example.test/second.git",
+      ),
+    ).toBeNull();
+    expect(getProject(db, project.id)?.gitRemoteUrl).toBe(
+      "ssh://git.example.test/first.git",
+    );
+  });
+
   it("ensures the singleton personal project idempotently", () => {
     const { db } = setup();
 

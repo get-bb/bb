@@ -219,6 +219,24 @@ export interface UpdateProjectInput {
   name?: string;
 }
 
+export function setProjectGitRemoteUrlIfMissing(
+  db: DbConnection,
+  notifier: DbNotifier,
+  id: string,
+  gitRemoteUrl: string,
+) {
+  const updated = db
+    .update(projects)
+    .set({ gitRemoteUrl, updatedAt: Date.now() })
+    .where(and(eq(projects.id, id), isNull(projects.gitRemoteUrl)))
+    .returning()
+    .get();
+  if (updated) {
+    notifier.notifyProject(id, ["project-updated"]);
+  }
+  return updated ?? null;
+}
+
 export interface MarkProjectDeletedArgs {
   deletedAt?: number;
   projectId: string;

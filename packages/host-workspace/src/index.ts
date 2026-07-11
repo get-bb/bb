@@ -42,6 +42,7 @@ export {
   readDefaultBranch,
   readDefaultBranchRefs,
   readGitBlob,
+  runGit,
 } from "./git.js";
 export type {
   DefaultBranchRefs,

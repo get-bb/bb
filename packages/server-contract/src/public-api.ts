@@ -74,6 +74,8 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostCloneDefaultPathQuery,
+  HostCloneDefaultPathResponse,
   HostFileListRequest,
   HostFileListResponse,
   HostFileReadRequest,
@@ -194,6 +196,7 @@ import {
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
+  hostCloneDefaultPathQuerySchema,
   hostFileListRequestSchema,
   hostFileReadRequestSchema,
   hostFileWriteRequestSchema,
@@ -466,6 +469,14 @@ export const publicApiRoutes = {
         hostDirectoryQuerySchema,
       ),
       response: jsonResponse<HostDirectoryListing>(),
+    }),
+    cloneDefaultPath: defineRoute({
+      path: "/hosts/:id/clone-default-path",
+      method: "get",
+      request: queryRequest<PathId, HostCloneDefaultPathQuery>(
+        hostCloneDefaultPathQuerySchema,
+      ),
+      response: jsonResponse<HostCloneDefaultPathResponse>(),
     }),
     pathsExist: defineRoute({
       path: "/hosts/:id/paths/exist",
