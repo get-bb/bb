@@ -59,7 +59,7 @@ type ProjectSource = ProjectResponse["sources"][number];
 
 async function buildProjectSourceFromOptions(
   args: ProjectSourceInputOptions,
-): Promise<CreateProjectSourceRequest> {
+): Promise<Extract<CreateProjectSourceRequest, { type: "local_path" }>> {
   if (args.path) {
     return {
       hostId: await resolveLocalHostId(),
