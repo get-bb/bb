@@ -6,7 +6,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import type { ProjectSource, PromptTextMention } from "@bb/domain";
+import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
 import {
   useAppCommandContext,
   useAppCommandHandler,
@@ -65,6 +65,9 @@ export interface NewThreadEnvironmentConfig {
   host: EnvironmentPickerUIProps["host"];
   isLocal: EnvironmentPickerUIProps["isLocal"];
   machines?: EnvironmentPickerMachines | null;
+  /** Opens the guided machine-setup flow for a machine without a project
+   * source (multi-machine menu only). */
+  onRequestMachineSetup?: (host: Host) => void;
   /** When true, the picker's "Reuse existing worktree" entry is disabled.
    * Caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;
@@ -351,6 +354,7 @@ export function ThreadEnvSlot({
         host={environment.host}
         isLocal={environment.isLocal}
         machines={environment.machines}
+        onRequestMachineSetup={environment.onRequestMachineSetup}
         reuseDisabled={environment.reuseDisabled}
         worktreeDisabledReason={environment.worktreeDisabledReason}
         disabled={environment.disabled}
@@ -404,6 +408,9 @@ export interface NewThreadConnectedEnvironmentConfig {
   value: string;
   onChange: (value: string) => void;
   sources: readonly ProjectSource[];
+  /** Opens the guided machine-setup flow for a machine without a project
+   * source (multi-machine menu only). */
+  onRequestMachineSetup?: (host: Host) => void;
   /** When true, the "Reuse existing worktree" entry in the env picker is
    * disabled — caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;

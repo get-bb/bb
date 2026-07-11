@@ -169,6 +169,63 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(checkoutItem.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("offers guided setup for a connected machine without a source", () => {
+    const onRequestMachineSetup = vi.fn();
+    const onlineVm: Host = { ...devVm, status: "connected", lastSeenAt: null };
+    render(
+      <EnvironmentPickerUI
+        value={`host:${thisMachine.id}:local`}
+        onChange={vi.fn()}
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, studio, onlineVm],
+          localDaemonHostId: thisMachine.id,
+        }}
+        onRequestMachineSetup={onRequestMachineSetup}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    expect(screen.queryByText("Not set up for this project")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Set up on dev-vm…/u }),
+    );
+    expect(onRequestMachineSetup).toHaveBeenCalledWith(onlineVm);
+  });
+
+  it("keeps the disabled not-set-up row for an offline machine", () => {
+    render(
+      <EnvironmentPickerUI
+        value={`host:${thisMachine.id}:local`}
+        onChange={vi.fn()}
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, studio, devVm],
+          localDaemonHostId: thisMachine.id,
+        }}
+        onRequestMachineSetup={vi.fn()}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    // dev-vm is offline: setup needs its daemon, so no enabled setup row.
+    expect(screen.queryByText(/Set up on dev-vm/u)).toBeNull();
+    const placeholder = screen.getByRole("menuitem", {
+      name: "Not set up for this project",
+    });
+    expect(placeholder.getAttribute("aria-disabled")).toBe("true");
+  });
+
   it("names a non-primary machine in the trigger label", () => {
     renderMachineMenu({ value: `host:${studio.id}:worktree` });
 

@@ -1355,6 +1355,28 @@ export async function browseHostDirectory(
   );
 }
 
+/**
+ * The daemon-local default clone destination for a project (discovery only —
+ * nothing is created on disk). Used to prefill the guided machine-setup
+ * dialog before a clone starts.
+ */
+export async function getHostCloneDefaultPath(
+  hostId: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await request<{ path: string }>(
+    apiClient.hosts[":id"]["clone-default-path"].$get(
+      {
+        param: { id: hostId },
+        query: { projectId },
+      },
+      requestOptions(signal),
+    ),
+  );
+  return response.path;
+}
+
 export async function checkHostPathsExist(
   hostId: string,
   paths: string[],

@@ -1,10 +1,14 @@
 import { useMemo } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import type { HostDirectoryListing } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { useHostListRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
-import { hostDirectoryQueryKey, hostsQueryKey } from "./query-keys";
+import {
+  hostCloneDefaultPathQueryKey,
+  hostDirectoryQueryKey,
+  hostsQueryKey,
+} from "./query-keys";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -54,6 +58,26 @@ export function usePrimaryHost(options?: QueryOptions): Host | null {
  * A null `path` lists the host's home directory. Keeps the previous listing
  * visible while navigating so the list doesn't blank out between folders.
  */
+/**
+ * Default clone destination for a project on a host (the daemon's checkout
+ * convention). Discovery only — nothing is created until the clone runs.
+ */
+export function useHostCloneDefaultPath(
+  hostId: string | null,
+  projectId: string | null,
+  options?: QueryOptions,
+) {
+  const enabled = options?.enabled ?? true;
+  return useQuery<string>({
+    queryKey: hostCloneDefaultPathQueryKey(hostId, projectId),
+    queryFn:
+      enabled && hostId !== null && projectId !== null
+        ? ({ signal }) => api.getHostCloneDefaultPath(hostId, projectId, signal)
+        : skipToken,
+    staleTime: 60_000,
+  });
+}
+
 export function useHostDirectory(hostId: string | null, path: string | null) {
   return useQuery<HostDirectoryListing>({
     queryKey: hostDirectoryQueryKey(hostId, path),

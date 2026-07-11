@@ -11,6 +11,7 @@ import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
+  type Host,
   PERSONAL_PROJECT_ID,
   type PermissionMode,
   type ProjectSource,
@@ -46,6 +47,11 @@ import {
   REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
+import {
+  ProjectMachineSetupDialog,
+  type ProjectMachineSetupCompletion,
+  type ProjectMachineSetupDialogTarget,
+} from "@/components/dialogs/ProjectMachineSetupDialog";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
@@ -3208,6 +3214,35 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
     return () => window.cancelAnimationFrame(handle);
   }, [isPointerCoarse, startedComposing]);
+  const [machineSetupTarget, setMachineSetupTarget] =
+    useState<ProjectMachineSetupDialogTarget | null>(null);
+  const currentProjectName = currentProject?.name ?? null;
+  const currentProjectGitRemoteUrl = currentProject?.gitRemoteUrl ?? null;
+  const handleRequestMachineSetup = useCallback(
+    (setupHost: Host) => {
+      if (!projectId || currentProjectName === null) return;
+      setMachineSetupTarget({
+        projectId,
+        projectName: currentProjectName,
+        gitRemoteUrl: currentProjectGitRemoteUrl,
+        hostId: setupHost.id,
+        hostName: setupHost.name,
+      });
+    },
+    [currentProjectGitRemoteUrl, currentProjectName, projectId],
+  );
+  const handleMachineSetupComplete = useCallback(
+    ({ hostId: setUpHostId }: ProjectMachineSetupCompletion) => {
+      setMachineSetupTarget(null);
+      // Mirror a normal selection of that machine: prefer worktree mode; the
+      // non-git downgrade effect above falls back to local work if the new
+      // source's checkout doesn't support worktrees.
+      handleEnvironmentSelectionValueChange(
+        encodeHostValue(setUpHostId, "worktree"),
+      );
+    },
+    [handleEnvironmentSelectionValueChange],
+  );
   const environmentConfig = useMemo(
     () => ({
       value: effectiveEnvironmentValue,
@@ -3218,11 +3253,16 @@ export function RootComposeView(props: RootComposeViewProps) {
         ? PROJECT_SOURCE_WORKTREE_DISABLED_REASON
         : null,
       disabled: isForkDraft,
+      ...(isProjectless
+        ? {}
+        : { onRequestMachineSetup: handleRequestMachineSetup }),
     }),
     [
       effectiveEnvironmentValue,
       isForkDraft,
+      isProjectless,
       handleEnvironmentSelectionValueChange,
+      handleRequestMachineSetup,
       projectSourceWorktreeUnavailable,
       projectSources,
       reuseThreadOptions.length,
@@ -3399,6 +3439,16 @@ export function RootComposeView(props: RootComposeViewProps) {
     );
   }
 
+  const machineSetupDialog = (
+    <ProjectMachineSetupDialog
+      target={machineSetupTarget}
+      onOpenChange={(open) => {
+        if (!open) setMachineSetupTarget(null);
+      }}
+      onComplete={handleMachineSetupComplete}
+    />
+  );
+
   const promptBox = (
     <NewThreadPromptBox
       id="root-compose-prompt"
@@ -3444,6 +3494,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       <>
         <div className="w-full">{promptBox}</div>
         {providerCliInstallLogDialog}
+        {machineSetupDialog}
       </>
     );
   }
@@ -3451,6 +3502,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   return (
     <>
       {providerCliInstallLogDialog}
+      {machineSetupDialog}
       {rootPanelToggle}
       <RootComposeSecondaryContent
         contentClassName={

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   CreateProjectRequest,
+  CreateProjectSourceRequest,
   ProjectResponse,
   ReorderProjectRequest,
   UpdateProjectRequest,
@@ -138,6 +139,34 @@ export function useAddLocalProjectSource() {
     },
     mutationFn: ({ projectId, hostId, path }: AddLocalProjectSourceRequest) =>
       api.addProjectSource(projectId, { type: "local_path", hostId, path }),
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}
+
+interface AddProjectSourceMutationRequest {
+  projectId: string;
+  request: CreateProjectSourceRequest;
+}
+
+/**
+ * Source add for the guided machine-setup dialog (clone or existing folder).
+ * Errors render inline in the dialog — clone failures carry git stderr the
+ * user needs to read — so the global error toast is suppressed.
+ */
+export function useAddProjectSource() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      showErrorToast: false,
+    },
+    mutationFn: ({ projectId, request }: AddProjectSourceMutationRequest) =>
+      api.addProjectSource(projectId, request),
     onSuccess: (_data, variables) => {
       invalidateProjectSourceQueries({
         projectId: variables.projectId,

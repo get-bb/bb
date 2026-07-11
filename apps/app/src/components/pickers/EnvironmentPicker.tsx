@@ -86,6 +86,10 @@ export interface EnvironmentPickerUIProps {
   /** Multi-machine host list; null/omitted (or a single host) keeps the
    * single-host menu unchanged. */
   machines?: EnvironmentPickerMachines | null;
+  /** Opens the guided "set up <project> on <machine>" flow for a connected
+   * machine without a project source (machine menu only). Omitted, those
+   * machines keep a disabled "Not set up for this project" row. */
+  onRequestMachineSetup?: (host: Host) => void;
 }
 
 export function EnvironmentPickerUI({
@@ -102,6 +106,7 @@ export function EnvironmentPickerUI({
   defaultOpen,
   modal,
   machines,
+  onRequestMachineSetup,
 }: EnvironmentPickerUIProps) {
   const hostId = host?.id ?? null;
   const isMachineMenu = (machines?.hosts.length ?? 0) > 1;
@@ -250,6 +255,7 @@ export function EnvironmentPickerUI({
             selectedType={parsed?.type}
             value={value}
             onChange={onChange}
+            onRequestMachineSetup={onRequestMachineSetup}
           />
         ) : (
           <EnvironmentOptionsSection
@@ -381,6 +387,7 @@ interface MachineGroupedEnvironmentOptionsProps {
     | undefined;
   value: string;
   onChange: (value: string) => void;
+  onRequestMachineSetup: ((host: Host) => void) | undefined;
 }
 
 function MachineGroupedEnvironmentOptions({
@@ -392,6 +399,7 @@ function MachineGroupedEnvironmentOptions({
   selectedType,
   value,
   onChange,
+  onRequestMachineSetup,
 }: MachineGroupedEnvironmentOptionsProps) {
   const now = Date.now();
   // This machine leads; the rest keep server order (stable sort).
@@ -416,6 +424,7 @@ function MachineGroupedEnvironmentOptions({
           now={now}
           value={value}
           onChange={onChange}
+          onRequestMachineSetup={onRequestMachineSetup}
         />
       ))}
       <DropdownMenuSeparator />
@@ -443,6 +452,7 @@ interface MachineSectionProps {
   now: number;
   value: string;
   onChange: (value: string) => void;
+  onRequestMachineSetup: ((host: Host) => void) | undefined;
 }
 
 function MachineSection({
@@ -453,6 +463,7 @@ function MachineSection({
   now,
   value,
   onChange,
+  onRequestMachineSetup,
 }: MachineSectionProps) {
   const connected = host.status === "connected";
   const localValue = encodeHostValue(host.id, "local");
@@ -501,9 +512,17 @@ function MachineSection({
             onSelect={() => onChange(worktreeValue)}
           />
         </>
+      ) : onRequestMachineSetup && connected ? (
+        // Guided per-machine setup (Mockup B): clone from the project remote
+        // or point at an existing folder on this host. Needs the daemon
+        // online, so offline machines keep the disabled row below.
+        <EnvironmentMenuItem
+          label={`Set up on ${host.name}…`}
+          icon="Plus"
+          selected={false}
+          onSelect={() => onRequestMachineSetup(host)}
+        />
       ) : (
-        // TODO(S7): replace with the guided per-machine setup flow (clone from
-        // the project remote or point at an existing folder on this host).
         <DropdownMenuItem
           disabled
           className="whitespace-normal break-words text-xs text-muted-foreground"
