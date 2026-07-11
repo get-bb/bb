@@ -1,1 +1,0 @@
-ALTER TABLE `system_experiments` ADD `multi_machine` integer DEFAULT false NOT NULL;
