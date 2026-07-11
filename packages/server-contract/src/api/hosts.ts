@@ -56,11 +56,9 @@ export type HostCloneDefaultPathResponse = z.infer<
   typeof hostCloneDefaultPathResponseSchema
 >;
 
-export const createHostJoinCodeRequestSchema = z
-  .object({
-    hostName: z.string().optional(),
-  })
-  .strict();
+// The machine names itself at enroll time (the daemon reports its hostname),
+// so minting takes no fields.
+export const createHostJoinCodeRequestSchema = z.object({}).strict();
 export type CreateHostJoinCodeRequest = z.infer<
   typeof createHostJoinCodeRequestSchema
 >;

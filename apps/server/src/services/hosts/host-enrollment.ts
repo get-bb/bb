@@ -1,33 +1,27 @@
-import { createHostId, getHost, upsertHost } from "@bb/db";
+import { createHostId, getHost } from "@bb/db";
 import type { AppDeps } from "../../types.js";
 import { assertMatchingExistingHostType } from "./host-type-guard.js";
 
-type HostEnrollmentDeps = Pick<AppDeps, "db" | "hub" | "machineAuth">;
+type HostEnrollmentDeps = Pick<AppDeps, "db" | "machineAuth">;
 
 export interface IssuePersistentHostEnrollKeyArgs {
   hostId?: string;
-  hostName?: string;
 }
 
-function resolvePendingHostName(hostId: string): string {
-  return `pending-${hostId.slice(-8)}`;
-}
-
+/**
+ * Mints an enroll key without creating a host row: the row is created at
+ * enroll time (`/internal/hosts/enroll` upserts it with the daemon-reported
+ * name). Minting is user-visible in the add-machine flow and may never be
+ * redeemed, so a mint must not leave phantom "pending" machines behind.
+ */
 export async function issuePersistentHostEnrollKey(
   deps: HostEnrollmentDeps,
   args: IssuePersistentHostEnrollKeyArgs,
 ) {
   const hostId = args.hostId ?? createHostId();
-  const existing = getHost(deps.db, hostId);
   assertMatchingExistingHostType({
-    existingHost: existing,
+    existingHost: getHost(deps.db, hostId),
     requestedHostType: "persistent",
-  });
-
-  upsertHost(deps.db, deps.hub, {
-    id: hostId,
-    name: args.hostName ?? existing?.name ?? resolvePendingHostName(hostId),
-    type: "persistent",
   });
 
   const enrollKey = await deps.machineAuth.issueHostEnrollKey({

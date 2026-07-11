@@ -29,24 +29,20 @@ function enableMultiMachine(db: Parameters<typeof setExperiments>[0]): void {
 
 async function createJoinCode(
   app: Parameters<typeof requestJoinCode>[0],
-  body: { hostName?: string } = {},
 ): Promise<CreateHostJoinCodeResponse> {
-  const response = await requestJoinCode(app, body);
+  const response = await requestJoinCode(app);
   expect(response.status).toBe(201);
   return createHostJoinCodeResponseSchema.parse(await readJson(response));
 }
 
-function requestJoinCode(
-  app: {
-    request: (path: string, init?: RequestInit) => Promise<Response> | Response;
-  },
-  body: { hostName?: string },
-): Promise<Response> {
+function requestJoinCode(app: {
+  request: (path: string, init?: RequestInit) => Promise<Response> | Response;
+}): Promise<Response> {
   return Promise.resolve(
     app.request(`${API}/hosts/join-codes`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({}),
     }),
   );
 }
@@ -56,16 +52,14 @@ describe("public host management", () => {
     await withTestHarness(async (harness) => {
       enableMultiMachine(harness.db);
 
-      const issued = await createJoinCode(harness.app, {
-        hostName: "Build Machine",
-      });
+      const issued = await createJoinCode(harness.app);
       expect(issued.joinCode).toMatch(/^bbde_/u);
       expect(issued.expiresAt).toBeGreaterThan(Date.now());
       expect(issued.expiresAt).toBeLessThanOrEqual(Date.now() + 15 * 60 * 1000);
-      expect(getHost(harness.db, issued.hostId)).toMatchObject({
-        name: "Build Machine",
-        type: "persistent",
-      });
+      // Minting must not create a host row — an unredeemed code would leave a
+      // phantom offline machine in the Machines pane. The row is born at
+      // enroll with the daemon-reported name.
+      expect(getHost(harness.db, issued.hostId)).toBeNull();
 
       const enrollResponse = await harness.app.request(
         "/internal/hosts/enroll",
@@ -84,12 +78,16 @@ describe("public host management", () => {
       );
 
       expect(enrollResponse.status).toBe(201);
+      expect(getHost(harness.db, issued.hostId)).toMatchObject({
+        name: "Build Machine",
+        type: "persistent",
+      });
     });
   });
 
   it("gates join-code minting when multi-machine is disabled", async () => {
     await withTestHarness(async (harness) => {
-      const response = await requestJoinCode(harness.app, {});
+      const response = await requestJoinCode(harness.app);
 
       expect(response.status).toBe(400);
       expect(await readJson(response)).toMatchObject({

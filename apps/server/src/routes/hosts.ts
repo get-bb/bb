@@ -64,13 +64,9 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   // UI-driven add-a-machine uses the same trust boundary as the rest of the
   // public API, so this route intentionally does not require loopback access.
-  post(routes.createJoinCode, async (context, payload) => {
+  post(routes.createJoinCode, async (context) => {
     assertMultiMachineEnabled(deps);
-    const issued = await issuePersistentHostEnrollKey(deps, {
-      ...(payload.hostName !== undefined
-        ? { hostName: payload.hostName }
-        : {}),
-    });
+    const issued = await issuePersistentHostEnrollKey(deps, {});
     return context.json(
       {
         joinCode: issued.enrollKey.key,
