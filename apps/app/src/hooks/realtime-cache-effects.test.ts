@@ -24,6 +24,7 @@ import {
   threadListQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
+  threadTabsQueryKey,
   threadSearchQueryKey,
   terminalsQueryKey,
   threadStorageFilePreviewQueryKey,
@@ -138,6 +139,22 @@ describe("createRealtimeCacheEffects", () => {
       const dirty = REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind]?.dirty ?? [];
       expect(dirty.length).toBeGreaterThan(0);
     }
+  });
+
+  it("invalidates the affected thread tabs when another client changes them", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const tabsKey = threadTabsQueryKey("thr_1");
+    queryClient.setQueryData(tabsKey, { revision: 1, tabs: [] });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["tabs-changed"],
+    });
+
+    expect(queryClient.getQueryState(tabsKey)?.isInvalidated).toBe(true);
+    effects.dispose();
   });
 
   it("invalidates the plugin contributions cache on plugins-changed", () => {

@@ -1449,13 +1449,17 @@ export function PromptBoxInternal({
   }, [editor]);
 
   useLayoutEffect(() => {
-    if (!editor) return;
     if (!pendingFocusEndRef.current) return;
 
+    if (isPointerCoarse) {
+      pendingFocusEndRef.current = false;
+      return;
+    }
+    if (!editor) return;
     pendingFocusEndRef.current = false;
     focusEditorAtEnd(editor);
     scheduleRevealEditorSelection();
-  }, [editor, scheduleRevealEditorSelection]);
+  }, [editor, isPointerCoarse, scheduleRevealEditorSelection]);
 
   useLayoutEffect(() => {
     placeholderRef.current = effectivePlaceholder;
@@ -1534,19 +1538,24 @@ export function PromptBoxInternal({
 
   // An explicit draft-restore action (e.g. editing a queued message) bumps
   // `focusEndKey` so the caret lands at the END of the restored text. It is a
-  // passive effect defined AFTER the layout content-sync effect above, so the
+  // layout effect defined AFTER the layout content-sync effect above, so the
   // editor has already applied `setContent` for the new draft in the same
-  // commit.
-  // Not gated by the coarse-pointer guard since it follows a deliberate click.
+  // commit. Mobile web deliberately does not take focus here: an action that
+  // opens or updates a composer must not summon the soft keyboard over the
+  // destination surface.
   const lastFocusEndKeyRef = useRef(focusEndKey);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (focusEndKey === undefined) return;
     if (focusEndKey === lastFocusEndKeyRef.current) return;
+    if (isPointerCoarse) {
+      lastFocusEndKeyRef.current = focusEndKey;
+      return;
+    }
     if (!editor) return;
     lastFocusEndKeyRef.current = focusEndKey;
     focusEditorAtEnd(editor);
     scheduleRevealEditorSelection();
-  }, [editor, focusEndKey, scheduleRevealEditorSelection]);
+  }, [editor, focusEndKey, isPointerCoarse, scheduleRevealEditorSelection]);
 
   useEffect(() => {
     if (zenModeResetKey === undefined) return;
@@ -1892,6 +1901,10 @@ export function PromptBoxInternal({
   );
 
   const focusEnd = useCallback(() => {
+    if (isPointerCoarse) {
+      pendingFocusEndRef.current = false;
+      return;
+    }
     const currentEditor = editorRef.current;
     if (!currentEditor || currentEditor.isDestroyed) {
       pendingFocusEndRef.current = true;
@@ -1900,7 +1913,7 @@ export function PromptBoxInternal({
     pendingFocusEndRef.current = false;
     focusEditorAtEnd(currentEditor);
     scheduleRevealEditorSelection();
-  }, [scheduleRevealEditorSelection]);
+  }, [isPointerCoarse, scheduleRevealEditorSelection]);
 
   const insertTextAtCursor = useCallback(
     (rawText: string) => {

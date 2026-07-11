@@ -79,7 +79,10 @@ const AGENT_PATH_START = AGENT_BODY.indexOf(AGENT_PATH_TOKEN);
 const OVERFLOWING_ONE_LINE_AGENT_BODY =
   "TEST RESULT refines the diagnosis — RULE OUT eviction. A fire-and-forget direct POST with no wait parameter and no client-held stream should still render the complete report after expansion.";
 
-function renderAgentMessage(text = AGENT_BODY) {
+function renderAgentMessage(
+  text = AGENT_BODY,
+  { senderChildOrigin }: { senderChildOrigin?: "side-chat" | null } = {},
+) {
   const mentions =
     text === AGENT_BODY
       ? [
@@ -106,7 +109,7 @@ function renderAgentMessage(text = AGENT_BODY) {
           childOrigin={null}
           senderThreadId="thr_agent"
           senderThreadTitle="Worker"
-          senderChildOrigin={null}
+          senderChildOrigin={senderChildOrigin ?? null}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="unlabeled"
           systemMessageSubject={null}
@@ -154,6 +157,21 @@ describe("GeneratedConversationMessage markdown body", () => {
 
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText(OVERFLOWING_ONE_LINE_AGENT_BODY)).toBeTruthy();
+  });
+
+  it("renders side-chat handoffs as markdown", () => {
+    renderAgentMessage("**Ready** to merge.\n\n- checks passed", {
+      senderChildOrigin: "side-chat",
+    });
+
+    expect(screen.getByText("Ready").tagName).toBe("STRONG");
+    expect(screen.queryByText("**Ready** to merge.")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Message from side chat/u }),
+    );
+
+    expect(screen.getByRole("list").textContent).toContain("checks passed");
   });
 });
 

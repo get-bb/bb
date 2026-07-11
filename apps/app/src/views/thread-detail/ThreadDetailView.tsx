@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -33,7 +39,10 @@ import {
   useMarkThreadRead,
   useUpdateThread,
 } from "../../hooks/mutations/thread-state-mutations";
-import { useSendThreadMessage } from "../../hooks/mutations/thread-runtime-mutations";
+import {
+  useCreateThreadQueuedMessage,
+  useSendThreadMessage,
+} from "../../hooks/mutations/thread-runtime-mutations";
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import {
   useEnvironment,
@@ -761,6 +770,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadId: threadId ?? "",
   });
   const sendMessage = useSendThreadMessage();
+  const createQueuedMessage = useCreateThreadQueuedMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
     pullRequestMergeMethodAtom,
@@ -841,28 +851,18 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const canUseSideChatPanel = props.surface !== "popout";
   const canStartSideChat =
     canUseSideChatPanel && (thread?.canSpawnChild ?? false);
-  const handleSideChatMessage =
-    useCallback<ThreadTimelineSideChatMessageHandler>(
-      (target) => {
-        if (!canStartSideChat || !threadId) return;
-        openSideChat({
-          sourceThreadId: threadId,
-          sourceMessageText: target.messageText,
-          sourceSeqEnd: target.sourceSeqEnd,
-        });
-      },
-      [canStartSideChat, openSideChat, threadId],
-    );
-  // A side chat started from the new-tab page has no anchor message, so it forks
-  // from the thread's tip (empty source text ⇒ no "replying to" reference).
-  const handleStartSideChat = useCallback(() => {
-    if (!canStartSideChat || !threadId) return;
-    openSideChat({
-      replaceNewTab: true,
-      sourceThreadId: threadId,
-      sourceMessageText: "",
-    });
-  }, [canStartSideChat, openSideChat, threadId]);
+  const dismissCompactKeyboard = useCallback(() => {
+    if (!renderSecondaryPanelAsDrawer) {
+      return;
+    }
+    // A selection action can leave a previously focused composer active. Blur
+    // it on compact web so the keyboard never covers the updated composer or a
+    // side-chat drawer; users choose when to focus an input again.
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+  }, [renderSecondaryPanelAsDrawer]);
   // Same scope (`projectId` + `thread.id`) the composer's `ThreadDetailPromptArea`
   // uses, so the timeline "Add to chat" action and the composer share one
   // localStorage-backed draft — the quoted text is appended to the draft as a
@@ -874,9 +874,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadId: thread?.id ?? "",
   });
   const addQuoteToComposer = selectionPromptDraft.addQuote;
-  // Bumped each time a quote is appended so the composer (a sibling component
-  // sharing the localStorage draft) can focus its caret at the end, ready for
-  // the reply under the quote.
+  // Desktop quote actions keep their existing focus handoff. Mobile web does
+  // not focus inputs programmatically; see PromptBoxInternal.
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
   // Plugin useComposer() writes ride the focus bus (they can't reach this
   // view's local nonce); same storage key = same draft the composer shows.
@@ -889,20 +888,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
   const handleSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
+      dismissCompactKeyboard();
       addQuoteToComposer(text, attachments);
       setComposerFocusRequestNonce((nonce) => nonce + 1);
     },
-    [addQuoteToComposer],
-  );
-  // "Reply in side chat" anchors the side chat on the user's SELECTION (passed
-  // as the side-chat source text), so the reply's visible anchor and the
-  // context handed to the agent are exactly the highlighted text — unlike the
-  // per-message Reply button, which anchors on the whole message.
-  const handleSelectionReplyInSideChat = useCallback(
-    (target: { messageText: string; sourceSeqEnd?: number }) => {
-      handleSideChatMessage(target);
-    },
-    [handleSideChatMessage],
+    [addQuoteToComposer, dismissCompactKeyboard],
   );
   const sendSideChatMessageToMain =
     useCallback<ThreadTimelineSendToMainMessageHandler>(
@@ -911,19 +901,18 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           thread?.id === undefined ||
           threadOriginKind !== "side-chat" ||
           threadSourceThreadId === null ||
-          sendMessage.isPending
+          createQueuedMessage.isPending
         ) {
           return;
         }
 
-        sendMessage.mutate({
+        createQueuedMessage.mutate({
           id: threadSourceThreadId,
           input: [{ type: "text", text: target.messageText, mentions: [] }],
-          mode: "auto",
           senderThreadId: thread.id,
         });
       },
-      [sendMessage, thread?.id, threadOriginKind, threadSourceThreadId],
+      [createQueuedMessage, thread?.id, threadOriginKind, threadSourceThreadId],
     );
   const handleSendToMainMessage =
     threadOriginKind === "side-chat" && threadSourceThreadId !== null
@@ -992,6 +981,80 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadId,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
+  const handleSideChatMessage =
+    useCallback<ThreadTimelineSideChatMessageHandler>(
+      (target) => {
+        if (!canStartSideChat || !threadId) return;
+        dismissCompactKeyboard();
+        // Compact panels are drawer-local rather than persisted-open. Creating
+        // the tab alone therefore leaves the main timeline visible. Open that
+        // lightweight shell immediately, then let the side-chat's model and
+        // provider setup render as non-urgent work.
+        if (renderSecondaryPanelAsDrawer) {
+          openCompactDrawer();
+          startTransition(() => {
+            openSideChat({
+              sourceThreadId: threadId,
+              sourceMessageText: target.messageText,
+              sourceSeqEnd: target.sourceSeqEnd,
+            });
+          });
+          return;
+        }
+        openSideChat({
+          sourceThreadId: threadId,
+          sourceMessageText: target.messageText,
+          sourceSeqEnd: target.sourceSeqEnd,
+        });
+      },
+      [
+        canStartSideChat,
+        dismissCompactKeyboard,
+        openCompactDrawer,
+        openSideChat,
+        renderSecondaryPanelAsDrawer,
+        threadId,
+      ],
+    );
+  // A side chat started from the new-tab page has no anchor message, so it forks
+  // from the thread's tip (empty source text ⇒ no "replying to" reference).
+  const handleStartSideChat = useCallback(() => {
+    if (!canStartSideChat || !threadId) return;
+    dismissCompactKeyboard();
+    if (renderSecondaryPanelAsDrawer) {
+      openCompactDrawer();
+      startTransition(() => {
+        openSideChat({
+          replaceNewTab: true,
+          sourceThreadId: threadId,
+          sourceMessageText: "",
+        });
+      });
+      return;
+    }
+    openSideChat({
+      replaceNewTab: true,
+      sourceThreadId: threadId,
+      sourceMessageText: "",
+    });
+  }, [
+    canStartSideChat,
+    dismissCompactKeyboard,
+    openCompactDrawer,
+    openSideChat,
+    renderSecondaryPanelAsDrawer,
+    threadId,
+  ]);
+  // "Reply in side chat" anchors the side chat on the user's SELECTION (passed
+  // as the side-chat source text), so the reply's visible anchor and the
+  // context handed to the agent are exactly the highlighted text — unlike the
+  // per-message Reply button, which anchors on the whole message.
+  const handleSelectionReplyInSideChat = useCallback(
+    (target: { messageText: string; sourceSeqEnd?: number }) => {
+      handleSideChatMessage(target);
+    },
+    [handleSideChatMessage],
+  );
   const openBrowserTabAndReveal = useCallback(
     (url?: string) => {
       openBrowserTab(url);

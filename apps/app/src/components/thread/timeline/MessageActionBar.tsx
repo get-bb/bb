@@ -1,6 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
   DropdownMenu,
@@ -47,6 +52,90 @@ interface MessageOverflowAction {
   label: string;
   onSelect: () => void;
   disabled?: boolean;
+  copyText?: string;
+  kind?: "copy";
+}
+
+interface MobileMessageOverflowPopoverProps {
+  actions: readonly MessageOverflowAction[];
+  alignment: MessageActionBarProps["alignment"];
+}
+
+function MobileMessageOverflowPopover({
+  actions,
+  alignment,
+}: MobileMessageOverflowPopoverProps) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timeoutId = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timeoutId);
+  }, [copied]);
+  const selectAction = useCallback((action: MessageOverflowAction) => {
+    // Close before an action navigates or replaces the active panel.
+    flushSync(() => setOpen(false));
+    action.onSelect();
+  }, []);
+
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger asChild>
+        <button
+          type="button"
+          className={MOBILE_OVERFLOW_TRIGGER_CLASS}
+          aria-label="Message actions"
+          data-no-sidebar-swipe=""
+          onMouseDown={preventOverlayTriggerSelection}
+        >
+          <Icon
+            name={copied ? "Check" : "MoreHorizontal"}
+            className={cn(
+              "size-3",
+              copied && "animate-in zoom-in-50 duration-150",
+            )}
+          />
+        </button>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          side="top"
+          align={alignment === "end" ? "end" : "start"}
+          sideOffset={6}
+          collisionPadding={8}
+          className={MOBILE_OVERFLOW_CONTENT_CLASS}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              className={MOBILE_OVERFLOW_ITEM_CLASS}
+              disabled={action.disabled}
+              onClick={() => {
+                if (action.kind === "copy") {
+                  void copyToClipboardWithToast(action.copyText ?? "", {
+                    successMessage: null,
+                    errorMessage: "Failed to copy",
+                  }).then((didCopy) => {
+                    if (!didCopy) return;
+                    setCopied(true);
+                    flushSync(() => setOpen(false));
+                  });
+                  return;
+                }
+                selectAction(action);
+              }}
+            >
+              <Icon name={action.icon} className="size-3.5 shrink-0" />
+              {action.label}
+            </button>
+          ))}
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
 }
 
 // Shared hover-reveal classes for every action in the bar: hidden until the
@@ -64,6 +153,10 @@ const MOBILE_OVERFLOW_ACTION_CLASS = "max-md:pointer-coarse:hidden";
 const MOBILE_OVERFLOW_TRIGGER_CLASS =
   "hidden size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_svg]:size-4";
 const ACTION_TOOLTIP_SIDE = "bottom";
+const MOBILE_OVERFLOW_CONTENT_CLASS =
+  "z-50 flex max-h-[50dvh] w-44 flex-col gap-0.5 overflow-y-auto rounded-md border bg-popover p-0.5 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95";
+const MOBILE_OVERFLOW_ITEM_CLASS =
+  "flex min-h-8 w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:bg-state-active disabled:pointer-events-none disabled:opacity-40 select-none";
 
 export function findMessageActionTooltipCollisionBoundary(
   node: HTMLElement | null,
@@ -90,6 +183,8 @@ export function MessageActionBar({
   onSendToMain,
   disabled,
 }: MessageActionBarProps) {
+  const isCompactViewport = useIsCompactViewport();
+  const isPointerCoarse = usePointerCoarse();
   const hasCopy = messageText.length > 0;
   const hasAddToChat =
     (hasCopy || addToChatAttachments.length > 0) && onAddToChat !== undefined;
@@ -111,6 +206,10 @@ export function MessageActionBar({
     }
     onAddToChat(messageText);
   }, [addToChatAttachments, messageText, onAddToChat]);
+  const handleSideChat = useCallback(() => {
+    if (!onSideChat) return;
+    onSideChat();
+  }, [onSideChat]);
   const overflowActions: MessageOverflowAction[] = [
     ...(hasCopy
       ? [
@@ -122,6 +221,8 @@ export function MessageActionBar({
                 errorMessage: "Failed to copy",
               });
             },
+            copyText: messageText,
+            kind: "copy" as const,
           },
         ]
       : []),
@@ -149,7 +250,7 @@ export function MessageActionBar({
           {
             icon: "SideChat" as const,
             label: "Reply in side chat",
-            onSelect: onSideChat,
+            onSelect: handleSideChat,
             disabled,
           },
         ]
@@ -164,6 +265,7 @@ export function MessageActionBar({
         ]
       : []),
   ];
+  const useMobileOverflowPopover = isCompactViewport && isPointerCoarse;
 
   if (!hasCopy && !hasAddToChat && !onFork && !onSideChat && !onSendToMain) {
     return null;
@@ -254,7 +356,7 @@ export function MessageActionBar({
                   HOVER_REVEAL_CLASS,
                   mobileDirectActionClass,
                 )}
-                onClick={onSideChat}
+                onClick={handleSideChat}
                 disabled={disabled}
                 aria-label="Reply in side chat"
               >
@@ -294,34 +396,42 @@ export function MessageActionBar({
           </Tooltip>
         ) : null}
         {mobileActionDisplay === "overflow" ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={MOBILE_OVERFLOW_TRIGGER_CLASS}
-                aria-label="Message actions"
-              >
-                <Icon name="MoreHorizontal" className="size-3" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align={alignment === "end" ? "end" : "start"}
-              mobileTitle="Message actions"
-              className="w-48"
-            >
-              {overflowActions.map((action) => (
-                <DropdownMenuItem
-                  key={action.label}
-                  disabled={action.disabled}
-                  onSelect={action.onSelect}
-                  textValue={action.label}
+          useMobileOverflowPopover ? (
+            <MobileMessageOverflowPopover
+              actions={overflowActions}
+              alignment={alignment}
+            />
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={MOBILE_OVERFLOW_TRIGGER_CLASS}
+                  aria-label="Message actions"
+                  data-no-sidebar-swipe=""
                 >
-                  <Icon name={action.icon} aria-hidden="true" />
-                  {action.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  <Icon name="MoreHorizontal" className="size-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align={alignment === "end" ? "end" : "start"}
+                mobileTitle="Message actions"
+                className="w-48"
+              >
+                {overflowActions.map((action) => (
+                  <DropdownMenuItem
+                    key={action.label}
+                    disabled={action.disabled}
+                    onSelect={action.onSelect}
+                    textValue={action.label}
+                  >
+                    <Icon name={action.icon} aria-hidden="true" />
+                    {action.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
         ) : null}
       </div>
     </TooltipProvider>

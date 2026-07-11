@@ -182,11 +182,25 @@ async function installProviderCliOnHost(
 
 const commandHandlers: CommandHandlerMap = {
   "thread.start": async (command, options) => {
-    return startThread(command, options);
+    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
+      command.environmentId,
+    );
+    try {
+      return await startThread(command, options);
+    } finally {
+      release();
+    }
   },
   "turn.submit": async (command, options) => {
-    const entry = await ensureThreadRuntime(command, options);
-    return submitTurn(command, entry, options);
+    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
+      command.environmentId,
+    );
+    try {
+      const entry = await ensureThreadRuntime(command, options);
+      return await submitTurn(command, entry, options);
+    } finally {
+      release();
+    }
   },
   "thread.stop": async (command, options) => {
     const entry = await requireExistingEnvironment(

@@ -100,6 +100,7 @@ const MOBILE_PROMPT_MINIMIZE_SCROLL_THRESHOLD_PX = 8;
 const MOBILE_PROMPT_USER_SCROLL_INTENT_WINDOW_MS = 350;
 
 interface MobilePromptBoxMinimizedState {
+  expand: () => void;
   isAvailable: boolean;
   isMinimized: boolean;
   toggle: () => void;
@@ -231,8 +232,14 @@ function useMobilePromptBoxMinimized(
       return !previous;
     });
   }, []);
+  const expand = useCallback(() => {
+    automaticMinimizeArmedRef.current = false;
+    upwardScrollDistanceRef.current = 0;
+    setIsMinimized(false);
+  }, []);
 
   return {
+    expand,
     isAvailable: isCompactViewport,
     isMinimized: isCompactViewport && isMinimized,
     toggle,
@@ -395,6 +402,18 @@ function FollowUpPromptBoxWithComposer({
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   const voice = usePromptVoice(promptBoxRef);
   const mobileMinimized = useMobilePromptBoxMinimized(zenModeResetKey);
+  // Selection actions reuse `focusEndKey` as their completion signal. On
+  // mobile web that signal must not focus the editor (and wake the keyboard),
+  // but it should still expand a compact composer so the added quote is visible.
+  const lastMobileExpandKeyRef = useRef(focusEndKey);
+  useLayoutEffect(() => {
+    if (focusEndKey === undefined) return;
+    if (focusEndKey === lastMobileExpandKeyRef.current) return;
+    lastMobileExpandKeyRef.current = focusEndKey;
+    if (mobileMinimized.isAvailable) {
+      mobileMinimized.expand();
+    }
+  }, [focusEndKey, mobileMinimized.expand, mobileMinimized.isAvailable]);
   const minimizedConfig = useMemo(
     () =>
       mobileMinimized.isAvailable
@@ -514,11 +533,7 @@ function FollowUpPromptBoxWithComposer({
       <ThreadTimelineScrollToBottomButton
         active={composer.threadRuntimeDisplayStatus === "active"}
       />
-      <div
-        data-app-composer=""
-        data-promptbox-shell=""
-        className="space-y-2"
-      >
+      <div data-app-composer="" data-promptbox-shell="" className="space-y-2">
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>

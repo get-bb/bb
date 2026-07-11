@@ -77,6 +77,7 @@ import {
   systemProvidersQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
+  threadTabsQueryKey,
   threadSearchQueryKeyPrefix,
   terminalsQueryKey,
   threadsQueryKey,
@@ -291,6 +292,12 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     flush: "debounced",
     dirty: [
       dirtyRootOrderThreadListQueries, // Root thread order affects root lists and global mention candidates.
+    ],
+  },
+  "tabs-changed": {
+    flush: "immediate",
+    dirty: [
+      dirtyThreadTabsQueries,
     ],
   },
   "terminals-changed": {
@@ -595,6 +602,12 @@ function dirtyThreadDefaultExecutionOptionsQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   return threadId ? [threadDefaultExecutionOptionsQueryKey(threadId)] : [];
+}
+
+function dirtyThreadTabsQueries({
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  return threadId ? [threadTabsQueryKey(threadId)] : [];
 }
 
 function dirtyThreadSearchQueries(): QueryKey[] {

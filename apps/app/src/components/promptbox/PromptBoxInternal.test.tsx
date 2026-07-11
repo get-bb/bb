@@ -466,6 +466,31 @@ describe("PromptBoxInternal controlled value sync", () => {
     }
   });
 
+  it("does not honor focus-end requests on coarse pointers", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      const baseProps = createPromptBoxProps({
+        focusEndKey: 0,
+        promptBoxRef,
+      });
+      const view = render(<PromptBoxInternal {...baseProps} />);
+
+      await waitFor(() => expect(promptBoxRef.current).not.toBeNull());
+      const outsideTarget = document.createElement("button");
+      document.body.append(outsideTarget);
+      outsideTarget.focus();
+
+      view.rerender(<PromptBoxInternal {...baseProps} focusEndKey={1} />);
+      promptBoxRef.current?.focusEnd();
+
+      expect(document.activeElement).toBe(outsideTarget);
+      outsideTarget.remove();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("refocuses when the history reset key changes on fine pointers", async () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {

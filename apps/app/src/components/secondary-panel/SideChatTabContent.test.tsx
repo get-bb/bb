@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
   threadCreationServiceTier: undefined as "default" | "fast" | undefined,
   threadTimelineRows: [] as unknown[],
   timelineRowsProps: [] as Array<{
-    onSendToMainMessage?: unknown;
+    onSendToMainMessage?: (target: { messageText: string }) => void;
   }>,
   threadRuntimeDisplayStatus: "idle",
   uploadPromptAttachmentMutateAsync: vi.fn(),
@@ -39,6 +39,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     attachments,
     composer,
     execution,
+    focusEndKey,
     permissionReadOnly,
     readOnly,
     stack,
@@ -67,6 +68,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         onChange: (value: "fast") => void;
       };
     };
+    focusEndKey?: string | number;
     permissionReadOnly?: boolean;
     readOnly?: boolean;
     typeahead: {
@@ -83,6 +85,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     <div>
       <input
         data-testid="side-chat-composer"
+        data-focus-end-key={focusEndKey}
         value={composer.message}
         onChange={(event) => composer.onChangeMessage(event.target.value, [])}
       />
@@ -178,7 +181,7 @@ vi.mock("@/components/thread/timeline", () => ({
   ThreadTimelinePanelContent: (props: {
     isTurnSubmitting?: boolean;
     leadingContent?: ReactNode;
-    onSendToMainMessage?: unknown;
+    onSendToMainMessage?: (target: { messageText: string }) => void;
     provisioningLabel?: string;
     timeline: { timelineRows: Array<{ text?: string }> };
   }) => {
@@ -221,7 +224,9 @@ vi.mock("@/components/thread/timeline", () => ({
       ) : null}
     </div>
   ),
-  ThreadTimelineRows: (props: { onSendToMainMessage?: unknown }) => {
+  ThreadTimelineRows: (props: {
+    onSendToMainMessage?: (target: { messageText: string }) => void;
+  }) => {
     mocks.timelineRowsProps.push(props);
     return <div data-testid="side-chat-timeline-rows" />;
   },
@@ -383,7 +388,11 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useCreateThread: () => ({ mutateAsync: mocks.createThreadMutateAsync }),
-  useCreateThreadQueuedMessage: () => ({ mutateAsync: mocks.noopMutateAsync }),
+  useCreateThreadQueuedMessage: () => ({
+    isPending: false,
+    mutate: mocks.noopMutate,
+    mutateAsync: mocks.noopMutateAsync,
+  }),
   useDeleteThreadQueuedMessage: () => ({ mutateAsync: mocks.noopMutateAsync }),
   useReorderThreadQueuedMessage: () => ({ mutateAsync: mocks.noopMutateAsync }),
   useSetThreadQueuedMessageGroupBoundary: () => ({
@@ -456,10 +465,12 @@ describe("SideChatTabContent", () => {
   }
 
   function buildSideChatElement({
+    isActive = true,
     onSetThreadId,
     sourceMessageText = "Earlier answer",
     threadId,
   }: {
+    isActive?: boolean;
     onSetThreadId: (args: { tabId: string; threadId: string }) => void;
     sourceMessageText?: string;
     threadId: string | null;
@@ -481,7 +492,7 @@ describe("SideChatTabContent", () => {
 
     return (
       <SideChatTabContent
-        isActive={true}
+        isActive={isActive}
         tab={tab}
         sourceThread={sourceThread}
         sourceEnvironment={null}
@@ -497,6 +508,33 @@ describe("SideChatTabContent", () => {
 
     expect(mocks.createThreadMutateAsync).not.toHaveBeenCalled();
     expect(screen.queryByText("Provisioning side chat...")).toBeNull();
+  });
+
+  it("does not autofocus when a side-chat tab becomes active", () => {
+    const onSetThreadId = vi.fn();
+    const { rerender } = render(
+      buildSideChatElement({
+        isActive: false,
+        onSetThreadId,
+        threadId: null,
+      }),
+    );
+
+    expect(screen.getByTestId("side-chat-composer").dataset.focusEndKey).toBe(
+      "0",
+    );
+
+    rerender(
+      buildSideChatElement({
+        isActive: true,
+        onSetThreadId,
+        threadId: null,
+      }),
+    );
+
+    expect(screen.getByTestId("side-chat-composer").dataset.focusEndKey).toBe(
+      "0",
+    );
   });
 
   it("keeps permission locked while model controls remain editable", () => {
@@ -745,5 +783,39 @@ describe("SideChatTabContent", () => {
       mocks.timelineRowsProps[mocks.timelineRowsProps.length - 1]
         ?.onSendToMainMessage,
     ).toEqual(expect.any(Function));
+  });
+
+  it("queues a side-chat handoff on the main thread", () => {
+    mocks.threadTimelineRows.push({
+      kind: "conversation",
+      role: "assistant",
+      text: "Side-chat answer",
+    });
+    renderSideChat({ threadId: "thr_side" });
+    const handoff = mocks.timelineRowsProps[
+      mocks.timelineRowsProps.length - 1
+    ]?.onSendToMainMessage;
+    expect(handoff).toEqual(expect.any(Function));
+    if (!handoff) {
+      throw new Error("Expected the side-chat handoff action");
+    }
+
+    mocks.noopMutate.mockClear();
+    handoff({
+      messageText: "Queue this result",
+    });
+
+    expect(mocks.noopMutate).toHaveBeenCalledWith({
+      id: "thr_parent",
+      input: [
+        {
+          type: "text",
+          text: "Queue this result",
+          mentions: [],
+        },
+      ],
+      senderThreadId: "thr_side",
+    });
+    expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
   });
 });

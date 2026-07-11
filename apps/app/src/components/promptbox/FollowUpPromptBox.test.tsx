@@ -316,6 +316,25 @@ describe("FollowUpPromptBox", () => {
     ).toBeTruthy();
   });
 
+  it("expands a minimized mobile composer when add-to-chat updates its draft", () => {
+    mocks.isCompactViewport = true;
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const view = render(<FollowUpPromptBox {...props} focusEndKey={0} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    ).toBeTruthy();
+
+    view.rerender(<FollowUpPromptBox {...props} focusEndKey={1} />);
+
+    expect(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeTruthy();
+  });
+
   it("does not undo a manual expansion during the same upward scroll", () => {
     mocks.isCompactViewport = true;
     if (!mocks.scrollElement) throw new Error("Missing scroll element");

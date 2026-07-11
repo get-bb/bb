@@ -418,6 +418,8 @@ export const GeneratedConversationMessage = memo(
     // Title-only rows (ownership assigned/removed) restate their body in the
     // title; suppress the body, the collapsed preview, and expansion entirely.
     const titleOnly = systemMessageIsTitleOnly(sourceKind, systemMessageKind);
+    const renderMessageMarkdown =
+      sourceKind === "system" || sourceIsSideChat;
     const hasExpandedOnlyContent =
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||
@@ -454,11 +456,11 @@ export const GeneratedConversationMessage = memo(
         className={`${NESTED_TIMELINE_GROUP_LINE_CLASS_NAME} max-w-full min-w-0`}
       >
         <div className="flex min-w-0 items-baseline truncate pl-2 text-sm leading-relaxed text-foreground">
-          {sourceKind === "system" ? (
+          {renderMessageMarkdown ? (
             // Render the collapsed first line as markdown too (inline
             // formatting + @thread pills), clamped to a single line, so a
-            // not-yet-expanded system message shows formatted text rather than
-            // raw markdown. Block nodes are flattened to inline via
+            // not-yet-expanded system or side-chat message shows formatted
+            // text rather than raw markdown. Block nodes are flattened to inline via
             // COLLAPSED_MARKDOWN_PREVIEW_CLASS.
             <div
               ref={setCollapsedPreviewTextRef}
@@ -498,16 +500,11 @@ export const GeneratedConversationMessage = memo(
         <div className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}>
           <div className="pl-2 text-sm leading-relaxed text-foreground">
             {messageText ? (
-              // `system` bodies render full markdown while preserving the
-              // `@thread:<id>` mention pills (resolved from `messageMentions`).
-              // `agent` bodies stay on the offset-based `renderMentionTextSegments`
-              // renderer: the markdown path only understands `@thread:<id>`
-              // tokens and would silently drop the offset-based `path` mentions
-              // an agent message can carry. The collapsed preview above stays
-              // plain text for both. Both branches share the surrounding
-              // `pl-2 text-sm leading-relaxed text-foreground` container, so
-              // typography is identical.
-              sourceKind === "system" ? (
+              // System and side-chat handoffs render markdown while preserving
+              // `@thread:<id>` pills. Other generated agent messages stay on
+              // the offset-based renderer because their path mentions cannot
+              // be represented by the markdown mention transport.
+              renderMessageMarkdown ? (
                 <MarkdownPreview
                   content={messageText}
                   linkRouting={linkRouting}
@@ -559,6 +556,7 @@ export const GeneratedConversationMessage = memo(
         projectId,
         resolveSegmentLinkHref,
         resolveMentionLink,
+        renderMessageMarkdown,
         sourceKind,
         requestLabel,
         turnRequest,

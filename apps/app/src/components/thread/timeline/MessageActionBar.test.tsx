@@ -1,13 +1,39 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   findMessageActionTooltipCollisionBoundary,
   MessageActionBar,
 } from "./MessageActionBar";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+function mockMobileCoarsePointer() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches:
+      query === COMPACT_VIEWPORT_QUERY || query === POINTER_COARSE_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
 
 describe("MessageActionBar", () => {
   it("uses the nearest thread window as the tooltip collision boundary", () => {
@@ -162,6 +188,78 @@ describe("MessageActionBar", () => {
       "max-md:pointer-coarse:inline-flex",
     );
     expect(overflowTrigger.className).not.toContain("opacity-0");
+  });
+
+  it("uses an anchored popover instead of a bottom drawer on mobile", () => {
+    mockMobileCoarsePointer();
+    const onAddToChat = vi.fn();
+    render(
+      <MessageActionBar
+        messageText="Quote this message."
+        alignment="end"
+        mobileActionDisplay="overflow"
+        onAddToChat={onAddToChat}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Message actions" });
+    expect(trigger.hasAttribute("data-no-sidebar-swipe")).toBe(true);
+    fireEvent.click(trigger);
+
+    const content = document.body.querySelector<HTMLElement>(
+      '[data-side="top"]',
+    );
+    expect(content).not.toBeNull();
+    expect(document.body.querySelector("[data-vaul-drawer]")).toBeNull();
+
+    fireEvent.click(
+      within(content!).getByRole("button", { name: "Add to chat" }),
+    );
+
+    expect(onAddToChat).toHaveBeenCalledWith("Quote this message.");
+    expect(document.body.querySelector('[data-side="top"]')).toBeNull();
+  });
+
+  it("confirms a mobile overflow copy on the trigger instead of toasting", async () => {
+    mockMobileCoarsePointer();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(
+      <MessageActionBar
+        messageText="Copy this answer."
+        alignment="start"
+        mobileActionDisplay="overflow"
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Message actions" });
+    fireEvent.click(trigger);
+    const content = document.body.querySelector<HTMLElement>(
+      '[data-side="top"]',
+    );
+    if (!content) throw new Error("Missing mobile message action menu");
+    fireEvent.click(
+      within(content).getByRole("button", { name: "Copy message" }),
+    );
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Copy this answer."));
+    expect(trigger.querySelector('[data-icon="Check"]')).not.toBeNull();
+  });
+
+  it("opens a side chat from the inline mobile action", () => {
+    const onSideChat = vi.fn();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onSideChat={onSideChat}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reply in side chat" }));
+
+    expect(onSideChat).toHaveBeenCalledTimes(1);
   });
 
   it("shows compact inline mobile actions without an overflow menu when requested", () => {

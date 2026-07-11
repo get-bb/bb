@@ -1228,6 +1228,39 @@ describe("RuntimeManager", () => {
     expect(secondRuntime.shutdown).not.toHaveBeenCalled();
   });
 
+  it("keeps an environment runtime while a thread command is being prepared", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtime = createFakeRuntime();
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime: () => runtime,
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    const release = manager.retainEnvironmentForThreadCommand("env-1");
+
+    await manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")?.runtime).toBe(runtime);
+    expect(runtime.shutdown).not.toHaveBeenCalled();
+
+    release();
+    await manager.replaceBaseShellEnv({
+      PATH: "/newer/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")).toBeUndefined();
+    expect(runtime.shutdown).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses the existing runtime for subsequent requests", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());

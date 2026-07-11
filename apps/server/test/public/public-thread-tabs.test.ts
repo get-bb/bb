@@ -1,5 +1,5 @@
 import { threadTabsResponseSchema, type ThreadTab } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readJson } from "../helpers/json.js";
 import { seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
@@ -84,6 +84,7 @@ describe("public thread tabs", () => {
   it("stores every tab kind and rejects stale writes", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness);
+      const notifyThread = vi.spyOn(harness.hub, "notifyThread");
 
       const initialResponse = await getTabs(harness, thread.id);
       expect(initialResponse.status).toBe(200);
@@ -99,22 +100,34 @@ describe("public thread tabs", () => {
       expect(
         threadTabsResponseSchema.parse(await readJson(updateResponse)),
       ).toEqual({ revision: 1, tabs: ALL_TAB_KINDS });
+      expect(notifyThread).toHaveBeenCalledWith(thread.id, ["tabs-changed"]);
+
+      const closeResponse = await putTabs(harness, thread.id, {
+        expectedRevision: 1,
+        tabs: [],
+      });
+      expect(closeResponse.status).toBe(200);
+      expect(
+        threadTabsResponseSchema.parse(await readJson(closeResponse)),
+      ).toEqual({ revision: 2, tabs: [] });
+      expect(notifyThread).toHaveBeenCalledTimes(2);
 
       const staleResponse = await putTabs(harness, thread.id, {
-        expectedRevision: 0,
+        expectedRevision: 1,
         tabs: [],
       });
       expect(staleResponse.status).toBe(409);
       expect(await readJson(staleResponse)).toEqual({
         code: "thread_tabs_conflict",
-        details: { currentRevision: 1 },
+        details: { currentRevision: 2 },
         message: "Thread tabs changed on another client",
       });
+      expect(notifyThread).toHaveBeenCalledTimes(2);
 
       const persistedResponse = await getTabs(harness, thread.id);
       expect(
         threadTabsResponseSchema.parse(await readJson(persistedResponse)),
-      ).toEqual({ revision: 1, tabs: ALL_TAB_KINDS });
+      ).toEqual({ revision: 2, tabs: [] });
     });
   });
 

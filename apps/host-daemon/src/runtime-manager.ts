@@ -269,6 +269,10 @@ export class RuntimeManager {
     string,
     PendingEnvironmentProvision
   >();
+  private readonly inFlightThreadCommandsByEnvironmentId = new Map<
+    string,
+    number
+  >();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
@@ -321,6 +325,38 @@ export class RuntimeManager {
 
   markTerminalInactive(environmentId: string, terminalId: string): void {
     this.entries.get(environmentId)?.terminals.delete(terminalId);
+  }
+
+  /**
+   * Keeps an environment runtime alive while a thread command is preparing a
+   * start or submit. Runtime turn state becomes active only after the provider
+   * accepts the command, so it cannot by itself protect that short interval
+   * from a concurrent shell-environment refresh.
+   */
+  retainEnvironmentForThreadCommand(environmentId: string): () => void {
+    this.inFlightThreadCommandsByEnvironmentId.set(
+      environmentId,
+      (this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ?? 0) + 1,
+    );
+
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+
+      const count =
+        this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ?? 0;
+      if (count <= 1) {
+        this.inFlightThreadCommandsByEnvironmentId.delete(environmentId);
+        return;
+      }
+      this.inFlightThreadCommandsByEnvironmentId.set(
+        environmentId,
+        count - 1,
+      );
+    };
   }
 
   listActiveThreads(): HostDaemonActiveThread[] {
@@ -405,6 +441,7 @@ export class RuntimeManager {
   private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
     return (
       entry.terminals.size > 0 ||
+      this.inFlightThreadCommandsByEnvironmentId.has(entry.environmentId) ||
       entry.runtime.getActiveThreadIds().length > 0
     );
   }

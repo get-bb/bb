@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -149,6 +155,41 @@ describe("TimelineSelectionMenu", () => {
     expect(onAddToChat).toHaveBeenCalledTimes(1);
     expect(onAddToChat).toHaveBeenCalledWith("selected text");
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the composer before a touch add-to-chat action returns", () => {
+    function ComposerFocusHandoff() {
+      const [selection, setSelection] = useState<MessageProseSelection | null>(
+        makeSelection(),
+      );
+      const [focusRequest, setFocusRequest] = useState(0);
+      const inputRef = useRef<HTMLInputElement>(null);
+      useLayoutEffect(() => {
+        if (focusRequest > 0) {
+          inputRef.current?.focus();
+        }
+      }, [focusRequest]);
+
+      return (
+        <>
+          <input ref={inputRef} aria-label="Chat composer" />
+          <TimelineSelectionMenu
+            selection={selection}
+            onAddToChat={() => setFocusRequest((request) => request + 1)}
+            onDismiss={() => setSelection(null)}
+          />
+        </>
+      );
+    }
+
+    render(<ComposerFocusHandoff />);
+    const action = screen.getByRole("button", { name: "Add to chat" });
+    fireEvent.pointerDown(action, { pointerType: "touch" });
+    fireEvent.pointerUp(action, { pointerType: "touch" });
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("textbox", { name: "Chat composer" }),
+    );
   });
 
   it("passes the selection branch point to side-chat replies", () => {

@@ -51,6 +51,7 @@ export function registerThreadTabRoutes(app: Hono, deps: AppDeps): void {
         { details: { currentRevision: result.revision } },
       );
     }
+    deps.hub.notifyThread(thread.id, ["tabs-changed"]);
     return context.json({ revision: result.revision, tabs: payload.tabs });
   });
 }

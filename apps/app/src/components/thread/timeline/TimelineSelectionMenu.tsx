@@ -5,6 +5,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
+import { flushSync } from "react-dom";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
@@ -42,11 +43,18 @@ function ActionButton({
 }) {
   const ignoreNextClickRef = useRef(false);
   const activate = () => {
-    action.onSelect(selection);
-    // Clear the lingering highlight so the source text doesn't read as
-    // "still selected" after the quote/side-chat has been created.
-    window.getSelection()?.removeAllRanges();
-    onDismiss();
+    // On mobile browsers, showing the keyboard requires focus to reach the
+    // destination editor before the deliberate touch action returns. The
+    // selection action can mount a side chat or update the main draft, while
+    // dismissing this popover unmounts its focus trap; let neither update drift
+    // beyond pointer-up.
+    flushSync(() => {
+      action.onSelect(selection);
+      // Clear the lingering highlight so the source text doesn't read as
+      // "still selected" after the quote/side-chat has been created.
+      window.getSelection()?.removeAllRanges();
+      onDismiss();
+    });
   };
   const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === "mouse") return;
@@ -184,6 +192,10 @@ export function TimelineSelectionMenu({
           className={SELECTION_MENU_CONTENT_CLASS}
           onEscapeKeyDown={() => onDismiss()}
           onOpenAutoFocus={(event) => event.preventDefault()}
+          // Selection actions explicitly hand focus to their destination
+          // composer. Do not let the popover restore focus to its now-closed
+          // action button and steal that handoff on mobile.
+          onCloseAutoFocus={(event) => event.preventDefault()}
         >
           {actions.map((action, index) => (
             <div key={action.label} className="flex items-center">
