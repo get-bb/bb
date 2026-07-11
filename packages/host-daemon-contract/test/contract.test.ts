@@ -1833,33 +1833,40 @@ describe("host-daemon command schemas", () => {
     const base = {
       name: "workflow-help",
       description: "Use when building workflows.",
-      sourceRootPath: "/srv/builtin-skills/workflow-help",
-      skillFilePath: "/srv/builtin-skills/workflow-help/SKILL.md",
+    };
+    const tree = {
+      ...base,
+      kind: "tree",
+      treeHash: "a".repeat(64),
+      entryPath: "SKILL.md",
     };
 
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
+        ...tree,
         sourceType: "builtin",
       }),
-    ).toMatchObject({ sourceType: "builtin" });
+    ).toMatchObject({ kind: "tree", sourceType: "builtin" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
+        ...tree,
         sourceType: "data-dir",
       }),
-    ).toMatchObject({ sourceType: "data-dir" });
+    ).toMatchObject({ kind: "tree", sourceType: "data-dir" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
+        kind: "workspace-path",
         sourceType: "project",
+        sourceRootPath: "/workspace/.bb/skills/workflow-help",
+        skillFilePath: "/workspace/.bb/skills/workflow-help/SKILL.md",
       }),
-    ).toMatchObject({ sourceType: "project" });
+    ).toMatchObject({ kind: "workspace-path", sourceType: "project" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "bundled",
+        ...tree,
+        sourceType: "project",
       }),
     ).toThrow();
   });

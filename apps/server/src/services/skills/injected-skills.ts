@@ -1,5 +1,6 @@
 import type { Dirent } from "node:fs";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import matter from "gray-matter";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
@@ -41,6 +42,30 @@ export interface ResolveInjectedSkillSourcesArgs {
    */
   pluginSkillsRootPaths?: readonly string[];
   projectSkillsRootPath?: string;
+  skillTreeRegistry: SkillTreeRegistry;
+}
+
+export interface SkillTreeEntry {
+  bytes: Buffer;
+  mode: number;
+  path: string;
+}
+
+export interface SkillTreeManifest {
+  entries: readonly SkillTreeEntry[];
+  treeHash: string;
+}
+
+export class SkillTreeRegistry {
+  readonly #rootsByHash = new Map<string, string>();
+
+  register(treeHash: string, sourceRootPath: string): void {
+    this.#rootsByHash.set(treeHash, sourceRootPath);
+  }
+
+  resolve(treeHash: string): string | undefined {
+    return this.#rootsByHash.get(treeHash);
+  }
 }
 
 interface SkillCandidateSource {
@@ -49,6 +74,7 @@ interface SkillCandidateSource {
 
 interface SkillRootScanArgs extends SkillCandidateSource {
   logger: ServerLogger;
+  skillTreeRegistry: SkillTreeRegistry;
   skillsRootPath: string;
 }
 
@@ -56,6 +82,7 @@ interface SkillCandidateArgs extends SkillCandidateSource {
   candidatePath: string;
   directoryName: string;
   logger: ServerLogger;
+  skillTreeRegistry: SkillTreeRegistry;
 }
 
 interface InvalidSkillLogArgs extends SkillCandidateSource {
@@ -104,7 +131,7 @@ function logSkillCollision(args: SkillCollisionLogArgs): void {
     args.logger.warn(
       {
         name: args.name,
-        sourceRootPath: source.sourceRootPath,
+        sourceRootPath: sourceRootPath(source),
         sourceType: source.sourceType,
       },
       "Skipping colliding injected skill",
@@ -114,6 +141,70 @@ function logSkillCollision(args: SkillCollisionLogArgs): void {
 
 function sortDirentsByName(left: Dirent, right: Dirent): number {
   return left.name.localeCompare(right.name);
+}
+
+function normalizeRelativePath(relativePath: string): string {
+  return relativePath.split(path.sep).join("/");
+}
+
+function collectSkillTreeEntries(
+  rootPath: string,
+  currentPath = rootPath,
+): SkillTreeEntry[] {
+  const entries: SkillTreeEntry[] = [];
+  for (const entry of fs
+    .readdirSync(currentPath, { withFileTypes: true })
+    .sort(sortDirentsByName)) {
+    const entryPath = path.join(currentPath, entry.name);
+    const stat = fs.lstatSync(entryPath);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Skill tree contains a symlink: ${entryPath}`);
+    }
+    if (stat.isDirectory()) {
+      entries.push(...collectSkillTreeEntries(rootPath, entryPath));
+      continue;
+    }
+    if (!stat.isFile()) {
+      throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
+    }
+    entries.push({
+      bytes: fs.readFileSync(entryPath),
+      mode: stat.mode & 0o777,
+      path: normalizeRelativePath(path.relative(rootPath, entryPath)),
+    });
+  }
+  return entries;
+}
+
+export function hashSkillTreeEntries(
+  entries: readonly SkillTreeEntry[],
+): string {
+  const hash = createHash("sha256");
+  hash.update("bb-skill-tree-v1");
+  for (const entry of [...entries].sort((left, right) =>
+    left.path.localeCompare(right.path),
+  )) {
+    hash.update("\0file\0");
+    hash.update(entry.path);
+    hash.update("\0");
+    hash.update(entry.mode.toString(8));
+    hash.update("\0");
+    hash.update(String(entry.bytes.length));
+    hash.update("\0");
+    hash.update(entry.bytes);
+  }
+  return hash.digest("hex");
+}
+
+export function readSkillTreeManifest(rootPath: string): SkillTreeManifest {
+  const entries = collectSkillTreeEntries(rootPath);
+  return { entries, treeHash: hashSkillTreeEntries(entries) };
+}
+
+function sourceRootPath(source: HostDaemonInjectedSkillSource): string {
+  return source.kind === "workspace-path"
+    ? source.sourceRootPath
+    : `skill-tree:${source.treeHash}`;
 }
 
 function toSkillFilePath(candidatePath: string): string {
@@ -193,12 +284,35 @@ function readSkillCandidate(
     return null;
   }
 
+  if (args.sourceType === "project") {
+    return {
+      kind: "workspace-path",
+      sourceType: "project",
+      name: frontmatter.data.name,
+      description: frontmatter.data.description,
+      sourceRootPath: args.candidatePath,
+      skillFilePath,
+    };
+  }
+  let manifest: SkillTreeManifest;
+  try {
+    manifest = readSkillTreeManifest(args.candidatePath);
+  } catch (error) {
+    logInvalidSkill({
+      ...args,
+      reason:
+        error instanceof Error ? error.message : "Unable to read skill tree",
+    });
+    return null;
+  }
+  args.skillTreeRegistry.register(manifest.treeHash, args.candidatePath);
   return {
+    kind: "tree",
     sourceType: args.sourceType,
     name: frontmatter.data.name,
     description: frontmatter.data.description,
-    sourceRootPath: args.candidatePath,
-    skillFilePath,
+    treeHash: manifest.treeHash,
+    entryPath: SKILL_FILE_NAME,
   };
 }
 
@@ -265,6 +379,7 @@ function readSkillsRoot(
       candidatePath,
       directoryName: entry.name,
       logger: args.logger,
+      skillTreeRegistry: args.skillTreeRegistry,
       sourceType: args.sourceType,
     });
     if (source) {
@@ -304,7 +419,7 @@ function excludeOverriddenBuiltins(
     logger.info(
       {
         name: source.name,
-        sourceRootPath: source.sourceRootPath,
+        sourceRootPath: sourceRootPath(source),
       },
       "Built-in injected skill overridden by user skill",
     );
@@ -326,7 +441,7 @@ function excludeOverriddenLowerPriorityUserSources(
     logger.info(
       {
         name: source.name,
-        sourceRootPath: source.sourceRootPath,
+        sourceRootPath: sourceRootPath(source),
       },
       "Lower-priority injected skill overridden by higher-priority skill",
     );
@@ -371,29 +486,33 @@ function excludeCollisions(
  * user skills > plugin > builtin. Inherited roots are ordered by priority,
  * so earlier roots override later roots.
  *
- * All source paths are server-machine paths that the local host daemon reads
- * from its filesystem.
+ * Server-owned sources are registered as content-addressed trees. Project
+ * sources remain workspace paths until their enumeration moves daemon-side.
  */
 export function resolveInjectedSkillSources(
   logger: ServerLogger,
   args: ResolveInjectedSkillSourcesArgs,
 ): HostDaemonInjectedSkillSource[] {
+  const { skillTreeRegistry } = args;
   const projectSources =
     args.projectSkillsRootPath !== undefined
       ? readSkillsRoot({
           logger,
+          skillTreeRegistry,
           skillsRootPath: args.projectSkillsRootPath,
           sourceType: "project",
         })
       : [];
   const builtinSources = readSkillsRoot({
     logger,
+    skillTreeRegistry,
     skillsRootPath: args.builtinSkillsRootPath,
     sourceType: "builtin",
   });
 
   const dataDirSources = readSkillsRoot({
     logger,
+    skillTreeRegistry,
     skillsRootPath: resolveDataDirSkillsRootPath(args.dataDir),
     sourceType: "data-dir",
   });
@@ -401,6 +520,7 @@ export function resolveInjectedSkillSources(
     (skillsRootPath) =>
       readSkillsRoot({
         logger,
+        skillTreeRegistry,
         skillsRootPath,
         sourceType: "data-dir",
       }),
@@ -425,6 +545,7 @@ export function resolveInjectedSkillSources(
     (skillsRootPath) =>
       readSkillsRoot({
         logger,
+        skillTreeRegistry,
         skillsRootPath,
         sourceType: "data-dir",
       }),

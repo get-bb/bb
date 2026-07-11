@@ -9,6 +9,7 @@ import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
+import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import {
   createAppVersionService,
   type AppVersionService,
@@ -152,6 +153,7 @@ export async function createTestAppHarness(
     logger: testLogger,
   });
   const telemetry = createNoopTelemetryService();
+  const skillTreeRegistry = new SkillTreeRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -159,6 +161,7 @@ export async function createTestAppHarness(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth: testMachineAuth,
+    skillTreeRegistry,
     telemetry,
     terminalSessions,
   });
@@ -179,6 +182,7 @@ export async function createTestAppHarness(
     logger: testLogger,
     machineAuth: testMachineAuth,
     pendingInteractions,
+    skillTreeRegistry,
     telemetry,
     terminalSessions,
     watchInterests,

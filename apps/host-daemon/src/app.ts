@@ -473,6 +473,11 @@ export async function createHostDaemonApp(
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
     dataDirSkillsRootPath,
+    fetchSkillTree: (treeHash) =>
+      runSessionRequest({
+        source: "fetchSkillTree",
+        request: () => serverClient.fetchSkillTree(treeHash),
+      }),
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,

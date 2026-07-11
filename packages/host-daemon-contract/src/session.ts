@@ -612,7 +612,26 @@ export type HostDaemonInteractiveInterruptResponse = z.infer<
   typeof hostDaemonInteractiveInterruptResponseSchema
 >;
 
+export const hostDaemonSkillTreeEntrySchema = z
+  .object({
+    path: z.string().min(1),
+    mode: z.number().int().min(0).max(0o777),
+    contentBase64: z.string(),
+  })
+  .strict();
+export const hostDaemonSkillTreeSchema = z
+  .object({
+    treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    entries: z.array(hostDaemonSkillTreeEntrySchema),
+  })
+  .strict();
+export type HostDaemonSkillTree = z.infer<typeof hostDaemonSkillTreeSchema>;
+
 export type HostDaemonInternalSchema = {
+  "/skills/tree/:hash": {
+    /** Used by the daemon to pull a missing server-owned injected skill tree. */
+    $get: Endpoint<Record<never, never>, HostDaemonSkillTree, 200>;
+  };
   "/hosts/enroll-key": {
     /** Used by the local launcher to request one-time bootstrap material for the primary host daemon. */
     $post: Endpoint<

@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 49 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 50 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -86,27 +86,26 @@ const hostDaemonInjectedSkillSourceBaseSchema = z
   .object({
     name: z.string().max(64).regex(INJECTED_SKILL_NAME_PATTERN),
     description: z.string().min(1).max(1024),
-    sourceRootPath: z.string().min(1),
-    skillFilePath: z.string().min(1),
   })
   .strict();
 
 export const hostDaemonInjectedSkillSourceSchema = z.discriminatedUnion(
-  "sourceType",
+  "kind",
   [
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
-        sourceType: z.literal("builtin"),
+        kind: z.literal("tree"),
+        treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
+        entryPath: z.string().min(1),
+        sourceType: z.enum(["builtin", "data-dir"]),
       })
       .strict(),
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
-        sourceType: z.literal("data-dir"),
-      })
-      .strict(),
-    hostDaemonInjectedSkillSourceBaseSchema
-      .extend({
+        kind: z.literal("workspace-path"),
         sourceType: z.literal("project"),
+        sourceRootPath: z.string().min(1),
+        skillFilePath: z.string().min(1),
       })
       .strict(),
   ],

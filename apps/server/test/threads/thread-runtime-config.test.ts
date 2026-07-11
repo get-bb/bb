@@ -13,6 +13,7 @@ import {
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
+import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
 import type { PluginAgentToolContribution } from "../../src/services/plugins/plugin-service.js";
 import {
   resolvePermissionEscalation,
@@ -681,13 +682,15 @@ describe("thread runtime config", () => {
 
       expect(command.injectedSkillSources).toEqual([
         {
+          kind: "tree",
           sourceType: "builtin",
           name: "bb-cli",
           description: "Use bb-cli when server runtime tests run.",
-          sourceRootPath: builtinSourceRootPath,
-          skillFilePath: path.join(builtinSourceRootPath, "SKILL.md"),
+          treeHash: readSkillTreeManifest(builtinSourceRootPath).treeHash,
+          entryPath: "SKILL.md",
         },
         {
+          kind: "workspace-path",
           sourceType: "project",
           name: "project-helper",
           description: "Use project-helper when server runtime tests run.",
@@ -695,11 +698,12 @@ describe("thread runtime config", () => {
           skillFilePath: path.join(projectSourceRootPath, "SKILL.md"),
         },
         {
+          kind: "tree",
           sourceType: "data-dir",
           name: "release-notes",
           description: "Use release-notes when server runtime tests run.",
-          sourceRootPath,
-          skillFilePath: path.join(sourceRootPath, "SKILL.md"),
+          treeHash: readSkillTreeManifest(sourceRootPath).treeHash,
+          entryPath: "SKILL.md",
         },
       ]);
     });

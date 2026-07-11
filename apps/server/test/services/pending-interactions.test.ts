@@ -290,6 +290,7 @@ describe("pending interaction lifecycle", () => {
         lifecycleDedupers: harness.deps.lifecycleDedupers,
         logger,
         machineAuth: harness.deps.machineAuth,
+        skillTreeRegistry: harness.deps.skillTreeRegistry,
         telemetry: harness.deps.telemetry,
         terminalSessions: harness.deps.terminalSessions,
       });
@@ -1450,6 +1451,7 @@ describe("pending interaction lifecycle", () => {
         lifecycleDedupers: harness.deps.lifecycleDedupers,
         logger: harness.deps.logger,
         machineAuth: harness.deps.machineAuth,
+        skillTreeRegistry: harness.deps.skillTreeRegistry,
         telemetry: harness.deps.telemetry,
         terminalSessions: harness.deps.terminalSessions,
       });

@@ -4,11 +4,13 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   symlink,
   utimes,
   writeFile,
 } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +21,10 @@ import type {
   AgentRuntimePiSkillRoot,
   AgentRuntimeSkillRoot,
 } from "@bb/agent-runtime";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonInjectedSkillSource,
+  HostDaemonSkillTree,
+} from "@bb/host-daemon-contract";
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
@@ -53,9 +58,7 @@ async function makeTempDir(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => rm(dir, { recursive: true, force: true })),
+    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
 });
 
@@ -107,13 +110,65 @@ async function writeSkill(args: WriteSkillArgs): Promise<string> {
   return skillRootPath;
 }
 
-function createDataDirSource(args: StageSourceArgs): HostDaemonInjectedSkillSource {
+function createDataDirSource(
+  args: StageSourceArgs,
+): HostDaemonInjectedSkillSource {
   return {
-    sourceType: "data-dir",
+    kind: "workspace-path",
+    sourceType: "project",
     name: args.skillName,
     description: `Use ${args.skillName} when host staging tests run.`,
     sourceRootPath: args.skillRootPath,
     skillFilePath: path.join(args.skillRootPath, "SKILL.md"),
+  };
+}
+
+function createTreePayload(
+  name: string,
+  token = "tree bytes",
+): HostDaemonSkillTree {
+  const entries = [
+    {
+      path: "SKILL.md",
+      mode: 0o644,
+      contentBase64: Buffer.from(
+        `---\nname: ${name}\ndescription: Use ${name} in pull tests.\n---\n\n${token}\n`,
+      ).toString("base64"),
+    },
+    {
+      path: "scripts/run.sh",
+      mode: 0o755,
+      contentBase64: Buffer.from("#!/bin/sh\necho synced\n").toString("base64"),
+    },
+  ];
+  entries.sort((left, right) => left.path.localeCompare(right.path));
+  const hash = createHash("sha256");
+  hash.update("bb-skill-tree-v1");
+  for (const entry of entries) {
+    const bytes = Buffer.from(entry.contentBase64, "base64");
+    hash.update("\0file\0");
+    hash.update(entry.path);
+    hash.update("\0");
+    hash.update(entry.mode.toString(8));
+    hash.update("\0");
+    hash.update(String(bytes.length));
+    hash.update("\0");
+    hash.update(bytes);
+  }
+  return { treeHash: hash.digest("hex"), entries };
+}
+
+function createTreeSource(
+  name: string,
+  treeHash: string,
+): HostDaemonInjectedSkillSource {
+  return {
+    kind: "tree",
+    sourceType: "data-dir",
+    name,
+    description: `Use ${name} in pull tests.`,
+    treeHash,
+    entryPath: "SKILL.md",
   };
 }
 
@@ -131,6 +186,99 @@ describe("data-dir skills root", () => {
 });
 
 describe("injected skill staging", () => {
+  it("pulls a missing tree, stages identical bytes and modes, and reuses the store", async () => {
+    const dataDir = await makeTempDir();
+    const payload = createTreePayload("synced-skill");
+    const fetchSkillTree = vi.fn(async () => payload);
+    const source = createTreeSource("synced-skill", payload.treeHash);
+
+    const first = await stageInjectedSkillSources({
+      dataDir,
+      fetchSkillTree,
+      injectedSkillSources: [source],
+    });
+    await stageInjectedSkillSources({
+      dataDir,
+      fetchSkillTree,
+      injectedSkillSources: [source],
+    });
+
+    const codexRoot = first.skillRoots.find(isCodexSkillRoot);
+    if (!codexRoot) {
+      throw new Error("Expected Codex skill root");
+    }
+    const stagedScript = path.join(
+      codexRoot.skillDirectoryRootPath,
+      "synced-skill",
+      "scripts",
+      "run.sh",
+    );
+    await expect(readFile(stagedScript, "utf8")).resolves.toBe(
+      "#!/bin/sh\necho synced\n",
+    );
+    await expect(
+      lstat(stagedScript).then((stat) => stat.mode & 0o777),
+    ).resolves.toBe(0o755);
+    expect(fetchSkillTree).toHaveBeenCalledTimes(1);
+    expect(fetchSkillTree).toHaveBeenCalledWith(payload.treeHash);
+  });
+
+  it("surfaces a failed required tree pull instead of silently skipping it", async () => {
+    const dataDir = await makeTempDir();
+    const payload = createTreePayload("failed-pull");
+    const warnings: CapturedWarning[] = [];
+    const failure = new Error("server unavailable");
+
+    await expect(
+      stageInjectedSkillSources({
+        dataDir,
+        fetchSkillTree: async () => Promise.reject(failure),
+        injectedSkillSources: [
+          createTreeSource("failed-pull", payload.treeHash),
+        ],
+        logger: {
+          debug: () => undefined,
+          warn: (context, message) => warnings.push({ context, message }),
+        },
+      }),
+    ).rejects.toThrow("server unavailable");
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        message: "Failed to pull required injected skill tree",
+      }),
+    ]);
+  });
+
+  it("garbage-collects the least-recently-used trees beyond the store cap", async () => {
+    const dataDir = await makeTempDir();
+    const payloads = Array.from({ length: 65 }, (_, index) => {
+      const name = `gc-skill-${index}`;
+      return { name, payload: createTreePayload(name, `token-${index}`) };
+    });
+    const byHash = new Map(
+      payloads.map(({ payload }) => [payload.treeHash, payload]),
+    );
+    for (const { name, payload } of payloads) {
+      await stageInjectedSkillSources({
+        dataDir,
+        fetchSkillTree: async (treeHash) => {
+          const tree = byHash.get(treeHash);
+          if (!tree) throw new Error("Unexpected hash");
+          return tree;
+        },
+        injectedSkillSources: [createTreeSource(name, payload.treeHash)],
+      });
+    }
+
+    const entries = await readdir(
+      path.join(dataDir, "runtime", "skill-store"),
+      {
+        withFileTypes: true,
+      },
+    );
+    expect(entries.filter((entry) => entry.isDirectory()).length).toBe(64);
+  });
+
   it("creates a shared staged snapshot for Codex, Claude Code, Pi, and ACP", async () => {
     const dataDir = await makeTempDir();
     const skillRootPath = await writeSkill({
@@ -208,7 +356,12 @@ describe("injected skill staging", () => {
     }
     await expect(
       readFile(
-        path.join(claudeRoot.localPluginPath, "skills", "release-notes", "SKILL.md"),
+        path.join(
+          claudeRoot.localPluginPath,
+          "skills",
+          "release-notes",
+          "SKILL.md",
+        ),
         "utf8",
       ),
     ).resolves.toContain("name: release-notes");
@@ -235,7 +388,7 @@ describe("injected skill staging", () => {
     });
   });
 
-  it("stages built-in skill sources into the shared catalog", async () => {
+  it("stages workspace-path skill sources into the shared catalog", async () => {
     const dataDir = await makeTempDir();
     const bundledRoot = await makeTempDir();
     const skillRootPath = await writeSkill({
@@ -247,7 +400,8 @@ describe("injected skill staging", () => {
       dataDir,
       injectedSkillSources: [
         {
-          sourceType: "builtin",
+          kind: "workspace-path",
+          sourceType: "project",
           name: "workflow-help",
           description: "Use workflow-help when host staging tests run.",
           sourceRootPath: skillRootPath,
@@ -279,7 +433,7 @@ describe("injected skill staging", () => {
         {
           name: "workflow-help",
           sourceRootPath: skillRootPath,
-          sourceType: "builtin",
+          sourceType: "project",
         },
       ],
     });

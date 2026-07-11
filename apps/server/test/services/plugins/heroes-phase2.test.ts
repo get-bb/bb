@@ -2,7 +2,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setExperiments, setThreadExecutionOverride } from "@bb/db";
-import { defaultExperiments, encodeClientTurnRequestIdNumber } from "@bb/domain";
+import {
+  defaultExperiments,
+  encodeClientTurnRequestIdNumber,
+} from "@bb/domain";
 import type { PromptInput } from "@bb/domain";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME } from "../../../src/services/threads/thread-environment-directory.js";
@@ -177,7 +180,6 @@ describe("hero plugin: small-ux-pack", () => {
       .find((plugin) => plugin.id === "small-ux-pack");
     expect(entry?.handlerStats.errorCount).toBe(1);
   });
-
 });
 
 describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
@@ -263,13 +265,9 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
     // Skills tier: the plugin's skills/ directory is injected.
     expect(command.injectedSkillSources).toContainEqual(
       expect.objectContaining({
+        kind: "tree",
         name: "repo-conventions",
-        sourceRootPath: join(
-          EXAMPLES_DIR,
-          "agent-enrichment",
-          "skills",
-          "repo-conventions",
-        ),
+        entryPath: "SKILL.md",
       }),
     );
   });
@@ -329,7 +327,10 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
       },
     );
     expect(last.status).toBe(200);
-    const lastBody = (await last.json()) as { exitCode: number; stdout: string };
+    const lastBody = (await last.json()) as {
+      exitCode: number;
+      stdout: string;
+    };
     expect(lastBody.exitCode).toBe(0);
     expect(lastBody.stdout).toContain('"conventional commits"');
   });

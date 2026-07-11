@@ -40,6 +40,7 @@ import {
   type InjectedSkillsLogger,
 } from "./injected-skills.js";
 import { reconnectProvisionArgs } from "./workspace-provision-target.js";
+import type { FetchSkillTree } from "./skill-trees.js";
 
 type StopWatching = () => void | Promise<void>;
 
@@ -183,6 +184,7 @@ export interface RuntimeManagerOptions {
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
   dataDir?: string;
   dataDirSkillsRootPath?: string | null;
+  fetchSkillTree?: FetchSkillTree;
   hostWatcher?: HostWatcher;
   logger?: Pick<Logger, "debug" | "warn">;
   provisionWorkspace?: (
@@ -212,8 +214,7 @@ export interface RuntimeManagerReapIdleProviderSessionsArgs {
   nowMs: number;
 }
 
-export interface RuntimeManagerReapedIdleProviderSession
-  extends ReapedIdleProviderSession {
+export interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
   environmentId: string;
 }
 
@@ -357,9 +358,8 @@ export class RuntimeManager {
       }
       released = true;
 
-      const activeCommands = this.inFlightThreadCommandsByEnvironmentId.get(
-        environmentId,
-      );
+      const activeCommands =
+        this.inFlightThreadCommandsByEnvironmentId.get(environmentId);
       if (!activeCommands) {
         return;
       }
@@ -450,14 +450,16 @@ export class RuntimeManager {
     return stageInjectedSkillSources({
       dataDir: this.options.dataDir,
       injectedSkillSources: args.injectedSkillSources,
+      ...(this.options.fetchSkillTree !== undefined
+        ? { fetchSkillTree: this.options.fetchSkillTree }
+        : {}),
       logger: this.getInjectedSkillsLogger(),
     });
   }
 
   private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
     return (
-      entry.terminals.size > 0 ||
-      entry.runtime.getActiveThreadIds().length > 0
+      entry.terminals.size > 0 || entry.runtime.getActiveThreadIds().length > 0
     );
   }
 

@@ -5,6 +5,7 @@ import {
   hostDaemonInteractiveInterruptResponseSchema,
   hostDaemonInteractiveRequestResponseSchema,
   hostDaemonSessionOpenResponseSchema,
+  hostDaemonSkillTreeSchema,
   hostDaemonToolCallResponseSchema,
   type HostDaemonInteractiveInterruptResponse,
   type HostDaemonInteractiveRequestResponse,
@@ -19,6 +20,7 @@ import {
   type HostDaemonSessionOpenResponse,
   type HostDaemonToolCallRequest,
   type HostDaemonToolCallResponse,
+  type HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
@@ -136,7 +138,9 @@ function toRetryControlError(error: ServerResponseError): Error {
 // The client only ever calls fetchFn(url, init); it never uses fetch.preconnect.
 // Typing the dependency as fetch's call signature (not `typeof fetch`) keeps it
 // precise and lets plain function / vi.fn mocks satisfy it.
-export type FetchFn = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
+export type FetchFn = (
+  ...args: Parameters<typeof fetch>
+) => ReturnType<typeof fetch>;
 
 interface CreateServerClientOptions {
   serverUrl: string;
@@ -165,6 +169,7 @@ export interface ServerClient {
   fetchProjectAttachment(
     args: FetchProjectAttachmentArgs,
   ): Promise<FetchedProjectAttachment>;
+  fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
@@ -390,6 +395,22 @@ export function createServerClient(
       return {
         bytes,
       };
+    },
+
+    async fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree> {
+      if (!usesSecureInternalFetchTransport(options.serverUrl)) {
+        throw new AbortError(
+          `Refusing to fetch skill tree over insecure server URL: ${options.serverUrl}`,
+        );
+      }
+      const response = await fetchFn(
+        buildInternalUrl(`/skills/tree/${encodeURIComponent(treeHash)}`),
+        { method: "GET", headers: headers() },
+      );
+      if (!response.ok) {
+        throw await createResponseError("fetch skill tree", response);
+      }
+      return hostDaemonSkillTreeSchema.parse(await response.json());
     },
 
     async postEvents(

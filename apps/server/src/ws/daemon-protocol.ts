@@ -73,6 +73,7 @@ export function onDaemonSocketOpen(
     | "logger"
     | "machineAuth"
     | "pendingInteractions"
+    | "skillTreeRegistry"
     | "telemetry"
     | "terminalSessions"
   >,

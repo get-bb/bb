@@ -160,7 +160,9 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
   });
 
   it("propagates nonzero exit codes and stderr", async () => {
-    const result = await (await runCli(harness, "acme", { argv: ["fail"] })).json();
+    const result = await (
+      await runCli(harness, "acme", { argv: ["fail"] })
+    ).json();
     expect(result).toEqual({ exitCode: 3, stdout: "", stderr: "acme failed" });
   });
 
@@ -220,34 +222,42 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(entry.status).toBe("error");
     expect(entry.statusDetail).toContain("reserved");
 
-    const invalid = await writePlugin(join(harness.config.dataDir, "fixtures"), {
-      name: "bb-plugin-badname",
-      serverSource: `
+    const invalid = await writePlugin(
+      join(harness.config.dataDir, "fixtures"),
+      {
+        name: "bb-plugin-badname",
+        serverSource: `
         export default function plugin(bb: any) {
           bb.cli.register({ name: "Bad Name", summary: "s", run: async () => ({ exitCode: 0 }) });
         }
       `,
-    });
+      },
+    );
     const badEntry = await harness.pluginService.installPath(invalid);
     expect(badEntry.status).toBe("error");
     expect(badEntry.statusDetail).toContain("invalid cli command name");
   });
 
   it("a second register replaces the first (one command per plugin)", async () => {
-    const replacer = await writePlugin(join(harness.config.dataDir, "fixtures"), {
-      name: "bb-plugin-replacer",
-      serverSource: `
+    const replacer = await writePlugin(
+      join(harness.config.dataDir, "fixtures"),
+      {
+        name: "bb-plugin-replacer",
+        serverSource: `
         export default function plugin(bb: any) {
           bb.cli.register({ name: "first", summary: "old", run: async () => ({ exitCode: 0 }) });
           bb.cli.register({ name: "second", summary: "new", run: async () => ({ exitCode: 0 }) });
         }
       `,
-    });
+      },
+    );
     await harness.pluginService.installPath(replacer);
     const contributions = harness.pluginService.listCliContributions();
     const entry = contributions.find((c) => c.pluginId === "replacer");
     expect(entry?.name).toBe("second");
-    expect(contributions.filter((c) => c.pluginId === "replacer")).toHaveLength(1);
+    expect(contributions.filter((c) => c.pluginId === "replacer")).toHaveLength(
+      1,
+    );
   });
 
   it("generates the plugin-commands skill, regenerates on reload, removes on toggle-off", async () => {
@@ -267,10 +277,11 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
       ],
       builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
       dataDir: harness.config.dataDir,
+      skillTreeRegistry: harness.deps.skillTreeRegistry,
     });
     const skill = sources.find((source) => source.name === "plugin-commands");
     expect(skill?.sourceType).toBe("data-dir");
-    expect(skill?.skillFilePath).toBe(skillFile);
+    expect(skill).toMatchObject({ kind: "tree", entryPath: "SKILL.md" });
 
     // Reload against changed sources rewrites the skill.
     await writeFile(
@@ -296,6 +307,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
       ],
       builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
       dataDir: harness.config.dataDir,
+      skillTreeRegistry: harness.deps.skillTreeRegistry,
     });
     expect(
       goneSources.find((source) => source.name === "plugin-commands"),

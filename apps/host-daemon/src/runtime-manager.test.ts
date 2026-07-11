@@ -96,7 +96,7 @@ async function initRepo(): Promise<string> {
 
 async function writeInjectedSkillSource(
   args: WriteInjectedSkillSourceArgs,
-): Promise<HostDaemonInjectedSkillSource> {
+): Promise<Extract<HostDaemonInjectedSkillSource, { kind: "workspace-path" }>> {
   const sourceRootPath = path.join(args.dataDir, "skills", args.name);
   await fs.mkdir(sourceRootPath, { recursive: true });
   await fs.writeFile(
@@ -113,7 +113,8 @@ async function writeInjectedSkillSource(
     "utf8",
   );
   return {
-    sourceType: "data-dir",
+    kind: "workspace-path",
+    sourceType: "project",
     name: args.name,
     description: `Use ${args.name} when runtime manager tests run.`,
     sourceRootPath,
@@ -1198,10 +1199,7 @@ describe("RuntimeManager", () => {
     });
     const managerInternals =
       manager as unknown as RuntimeManagerProviderMaintenanceInternals;
-    vi.spyOn(
-      managerInternals,
-      "createProviderMaintenanceRuntime",
-    )
+    vi.spyOn(managerInternals, "createProviderMaintenanceRuntime")
       .mockImplementationOnce(() => staleCreation.promise)
       .mockImplementationOnce(async () => currentRuntime);
 

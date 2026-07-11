@@ -8,13 +8,19 @@ import {
   setExperiments,
   type DbConnection,
 } from "@bb/db";
-import { defaultExperiments, encodeClientTurnRequestIdNumber } from "@bb/domain";
+import {
+  defaultExperiments,
+  encodeClientTurnRequestIdNumber,
+} from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
-import { resolveInjectedSkillSources } from "../../../src/services/skills/injected-skills.js";
+import {
+  SkillTreeRegistry,
+  resolveInjectedSkillSources,
+} from "../../../src/services/skills/injected-skills.js";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
 import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
 import { textInput } from "../../helpers/prompt-input.js";
@@ -79,7 +85,10 @@ async function writePlugin(
     options.serverSource ?? "export default function plugin() {}",
   );
   for (const skillName of options.skillNames ?? []) {
-    await writeSkill(join(rootDir, options.skillsDirName ?? "skills"), skillName);
+    await writeSkill(
+      join(rootDir, options.skillsDirName ?? "skills"),
+      skillName,
+    );
   }
   return rootDir;
 }
@@ -127,27 +136,41 @@ describe("plugin skills tier", () => {
     await writeSkill(builtinRoot, "alpha"); // loses to the plugin copy
     await writeSkill(builtinRoot, "builtin-only");
     const dataDir = join(workDir, "data");
-    const dataDirBeta = await writeSkill(join(dataDir, "skills"), "beta"); // beats the plugin copy
+    await writeSkill(join(dataDir, "skills"), "beta"); // beats the plugin copy
     const projectRoot = join(workDir, "project-skills");
     const projectGamma = await writeSkill(projectRoot, "gamma"); // beats the plugin copy
 
+    const skillTreeRegistry = new SkillTreeRegistry();
     const sources = resolveInjectedSkillSources(testLogger, {
       builtinSkillsRootPath: builtinRoot,
       dataDir,
       pluginSkillsRootPaths: service.listSkillsRootPaths(),
       projectSkillsRootPath: projectRoot,
+      skillTreeRegistry,
     });
     const byName = new Map(sources.map((source) => [source.name, source]));
 
-    expect(byName.get("alpha")?.sourceRootPath).toBe(
-      join(rootDir, "skills", "alpha"),
-    );
-    expect(byName.get("beta")?.sourceRootPath).toBe(dataDirBeta);
-    expect(byName.get("gamma")?.sourceRootPath).toBe(projectGamma);
+    const alpha = byName.get("alpha");
+    const beta = byName.get("beta");
+    const builtinOnly = byName.get("builtin-only");
+    expect(alpha?.kind).toBe("tree");
+    expect(beta?.kind).toBe("tree");
+    expect(builtinOnly?.kind).toBe("tree");
+    if (
+      alpha?.kind !== "tree" ||
+      beta?.kind !== "tree" ||
+      builtinOnly?.kind !== "tree"
+    ) {
+      throw new Error("Expected server-owned tree sources");
+    }
+    expect(alpha.sourceType).toBe("data-dir");
+    expect(beta.sourceType).toBe("data-dir");
+    expect(byName.get("gamma")).toMatchObject({
+      kind: "workspace-path",
+      sourceRootPath: projectGamma,
+    });
     expect(byName.get("gamma")?.sourceType).toBe("project");
-    expect(byName.get("builtin-only")?.sourceRootPath).toBe(
-      join(builtinRoot, "builtin-only"),
-    );
+    expect(builtinOnly.sourceType).toBe("builtin");
     // No duplicates: each name resolved to exactly one source.
     expect(sources).toHaveLength(byName.size);
   });
@@ -166,6 +189,7 @@ describe("plugin skills tier", () => {
       builtinSkillsRootPath: join(workDir, "no-builtins"),
       dataDir: join(workDir, "data"),
       pluginSkillsRootPaths: service.listSkillsRootPaths(),
+      skillTreeRegistry: new SkillTreeRegistry(),
     });
     expect(sources.map((source) => source.name)).toEqual(["relocated-skill"]);
 
@@ -185,6 +209,7 @@ describe("plugin skills tier", () => {
         builtinSkillsRootPath: join(workDir, "no-builtins"),
         dataDir: join(workDir, "data"),
         pluginSkillsRootPaths: service.listSkillsRootPaths(),
+        skillTreeRegistry: new SkillTreeRegistry(),
       }).map((source) => source.name);
 
     expect(resolve()).toEqual(["first-skill"]);
@@ -258,8 +283,9 @@ describe("plugin agent contributions reach thread runtime config", () => {
     const command = await buildCommand(1);
     expect(command.injectedSkillSources).toContainEqual(
       expect.objectContaining({
+        kind: "tree",
         name: "ctx-skill",
-        sourceRootPath: join(rootDir, "skills", "ctx-skill"),
+        entryPath: "SKILL.md",
       }),
     );
     // A skill added after install lands on the next turn after reload.

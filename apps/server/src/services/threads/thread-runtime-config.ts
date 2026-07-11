@@ -186,6 +186,7 @@ export async function resolveThreadRuntimeCommandConfig(
     // reloaded plugin's skills apply on the next turn without a restart.
     pluginSkillsRootPaths: getPluginSkillsRootPaths(),
     projectSkillsRootPath: path.join(workspacePath, ".bb", "skills"),
+    skillTreeRegistry: deps.skillTreeRegistry,
   });
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,

@@ -131,11 +131,11 @@ describe("hero plugin: agent-enrichment", () => {
       ],
       builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
       dataDir: harness.config.dataDir,
+      skillTreeRegistry: harness.deps.skillTreeRegistry,
     });
     expect(
-      sources.find((source) => source.name === "plugin-commands")
-        ?.skillFilePath,
-    ).toBe(skillFile);
+      sources.find((source) => source.name === "plugin-commands"),
+    ).toMatchObject({ kind: "tree", entryPath: "SKILL.md" });
   });
 
   it("auto-imports its skills/ directory through the plugin skills tier", () => {
@@ -148,13 +148,12 @@ describe("hero plugin: agent-enrichment", () => {
       builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
       dataDir: harness.config.dataDir,
       pluginSkillsRootPaths,
+      skillTreeRegistry: harness.deps.skillTreeRegistry,
     });
     const skill = sources.find((source) => source.name === "repo-conventions");
     expect(skill).toBeDefined();
     expect(skill?.description).toContain("Conventions");
-    expect(skill?.sourceRootPath).toBe(
-      join(EXAMPLES_DIR, "agent-enrichment", "skills", "repo-conventions"),
-    );
+    expect(skill).toMatchObject({ kind: "tree", entryPath: "SKILL.md" });
   });
 });
 
@@ -315,9 +314,7 @@ describe("hero plugin: slack-bot", () => {
 
       // thread.idle → chat.postMessage into the originating Slack thread.
       await vi.waitFor(() => expect(slackCalls).toHaveLength(1));
-      expect(slackCalls[0]?.url).toBe(
-        "https://slack.com/api/chat.postMessage",
-      );
+      expect(slackCalls[0]?.url).toBe("https://slack.com/api/chat.postMessage");
       expect(slackCalls[0]?.body).toEqual({
         channel: "C0GENERAL",
         thread_ts: "1720000000.000100",

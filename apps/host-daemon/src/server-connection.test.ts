@@ -72,6 +72,7 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
   const serverClient = {
     openSession,
     fetchProjectAttachment: unused,
+    fetchSkillTree: unused,
     postEvents: unused,
     callTool: unused,
     registerInteractiveRequest: unused,
@@ -203,9 +204,10 @@ describe("ServerConnection", () => {
   });
 
   it("deduplicates inactive-session invalidation and reconnects only the current session", async () => {
-    const { connection, logger, setSession, webSocket } = createConnectionFixture({
-      autoReconnect: false,
-    });
+    const { connection, logger, setSession, webSocket } =
+      createConnectionFixture({
+        autoReconnect: false,
+      });
     try {
       await connection.start();
       const socket = webSocket.sockets[0];

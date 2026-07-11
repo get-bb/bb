@@ -15,6 +15,7 @@ import type { TerminalSessionLifecycle } from "./services/terminals/terminal-ses
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { NotificationHub } from "./ws/hub.js";
 import type { WatchInterestCoordinator } from "./ws/watch-interests.js";
+import type { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
@@ -46,6 +47,7 @@ export interface AppDeps {
   logger: ServerLogger;
   machineAuth: MachineAuthService;
   pendingInteractions: PendingInteractionLifecycle;
+  skillTreeRegistry: SkillTreeRegistry;
   telemetry: TelemetryService;
   terminalSessions: TerminalSessionLifecycle;
   watchInterests: WatchInterestCoordinator;
@@ -58,7 +60,13 @@ export interface ServerAppDeps extends AppDeps {
 
 export type LifecycleDeps = Pick<
   AppDeps,
-  "config" | "db" | "hub" | "lifecycleDedupers" | "machineAuth" | "telemetry"
+  | "config"
+  | "db"
+  | "hub"
+  | "lifecycleDedupers"
+  | "machineAuth"
+  | "skillTreeRegistry"
+  | "telemetry"
 >;
 
 export type WorkSessionDeps = LifecycleDeps;

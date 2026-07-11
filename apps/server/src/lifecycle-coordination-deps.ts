@@ -8,6 +8,7 @@ export type LifecycleCoordinationDeps = Pick<
   | "lifecycleDedupers"
   | "logger"
   | "machineAuth"
+  | "skillTreeRegistry"
   | "telemetry"
 >;
 

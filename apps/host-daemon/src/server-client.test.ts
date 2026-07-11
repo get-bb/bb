@@ -119,6 +119,38 @@ describe("createServerClient", () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
+  it("fetches and parses a skill tree over the authenticated internal route", async () => {
+    const treeHash = "a".repeat(64);
+    const fetchFn = vi.fn<FetchFn>(async (input, init) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe(`/internal/skills/tree/${treeHash}`);
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer host-key",
+      );
+      return new Response(
+        JSON.stringify({
+          treeHash,
+          entries: [
+            { path: "SKILL.md", mode: 0o644, contentBase64: "dHJlZQ==" },
+          ],
+        }),
+        { status: 200 },
+      );
+    });
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      serverUrl: "https://bb.example.test",
+    });
+
+    await expect(client.fetchSkillTree(treeHash)).resolves.toEqual({
+      treeHash,
+      entries: [{ path: "SKILL.md", mode: 0o644, contentBase64: "dHJlZQ==" }],
+    });
+  });
+
   it("rejects project attachment responses with unexpected byte length", async () => {
     const fetchFn = vi.fn<FetchFn>(
       async () =>

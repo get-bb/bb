@@ -69,7 +69,8 @@ async function writeInjectedSkillSource(
     "utf8",
   );
   return {
-    sourceType: "data-dir",
+    kind: "workspace-path",
+    sourceType: "project",
     name: "release-notes",
     description: "Use release-notes when command dispatch tests run.",
     sourceRootPath,

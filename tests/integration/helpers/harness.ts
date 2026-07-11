@@ -29,6 +29,7 @@ import {
   copyBuiltinSkills,
   resolveBuiltinSkillsRootPath,
 } from "../../../apps/server/src/services/skills/builtin-skills-copy.js";
+import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
@@ -255,6 +256,7 @@ async function startIntegrationServer(
     logger: testLogger,
   });
   const telemetry = createNoopTelemetryService();
+  const skillTreeRegistry = new SkillTreeRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -262,6 +264,7 @@ async function startIntegrationServer(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth,
+    skillTreeRegistry,
     telemetry,
     terminalSessions,
   });
@@ -280,6 +283,7 @@ async function startIntegrationServer(
     logger: testLogger,
     machineAuth,
     pendingInteractions,
+    skillTreeRegistry,
     telemetry,
     terminalSessions,
     watchInterests,
@@ -491,9 +495,7 @@ export async function createIntegrationHarness(
     await currentResources.daemonApp.runtimeManager
       .shutdownAll()
       .catch(() => undefined);
-    await currentResources.daemonApp.eventSink
-      .dispose()
-      .catch(() => undefined);
+    await currentResources.daemonApp.eventSink.dispose().catch(() => undefined);
     await currentResources.releaseLock().catch(() => undefined);
   }
 
