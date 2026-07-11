@@ -28,16 +28,25 @@ export function useHosts(options?: QueryOptions) {
 }
 
 /**
- * The single host the server runs work on. bb is single-host today; if a stale
- * disconnected host lingers alongside a live one, the connected host wins.
- * Returns null while loading or before any host has ever connected.
+ * The host bb defaults work to: the first connected host, falling back to a
+ * stale disconnected one so the UI can still name it. Null before any host
+ * has ever connected.
+ */
+export function selectPrimaryHost(
+  hosts: readonly Host[] | undefined,
+): Host | null {
+  if (!hosts || hosts.length === 0) return null;
+  return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
+}
+
+/**
+ * The single host the server runs work on by default; if a stale disconnected
+ * host lingers alongside a live one, the connected host wins. Returns null
+ * while loading or before any host has ever connected.
  */
 export function usePrimaryHost(options?: QueryOptions): Host | null {
   const { data: hosts } = useHosts(options);
-  return useMemo(() => {
-    if (!hosts || hosts.length === 0) return null;
-    return hosts.find((host) => host.status === "connected") ?? hosts[0];
-  }, [hosts]);
+  return useMemo(() => selectPrimaryHost(hosts), [hosts]);
 }
 
 /**

@@ -74,7 +74,8 @@ import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { useHosts } from "@/hooks/queries/host-queries";
+import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import {
   useCloseThreadTerminal,
@@ -381,6 +382,10 @@ export interface ResolveHostFilePreviewLinkRootPathArgs {
 
 function buildHostConnectionNotice(
   thread: ThreadWithRuntime,
+  /** Machine name to blame explicitly. Only passed when more than one
+   * machine exists (multiMachine experiment) — a bare "Host" is unambiguous
+   * on a single-machine setup. */
+  hostName: string | null,
 ): HostConnectionNotice | null {
   const displayStatus = thread.runtime.displayStatus;
   if (
@@ -390,11 +395,12 @@ function buildHostConnectionNotice(
     return null;
   }
 
+  const subject = hostName ?? "Host";
   return {
     label:
       displayStatus === "host-reconnecting"
-        ? "Host disconnected. Waiting for reconnection..."
-        : "Host disconnected",
+        ? `${subject} disconnected. Waiting for reconnection...`
+        : `${subject} disconnected`,
     tone: displayStatus === "host-reconnecting" ? "pending" : "error",
   };
 }
@@ -814,10 +820,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     terminalsListQuery.data,
     updateFixedPanelTabsState,
   ]);
-  const hostConnectionNotice = useMemo(
-    () => (thread ? buildHostConnectionNotice(thread) : null),
-    [thread],
-  );
   const environmentQuery = useEnvironment(thread?.environmentId, {
     enabled: hasThreadDetailBootstrapSettled,
     staleTime: 5_000,
@@ -837,6 +839,25 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           .map((host) => host.id),
       ),
     [hostsQuery.data],
+  );
+  const systemConfigQuery = useSystemConfig();
+  const multiMachineEnabled =
+    systemConfigQuery.data?.experiments.multiMachine === true;
+  // Name the thread's machine on multi-machine setups so offline notices and
+  // metadata say which computer is involved instead of a generic "host".
+  const threadEnvironmentHost = useMemo(() => {
+    const hosts = hostsQuery.data ?? [];
+    if (!multiMachineEnabled || hosts.length <= 1) return null;
+    const environmentHostId = environment?.hostId;
+    if (!environmentHostId) return null;
+    return hosts.find((host) => host.id === environmentHostId) ?? null;
+  }, [environment?.hostId, hostsQuery.data, multiMachineEnabled]);
+  const hostConnectionNotice = useMemo(
+    () =>
+      thread
+        ? buildHostConnectionNotice(thread, threadEnvironmentHost?.name ?? null)
+        : null,
+    [thread, threadEnvironmentHost],
   );
   const forkThreadFromMessage = useForkThreadFromMessage({
     sourceThread: thread ?? null,
@@ -1649,8 +1670,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const environmentDisplayHostContext = useMemo<EnvironmentDisplayHostContext>(
     () => ({
       locality: threadEnvironmentIsLocal ? "local" : "remote",
+      identity: threadEnvironmentHost
+        ? {
+            name: threadEnvironmentHost.name,
+            connected: threadEnvironmentHost.status === "connected",
+          }
+        : null,
     }),
-    [threadEnvironmentIsLocal],
+    [threadEnvironmentIsLocal, threadEnvironmentHost],
   );
   const workspacePreviewRootPath = resolveThreadWorkspacePreviewRootPath({
     environment,
@@ -2236,6 +2263,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         host: environmentDisplayHostContext,
       })
     : undefined;
+  // The follow-up composer chip names the machine when the thread doesn't run
+  // on the primary host ("Mac Studio · Worktree") — mirrors the new-thread
+  // composer chip.
+  const environmentMachinePrefix =
+    threadEnvironmentHost !== null &&
+    threadEnvironmentHost.id !== selectPrimaryHost(hostsQuery.data)?.id
+      ? `${threadEnvironmentHost.name} · `
+      : "";
   const threadEnvironmentIcon = threadEnvironmentDisplay
     ? getEnvironmentWorkspaceLabelIconName(
         threadEnvironmentDisplay.workspaceDisplayKind,
@@ -2339,9 +2374,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
-      environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
+      environmentCompactLabel={
+        threadEnvironmentDisplay
+          ? `${environmentMachinePrefix}${threadEnvironmentDisplay.compactModeLabel}`
+          : undefined
+      }
       environmentIcon={threadEnvironmentIcon ?? undefined}
-      environmentLabel={threadEnvironmentDisplay?.modeLabel}
+      environmentLabel={
+        threadEnvironmentDisplay
+          ? `${environmentMachinePrefix}${threadEnvironmentDisplay.modeLabel}`
+          : undefined
+      }
       environmentGoneStatus={threadEnvironmentGoneStatus}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}

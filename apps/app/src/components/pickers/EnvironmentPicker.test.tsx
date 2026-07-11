@@ -63,3 +63,137 @@ describe("EnvironmentPickerUI", () => {
     ).toBeTruthy();
   });
 });
+
+describe("EnvironmentPickerUI multi-machine menu", () => {
+  const HOUR_MS = 60 * 60 * 1000;
+
+  const thisMachine: Host = {
+    ...host,
+    id: "host_local",
+    name: "MacBook Pro",
+  };
+  const studio: Host = {
+    ...host,
+    id: "host_studio",
+    name: "Mac Studio",
+  };
+  const devVm: Host = {
+    ...host,
+    id: "host_vm",
+    name: "dev-vm",
+    status: "disconnected",
+    lastSeenAt: Date.now() - 2 * HOUR_MS,
+  };
+
+  const machineSources: readonly ProjectSource[] = [
+    { ...sources[0]!, id: "src_local", hostId: thisMachine.id, path: "~/bb" },
+    { ...sources[0]!, id: "src_studio", hostId: studio.id, path: "~/code/bb" },
+  ];
+
+  function renderMachineMenu(overrides?: {
+    value?: string;
+    onChange?: (value: string) => void;
+  }) {
+    render(
+      <EnvironmentPickerUI
+        value={overrides?.value ?? `host:${thisMachine.id}:local`}
+        onChange={overrides?.onChange ?? vi.fn()}
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, studio, devVm],
+          localDaemonHostId: thisMachine.id,
+        }}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+  }
+
+  it("groups options per machine and encodes values with each machine's host id", () => {
+    const onChange = vi.fn();
+    renderMachineMenu({ onChange });
+
+    expect(screen.getByText("MacBook Pro")).toBeTruthy();
+    expect(screen.getByText("this machine")).toBeTruthy();
+    expect(screen.getByText("Mac Studio")).toBeTruthy();
+
+    // dev-vm has no source, so only the two set-up machines offer worktrees.
+    const worktreeItems = screen.getAllByRole("menuitem", {
+      name: /New worktree/u,
+    });
+    expect(worktreeItems).toHaveLength(2);
+    // Section order is this-machine first, then server order.
+    fireEvent.click(worktreeItems[1]!);
+    expect(onChange).toHaveBeenCalledWith(`host:${studio.id}:worktree`);
+  });
+
+  it("disables an offline machine's options and shows when it was last seen", () => {
+    const onChange = vi.fn();
+    renderMachineMenu({ onChange });
+
+    expect(screen.getByText(/last seen 2h ago/u)).toBeTruthy();
+    // dev-vm has no source, so its section renders the not-set-up placeholder.
+    const placeholder = screen.getByRole("menuitem", {
+      name: "Not set up for this project",
+    });
+    expect(placeholder.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("disables options on an offline machine that has a source", () => {
+    const offlineStudio: Host = { ...studio, status: "disconnected" };
+    render(
+      <EnvironmentPickerUI
+        value={`host:${thisMachine.id}:local`}
+        onChange={vi.fn()}
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, offlineStudio],
+          localDaemonHostId: thisMachine.id,
+        }}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    const checkoutItem = screen.getByRole("menuitem", {
+      name: /Work in checkout/u,
+    });
+    expect(checkoutItem.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("names a non-primary machine in the trigger label", () => {
+    renderMachineMenu({ value: `host:${studio.id}:worktree` });
+
+    expect(screen.getByText("Mac Studio · New worktree")).toBeTruthy();
+  });
+
+  it("keeps the single-host menu when only one host exists", () => {
+    render(
+      <EnvironmentPickerUI
+        value={`host:${thisMachine.id}:local`}
+        onChange={vi.fn()}
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{ hosts: [thisMachine], localDaemonHostId: thisMachine.id }}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    expect(
+      screen.getByRole("menuitem", { name: /Work locally/u }),
+    ).toBeTruthy();
+    expect(screen.queryByText("MacBook Pro")).toBeNull();
+  });
+});

@@ -220,10 +220,12 @@ function makeEnvironmentSummary({
 
 const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   locality: "local",
+  identity: null,
 };
 
 const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   locality: "remote",
+  identity: null,
 };
 
 const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({

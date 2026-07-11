@@ -88,6 +88,7 @@ import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import {
   useHostProviderCliStatus,
+  useSystemConfig,
 } from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
@@ -401,6 +402,10 @@ interface BuildMobileRecentThreadsArgs {
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   environmentSelectionValue: string;
   isProjectless: boolean;
+  /** Ids of all hosts known to the server. A persisted selection may only
+   * keep a non-primary host (multiMachine experiment) when it's still here. */
+  knownHostIds: ReadonlySet<string>;
+  multiMachineEnabled: boolean;
   primaryHostId: string | null;
   projectSources: readonly ProjectSource[];
   reuseThreadOptions: readonly ReuseThreadOption[];
@@ -594,6 +599,9 @@ function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
 
 function buildReuseThreadOptions(
   threads: readonly ThreadListEntry[],
+  /** Host id → machine name, provided only when worktree rows should carry a
+   * machine hint (multiMachine experiment with more than one host). */
+  hostNameById: ReadonlyMap<string, string> | null = null,
 ): ReuseThreadOption[] {
   // One option per worktree env. Threads within each env are sorted
   // most-recently-active first so the picker preview surfaces the threads
@@ -603,6 +611,7 @@ function buildReuseThreadOptions(
   const threadsByEnvironmentId = new Map<string, ThreadListEntry[]>();
   const branchByEnvironmentId = new Map<string, string | null>();
   const nameByEnvironmentId = new Map<string, string | null>();
+  const hostIdByEnvironmentId = new Map<string, string | null>();
   for (const thread of threads) {
     if (!isWorktreeWithEnv(thread)) continue;
     if (thread.environmentId === null) continue;
@@ -615,6 +624,7 @@ function buildReuseThreadOptions(
         thread.environmentBranchName,
       );
       nameByEnvironmentId.set(thread.environmentId, thread.environmentName);
+      hostIdByEnvironmentId.set(thread.environmentId, thread.environmentHostId);
     }
     bucket.push(thread);
   }
@@ -623,10 +633,15 @@ function buildReuseThreadOptions(
     bucket.sort(
       (left, right) => right.latestAttentionAt - left.latestAttentionAt,
     );
+    const hostId = hostIdByEnvironmentId.get(environmentId) ?? null;
     options.push({
       environmentId,
       branchName: branchByEnvironmentId.get(environmentId) ?? null,
       name: nameByEnvironmentId.get(environmentId) ?? null,
+      hostName:
+        hostNameById !== null && hostId !== null
+          ? (hostNameById.get(hostId) ?? null)
+          : null,
       threads: bucket.map((thread) => ({
         id: thread.id,
         title: getThreadDisplayTitle(thread),
@@ -653,6 +668,8 @@ export function isProjectSourceWorktreeUnavailable(
 export function resolveRootComposeEffectiveEnvironmentValue({
   environmentSelectionValue,
   isProjectless,
+  knownHostIds,
+  multiMachineEnabled,
   primaryHostId,
   projectSources,
   reuseThreadOptions,
@@ -663,6 +680,20 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   }
 
   const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
+
+  // With the multiMachine experiment on, a host selection survives as long as
+  // that machine still exists and has this project. Otherwise it falls through
+  // to the primary-host rewrite below, exactly as before the experiment.
+  if (
+    multiMachineEnabled &&
+    !isProjectless &&
+    parsedSelection?.type === "host" &&
+    knownHostIds.has(parsedSelection.hostId) &&
+    findLocalPathProjectSourceForHost(projectSources, parsedSelection.hostId) !==
+      undefined
+  ) {
+    return environmentSelectionValue;
+  }
   const canUseHostWorkspace =
     isProjectless ||
     findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
@@ -929,6 +960,20 @@ export function RootComposeView(props: RootComposeViewProps) {
     return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
   }, [hostsQuery.data]);
   const primaryHostId = primaryHost?.id ?? null;
+  const systemConfigQuery = useSystemConfig();
+  const multiMachineEnabled =
+    systemConfigQuery.data?.experiments.multiMachine === true;
+  const knownHostIds = useMemo(
+    () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
+    [hostsQuery.data],
+  );
+  // Worktree rows only carry a machine hint once there's more than one
+  // machine to tell apart (multiMachine experiment).
+  const worktreeHostNameById = useMemo(() => {
+    const hosts = hostsQuery.data ?? [];
+    if (!multiMachineEnabled || hosts.length <= 1) return null;
+    return new Map(hosts.map((host) => [host.id, host.name]));
+  }, [hostsQuery.data, multiMachineEnabled]);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   // Plugin useComposer() writes (from nav panels / homepage sections) target
@@ -1269,8 +1314,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     { enabled: Boolean(projectId) },
   );
   const reuseThreadOptions = useMemo(
-    () => buildReuseThreadOptions(threadsQuery.data ?? []),
-    [threadsQuery.data],
+    () => buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
+    [threadsQuery.data, worktreeHostNameById],
   );
   const mobileRecentThreads = useMemo(
     () =>
@@ -1287,6 +1332,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       resolveRootComposeEffectiveEnvironmentValue({
         environmentSelectionValue,
         isProjectless,
+        knownHostIds,
+        multiMachineEnabled,
         primaryHostId,
         projectSources,
         reuseThreadOptions,
@@ -1295,6 +1342,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     [
       environmentSelectionValue,
       isProjectless,
+      knownHostIds,
+      multiMachineEnabled,
       primaryHostId,
       projectSources,
       reuseThreadOptions,

@@ -33,6 +33,7 @@ const noop = () => {};
 
 const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   locality: "remote",
+  identity: null,
 };
 
 function RowStage({ children }: { children: ReactNode }) {

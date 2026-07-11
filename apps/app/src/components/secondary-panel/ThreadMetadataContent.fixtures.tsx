@@ -22,6 +22,7 @@ const noop = () => {};
 
 export const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   locality: "local",
+  identity: null,
 };
 
 export function PanelStage({ children }: { children: ReactNode }) {

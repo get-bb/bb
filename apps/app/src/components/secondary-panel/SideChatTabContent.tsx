@@ -1286,6 +1286,7 @@ export function SideChatTabContent({
       locality: isLocalDaemonHost(sourceEnvironment.hostId)
         ? "local"
         : "remote",
+      identity: null,
     };
     const display = formatEnvironmentDisplay({
       environment: sourceEnvironment,

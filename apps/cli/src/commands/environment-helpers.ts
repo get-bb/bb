@@ -22,6 +22,7 @@ export async function fetchEnvironmentInfo(args: {
         environment: env,
         host: {
           locality: "local",
+          identity: null,
         },
       }),
       hostId: env.hostId,

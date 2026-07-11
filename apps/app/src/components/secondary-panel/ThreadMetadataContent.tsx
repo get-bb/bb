@@ -309,6 +309,19 @@ export function EnvironmentRow({
         <span className="min-w-0 truncate" title={display.modeLabel}>
           {display.compactModeLabel}
         </span>
+        {environmentDisplayHost.identity ? (
+          <span
+            className="min-w-0 shrink-0 truncate text-muted-foreground"
+            title={`On ${environmentDisplayHost.identity.name} (${
+              environmentDisplayHost.identity.connected
+                ? "connected"
+                : "offline"
+            })`}
+          >
+            · {environmentDisplayHost.identity.name}
+            {environmentDisplayHost.identity.connected ? "" : " (offline)"}
+          </span>
+        ) : null}
         {showCreateThreadButton ? (
           <button
             type="button"

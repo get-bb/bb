@@ -7,10 +7,12 @@ import {
 
 const localHostContext: EnvironmentDisplayHostContext = {
   locality: "local",
+  identity: null,
 };
 
 const remoteHostContext: EnvironmentDisplayHostContext = {
   locality: "remote",
+  identity: null,
 };
 
 function makeEnvironment(overrides?: Partial<Environment>): Environment {

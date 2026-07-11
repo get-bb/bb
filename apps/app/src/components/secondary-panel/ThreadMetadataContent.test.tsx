@@ -4,7 +4,7 @@ import type { Environment, Thread } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { EnvironmentRow } from "./ThreadMetadataContent";
 
-const localHost = { locality: "local" } as const;
+const localHost = { locality: "local", identity: null } as const;
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {

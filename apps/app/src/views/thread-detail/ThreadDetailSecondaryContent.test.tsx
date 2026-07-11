@@ -281,7 +281,7 @@ function createProps({
       canAssignToParent: false,
       canTakeOverThread: false,
       environment: null,
-      environmentDisplayHost: { locality: "local" },
+      environmentDisplayHost: { locality: "local", identity: null },
       isLoadingMergeBaseBranchOptions: false,
       mergeBaseBranchOptions: undefined,
       onAssignParent: noop,

@@ -3,6 +3,7 @@ export { assertNever } from "./assert-never.js";
 export { formatEnvironmentDisplay } from "./environment-display.js";
 export type {
   EnvironmentDisplayHostContext,
+  EnvironmentDisplayHostIdentity,
   EnvironmentDisplayHostLocality,
   EnvironmentDisplayInfo,
 } from "./environment-display.js";

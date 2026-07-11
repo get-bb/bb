@@ -33,6 +33,9 @@ export interface ReuseThreadOption {
   environmentId: string;
   branchName: string | null;
   name: string | null;
+  /** Name of the machine this worktree lives on. Only set when more than one
+   * machine exists (multiMachine experiment) — omitted, no hint renders. */
+  hostName?: string | null;
   /** Threads in this worktree, ordered most-recently-active first. */
   threads: ReadonlyArray<{ id: string; title: string }>;
 }
@@ -177,6 +180,11 @@ function WorktreeMenuItem({
             </span>
           ) : null}
         </span>
+        {option.hostName ? (
+          <span className="max-w-24 shrink-0 truncate text-xs text-muted-foreground">
+            {option.hostName}
+          </span>
+        ) : null}
         <Icon
           name="Check"
           className={cn(

@@ -3,8 +3,18 @@ import { resolveEnvironmentWorkspaceDisplayKind } from "@bb/domain";
 
 export type EnvironmentDisplayHostLocality = "local" | "remote";
 
+/** Identity of the machine an environment lives on, for multi-machine
+ * surfaces that name the machine (thread metadata, offline notices). */
+export interface EnvironmentDisplayHostIdentity {
+  name: string;
+  connected: boolean;
+}
+
 export interface EnvironmentDisplayHostContext {
   locality: EnvironmentDisplayHostLocality;
+  /** Null when the machine shouldn't be named — single-host setups or the
+   * multiMachine experiment being off. */
+  identity: EnvironmentDisplayHostIdentity | null;
 }
 
 export interface EnvironmentDisplayInfo {

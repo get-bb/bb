@@ -351,6 +351,7 @@ export function makeProject(
     id: PROJECT_IDS.bb,
     kind: "standard",
     name: PROJECT_NAMES.bb,
+    gitRemoteUrl: null,
     sources: [],
     createdAt: 1,
     updatedAt: 2,
