@@ -215,6 +215,7 @@ export interface InvalidCommand {
 }
 
 export interface LauncherCliOptions {
+  autoUpdate?: boolean;
   dataDir?: string;
   enrollKey?: string;
   help: boolean;
@@ -637,6 +638,7 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     allowPositionals: true,
     args,
     options: {
+      "auto-update": { type: "boolean" },
       "data-dir": { type: "string" },
       "enroll-key": { type: "string" },
       "host-daemon-port": { type: "string" },
@@ -655,6 +657,9 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     help: readBooleanOption(parsed.values.help),
     json: readBooleanOption(parsed.values.json),
   };
+  if (readBooleanOption(parsed.values["auto-update"])) {
+    options.autoUpdate = true;
+  }
   const dataDir = readStringOption(parsed.values["data-dir"]);
   const enrollKey = readStringOption(parsed.values["enroll-key"]);
   const hostDaemonPort = readStringOption(parsed.values["host-daemon-port"]);
@@ -721,6 +726,9 @@ function createEnvFromOptions(
   const env = { ...args.env };
   if (args.options.dataDir !== undefined) {
     env.BB_DATA_DIR = args.options.dataDir;
+  }
+  if (args.options.autoUpdate === true) {
+    env.BB_HOST_DAEMON_AUTO_UPDATE = "1";
   }
   if (args.options.hostDaemonPort !== undefined) {
     env.BB_HOST_DAEMON_PORT = args.options.hostDaemonPort;
@@ -2475,8 +2483,8 @@ export async function runBbHostDaemon(
     process.stdout.write(`bb-host-daemon
 
 Usage:
-  bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--machine-credential <credential>]
+  bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
+  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--machine-credential <credential>] [--auto-update]
 `);
     return;
   }
@@ -2533,8 +2541,8 @@ Usage:
   bb-app config refresh
   bb-app env set <key> <value>
   bb-app client ssh-target set <server-origin> <ssh-target>
-  bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--machine-credential <credential>]
+  bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
+  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--machine-credential <credential>] [--auto-update]
 
 CLI:
   npx --package bb-app bb <command>

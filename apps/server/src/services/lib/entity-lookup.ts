@@ -73,6 +73,7 @@ function toHostRecord(row: HostRow, status: Host["status"]): Host {
     type: row.type,
     status,
     lastSeenAt: row.lastSeenAt,
+    lastRejectedProtocolVersion: row.lastRejectedProtocolVersion,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

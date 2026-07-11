@@ -10,6 +10,18 @@ Machine commands
 A machine is a host daemon that can run thread environments. Enable the
 Multi-machine experiment and add remote machines under Settings → Machines.
 
+The Settings installer first uses the exact `bb-app` tarball served by that bb
+server at `/install/bb-app.tgz`; only servers that do not implement the route
+(HTTP 404) fall back to npm. Installed launchd/systemd services pass
+`--auto-update`. On a newer server protocol mismatch, the daemon downloads that
+same artifact, installs it globally with npm, and exits for the service manager
+to restart. Attempts are persisted and limited to once per 15 minutes. A daemon
+never auto-downgrades to an older server protocol.
+
+To opt out, remove `--auto-update` from the launchd plist or systemd user unit
+and reload that service. Foreground/manual `bb-app host-daemon` runs leave it off
+unless you pass `--auto-update` explicitly.
+
   bb machine list                         List machines with ID, connection
                                           status, and relative last-seen time
     --json                                Print the raw host list

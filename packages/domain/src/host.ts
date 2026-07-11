@@ -13,6 +13,7 @@ export const hostSchema = z.object({
   type: hostTypeSchema,
   status: hostStatusSchema,
   lastSeenAt: z.number().nullable(),
+  lastRejectedProtocolVersion: z.number().int().positive().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

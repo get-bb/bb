@@ -49,6 +49,7 @@ import {
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import { createProtocolSelfUpdater } from "./protocol-self-update.js";
 import {
   type HostType,
   type ToolCallRequest,
@@ -115,6 +116,8 @@ export interface CreateHostDaemonAppOptions {
   devAppPort?: number;
   logger: HostDaemonLogger;
   machineCredential?: string;
+  autoUpdate?: boolean;
+  installUpdateTarball?: (tarballPath: string) => Promise<void>;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -732,6 +735,7 @@ export async function createHostDaemonApp(
     },
   });
 
+  let requestDaemonRestart = (): void => undefined;
   const connection = new ServerConnection({
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
@@ -743,6 +747,15 @@ export async function createHostDaemonApp(
     logger: options.logger,
     machineCredential: options.machineCredential,
     serverClient,
+    protocolSelfUpdater: createProtocolSelfUpdater({
+      dataDir: options.dataDir,
+      enabled: options.autoUpdate ?? false,
+      fetchFn: options.fetchFn,
+      installTarball: options.installUpdateTarball,
+      logger: options.logger,
+      serverUrl: options.serverUrl,
+    }),
+    onSelfUpdateInstalled: () => requestDaemonRestart(),
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
@@ -863,6 +876,11 @@ export async function createHostDaemonApp(
       await connection.start();
     },
   });
+  requestDaemonRestart = () => {
+    void daemon.shutdown("self-update").catch((error) => {
+      options.logger.error({ err: error }, "Self-update shutdown failed");
+    });
+  };
   connection.setSessionCloseHandler((reason) =>
     daemon.shutdown(`session-close:${reason}`),
   );

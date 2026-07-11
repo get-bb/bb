@@ -50,8 +50,44 @@ case "$(uname -s)" in
     ;;
 esac
 
+bb_app=
+installed_version=
+server_version=
 if command -v bb-app >/dev/null 2>&1; then
   bb_app=$(command -v bb-app)
+  if command -v node >/dev/null 2>&1; then
+    installed_version=$(node -e '
+      const fs = require("node:fs");
+      const path = require("node:path");
+      let current = path.dirname(fs.realpathSync(process.argv[1]));
+      while (current !== path.dirname(current)) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(path.join(current, "package.json"), "utf8"));
+          if (pkg.name === "bb-app" && typeof pkg.version === "string") {
+            process.stdout.write(pkg.version);
+            process.exit(0);
+          }
+        } catch {}
+        current = path.dirname(current);
+      }
+      process.exit(2);
+    ' "$bb_app" 2>/dev/null || true)
+  fi
+  version_response=$(curl -fsSL --connect-timeout 5 --max-time 10 "${server_url%/}/install/version" 2>/dev/null || true)
+  if [ -n "$version_response" ] && command -v node >/dev/null 2>&1; then
+    server_version=$(printf '%s' "$version_response" | node -e '
+      let input = "";
+      process.stdin.on("data", (chunk) => { input += chunk; });
+      process.stdin.on("end", () => {
+        const body = JSON.parse(input);
+        if (typeof body.version !== "string") process.exit(2);
+        process.stdout.write(body.version);
+      });
+    ' 2>/dev/null || true)
+  fi
+fi
+
+if [ -n "$bb_app" ] && { [ -z "$server_version" ] || [ "$installed_version" = "$server_version" ]; }; then
   echo "Using bb-app at $bb_app"
 else
   if ! command -v node >/dev/null 2>&1; then
@@ -71,11 +107,31 @@ else
     echo "bb-app installation requires npm." >&2
     exit 1
   fi
-  echo "bb-app was not found; installing the published npm package globally..."
-  if ! npm install -g bb-app; then
+  package_url="${server_url%/}/install/bb-app.tgz"
+  package_file=$(mktemp "${TMPDIR:-/tmp}/bb-app.XXXXXX.tgz")
+  package_status=$(curl -sS -L -o "$package_file" -w '%{http_code}' "$package_url") || {
+    rm -f "$package_file"
+    echo "Could not download the server's bb-app package from $package_url." >&2
+    exit 1
+  }
+  if [ "$package_status" = 404 ]; then
+    rm -f "$package_file"
+    echo "The server does not provide its bb-app package; falling back to the npm registry..."
+    install_source=bb-app
+  elif [ "$package_status" -ge 200 ] && [ "$package_status" -lt 300 ]; then
+    install_source=$package_file
+    echo "Installing bb-app $server_version from the server..."
+  else
+    rm -f "$package_file"
+    echo "Could not download the server's bb-app package (HTTP $package_status)." >&2
+    exit 1
+  fi
+  if ! npm install -g "$install_source"; then
+    rm -f "$package_file"
     echo "Could not install bb-app globally. Fix npm global-install permissions, then rerun this command." >&2
     exit 1
   fi
+  rm -f "$package_file"
   if ! command -v bb-app >/dev/null 2>&1; then
     echo "npm installed bb-app, but its global bin directory is not on PATH." >&2
     echo "Add npm's global bin directory to PATH, then rerun this command." >&2
@@ -178,6 +234,7 @@ if [ "$already_joined" = no ]; then
   fi
   # shellcheck disable=SC2086 -- machine credential tokens contain no spaces.
   BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
+    --auto-update \
     --join-code "$join_code" \
     --host-id "$host_id" \
     --server-url "$server_url" $machine_args >"$join_log" 2>&1 &
@@ -257,6 +314,7 @@ if [ "$platform" = darwin ]; then
     <string>$escaped_node_bin</string>
     <string>$escaped_bb_app</string>
     <string>host-daemon</string>
+    <string>--auto-update</string>
     <string>--server-url</string>
     <string>$escaped_server</string>
   </array>
@@ -289,7 +347,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon --server-url "$escaped_server"
+ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon --auto-update --server-url "$escaped_server"
 Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always
 RestartSec=2

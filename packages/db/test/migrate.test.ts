@@ -218,6 +218,9 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_schedules").run();
+  db.$client
+    .prepare("ALTER TABLE hosts DROP COLUMN last_rejected_protocol_version")
+    .run();
   dropThreadFolderSchema(db);
   // system_experiments predates thread search, so the table itself isn't
   // rewound — but its plugins, bb_connect, and multi_machine columns are, so

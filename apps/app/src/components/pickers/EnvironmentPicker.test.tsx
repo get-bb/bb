@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Host, ProjectSource } from "@bb/domain";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EnvironmentPickerUI } from "./EnvironmentPicker";
 
@@ -11,6 +12,7 @@ const host: Host = {
   type: "persistent",
   status: "connected",
   lastSeenAt: null,
+  lastRejectedProtocolVersion: null,
   createdAt: 0,
   updatedAt: 0,
 };
@@ -141,6 +143,37 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       name: "Not set up for this project",
     });
     expect(placeholder.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("shows protocol versions instead of plain offline metadata for stale daemons", () => {
+    const staleVm: Host = {
+      ...devVm,
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+    };
+    render(
+      <EnvironmentPickerUI
+        value={`host:${thisMachine.id}:local`}
+        onChange={vi.fn()}
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, staleVm],
+          localDaemonHostId: thisMachine.id,
+        }}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    expect(
+      screen.getByText(
+        `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/last seen 2h ago/u)).toBeNull();
   });
 
   it("disables options on an offline machine that has a source", () => {

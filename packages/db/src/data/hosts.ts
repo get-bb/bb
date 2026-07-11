@@ -16,6 +16,7 @@ export interface UpsertHostInput {
 
 export interface UpdateHostInput {
   destroyedAt?: number | null;
+  lastRejectedProtocolVersion?: number | null;
   name?: string;
 }
 
@@ -71,6 +72,7 @@ export function upsertHost(
             ? input.destroyedAt
             : existing.destroyedAt,
         lastSeenAt: existing.lastSeenAt,
+        lastRejectedProtocolVersion: existing.lastRejectedProtocolVersion,
         updatedAt: now,
       })
       .where(eq(hosts.id, id))
@@ -87,6 +89,7 @@ export function upsertHost(
         type: input.type,
         destroyedAt: input.destroyedAt ?? null,
         lastSeenAt: null,
+        lastRejectedProtocolVersion: null,
         createdAt: now,
         updatedAt: now,
       })
@@ -179,6 +182,9 @@ export function updateHost(
         ? { destroyedAt: input.destroyedAt }
         : {}),
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.lastRejectedProtocolVersion !== undefined
+        ? { lastRejectedProtocolVersion: input.lastRejectedProtocolVersion }
+        : {}),
       updatedAt: now,
     })
     .where(eq(hosts.id, hostId))

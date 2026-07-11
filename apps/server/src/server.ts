@@ -60,6 +60,11 @@ import {
   onTerminalSocketMessage,
   onTerminalSocketOpen,
 } from "./ws/terminal-protocol.js";
+import {
+  createBbAppArtifactService,
+  type BbAppArtifactService,
+} from "./services/install/bb-app-artifact.js";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -96,6 +101,7 @@ function normalizeInternalAuthPath(path: string): string {
 }
 
 interface CreateAppOptions {
+  bbAppArtifactService?: BbAppArtifactService;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
 }
@@ -290,6 +296,13 @@ export function createApp(
   });
   const slowApiRequestLogThresholdMs =
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
+  const bbAppArtifactService =
+    options?.bbAppArtifactService ??
+    createBbAppArtifactService({
+      dataDir: deps.config.dataDir,
+      isDevelopment: deps.config.isDevelopment,
+      serverEntryUrl: import.meta.url,
+    });
 
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
@@ -321,6 +334,24 @@ export function createApp(
       headers: {
         "cache-control": "no-store",
         "content-type": "text/x-shellscript; charset=utf-8",
+      },
+    });
+  });
+  app.get("/install/version", async (context) =>
+    context.json({
+      version: await bbAppArtifactService.getVersion(),
+      protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+    }),
+  );
+  // bb-app is public on npm. A paired tunnel can expose an unpublished build
+  // slightly before release; serving the exact server build is an accepted
+  // tradeoff so remote daemons cannot be stranded by protocol skew.
+  app.get("/install/bb-app.tgz", async () => {
+    const tarball = await readFile(await bbAppArtifactService.getTarballPath());
+    return new Response(tarball, {
+      headers: {
+        "cache-control": "public, max-age=300",
+        "content-type": "application/gzip",
       },
     });
   });

@@ -13,6 +13,7 @@ const thisMachine: Host = {
   type: "persistent",
   status: "connected",
   lastSeenAt: null,
+  lastRejectedProtocolVersion: null,
   createdAt: 0,
   updatedAt: 0,
 };

@@ -587,9 +587,11 @@ describe("bb-app launcher", () => {
         "persistent",
         "--machine-credential",
         "bbcm_machine",
+        "--auto-update",
       ]),
     ).toEqual({
       options: {
+        autoUpdate: true,
         dataDir: "~/bb-data",
         help: false,
         hostDaemonPort: "48887",

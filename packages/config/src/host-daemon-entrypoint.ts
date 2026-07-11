@@ -9,6 +9,7 @@ import {
   BB_CLI_DIR_ENV,
   BB_CONNECT_MACHINE_CREDENTIAL_ENV,
   BB_HOST_ENROLL_KEY_ENV,
+  BB_HOST_DAEMON_AUTO_UPDATE_ENV,
   BB_HOST_ID_ENV,
   BB_HOST_NAME_ENV,
   BB_HOST_TYPE_ENV,
@@ -20,6 +21,7 @@ export interface HostDaemonEntrypointConfig {
   BB_CLI_DIR?: string;
   BB_CONNECT_MACHINE_CREDENTIAL?: string;
   BB_HOST_ENROLL_KEY?: string;
+  BB_HOST_DAEMON_AUTO_UPDATE?: boolean;
   BB_HOST_ID?: string;
   BB_HOST_NAME?: string;
   BB_HOST_TYPE?: HostType;
@@ -45,6 +47,11 @@ export function loadHostDaemonEntrypointConfig(
   const enrollKey = readOptionalEnvVar({
     context: loader.context,
     definition: BB_HOST_ENROLL_KEY_ENV,
+    env: loader.env,
+  });
+  const autoUpdate = readOptionalEnvVar({
+    context: loader.context,
+    definition: BB_HOST_DAEMON_AUTO_UPDATE_ENV,
     env: loader.env,
   });
   const machineCredential = readOptionalEnvVar({
@@ -82,6 +89,11 @@ export function loadHostDaemonEntrypointConfig(
     key: "BB_CONNECT_MACHINE_CREDENTIAL",
     target: config,
     value: machineCredential,
+  });
+  assignIfDefined({
+    key: "BB_HOST_DAEMON_AUTO_UPDATE",
+    target: config,
+    value: autoUpdate,
   });
   assignIfDefined({
     key: "BB_HOST_ENROLL_KEY",

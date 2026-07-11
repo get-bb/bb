@@ -3,6 +3,7 @@ import {
   listRetiredLoadedEnvironmentIdsOnHost,
   openSession,
   upsertHost,
+  updateHost,
 } from "@bb/db";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -40,13 +41,17 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
       });
 
       if (payload.protocolVersion !== HOST_DAEMON_PROTOCOL_VERSION) {
+        updateHost(deps.db, deps.hub, daemon.hostId, {
+          lastRejectedProtocolVersion: payload.protocolVersion,
+        });
+        deps.hub.notifyHost(daemon.hostId, ["host-disconnected"]);
         deps.logger.error(
           {
             hostId: daemon.hostId,
             daemonProtocolVersion: payload.protocolVersion,
             serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           },
-          "Rejecting daemon session: protocol version mismatch. The server is likely running stale code — restart it (e.g. `pnpm dev:restart`).",
+          "Rejecting daemon session: protocol version mismatch. An older auto-update-enabled daemon will install this server's bb-app; a newer daemon requires the server to be updated.",
         );
         throw new ApiError(
           400,
@@ -66,6 +71,9 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         id: daemon.hostId,
         name: payload.hostName,
         type: daemon.hostType,
+      });
+      updateHost(deps.db, deps.hub, daemon.hostId, {
+        lastRejectedProtocolVersion: null,
       });
       const session = openSession(deps.db, deps.hub, {
         hostId: daemon.hostId,

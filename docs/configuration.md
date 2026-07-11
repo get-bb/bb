@@ -344,6 +344,14 @@ installer can use a paired bb connect account to route the daemon and its CLI
 back to the server. Machine credentials remain locally managed as described at
 the top of this document.
 
+Machine installation and daemon protocol repair use the owning server as the
+distribution source: `/install/version` reports the server package/protocol and
+`/install/bb-app.tgz` serves its exact installable package. The installer falls
+back to npm only when the package route returns 404. Installed services enable
+`--auto-update`; remove that flag from the launchd plist or systemd user unit
+and reload the service to opt out. Updates only move to a newer server protocol,
+are limited to one attempt per 15 minutes, and never downgrade a daemon.
+
 ## bb connect
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb

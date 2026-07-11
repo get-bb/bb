@@ -48,6 +48,7 @@ export interface StartHostDaemonOptions {
   enableLocalApi?: boolean;
   localApi?: HostDaemonLocalApiOverrides;
   machineCredential?: string;
+  autoUpdate?: boolean;
   logger?: HostDaemonLogger;
   createInstanceId?: () => string;
   acquireLock?: typeof acquireDaemonLock;
@@ -208,6 +209,7 @@ export async function startHostDaemon(
       serverUrl,
       hostKey,
       machineCredential: options.machineCredential,
+      autoUpdate: options.autoUpdate,
       bridgeBundleDir: options.bridgeBundleDir,
       hostType,
       hostId: identity.hostId,

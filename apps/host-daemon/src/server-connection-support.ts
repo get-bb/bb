@@ -11,6 +11,7 @@ import {
 } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
 import type { ServerClient } from "./server-client.js";
+import type { ProtocolSelfUpdater } from "./protocol-self-update.js";
 import { createNodeWebSocketConstructor } from "./websocket-constructor.js";
 
 export interface ReconnectingWebSocketLike {
@@ -52,6 +53,8 @@ export interface ServerConnectionOptions {
   logger: HostDaemonLogger;
   machineCredential?: string;
   serverClient: ServerClient;
+  protocolSelfUpdater?: ProtocolSelfUpdater;
+  onSelfUpdateInstalled?: () => void | Promise<void>;
   hostId: string;
   hostName: string;
   hostType: HostDaemonSessionOpenRequest["hostType"];

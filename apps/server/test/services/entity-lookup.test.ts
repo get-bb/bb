@@ -54,6 +54,7 @@ function setup(): SetupResult {
     type: hostRow.type,
     status: "disconnected",
     lastSeenAt: hostRow.lastSeenAt,
+    lastRejectedProtocolVersion: null,
     createdAt: hostRow.createdAt,
     updatedAt: hostRow.updatedAt,
   };

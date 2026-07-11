@@ -1,7 +1,8 @@
 import type { HostDaemonSessionOpenResponse } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
-import type { ServerClient } from "./server-client.js";
+import { ServerResponseError, type ServerClient } from "./server-client.js";
+import type { ProtocolSelfUpdater } from "./protocol-self-update.js";
 import { ServerConnection } from "./server-connection.js";
 import type {
   CreateReconnectingWebSocket,
@@ -12,6 +13,7 @@ interface CreateServerClientFixtureArgs {
   heartbeatIntervalMs?: number;
   leaseTimeoutMs?: number;
   sessionIds?: string[];
+  openSessionError?: Error;
 }
 
 interface CreateWebSocketFixtureArgs {
@@ -21,6 +23,9 @@ interface CreateWebSocketFixtureArgs {
 interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   autoReconnect?: boolean;
   machineCredential?: string;
+  protocolSelfUpdater?: ProtocolSelfUpdater;
+  onSelfUpdateInstalled?: () => void | Promise<void>;
+  startupTimeoutMs?: number;
 }
 
 interface CreateSessionArgs {
@@ -56,6 +61,9 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
   const sessionIds = args.sessionIds ?? ["session-1"];
   let sessionIndex = 0;
   const openSession = vi.fn(async () => {
+    if (args.openSessionError) {
+      throw args.openSessionError;
+    }
     const sessionId = sessionIds[sessionIndex] ?? sessionIds.at(-1);
     sessionIndex += 1;
     if (!sessionId) {
@@ -113,7 +121,7 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
         }
         readyState = 3;
         socket.onclose?.({ code: 1000, reason: "test-reconnect" });
-        void openSocket();
+        void openSocket().catch((error) => socket.onerror?.(error));
       }),
     };
 
@@ -126,7 +134,7 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
     }
 
     sockets.push(socket);
-    void openSocket();
+    void openSocket().catch((error) => socket.onerror?.(error));
     return socket;
   };
 
@@ -157,6 +165,9 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
       : {}),
     serverClient: serverClient.serverClient,
     serverUrl: "http://127.0.0.1:3334",
+    protocolSelfUpdater: args.protocolSelfUpdater,
+    onSelfUpdateInstalled: args.onSelfUpdateInstalled,
+    startupTimeoutMs: args.startupTimeoutMs,
     setSession,
     createWebSocket: webSocket.createWebSocket,
   });
@@ -176,6 +187,56 @@ afterEach(() => {
 });
 
 describe("ServerConnection", () => {
+  it("runs protocol self-update handling only for protocol mismatch rejection", async () => {
+    const handleProtocolMismatch = vi.fn(async () => "updated" as const);
+    const onSelfUpdateInstalled = vi.fn();
+    const protocolError = new ServerResponseError({
+      action: "open session",
+      bodyMessage: "protocol mismatch",
+      code: "protocol_version_mismatch",
+      retryable: false,
+      status: 400,
+      statusText: "Bad Request",
+    });
+    const { connection } = createConnectionFixture({
+      openSessionError: protocolError,
+      protocolSelfUpdater: { handleProtocolMismatch },
+      onSelfUpdateInstalled,
+    });
+
+    void connection.start();
+    await vi.waitFor(() => {
+      expect(handleProtocolMismatch).toHaveBeenCalledOnce();
+      expect(onSelfUpdateInstalled).toHaveBeenCalledOnce();
+    });
+    await connection.shutdown();
+  });
+
+  it("keeps retrying after a protocol update failure instead of timing out startup", async () => {
+    vi.useFakeTimers();
+    const handleProtocolMismatch = vi.fn(async () => "failed" as const);
+    const protocolError = new ServerResponseError({
+      action: "open session",
+      bodyMessage: "protocol mismatch",
+      code: "protocol_version_mismatch",
+      retryable: false,
+      status: 400,
+      statusText: "Bad Request",
+    });
+    const { connection, webSocket } = createConnectionFixture({
+      openSessionError: protocolError,
+      protocolSelfUpdater: { handleProtocolMismatch },
+      startupTimeoutMs: 100,
+    });
+
+    void connection.start();
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(handleProtocolMismatch).toHaveBeenCalledOnce();
+    expect(webSocket.sockets[0]?.close).not.toHaveBeenCalled();
+    await connection.shutdown();
+  });
+
   it("adds the machine credential to WS dial headers only when configured", async () => {
     const configured = createConnectionFixture({
       machineCredential: "bbcm_machine",

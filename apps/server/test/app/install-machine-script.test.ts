@@ -61,6 +61,41 @@ function writeJoinedState(
   );
 }
 
+function writeServerInstallTools(
+  fixture: ReturnType<typeof createFixture>,
+  artifactStatus: 200 | 404,
+): void {
+  const npmLog = join(fixture.dataDir, "npm.log");
+  const bbAppPath = join(fixture.binDir, "bb-app");
+  writeExecutable(
+    join(fixture.binDir, "curl"),
+    `#!/bin/sh
+case "$*" in
+  *install/version*) printf '%s' '{"version":"9.9.9","protocolVersion":2}' ;;
+  *)
+    output=
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = -o ]; then output=$2; shift 2; else shift; fi
+    done
+    [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
+    printf '%s' '${artifactStatus}'
+    ;;
+esac
+`,
+  );
+  writeExecutable(
+    join(fixture.binDir, "npm"),
+    `#!/bin/sh
+printf '%s\n' "$*" >>"${npmLog}"
+printf '%s\n' '#!/bin/sh' \
+  'printf '\''%s\\n'\'' '\''{"hostId":"host-test","hostKey":"secret","hostType":"persistent"}'\'' >"$BB_DATA_DIR/auth.json"' \
+  'printf '\''%s\\n'\'' '\''{"serverUrl":"https://machine.getbb.app"}'\'' >"$BB_DATA_DIR/config.json"' \
+  'while :; do sleep 1; done' >"${bbAppPath}"
+chmod +x "${bbAppPath}"
+`,
+  );
+}
+
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
@@ -117,6 +152,7 @@ while :; do sleep 1; done
     expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
       "host-daemon",
       "join",
+      "--auto-update",
       "--join-code",
       "join-secret",
       "--host-id",
@@ -124,6 +160,76 @@ while :; do sleep 1; done
       "--server-url",
       "https://machine.getbb.app",
     ]);
+    const daemonPid = Number(
+      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+    );
+    process.kill(daemonPid, "SIGTERM");
+  });
+
+  it("prefers the server-matched tarball when bb-app is absent", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    const result = spawnSync(
+      "sh",
+      [
+        SCRIPT_PATH.pathname,
+        "--join-code",
+        "join-secret",
+        "--host-id",
+        "host-test",
+        "--server",
+        "https://machine.getbb.app",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BB_DATA_DIR: fixture.dataDir,
+          BB_INSTALL_SKIP_SERVICE: "1",
+          HOME: fixture.homeDir,
+          PATH: `${fixture.binDir}${delimiter}${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+    expect(result.status).toBe(0);
+    const npmInvocation = readFileSync(join(fixture.dataDir, "npm.log"), "utf8");
+    expect(npmInvocation).toMatch(/^install -g \/.*bb-app\..*\.tgz$/mu);
+    expect(npmInvocation).not.toContain("bb-app\n");
+    const daemonPid = Number(
+      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+    );
+    process.kill(daemonPid, "SIGTERM");
+  });
+
+  it("falls back to npm only when the server artifact returns 404", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 404);
+    const result = spawnSync(
+      "sh",
+      [
+        SCRIPT_PATH.pathname,
+        "--join-code",
+        "join-secret",
+        "--host-id",
+        "host-test",
+        "--server",
+        "https://machine.getbb.app",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BB_DATA_DIR: fixture.dataDir,
+          BB_INSTALL_SKIP_SERVICE: "1",
+          HOME: fixture.homeDir,
+          PATH: `${fixture.binDir}${delimiter}${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toBe(
+      "install -g bb-app\n",
+    );
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
@@ -217,6 +323,7 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
       "utf8",
     );
     expect(plist).toContain("<string>host-daemon</string>");
+    expect(plist).toContain("<string>--auto-update</string>");
     expect(plist).toContain("<string>https://machine.getbb.app</string>");
     expect(
       readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8"),
@@ -254,7 +361,7 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
       "utf8",
     );
     expect(unit).toContain(
-      'host-daemon --server-url "https://machine.getbb.app"',
+      'host-daemon --auto-update --server-url "https://machine.getbb.app"',
     );
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user daemon-reload\n--user enable --now bb-host-daemon.service\n",

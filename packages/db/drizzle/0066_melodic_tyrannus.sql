@@ -1,0 +1,1 @@
+ALTER TABLE `hosts` ADD `last_rejected_protocol_version` integer;

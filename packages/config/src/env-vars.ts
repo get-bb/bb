@@ -276,6 +276,13 @@ export const BB_HOST_ENROLL_KEY_ENV = defineEnvVar<string | undefined>({
   parse: parseOptionalTrimmedStringEnvValue,
 });
 
+export const BB_HOST_DAEMON_AUTO_UPDATE_ENV = defineEnvVar<boolean>({
+  description:
+    "Allow a remote host daemon to install the exact bb-app package served by its server on a newer protocol mismatch",
+  name: "BB_HOST_DAEMON_AUTO_UPDATE",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_HOST_ID_ENV = defineEnvVar<string | undefined>({
   description:
     "Preferred host ID to persist for the daemon instead of generating one locally",

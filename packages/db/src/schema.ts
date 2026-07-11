@@ -94,6 +94,7 @@ export const hosts = sqliteTable(
     type: text("type").$type<HostType>().notNull(),
     destroyedAt: integer("destroyed_at"),
     lastSeenAt: integer("last_seen_at"),
+    lastRejectedProtocolVersion: integer("last_rejected_protocol_version"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },

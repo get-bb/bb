@@ -22,6 +22,7 @@ import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { selectPrimaryHost } from "@/hooks/queries/host-queries";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { formatHostUpdateStatus } from "@/lib/host-update-status";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -478,7 +479,11 @@ function MachineSection({
           {isThisMachine ? (
             <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>
           ) : null}
-          {!connected && host.lastSeenAt !== null ? (
+          {formatHostUpdateStatus(host) !== null ? (
+            <span className="ml-auto shrink-0 pl-2 text-2xs text-warning-foreground">
+              {formatHostUpdateStatus(host)}
+            </span>
+          ) : !connected && host.lastSeenAt !== null ? (
             <span className="ml-auto shrink-0 pl-2 text-2xs">
               last seen{" "}
               {formatRelativeTime({ timestamp: host.lastSeenAt, now })}

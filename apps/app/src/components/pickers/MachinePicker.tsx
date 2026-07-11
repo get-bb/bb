@@ -18,6 +18,7 @@ import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { selectPrimaryHost } from "@/hooks/queries/host-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { formatHostUpdateStatus } from "@/lib/host-update-status";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -146,7 +147,11 @@ export function MachinePickerUI({
                   <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>
                 ) : null}
               </span>
-              {!connected && host.lastSeenAt !== null ? (
+              {formatHostUpdateStatus(host) !== null ? (
+                <span className="shrink-0 text-2xs text-warning-foreground">
+                  {formatHostUpdateStatus(host)}
+                </span>
+              ) : !connected && host.lastSeenAt !== null ? (
                 <span className="shrink-0 text-2xs text-muted-foreground">
                   last seen{" "}
                   {formatRelativeTime({ timestamp: host.lastSeenAt, now })}

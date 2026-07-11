@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -56,6 +56,45 @@ describe("server skeleton", () => {
       );
       expect(Buffer.from(await response.arrayBuffer())).toEqual(expected);
     });
+  });
+
+  it("serves install version metadata without auth", async () => {
+    const harness = await createTestAppHarness();
+    const { app } = createApp(harness.deps, {
+      bbAppArtifactService: {
+        getTarballPath: async () => "/unused",
+        getVersion: async () => "3.2.1-test",
+      },
+    });
+    try {
+      const response = await app.request("/install/version");
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        version: "3.2.1-test",
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("serves the cached server bb-app tarball without auth", async () => {
+    const harness = await createTestAppHarness();
+    const tarballPath = join(harness.config.dataDir, "fixture.tgz");
+    writeFileSync(tarballPath, "tarball-bytes");
+    const getTarballPath = vi.fn(async () => tarballPath);
+    const { app } = createApp(harness.deps, {
+      bbAppArtifactService: { getTarballPath, getVersion: async () => "test" },
+    });
+    try {
+      const response = await app.request("/install/bb-app.tgz");
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("application/gzip");
+      expect(await response.text()).toBe("tarball-bytes");
+      expect(getTarballPath).toHaveBeenCalledOnce();
+    } finally {
+      await harness.cleanup();
+    }
   });
 
   it("serves public routes without auth", async () => {

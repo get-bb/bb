@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   defaultAppSettings,
   defaultAppTheme,
@@ -41,6 +42,7 @@ function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
     type: "persistent",
     status: "connected",
     lastSeenAt: NOW,
+    lastRejectedProtocolVersion: null,
     createdAt: 0,
     updatedAt: 0,
     ...overrides,
@@ -149,6 +151,26 @@ describe("MachinesSettingsSection", () => {
     });
     expect(
       screen.getByText("Offline · last seen 2h ago · 1 project"),
+    ).toBeDefined();
+  });
+
+  it("shows protocol versions when a machine needs an update", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(api.listHosts).mockResolvedValue([
+      primaryHost,
+      {
+        ...offlineHost,
+        lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      },
+    ]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    expect(
+      await screen.findByText(
+        `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION} · 1 project`,
+      ),
     ).toBeDefined();
   });
 

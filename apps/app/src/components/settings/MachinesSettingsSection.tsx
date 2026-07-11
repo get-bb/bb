@@ -35,6 +35,7 @@ import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { PersistentHostIconName } from "@/lib/host-display";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { formatHostUpdateStatus } from "@/lib/host-update-status";
 
 const MACHINES_SECTION_DESCRIPTION =
   "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
@@ -64,7 +65,10 @@ function machineMetaLine({
   now: number;
 }): string {
   const parts: string[] = [];
-  if (host.status === "connected") {
+  const updateStatus = formatHostUpdateStatus(host);
+  if (updateStatus !== null) {
+    parts.push(updateStatus);
+  } else if (host.status === "connected") {
     parts.push("Online");
   } else if (host.lastSeenAt !== null) {
     parts.push(

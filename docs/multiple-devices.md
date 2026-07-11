@@ -54,6 +54,23 @@ execute work. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
 through the account gate.
 
+The installer prefers the exact `bb-app` package exposed by that server at
+`/install/bb-app.tgz`; it falls back to the npm registry only when an older
+server returns 404. This keeps remote machines aligned with development and
+pre-release servers whose build may not exist on npm. The package route is
+public like `/install.sh`: `bb-app` is public software, and exposing an
+unpublished build slightly early through a paired tunnel is an accepted
+tradeoff.
+
+The installed launchd/systemd service enables `--auto-update`. If session open
+reports a newer server protocol, the daemon downloads and globally installs the
+server artifact, then exits so the service manager restarts it. Failed attempts
+fall back to normal reconnect behavior and attempts are limited to once per 15
+minutes. A daemon never downgrades itself to an older server protocol. To opt
+out, remove `--auto-update` from
+`~/Library/LaunchAgents/app.getbb.host-daemon.plist` or
+`~/.config/systemd/user/bb-host-daemon.service`, then reload the service.
+
 After it connects:
 
 1. Add that machine's project path or clone source in project settings.

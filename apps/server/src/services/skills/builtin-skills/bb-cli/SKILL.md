@@ -88,7 +88,12 @@ message agents, or inspect projects, providers, and environments.
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the bb connect machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account
-  gate; revoke a lost machine from the getbb.app dashboard.
+  gate; revoke a lost machine from the getbb.app dashboard. The installer uses
+  the server's exact `/install/bb-app.tgz` artifact (npm only on a 404) and
+  enables daemon `--auto-update`; newer protocol mismatches update from that
+  artifact, rate-limited to once per 15 minutes, then let launchd/systemd
+  restart the daemon. Auto-update never downgrades. Remove `--auto-update` from
+  the service definition and reload it to opt out.
 - Run `bb machine list` to see machine names, IDs, connection status, and last
   seen time (`--json` returns the raw host list). Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged

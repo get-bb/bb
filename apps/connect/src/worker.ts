@@ -266,9 +266,13 @@ export default {
     if (url.pathname.startsWith("/__"))
       return text("bb connect: not found\n", 404);
 
-    // The bootstrap script is inert without both one-time codes. It must be
-    // reachable before the new machine has a browser session or credential.
-    if (request.method === "GET" && url.pathname === "/install.sh") {
+    // The bootstrap script and its server-matched package must be reachable
+    // before the new machine has a browser session or credential.
+    const isPublicInstallPath =
+      url.pathname === "/install.sh" ||
+      url.pathname === "/install/version" ||
+      url.pathname === "/install/bb-app.tgz";
+    if (request.method === "GET" && isPublicInstallPath) {
       if (target !== null) return text("bb connect: not found\n", 404);
       const headers = new Headers(request.headers);
       headers.delete(MACHINE_CREDENTIAL_HEADER);

@@ -349,18 +349,21 @@ describe("machine gate auth", () => {
     );
   });
 
-  it("forwards GET /install.sh without session or machine auth", async () => {
-    const { env, ctx, captured } = makeEnv(() => new Response("script"));
-    const response = await worker.fetch(
-      visitorRequest("sawyer.getbb.app", "/install.sh"),
-      env as never,
-      ctx,
-    );
-    expect(response.status).toBe(200);
-    expect(await response.text()).toBe("script");
-    expect(captured).toHaveLength(1);
-    expect(mockVerifyMachine).not.toHaveBeenCalled();
-  });
+  it.each(["/install.sh", "/install/version", "/install/bb-app.tgz"])(
+    "forwards GET %s without session or machine auth",
+    async (path) => {
+      const { env, ctx, captured } = makeEnv(() => new Response("artifact"));
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", path),
+        env as never,
+        ctx,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("artifact");
+      expect(captured).toHaveLength(1);
+      expect(mockVerifyMachine).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("gate worker share hosts", () => {
