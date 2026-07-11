@@ -63,6 +63,46 @@ describe("simple notes nav panel", () => {
     expect(styles).toContain("font-size: 1.75em");
   });
 
+  it("aligns task checkboxes with the first label line without flattening later content spacing", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "tasks.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "tasks.md",
+                title: "Tasks",
+                preview: "A task list",
+                modifiedAtMs: Date.now(),
+              },
+            ]),
+          readNote: () => ({
+            content: "# Tasks\n\n- [ ] First task",
+            sha256: "sha-tasks",
+          }),
+          renameToTitle: () => ({ path: "tasks.md" }),
+        },
+      },
+    );
+
+    await slot.findByText("First task");
+    const styles = document.head.querySelector(
+      "style[data-bb-simple-notes-styles]",
+    )?.textContent;
+
+    expect(styles).toContain(
+      'ul[data-type="taskList"] li > div > p:first-child { margin-top: 0; }',
+    );
+    expect(styles).toContain(
+      'ul[data-type="taskList"] li > div > p { line-height: 1.75; }',
+    );
+    expect(styles).toContain(
+      ".tiptap ul, .bb-simple-notes-editor .tiptap ol { margin: 1.25em 0 0;",
+    );
+  });
+
   it("creates a note over rpc and opens it", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,

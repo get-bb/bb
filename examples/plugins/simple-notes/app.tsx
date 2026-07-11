@@ -120,6 +120,7 @@ const EDITOR_CSS = `
 }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div { flex: 1 1 auto; min-width: 0; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div > p { line-height: 1.75; }
+.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div > p:first-child { margin-top: 0; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] input[type="checkbox"] {
   display: block; width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; margin: 0;
 }
