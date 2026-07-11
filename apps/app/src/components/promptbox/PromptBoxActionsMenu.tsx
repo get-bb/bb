@@ -11,7 +11,7 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
 
-export type PromptBoxActionKind = "skills" | "plan" | "goal" | "loop";
+export type PromptBoxActionKind = "skills" | "plan" | "goal" | "automation";
 
 export interface PromptBoxAction {
   kind: PromptBoxActionKind;
@@ -26,17 +26,17 @@ interface PromptBoxActionsMenuProps {
   onAction: (action: PromptBoxAction) => void;
 }
 
-export const LOOP_PROMPT_ACTION: PromptBoxAction = {
-  kind: "loop",
-  command: { trigger: "/", name: "loop", trailingText: " " },
-  text: "/loop ",
+export const AUTOMATION_PROMPT_ACTION: PromptBoxAction = {
+  kind: "automation",
+  command: { trigger: "/", name: "automation", trailingText: " " },
+  text: "/automation ",
 };
 
 const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
   "skills",
   "plan",
   "goal",
-  "loop",
+  "automation",
 ];
 
 const PROMPT_ACTION_PRESENTATION = {
@@ -52,8 +52,8 @@ const PROMPT_ACTION_PRESENTATION = {
     label: "Goal",
     icon: "Target",
   },
-  loop: {
-    label: "Loop",
+  automation: {
+    label: "Automation",
     icon: "Repeat",
   },
 } as const satisfies Record<
@@ -61,13 +61,13 @@ const PROMPT_ACTION_PRESENTATION = {
   { label: string; icon: IconName }
 >;
 
-export function withLoopPromptAction(
+export function withAutomationPromptAction(
   actions: readonly PromptBoxAction[],
 ): PromptBoxAction[] {
-  if (actions.some((action) => action.kind === "loop")) {
+  if (actions.some((action) => action.kind === "automation")) {
     return [...actions];
   }
-  return [...actions, LOOP_PROMPT_ACTION];
+  return [...actions, AUTOMATION_PROMPT_ACTION];
 }
 
 function orderedPromptActions(

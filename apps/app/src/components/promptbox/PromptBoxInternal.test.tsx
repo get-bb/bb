@@ -24,7 +24,7 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
-import { LOOP_PROMPT_ACTION } from "./PromptBoxActionsMenu";
+import { AUTOMATION_PROMPT_ACTION } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -58,7 +58,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  LOOP_PROMPT_ACTION,
+  AUTOMATION_PROMPT_ACTION,
 ];
 
 function createPromptBoxProps(
@@ -1109,24 +1109,24 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("inserts loop mode as a command pill", async () => {
+  it("inserts automation mode as a command pill", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Loop");
+    await selectPromptAction("Automation");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
+    await waitFor(() => expect(latestValue(changes)).toBe("/automation "));
     expect(latestChange(changes)?.mentions).toEqual([
       {
         start: 0,
-        end: "/loop".length,
+        end: "/automation".length,
         resource: {
           kind: "command",
           trigger: "/",
-          name: "loop",
+          name: "automation",
           source: "command",
           origin: "user",
-          label: "loop",
+          label: "automation",
           argumentHint: null,
         },
       },
@@ -1198,9 +1198,10 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("pastes prompt action command tokens as goal, plan, and loop pills", async () => {
+  it("pastes prompt action command tokens as goal, plan, and automation pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
-    const text = "/plan inspect first\n/goal finish the change\n/loop keep checking";
+    const text =
+      "/plan inspect first\n/goal finish the change\n/automation keep checking";
 
     await focusPromptEnd(promptBoxRef);
     pastePlainText(text);
@@ -1235,14 +1236,14 @@ describe("PromptBoxInternal prompt actions", () => {
       },
       {
         start: "/plan inspect first\n/goal finish the change\n".length,
-        end: "/plan inspect first\n/goal finish the change\n/loop".length,
+        end: "/plan inspect first\n/goal finish the change\n/automation".length,
         resource: {
           kind: "command",
           trigger: "/",
-          name: "loop",
+          name: "automation",
           source: "command",
           origin: "user",
-          label: "loop",
+          label: "automation",
           argumentHint: null,
         },
       },
@@ -1263,7 +1264,7 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(latestChange(changes)?.mentions).toEqual([]);
   });
 
-  it("replaces a just-selected goal action with loop at the cursor", async () => {
+  it("replaces a just-selected goal action with automation at the cursor", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
@@ -1271,32 +1272,32 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
     await waitForPromptFocus();
 
-    await selectPromptAction("Loop");
+    await selectPromptAction("Automation");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
+    await waitFor(() => expect(latestValue(changes)).toBe("/automation "));
     expect(latestChange(changes)?.mentions).toEqual([
       {
         start: 0,
-        end: "/loop".length,
+        end: "/automation".length,
         resource: {
           kind: "command",
           trigger: "/",
-          name: "loop",
+          name: "automation",
           source: "command",
           origin: "user",
-          label: "loop",
+          label: "automation",
           argumentHint: null,
         },
       },
     ]);
   });
 
-  it("selects loop from slash typeahead as a command pill", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("/lo", {
+  it("selects automation from slash typeahead as a command pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("/auto", {
       commandSuggestions: [
         {
           kind: "command",
-          name: "loop",
+          name: "automation",
           source: "command",
           origin: "user",
           description: null,
@@ -1306,20 +1307,20 @@ describe("PromptBoxInternal prompt actions", () => {
     });
 
     await focusPromptEnd(promptBoxRef);
-    await selectCommandSuggestion("loop");
+    await selectCommandSuggestion("automation");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
+    await waitFor(() => expect(latestValue(changes)).toBe("/automation "));
     expect(latestChange(changes)?.mentions).toEqual([
       {
         start: 0,
-        end: "/loop".length,
+        end: "/automation".length,
         resource: {
           kind: "command",
           trigger: "/",
-          name: "loop",
+          name: "automation",
           source: "command",
           origin: "user",
-          label: "loop",
+          label: "automation",
           argumentHint: null,
         },
       },

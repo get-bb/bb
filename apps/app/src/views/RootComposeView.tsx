@@ -36,7 +36,7 @@ import {
   useProviderCliInstallRunner,
   type ProviderCliActionableIssue,
 } from "@/components/provider-cli/provider-cli-install";
-import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
+import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
@@ -1804,7 +1804,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const providerPromptActionProps = useMemo(
     () => ({
-      promptActions: withLoopPromptAction(providerPromptActions.promptActions),
+      promptActions: withAutomationPromptAction(
+        providerPromptActions.promptActions,
+      ),
     }),
     [providerPromptActions.promptActions],
   );

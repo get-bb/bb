@@ -13,7 +13,7 @@ import type {
   HistoryConfig,
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
-import { LOOP_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
+import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { Button } from "@bb/shared-ui/button";
@@ -123,7 +123,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  LOOP_PROMPT_ACTION,
+  AUTOMATION_PROMPT_ACTION,
 ];
 
 function useControlledValue(initial: string) {
@@ -306,7 +306,7 @@ function ModelLoadFailedRow() {
 
 function UnsupportedCodexCliRow() {
   const { value, mentionRanges, onChange } = useControlledValue(
-    "Create a loop that checks the release until CI passes.",
+    "Create an automation that checks the release until CI passes.",
   );
   return (
     <PromptStage>

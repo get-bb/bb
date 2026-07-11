@@ -61,8 +61,8 @@ const PERSONAL_PROJECT_ID = "proj_personal";
 
 // Prefill text for the "Create via chat" entry point — an agent turns this
 // into a real automation. Inlined here (the kernel kept it in
-// apps/app/src/lib/loop-prompt.ts) so the plugin bundle stays self-contained.
-const CREATE_LOOP_PROMPT = "Create a new bb loop to ";
+// apps/app/src/lib/automation-prompt.ts) so the plugin bundle stays self-contained.
+const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
 
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
 
@@ -667,7 +667,10 @@ function OverviewView({
   }, [deleteTarget, mutations]);
 
   const createViaChat = useCallback(() => {
-    navigate.toCompose({ focusPrompt: true, initialPrompt: CREATE_LOOP_PROMPT });
+    navigate.toCompose({
+      focusPrompt: true,
+      initialPrompt: CREATE_AUTOMATION_PROMPT,
+    });
   }, [navigate]);
 
   const groups = useMemo(

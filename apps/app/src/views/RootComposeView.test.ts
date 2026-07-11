@@ -216,9 +216,9 @@ describe("readInitialPromptFromLocationState", () => {
     expect(
       readInitialPromptFromLocationState({
         focusPrompt: true,
-        initialPrompt: "Create a new bb loop to ",
+        initialPrompt: "Create a new bb automation to ",
       }),
-    ).toBe("Create a new bb loop to ");
+    ).toBe("Create a new bb automation to ");
   });
 
   it("returns null when no usable initialPrompt is present", () => {

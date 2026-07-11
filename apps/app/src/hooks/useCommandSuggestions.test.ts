@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LOOP_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
+import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { promptActionCommandSuggestions } from "./useCommandSuggestions";
 
 const promptActions = [
@@ -14,7 +14,7 @@ const promptActions = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  LOOP_PROMPT_ACTION,
+  AUTOMATION_PROMPT_ACTION,
 ] as const;
 
 describe("promptActionCommandSuggestions", () => {
@@ -44,7 +44,7 @@ describe("promptActionCommandSuggestions", () => {
       },
       {
         kind: "command",
-        name: "loop",
+        name: "automation",
         source: "command",
         origin: "user",
         description: null,
@@ -57,9 +57,9 @@ describe("promptActionCommandSuggestions", () => {
     expect(
       promptActionCommandSuggestions({
         promptActions,
-        query: "lo",
+        query: "auto",
         trigger: "/",
       }).map((suggestion) => suggestion.name),
-    ).toEqual(["loop"]);
+    ).toEqual(["automation"]);
   });
 });

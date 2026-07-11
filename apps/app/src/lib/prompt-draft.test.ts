@@ -10,13 +10,13 @@ import {
   promptInputToDraft,
 } from "./prompt-draft";
 
-const LOOP_COMMAND_RESOURCE: PromptMentionResource = {
+const AUTOMATION_COMMAND_RESOURCE: PromptMentionResource = {
   kind: "command",
   trigger: "/",
-  name: "loop",
+  name: "automation",
   source: "command",
   origin: "user",
-  label: "loop",
+  label: "automation",
   argumentHint: null,
 };
 
@@ -115,14 +115,14 @@ describe("prompt draft helpers", () => {
     ]);
   });
 
-  it("expands loop command pills before mapping draft text to prompt input", () => {
+  it("expands automation command pills before mapping draft text to prompt input", () => {
     const input = promptDraftToInput({
-      text: "/loop keep checking CI",
+      text: "/automation keep checking CI",
       mentions: [
         {
           start: 0,
-          end: "/loop".length,
-          resource: LOOP_COMMAND_RESOURCE,
+          end: "/automation".length,
+          resource: AUTOMATION_COMMAND_RESOURCE,
         },
       ],
       attachments: [],
@@ -131,19 +131,19 @@ describe("prompt draft helpers", () => {
     expect(input).toEqual([
       {
         type: "text",
-        text: "Create a new bb loop to keep checking CI",
+        text: "Create a new bb automation to keep checking CI",
         mentions: [],
       },
     ]);
   });
 
-  it("keeps mention ranges correct after expanding a loop command pill", () => {
+  it("keeps mention ranges correct after expanding an automation command pill", () => {
     const threadResource: PromptMentionResource = {
       kind: "thread",
       threadId: "thr_child",
       label: "Child thread",
     };
-    const text = "/loop inspect @thread";
+    const text = "/automation inspect @thread";
     const threadToken = "@thread";
     const threadStart = text.indexOf(threadToken);
     if (threadStart < 0) {
@@ -155,8 +155,8 @@ describe("prompt draft helpers", () => {
       mentions: [
         {
           start: 0,
-          end: "/loop".length,
-          resource: LOOP_COMMAND_RESOURCE,
+          end: "/automation".length,
+          resource: AUTOMATION_COMMAND_RESOURCE,
         },
         {
           start: threadStart,
@@ -170,11 +170,11 @@ describe("prompt draft helpers", () => {
     expect(input).toEqual([
       {
         type: "text",
-        text: "Create a new bb loop to inspect @thread",
+        text: "Create a new bb automation to inspect @thread",
         mentions: [
           {
-            start: "Create a new bb loop to inspect ".length,
-            end: "Create a new bb loop to inspect @thread".length,
+            start: "Create a new bb automation to inspect ".length,
+            end: "Create a new bb automation to inspect @thread".length,
             resource: threadResource,
           },
         ],
@@ -182,15 +182,15 @@ describe("prompt draft helpers", () => {
     ]);
   });
 
-  it("leaves literal loop text unchanged when it is not a command pill", () => {
+  it("leaves literal automation text unchanged when it is not a command pill", () => {
     const input = promptDraftToInput({
-      text: "/loop keep checking CI",
+      text: "/automation keep checking CI",
       mentions: [],
       attachments: [],
     });
 
     expect(input).toEqual([
-      { type: "text", text: "/loop keep checking CI", mentions: [] },
+      { type: "text", text: "/automation keep checking CI", mentions: [] },
     ]);
   });
 

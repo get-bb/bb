@@ -30,7 +30,7 @@ import {
   type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import { LOOP_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
+import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
@@ -131,7 +131,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  LOOP_PROMPT_ACTION,
+  AUTOMATION_PROMPT_ACTION,
 ];
 
 // Fully read-only footer example: renders the SAME model/reasoning and

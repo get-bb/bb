@@ -9,9 +9,9 @@ import {
 } from "@bb/server-contract";
 import { z } from "zod";
 import {
-  isLoopPromptCommandResource,
-  SUBMITTED_LOOP_PROMPT_PREFIX,
-} from "./loop-prompt";
+  isAutomationPromptCommandResource,
+  SUBMITTED_AUTOMATION_PROMPT_PREFIX,
+} from "./automation-prompt";
 
 export type PromptDraftAttachment = UploadedPromptAttachment;
 
@@ -204,34 +204,34 @@ interface ExpandedPromptText {
   mentions: PromptTextMention[];
 }
 
-function expandLoopPromptCommandMentions(
+function expandAutomationPromptCommandMentions(
   text: string,
   mentions: readonly PromptTextMention[],
 ): ExpandedPromptText {
-  const loopMentions = mentions
-    .filter((mention) => isLoopPromptCommandResource(mention.resource))
+  const automationMentions = mentions
+    .filter((mention) => isAutomationPromptCommandResource(mention.resource))
     .sort((left, right) => left.start - right.start || left.end - right.end);
 
-  if (loopMentions.length === 0) {
+  if (automationMentions.length === 0) {
     return { text, mentions: [...mentions] };
   }
 
   const replacements: Array<{ start: number; end: number }> = [];
   let cursor = 0;
   let nextText = "";
-  for (const mention of loopMentions) {
+  for (const mention of automationMentions) {
     if (mention.start < cursor) {
       continue;
     }
     replacements.push({ start: mention.start, end: mention.end });
     nextText += text.slice(cursor, mention.start);
-    nextText += SUBMITTED_LOOP_PROMPT_PREFIX;
+    nextText += SUBMITTED_AUTOMATION_PROMPT_PREFIX;
     cursor = mention.end;
   }
   nextText += text.slice(cursor);
 
   const nextMentions = mentions.flatMap((mention) => {
-    if (isLoopPromptCommandResource(mention.resource)) {
+    if (isAutomationPromptCommandResource(mention.resource)) {
       return [];
     }
 
@@ -242,7 +242,7 @@ function expandLoopPromptCommandMentions(
       }
       if (replacement.end <= mention.start) {
         offset +=
-          SUBMITTED_LOOP_PROMPT_PREFIX.length -
+          SUBMITTED_AUTOMATION_PROMPT_PREFIX.length -
           (replacement.end - replacement.start);
       }
     }
@@ -285,7 +285,7 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
       }),
       text.length,
     );
-    const expandedText = expandLoopPromptCommandMentions(text, mentions);
+    const expandedText = expandAutomationPromptCommandMentions(text, mentions);
     input.push({
       type: "text",
       text: expandedText.text,

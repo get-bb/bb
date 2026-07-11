@@ -34,7 +34,7 @@ import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
-import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
+import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
   QueuedMessagesList,
   type QueuedMessageGroupBoundaryRequest,
@@ -441,7 +441,7 @@ export function SideChatTabContent({
     [selectedProviderComposerActions],
   );
   const promptActions = useMemo(
-    () => withLoopPromptAction(providerPromptActions.promptActions),
+    () => withAutomationPromptAction(providerPromptActions.promptActions),
     [providerPromptActions.promptActions],
   );
   const commandSuggestions = useCommandSuggestions({

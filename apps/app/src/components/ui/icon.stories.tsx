@@ -79,7 +79,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Pin: "Pin thread action",
   PinOff: "Unpin thread action",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
-  Repeat: "Loop prompt action",
+  Repeat: "Automation prompt action",
   RotateCcw:
     "Retry button when fetching timeline turn details fails, reset Mermaid diagram view",
   Rows2: "Git diff toolbar “unified view”",
