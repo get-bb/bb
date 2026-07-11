@@ -1,5 +1,7 @@
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
+import { setExperiments } from "@bb/db";
+import { defaultExperiments } from "@bb/domain";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
@@ -143,6 +145,65 @@ describe("host file routes", () => {
         }),
       );
       expect(missingResponse.status).toBe(404);
+    });
+  });
+
+  it("gates a non-primary host target with the Multi-machine experiment", async () => {
+    await withTestHarness(async (harness) => {
+      const { host: primary, session: primarySession } = seedHostSession(
+        harness.deps,
+        { id: "host-file-primary" },
+      );
+      seedPrimaryHost(harness.deps, primary.id);
+      const { host: secondary, session: secondarySession } = seedHostSession(
+        harness.deps,
+        { id: "host-file-secondary" },
+      );
+
+      const blocked = await harness.app.request(
+        ...postJson("/api/v1/files/write", {
+          hostId: secondary.id,
+          path: "/home/me/notes/note.md",
+          content: "hello",
+        }),
+      );
+      expect(blocked.status).toBe(400);
+      await expect(readJson(blocked)).resolves.toMatchObject({
+        code: "unsupported_host",
+        message: "Only the local host daemon is supported",
+      });
+
+      registerHostRpcResponder(harness, {
+        hostId: primary.id,
+        sessionId: primarySession.id,
+        handle: () => ({ ok: true, result: WRITTEN_RESULT }),
+      });
+      const primaryOk = await harness.app.request(
+        ...postJson("/api/v1/files/write", {
+          hostId: primary.id,
+          path: "/home/me/notes/note.md",
+          content: "hello",
+        }),
+      );
+      expect(primaryOk.status).toBe(200);
+
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
+      });
+      registerHostRpcResponder(harness, {
+        hostId: secondary.id,
+        sessionId: secondarySession.id,
+        handle: () => ({ ok: true, result: WRITTEN_RESULT }),
+      });
+      const secondaryOk = await harness.app.request(
+        ...postJson("/api/v1/files/write", {
+          hostId: secondary.id,
+          path: "/home/me/notes/note.md",
+          content: "hello",
+        }),
+      );
+      expect(secondaryOk.status).toBe(200);
     });
   });
 });

@@ -1,11 +1,8 @@
 import type { SystemExecutionOptionsQuery } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
+import { requireEnvironment } from "../lib/entity-lookup.js";
 import {
-  requireEnvironment,
-  requireNonDestroyedHostWithStatus,
-} from "../lib/entity-lookup.js";
-import {
-  assertPrimaryHostId,
+  assertUsableHostId,
   requireConnectedPrimaryHostId,
 } from "../hosts/primary-host.js";
 
@@ -20,13 +17,11 @@ export function resolveSystemLookupHostId(
 ): string {
   if (query.environmentId) {
     const environment = requireEnvironment(deps.db, query.environmentId);
-    requireNonDestroyedHostWithStatus(deps, environment.hostId);
-    assertPrimaryHostId(deps, { hostId: environment.hostId });
+    assertUsableHostId(deps, { hostId: environment.hostId });
     return environment.hostId;
   }
   if (query.hostId) {
-    requireNonDestroyedHostWithStatus(deps, query.hostId);
-    assertPrimaryHostId(deps, { hostId: query.hostId });
+    assertUsableHostId(deps, { hostId: query.hostId });
     return query.hostId;
   }
   return requireConnectedPrimaryHostId(deps);

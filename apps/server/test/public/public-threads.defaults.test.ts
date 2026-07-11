@@ -7,9 +7,10 @@ import {
   createProjectSource,
   getProjectExecutionDefaults,
   listThreads,
+  setExperiments,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
-import { threadSchema } from "@bb/domain";
+import { defaultExperiments, threadSchema } from "@bb/domain";
 import { sidebarBootstrapResponseSchema } from "@bb/server-contract";
 import { waitForQueuedCommand } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
@@ -103,7 +104,7 @@ describe("public thread default routes", () => {
     });
   });
 
-  it("rejects managed-worktree threads on a secondary host", async () => {
+  it("allows managed-worktree threads on a secondary host", async () => {
     await withTestHarness(async (harness) => {
       const { host: localHost } = seedHostSession(harness.deps, {
         id: "host-managed-default",
@@ -111,6 +112,10 @@ describe("public thread default routes", () => {
       seedPrimaryHost(harness.deps, localHost.id);
       const { host: secondaryHost } = seedHostSession(harness.deps, {
         id: "host-managed-secondary",
+      });
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: localHost.id,
@@ -149,9 +154,13 @@ describe("public thread default routes", () => {
         }),
       });
 
-      expect(response.status).toBe(400);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "unsupported_host",
+      expect(response.status).toBe(201);
+      const thread = threadSchema.parse(await readJson(response));
+      const environmentResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}?include=environment`,
+      );
+      await expect(readJson(environmentResponse)).resolves.toMatchObject({
+        environment: { hostId: secondaryHost.id },
       });
       expect(secondarySource.path).toBe("/tmp/secondary-managed-source");
     });

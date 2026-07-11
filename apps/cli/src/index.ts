@@ -120,6 +120,14 @@ async function tryPluginCommandProxy(): Promise<void> {
         );
       } else if (
         disabled.enabled &&
+        disabled.statusDetail?.includes("Multi-machine")
+      ) {
+        console.error(
+          `bb ${candidate} is behind the "Multi-machine" experiment — ` +
+            "enable it in Settings → Experiments.",
+        );
+      } else if (
+        disabled.enabled &&
         disabled.statusDetail?.includes("Plugins")
       ) {
         console.error(

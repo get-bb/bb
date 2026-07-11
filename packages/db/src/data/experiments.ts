@@ -10,6 +10,7 @@ export function getExperiments(db: DbConnection): Experiments {
     .select({
       bbConnect: systemExperiments.bbConnect,
       claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
+      multiMachine: systemExperiments.multiMachine,
       popoutChat: systemExperiments.popoutChat,
       popoutChatHotkey: systemExperiments.popoutChatHotkey,
       plugins: systemExperiments.plugins,
@@ -31,6 +32,7 @@ export function setExperiments(
       id: SYSTEM_EXPERIMENTS_ROW_ID,
       bbConnect: experiments.bbConnect,
       claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
+      multiMachine: experiments.multiMachine,
       popoutChat: experiments.popoutChat,
       popoutChatHotkey: experiments.popoutChatHotkey,
       plugins: experiments.plugins,
@@ -41,6 +43,7 @@ export function setExperiments(
       set: {
         bbConnect: experiments.bbConnect,
         claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
+        multiMachine: experiments.multiMachine,
         popoutChat: experiments.popoutChat,
         popoutChatHotkey: experiments.popoutChatHotkey,
         plugins: experiments.plugins,

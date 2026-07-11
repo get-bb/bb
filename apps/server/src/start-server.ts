@@ -73,6 +73,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     runtimeConfig.devAppPort = serverConfig.BB_DEV_APP_PORT;
   }
   const terminalSessions = new TerminalSessionLifecycle({
+    config: runtimeConfig,
     db,
     hub,
     logger,

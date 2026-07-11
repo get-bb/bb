@@ -147,6 +147,9 @@ export const systemExperiments = sqliteTable("system_experiments", {
   bbConnect: integer("bb_connect", { mode: "boolean" })
     .notNull()
     .default(false),
+  multiMachine: integer("multi_machine", { mode: "boolean" })
+    .notNull()
+    .default(false),
   popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),
   popoutChatHotkey: text("popout_chat_hotkey").notNull(),
   plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),

@@ -18,11 +18,11 @@ import {
   type DaemonFileReadResult,
   remapDaemonFileRouteError,
 } from "../services/hosts/daemon-file-response.js";
-import { requirePrimaryHostId } from "../services/hosts/primary-host.js";
 import {
-  requireNonDestroyedHostWithStatus,
-  requirePublicThreadEnvironment,
-} from "../services/lib/entity-lookup.js";
+  assertUsableHostId,
+  requirePrimaryHostId,
+} from "../services/hosts/primary-host.js";
+import { requirePublicThreadEnvironment } from "../services/lib/entity-lookup.js";
 
 const HOST_FILE_LIST_LIMIT_DEFAULT = 1000;
 
@@ -139,7 +139,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
 
   const resolveHostId = (hostId: string | undefined): string => {
     const resolved = hostId ?? requirePrimaryHostId(deps);
-    requireNonDestroyedHostWithStatus(deps, resolved);
+    assertUsableHostId(deps, { hostId: resolved });
     return resolved;
   };
 

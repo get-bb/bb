@@ -78,6 +78,12 @@ export const experimentsSchema = z.object({
    */
   bbConnect: z.boolean(),
   /**
+   * Multi-machine: allows explicit execution targeting on public hosts other
+   * than the local primary. Off by default; default host resolution remains
+   * primary-first regardless of this setting.
+   */
+  multiMachine: z.boolean(),
+  /**
    * Popout chat: enables the desktop-only compact always-on-top chat window.
    */
   popoutChat: z.boolean(),
@@ -101,6 +107,7 @@ export type Experiments = z.infer<typeof experimentsSchema>;
 export const defaultExperiments: Experiments = {
   bbConnect: false,
   claudeCodeMockCliTraffic: false,
+  multiMachine: false,
   popoutChat: false,
   popoutChatHotkey: "Alt+Space",
   plugins: false,

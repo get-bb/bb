@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { listPublicHosts, type DbConnection } from "@bb/db";
+import { getExperiments, listPublicHosts, type DbConnection } from "@bb/db";
 import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -19,12 +19,20 @@ export interface AssertPrimaryHostIdArgs {
   hostId: string;
 }
 
+export interface AssertUsableHostIdArgs {
+  hostId: string;
+}
+
 function unsupportedHostError(): ApiError {
   return new ApiError(
     400,
     "unsupported_host",
     "Only the local host daemon is supported",
   );
+}
+
+function unusableHostError(): ApiError {
+  return new ApiError(400, "unsupported_host", "Host cannot run threads");
 }
 
 function primaryHostUnavailableError(): ApiError {
@@ -94,6 +102,29 @@ export function assertPrimaryHostId(
   const primaryHostId = requirePrimaryHostId(deps);
   if (args.hostId !== primaryHostId) {
     throw unsupportedHostError();
+  }
+}
+
+/**
+ * Validates an explicit execution target. With Multi-machine disabled this is
+ * exactly the primary-only assertion. With it enabled, any non-destroyed
+ * public host is accepted; connectivity remains a dispatch-time concern.
+ */
+export function assertUsableHostId(
+  deps: PrimaryHostDeps,
+  args: AssertUsableHostIdArgs,
+): void {
+  if (!getExperiments(deps.db).multiMachine) {
+    assertPrimaryHostId(deps, args);
+    return;
+  }
+
+  requireNonDestroyedHostWithStatus(deps, args.hostId);
+  const isPublicHost = listPublicHosts(deps.db).some(
+    (host) => host.id === args.hostId,
+  );
+  if (!isPublicHost) {
+    throw unusableHostError();
   }
 }
 

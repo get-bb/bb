@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { setExperiments } from "@bb/db";
+import { defaultExperiments } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -24,11 +26,15 @@ const projectResponseSchema = z.object({
 });
 
 describe("public project local host routes", () => {
-  it("supports local project source updates and rejects secondary host sources", async () => {
+  it("supports local project source updates and secondary host sources", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-source-1" });
       seedPrimaryHost(harness.deps, host.id);
       const secondaryHost = seedHost(harness.deps, { id: "host-source-2" });
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
+      });
 
       const projectResponse = await harness.app.request("/api/v1/projects", {
         method: "POST",
@@ -64,9 +70,11 @@ describe("public project local host routes", () => {
           }),
         },
       );
-      expect(createSourceResponse.status).toBe(400);
+      expect(createSourceResponse.status).toBe(201);
       await expect(readJson(createSourceResponse)).resolves.toMatchObject({
-        code: "unsupported_host",
+        hostId: secondaryHost.id,
+        path: "/tmp/project-sources-2",
+        type: "local_path",
       });
 
       const updateSourceResponse = await harness.app.request(
@@ -94,7 +102,7 @@ describe("public project local host routes", () => {
           method: "DELETE",
         },
       );
-      expect(deleteSourceResponse.status).toBe(409);
+      expect(deleteSourceResponse.status).toBe(200);
     });
   });
 

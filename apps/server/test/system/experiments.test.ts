@@ -14,6 +14,7 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         bbConnect: false,
         claudeCodeMockCliTraffic: false,
+        multiMachine: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
         plugins: false,
@@ -29,6 +30,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           bbConnect: true,
           claudeCodeMockCliTraffic: true,
+          multiMachine: true,
           popoutChat: true,
           popoutChatHotkey: "CommandOrControl+Shift+P",
           plugins: false,
@@ -38,6 +40,7 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         bbConnect: true,
         claudeCodeMockCliTraffic: true,
+        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
@@ -45,6 +48,7 @@ describe("experiments settings", () => {
       expect(getExperiments(harness.db)).toEqual({
         bbConnect: true,
         claudeCodeMockCliTraffic: true,
+        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
@@ -56,6 +60,7 @@ describe("experiments settings", () => {
       ).toEqual({
         bbConnect: true,
         claudeCodeMockCliTraffic: true,
+        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
@@ -74,6 +79,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           bbConnect: true,
           claudeCodeMockCliTraffic: false,
+          multiMachine: false,
           popoutChat: false,
           popoutChatHotkey: "Alt+Space",
           plugins: false,
