@@ -8,12 +8,7 @@ export function cliFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  const credential = process.env.BB_CONNECT_MACHINE_CREDENTIAL?.trim();
-  if (!credential) return fetch(input, init);
-  const headers = new Headers(input instanceof Request ? input.headers : {});
-  new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
-  headers.set("x-bb-connect-machine", credential);
-  return fetch(input, { ...init, headers });
+  return fetch(input, init);
 }
 
 export function createCliBbSdk(

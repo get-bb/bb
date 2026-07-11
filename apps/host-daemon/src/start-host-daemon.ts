@@ -33,6 +33,10 @@ import {
   resolveUserShellPath,
 } from "./runtime-shell-env.js";
 import type { HostDaemonLogger } from "./logger.js";
+import {
+  startMachineAuthProxy,
+  type MachineAuthProxy,
+} from "./machine-auth-proxy.js";
 import type { CreateReconnectingWebSocket } from "./server-connection.js";
 
 export interface StartHostDaemonOptions {
@@ -90,6 +94,7 @@ export async function startHostDaemon(
   const releaseLock = await (options.acquireLock ?? acquireDaemonLock)(dataDir);
 
   let app: Awaited<ReturnType<typeof createHostDaemonApp>> | undefined;
+  let machineAuthProxy: MachineAuthProxy | undefined;
   try {
     const persistedAuth = await readHostAuthState(dataDir);
     const identity = await (options.loadIdentity ?? loadHostIdentity)({
@@ -175,6 +180,12 @@ export async function startHostDaemon(
         dataDir,
         transportMode: "worker",
       });
+    if (options.machineCredential !== undefined) {
+      machineAuthProxy = await startMachineAuthProxy({
+        machineCredential: options.machineCredential,
+        serverUrl,
+      });
+    }
     let hostWatcher = options.hostWatcher;
     if (hostWatcher === undefined) {
       // Run @parcel/watcher in an isolated child process. A parcel inotify
@@ -201,8 +212,7 @@ export async function startHostDaemon(
         bbExecutablePath,
         hostDaemonPort: localApiConfig?.port,
         inheritedPath: (await resolveUserShellPath()) ?? process.env.PATH,
-        serverUrl,
-        machineCredential: options.machineCredential,
+        serverUrl: machineAuthProxy?.serverUrl ?? serverUrl,
       });
     const runtimeShellEnv = await resolveRuntimeShellEnv();
     const runtimeShellEnvResolvedAtMs = Date.now();
@@ -235,11 +245,13 @@ export async function startHostDaemon(
       pickFolder: options.pickFolder,
       fetchFn: options.fetchFn,
       createWebSocket: options.createWebSocket,
+      closeMachineAuthProxy: machineAuthProxy?.close,
     });
     await app.daemon.start();
     return app.daemon;
   } catch (error) {
     await app?.localApi?.close().catch(() => undefined);
+    await machineAuthProxy?.close().catch(() => undefined);
     await releaseLock().catch(() => undefined);
     throw error;
   }

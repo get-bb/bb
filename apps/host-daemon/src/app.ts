@@ -135,6 +135,7 @@ export interface CreateHostDaemonAppOptions {
   pickFolder?: () => Promise<string | null>;
   fetchFn?: FetchFn;
   createWebSocket?: CreateReconnectingWebSocket;
+  closeMachineAuthProxy?: () => Promise<void>;
 }
 
 export interface HostDaemonApp {
@@ -858,6 +859,7 @@ export async function createHostDaemonApp(
       eventLoopStallMonitor.stop();
       hostDaemonHealthMonitor.stop();
       caffeinateManager.shutdown();
+      await options.closeMachineAuthProxy?.();
       await localApi?.close();
       await watchManager.shutdown();
       // Tear down the isolated parcel watcher child (SIGKILL + clear timers) so

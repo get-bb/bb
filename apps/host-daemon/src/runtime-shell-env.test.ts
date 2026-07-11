@@ -352,6 +352,19 @@ describe("resolveUserShellPath", () => {
 });
 
 describe("prepareRuntimeShellEnv", () => {
+  it("uses the daemon proxy URL without exporting its machine credential", () => {
+    vi.stubEnv("BB_CONNECT_MACHINE_CREDENTIAL", "bbcm_durable_secret");
+
+    const env = prepareRuntimeShellEnv({
+      bbExecutableDirectory: "/tmp/bb-bin",
+      inheritedPath: "/usr/bin",
+      serverUrl: "http://127.0.0.1:43123",
+    });
+
+    expect(env.BB_SERVER_URL).toBe("http://127.0.0.1:43123");
+    expect(env).not.toHaveProperty("BB_CONNECT_MACHINE_CREDENTIAL");
+  });
+
   it("prepends the configured bb executable directory to PATH and sets BB_CLI", () => {
     expect(
       prepareRuntimeShellEnv({
