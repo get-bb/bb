@@ -68,154 +68,6 @@ interface ThreadDetailSecondaryContentProps {
   timeline: ThreadTimelinePaneProps;
 }
 
-type ThreadMetadataPropsEqual = (
-  previous: ThreadMetadataContentProps,
-  next: ThreadMetadataContentProps,
-) => boolean;
-type ThreadSecondaryPanelPropsEqual = (
-  previous: ThreadSecondaryPanelProps,
-  next: ThreadSecondaryPanelProps,
-) => boolean;
-type ThreadTimelinePanePropsEqual = (
-  previous: ThreadTimelinePaneProps,
-  next: ThreadTimelinePaneProps,
-) => boolean;
-
-interface UseStableThreadMetadataPropsArgs {
-  value: ThreadMetadataContentProps;
-}
-
-interface UseStableThreadSecondaryPanelPropsArgs {
-  value: ThreadSecondaryPanelProps;
-}
-
-interface UseStableThreadTimelinePanePropsArgs {
-  value: ThreadTimelinePaneProps;
-}
-
-const areThreadMetadataPropsEqual: ThreadMetadataPropsEqual = (
-  previous,
-  next,
-) =>
-  previous.thread === next.thread &&
-  previous.projectId === next.projectId &&
-  previous.parentThreadDisplayName === next.parentThreadDisplayName &&
-  previous.parentThreads === next.parentThreads &&
-  previous.canAssignToParent === next.canAssignToParent &&
-  previous.canTakeOverThread === next.canTakeOverThread &&
-  previous.environment === next.environment &&
-  previous.environmentDisplayHost === next.environmentDisplayHost &&
-  previous.workspaceStatus === next.workspaceStatus &&
-  previous.workspaceStatusError === next.workspaceStatusError &&
-  previous.workspaceUnavailable === next.workspaceUnavailable &&
-  previous.pullRequest === next.pullRequest &&
-  previous.selectedMergeBaseBranch === next.selectedMergeBaseBranch &&
-  previous.mergeBaseBranchRef === next.mergeBaseBranchRef &&
-  previous.mergeBaseBranchOptions === next.mergeBaseBranchOptions &&
-  previous.mergeBaseRemoteBranchOptions === next.mergeBaseRemoteBranchOptions &&
-  previous.isLoadingMergeBaseBranchOptions ===
-    next.isLoadingMergeBaseBranchOptions &&
-  previous.updateThreadPending === next.updateThreadPending &&
-  previous.storage === next.storage &&
-  previous.onAssignParent === next.onAssignParent &&
-  previous.onMergeBaseBranchChange === next.onMergeBaseBranchChange &&
-  previous.onMergeBasePickerOpenChange === next.onMergeBasePickerOpenChange &&
-  previous.onMergeBaseBranchSearchQueryChange ===
-    next.onMergeBaseBranchSearchQueryChange &&
-  previous.onChangedFileClick === next.onChangedFileClick &&
-  previous.onCommitClick === next.onCommitClick;
-
-const areThreadSecondaryPanelPropsEqual: ThreadSecondaryPanelPropsEqual = (
-  previous,
-  next,
-) =>
-  previous.activeTab === next.activeTab &&
-  previous.canUseGitUi === next.canUseGitUi &&
-  previous.defaultMergeBaseBranch === next.defaultMergeBaseBranch &&
-  previous.environmentId === next.environmentId &&
-  previous.workspaceRootPath === next.workspaceRootPath &&
-  previous.fileTabs === next.fileTabs &&
-  previous.fileTabContent === next.fileTabContent &&
-  previous.renderBrowserDeck === next.renderBrowserDeck &&
-  previous.isBrowserTabActive === next.isBrowserTabActive &&
-  previous.sideChatDeck === next.sideChatDeck &&
-  previous.isSideChatTabActive === next.isSideChatTabActive &&
-  previous.isOpen === next.isOpen &&
-  previous.showGitDiffTab === next.showGitDiffTab &&
-  previous.onPanelFocus === next.onPanelFocus &&
-  previous.onPanelChange === next.onPanelChange &&
-  previous.onCollapse === next.onCollapse &&
-  previous.onClose === next.onClose &&
-  previous.onOpenNewTab === next.onOpenNewTab &&
-  previous.onFileTabReorder === next.onFileTabReorder &&
-  previous.onOpenFileInEditor === next.onOpenFileInEditor &&
-  previous.onOpenFilePreview === next.onOpenFilePreview &&
-  previous.onSelectionAddToChat === next.onSelectionAddToChat;
-
-const areThreadTimelinePanePropsEqual: ThreadTimelinePanePropsEqual = (
-  previous,
-  next,
-) =>
-  previous.activeThinking === next.activeThinking &&
-  previous.canSpawnChild === next.canSpawnChild &&
-  previous.threadChildOrigin === next.threadChildOrigin &&
-  previous.hasOlderTimelineRows === next.hasOlderTimelineRows &&
-  previous.hostConnectionNotice === next.hostConnectionNotice &&
-  previous.isLoadingOlderTimelineRows === next.isLoadingOlderTimelineRows &&
-  previous.isThreadTimelinePending === next.isThreadTimelinePending &&
-  previous.timelineError === next.timelineError &&
-  previous.onForkMessage === next.onForkMessage &&
-  previous.onSideChatMessage === next.onSideChatMessage &&
-  previous.onSendToMainMessage === next.onSendToMainMessage &&
-  previous.onLoadOlderRows === next.onLoadOlderRows &&
-  previous.onSelectionAddToChat === next.onSelectionAddToChat &&
-  previous.onSelectionReplyInSideChat === next.onSelectionReplyInSideChat &&
-  previous.onOpenLink === next.onOpenLink &&
-  previous.onOpenLocalFileLink === next.onOpenLocalFileLink &&
-  previous.onTitleAction === next.onTitleAction &&
-  previous.projectId === next.projectId &&
-  previous.resolveMentionLink === next.resolveMentionLink &&
-  previous.showOngoingIndicator === next.showOngoingIndicator &&
-  previous.ongoingIndicatorLabel === next.ongoingIndicatorLabel &&
-  previous.isStopping === next.isStopping &&
-  previous.stoppingAnchorAt === next.stoppingAnchorAt &&
-  previous.timelineRows === next.timelineRows &&
-  previous.threadId === next.threadId &&
-  previous.threadRuntimeDisplayStatus === next.threadRuntimeDisplayStatus &&
-  previous.unreadDividerAutoScroll === next.unreadDividerAutoScroll &&
-  previous.unreadDividerPlacement === next.unreadDividerPlacement &&
-  previous.workspaceRootPath === next.workspaceRootPath;
-
-function useStableThreadMetadataProps({
-  value,
-}: UseStableThreadMetadataPropsArgs): ThreadMetadataContentProps {
-  const valueRef = useRef(value);
-  if (!areThreadMetadataPropsEqual(valueRef.current, value)) {
-    valueRef.current = value;
-  }
-  return valueRef.current;
-}
-
-function useStableThreadSecondaryPanelProps({
-  value,
-}: UseStableThreadSecondaryPanelPropsArgs): ThreadSecondaryPanelProps {
-  const valueRef = useRef(value);
-  if (!areThreadSecondaryPanelPropsEqual(valueRef.current, value)) {
-    valueRef.current = value;
-  }
-  return valueRef.current;
-}
-
-function useStableThreadTimelinePaneProps({
-  value,
-}: UseStableThreadTimelinePanePropsArgs): ThreadTimelinePaneProps {
-  const valueRef = useRef(value);
-  if (!areThreadTimelinePanePropsEqual(valueRef.current, value)) {
-    valueRef.current = value;
-  }
-  return valueRef.current;
-}
-
 export function ThreadDetailSecondaryContent({
   footer,
   header,
@@ -228,11 +80,9 @@ export function ThreadDetailSecondaryContent({
   secondaryPanel,
   timeline,
 }: ThreadDetailSecondaryContentProps) {
-  const stableMetadata = useStableThreadMetadataProps({ value: metadata });
-  const stableSecondaryPanel = useStableThreadSecondaryPanelProps({
-    value: secondaryPanel,
-  });
-  const stableTimeline = useStableThreadTimelinePaneProps({ value: timeline });
+  const stableMetadata = metadata;
+  const stableSecondaryPanel = secondaryPanel;
+  const stableTimeline = timeline;
   const renderAsDrawer = useIsCompactViewport();
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
@@ -337,7 +187,7 @@ export function ThreadDetailSecondaryContent({
   const canShowNativeBrowserView = renderAsDrawer
     ? isSecondaryPanelOpen && isCompactDrawerContentSettled
     : isSecondaryPanelOpen;
-  const { renderBrowserDeck, ...stableThreadSecondaryPanelProps } =
+  const { renderBrowserDeck, ...threadSecondaryPanelProps } =
     stableSecondaryPanel;
   const browserDeck = useMemo(
     () => renderBrowserDeck?.({ canShowNativeBrowserView }),
@@ -402,7 +252,7 @@ export function ThreadDetailSecondaryContent({
   );
   const inlineSecondaryPanelContent = !renderAsDrawer ? (
     <ThreadSecondaryPanel
-      {...stableThreadSecondaryPanelProps}
+      {...threadSecondaryPanelProps}
       browserDeck={browserDeck}
       renderAsDrawer={false}
       isConversationCollapsed={isConversationCollapsedActive}
@@ -416,7 +266,7 @@ export function ThreadDetailSecondaryContent({
   ) : null;
   const drawerSecondaryPanelContent = renderAsDrawer ? (
     <ThreadSecondaryPanel
-      {...stableThreadSecondaryPanelProps}
+      {...threadSecondaryPanelProps}
       browserDeck={browserDeck}
       renderAsDrawer={true}
       isConversationCollapsed={false}
@@ -513,7 +363,7 @@ export function ThreadDetailSecondaryContent({
         <ResponsiveDrawerShell
           open={isSecondaryPanelOpen}
           onOpenChange={(open) => {
-            if (!open) stableThreadSecondaryPanelProps.onClose();
+            if (!open) threadSecondaryPanelProps.onClose();
           }}
           srLabel="Thread details"
           contentClassName="h-[92dvh] max-h-[92dvh]"

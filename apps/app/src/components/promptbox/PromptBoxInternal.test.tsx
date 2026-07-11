@@ -854,6 +854,35 @@ describe("PromptBoxInternal minimized layout", () => {
     ).toBeNull();
     window.localStorage.removeItem(storageKey);
   });
+
+  it("does not focus the editor when expanding on coarse pointers", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
+    try {
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            minimized: { isMinimized: true, onToggle: vi.fn() },
+          })}
+        />,
+      );
+
+      const focus = vi.spyOn(getPromptEditorElement(), "focus");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Make prompt box larger" }),
+      );
+
+      expect(focus).not.toHaveBeenCalled();
+    } finally {
+      requestAnimationFrame.mockRestore();
+      restoreMatchMedia();
+    }
+  });
 });
 
 describe("PromptBoxInternal mention triggers", () => {

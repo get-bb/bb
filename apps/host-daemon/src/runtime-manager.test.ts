@@ -465,6 +465,51 @@ describe("RuntimeManager", () => {
     ]);
   });
 
+  it("loads a thread command's skill catalog while that command retains an idle runtime", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-command-skills-");
+    const source = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "first-token",
+    });
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const firstRuntime = createFakeRuntime();
+    const secondRuntime = createFakeRuntime();
+    const createRuntime = vi
+      .fn()
+      .mockReturnValueOnce(firstRuntime)
+      .mockReturnValueOnce(secondRuntime);
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace,
+      createRuntime,
+    });
+
+    const initialEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      workspacePath: "/tmp/env-1",
+    });
+    const release = manager.retainEnvironmentForThreadCommand(
+      "env-skills",
+      "thread-1",
+    );
+    try {
+      const configuredEntry = await manager.ensureEnvironment({
+        environmentId: "env-skills",
+        injectedSkillSources: [source],
+        targetThreadId: "thread-1",
+        workspacePath: "/tmp/env-1",
+      });
+
+      expect(configuredEntry).not.toBe(initialEntry);
+      expect(configuredEntry.skillCatalogHash).not.toBeNull();
+      expect(firstRuntime.shutdown).toHaveBeenCalledTimes(1);
+      expect(createRuntime).toHaveBeenCalledTimes(2);
+    } finally {
+      release();
+    }
+  });
+
   it("does not reuse an idle runtime with a stale skill catalog hash", async () => {
     const dataDir = await makeTempDir("bb-runtime-manager-skills-stale-");
     const source = await writeInjectedSkillSource({
@@ -1243,7 +1288,10 @@ describe("RuntimeManager", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    const release = manager.retainEnvironmentForThreadCommand("env-1");
+    const release = manager.retainEnvironmentForThreadCommand(
+      "env-1",
+      "thread-1",
+    );
 
     await manager.replaceBaseShellEnv({
       PATH: "/new/bin:/usr/bin",

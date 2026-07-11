@@ -411,6 +411,12 @@ function FollowUpPromptBoxWithComposer({
   });
   const voice = usePromptVoice(promptBoxRef);
   const mobileMinimized = useMobilePromptBoxMinimized(zenModeResetKey);
+  const {
+    expand: expandMobilePromptBox,
+    isAvailable: isMobilePromptBoxAvailable,
+    isMinimized: isMobilePromptBoxMinimized,
+    toggle: toggleMobilePromptBox,
+  } = mobileMinimized;
   // Selection actions reuse `focusEndKey` as their completion signal. On
   // mobile web that signal must not focus the editor (and wake the keyboard),
   // but it should still expand a compact composer so the added quote is visible.
@@ -419,23 +425,23 @@ function FollowUpPromptBoxWithComposer({
     if (focusEndKey === undefined) return;
     if (focusEndKey === lastMobileExpandKeyRef.current) return;
     lastMobileExpandKeyRef.current = focusEndKey;
-    if (mobileMinimized.isAvailable) {
-      mobileMinimized.expand();
+    if (isMobilePromptBoxAvailable) {
+      expandMobilePromptBox();
     }
-  }, [focusEndKey, mobileMinimized.expand, mobileMinimized.isAvailable]);
+  }, [expandMobilePromptBox, focusEndKey, isMobilePromptBoxAvailable]);
   const minimizedConfig = useMemo(
     () =>
-      mobileMinimized.isAvailable
+      isMobilePromptBoxAvailable
         ? {
-            isMinimized: mobileMinimized.isMinimized,
-            onToggle: mobileMinimized.toggle,
+            isMinimized: isMobilePromptBoxMinimized,
+            onToggle: toggleMobilePromptBox,
             placeholder: composer.minimizedPromptPlaceholder,
           }
         : undefined,
     [
-      mobileMinimized.isAvailable,
-      mobileMinimized.isMinimized,
-      mobileMinimized.toggle,
+      isMobilePromptBoxAvailable,
+      isMobilePromptBoxMinimized,
+      toggleMobilePromptBox,
       composer.minimizedPromptPlaceholder,
     ],
   );
@@ -538,7 +544,7 @@ function FollowUpPromptBoxWithComposer({
         );
 
   return (
-    <MobilePromptBoxMinimizedProvider isMinimized={mobileMinimized.isMinimized}>
+    <MobilePromptBoxMinimizedProvider isMinimized={isMobilePromptBoxMinimized}>
       <ThreadTimelineScrollToBottomButton
         active={composer.threadRuntimeDisplayStatus === "active"}
       />
@@ -588,13 +594,13 @@ function FollowUpPromptBoxWithComposer({
             layout: "thread",
             storageKey: null,
             resetKey: `${zenModeResetKey}:${
-              mobileMinimized.isAvailable ? "mobile" : "desktop"
+              isMobilePromptBoxAvailable ? "mobile" : "desktop"
             }`,
             resetOnSubmit: true,
           }}
           footerStart={footerStart}
         />
-        {!mobileMinimized.isMinimized ? (
+        {!isMobilePromptBoxMinimized ? (
           <div className="mt-1 flex min-h-6 items-center justify-between gap-2 pl-[15px] pr-3.5">
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
               {environmentSummary}

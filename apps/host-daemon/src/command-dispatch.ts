@@ -184,6 +184,7 @@ const commandHandlers: CommandHandlerMap = {
   "thread.start": async (command, options) => {
     const release = options.runtimeManager.retainEnvironmentForThreadCommand(
       command.environmentId,
+      command.threadId,
     );
     try {
       return await startThread(command, options);
@@ -194,6 +195,7 @@ const commandHandlers: CommandHandlerMap = {
   "turn.submit": async (command, options) => {
     const release = options.runtimeManager.retainEnvironmentForThreadCommand(
       command.environmentId,
+      command.threadId,
     );
     try {
       const entry = await ensureThreadRuntime(command, options);

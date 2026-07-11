@@ -2190,6 +2190,9 @@ export function PromptBoxInternal({
   }, []);
 
   const focusEditorAfterSizeChange = useCallback(() => {
+    // Size changes on mobile web are presentation-only. Keeping focus where it
+    // is prevents the soft keyboard from covering the thread after a tap.
+    if (isPointerCoarse) return;
     requestAnimationFrame(() => {
       const currentEditor = editorRef.current;
       if (!currentEditor || currentEditor.isDestroyed) return;
@@ -2197,7 +2200,7 @@ export function PromptBoxInternal({
       currentEditor.commands.focus();
       scheduleRevealEditorSelection();
     });
-  }, [scheduleRevealEditorSelection]);
+  }, [isPointerCoarse, scheduleRevealEditorSelection]);
 
   const makePromptBoxSmaller = useCallback(() => {
     capturePromptBoxHeight();
