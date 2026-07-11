@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Machine v1 — Product Plan &amp; UI Mockups</title>
+<style>
+  :root {
+    --bg: #fdfdfc;
+    --ink: #1a1c1e;
+    --muted: #5c6370;
+    --line: #e4e2dd;
+    --card: #f6f5f2;
+    --accent: #2f6fed;
+    --accent-soft: #e8effd;
+    --good: #1a7f4b;
+    --good-soft: #e6f4ec;
+    --warn: #b45309;
+    --warn-soft: #fdf0e0;
+    --bad: #b3261e;
+    --bad-soft: #fbeae9;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* mockup (dark app frame) tokens */
+    --m-canvas: #17181b;
+    --m-panel: #1e2024;
+    --m-panel2: #26282e;
+    --m-line: #33363d;
+    --m-ink: #e8e9eb;
+    --m-muted: #8b909a;
+    --m-accent: #6b9aff;
+    --m-good: #4ade80;
+    --m-dim: #565b64;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 920px; margin: 0 auto; padding: 48px 28px 120px; }
+  h1 { font-size: 34px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .subtitle { color: var(--muted); font-size: 17px; margin: 0 0 40px; }
+  h2 { font-size: 24px; letter-spacing: -0.01em; margin: 64px 0 16px; padding-top: 24px; border-top: 1px solid var(--line); }
+  h2 .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  h3 { font-size: 18px; margin: 32px 0 8px; }
+  h4 { font-size: 15px; margin: 24px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  p, li { max-width: 76ch; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .tldr { background: var(--accent-soft); border: 1px solid #c9daf8; border-radius: 10px; padding: 20px 24px; margin: 0 0 8px; }
+  .tldr p { margin: 8px 0; }
+  .callout { border-left: 3px solid var(--accent); background: var(--card); padding: 12px 18px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .callout.good { border-left-color: var(--good); background: var(--good-soft); }
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 99px; padding: 2px 10px; vertical-align: middle; }
+  .pill.have { background: var(--good-soft); color: var(--good); }
+  .pill.gap  { background: var(--bad-soft); color: var(--bad); }
+  .pill.partial { background: var(--warn-soft); color: var(--warn); }
+  .pill.m { background: var(--accent-soft); color: var(--accent); }
+  .toc { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 24px; columns: 2; font-size: 14.5px; }
+  .toc a { text-decoration: none; display: block; padding: 3px 0; }
+
+  /* ---------- mockup chrome ---------- */
+  .mock { margin: 28px 0 8px; }
+  .mock-label { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .mock-label .tag { color: var(--accent); }
+  .frame {
+    background: var(--m-canvas); color: var(--m-ink); border-radius: 12px;
+    border: 1px solid #0e0f11; box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    padding: 0; overflow: hidden;
+    font: 13.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .frame * { box-sizing: border-box; }
+  .titlebar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; }
+  .titlebar .dot { width: 11px; height: 11px; border-radius: 50%; background: #3a3d44; }
+  .titlebar .win-title { margin-left: 10px; color: var(--m-dim); font-size: 12px; }
+  .frame-body { padding: 18px 22px 26px; }
+  .frame-caption { font-size: 13.5px; color: var(--muted); margin: 10px 2px 0; max-width: 76ch; }
+
+  .m-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: 1px; margin-right: 6px; }
+  .m-dot.on { background: var(--m-good); box-shadow: 0 0 6px rgba(74,222,128,.5); }
+  .m-dot.off { background: transparent; border: 1.5px solid var(--m-dim); }
+  .m-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--m-panel2); border: 1px solid var(--m-line); border-radius: 6px; padding: 3px 9px; font-size: 12px; color: var(--m-muted); }
+  .m-kbd { font-family: var(--mono); font-size: 11px; background: var(--m-panel2); border: 1px solid var(--m-line); border-radius: 4px; padding: 1px 5px; color: var(--m-muted); }
+  .m-btn { display: inline-block; background: var(--m-accent); color: #0e1320; font-weight: 600; font-size: 12.5px; border-radius: 7px; padding: 6px 14px; }
+  .m-btn.ghost { background: transparent; color: var(--m-ink); border: 1px solid var(--m-line); font-weight: 500; }
+  .m-btn.subtle { background: var(--m-panel2); color: var(--m-ink); border: 1px solid var(--m-line); font-weight: 500; }
+  .m-code { font-family: var(--mono); font-size: 12px; background: #101114; border: 1px solid var(--m-line); border-radius: 8px; padding: 10px 12px; color: #c8d3e8; overflow-x: auto; white-space: pre; }
+  .m-h { font-size: 15px; font-weight: 650; margin: 0 0 2px; }
+  .m-sub { color: var(--m-muted); font-size: 12.5px; }
+  .m-section-title { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em; color: var(--m-dim); padding: 10px 12px 4px; }
+
+  /* composer mock */
+  .composer { background: var(--m-panel); border: 1px solid var(--m-line); border-radius: 12px; max-width: 660px; margin: 0 auto; }
+  .composer .input { padding: 14px 16px 34px; color: var(--m-dim); font-size: 14px; }
+  .composer .row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--m-line); flex-wrap: wrap; }
+  .composer .spacer { flex: 1; }
+  .send { width: 28px; height: 28px; border-radius: 8px; background: var(--m-accent); display: inline-flex; align-items: center; justify-content: center; color: #0e1320; font-weight: 700; }
+
+  .menu { background: var(--m-panel); border: 1px solid var(--m-line); border-radius: 10px; width: 340px; box-shadow: 0 16px 40px rgba(0,0,0,.45); overflow: hidden; }
+  .menu .item { display: flex; align-items: center; gap: 9px; padding: 7px 12px; font-size: 13px; }
+  .menu .item .grow { flex: 1; }
+  .menu .item .hint { color: var(--m-dim); font-size: 11.5px; }
+  .menu .item.sel { background: var(--m-panel2); }
+  .menu .item.dis { color: var(--m-dim); }
+  .menu .item.dis .ico { opacity: .5; }
+  .menu .sep { height: 1px; background: var(--m-line); margin: 4px 0; }
+  .menu .ghost-row { color: var(--m-accent); }
+  .ico { width: 16px; text-align: center; color: var(--m-muted); }
+
+  /* settings mock */
+  .settings-card { background: var(--m-panel); border: 1px solid var(--m-line); border-radius: 12px; max-width: 720px; margin: 0 auto; overflow: hidden; }
+  .settings-head { display: flex; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--m-line); }
+  .settings-head .grow { flex: 1; }
+  .m-row { display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--m-line); }
+  .m-row:last-child { border-bottom: none; }
+  .m-row .grow { flex: 1; min-width: 0; }
+  .m-row .name { font-weight: 600; font-size: 13.5px; }
+  .m-row .meta { color: var(--m-muted); font-size: 12px; margin-top: 1px; }
+  .m-row .meta code { background: none; border: none; color: var(--m-muted); font-size: 11.5px; padding: 0; }
+  .m-ellipsis { color: var(--m-dim); letter-spacing: 2px; font-weight: 700; }
+  .m-badge { font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; border-radius: 99px; padding: 2px 8px; }
+  .m-badge.this { background: rgba(107,154,255,.15); color: var(--m-accent); }
+  .m-badge.tunnel { background: rgba(168,132,255,.14); color: #b39aff; }
+  .m-badge.lan { background: rgba(74,222,128,.12); color: var(--m-good); }
+
+  /* dialog mock */
+  .dialog { background: var(--m-panel); border: 1px solid var(--m-line); border-radius: 14px; max-width: 520px; margin: 0 auto; box-shadow: 0 24px 60px rgba(0,0,0,.5); overflow: hidden; }
+  .dialog .body { padding: 20px 22px; }
+  .dialog .foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--m-line); background: rgba(0,0,0,.12); }
+  .choice { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--m-line); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+  .choice.sel { border-color: var(--m-accent); background: rgba(107,154,255,.07); }
+  .radio { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--m-dim); margin-top: 2px; flex: none; }
+  .choice.sel .radio { border-color: var(--m-accent); box-shadow: inset 0 0 0 3.5px var(--m-panel), inset 0 0 0 10px var(--m-accent); }
+
+  .arch { display: flex; gap: 14px; align-items: stretch; flex-wrap: wrap; margin: 20px 0; }
+  .arch .box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; font-size: 13px; flex: 1; min-width: 180px; }
+  .arch .box b { display: block; margin-bottom: 4px; }
+  .arch .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+
+  .decision-table td:first-child { font-weight: 600; white-space: nowrap; }
+  .milestone { border: 1px solid var(--line); border-radius: 12px; padding: 4px 22px 18px; margin: 22px 0; background: #fff; }
+  .milestone h3 { margin-top: 18px; }
+  .milestone .est { color: var(--muted); font-weight: 400; font-size: 14px; }
+  .exit { font-size: 14px; background: var(--good-soft); border-radius: 8px; padding: 10px 14px; }
+  .exit b { color: var(--good); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Multi-Machine v1</h1>
+<p class="subtitle">Pick the machine a task runs on. Pair new machines over the LAN or through bb connect. Productizing the plumbing that already exists — plan + UI mockups · 2026-07-11</p>
+
+<div class="tldr">
+  <p><b>The vision.</b> bb becomes honestly multi-machine: your bb server orchestrates daemons on any number of computers — the laptop it runs on, the Mac Studio on your desk, a cloud dev VM. When you create a task, the environment picker shows <i>where</i> work can happen, grouped by machine. Projects are machine-independent: the project is the logical repo; each machine that has a checkout is a place it can run. Adding a machine is one copyable command that works from anywhere via bb connect, or directly on a trusted network.</p>
+  <p><b>Why now / why cheap.</b> Almost all of this was already built and verified in PR #510 (multi-host execution ran a real thread on a second daemon) and then deliberately backed out in #536 as not-yet-productized. The data model, hub routing, per-host auth, and the cloud side of tunnel machine credentials all exist today. This plan is the product shape that lets it re-land and stay.</p>
+</div>
+
+<nav class="toc">
+  <a href="#decisions">1. Locked product decisions</a>
+  <a href="#state">2. Where the code is today</a>
+  <a href="#model">3. The product model</a>
+  <a href="#ux">4. UX spec + mockups</a>
+  <a href="#pairing">5. Pairing architecture</a>
+  <a href="#assumptions">6. Same-machine assumptions &amp; the plugin model</a>
+  <a href="#milestones">7. Milestones</a>
+  <a href="#cli">8. CLI &amp; docs surfaces</a>
+  <a href="#risks">9. Risks &amp; edge cases</a>
+  <a href="#later">10. Fast-follows (explicitly not v1)</a>
+</nav>
+
+<h2 id="decisions"><span class="num">1</span>Locked product decisions</h2>
+<p>Settled with Sawyer, 2026-07-11. These are the shared vision — changes to any of these should be deliberate.</p>
+<table class="decision-table">
+  <tr><th>Decision</th><th>Choice</th></tr>
+  <tr><td>Picker shape</td><td>Machine selection lives <b>inside the environment picker</b>, options grouped by machine. No separate machine chip. One mental model: you pick <i>where the work happens</i>.</td></tr>
+  <tr><td>Project ↔ machine model</td><td><b>Machine-independent projects.</b> A project is a logical entity with N per-machine sources (checkouts). Environments stay machine-local; the project is the cross-machine identity. The heavier "pair environments across machines" concept was considered and rejected for v1.</td></tr>
+  <tr><td>Non-git work</td><td><b>Manual link; git just automates.</b> A git remote enables the automated clone path in guided setup. Non-git projects can still gain a source on another machine by pointing at a directory manually. Personal/scratch threads can target any machine (that machine's personal workspace).</td></tr>
+  <tr><td>Repo missing on target</td><td><b>Guided setup flow.</b> Picking a machine that lacks the project opens a one-time "Set up &lt;project&gt; on &lt;machine&gt;" step — clone from the remote to a default path, or point at an existing checkout.</td></tr>
+  <tr><td>Default machine</td><td><b>Sticky last-used per project</b> (extends the existing per-project environment-selection persistence). Primary host until you first pick something else.</td></tr>
+  <tr><td>Offline machines</td><td><b>Shown disabled with a "last seen" badge.</b> Queue-until-online is a fast-follow, not v1.</td></tr>
+  <tr><td>Pairing paths</td><td><b>Both; tunnel is the headline.</b> One "Add a machine" one-liner; via bb connect (<code>bbcm_</code> machine credential through the gate) from anywhere, or a direct server URL on a trusted network. Requires finishing daemon-side <code>x-bb-connect-machine</code> wiring.</td></tr>
+  <tr><td>Management surface</td><td><b>bb Settings → Machines</b> (list, status, rename, revoke, add). Project-scoped view lives in the <b>existing Project Settings → Sources</b> section, upgraded to be machine-aware. getbb.app dashboard's "Add a machine" is reduced to a pointer into bb.</td></tr>
+  <tr><td>Rollout</td><td><b>New "Multi-machine" experiment</b>, independent of the bbConnect experiment (LAN multi-machine must not require connect). Land dark, flip when solid.</td></tr>
+  <tr><td>Naming</td><td><b>"Machine" in UI copy and CLI</b> (<code>bb machine list</code>, <code>--machine</code>, alias <code>--host</code>). Internal code keeps <code>Host</code> — no churny rename of tables/services.</td></tr>
+</table>
+
+<h2 id="state"><span class="num">2</span>Where the code is today</h2>
+
+<p>Three code sweeps (server host model, connect stack, UI/CLI surfaces) establish the baseline. The punchline: <b>the data model, auth, hub routing, RPC, and contracts are already per-host.</b> A handful of deliberate gates funnel everything to one "primary" machine.</p>
+
+<table>
+  <tr><th>Layer</th><th>Status</th><th>Detail</th></tr>
+  <tr><td>DB / data model</td><td><span class="pill have">Have</span></td><td><code>hosts</code> table, <code>hostDaemonSessions</code> per connection, <code>environments.hostId</code> (not null), <code>projectSources.hostId</code>, <code>terminalSessions.hostId</code>. All N-host capable.</td></tr>
+  <tr><td>Dispatch / hub</td><td><span class="pill have">Have</span></td><td>Hub keys daemon sockets by <code>hostId</code>; <code>callHostOnlineRpc(hostId, …)</code> routes per host; N daemons can register concurrently (verified live in #510: three at once).</td></tr>
+  <tr><td>Per-host auth</td><td><span class="pill have">Have</span></td><td>Per-host enrollment keys (<code>bbdh_</code> host keys via better-auth), rotation, revocation. <code>host-daemon join</code> subcommand exists in the launcher.</td></tr>
+  <tr><td>Host list API</td><td><span class="pill have">Have</span></td><td><code>GET /hosts</code> with live connected/disconnected status + realtime <code>host-list</code> broadcasts. UI consumes it via <code>useHosts()</code> — just never as a chooser.</td></tr>
+  <tr><td>Execution routing</td><td><span class="pill gap">Removed</span></td><td><code>assertPrimaryHostId</code> rejects any non-primary host (400 <code>unsupported_host</code>) across thread create/eligibility, projects, files, terminals. The relaxed version (<code>assertUsableHostId</code>) + <code>--host</code> + <code>bb host list</code> shipped in #510, verified live, and were removed in #536 — recoverable from git history at <code>755fb56c9^</code>.</td></tr>
+  <tr><td>Primary-host resolver</td><td><span class="pill partial">Fragile</span></td><td><code>resolvePrimaryHostId</code> falls back to "the single host" — with 2+ hosts and no co-located daemon it returns <code>null</code> → 502. Fine once a co-located daemon exists, but default resolution needs to stay correct as hosts multiply.</td></tr>
+  <tr><td>Remote enrollment</td><td><span class="pill gap">Gap</span></td><td>Enroll-key minting is loopback-gated (<code>assertLoopbackRequest</code>): "Only the local host daemon is supported." The Machines UI needs a session-authed join-code route.</td></tr>
+  <tr><td>Composer / picker</td><td><span class="pill partial">Half</span></td><td>The env-picker value already encodes <code>hostId</code> (<code>host:${hostId}:${mode}</code>) and the request schema carries it — but <code>resolveRootComposeEffectiveEnvironmentValue</code> (RootComposeView) force-rewrites every selection to <code>primaryHostId</code>, and the composer only receives <code>usePrimaryHost()</code>.</td></tr>
+  <tr><td>Connect: multi-server</td><td><span class="pill have">Have</span></td><td>Each machine running its own bb = own subdomain + tunnel. Fully shipped (10 servers/account, dashboard, port shares).</td></tr>
+  <tr><td>Connect: machine-behind-server</td><td><span class="pill partial">Half</span></td><td>Cloud side complete and deployed: <code>machine</code> table, <code>bbcm_</code> credentials, gate <code>/internal/*</code> forwarding with defense-in-depth, dashboard "Add a machine". Daemon side never sends <code>x-bb-connect-machine</code> — proven only with a proxy harness. <code>machine.lastSeenAt</code> never written.</td></tr>
+  <tr><td>Machine management UI</td><td><span class="pill gap">Gap</span></td><td>No Machines pane, no rename/remove routes (<code>PATCH/DELETE /hosts/:id</code> don't exist). Project Settings has a sources list, but add is local-host-only.</td></tr>
+</table>
+
+<h2 id="model"><span class="num">3</span>The product model</h2>
+
+<p>Four nouns, one new relationship:</p>
+
+<div class="arch">
+  <div class="box"><span class="lbl">Machine (host)</span><b>A computer running a bb daemon</b>Has a name, online/offline status, last-seen. Paired once, via LAN or tunnel. The server's own machine is "this machine."</div>
+  <div class="box"><span class="lbl">Project</span><b>A logical codebase — machine-independent</b>Anchored by its git remote when it has one. Owns N sources.</div>
+  <div class="box"><span class="lbl">Project source</span><b>A checkout of the project on one machine</b><code>projectSources</code> already models this (hostId + path). Guided setup creates one; git automates it, manual link covers non-git.</div>
+  <div class="box"><span class="lbl">Environment</span><b>A working directory on one machine</b>Stays machine-local forever (worktree, local checkout, personal). Its <code>hostId</code> decides which daemon executes.</div>
+</div>
+
+<p>Consequences that keep the model simple:</p>
+<ul>
+  <li><b>No cross-machine environment identity.</b> A worktree on the Studio and a worktree on the laptop are different environments even on the same branch. Git is the synchronization layer (push/pull), not bb.</li>
+  <li><b>The picker can be honest.</b> For each machine: does it have a source for this project? Yes → offer local work + worktrees there. No → offer guided setup. Offline → show, disabled, with last-seen.</li>
+  <li><b>Threads never migrate.</b> A thread's environment pins its machine. If the machine is offline, the thread says so (existing <code>host_unavailable</code> semantics) — same as today, but now the UI names the machine instead of implying bb is broken.</li>
+  <li><b>Personal workspaces are per-machine by nature.</b> A personal thread targeted at the Studio just uses the Studio's personal workspace. No project source required.</li>
+</ul>
+
+<h2 id="ux"><span class="num">4</span>UX spec + mockups</h2>
+
+<h3>4.1 Composer — environment picker grouped by machine</h3>
+
+<div class="mock">
+  <p class="mock-label"><span class="tag">Mockup A</span> · New-task composer with the environment menu open</p>
+  <div class="frame">
+    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="win-title">bb — new task</span></div>
+    <div class="frame-body">
+      <div class="composer">
+        <div class="input">Describe a task…</div>
+        <div class="row">
+          <span class="m-chip">📁 bb</span>
+          <span class="m-chip" style="border-color: var(--m-accent); color: var(--m-ink);">🖥 Mac Studio · New worktree ▾</span>
+          <span class="m-chip">main</span>
+          <span class="spacer"></span>
+          <span class="m-chip">Fable · high</span>
+          <span class="send">↑</span>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:center; margin-top:10px;">
+        <div class="menu">
+          <div class="m-section-title"><span class="m-dot on"></span>MacBook Pro &nbsp;<span class="m-badge this">this machine</span></div>
+          <div class="item"><span class="ico">⌂</span><span class="grow">Work locally</span><span class="hint">~/bb</span></div>
+          <div class="item"><span class="ico">⎇</span><span class="grow">New worktree</span></div>
+          <div class="sep"></div>
+          <div class="m-section-title"><span class="m-dot on"></span>Mac Studio &nbsp;<span class="m-badge lan">lan</span></div>
+          <div class="item sel"><span class="ico">⎇</span><span class="grow">New worktree</span><span class="hint">✓</span></div>
+          <div class="item"><span class="ico">⌂</span><span class="grow">Work in checkout</span><span class="hint">~/code/bb</span></div>
+          <div class="sep"></div>
+          <div class="m-section-title"><span class="m-dot off"></span>dev-vm &nbsp;<span class="m-badge tunnel">bb connect</span></div>
+          <div class="item dis"><span class="ico">⎇</span><span class="grow">Offline</span><span class="hint">last seen 2h ago</span></div>
+          <div class="sep"></div>
+          <div class="m-section-title">Existing worktrees</div>
+          <div class="item"><span class="ico">⎇</span><span class="grow">fix-preview-refresh</span><span class="hint">MacBook Pro</span></div>
+          <div class="item"><span class="ico">⎇</span><span class="grow">daemon-setup</span><span class="hint">Mac Studio</span></div>
+          <div class="sep"></div>
+          <div class="item ghost-row"><span class="ico">＋</span><span class="grow">Set up bb on another machine…</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="frame-caption">One menu answers "where does this run." Machines are section headers with live status dots and a connection badge (this machine / LAN / bb connect). A machine with a project source offers its modes; an offline machine is visible but disabled with last-seen; existing worktrees carry a machine hint on the right. The summary chip in the composer now includes the machine name whenever it isn't the primary. Sticky: the last selection is remembered per project.</p>
+</div>
+
+<h3>4.2 Guided setup — first task on a machine without the project</h3>
+
+<div class="mock">
+  <p class="mock-label"><span class="tag">Mockup B</span> · One-time project setup on a new machine</p>
+  <div class="frame">
+    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="win-title">bb</span></div>
+    <div class="frame-body">
+      <div class="dialog">
+        <div class="body">
+          <div class="m-h">Set up <b>bb</b> on <b>Mac Studio</b></div>
+          <div class="m-sub">Mac Studio doesn't have this project yet. Pick how to get it there — this happens once.</div>
+          <div class="choice sel">
+            <div class="radio"></div>
+            <div>
+              <div style="font-weight:600; font-size:13px;">Clone from the project remote</div>
+              <div class="m-sub" style="margin-top:2px;"><code style="background:none;border:none;color:var(--m-muted)">github.com/sawyerhood/bb</code> → <code style="background:none;border:none;color:var(--m-muted)">~/bb/checkouts/bb</code> <span style="color:var(--m-accent)">change</span></div>
+            </div>
+          </div>
+          <div class="choice">
+            <div class="radio"></div>
+            <div>
+              <div style="font-weight:600; font-size:13px;">Use an existing folder on Mac Studio</div>
+              <div class="m-sub" style="margin-top:2px;">Browse Mac Studio's files and point at a checkout you already have.</div>
+            </div>
+          </div>
+        </div>
+        <div class="foot"><span class="m-btn ghost">Cancel</span><span class="m-btn">Clone &amp; continue</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="frame-caption">Reached from the picker ("Set up bb on another machine…" or by selecting a machine without a source). Clone runs on the target daemon as a new host command and reports progress; "existing folder" reuses the remote path browser + path-exists validation that already ship. On success a project source is created and the composer proceeds with the original selection. Non-git projects see only the second option. If git auth fails on the target machine, the error surfaces here with the daemon's stderr — no silent retry.</p>
+</div>
+
+<h3>4.3 Settings → Machines</h3>
+
+<div class="mock">
+  <p class="mock-label"><span class="tag">Mockup C</span> · Machine management pane</p>
+  <div class="frame">
+    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="win-title">bb — settings</span></div>
+    <div class="frame-body">
+      <div class="settings-card">
+        <div class="settings-head">
+          <div class="grow">
+            <div class="m-h">Machines</div>
+            <div class="m-sub">Computers that can run your tasks. Pair over your network or through bb connect.</div>
+          </div>
+          <span class="m-btn">＋ Add a machine</span>
+        </div>
+        <div class="m-row">
+          <span style="font-size:17px;">💻</span>
+          <div class="grow">
+            <div class="name"><span class="m-dot on"></span>MacBook Pro <span class="m-badge this">this machine</span></div>
+            <div class="meta">Online · macOS · bb 0.0.29 · 3 projects</div>
+          </div>
+          <span class="m-ellipsis">⋯</span>
+        </div>
+        <div class="m-row">
+          <span style="font-size:17px;">🖥</span>
+          <div class="grow">
+            <div class="name"><span class="m-dot on"></span>Mac Studio <span class="m-badge lan">lan</span></div>
+            <div class="meta">Online · macOS · bb 0.0.29 · 2 projects</div>
+          </div>
+          <span class="m-ellipsis">⋯</span>
+        </div>
+        <div class="m-row">
+          <span style="font-size:17px;">☁️</span>
+          <div class="grow">
+            <div class="name"><span class="m-dot off"></span>dev-vm <span class="m-badge tunnel">bb connect</span></div>
+            <div class="meta">Offline · last seen 2 hours ago · Linux · 1 project</div>
+          </div>
+          <span class="m-ellipsis">⋯</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="frame-caption">Backed by the existing live <code>GET /hosts</code> stream plus two new routes (rename, remove). The ⋯ menu: Rename, Browse files, Remove machine (revokes its host key + tombstones the host; environments on it become read-only history). The connection badge tells you <i>how</i> it's attached. "This machine" = the daemon co-located with the server; it can't be removed.</p>
+</div>
+
+<h3>4.4 Add a machine — one command, both paths</h3>
+
+<div class="mock">
+  <p class="mock-label"><span class="tag">Mockup D</span> · Pairing flow</p>
+  <div class="frame">
+    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="win-title">bb — settings</span></div>
+    <div class="frame-body">
+      <div class="dialog" style="max-width:560px;">
+        <div class="body">
+          <div class="m-h">Add a machine</div>
+          <div class="m-sub" style="margin-bottom:14px;">Run this on the machine you want to add. The command installs bb, pairs it to this server, and keeps it running as a service.</div>
+          <div class="m-code">curl -fsSL https://getbb.app/connect | sh -s -- \
+  --code 4F7K-9Q2M --server https://sawyer.getbb.app</div>
+          <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+            <span class="m-btn subtle">Copy</span>
+            <span class="m-sub">Code expires in 9:41</span>
+          </div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--m-line);">
+            <div class="m-sub"><b style="color:var(--m-ink)">Same network?</b> Toggle to a direct address — no bb connect account needed: <span style="color:var(--m-accent)">use http://sawyers-mbp.local:22002</span></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:18px; background:var(--m-panel2); border:1px solid var(--m-line); border-radius:9px; padding:10px 14px;">
+            <span style="width:14px;height:14px;border:2px solid var(--m-accent);border-top-color:transparent;border-radius:50%;display:inline-block;"></span>
+            <span class="m-sub">Waiting for the machine to connect…</span>
+          </div>
+        </div>
+        <div class="foot"><span class="m-btn ghost">Done</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="frame-caption">One dialog, one command, two transports. The default command routes through bb connect (works from anywhere; the script redeems a machine credential, then enrolls through the tunnel). The toggle swaps <code>--server</code> for the direct LAN URL — identical script, no cloud dependency. The waiting row flips to "● Mac Studio connected" live via the existing host-connected broadcast, then the dialog offers "Set up a project on it →". If the user's server isn't paired to bb connect, only the direct-URL variant is shown.</p>
+</div>
+
+<h3>4.5 Project Settings → Sources (machine-aware)</h3>
+
+<div class="mock">
+  <p class="mock-label"><span class="tag">Mockup E</span> · Existing sources section, upgraded</p>
+  <div class="frame">
+    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="win-title">bb — project settings · bb</span></div>
+    <div class="frame-body">
+      <div class="settings-card">
+        <div class="settings-head">
+          <div class="grow">
+            <div class="m-h">Sources</div>
+            <div class="m-sub">Where this project lives on each machine. Remote: <code style="background:none;border:none;color:var(--m-muted)">github.com/sawyerhood/bb</code></div>
+          </div>
+          <span class="m-btn subtle">＋ Add on a machine</span>
+        </div>
+        <div class="m-row">
+          <span style="font-size:17px;">💻</span>
+          <div class="grow">
+            <div class="name"><span class="m-dot on"></span>MacBook Pro</div>
+            <div class="meta"><code>~/bb</code> · 4 worktrees</div>
+          </div>
+          <span class="m-ellipsis">⋯</span>
+        </div>
+        <div class="m-row">
+          <span style="font-size:17px;">🖥</span>
+          <div class="grow">
+            <div class="name"><span class="m-dot on"></span>Mac Studio</div>
+            <div class="meta"><code>~/code/bb</code> · 1 worktree</div>
+          </div>
+          <span class="m-ellipsis">⋯</span>
+        </div>
+        <div class="m-row" style="opacity:.75;">
+          <span style="font-size:17px;">☁️</span>
+          <div class="grow">
+            <div class="name"><span class="m-dot off"></span>dev-vm</div>
+            <div class="meta"><code>/home/sawyer/bb</code> · offline</div>
+          </div>
+          <span class="m-ellipsis">⋯</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="frame-caption">This is the project-centric complement to Settings → Machines — and it's an upgrade of the section that already exists (sources list + CRUD routes are shipped; only the add-flow's hardcoded local host changes). "Add on a machine" opens the same guided-setup dialog as Mockup B. Removing a source detaches the project from that machine without touching the checkout on disk.</p>
+</div>
+
+<h3>4.6 Smaller surfaces touched</h3>
+<ul>
+  <li><b>Thread metadata panel:</b> shows the machine name + status, not just "Working remotely" (extend <code>EnvironmentDisplayHostContext</code> to carry host identity, not just locality).</li>
+  <li><b>Thread list / header:</b> when a thread's machine is offline, the existing unavailable state names it: "Mac Studio is offline — last seen 2h ago."</li>
+  <li><b>Composer summary chip:</b> machine name appears whenever the selection isn't the primary machine (Mockup A).</li>
+  <li><b>getbb.app dashboard:</b> "Add a machine" becomes "Manage machines in bb →" (the <code>bbcm_</code> redeem API stays; the entry point moves in-product).</li>
+</ul>
+
+<h2 id="pairing"><span class="num">5</span>Pairing architecture</h2>
+
+<p>Two transports, one enrollment. In both cases the machine ends up as a normal enrolled host with a <code>bbdh_</code> host key, holding a daemon WebSocket to the server; the only difference is what carries the bytes.</p>
+
+<div class="arch">
+  <div class="box" style="flex: 1.2;">
+    <span class="lbl">Path 1 — trusted network (LAN / Tailscale)</span>
+    <b>daemon → server, direct</b>
+    Script hits the server's join-code route with the code, gets an enroll key, enrolls, opens <code>/internal/ws</code>. No cloud involved. This worked in #510 with zero transport changes — the only new piece is the session-authed join-code mint (today enroll keys are loopback-only).
+  </div>
+  <div class="box" style="flex: 1.2;">
+    <span class="lbl">Path 2 — bb connect (headline)</span>
+    <b>daemon → gate → tunnel → server</b>
+    Script first redeems the join code for a <code>bbcm_</code> machine credential (cloud side already deployed), then performs the same enrollment against <code>https://sawyer.getbb.app</code> with <code>x-bb-connect-machine</code> on every <code>/internal/*</code> request and the WS dial. Gate verifies the credential, strips it, forwards; the server still host-key-auths underneath — defense in depth, verified e2e in #510 with a proxy harness. v1 replaces that harness with real daemon wiring.
+  </div>
+</div>
+
+<div class="callout">
+  <b>One join code, both transports.</b> The "Add a machine" dialog mints a single short-TTL code. The install script inspects <code>--server</code>: a tunnel URL triggers the credential redeem first; a direct URL skips it. The user never chooses a "mode" — they choose an address.
+</div>
+
+<div class="callout warn">
+  <b>Security invariants to preserve:</b> (1) the gate must keep authenticating <code>/internal/*</code> itself — tunnel traffic arrives at the server as loopback, so unauthenticated forwarding would let anyone mint enroll keys; (2) join-code minting in-product must require an authenticated UI session and mint short-TTL, single-use codes; (3) removing a machine revokes both the host key and (if present) the <code>bbcm_</code> credential, and severs live sessions.
+</div>
+
+<h2 id="assumptions"><span class="num">6</span>Same-machine assumptions &amp; the plugin model</h2>
+
+<p>A dedicated audit (2026-07-11) hunted for places that assume the daemon and server share a filesystem. The good news: file preview, diffs, git operations, terminals, thread storage, worktree derivation, and attachments already route through daemon RPC (<code>host.*</code> / <code>workspace.*</code>) — the migration is further along than expected. The breaks cluster in one structural pattern plus a few edges.</p>
+
+<h3>6.1 The one structural break: skills &amp; instructions ship <i>paths</i>, not <i>bytes</i></h3>
+<p>The server assembles a thread's injected skills by scanning directories on <b>its own disk</b> (builtin skills in the server dist, data-dir/global skills, plugin-contributed skills) and sends the daemon a list of <b>absolute server-machine paths</b>; the daemon then re-reads those paths from <b>its own</b> filesystem and stages them into <code>runtime/global-skills</code>. The wire contract comment says it outright: <i>"all source paths are server-machine paths that the local host daemon reads from its filesystem."</i> On a co-located daemon this works by accident of shared disk. On a remote daemon every path is ENOENT and every skill is <b>silently dropped</b> (staging catches and logs). Same pattern, same fix, three variants:</p>
+<table>
+  <tr><th>What</th><th>Where</th><th>Failure on remote daemon</th><th>Fix</th></tr>
+  <tr><td>Builtin / global / plugin skills</td><td><code>services/skills/injected-skills.ts</code> → <code>host-daemon-contract</code> (<code>sourceRootPath</code>/<code>skillFilePath</code>) → <code>apps/host-daemon/src/injected-skills.ts</code></td><td>All skills silently vanish for threads on that machine</td><td><b>Skill sync</b> — see the design below. The daemon-side content-hashed staging stays; the transport changes from "re-read a shared disk" to "fetch missing trees from the server."</td></tr>
+  <tr><td>Workspace <code>.bb/AGENTS.md</code></td><td><code>workspace-agent-instructions.ts:65</code> — server does <code>fs.readFileSync(workspacePath + "/.bb/AGENTS.md")</code></td><td>Project instructions silently dropped from every turn</td><td>Read via the existing <code>host.read_file</code> RPC on <code>environment.hostId</code>. Not sync — the file already lives on the machine.</td></tr>
+  <tr><td>Project <code>.bb/skills</code></td><td><code>thread-runtime-config.ts:188</code> scans <code>workspacePath/.bb/skills</code> on the server fs</td><td>Project skills not discovered</td><td>Enumerate via daemon RPC (list + read frontmatter). Also machine-resident already — no sync needed.</td></tr>
+</table>
+
+<div class="callout warn"><b>These are silent failures, not crashes</b> — a remote thread would run with no skills and no project instructions and look "fine." That makes this a hard prerequisite: it moves into M1 as <i>remote-correct thread config</i>, with a regression test asserting a remote thread receives identical instructions/skills to a local one.</div>
+
+<h4>Skill sync design (server-owned skills → machines)</h4>
+<p>Skills are filesystem artifacts — agents read reference files and execute scripts from the skill directory during a thread — so every machine needs real bytes on disk. The daemon already stages skills into content-hashed directories; sync formalizes that as a <b>lazy, content-addressed pull</b>:</p>
+<ul>
+  <li><b>Store:</b> daemon keeps <code>&lt;dataDir&gt;/runtime/skill-store/&lt;treeHash&gt;/</code> (today's <code>global-skills/&lt;hash&gt;</code> staging, promoted to a cache with LRU GC).</li>
+  <li><b>Manifest, not bytes, at thread start:</b> the server sends each skill as <code>{name, treeHash, entryPath}</code>. The server computes tree hashes when it scans sources (it already reads every file for frontmatter).</li>
+  <li><b>Pull on miss:</b> for hashes not in the store, the daemon fetches a tarball from a new internal route (<code>GET /internal/skills/tree/:hash</code>) over the existing authed transport — the same pattern as project-attachment fetch, so it works identically over LAN and through the tunnel (machine credential + host key).</li>
+  <li><b>Updates are free:</b> edit a skill → new hash → next thread pulls the new tree; unchanged skills never re-transfer. Dedupes across threads, projects, and plugin/builtin/global sources.</li>
+  <li><b>Optional warm-up (fast-follow):</b> on daemon connect, the server can send the current hash set so machines prefetch before the first thread — pure latency optimization, same mechanism.</li>
+</ul>
+<p>Direction matters: <b>server-owned skills sync down</b> (builtin, global, plugin); <b>machine-owned files are read in place</b> (workspace <code>.bb/AGENTS.md</code>, project <code>.bb/skills</code> live in the checkout on that machine and must not be synced up or overwritten).</p>
+
+<h3>6.2 Other co-location edges</h3>
+<table>
+  <tr><th>Finding</th><th>Severity</th><th>Disposition</th></tr>
+  <tr><td><b>Primary-host gates</b> (<code>assertPrimaryHostId</code> + deriving primary identity from a hostId file in the server's own data dir)</td><td>Hard reject</td><td>Already the core of M1 (§2). Note the resolver's data-dir file read is itself a shared-fs assumption — fine for the co-located primary, must never be assumed for others.</td></tr>
+  <tr><td><b>Local-open targets</b> ("open in editor/Finder") run on the <i>daemon's</i> local API — for a remote machine, "open file" would act on the remote desktop</td><td>Misfire</td><td>The code already carries a header comment flagging client-machine vs work-host routes. v1: hide open-in-editor affordances for environments on non-local machines; proper client-side routing is a fast-follow.</td></tr>
+  <tr><td><b>Daemon→server transport guard</b> refuses non-loopback plain-http URLs (attachment fetch)</td><td>By design</td><td>Remote daemons must use https (tunnel) or explicit trusted config for LAN http. Surface a clear join-time error, document.</td></tr>
+  <tr><td><b>Agent-side <code>bb</code> CLI</b> gets <code>BB_SERVER_URL</code> = the daemon's configured server URL, so it's reachable by construction (LAN or tunnel). But the public API has <b>no app-level auth</b> — through the tunnel it's protected by the gate; on a LAN it's the network perimeter, as today</td><td>OK / flag</td><td>No v1 change. Flag: if the public API ever grows auth, in-workspace CLI needs credentials plumbed. Tunnel path: gate must allow <code>bbcm_</code>-credentialed machines to reach <code>/api/v1</code> (agents call the public API, not just <code>/internal</code>) — add to M5 scope.</td></tr>
+  <tr><td><b>Global <code>&lt;dataDir&gt;/AGENTS.md</code></b> is read on the server and shipped by value</td><td>Works</td><td>Semantics decision, not a bug: global instructions are a <i>server</i> concept and apply to all machines. Keep.</td></tr>
+  <tr><td><b>Desktop defaults</b> (<code>127.0.0.1</code> builtin server)</td><td>OK</td><td>Describes the desktop's own bundled server; unaffected.</td></tr>
+</table>
+
+<h3>6.3 Plugin model: verdict — architecture unaffected, two concrete gaps</h3>
+<p><b>Plugins stay server-side and multi-machine doesn't change that.</b> The audit confirmed: plugin JS loads and runs only in the server process (jiti import); background services (including connect's tunnel), schedules, KV/SQLite/secrets storage, mention providers, and <code>contributeInstructions</code> are all server-local. Crucially, the two round-trips already flow the right way — agent tool calls go daemon → server (<code>POST /session/tool-call</code>, handler runs on the server), and plugin CLI commands proxy CLI → server. Plugins that touch workspace files (secrets, inline-vis) already do it through <code>bb.sdk.files.*</code> with an explicit <code>hostId</code>, which routes as <code>host.*_file</code> RPCs — <b>daemon-safe today</b>. Plugin install stays per-server; nothing needs to be copied to machines <i>except</i>:</p>
+<ul>
+  <li><b>Plugin-contributed skills break</b> — they ride the same paths-not-bytes wire as §6.1 (a remote daemon can't read <code>&lt;serverDataDir&gt;/plugins/&lt;id&gt;/skills</code>). The §6.1 fix covers plugins automatically; no plugin API change needed.</li>
+  <li><b><code>bb connect expose &lt;port&gt;</code> exposes the server machine's loopback.</b> An agent starting a dev server on a remote machine can't be reached through connect port-sharing. v1: document the limitation; fast-follow: daemon-side port forwarding (expose a remote machine's port through its daemon connection).</li>
+  <li><b>Ergonomic gap, not a break:</b> plugin tool/CLI contexts carry no <code>hostId</code>/workspace path — plugins must resolve it via <code>bb.sdk.threads.get(include: "host")</code>. Worth adding <code>hostId</code> to <code>PluginAgentToolContext</code>/<code>PluginCliContext</code> as polish so plugin authors fall into the pit of success on multi-machine.</li>
+</ul>
+
+<h2 id="milestones"><span class="num">7</span>Milestones</h2>
+<p>Each is a shippable PR chain behind the <b>Multi-machine</b> experiment. M1–M3 give a demoable LAN story; M4–M5 complete pairing + connect; M6 exits the experiment.</p>
+
+<div class="milestone">
+  <h3>M1 — Re-land execution routing + remote-correct thread config <span class="est">· ~1 week</span></h3>
+  <ul>
+    <li>Add the <code>multiMachine</code> experiment (domain schema + migration + Settings → Experiments toggle), independent of <code>bbConnect</code>.</li>
+    <li>Resurrect from <code>755fb56c9^</code>: <code>assertUsableHostId</code> in <code>primary-host.ts</code> + its ~10 call sites (<code>routes/projects.ts</code>, <code>routes/files.ts</code>, <code>routes/hosts.ts</code>, <code>host-lookup.ts</code>, <code>thread-request-eligibility.ts</code>, <code>terminal-session-lifecycle.ts</code>), gated: experiment off → old <code>unsupported_host</code> behavior.</li>
+    <li>Default resolution unchanged (<code>resolvePrimaryHostId</code> stays primary-first) so single-machine installs behave identically.</li>
+    <li>New session-authed join-code route (server mints enroll keys for the product flow; the loopback route stays for the co-located daemon).</li>
+    <li><b>Remote-correct thread config (§6.1):</b> skill sync — thread-start carries <code>{name, treeHash, entryPath}</code> manifests; daemon pulls missing trees from <code>GET /internal/skills/tree/:hash</code> into its content-addressed skill store (covers builtin/global/plugin skills in one contract change). Workspace <code>.bb/AGENTS.md</code> read via <code>host.read_file</code>; project <code>.bb/skills</code> enumerated via daemon RPC. Regression test: a thread on a remote host gets byte-identical instructions/skills to a local one.</li>
+  </ul>
+  <p class="exit"><b>Exit:</b> with the experiment on, <code>bb thread spawn --machine &lt;id&gt;</code> (M6 flag, testable via API) runs a thread on a second LAN-enrolled daemon <b>with full skills + project instructions</b>; experiment off → exact pre-#510 behavior; full server suite green.</p>
+</div>
+
+<div class="milestone">
+  <h3>M2 — Machine-independent projects + guided setup backend <span class="est">· ~1 week</span></h3>
+  <ul>
+    <li>Project gains a remote anchor (derive from the first source's <code>origin</code>; store on the project row) used for display + clone defaults.</li>
+    <li>New host command <code>project.clone</code> in <code>host-daemon-contract</code>: clone a remote to a target path on that daemon, streaming progress/errors (git auth failures surface verbatim).</li>
+    <li><code>POST /projects/:id/sources</code> accepts any usable <code>hostId</code> (covered by M1) + a <code>clone</code> variant that drives the daemon command and creates the source on success.</li>
+    <li>Managed-worktree provisioning verified per-source (worktree roots are per machine).</li>
+  </ul>
+  <p class="exit"><b>Exit:</b> API-driven: add a source on machine B by clone and by existing-path, then run a worktree thread there; non-git project adds a source by path only.</p>
+</div>
+
+<div class="milestone">
+  <h3>M3 — Composer picker + thread surfaces <span class="est">· ~1 week</span></h3>
+  <ul>
+    <li><code>EnvironmentPicker</code> consumes <code>useHosts()</code>; machine-grouped sections with status dots, connection badges, last-seen on offline (disabled) machines; "Set up on another machine…" row (Mockup A).</li>
+    <li>Delete the primary-host rewrite in <code>resolveRootComposeEffectiveEnvironmentValue</code>; <code>ConnectedThreadModeBranch</code> passes the <i>selected</i> host. Selection persistence (already per-project) now legitimately carries machine → sticky last-used for free.</li>
+    <li>Guided-setup dialog (Mockup B) wired to M2 routes; remote path browser for manual link.</li>
+    <li>Machine name in summary chip, thread metadata, and host-offline states (extend <code>EnvironmentDisplayHostContext</code>).</li>
+  </ul>
+  <p class="exit"><b>Exit:</b> full flow in the UI — pick Mac Studio, guided-clone, thread runs there, metadata names the machine; offline machine shows disabled with last-seen; single-machine users see a visually unchanged picker (one group collapses to today's layout).</p>
+</div>
+
+<div class="milestone">
+  <h3>M4 — Machines settings pane + add-machine flow <span class="est">· ~1 week</span></h3>
+  <ul>
+    <li>New <code>MachinesSettingsSection</code> (Mockup C): live list, rename (<code>PATCH /hosts/:id</code>, new), remove (<code>DELETE /hosts/:id</code>, new: revoke host key, tombstone <code>destroyedAt</code>, close session; environments become read-only history).</li>
+    <li>Add-machine dialog (Mockup D): mint join code, copyable one-liner, LAN/tunnel address toggle, live "connected" confirmation via existing host broadcasts.</li>
+    <li>Install script (served from <code>getbb.app/connect</code>, also in-repo for direct URLs): install bb-app → <code>host-daemon join</code> → launchd/systemd service. macOS + Linux for v1.</li>
+    <li>Project Settings → Sources upgrade (Mockup E): machine column/status, "Add on a machine" → guided setup.</li>
+  </ul>
+  <p class="exit"><b>Exit:</b> a fresh Mac with nothing installed becomes a working machine via the copied command on a LAN; rename/remove work and removal severs access immediately.</p>
+</div>
+
+<div class="milestone">
+  <h3>M5 — bb connect daemon path (headline pairing) <span class="est">· ~1 week</span></h3>
+  <ul>
+    <li>Daemon-side credential wiring: <code>apps/host-daemon</code> stores the <code>bbcm_</code> credential and injects <code>x-bb-connect-machine</code> on enroll, every <code>/internal/*</code> HTTP call, and the WS dial (<code>server-client.ts</code> is the chokepoint).</li>
+    <li>Install script's tunnel branch: redeem machine code → credential → enroll through <code>https://&lt;handle&gt;.getbb.app</code>.</li>
+    <li>Machine presence: write <code>machine.lastSeenAt</code> at the gate (DO alarm piggyback) so the cloud dashboard can show liveness for lost-machine recovery; product truth stays the server's host status.</li>
+    <li>Reduce the dashboard "Add a machine" to a pointer into bb; keep cloud-side revoke as the recovery hatch.</li>
+    <li>Latency note in docs: daemon RPC through the relay adds ~100ms+ per round-trip — fine for thread lifecycle; terminals through a tunneled daemon get a "may feel slow" caveat (LAN-direct fast path is a fast-follow).</li>
+  </ul>
+  <p class="exit"><b>Exit:</b> the three-machine demo from the original plan, no harnesses: home server + laptop added over LAN + cloud VM added through bb connect, all visible with live status, a thread run on each from a phone.</p>
+</div>
+
+<div class="milestone">
+  <h3>M6 — CLI, docs, soak, GA <span class="est">· ~3–4 days + soak</span></h3>
+  <ul>
+    <li><code>bb machine list</code> (+ <code>--json</code>), <code>--machine</code> (alias <code>--host</code>) on <code>bb thread spawn</code>, <code>bb project source add --machine</code>.</li>
+    <li>Per repo CLI rules: guide templates + regenerate, bb-cli skill, <code>docs/configuration.md</code>, rewrite <code>docs/multiple-devices.md</code> (browsers-are-not-hosts caveat is obsolete).</li>
+    <li>Dogfood soak with the experiment on across Sawyer's real machines; then default the experiment on / remove the gate.</li>
+  </ul>
+  <p class="exit"><b>Exit:</b> a week of real multi-machine daily driving without a wedged thread or a mystery <code>host_unavailable</code>; experiment removed.</p>
+</div>
+
+<h2 id="cli"><span class="num">8</span>CLI &amp; docs surfaces</h2>
+<table>
+  <tr><th>Surface</th><th>Change</th></tr>
+  <tr><td><code>bb machine list</code></td><td>New. Name, id, status, last seen, connection kind. <code>--json</code> for agents.</td></tr>
+  <tr><td><code>bb thread spawn --machine &lt;id|name&gt;</code></td><td>New (alias <code>--host</code>). Accepts machine name when unambiguous. Default: primary, as today.</td></tr>
+  <tr><td><code>bb project source add --machine &lt;id|name&gt;</code></td><td>Replaces the hardcoded local-host resolution.</td></tr>
+  <tr><td>Install one-liner</td><td><code>curl -fsSL https://getbb.app/connect | sh -s -- --code … --server …</code> — served by apps/web; identical script for LAN URLs.</td></tr>
+  <tr><td>Guide / skill / docs</td><td>bb-guide chapters, bb-cli SKILL.md, <code>docs/configuration.md</code>, <code>docs/multiple-devices.md</code> — all in the same PRs as the commands (AGENTS.md rule).</td></tr>
+</table>
+
+<h2 id="risks"><span class="num">9</span>Risks &amp; edge cases</h2>
+<table>
+  <tr><th>Risk</th><th>Mitigation</th></tr>
+  <tr><td>#536 pulled this once — what's different?</td><td>#510 lacked a product shape: no picker, no machines UI, no guided setup, harness-only tunnel wiring. This plan is exactly that missing productization, gated by its own experiment until soaked.</td></tr>
+  <tr><td>Primary-host resolver ambiguity with N hosts</td><td>Default resolution untouched (co-located daemon wins). Add a regression test: 3 enrolled hosts + no explicit choice → primary, never 502.</td></tr>
+  <tr><td>Git auth missing on target machine (clone fails)</td><td>Guided setup surfaces the daemon's real git error with a hint (set up SSH keys / gh auth on that machine); manual-link path always available as fallback.</td></tr>
+  <tr><td>Offline machine wedges a thread mid-turn</td><td>Existing disconnect grace + interrupt semantics already handle this per host; UI change is only to name the machine. Queue-until-online deferred deliberately.</td></tr>
+  <tr><td>Tunnel latency makes remote daemons feel bad</td><td>Thread lifecycle RPCs are latency-tolerant; terminals get a documented caveat. LAN-direct fast path is the fast-follow if it stings.</td></tr>
+  <tr><td>Removing a machine with live worktrees/threads</td><td>Remove = revoke + tombstone; environments stay as readable history, threads on it end with an explicit "machine removed" state. No data deleted on the remote disk.</td></tr>
+  <tr><td>Worktree paths differ per machine</td><td>Already true structurally (sources have per-host paths); managed worktree roots resolve per daemon. M2 verifies.</td></tr>
+  <tr><td>Two daemons claiming one hostId</td><td>Hub already evicts the older session per host; join flow always mints a fresh hostId per data-dir. Keep the existing eviction semantics.</td></tr>
+  <tr><td>Silent skill/instruction loss on remote threads (§6.1)</td><td>Fixed in M1 as a prerequisite, with a byte-identical regression test — this is the kind of "works but wrong" failure that would erode trust in remote machines.</td></tr>
+  <tr><td>"Open in editor" on a remote environment acts on the wrong desktop</td><td>v1 hides local-open affordances for non-local machines; client-side open routing is a fast-follow.</td></tr>
+</table>
+
+<h2 id="later"><span class="num">10</span>Fast-follows (explicitly not v1)</h2>
+<ul>
+  <li><b>Queue-until-online</b> — create a task against an offline machine, dispatch on reconnect.</li>
+  <li><b>Per-machine capability toggles</b> — e.g. "no dangerous permissions on the shared VM," provider CLI availability per machine.</li>
+  <li><b>LAN-direct fast path</b> — tunnel-paired daemons detecting a direct route for latency-sensitive traffic (terminals).</li>
+  <li><b>Ephemeral / pooled host types</b> — <code>HostType</code> today has the single value <code>persistent</code>; cloud burst machines are a different project.</li>
+  <li><b>Placement policy</b> — any scheduling beyond "you pick, sticky per project."</li>
+  <li><b>Non-git directory sync</b> — rejected for v1; git remains the only sync layer.</li>
+  <li><b>Remote port exposure</b> — <code>bb connect expose</code> for ports on non-server machines (daemon-side forwarding); v1 documents the limitation.</li>
+  <li><b><code>hostId</code> in plugin tool/CLI contexts</b> — ergonomic polish so plugin authors get multi-machine right by default.</li>
+  <li><b>Client-side "open in editor" routing</b> — open files from remote environments in the editor on the machine you're sitting at.</li>
+</ul>
+
+<p style="margin-top:48px; color:var(--muted); font-size:14px;">Companion docs: <code>plans/bb-connect-v1.md</code> (connect implementation history), <code>plans/bb-connect-architecture.html</code> (tunnel design rationale), and the removed-but-recoverable multi-host work at <code>git show 755fb56c9^</code> (#510).</p>
+
+</main>
+</body>
+</html>
