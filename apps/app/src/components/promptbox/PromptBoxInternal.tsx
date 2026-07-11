@@ -31,6 +31,8 @@ import type {
   TypeaheadMenuState,
   TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
 import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
@@ -1013,6 +1015,7 @@ export function PromptBoxInternal({
   promptBoxRef,
   focusEndKey,
 }: PromptBoxInternalProps) {
+  const focusComposerShortcut = useAppCommandShortcut("composer.focus");
   const {
     isSubmitting = false,
     disabled: submitDisabled = false,
@@ -2479,7 +2482,7 @@ export function PromptBoxInternal({
         emitAttachmentFiles(Array.from(event.dataTransfer.files));
       }}
       className={cn(
-        "relative w-full rounded-xl border border-border bg-background shadow-lift",
+        "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
         "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
         showVoiceActionGroup && "rounded-3xl",
         // Zen toggles only the *height* of the box; the inset padding stays
@@ -2522,6 +2525,10 @@ export function PromptBoxInternal({
               isZenMode && "min-h-0 flex flex-1 flex-col",
             )}
           >
+            <AppCommandShortcutHint
+              shortcut={focusComposerShortcut}
+              className="absolute right-10 top-2 z-20 group-focus-within/promptbox:hidden"
+            />
             <Button
               type="button"
               size="icon"

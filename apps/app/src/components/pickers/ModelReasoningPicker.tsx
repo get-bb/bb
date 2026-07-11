@@ -529,7 +529,6 @@ export function ModelReasoningPicker({
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
   );
 
-  useAppCommandContext("promptAvailable", !disabled);
   useAppCommandContext("modelPickerOpen", open && !disabled);
   useAppCommandHandler("modelPicker.toggle", ({ target }) => {
     if (disabled) return false;

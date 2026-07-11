@@ -96,6 +96,10 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     ...mainWithoutModal,
     desktopOnly: true,
   }),
+  binding("composer.focus", "c", { mod: true, shift: true }, {
+    all: ["mainSurface", "promptAvailable"],
+    none: ["modalOpen", "terminalFocus", "browserFocus"],
+  }),
   binding("modelPicker.toggle", "m", { mod: true, shift: true }, {
     all: ["mainSurface", "promptAvailable"],
     none: ["modalOpen", "terminalFocus", "browserFocus"],
