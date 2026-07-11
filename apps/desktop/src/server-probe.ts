@@ -18,6 +18,11 @@ export type ServerProbeResult =
   | IncompatibleServerProbeResult
   | UnavailableServerProbeResult;
 
+export type ServerProbeFetch = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
+
 export interface CompatibleServerProbeResult {
   kind: "compatible";
   serverUrl: string;
@@ -36,6 +41,7 @@ export interface UnavailableServerProbeResult {
 }
 
 export interface ProbeBbServerArgs {
+  fetchImpl?: ServerProbeFetch;
   serverUrl: string;
   timeoutMs: number;
 }
@@ -47,6 +53,7 @@ export interface WaitForCompatibleServerArgs {
 }
 
 interface FetchJsonArgs<TValue> {
+  fetchImpl: ServerProbeFetch;
   schema: z.ZodType<TValue>;
   timeoutMs: number;
   url: string;
@@ -106,7 +113,7 @@ async function fetchJson<TValue>(
   }, args.timeoutMs);
 
   try {
-    const response = await fetch(args.url, {
+    const response = await args.fetchImpl(args.url, {
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -149,7 +156,9 @@ function formatFetchFailure(result: FetchJsonFailureResult): string {
 export async function probeBbServer(
   args: ProbeBbServerArgs,
 ): Promise<ServerProbeResult> {
+  const fetchImpl = args.fetchImpl ?? globalThis.fetch;
   const healthResult = await fetchJson({
+    fetchImpl,
     schema: healthResponseSchema,
     timeoutMs: args.timeoutMs,
     url: endpointUrl(args.serverUrl, "/health"),
@@ -180,6 +189,7 @@ export async function probeBbServer(
   }
 
   const configResult = await fetchJson({
+    fetchImpl,
     schema: systemConfigResponseSchema,
     timeoutMs: args.timeoutMs,
     url: endpointUrl(args.serverUrl, "/api/v1/system/config"),

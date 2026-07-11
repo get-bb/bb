@@ -8,6 +8,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lt,
   ne,
   or,
   sql,
@@ -1121,6 +1122,49 @@ export function listThreadsWithPendingInteractionState(
   const rows = query.all();
 
   return rows.map(toThreadWithPendingInteractionState);
+}
+
+/**
+ * Whether the active, sidebar-visible thread set contains work that would
+ * light the app favicon: an unread attention timestamp or a pending user
+ * interaction. Kept as an existence query because the desktop shell polls
+ * this summary for every registered server.
+ */
+export function hasActiveThreadAttention(db: DbConnection): boolean {
+  const visibleThread = or(
+    ne(threads.originKind, "side-chat"),
+    and(
+      isNull(threads.originKind),
+      or(isNull(threads.childOrigin), ne(threads.childOrigin, "side-chat")),
+    ),
+  );
+  const unreadThread = or(
+    isNull(threads.lastReadAt),
+    lt(threads.lastReadAt, threads.latestAttentionAt),
+  );
+
+  const row = db
+    .select({ id: threads.id })
+    .from(threads)
+    .leftJoin(
+      pendingInteractions,
+      and(
+        eq(pendingInteractions.threadId, threads.id),
+        eq(pendingInteractions.status, "pending"),
+      ),
+    )
+    .where(
+      and(
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        visibleThread,
+        or(unreadThread, isNotNull(pendingInteractions.id)),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  return row !== undefined;
 }
 
 export function listThreadsWithPendingInteractionStateForProjects(

@@ -105,6 +105,7 @@ describe("ServerRail", () => {
           source: "builtin",
           url: "http://127.0.0.1:1",
           active: true,
+          hasAttention: true,
         }),
         serverEntry({
           id: "remote",
@@ -112,6 +113,13 @@ describe("ServerRail", () => {
           source: "connect",
           url: "https://studio.example",
           status: "offline",
+        }),
+        serverEntry({
+          id: "attention",
+          name: "Laptop",
+          source: "connect",
+          url: "https://laptop.example",
+          hasAttention: true,
         }),
       ]),
     });
@@ -125,7 +133,13 @@ describe("ServerRail", () => {
     expect(builtinTile.getAttribute("aria-current")).toBe("true");
     // Healthy server shows no dot; offline one does.
     expect(screen.queryByTestId("server-rail-status-builtin")).toBeNull();
+    expect(screen.queryByTestId("server-rail-attention-builtin")).toBeNull();
     expect(screen.getByTestId("server-rail-status-remote")).toBeDefined();
+    const attentionDot = screen.getByTestId(
+      "server-rail-attention-attention",
+    );
+    expect(attentionDot.className).toContain("right-1.5");
+    expect(attentionDot.className).toContain("top-1.5");
 
     fireEvent.click(screen.getByTestId("server-rail-tile-remote"));
     expect(servers.setActive).toHaveBeenCalledWith("remote");

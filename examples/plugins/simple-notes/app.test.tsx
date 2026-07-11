@@ -27,6 +27,42 @@ function listNotesResult(notes: NoteSummary[]) {
 }
 
 describe("simple notes nav panel", () => {
+  it("uses the Shadcn article typeset rhythm for note content", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "article.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "article.md",
+                title: "Article",
+                preview: "A typeset note",
+                modifiedAtMs: Date.now(),
+              },
+            ]),
+          readNote: () => ({
+            content: "# Article\n\nA typeset note.",
+            sha256: "sha-1",
+          }),
+          renameToTitle: () => ({ path: "article.md" }),
+        },
+      },
+    );
+
+    await slot.findByText("A typeset note.");
+    const styles = document.head.querySelector(
+      "style[data-bb-simple-notes-styles]",
+    )?.textContent;
+
+    expect(styles).toContain("max-width: 48em");
+    expect(styles).toContain("font-size: 15px");
+    expect(styles).toContain("line-height: 1.75");
+    expect(styles).toContain("margin: 1.25em 0 0");
+    expect(styles).toContain("font-size: 1.75em");
+  });
+
   it("creates a note over rpc and opens it", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,

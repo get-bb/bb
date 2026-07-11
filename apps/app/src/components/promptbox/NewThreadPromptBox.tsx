@@ -8,6 +8,10 @@ import {
 } from "react";
 import type { ProjectSource, PromptTextMention } from "@bb/domain";
 import {
+  useAppCommandContext,
+  useAppCommandHandler,
+} from "@/components/commands/AppCommandProvider";
+import {
   ExecutionControls,
   type ExecutionControlsProps,
   type ExecutionPermissionConfig,
@@ -202,6 +206,11 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   execution,
 }: NewThreadPromptBoxUIProps) {
   const promptBoxRef = useRef<PromptBoxHandle>(null);
+  useAppCommandContext("promptAvailable", true);
+  useAppCommandHandler("composer.focus", () => {
+    promptBoxRef.current?.focusEnd();
+    return promptBoxRef.current !== null;
+  });
   useImperativeHandle(
     externalPromptBoxRef,
     () => ({

@@ -15,6 +15,10 @@ import type {
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
 import {
+  useAppCommandContext,
+  useAppCommandHandler,
+} from "@/components/commands/AppCommandProvider";
+import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
@@ -400,6 +404,11 @@ function FollowUpPromptBoxWithComposer({
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const promptBoxRef = useRef<PromptBoxHandle>(null);
+  useAppCommandContext("promptAvailable", true);
+  useAppCommandHandler("composer.focus", () => {
+    promptBoxRef.current?.focusEnd();
+    return promptBoxRef.current !== null;
+  });
   const voice = usePromptVoice(promptBoxRef);
   const mobileMinimized = useMobilePromptBoxMinimized(zenModeResetKey);
   // Selection actions reuse `focusEndKey` as their completion signal. On

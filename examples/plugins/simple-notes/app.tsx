@@ -59,49 +59,67 @@ const STYLE_MARKER = "data-bb-simple-notes-styles";
 const EDITOR_CSS = `
 .bb-simple-notes-editor .tiptap {
   outline: none;
-  max-width: 44rem;
+  width: 100%;
+  max-width: 48em;
   margin: 0 auto;
-  padding: 2rem 2.25rem 40vh;
+  padding: 3rem 1.5rem 40vh;
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.75;
   color: var(--foreground);
   caret-color: var(--foreground);
+  overflow-wrap: break-word;
   -webkit-font-smoothing: antialiased;
 }
-.bb-simple-notes-editor .tiptap > * + * { margin-top: 0.7em; }
-.bb-simple-notes-editor .tiptap h1 { font-size: 1.7em; font-weight: 700; line-height: 1.2; margin-top: 1.4em; letter-spacing: -0.01em; }
-.bb-simple-notes-editor .tiptap h2 { font-size: 1.35em; font-weight: 650; line-height: 1.25; margin-top: 1.4em; }
-.bb-simple-notes-editor .tiptap h3 { font-size: 1.15em; font-weight: 600; margin-top: 1.2em; }
-.bb-simple-notes-editor .tiptap h4, .bb-simple-notes-editor .tiptap h5, .bb-simple-notes-editor .tiptap h6 { font-weight: 600; margin-top: 1em; }
-.bb-simple-notes-editor .tiptap p { margin: 0; }
-.bb-simple-notes-editor .tiptap ul, .bb-simple-notes-editor .tiptap ol { padding-left: 1.5em; }
+.bb-simple-notes-editor .tiptap > :first-child,
+.bb-simple-notes-editor .tiptap li > :first-child,
+.bb-simple-notes-editor .tiptap blockquote > :first-child { margin-top: 0; }
+.bb-simple-notes-editor .tiptap p { margin: 1.25em 0 0; }
+.bb-simple-notes-editor .tiptap h1,
+.bb-simple-notes-editor .tiptap h2,
+.bb-simple-notes-editor .tiptap h3,
+.bb-simple-notes-editor .tiptap h4,
+.bb-simple-notes-editor .tiptap h5,
+.bb-simple-notes-editor .tiptap h6 { margin-bottom: 0; color: var(--foreground); font-weight: 600; }
+.bb-simple-notes-editor .tiptap h1 { font-size: 1.75em; line-height: 1.3; margin-top: 1.25em; }
+.bb-simple-notes-editor .tiptap h2 { font-size: 1.25em; line-height: 1.4; margin-top: 1.75em; }
+.bb-simple-notes-editor .tiptap h3 { font-size: 1.125em; line-height: 1.45; margin-top: 1.25em; }
+.bb-simple-notes-editor .tiptap h4 { font-size: 1em; line-height: 1.5; margin-top: 1.25em; }
+.bb-simple-notes-editor .tiptap h5 { font-size: 0.875em; line-height: 1.5; font-weight: 500; color: var(--muted-foreground); margin-top: 1.43em; }
+.bb-simple-notes-editor .tiptap h6 { font-size: 0.8125em; line-height: 1.5; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); margin-top: 1.54em; }
+.bb-simple-notes-editor .tiptap :is(h1, h2, h3, h4, h5, h6) + * { margin-top: 1em; }
+.bb-simple-notes-editor .tiptap ul, .bb-simple-notes-editor .tiptap ol { margin: 1.25em 0 0; padding-left: 1.5em; }
 .bb-simple-notes-editor .tiptap ul { list-style: disc; }
 .bb-simple-notes-editor .tiptap ol { list-style: decimal; }
-.bb-simple-notes-editor .tiptap li { margin: 0.2em 0; }
-.bb-simple-notes-editor .tiptap li > p { margin: 0; }
-.bb-simple-notes-editor .tiptap a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-.bb-simple-notes-editor .tiptap strong { font-weight: 650; }
+.bb-simple-notes-editor .tiptap li { margin-top: 0.5em; padding-left: 0.4em; }
+.bb-simple-notes-editor .tiptap li > p, .bb-simple-notes-editor .tiptap li > ul, .bb-simple-notes-editor .tiptap li > ol { margin-top: 0.5em; }
+.bb-simple-notes-editor .tiptap li::marker { color: var(--muted-foreground); }
+.bb-simple-notes-editor .tiptap a { color: inherit; font-weight: 500; text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 30%, transparent); cursor: pointer; }
+.bb-simple-notes-editor .tiptap a:hover { text-decoration-color: currentColor; }
+.bb-simple-notes-editor .tiptap a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 0.125em; }
+.bb-simple-notes-editor .tiptap strong { font-weight: 600; }
 .bb-simple-notes-editor .tiptap code {
-  background: var(--muted); border-radius: 5px; padding: 0.12em 0.35em;
-  font-size: 0.88em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--muted); border-radius: min(calc(var(--radius) * 0.6), 0.35em); padding: 0.125em 0.3em;
+  font-size: 0.85em; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 }
 .bb-simple-notes-editor .tiptap pre {
-  background: var(--muted); border: 1px solid var(--border); border-radius: 10px;
-  padding: 0.85rem 1rem; overflow-x: auto; font-size: 0.88em; line-height: 1.55;
+  background: var(--muted); border-radius: var(--radius);
+  padding: 0.75em 1em; overflow-x: auto; font-size: 0.875em; line-height: 1.5;
+  margin: 1.43em 0 0; tab-size: 2;
 }
 .bb-simple-notes-editor .tiptap pre code { background: none; padding: 0; font-size: inherit; }
 .bb-simple-notes-editor .tiptap blockquote {
-  border-left: 3px solid var(--border); padding-left: 1em; color: var(--muted-foreground);
+  border-left: 2px solid var(--border); padding-left: 1em; margin: 1.25em 0 0;
 }
-.bb-simple-notes-editor .tiptap hr { border: none; border-top: 1px solid var(--border); margin: 1.75em 0; }
+.bb-simple-notes-editor .tiptap hr { border: none; border-top: 1px solid var(--border); margin: 3em 0 0; }
+.bb-simple-notes-editor .tiptap hr + :is(h1, h2, h3, h4) { margin-top: 1.25em; }
 /* GFM task lists (todos) */
-.bb-simple-notes-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0.15em; }
-.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin: 0.25em 0; }
+.bb-simple-notes-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0.25em; }
+.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin-top: 0.5em; padding-left: 0; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > label {
   flex: 0 0 auto; display: inline-flex; align-items: center; height: 1.7em; user-select: none;
 }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div { flex: 1 1 auto; min-width: 0; }
-.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div > p { line-height: 1.7; }
+.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div > p { line-height: 1.75; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] input[type="checkbox"] {
   display: block; width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; margin: 0;
 }
@@ -114,6 +132,9 @@ const EDITOR_CSS = `
   float: left; height: 0; pointer-events: none; color: var(--muted-foreground);
 }
 .bb-simple-notes-editor .tiptap ::selection { background: color-mix(in oklab, var(--primary) 22%, transparent); }
+@media (max-width: 47.999rem) {
+  .bb-simple-notes-editor .tiptap { padding-inline: 1.25rem; font-size: 16.875px; }
+}
 `;
 
 function ensureEditorStyles(): void {

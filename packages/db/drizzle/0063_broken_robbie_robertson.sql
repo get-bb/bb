@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `thread_tabs` (
+CREATE TABLE `thread_tabs` (
 	`thread_id` text PRIMARY KEY NOT NULL,
 	`tabs_json` text NOT NULL,
 	`revision` integer NOT NULL,

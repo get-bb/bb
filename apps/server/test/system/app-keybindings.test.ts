@@ -65,6 +65,18 @@ describe("app keybindings", () => {
         { desktopOnly: true, key: "t" },
       ]);
       expect(
+        config.defaultKeybindings.find(
+          (binding) => binding.command === "composer.focus",
+        ),
+      ).toMatchObject({
+        desktopOnly: false,
+        shortcut: { key: "c", mod: true, shift: true },
+        when: {
+          all: ["mainSurface", "promptAvailable"],
+          none: ["modalOpen", "terminalFocus", "browserFocus"],
+        },
+      });
+      expect(
         config.defaultKeybindings
           .filter((binding) => binding.desktopOnly)
           .map((binding) => binding.command),

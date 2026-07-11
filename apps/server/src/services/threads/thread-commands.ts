@@ -142,6 +142,8 @@ interface RuntimeExecutionOptionsArgs {
   permissionEscalation: PermissionEscalation;
   providerId: string;
   memoryEnabled: boolean;
+  providerSubagentsEnabled: boolean;
+  workflowsEnabled: boolean;
 }
 
 interface BuildExecutionOptionsArgs {
@@ -230,6 +232,38 @@ function resolveProviderMemoryEnabled(
   return false;
 }
 
+function resolveProviderSubagentsEnabled(
+  deps: Pick<AppDeps, "db">,
+  providerId: string,
+): boolean {
+  const settings = getAppSettings(deps.db);
+  if (providerId === "codex") return !settings.codexSubagentsDisabled;
+  if (providerId === "claude-code") {
+    return !settings.claudeCodeSubagentsDisabled;
+  }
+  return true;
+}
+
+function resolveProviderDisallowedTools(
+  deps: Pick<AppDeps, "db">,
+  providerId: string,
+): string[] | undefined {
+  if (providerId !== "claude-code") return undefined;
+  const settings = getAppSettings(deps.db);
+  const disallowedTools: string[] = [];
+  if (settings.claudeCodeSubagentsDisabled) disallowedTools.push("Task");
+  if (settings.claudeCodeWorkflowsDisabled) disallowedTools.push("Workflow");
+  return disallowedTools.length > 0 ? disallowedTools : undefined;
+}
+
+function resolveProviderWorkflowsEnabled(
+  deps: Pick<AppDeps, "db">,
+  providerId: string,
+): boolean {
+  if (!resolveWorkflowsEnabledPolicy(providerId)) return false;
+  return !getAppSettings(deps.db).claudeCodeWorkflowsDisabled;
+}
+
 function toRuntimeExecutionOptions(
   args: RuntimeExecutionOptionsArgs,
 ): RuntimeThreadExecutionOptions {
@@ -246,8 +280,9 @@ function toRuntimeExecutionOptions(
       ? { claudeCodePermissionMode }
       : {}),
     claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
-    workflowsEnabled: resolveWorkflowsEnabledPolicy(args.providerId),
+    workflowsEnabled: args.workflowsEnabled,
     memoryEnabled: args.memoryEnabled,
+    providerSubagentsEnabled: args.providerSubagentsEnabled,
   };
   if (args.execution.permissionMode === "full") {
     return {
@@ -309,10 +344,16 @@ export async function buildThreadStartCommand(
       ...args,
       claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
       memoryEnabled: resolveProviderMemoryEnabled(deps, args.providerId),
+      providerSubagentsEnabled: resolveProviderSubagentsEnabled(
+        deps,
+        args.providerId,
+      ),
+      workflowsEnabled: resolveProviderWorkflowsEnabled(deps, args.providerId),
       input: args.input,
     }),
     instructions: runtimeContext.instructions,
     dynamicTools: runtimeContext.dynamicTools,
+    disallowedTools: resolveProviderDisallowedTools(deps, args.providerId),
     injectedSkillSources: runtimeContext.injectedSkillSources,
     instructionMode: runtimeContext.instructionMode,
     threadStoragePath: runtimeContext.threadStoragePath,
@@ -345,6 +386,14 @@ function buildPreparedTurnSubmitCommandPayload(
         args.deps,
         args.runtimeContext.providerId,
       ),
+      providerSubagentsEnabled: resolveProviderSubagentsEnabled(
+        args.deps,
+        args.runtimeContext.providerId,
+      ),
+      workflowsEnabled: resolveProviderWorkflowsEnabled(
+        args.deps,
+        args.runtimeContext.providerId,
+      ),
     }),
     target: args.target,
     resumeContext: {
@@ -358,6 +407,10 @@ function buildPreparedTurnSubmitCommandPayload(
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,
       dynamicTools: args.runtimeContext.dynamicTools,
+      disallowedTools: resolveProviderDisallowedTools(
+        args.deps,
+        args.runtimeContext.providerId,
+      ),
       injectedSkillSources: args.runtimeContext.injectedSkillSources,
       instructionMode: args.runtimeContext.instructionMode,
     },

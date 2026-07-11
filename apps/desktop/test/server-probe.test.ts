@@ -3,8 +3,11 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
-import { probeBbServer } from "../src/server-probe.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  probeBbServer,
+  type ServerProbeFetch,
+} from "../src/server-probe.js";
 
 interface TestServer {
   close(): Promise<void>;
@@ -65,6 +68,30 @@ afterEach(async () => {
 });
 
 describe("probeBbServer", () => {
+  it("uses the provided authenticated fetch implementation", async () => {
+    const fetchImpl = vi
+      .fn<ServerProbeFetch>()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json({
+          hostDaemonPort: 4_242,
+          voiceTranscriptionEnabled: false,
+        }),
+      );
+
+    await expect(
+      probeBbServer({
+        fetchImpl,
+        serverUrl: "https://studio.example",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      kind: "compatible",
+      serverUrl: "https://studio.example",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("accepts a server with bb health and system config endpoints", async () => {
     const testServer = await startTestServer({
       handler(request, response) {

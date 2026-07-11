@@ -20,6 +20,8 @@ export const bbDesktopServerListEntrySchema = z
     active: z.boolean(),
     /** Favicon palette id, or null for the default (token) tile color. */
     color: z.string().nullable(),
+    /** Omitted by desktop shells that predate cross-server attention polling. */
+    hasAttention: z.boolean().optional(),
     /** Hugeicons registry name, or null for the letter glyph. */
     icon: z.string().nullable(),
     id: z.string().min(1),

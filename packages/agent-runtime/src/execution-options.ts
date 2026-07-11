@@ -72,7 +72,11 @@ export function sameExecutionSettings(
     args.left.serviceTier === args.right.serviceTier &&
     args.left.reasoningLevel === args.right.reasoningLevel &&
     args.left.workflowsEnabled === args.right.workflowsEnabled &&
-    args.left.claudeCodePermissionMode === args.right.claudeCodePermissionMode &&
+    args.left.memoryEnabled === args.right.memoryEnabled &&
+    args.left.providerSubagentsEnabled ===
+      args.right.providerSubagentsEnabled &&
+    args.left.claudeCodePermissionMode ===
+      args.right.claudeCodePermissionMode &&
     leftMockCliTraffic.enabled === rightMockCliTraffic.enabled &&
     leftMockCliTraffic.endpoint === rightMockCliTraffic.endpoint &&
     args.left.permissionMode === args.right.permissionMode &&
@@ -95,6 +99,8 @@ export function toProviderExecutionContext(
       args.execOpts.claudeCodeMockCliTraffic ??
       DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
     workflowsEnabled: args.execOpts.workflowsEnabled,
+    memoryEnabled: args.execOpts.memoryEnabled,
+    providerSubagentsEnabled: args.execOpts.providerSubagentsEnabled,
     ...permissionPolicy,
     instructions: args.instructions,
     envVars: args.envVars,

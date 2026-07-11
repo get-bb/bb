@@ -40,6 +40,7 @@ export const APP_COMMAND_IDS = [
   "file.quickOpen",
   "diff.toggle",
   "terminal.open",
+  "composer.focus",
   "modelPicker.toggle",
   "browser.focusLocation",
   "browser.reload",

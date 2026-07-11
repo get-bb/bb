@@ -16,6 +16,9 @@ export function getAppSettings(db: DbConnection): AppSettings {
       caffeinate: appSettings.caffeinate,
       codexMemoryEnabled: appSettings.codexMemoryEnabled,
       claudeCodeMemoryEnabled: appSettings.claudeCodeMemoryEnabled,
+      codexSubagentsDisabled: appSettings.codexSubagentsDisabled,
+      claudeCodeSubagentsDisabled: appSettings.claudeCodeSubagentsDisabled,
+      claudeCodeWorkflowsDisabled: appSettings.claudeCodeWorkflowsDisabled,
     })
     .from(appSettings)
     .where(eq(appSettings.id, APP_SETTINGS_ROW_ID))
@@ -35,6 +38,9 @@ export function setAppSettings(
       caffeinate: settings.caffeinate,
       codexMemoryEnabled: settings.codexMemoryEnabled,
       claudeCodeMemoryEnabled: settings.claudeCodeMemoryEnabled,
+      codexSubagentsDisabled: settings.codexSubagentsDisabled,
+      claudeCodeSubagentsDisabled: settings.claudeCodeSubagentsDisabled,
+      claudeCodeWorkflowsDisabled: settings.claudeCodeWorkflowsDisabled,
       updatedAt,
     })
     .onConflictDoUpdate({
@@ -43,6 +49,9 @@ export function setAppSettings(
         caffeinate: settings.caffeinate,
         codexMemoryEnabled: settings.codexMemoryEnabled,
         claudeCodeMemoryEnabled: settings.claudeCodeMemoryEnabled,
+        codexSubagentsDisabled: settings.codexSubagentsDisabled,
+        claudeCodeSubagentsDisabled: settings.claudeCodeSubagentsDisabled,
+        claudeCodeWorkflowsDisabled: settings.claudeCodeWorkflowsDisabled,
         updatedAt,
       },
     })

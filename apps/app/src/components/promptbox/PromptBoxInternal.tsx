@@ -31,6 +31,8 @@ import type {
   TypeaheadMenuState,
   TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
 import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
@@ -554,7 +556,9 @@ function plainTextHasQuoteLine(text: string): boolean {
     .some((line) => line === ">" || line.startsWith("> "));
 }
 
-function trimTrailingPromptNewlines(value: PromptEditorValue): PromptEditorValue {
+function trimTrailingPromptNewlines(
+  value: PromptEditorValue,
+): PromptEditorValue {
   const text = value.text.replace(/\n+$/u, "");
   if (text.length === value.text.length) {
     return value;
@@ -1027,6 +1031,7 @@ export function PromptBoxInternal({
   promptBoxRef,
   focusEndKey,
 }: PromptBoxInternalProps) {
+  const focusComposerShortcut = useAppCommandShortcut("composer.focus");
   const {
     isSubmitting = false,
     disabled: submitDisabled = false,
@@ -1200,10 +1205,7 @@ export function PromptBoxInternal({
     if (commandTriggerChar === null) {
       return mentionTriggers;
     }
-    return [
-      ...mentionTriggers,
-      { char: commandTriggerChar, kind: "command" },
-    ];
+    return [...mentionTriggers, { char: commandTriggerChar, kind: "command" }];
   }, [commandTriggerChar, mentionTriggerChars]);
 
   // Fan the active query out to the matching data source and null the other,
@@ -1386,11 +1388,7 @@ export function PromptBoxInternal({
               promptEditorContentFromValue(pastedValue, {
                 richTextMarkdown: richTextEditing,
               }).content ?? [];
-            currentEditor
-              ?.chain()
-              .focus()
-              .insertContent(pastedContent)
-              .run();
+            currentEditor?.chain().focus().insertContent(pastedContent).run();
             if (currentEditor && !currentEditor.isDestroyed) {
               const nextValue = trimTrailingPromptNewlines(
                 promptEditorValueFromDoc(currentEditor.state.doc),
@@ -1682,9 +1680,8 @@ export function PromptBoxInternal({
     [activeTriggerKind, commandSuggestions, mentionSuggestions],
   );
 
-  const activeMentionQuery = activeTrigger?.kind === "mention"
-    ? activeTrigger.query.trim()
-    : "";
+  const activeMentionQuery =
+    activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
   const mentionMenuState: MentionMenuState =
     activeMentionQuery.length === 0
       ? { kind: "hint" }
@@ -2555,7 +2552,7 @@ export function PromptBoxInternal({
         emitAttachmentFiles(Array.from(event.dataTransfer.files));
       }}
       className={cn(
-        "relative w-full rounded-xl border border-border bg-background shadow-lift",
+        "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
         "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
         showVoiceActionGroup && "rounded-3xl",
         showMinimizedLayout && "overflow-hidden",
@@ -2603,44 +2600,50 @@ export function PromptBoxInternal({
             )}
           >
             {!showMinimizedLayout ? (
-              <div className="absolute right-2 top-2 z-20 flex items-center gap-0.5">
-                {isZenMode || (minimized && !minimized.isMinimized) ? (
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                    }}
-                    onClick={makePromptBoxSmaller}
-                    aria-label="Make prompt box smaller"
-                    className={cn(
-                      "text-subtle-foreground hover:text-muted-foreground",
-                      COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
-                    )}
-                  >
-                    <Icon name="Minimize2" className="size-3" />
-                  </Button>
-                ) : null}
-                {!isZenMode && !minimized ? (
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                    }}
-                    onClick={makePromptBoxLarger}
-                    aria-label="Make prompt box larger"
-                    className={cn(
-                      "text-subtle-foreground hover:text-muted-foreground",
-                      COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
-                    )}
-                  >
-                    <Icon name="Maximize2" className="size-3" />
-                  </Button>
-                ) : null}
-              </div>
+              <>
+                <AppCommandShortcutHint
+                  shortcut={focusComposerShortcut}
+                  className="absolute right-10 top-2 z-20 group-focus-within/promptbox:hidden"
+                />
+                <div className="absolute right-2 top-2 z-20 flex items-center gap-0.5">
+                  {isZenMode || (minimized && !minimized.isMinimized) ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={makePromptBoxSmaller}
+                      aria-label="Make prompt box smaller"
+                      className={cn(
+                        "text-subtle-foreground hover:text-muted-foreground",
+                        COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+                      )}
+                    >
+                      <Icon name="Minimize2" className="size-3" />
+                    </Button>
+                  ) : null}
+                  {!isZenMode && !minimized ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={makePromptBoxLarger}
+                      aria-label="Make prompt box larger"
+                      className={cn(
+                        "text-subtle-foreground hover:text-muted-foreground",
+                        COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+                      )}
+                    >
+                      <Icon name="Maximize2" className="size-3" />
+                    </Button>
+                  ) : null}
+                </div>
+              </>
             ) : null}
             <div
               ref={editorScrollContainerRef}

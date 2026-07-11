@@ -117,6 +117,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
     label: "Composer and models",
     commands: [
       command(
+        "composer.focus",
+        "Focus composer",
+        "Focus the active composer's input and move the caret to the end.",
+      ),
+      command(
         "modelPicker.toggle",
         "Toggle model picker",
         "Open or close the focused composer's model picker.",

@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "235dd3e5-3215-47d7-937d-2bf97545e327",
-  "prevId": "b24ccdaa-815a-4c25-af85-fd10d8fc5fc7",
+  "id": "7ac29d08-7658-44c9-aabf-b21c34ee8c9d",
+  "prevId": "235dd3e5-3215-47d7-937d-2bf97545e327",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -2506,6 +2506,58 @@
         "thread_search_segments_thread_id_threads_id_fk": {
           "name": "thread_search_segments_thread_id_threads_id_fk",
           "tableFrom": "thread_search_segments",
+          "tableTo": "threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "thread_tabs": {
+      "name": "thread_tabs",
+      "columns": {
+        "thread_id": {
+          "name": "thread_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tabs_json": {
+          "name": "tabs_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "thread_tabs_thread_id_threads_id_fk": {
+          "name": "thread_tabs_thread_id_threads_id_fk",
+          "tableFrom": "thread_tabs",
           "tableTo": "threads",
           "columnsFrom": [
             "thread_id"

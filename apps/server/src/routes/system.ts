@@ -7,6 +7,7 @@ import {
   getExperiments,
   getStoredFaviconColor,
   getStoredThemeId,
+  hasActiveThreadAttention,
   setAppSettings,
   setAppKeybindingOverrides,
   setExperiments,
@@ -65,6 +66,10 @@ export function registerSystemRoutes(
   const routes = publicApiRoutes.system;
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
+
+  get(routes.attention, (context) =>
+    context.json({ hasAttention: hasActiveThreadAttention(deps.db) }),
+  );
 
   function resolvePrimaryHostPlatform() {
     const hostId = resolvePrimaryHostId(deps);

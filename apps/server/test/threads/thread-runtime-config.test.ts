@@ -813,6 +813,63 @@ describe("thread runtime config", () => {
     });
   });
 
+  it("disables provider-native subagent tools independently", async () => {
+    await withTestHarness(async (harness) => {
+      setAppSettings(harness.db, {
+        ...defaultAppSettings,
+        codexSubagentsDisabled: true,
+        claudeCodeSubagentsDisabled: true,
+        claudeCodeWorkflowsDisabled: true,
+      });
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-provider-subagent-settings",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+
+      async function build(providerId: "codex" | "claude-code") {
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId,
+        });
+        const execution = await resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: {
+            model: providerId === "codex" ? "gpt-5" : "claude-sonnet-4-6",
+            source: "client/turn/requested",
+          },
+        });
+        return buildThreadStartCommand(harness.deps, {
+          environment,
+          execution,
+          fork: null,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId,
+          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+      }
+
+      const codex = await build("codex");
+      expect(codex.options.providerSubagentsEnabled).toBe(false);
+      expect(codex.disallowedTools).toBeUndefined();
+
+      const claudeCode = await build("claude-code");
+      expect(claudeCode.options.providerSubagentsEnabled).toBe(false);
+      expect(claudeCode.options.workflowsEnabled).toBe(false);
+      expect(claudeCode.disallowedTools).toEqual(["Task", "Workflow"]);
+    });
+  });
+
   it("sets Claude Code native plan mode when the prompt starts from a plan command pill", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
