@@ -607,7 +607,7 @@
 
 <h2 id="later"><span class="num">10</span>Fast-follows (explicitly not v1)</h2>
 <ul>
-  <li><b>Remote daemon updates (do this before GA)</b> — remote machines install bb-app once via npm and never update; a daemon-protocol bump hard-rejects them at session open (<code>protocol_version_mismatch</code>) and they show as plain "offline" until someone SSHes in. Fix shape: (1) daemon self-update on mismatch when the server is <i>newer</i> — the service wrapper re-runs <code>npm i -g bb-app@latest</code> and restarts (flag-gated, rate-limited, never on downgrade so dev servers can't nuke machines); (2) the server records the rejected daemon's version so the Machines pane says "needs update (50 vs 51)" instead of offline. Desktop and co-located installs are unaffected (they update in lockstep).</li>
+  <li><b>Remote daemon updates — SHIPPED (S13)</b> — the server is the distribution source: it serves its own bb-app tarball at <code>/install/bb-app.tgz</code> (+ <code>/install/version</code>), the install script prefers it over npm (so unpublished/dev versions work), and daemons self-update on <code>protocol_version_mismatch</code> when the server is strictly newer (flag-gated on by default from the script, rate-limited, downgrade-refusing). Rejected daemons surface as "Needs update (50 vs 51)" in the Machines pane instead of plain offline.</li>
   <li><b>Queue-until-online</b> — create a task against an offline machine, dispatch on reconnect.</li>
   <li><b>Per-machine capability toggles</b> — e.g. "no dangerous permissions on the shared VM," provider CLI availability per machine.</li>
   <li><b>LAN-direct fast path</b> — tunnel-paired daemons detecting a direct route for latency-sensitive traffic (terminals).</li>
