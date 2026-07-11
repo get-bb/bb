@@ -692,13 +692,22 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   // to the primary-host rewrite below, exactly as before the experiment.
   if (
     multiMachineEnabled &&
-    !isProjectless &&
     parsedSelection?.type === "host" &&
-    knownHostIds.has(parsedSelection.hostId) &&
-    findLocalPathProjectSourceForHost(projectSources, parsedSelection.hostId) !==
-      undefined
+    knownHostIds.has(parsedSelection.hostId)
   ) {
-    return environmentSelectionValue;
+    // Projectless threads run in the machine's personal workspace — no
+    // project source is required and there is no worktree mode to keep.
+    if (isProjectless) {
+      return encodeHostValue(parsedSelection.hostId, "local");
+    }
+    if (
+      findLocalPathProjectSourceForHost(
+        projectSources,
+        parsedSelection.hostId,
+      ) !== undefined
+    ) {
+      return environmentSelectionValue;
+    }
   }
   const canUseHostWorkspace =
     isProjectless ||

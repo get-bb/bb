@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -34,7 +35,9 @@ import {
   type EnvironmentPickerMachines,
   type EnvironmentPickerUIProps,
 } from "@/components/pickers/EnvironmentPicker";
+import { MachinePickerUI } from "@/components/pickers/MachinePicker";
 import {
+  encodeHostValue,
   type ParsedEnvironmentValue,
   parseEnvironmentValue,
 } from "@/components/pickers/environment-picker-value";
@@ -308,7 +311,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
               branch={modeConfig.branch}
               worktree={modeConfig.worktree}
             />
-          ) : null}
+          ) : (
+            <ProjectlessMachineSlot environment={modeConfig.environment} />
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <PermissionModePicker
@@ -401,6 +406,51 @@ export function ThreadEnvSlot({
         />
       ) : null}
     </>
+  );
+}
+
+interface ProjectlessMachineSlotProps {
+  environment: NewThreadEnvironmentConfig;
+}
+
+/**
+ * Environment-slot replacement for projectless composing (multiMachine
+ * experiment, >1 host): a machine chip that picks which machine's personal
+ * workspace the thread runs in. With the experiment off or a single host the
+ * slot stays empty, exactly as before.
+ */
+export function ProjectlessMachineSlot({
+  environment,
+}: ProjectlessMachineSlotProps) {
+  const machines = environment.machines ?? null;
+  const parsedEnvironment = useMemo(
+    () => parseEnvironmentValue(environment.value),
+    [environment.value],
+  );
+  const handleChange = environment.onChange;
+  const handleMachineChange = useCallback(
+    (hostId: string) => {
+      // Projectless threads always run in the machine's personal workspace,
+      // so a machine pick encodes as that host's local mode.
+      handleChange(encodeHostValue(hostId, "local"));
+    },
+    [handleChange],
+  );
+  if (!machines || machines.hosts.length <= 1) {
+    return null;
+  }
+  return (
+    <MachinePickerUI
+      hosts={machines.hosts}
+      localDaemonHostId={machines.localDaemonHostId}
+      selectedHostId={
+        parsedEnvironment?.type === "host" ? parsedEnvironment.hostId : null
+      }
+      onChange={handleMachineChange}
+      disabled={environment.disabled}
+      className="shrink-0"
+      muted
+    />
   );
 }
 

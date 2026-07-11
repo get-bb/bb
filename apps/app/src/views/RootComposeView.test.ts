@@ -715,6 +715,36 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_1:worktree");
   });
 
+  it("keeps a projectless machine selection with multiMachine on, normalized to local mode", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1", "host_2"]),
+        multiMachineEnabled: true,
+        environmentSelectionValue: "host:host_2:worktree",
+        isProjectless: true,
+        primaryHostId: "host_1",
+        projectSources: [],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_2:local");
+  });
+
+  it("falls back to the primary host for a stale projectless machine selection", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: true,
+        environmentSelectionValue: "host:host_gone:local",
+        isProjectless: true,
+        primaryHostId: "host_1",
+        projectSources: [],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_1:local");
+  });
+
   it("falls back to the primary host with multiMachine on when the selected host lacks a source", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
