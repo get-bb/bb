@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -43,6 +43,21 @@ function readLatestAppliedMigrationCreatedAt(db: DbConnection): number {
 }
 
 describe("server skeleton", () => {
+  it("serves the machine install script bytes without auth", async () => {
+    await withTestHarness(async (harness) => {
+      const expected = readFileSync(
+        new URL("../../src/assets/install-machine.sh", import.meta.url),
+      );
+      const response = await harness.app.request("/install.sh");
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "text/x-shellscript; charset=utf-8",
+      );
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(expected);
+    });
+  });
+
   it("serves public routes without auth", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/hosts");
