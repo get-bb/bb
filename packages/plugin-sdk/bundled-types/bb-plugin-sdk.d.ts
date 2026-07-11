@@ -51,6 +51,7 @@ declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         "environment-changed": "environment-changed";
         "read-state-changed": "read-state-changed";
         "order-changed": "order-changed";
+        "tabs-changed": "tabs-changed";
         "terminals-changed": "terminals-changed";
     }>>>;
 }, z$1.core.$strict>, z$1.ZodObject<{
@@ -152,8 +153,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
+            pending: "pending";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -571,11 +572,16 @@ interface PluginSdkApp {
  */
 declare const PLUGIN_SDK_APP_EXPORT_NAMES: readonly ["definePluginApp", "useBbContext", "useBbNavigate", "useComposer", "useRealtime", "useRpc", "useSettings"];
 
-declare const createProjectSourceRequestSchema: z$1.ZodObject<{
+declare const createProjectSourceRequestSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     hostId: z$1.ZodString;
     type: z$1.ZodLiteral<"local_path">;
     path: z$1.ZodPipe<z$1.ZodString, z$1.ZodTransform<string, string>>;
-}, z$1.core.$strict>;
+}, z$1.core.$strict>, z$1.ZodObject<{
+    hostId: z$1.ZodString;
+    type: z$1.ZodLiteral<"clone">;
+    targetPath: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodString, z$1.ZodTransform<string, string>>>;
+    remoteUrl: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strict>], "type">;
 type CreateProjectSourceRequest = z$1.infer<typeof createProjectSourceRequestSchema>;
 declare const createProjectRequestSchema: z$1.ZodObject<{
     name: z$1.ZodString;
@@ -688,6 +694,12 @@ type SystemExecutionOptionsQuery = z$1.infer<typeof systemExecutionOptionsQueryS
 declare const themeCatalogResponseSchema: z$1.ZodObject<{
     dir: z$1.ZodString;
     custom: z$1.ZodArray<z$1.ZodString>;
+    plugins: z$1.ZodArray<z$1.ZodObject<{
+        id: z$1.ZodString;
+        pluginId: z$1.ZodString;
+        name: z$1.ZodString;
+        description: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>>;
     active: z$1.ZodObject<{
         themeId: z$1.ZodString;
         customCss: z$1.ZodNullable<z$1.ZodString>;
@@ -928,12 +940,12 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         senderThreadId: z$1.ZodString;
     }, z$1.core.$strip>>>;
     originKind: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodEnum<{
-        fork: "fork";
         "side-chat": "side-chat";
+        fork: "fork";
     }>>>;
     childOrigin: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodEnum<{
-        fork: "fork";
         "side-chat": "side-chat";
+        fork: "fork";
     }>>>;
 }, z$1.core.$strip>;
 type CreateThreadRequest = z$1.infer<typeof createThreadRequestSchema>;
@@ -1080,12 +1092,12 @@ declare const threadResponseSchema: z$1.ZodObject<{
     parentThreadId: z$1.ZodNullable<z$1.ZodString>;
     sourceThreadId: z$1.ZodNullable<z$1.ZodString>;
     originKind: z$1.ZodNullable<z$1.ZodEnum<{
-        fork: "fork";
         "side-chat": "side-chat";
+        fork: "fork";
     }>>;
     childOrigin: z$1.ZodNullable<z$1.ZodEnum<{
-        fork: "fork";
         "side-chat": "side-chat";
+        fork: "fork";
     }>>;
     originPluginId: z$1.ZodNullable<z$1.ZodString>;
     archivedAt: z$1.ZodNullable<z$1.ZodNumber>;
@@ -1358,9 +1370,9 @@ interface ProjectUpdateArgs extends UpdateProjectRequest {
 interface ProjectDeleteArgs {
     projectId: string;
 }
-interface ProjectSourceAddArgs extends CreateProjectSourceRequest {
+type ProjectSourceAddArgs = CreateProjectSourceRequest & {
     projectId: string;
-}
+};
 interface ProjectSourceUpdateArgs extends UpdateProjectSourceRequest {
     projectId: string;
     sourceId: string;
