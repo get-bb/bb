@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   managedInstallDir,
   parsePluginSource,
@@ -95,6 +95,28 @@ async function commitAll(repoDir: string, message: string): Promise<string> {
   await git(repoDir, ["add", "-A"]);
   await git(repoDir, ["commit", "-qm", message]);
   return git(repoDir, ["rev-parse", "HEAD"]);
+}
+
+function artifactMeta(args: {
+  artifactFormatVersion?: number;
+  pluginId: string;
+  pluginVersion?: string;
+  sdkMajor?: number;
+  sdkVersion?: string;
+}): string {
+  const sdkMajor = args.sdkMajor ?? PLUGIN_SDK_MAJOR;
+  const sdkVersion = args.sdkVersion ?? PLUGIN_SDK_VERSION;
+  return JSON.stringify({
+    sdkMajor,
+    sdkVersion,
+    artifactFormatVersion: args.artifactFormatVersion ?? 1,
+    pluginId: args.pluginId,
+    pluginVersion: args.pluginVersion ?? "0.1.0",
+    builtWith: {
+      bbVersion: "0.9.0-test",
+      pluginSdkVersion: sdkVersion,
+    },
+  });
 }
 
 describe("plugin install sources", () => {
@@ -283,6 +305,52 @@ describe("plugin install flows", () => {
       expect(entry?.version).toBe("0.1.0");
     });
 
+    it("rejects an authoritative artifact identity mismatch and preserves the previous install", async () => {
+      const repoDir = join(workDir, "repo-artifact-identity");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-artifact-identity",
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "valid initial install");
+      const source = `git:${repoDir}@main`;
+      const first = await service.install(source);
+      expect(first.status).toBe("running");
+
+      await mkdir(join(repoDir, "dist"), { recursive: true });
+      await writeFile(
+        join(repoDir, "dist", "server.meta.json"),
+        artifactMeta({ pluginId: "wrong-plugin-id" }),
+      );
+      await commitAll(repoDir, "mismatched artifact identity");
+
+      await expect(service.install(source)).rejects.toThrowError(
+        /server artifact pluginId "wrong-plugin-id" does not match manifest pluginId "artifact-identity"/,
+      );
+      await expect(stat(`${first.rootDir}.staging`)).rejects.toThrowError();
+      await expect(
+        stat(join(first.rootDir, "dist", "server.meta.json")),
+      ).rejects.toThrowError();
+      expect(service.list()).toMatchObject([
+        { id: "artifact-identity", version: "0.1.0", status: "running" },
+      ]);
+
+      await writeFile(
+        join(repoDir, "dist", "server.meta.json"),
+        artifactMeta({
+          artifactFormatVersion: 2,
+          pluginId: "artifact-identity",
+        }),
+      );
+      await commitAll(repoDir, "unknown artifact format");
+      await expect(service.install(source)).rejects.toThrowError(
+        /server artifact.*unknown artifactFormatVersion 2.*supported value is 1/,
+      );
+      await expect(stat(`${first.rootDir}.staging`)).rejects.toThrowError();
+      expect(service.list()).toMatchObject([
+        { id: "artifact-identity", version: "0.1.0", status: "running" },
+      ]);
+    });
+
     it("hard-fails install on an engines.bb mismatch and cleans up the clone", async () => {
       const repoDir = join(workDir, "repo-too-new");
       await writePluginFixture(repoDir, {
@@ -355,6 +423,29 @@ describe("plugin install flows", () => {
     expect(entry.statusDetail).toContain(
       `requires bb plugin SDK >=99.0.0, running SDK is ${PLUGIN_SDK_VERSION}`,
     );
+  });
+
+  it("registers a path install with stale backend artifact metadata", async () => {
+    const rootDir = join(workDir, "local-stale-server-meta");
+    await writePluginFixture(rootDir, {
+      name: "bb-plugin-local-stale-server-meta",
+    });
+    await mkdir(join(rootDir, "dist"), { recursive: true });
+    await writeFile(
+      join(rootDir, "dist", "server.meta.json"),
+      artifactMeta({
+        pluginId: "local-stale-server-meta",
+        sdkMajor: 0,
+        sdkVersion: "0.1.0",
+      }),
+    );
+
+    const entry = await service.installPath(rootDir);
+    expect(entry).toMatchObject({
+      id: "local-stale-server-meta",
+      status: "running",
+      statusDetail: null,
+    });
   });
 
   describe.skipIf(!hasNpm)("npm sources", () => {

@@ -53,19 +53,21 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
-async function resolveBuildBbVersion(): Promise<string> {
-  const envVersion = process.env.BB_APP_VERSION?.trim();
-  if (envVersion) return envVersion;
+async function readAuthoritativeBbVersion(): Promise<string> {
   try {
     const json: unknown = JSON.parse(
       await readFile(bbAppPackageJsonPath, "utf8"),
     );
     const parsed = z.object({ version: z.string().min(1) }).safeParse(json);
     if (parsed.success) return parsed.data.version;
-  } catch {
-    // The source package is absent in some packaged-script contexts.
+  } catch (error) {
+    throw new Error(
+      `cannot read authoritative bb version from ${bbAppPackageJsonPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-  return "0.0.0-dev";
+  throw new Error(
+    `cannot read authoritative bb version from ${bbAppPackageJsonPath}`,
+  );
 }
 
 async function copyIfExists(from: string, to: string): Promise<void> {
@@ -140,18 +142,15 @@ async function copyBuiltinPlugin(args: {
   }
 }
 
-export async function copyBuiltinPlugins(
-  args: {
-    bbVersion?: string;
-    build?: boolean;
-    sourceModuleDir?: string;
-    targetRoot?: string;
-  } = {},
-): Promise<void> {
+export async function copyBuiltinPlugins(args: {
+  bbVersion: string;
+  build?: boolean;
+  sourceModuleDir?: string;
+  targetRoot?: string;
+}): Promise<void> {
   const resolvedSourceModuleDir = args.sourceModuleDir ?? sourceModuleDir;
   const resolvedTargetRoot = args.targetRoot ?? targetRoot;
   const build = args.build ?? true;
-  const bbVersion = args.bbVersion ?? (await resolveBuildBbVersion());
 
   await rm(resolvedTargetRoot, { recursive: true, force: true });
 
@@ -161,7 +160,7 @@ export async function copyBuiltinPlugins(
 
   for (const name of BUILTIN_PLUGIN_NAMES) {
     await copyBuiltinPlugin({
-      bbVersion,
+      bbVersion: args.bbVersion,
       build,
       name,
       sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
@@ -177,7 +176,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const targetFlagIndex = process.argv.indexOf("--target");
   const targetArg =
     targetFlagIndex !== -1 ? process.argv[targetFlagIndex + 1] : undefined;
-  await copyBuiltinPlugins(
-    targetArg !== undefined ? { targetRoot: path.resolve(targetArg) } : {},
-  );
+  await copyBuiltinPlugins({
+    bbVersion: await readAuthoritativeBbVersion(),
+    ...(targetArg !== undefined ? { targetRoot: path.resolve(targetArg) } : {}),
+  });
 }

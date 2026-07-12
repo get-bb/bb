@@ -1674,6 +1674,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     refuseEngineMismatch: boolean;
   }): Promise<PluginManifest> {
     const manifest = await readPluginManifest(args.rootDir);
+    const kind = sourceKind(args.source);
+    const managed = kind === "git" || kind === "npm";
     if (args.refuseEngineMismatch) {
       const engineProblem =
         checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
@@ -1688,7 +1690,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // error would. npm packages are never built here; they must ship a
     // prebuilt dist whose metadata is compatible with this SDK.
     if (manifest.appEntry !== undefined) {
-      const kind = sourceKind(args.source);
       if (kind === "npm") {
         const jsPresent = await stat(join(args.rootDir, "dist", "app.js"))
           .then(() => true)
@@ -1738,9 +1739,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
     }
 
-    await validateArtifact("server", false);
-    if (manifest.appEntry !== undefined) {
-      await validateArtifact("app", sourceKind(args.source) === "npm");
+    if (managed) {
+      await validateArtifact("server", false);
+      if (manifest.appEntry !== undefined) {
+        await validateArtifact("app", kind === "npm");
+      }
     }
     return manifest;
   }

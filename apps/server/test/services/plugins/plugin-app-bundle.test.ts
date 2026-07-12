@@ -16,7 +16,6 @@ import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
-import { validatePluginArtifactMeta } from "../../../src/services/plugins/app-bundle.js";
 
 // The harness config uses serverPort 3334, so this host is on the local-app
 // origin allowlist (asset routes take no auth, but keep requests realistic).
@@ -500,12 +499,41 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           }),
         );
 
+        // Package 3: backend metadata is compatible, but the frontend was
+        // built for a different SDK major. Install must reject the whole
+        // package rather than accepting only its backend half.
+        const partialDir = join(workDir, "partial");
+        await writeAppPluginFixture(partialDir, {
+          name: "bb-plugin-partial",
+        });
+        await mkdir(join(partialDir, "dist"), { recursive: true });
+        await writeFile(
+          join(partialDir, "dist", "server.meta.json"),
+          JSON.stringify({
+            sdkMajor: PLUGIN_SDK_MAJOR,
+            sdkVersion: PLUGIN_SDK_VERSION,
+          }),
+        );
+        await writeFile(
+          join(partialDir, "dist", "app.js"),
+          "export default {};\n",
+        );
+        const incompatibleMajor = PLUGIN_SDK_MAJOR + 1;
+        await writeFile(
+          join(partialDir, "dist", "app.meta.json"),
+          JSON.stringify({
+            sdkMajor: incompatibleMajor,
+            sdkVersion: `${incompatibleMajor}.0.0`,
+          }),
+        );
+
         const packDir = join(workDir, "pack");
         await mkdir(packDir, { recursive: true });
         const tarballs = new Map<string, Buffer>();
         for (const [name, dir] of [
           ["bb-plugin-nodist", noDistDir],
           ["bb-plugin-prebuilt", prebuiltDir],
+          ["bb-plugin-partial", partialDir],
         ] as const) {
           await run("npm", ["pack", "--pack-destination", packDir], {
             cwd: dir,
@@ -581,6 +609,21 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           );
           await expect(stat(prefix)).rejects.toThrowError();
 
+          await expect(
+            harness.pluginService.install("npm:bb-plugin-partial@0.1.0"),
+          ).rejects.toThrowError(
+            /app artifact.*SDK major.*rebuild the app artifact/,
+          );
+          const partialPrefix = join(
+            harness.config.dataDir,
+            "plugins",
+            "npm",
+            "bb-plugin-partial@0.1.0",
+          );
+          await expect(stat(partialPrefix)).rejects.toThrowError();
+          await expect(stat(`${partialPrefix}.staging`)).rejects.toThrowError();
+          expect(harness.pluginService.list()).toHaveLength(0);
+
           const entry = await harness.pluginService.install(
             "npm:bb-plugin-prebuilt@0.1.0",
           );
@@ -607,64 +650,6 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           );
         }
       },
-    );
-  });
-});
-
-describe("plugin artifact identity validation", () => {
-  function meta(overrides: Record<string, unknown> = {}): string {
-    return JSON.stringify({
-      sdkMajor: PLUGIN_SDK_MAJOR,
-      sdkVersion: PLUGIN_SDK_VERSION,
-      artifactFormatVersion: 1,
-      pluginId: "contract",
-      pluginVersion: "2.3.4",
-      builtWith: {
-        bbVersion: "0.9.0",
-        pluginSdkVersion: PLUGIN_SDK_VERSION,
-      },
-      ...overrides,
-    });
-  }
-
-  const validate = (artifact: "server" | "app", raw: string) =>
-    validatePluginArtifactMeta({
-      artifact,
-      raw,
-      pluginId: "contract",
-      pluginVersion: "2.3.4",
-    });
-
-  it("rejects authoritative plugin id and version mismatches", () => {
-    expect(validate("server", meta({ pluginId: "other" }))).toMatch(
-      /server artifact pluginId.*other.*contract/,
-    );
-    expect(validate("app", meta({ pluginVersion: "9.9.9" }))).toMatch(
-      /app artifact pluginVersion.*9\.9\.9.*2\.3\.4/,
-    );
-  });
-
-  it("names the incompatible frontend when backend compatibility is only partial", () => {
-    expect(validate("server", meta())).toBeNull();
-    const incompatibleMajor = PLUGIN_SDK_MAJOR + 1;
-    expect(
-      validate(
-        "app",
-        meta({
-          sdkMajor: incompatibleMajor,
-          sdkVersion: `${incompatibleMajor}.0.0`,
-          builtWith: {
-            bbVersion: "0.9.0",
-            pluginSdkVersion: `${incompatibleMajor}.0.0`,
-          },
-        }),
-      ),
-    ).toMatch(/app artifact.*SDK major.*rebuild the app artifact/);
-  });
-
-  it("rejects unknown artifact format versions", () => {
-    expect(validate("server", meta({ artifactFormatVersion: 2 }))).toMatch(
-      /server artifact.*unknown artifactFormatVersion 2.*supported value is 1/,
     );
   });
 });

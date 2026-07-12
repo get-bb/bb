@@ -431,7 +431,12 @@ describe("builtin plugin reconciliation", () => {
   it("installs and loads a packaged builtin whose source files are omitted", async () => {
     const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
     const targetRoot = join(workDir, "builtin-plugins");
-    await copyBuiltinPlugins({ build: false, sourceModuleDir, targetRoot });
+    await copyBuiltinPlugins({
+      bbVersion: "0.9.0-test",
+      build: false,
+      sourceModuleDir,
+      targetRoot,
+    });
     const copiedRoot = join(targetRoot, "automations");
 
     service = createService({
@@ -463,7 +468,12 @@ describe("builtin plugin reconciliation", () => {
   it("explicitly installs a packaged builtin without rebuilding its app bundle", async () => {
     const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
     const targetRoot = join(workDir, "builtin-plugins");
-    await copyBuiltinPlugins({ build: false, sourceModuleDir, targetRoot });
+    await copyBuiltinPlugins({
+      bbVersion: "0.9.0-test",
+      build: false,
+      sourceModuleDir,
+      targetRoot,
+    });
     const copiedRoot = join(targetRoot, "automations");
 
     service = createService({
@@ -501,7 +511,12 @@ describe("builtin plugin packaging", () => {
     const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
     const targetRoot = join(workDir, "builtin-plugins");
 
-    await copyBuiltinPlugins({ build: false, sourceModuleDir, targetRoot });
+    await copyBuiltinPlugins({
+      bbVersion: "0.9.0-test",
+      build: false,
+      sourceModuleDir,
+      targetRoot,
+    });
 
     const copiedRoot = join(targetRoot, "automations");
     const packageJson = JSON.parse(
