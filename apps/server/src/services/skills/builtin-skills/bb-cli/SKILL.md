@@ -336,8 +336,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     local path forms (`path:`, `./…`, or absolute paths) skip the prompt;
     ambiguous bare sources are conservatively prompted.
   - `bb plugin marketplace list [--json]` / `bb plugin marketplace update
-    [name]` — list catalogs or re-fetch one/all. Catalog refresh is not plugin
-    update; a failed refresh keeps the last-known-good catalog.
+    [name]` — list catalogs (scope + auto-check/auto-apply columns) or re-fetch
+    one/all. Catalog refresh is not plugin update; a failed refresh keeps the
+    last-known-good catalog.
+  - `bb plugin marketplace auto <name> [--check on|off] [--apply on|off]` —
+    set catalog auto-check / auto-apply. Official (`builtin`/`managed`) catalogs
+    default to auto-check on, auto-apply off; third-party defaults are manual.
   - `bb plugin marketplace remove <name> [--keep-all|--uninstall-all]` — remove
     a catalog. Installed plugins from it need a keep-as-direct vs uninstall
     disposition per plugin (TTY prompts); non-interactive must pass
@@ -368,6 +372,14 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     plugin only) widens a pinned/range npm source to newest compatible after
     confirmation and is refused for pinned git refs. Same full-trust
     confirmation as install (`--yes` skips; non-TTY refuses without it).
+  - `bb plugin auto-apply <id> <on|off>` — per-plugin automatic application.
+    Auto-apply only takes compatible, non-major, non-quarantined, non-ignored
+    candidates within policy (same snapshot/rollback/quarantine path as
+    manual update). Org kill-switch
+    `generalSettings.pluginAutoApplyDisabled` disables all auto-apply.
+  - `bb plugin history <id>` / `bb plugin history --all [--limit N]` — update
+    audit history (resolve/activate/skip/rollback/quarantine; 90-day
+    retention).
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,

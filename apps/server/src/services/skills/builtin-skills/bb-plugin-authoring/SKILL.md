@@ -76,6 +76,12 @@ The manifest is `package.json`:
   candidates that satisfy these ranges; newer incompatible releases are
   reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip
   enforcing `engines.bb` and annotate that on check results.
+- **Automatic updates:** when a user or marketplace opts into auto-apply,
+  only compatible non-major candidates within policy are applied. A failed
+  activation **rolls back** to the previous snapshot and **quarantines**
+  the candidate so automatic application will not retry it (manual apply
+  can still force a retry). Keep `engines.*` honest and ship load-safe
+  factories so an auto-applied release does not strand opted-in users.
 - `bb plugin build` stamps authoritative metadata into both
   `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
   `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and
