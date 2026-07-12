@@ -22,6 +22,7 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
+import { registerMarketplaceRoutes } from "./routes/marketplaces.js";
 import {
   createPluginService,
   type PluginService,
@@ -65,6 +66,7 @@ import {
   type BbAppArtifactService,
 } from "./services/install/bb-app-artifact.js";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { createMarketplaceService } from "./services/marketplaces/marketplace-service.js";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -425,6 +427,12 @@ export function createApp(
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
+  const marketplaceService = createMarketplaceService({
+    db: deps.db,
+    dataDir: deps.config.dataDir,
+    appVersion: deps.config.appVersion,
+    plugins: pluginService,
+  });
   registerProjectRoutes(publicApi, deps);
   registerThreadFolderRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
@@ -433,7 +441,8 @@ export function createApp(
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
-  registerPluginRoutes(publicApi, deps, pluginService);
+  registerMarketplaceRoutes(publicApi, marketplaceService);
+  registerPluginRoutes(publicApi, deps, pluginService, marketplaceService);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
