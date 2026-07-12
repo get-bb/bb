@@ -1,4 +1,5 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { z } from "zod";
 
 /**
  * Host-rendered plugin management data for the Settings "Plugins" section
@@ -14,6 +15,45 @@ type FetchLike = (
   input: string,
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
+
+export type PluginProvenance = "builtin" | "direct" | "marketplace";
+
+export type PluginUpdatePolicy = "manual" | "compatible" | "patch" | "minor";
+
+export const PLUGIN_UPDATE_POLICIES = [
+  "manual",
+  "compatible",
+  "patch",
+  "minor",
+] as const satisfies readonly PluginUpdatePolicy[];
+
+export interface PluginUpdateFailure {
+  version: string;
+  /** Epoch ms; null when the server omitted or sent an unparsable time. */
+  at: number | null;
+  detail: string | null;
+}
+
+/**
+ * Per-plugin update state from GET /api/v1/plugins. Absent fields normalize
+ * to the quiet state ("nothing to report") at this boundary so the UI never
+ * branches on undefined.
+ */
+export interface PluginUpdateState {
+  outcome: string | null;
+  /** Compatible candidate the user can apply now. */
+  availableVersion: string | null;
+  /** Newer release blocked by bb/SDK compatibility; never actionable. */
+  blockedVersion: string | null;
+  blockedReasons: string[];
+  /** Epoch ms of the last update check; null when never checked. */
+  lastCheckAt: number | null;
+  /** Version the user dismissed from the detail banner. */
+  ignoredVersion: string | null;
+  quarantined: boolean;
+  /** Last failed update that rolled back; drives "Needs attention". */
+  lastFailure: PluginUpdateFailure | null;
+}
 
 export interface PluginListItem {
   id: string;
@@ -33,35 +73,119 @@ export interface PluginListItem {
   logoDarkUrl: string | null;
   /** True when the loaded plugin declared settings; drives its nav entry. */
   hasSettings: boolean;
+  /** null on older servers that predate provenance; hides update surfaces. */
+  provenance: PluginProvenance | null;
+  /** Marketplace display name when provenance is "marketplace". */
+  marketplaceName: string | null;
+  /** Human source line ("npm · @bb-plugins/linear · tracking ^1.4.0"). */
+  sourceDisplay: string | null;
+  /** null on older servers that predate update policies. */
+  updatePolicy: PluginUpdatePolicy | null;
+  updateState: PluginUpdateState;
 }
 
-function parsePluginListItem(value: unknown): PluginListItem | null {
-  if (typeof value !== "object" || value === null) return null;
-  const item = value as Record<string, unknown>;
-  if (
-    typeof item.id !== "string" ||
-    typeof item.version !== "string" ||
-    typeof item.enabled !== "boolean" ||
-    typeof item.status !== "string" ||
-    !(item.statusDetail === null || typeof item.statusDetail === "string")
-  ) {
-    return null;
+/** Servers send epoch ms or ISO strings; normalize to epoch ms once here. */
+const timestampSchema = z.union([z.number(), z.string()]);
+
+export function toEpochMs(value: number | string | undefined): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
   }
+  return null;
+}
+
+const updateFailureSchema = z.object({
+  version: z.string(),
+  at: timestampSchema.optional(),
+  detail: z.string().optional(),
+});
+
+const updateStateSchema = z.object({
+  outcome: z.string().optional(),
+  availableVersion: z.string().optional(),
+  blockedVersion: z.string().optional(),
+  blockedReasons: z.array(z.string()).optional(),
+  lastCheckAt: timestampSchema.optional(),
+  ignoredVersion: z.string().optional(),
+  quarantined: z.boolean().optional(),
+  lastFailure: updateFailureSchema.optional(),
+});
+
+export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
+  outcome: null,
+  availableVersion: null,
+  blockedVersion: null,
+  blockedReasons: [],
+  lastCheckAt: null,
+  ignoredVersion: null,
+  quarantined: false,
+  lastFailure: null,
+};
+
+const pluginListItemSchema = z.object({
+  id: z.string(),
+  version: z.string(),
+  enabled: z.boolean(),
+  status: z.string(),
+  statusDetail: z.string().nullable(),
+  // Everything below is absent on older servers; parsing tolerates that and
+  // normalization fills the explicit quiet value.
+  description: z.string().nullish(),
+  displayName: z.string().nullish(),
+  icon: z.string().nullish(),
+  logoUrl: z.string().nullish(),
+  logoDarkUrl: z.string().nullish(),
+  hasSettings: z.boolean().optional(),
+  provenance: z.enum(["builtin", "direct", "marketplace"]).optional(),
+  marketplaceName: z.string().nullish(),
+  sourceDisplay: z.string().nullish(),
+  updatePolicy: z.enum(PLUGIN_UPDATE_POLICIES).optional(),
+  updateState: updateStateSchema.optional(),
+});
+
+function parsePluginListItem(value: unknown): PluginListItem | null {
+  const parsed = pluginListItemSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const item = parsed.data;
+  const state = item.updateState;
   return {
     id: item.id,
     version: item.version,
     enabled: item.enabled,
     status: item.status,
     statusDetail: item.statusDetail,
-    description: typeof item.description === "string" ? item.description : null,
-    // Absent on older servers → fall back to the id in the UI.
-    displayName: typeof item.displayName === "string" ? item.displayName : null,
-    icon: typeof item.icon === "string" ? item.icon : null,
-    // Absent on older servers → no logo, never a dropped row.
-    logoUrl: typeof item.logoUrl === "string" ? item.logoUrl : null,
-    logoDarkUrl: typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
-    // Absent on older servers → assume no declared settings.
+    description: item.description ?? null,
+    displayName: item.displayName ?? null,
+    icon: item.icon ?? null,
+    logoUrl: item.logoUrl ?? null,
+    logoDarkUrl: item.logoDarkUrl ?? null,
     hasSettings: item.hasSettings === true,
+    provenance: item.provenance ?? null,
+    marketplaceName: item.marketplaceName ?? null,
+    sourceDisplay: item.sourceDisplay ?? null,
+    updatePolicy: item.updatePolicy ?? null,
+    updateState:
+      state === undefined
+        ? EMPTY_PLUGIN_UPDATE_STATE
+        : {
+            outcome: state.outcome ?? null,
+            availableVersion: state.availableVersion ?? null,
+            blockedVersion: state.blockedVersion ?? null,
+            blockedReasons: state.blockedReasons ?? [],
+            lastCheckAt: toEpochMs(state.lastCheckAt),
+            ignoredVersion: state.ignoredVersion ?? null,
+            quarantined: state.quarantined === true,
+            lastFailure:
+              state.lastFailure === undefined
+                ? null
+                : {
+                    version: state.lastFailure.version,
+                    at: toEpochMs(state.lastFailure.at),
+                    detail: state.lastFailure.detail ?? null,
+                  },
+          },
   };
 }
 

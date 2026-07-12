@@ -5,6 +5,7 @@ import { AuthCallbackView } from "./views/AuthCallbackView";
 import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
+import { PluginUpdateToasts } from "./components/settings/plugins/PluginUpdateToasts";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
@@ -167,6 +168,7 @@ export function App() {
       <AppCommandProvider>
         <RouteNavigationProvider>
           <ProviderCliHealthToasts />
+          <PluginUpdateToasts />
           <Routes>
             <Route
               path={AUTH_CALLBACK_ROUTE_PATH}
