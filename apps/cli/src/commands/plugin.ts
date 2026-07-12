@@ -102,6 +102,9 @@ const marketplaceViewSchema = z.object({
   lastAttemptAt: z.union([z.string(), z.number()]).optional(),
   lastError: z.string().optional(),
   enabled: z.boolean(),
+  scope: z.enum(["official", "user"]),
+  autoCheck: z.boolean(),
+  autoApply: z.boolean(),
 });
 
 const marketplaceListSchema = z.object({
@@ -133,6 +136,39 @@ const marketplaceSearchResultSchema = z.object({
 });
 const marketplaceSearchSchema = z.object({
   results: z.array(marketplaceSearchResultSchema),
+});
+
+const autoApplyResultSchema = z.object({ autoApply: z.boolean() }).strict();
+const marketplaceAutoPolicySchema = z
+  .object({ autoCheck: z.boolean(), autoApply: z.boolean() })
+  .strict();
+const updateEventSchema = z
+  .object({
+    kind: z.enum([
+      "check",
+      "resolve",
+      "download",
+      "activate",
+      "rollback",
+      "auto-apply-skipped",
+    ]),
+    fromVersion: z.string().optional(),
+    toVersion: z.string().optional(),
+    outcome: z.string(),
+    detail: z.string().optional(),
+    at: z.number(),
+  })
+  .strict();
+const pluginHistorySchema = z
+  .object({ events: z.array(updateEventSchema) })
+  .strict();
+const pluginAuditSchema = z
+  .object({
+    events: z.array(updateEventSchema.extend({ pluginId: z.string() })),
+  })
+  .strict();
+const systemConfigAutoApplySchema = z.object({
+  generalSettings: z.object({ pluginAutoApplyDisabled: z.boolean() }),
 });
 
 type MarketplaceView = z.infer<typeof marketplaceViewSchema>;
@@ -382,6 +418,29 @@ function formatAbsoluteDate(value: string | number | undefined): string {
   if (value === undefined) return "unknown date";
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : String(value);
+}
+
+function parseOnOff(value: string, label: string): boolean {
+  if (value === "on") return true;
+  if (value === "off") return false;
+  throw new Error(`${label} must be "on" or "off".`);
+}
+
+function assertEchoedBoolean(
+  label: string,
+  requested: boolean,
+  echoed: boolean,
+): void {
+  if (requested !== echoed) {
+    throw new Error(
+      `${label} response did not match the requested state (requested ${requested ? "on" : "off"}, received ${echoed ? "on" : "off"}).`,
+    );
+  }
+}
+
+function eventVersion(fromVersion?: string, toVersion?: string): string {
+  if (fromVersion && toVersion) return `${fromVersion} → ${toVersion}`;
+  return fromVersion ?? toVersion ?? "—";
 }
 
 function printMarketplace(marketplace: MarketplaceView): void {
@@ -679,6 +738,9 @@ export function registerPluginCommands(
         }
         const rows = marketplaces.map((entry) => [
           entry.name,
+          entry.scope,
+          entry.autoCheck ? "on" : "off",
+          entry.autoApply ? "on" : "off",
           entry.source,
           String(entry.pluginCount),
           formatRelativeDate(entry.lastRefreshAt),
@@ -689,13 +751,76 @@ export function registerPluginCommands(
         console.log(
           renderBorderlessTable(
             {
-              head: ["Name", "Source", "Plugins", "Last refreshed", "State"],
-              colWidths: [22, 44, 10, 20, 62],
+              head: [
+                "Name",
+                "Scope",
+                "Auto-check",
+                "Auto-apply",
+                "Source",
+                "Plugins",
+                "Last refreshed",
+                "State",
+              ],
+              colWidths: [22, 10, 12, 12, 44, 10, 20, 62],
               trimTrailingWhitespace: true,
             },
             rows,
           ),
         );
+      }),
+    );
+
+  marketplace
+    .command("auto <name>")
+    .description("Set automatic update checking and application policy")
+    .option("--check <on|off>", "Enable or disable automatic update checks")
+    .option("--apply <on|off>", "Enable or disable automatic application")
+    .action(
+      action(async (name: string, opts: { check?: string; apply?: string }) => {
+        if (opts.check === undefined && opts.apply === undefined) {
+          throw new Error(
+            "Pass at least one of --check on|off or --apply on|off.",
+          );
+        }
+        const marketplaces = await listMarketplaces(getUrl());
+        const entry = marketplaces.find((candidate) => candidate.name === name);
+        if (!entry) throw new Error(`Unknown marketplace "${name}".`);
+        const requested = {
+          autoCheck:
+            opts.check === undefined
+              ? entry.autoCheck
+              : parseOnOff(opts.check, "--check"),
+          autoApply:
+            opts.apply === undefined
+              ? entry.autoApply
+              : parseOnOff(opts.apply, "--apply"),
+        };
+        const response = await callApi(
+          getUrl(),
+          `/marketplaces/${encodeURIComponent(entry.id)}/auto-policy`,
+          "POST",
+          requested,
+        );
+        const error = marketplaceErrorSchema.safeParse(response.value);
+        if (response.status === 422 && error.success) exitWithError(error.data);
+        const result = marketplaceAutoPolicySchema.parse(response.value);
+        assertEchoedBoolean(
+          "auto-check",
+          requested.autoCheck,
+          result.autoCheck,
+        );
+        assertEchoedBoolean(
+          "auto-apply",
+          requested.autoApply,
+          result.autoApply,
+        );
+        console.log(`Auto-check: ${result.autoCheck ? "on" : "off"}`);
+        console.log(`Auto-apply: ${result.autoApply ? "on" : "off"}`);
+        if (entry.scope === "official" && result.autoApply) {
+          console.log(
+            "Note: official marketplace auto-apply remains limited to compatible, non-major updates.",
+          );
+        }
       }),
     );
 
@@ -861,6 +986,119 @@ export function registerPluginCommands(
           ),
         );
       }),
+    );
+
+  plugin
+    .command("auto-apply <id> <on|off>")
+    .description("Enable or disable automatic updates for one plugin")
+    .action(
+      action(async (id: string, state: string) => {
+        const enabled = parseOnOff(state, "state");
+        const response = await callApi(
+          getUrl(),
+          `/plugins/${encodeURIComponent(id)}/auto-apply`,
+          "POST",
+          { enabled },
+        );
+        const error = marketplaceErrorSchema.safeParse(response.value);
+        if (response.status === 422 && error.success) exitWithError(error.data);
+        const result = autoApplyResultSchema.parse(response.value);
+        assertEchoedBoolean("auto-apply", enabled, result.autoApply);
+        console.log(`Auto-apply for ${id}: ${result.autoApply ? "on" : "off"}`);
+
+        const settingsResponse = await callApi(
+          getUrl(),
+          "/system/config",
+          "GET",
+        );
+        const settings = systemConfigAutoApplySchema.parse(
+          settingsResponse.value,
+        );
+        if (settings.generalSettings.pluginAutoApplyDisabled) {
+          console.log(
+            "Note: organization policy currently disables auto-apply and overrides this plugin setting.",
+          );
+        }
+      }),
+    );
+
+  plugin
+    .command("history [id]")
+    .description("Show plugin update history or the cross-plugin audit feed")
+    .option("--all", "Show update events for all plugins")
+    .option("--limit <number>", "Limit the cross-plugin audit feed", "50")
+    .option("--json", "Output the raw response as JSON")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: JsonOutputOptions & { all?: boolean; limit: string },
+        ) => {
+          if ((id === undefined) === (opts.all !== true)) {
+            throw new Error("Pass a plugin id or --all, but not both.");
+          }
+          const limit = Number(opts.limit);
+          if (!Number.isInteger(limit) || limit < 1) {
+            throw new Error("--limit must be a positive integer.");
+          }
+          const path =
+            opts.all === true
+              ? `/plugins/updates/audit?limit=${limit}`
+              : `/plugins/${encodeURIComponent(id ?? "")}/history`;
+          const response = await callApi(getUrl(), path, "GET");
+          const error = marketplaceErrorSchema.safeParse(response.value);
+          if (response.status === 422 && error.success)
+            exitWithError(error.data);
+          let rows: string[][];
+          if (opts.all === true) {
+            const result = pluginAuditSchema.parse(response.value);
+            if (opts.json) {
+              outputJson(opts, result);
+              return;
+            }
+            rows = result.events.map((event) => [
+              new Date(event.at).toISOString(),
+              event.pluginId,
+              event.kind,
+              eventVersion(event.fromVersion, event.toVersion),
+              event.outcome,
+              event.detail ?? "",
+            ]);
+          } else {
+            const result = pluginHistorySchema.parse(response.value);
+            if (opts.json) {
+              outputJson(opts, result);
+              return;
+            }
+            rows = result.events.map((event) => [
+              new Date(event.at).toISOString(),
+              event.kind,
+              eventVersion(event.fromVersion, event.toVersion),
+              event.outcome,
+              event.detail ?? "",
+            ]);
+          }
+          console.log(
+            renderBorderlessTable(
+              {
+                head: [
+                  "Time",
+                  ...(opts.all ? ["Plugin"] : []),
+                  "Kind",
+                  "From → to",
+                  "Outcome",
+                  "Detail",
+                ],
+                colWidths: opts.all
+                  ? [26, 24, 22, 24, 20, 50]
+                  : [26, 22, 24, 20, 50],
+                trimTrailingWhitespace: true,
+              },
+              rows,
+            ),
+          );
+        },
+      ),
     );
 
   plugin

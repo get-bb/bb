@@ -17,6 +17,9 @@ const marketplace = {
   pluginCount: 2,
   lastRefreshAt: "2026-07-12T12:00:00.000Z",
   enabled: true,
+  scope: "official" as const,
+  autoCheck: true,
+  autoApply: false,
 };
 
 const searchResult = {
@@ -54,6 +57,22 @@ describe("bb plugin marketplaces", () => {
   setupCommandOutputTestEnvironment();
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
+
+  it("lists marketplace scope and automatic update states", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({ marketplaces: [marketplace] }),
+    );
+
+    await runCommand(["plugin", "marketplace", "list"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Scope");
+    expect(output).toContain("Auto-check");
+    expect(output).toContain("Auto-apply");
+    expect(output).toContain("official");
+    expect(output).toContain("on");
+    expect(output).toContain("off");
+  });
 
   it("warns before adding a remote marketplace and says it installs nothing", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json({ marketplace }, 201));

@@ -57,6 +57,10 @@ added/updated/unchanged counts.
 
   bb plugin marketplace add <source> [--name <n>] [--yes]
   bb plugin marketplace list [--json]
+  bb plugin marketplace auto <name> [--check on|off] [--apply on|off]
+                                 Set catalog auto-check/auto-apply policy;
+                                 official auto-apply remains compatible,
+                                 non-major only
   bb plugin marketplace update [name]
   bb plugin marketplace remove <name> [--keep-all|--uninstall-all]
                                  Add, inspect, refresh, or remove catalogs
@@ -91,6 +95,13 @@ added/updated/unchanged counts.
                                  install (--yes skips; non-TTY refuses without
                                  --yes). Only tracking sources move; pinned
                                  installs stay put unless --latest applies
+  bb plugin auto-apply <id> <on|off>
+                                 Set per-plugin auto-apply (organization policy
+                                 can override the effective state)
+  bb plugin history <id> [--json]
+  bb plugin history --all [--limit N] [--json]
+                                 Show one plugin's update history or the
+                                 cross-plugin audit feed
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
