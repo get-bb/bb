@@ -355,11 +355,7 @@ describe("plugin install flows", () => {
       await expect(service.install(source)).rejects.toThrow(
         /simulated crash after promotion/,
       );
-      expect(getInstalledPluginRegistration(db, "retry")).toMatchObject({
-        rootDir: previous.rootDir,
-        activeArtifactId: previous.activeArtifactId,
-        version: "0.1.0",
-      });
+      expect(getInstalledPluginRegistration(db, "retry")).toEqual(previous);
       expect(service.list()).toMatchObject([
         {
           id: "retry",

@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -58,6 +65,13 @@ describe("plugin update service and routes", () => {
   let repo: string;
   let service: PluginService;
   let app: Hono;
+  let afterArtifactPromoted:
+    | ((args: {
+        pluginId: string;
+        artifactId: string;
+        path: string;
+      }) => Promise<void>)
+    | undefined;
 
   beforeEach(async () => {
     db = createConnection(":memory:");
@@ -69,6 +83,7 @@ describe("plugin update service and routes", () => {
     await git(repo, ["config", "user.email", "test@example.com"]);
     await git(repo, ["config", "user.name", "Test"]);
     await commitPlugin(repo, "1.0.0");
+    afterArtifactPromoted = undefined;
     service = createPluginService({
       db,
       hub: {
@@ -82,6 +97,7 @@ describe("plugin update service and routes", () => {
       isEnabled: () => true,
       isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
+      afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
     });
     await service.install(`git:${repo}@main`);
     app = new Hono();
@@ -327,6 +343,86 @@ describe("plugin update service and routes", () => {
     expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
   });
 
+  it("orders removal after an in-flight update without resurrecting the plugin", async () => {
+    await commitPlugin(repo, "1.1.0");
+    let releasePromotion: (() => void) | undefined;
+    let reportPromotion: (() => void) | undefined;
+    const promotionReached = new Promise<void>((resolvePromise) => {
+      reportPromotion = resolvePromise;
+    });
+    const holdPromotion = new Promise<void>((resolvePromise) => {
+      releasePromotion = resolvePromise;
+    });
+    afterArtifactPromoted = async () => {
+      reportPromotion?.();
+      await holdPromotion;
+    };
+
+    const update = service.applyUpdate("updater", {
+      dryRun: false,
+      latest: false,
+    });
+    await promotionReached;
+    const removal = service.remove("updater");
+    releasePromotion?.();
+
+    await expect(update).resolves.toMatchObject({
+      ok: true,
+      result: { applied: true },
+    });
+    await expect(removal).resolves.toBe(true);
+    expect(getInstalledPluginRegistration(db, "updater")).toBeUndefined();
+  });
+
+  it("orders disablement after an in-flight update without re-enabling it", async () => {
+    await commitPlugin(repo, "1.1.0");
+    let releasePromotion: (() => void) | undefined;
+    let reportPromotion: (() => void) | undefined;
+    const promotionReached = new Promise<void>((resolvePromise) => {
+      reportPromotion = resolvePromise;
+    });
+    const holdPromotion = new Promise<void>((resolvePromise) => {
+      releasePromotion = resolvePromise;
+    });
+    afterArtifactPromoted = async () => {
+      reportPromotion?.();
+      await holdPromotion;
+    };
+
+    const update = service.applyUpdate("updater", {
+      dryRun: false,
+      latest: false,
+    });
+    await promotionReached;
+    const disable = service.setEnabled("updater", false);
+    releasePromotion?.();
+
+    await expect(update).resolves.toMatchObject({
+      ok: true,
+      result: { applied: true },
+    });
+    await expect(disable).resolves.toMatchObject({ enabled: false });
+    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+      version: "1.1.0",
+      enabled: false,
+    });
+  });
+
+  it("uses isolated staging directories for concurrent check and update", async () => {
+    const nextCommit = await commitPlugin(repo, "1.1.0");
+    const [checked, applied] = await Promise.all([
+      service.checkForUpdates("updater"),
+      service.applyUpdate("updater", { dryRun: false, latest: false }),
+    ]);
+
+    expect(checked).toHaveLength(1);
+    expect(applied).toMatchObject({ ok: true });
+    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+      gitResolvedCommit: nextCommit,
+      version: "1.1.0",
+    });
+  });
+
   it("refuses a pinned git tag unless the source is changed explicitly", async () => {
     await service.remove("updater");
     await git(repo, ["tag", "v1"]);
@@ -345,7 +441,13 @@ describe("plugin update service and routes", () => {
 
   it("loads a legacy-layout plugin unchanged, then migrates lazily on update", async () => {
     await service.remove("updater");
-    const legacyRoot = join(workDir, "data", "plugins", "git", "legacy-updater");
+    const legacyRoot = join(
+      workDir,
+      "data",
+      "plugins",
+      "git",
+      "legacy-updater",
+    );
     await run("git", ["clone", "--quiet", repo, legacyRoot]);
     const currentCommit = await git(repo, ["rev-parse", "HEAD"]);
     upsertInstalledPlugin(db, {

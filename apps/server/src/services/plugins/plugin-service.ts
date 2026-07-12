@@ -893,6 +893,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const lifecycleChains = new Map<string, Promise<void>>();
   const artifactChains = new Map<string, Promise<void>>();
   const pluginOperationChains = new Map<string, Promise<void>>();
+  const REGISTRATION_MUTATION_KEY = "plugin-registration-mutations";
   const disposingPluginIds = new Set<string>();
   const builtinSourceWatchers: FSWatcher[] = [];
 
@@ -1986,6 +1987,37 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     );
   }
 
+  function registrationMatchesForActivation(
+    current: InstalledPluginRow,
+    expected: InstalledPluginRow,
+  ): boolean {
+    return (
+      current.source === expected.source &&
+      current.provenance === expected.provenance &&
+      current.marketplaceId === expected.marketplaceId &&
+      current.marketplaceEntryId === expected.marketplaceEntryId &&
+      current.sourceKind === expected.sourceKind &&
+      current.sourcePath === expected.sourcePath &&
+      current.sourceBuiltinName === expected.sourceBuiltinName &&
+      current.sourceNpmPackage === expected.sourceNpmPackage &&
+      current.sourceNpmRegistry === expected.sourceNpmRegistry &&
+      current.sourceNpmRequestedSpec === expected.sourceNpmRequestedSpec &&
+      current.sourceNpmSpecKind === expected.sourceNpmSpecKind &&
+      current.sourceGitUrl === expected.sourceGitUrl &&
+      current.sourceGitSubdirectory === expected.sourceGitSubdirectory &&
+      current.sourceGitRequestedRef === expected.sourceGitRequestedRef &&
+      current.sourceGitRefKind === expected.sourceGitRefKind &&
+      current.npmResolvedVersion === expected.npmResolvedVersion &&
+      current.npmIntegrity === expected.npmIntegrity &&
+      current.gitResolvedCommit === expected.gitResolvedCommit &&
+      current.updatePolicy === expected.updatePolicy &&
+      current.activeArtifactId === expected.activeArtifactId &&
+      current.rootDir === expected.rootDir &&
+      current.version === expected.version &&
+      current.enabled === expected.enabled
+    );
+  }
+
   async function readNpmIntegrity(
     prefix: string,
     packageName: string,
@@ -2774,7 +2806,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
     const stagingDir = args.promote
       ? `${targetDir}.staging`
-      : `${args.row.rootDir}.update-staging`;
+      : `${args.row.rootDir}.update-staging-${randomUUID()}`;
     await rm(stagingDir, { recursive: true, force: true });
     await mkdir(dirname(stagingDir), { recursive: true });
     try {
@@ -3029,9 +3061,27 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       provenance = { kind: args.row.provenance };
     }
     await withLifecycleLock(args.row.id, async () => {
+      const beforeDispose = getInstalledPlugin(deps.db, args.row.id);
+      if (
+        beforeDispose === undefined ||
+        !registrationMatchesForActivation(beforeDispose, args.row)
+      ) {
+        throw new Error(
+          `plugin "${args.row.id}" registration changed during update`,
+        );
+      }
       await disposeOne(args.row.id);
       try {
         await args.beforePersist?.();
+        const beforeWrite = getInstalledPlugin(deps.db, args.row.id);
+        if (
+          beforeWrite === undefined ||
+          !registrationMatchesForActivation(beforeWrite, args.row)
+        ) {
+          throw new Error(
+            `plugin "${args.row.id}" registration changed during activation`,
+          );
+        }
         upsertInstalledPlugin(deps.db, {
           id: args.row.id,
           source: args.source,
@@ -3639,17 +3689,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     list,
 
     async install(source) {
-      const parsed = parsePluginSource(source);
-      if (parsed.kind === "builtin") return installBuiltinSource(parsed);
-      if (parsed.kind === "git") return installGitSource(parsed, source);
-      if (parsed.kind === "npm") {
-        refuseBuiltinShadow(derivePluginId(parsed.name));
-        return installNpmSource(parsed, source);
-      }
-      return installPathSource(parsed.path);
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const parsed = parsePluginSource(source);
+        if (parsed.kind === "builtin") return installBuiltinSource(parsed);
+        if (parsed.kind === "git") return installGitSource(parsed, source);
+        if (parsed.kind === "npm") {
+          refuseBuiltinShadow(derivePluginId(parsed.name));
+          return installNpmSource(parsed, source);
+        }
+        return installPathSource(parsed.path);
+      });
     },
 
-    installPath: installPathSource,
+    installPath: (path) =>
+      withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        installPathSource(path),
+      ),
 
     async checkForUpdates(id) {
       const rows =
@@ -3723,7 +3778,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async applyUpdate(id, options) {
-      return withPluginOperationLock(id, async () => {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return { ok: false, error: `unknown plugin "${id}"` };
         const from = installedUpdateVersion(row);
@@ -3824,8 +3879,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               `npm candidate changed during update: ${selected.outcome}`,
             );
           }
+          const activationRow = getInstalledPlugin(deps.db, id);
+          if (activationRow === undefined) {
+            throw new Error(`plugin "${id}" disappeared before activation`);
+          }
           await applyNpmCandidate({
-            row,
+            row: activationRow,
             intent: npmIntent,
             candidate: selected.candidate,
           });
@@ -3844,8 +3903,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ) {
             throw new Error(`plugin "${id}" has corrupt normalized git state`);
           }
+          const activationRow = getInstalledPlugin(deps.db, id);
+          if (activationRow === undefined) {
+            throw new Error(`plugin "${id}" disappeared before activation`);
+          }
           const staged = await stageGitCandidate({
-            row,
+            row: activationRow,
             commit: resolution.candidate.version,
             promote: true,
             activationRefKind: persistedRefKind,
@@ -3892,76 +3955,80 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async remove(id) {
-      const row = getInstalledPlugin(deps.db, id);
-      await withLifecycleLock(id, () => disposeOne(id));
-      statuses.delete(id);
-      handlerStats.delete(id);
-      agentToolProblems.delete(id);
-      appBundles.delete(id);
-      logos.delete(id);
-      const removed = row
-        ? row.sourceKind === "builtin"
-          ? markInstalledPluginRemoved(deps.db, id)
-          : deleteInstalledPlugin(deps.db, id)
-        : false;
-      if (removed && row) {
-        // Configuration goes with the registration (a future same-id plugin
-        // must not inherit secrets); kv rows and data.db are plugin data and
-        // survive a remove/reinstall cycle. Schedule rows belong to the
-        // registration too.
-        deletePluginSchedules(deps.db, id);
-        deleteAllPluginSettings(deps.db, id);
-        await rm(pluginSecretsDir(deps.dataDir, id), {
-          recursive: true,
-          force: true,
-        });
-        // Legacy managed installs still own their mutable pre-cache layout.
-        // Immutable artifact directories are retained for future GC policy;
-        // path: sources are the user's directory and are never deleted.
-        const managedDir =
-          row.activeArtifactId === null && row.sourceKind === "git"
-            ? row.rootDir
-            : row.activeArtifactId === null &&
-                row.sourceKind === "npm" &&
-                row.sourceNpmPackage !== null &&
-                row.sourceNpmRequestedSpec !== null
-              ? npmInstallPrefix(
-                  deps.dataDir,
-                  row.sourceNpmPackage,
-                  row.sourceNpmRequestedSpec || "latest",
-                )
-              : undefined;
-        if (managedDir !== undefined) {
-          await rm(managedDir, { recursive: true, force: true });
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const row = getInstalledPlugin(deps.db, id);
+        await withLifecycleLock(id, () => disposeOne(id));
+        statuses.delete(id);
+        handlerStats.delete(id);
+        agentToolProblems.delete(id);
+        appBundles.delete(id);
+        logos.delete(id);
+        const removed = row
+          ? row.sourceKind === "builtin"
+            ? markInstalledPluginRemoved(deps.db, id)
+            : deleteInstalledPlugin(deps.db, id)
+          : false;
+        if (removed && row) {
+          // Configuration goes with the registration (a future same-id plugin
+          // must not inherit secrets); kv rows and data.db are plugin data and
+          // survive a remove/reinstall cycle. Schedule rows belong to the
+          // registration too.
+          deletePluginSchedules(deps.db, id);
+          deleteAllPluginSettings(deps.db, id);
+          await rm(pluginSecretsDir(deps.dataDir, id), {
+            recursive: true,
+            force: true,
+          });
+          // Legacy managed installs still own their mutable pre-cache layout.
+          // Immutable artifact directories are retained for future GC policy;
+          // path: sources are the user's directory and are never deleted.
+          const managedDir =
+            row.activeArtifactId === null && row.sourceKind === "git"
+              ? row.rootDir
+              : row.activeArtifactId === null &&
+                  row.sourceKind === "npm" &&
+                  row.sourceNpmPackage !== null &&
+                  row.sourceNpmRequestedSpec !== null
+                ? npmInstallPrefix(
+                    deps.dataDir,
+                    row.sourceNpmPackage,
+                    row.sourceNpmRequestedSpec || "latest",
+                  )
+                : undefined;
+          if (managedDir !== undefined) {
+            await rm(managedDir, { recursive: true, force: true });
+          }
         }
-      }
-      await syncCliSkill();
-      notifyPluginsChanged();
-      return removed;
+        await syncCliSkill();
+        notifyPluginsChanged();
+        return removed;
+      });
     },
 
     async setEnabled(id, enabled) {
-      if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
-      if (enabled) {
-        const row = getInstalledPlugin(deps.db, id);
-        if (row && shouldLoadRow(row)) {
-          await withLifecycleLock(id, () => loadOne(row));
-        } else if (row) {
-          await withLifecycleLock(id, () => unloadOneForExperimentGate(row));
-        }
-      } else {
-        await withLifecycleLock(id, async () => {
-          await disposeOne(id);
-          // A hung service outranks "disabled": the degraded status (set by
-          // stopServices) is the only trace of the still-running start().
-          if ((hungServices.get(id)?.size ?? 0) === 0) {
-            setStatus(id, "disabled");
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
+        if (enabled) {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row && shouldLoadRow(row)) {
+            await withLifecycleLock(id, () => loadOne(row));
+          } else if (row) {
+            await withLifecycleLock(id, () => unloadOneForExperimentGate(row));
           }
-        });
-      }
-      await syncCliSkill();
-      notifyPluginsChanged();
-      return list().find((p) => p.id === id);
+        } else {
+          await withLifecycleLock(id, async () => {
+            await disposeOne(id);
+            // A hung service outranks "disabled": the degraded status (set by
+            // stopServices) is the only trace of the still-running start().
+            if ((hungServices.get(id)?.size ?? 0) === 0) {
+              setStatus(id, "disabled");
+            }
+          });
+        }
+        await syncCliSkill();
+        notifyPluginsChanged();
+        return list().find((p) => p.id === id);
+      });
     },
 
     async reload(id) {
