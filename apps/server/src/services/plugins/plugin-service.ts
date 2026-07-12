@@ -370,6 +370,8 @@ export interface PluginServiceDeps {
   }) => Promise<void>;
   /** Test observation seam; called immediately before a managed download. */
   onArtifactMaterialize?: (args: { path: string }) => void;
+  /** Test seam after discovery and before automatic mode takes the operation lock. */
+  beforeAutomaticApply?: (pluginId: string) => Promise<void>;
 }
 
 /** One native tool contributed by a running plugin (design §4.4). */
@@ -605,7 +607,9 @@ export interface PluginService {
   sweepAutomaticUpdates(now: number): Promise<void>;
   applyUpdate(
     id: string,
-    options: { dryRun: boolean; latest: boolean },
+    options:
+      | { mode: "manual"; dryRun: boolean; latest: boolean }
+      | { mode: "automatic"; dryRun: false; latest: false },
   ): Promise<PluginApplyUpdateOutcome>;
   remove(id: string): Promise<boolean>;
   setEnabled(
@@ -4440,6 +4444,96 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return getMarketplace(deps.db, row.marketplaceId)?.autoApply ?? false;
   }
 
+  async function automaticUpdateSkip(
+    row: InstalledPluginRow,
+    resolution: PluginUpdateResolution,
+  ): Promise<{ detail: string; toVersion: string } | null> {
+    const toVersion =
+      resolution.outcome === "update-available"
+        ? resolution.candidate.version
+        : resolution.outcome === "incompatible"
+          ? resolution.newest.version
+          : resolution.outcome === "unavailable" &&
+              resolution.detail.includes("quarantined")
+            ? row.quarantinedVersion
+            : null;
+    if (toVersion === null) return null;
+    if (getAppSettings(deps.db).pluginAutoApplyDisabled) {
+      return {
+        detail: "organization policy disables automatic application",
+        toVersion,
+      };
+    }
+    if (!effectiveAutoApply(row)) {
+      return {
+        detail: "automatic application is not enabled",
+        toVersion,
+      };
+    }
+    if (row.updatePolicy === "manual") {
+      return { detail: "manual update policy", toVersion };
+    }
+    if (row.ignoredVersion === toVersion) {
+      return { detail: "candidate version is ignored", toVersion };
+    }
+    if (resolution.outcome !== "update-available") {
+      return {
+        detail:
+          resolution.outcome === "unavailable"
+            ? resolution.detail
+            : "candidate is outside automatic update policy",
+        toVersion,
+      };
+    }
+    if (row.sourceKind === "npm") {
+      const installed = semver.parse(row.version);
+      const candidate = semver.parse(resolution.candidate.version);
+      if (installed === null || candidate === null) {
+        return {
+          detail:
+            "automatic application requires strict semantic versions for installed and candidate npm plugins",
+          toVersion,
+        };
+      }
+      if (candidate.major > installed.major) {
+        return {
+          detail: "major updates are never automatically applied",
+          toVersion,
+        };
+      }
+      return null;
+    }
+    if (row.sourceKind === "git") {
+      const staged = await stageGitCandidate({
+        row,
+        commit: resolution.candidate.version,
+        promote: false,
+      });
+      if (staged.outcome !== "valid") {
+        return {
+          detail: "candidate could not be validated for automatic application",
+          toVersion,
+        };
+      }
+      const installed = semver.parse(row.version);
+      const candidate = semver.parse(staged.manifest.version);
+      if (installed === null || candidate === null) {
+        return {
+          detail:
+            "automatic application requires strict semantic versions for installed and candidate git plugins",
+          toVersion,
+        };
+      }
+      if (candidate.major > installed.major) {
+        return {
+          detail: "major updates are never automatically applied",
+          toVersion,
+        };
+      }
+    }
+    return null;
+  }
+
   function toHistoryEvent(
     event: import("@bb/db").PluginUpdateEventRow,
   ): PluginUpdateHistoryEvent {
@@ -5046,11 +5140,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             return { ok: false, error: `plugin "${id}" disappeared` };
           }
           notifyPluginsChanged();
-          const updated = getInstalledPlugin(deps.db, id);
           return {
             ok: true,
-            autoApply:
-              updated === undefined ? enabled : effectiveAutoApply(updated),
+            autoApply: enabled,
           };
         }),
       );
@@ -5079,93 +5171,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       for (const row of trackedRows) {
         checks.push(...(await this.checkForUpdates(row.id)));
       }
-      const globallyDisabled = getAppSettings(deps.db).pluginAutoApplyDisabled;
       for (const check of checks) {
-        const row = getInstalledPlugin(deps.db, check.id);
-        if (row === undefined) continue;
-        if (
-          check.outcome !== "update-available" ||
-          check.candidate === undefined
-        ) {
-          const skippedTarget =
-            check.blocked?.version ??
-            (check.detail?.includes("ignored") ? row.ignoredVersion : null) ??
-            (check.detail?.includes("quarantined")
-              ? row.quarantinedVersion
-              : null);
-          if (skippedTarget !== null && effectiveAutoApply(row)) {
-            recordUpdateEvent({
-              pluginId: row.id,
-              kind: "auto-apply-skipped",
-              fromVersion: check.installed.version,
-              toVersion: skippedTarget,
-              outcome: "skipped",
-              detail:
-                check.detail ?? "candidate is outside automatic update policy",
-              at: sweepNow,
-            });
-          }
-          continue;
-        }
-        let skipped: string | null = null;
-        if (globallyDisabled)
-          skipped = "organization policy disables automatic application";
-        else if (!effectiveAutoApply(row))
-          skipped = "automatic application is not enabled";
-        else if (row.updatePolicy === "manual")
-          skipped = "manual update policy";
-        else if (row.ignoredVersion === check.candidate.version)
-          skipped = "candidate version is ignored";
-        else if (quarantineMatches(row, check.candidate))
-          skipped = "candidate is quarantined";
-        else if (row.sourceKind === "npm") {
-          const installed = semver.coerce(check.installed.version);
-          const candidate = semver.coerce(check.candidate.version);
-          if (
-            installed !== null &&
-            candidate !== null &&
-            candidate.major > installed.major
-          ) {
-            skipped = "major updates are never automatically applied";
-          }
-        } else if (row.sourceKind === "git") {
-          const staged = await stageGitCandidate({
-            row,
-            commit: check.candidate.version,
-            promote: false,
-          });
-          if (staged.outcome !== "valid") {
-            skipped =
-              "candidate could not be validated for automatic application";
-          } else {
-            const installed = semver.coerce(row.version);
-            const candidate = semver.coerce(staged.manifest.version);
-            if (
-              installed !== null &&
-              candidate !== null &&
-              candidate.major > installed.major
-            ) {
-              skipped = "major updates are never automatically applied";
-            }
-          }
-        }
-        if (skipped !== null) {
-          recordUpdateEvent({
-            pluginId: row.id,
-            kind: "auto-apply-skipped",
-            fromVersion: check.installed.version,
-            toVersion: check.candidate.version,
-            outcome: "skipped",
-            detail: skipped,
-            at: sweepNow,
-          });
+        const shouldEvaluate =
+          check.outcome === "update-available" ||
+          check.outcome === "incompatible" ||
+          check.detail?.includes("ignored") === true ||
+          check.detail?.includes("quarantined") === true;
+        if (!shouldEvaluate) {
           continue;
         }
         try {
-          await this.applyUpdate(row.id, { dryRun: false, latest: false });
+          await deps.beforeAutomaticApply?.(check.id);
+          await this.applyUpdate(check.id, {
+            mode: "automatic",
+            dryRun: false,
+            latest: false,
+          });
         } catch (error) {
           logger.warn(
-            `automatic update failed for ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
+            `automatic update failed for ${check.id}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
@@ -5210,13 +5234,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const resolution = await resolveUpdateForRow({
           row,
           npmRun,
-          includeQuarantined: true,
+          includeQuarantined: options.mode === "manual",
           ...(options.latest && selectionNpmIntent !== undefined
             ? { npmIntentOverride: selectionNpmIntent }
             : {}),
         });
         const checked = checkEntryFromResolution(id, from, resolution);
-        persistUpdateEntry(checked, null);
+        const automaticSkip =
+          options.mode === "automatic"
+            ? await automaticUpdateSkip(row, resolution)
+            : null;
+        const persisted =
+          options.mode === "automatic"
+            ? applyIgnoredVersion(row, checked)
+            : { entry: checked, ignoredVersion: null };
+        persistUpdateEntry(persisted.entry, persisted.ignoredVersion);
         recordUpdateEvent({
           pluginId: id,
           kind: "resolve",
@@ -5227,6 +5259,27 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           outcome: checked.outcome,
           ...(checked.detail === undefined ? {} : { detail: checked.detail }),
         });
+
+        if (automaticSkip !== null) {
+          recordUpdateEvent({
+            pluginId: id,
+            kind: "auto-apply-skipped",
+            fromVersion: from.version,
+            toVersion: automaticSkip.toVersion,
+            outcome: "skipped",
+            detail: automaticSkip.detail,
+          });
+          return {
+            ok: true,
+            result: {
+              applied: false,
+              dryRun: false,
+              from,
+              outcome: "auto-apply-skipped",
+              detail: automaticSkip.detail,
+            },
+          };
+        }
 
         if (resolution.outcome === "pinned") {
           return {

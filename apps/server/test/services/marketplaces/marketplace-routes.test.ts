@@ -29,6 +29,9 @@ import {
 } from "../../helpers/test-app.js";
 import {
   createMarketplaceService,
+  marketplaceRefreshDelayMs,
+  marketplaceRefreshJitterMs,
+  MARKETPLACE_REFRESH_MAX_DELAY_MS,
   MarketplaceDispositionError,
 } from "../../../src/services/marketplaces/marketplace-service.js";
 
@@ -641,19 +644,38 @@ describe("marketplace HTTP routes", () => {
       autoCheck: true,
       autoApply: false,
     });
+    const baseline = 1_000_000_000;
+    await service.refresh("backoff-test", baseline);
+    expect(attempts).toBe(2);
+
     fail = true;
-    await service.sweepAutomaticChecks(Date.now() + 2 * 60 * 60_000);
+    const firstDelay = marketplaceRefreshDelayMs("backoff-test", 0);
+    await service.sweepAutomaticChecks(baseline + firstDelay - 1);
     expect(attempts).toBe(2);
-    await service.sweepAutomaticChecks(Date.now() + 60 * 60_000);
-    expect(attempts).toBe(2);
-    await service.sweepAutomaticChecks(Date.now() + 3 * 60 * 60_000);
+    const firstFailureAt = baseline + firstDelay;
+    await service.sweepAutomaticChecks(firstFailureAt);
+    expect(attempts).toBe(3);
+    expect(getMarketplace(harness.db, "backoff-test")).toMatchObject({
+      lastAttemptedRefreshAt: firstFailureAt,
+      lastError: "synthetic refresh failure",
+    });
+
+    const retryDelay = marketplaceRefreshDelayMs("backoff-test", 1);
+    await service.sweepAutomaticChecks(firstFailureAt + retryDelay - 1);
     expect(attempts).toBe(3);
 
     fail = false;
-    await service.sweepAutomaticChecks(Date.now() + 5 * 60 * 60_000);
+    const successAt = firstFailureAt + retryDelay;
+    await service.sweepAutomaticChecks(successAt);
     expect(attempts).toBe(4);
-    await service.sweepAutomaticChecks(Date.now() + 76 * 60_000);
+    await service.sweepAutomaticChecks(successAt + firstDelay - 1);
+    expect(attempts).toBe(4);
+    await service.sweepAutomaticChecks(successAt + firstDelay);
     expect(attempts).toBe(5);
+    expect(marketplaceRefreshDelayMs("backoff-test", 99)).toBe(
+      MARKETPLACE_REFRESH_MAX_DELAY_MS +
+        marketplaceRefreshJitterMs("backoff-test"),
+    );
   });
 
   it("orders install before removal and never leaves orphaned provenance", async () => {

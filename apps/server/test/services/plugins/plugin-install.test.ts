@@ -746,6 +746,7 @@ describe("plugin install flows", () => {
           });
 
           const widened = await service.applyUpdate("npmhero", {
+            mode: "manual",
             dryRun: false,
             latest: true,
           });

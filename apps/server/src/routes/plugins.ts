@@ -527,6 +527,7 @@ export function registerPluginRoutes(
     }
     try {
       const outcome = await plugins.applyUpdate(context.req.param("id"), {
+        mode: "manual",
         dryRun: body.data.dryRun ?? false,
         latest: body.data.latest ?? false,
       });

@@ -41,6 +41,32 @@ interface MarketplaceSource {
   display: string;
 }
 
+export const MARKETPLACE_REFRESH_BASE_DELAY_MS = 60 * 60_000;
+export const MARKETPLACE_REFRESH_MAX_DELAY_MS =
+  24 * MARKETPLACE_REFRESH_BASE_DELAY_MS;
+
+export function marketplaceRefreshJitterMs(id: string): number {
+  return (
+    Number.parseInt(
+      createHash("sha256").update(id).digest("hex").slice(0, 8),
+      16,
+    ) %
+    (15 * 60_000)
+  );
+}
+
+export function marketplaceRefreshDelayMs(
+  id: string,
+  failureCount: number,
+): number {
+  return (
+    Math.min(
+      MARKETPLACE_REFRESH_MAX_DELAY_MS,
+      MARKETPLACE_REFRESH_BASE_DELAY_MS * 2 ** failureCount,
+    ) + marketplaceRefreshJitterMs(id)
+  );
+}
+
 export interface MarketplaceView {
   id: string;
   name: string;
@@ -81,7 +107,7 @@ export class MarketplaceDispositionError extends Error {
 export interface MarketplaceService {
   add(source: string, name?: string): Promise<MarketplaceView>;
   list(): MarketplaceView[];
-  refresh(id: string): Promise<MarketplaceView>;
+  refresh(id: string, attemptedAt?: number): Promise<MarketplaceView>;
   search(query: string): MarketplaceSearchResult[];
   install(
     marketplaceId: string,
@@ -449,11 +475,10 @@ export function createMarketplaceService(deps: {
       return listMarketplaces(deps.db).map(view);
     },
 
-    async refresh(id) {
+    async refresh(id, attemptedAt = Date.now()) {
       return withMarketplaceLock(id, async () => {
         const row = getMarketplace(deps.db, id);
         if (row === undefined) throw new Error(`unknown marketplace "${id}"`);
-        const attemptedAt = Date.now();
         try {
           const source: MarketplaceSource = {
             kind: row.sourceKind === "path" ? "path" : "git",
@@ -697,23 +722,18 @@ export function createMarketplaceService(deps: {
     },
 
     async sweepAutomaticChecks(sweepNow) {
-      const baseDelayMs = 60 * 60_000;
-      const maxDelayMs = 24 * baseDelayMs;
       for (const row of listMarketplaces(deps.db)) {
         if (!row.enabled || !row.autoCheck) continue;
         const failures =
           row.lastError === null ? 0 : (refreshFailureCounts.get(row.id) ?? 1);
-        const backoff = Math.min(maxDelayMs, baseDelayMs * 2 ** failures);
-        const jitter =
-          Number.parseInt(
-            createHash("sha256").update(row.id).digest("hex").slice(0, 8),
-            16,
-          ) %
-          (15 * 60_000);
         const lastAttempt = row.lastAttemptedRefreshAt ?? 0;
-        if (sweepNow - lastAttempt < backoff + jitter) continue;
+        if (
+          sweepNow - lastAttempt <
+          marketplaceRefreshDelayMs(row.id, failures)
+        )
+          continue;
         try {
-          await this.refresh(row.id);
+          await this.refresh(row.id, sweepNow);
           refreshFailureCounts.delete(row.id);
         } catch {
           // refresh persists its ordinary failure state; keep checking others.

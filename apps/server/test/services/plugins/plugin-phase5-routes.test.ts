@@ -21,6 +21,7 @@ import {
   getInstalledPluginRegistration,
   migrate,
   upsertInstalledPlugin,
+  upsertMarketplace,
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
@@ -238,6 +239,49 @@ describe("Phase 5 plugin routes", () => {
     expect(
       await (await app.request("/plugins/updates/audit?limit=1")).json(),
     ).toMatchObject({ events: [{ pluginId: "preview-sentinel" }] });
+  });
+
+  it("echoes persisted plugin policy while GET keeps marketplace inheritance", async () => {
+    upsertMarketplace(db, {
+      id: "inheriting-marketplace",
+      displayName: "Inheriting Marketplace",
+      sourceKind: "path",
+      location: workDir,
+      requestedGitRef: null,
+      resolvedGitCommit: null,
+      cachePath: workDir,
+      contentHash: null,
+      catalogJson: null,
+      enabled: true,
+      trusted: false,
+      updatePolicy: "compatible",
+      autoCheck: false,
+      autoApply: true,
+      lastSuccessfulRefreshAt: null,
+      lastAttemptedRefreshAt: null,
+      lastError: null,
+      scope: "user",
+    });
+    db.$client
+      .prepare(
+        "UPDATE plugins SET provenance = 'marketplace', marketplace_id = ?, marketplace_entry_id = ? WHERE id = ?",
+      )
+      .run("inheriting-marketplace", "preview-sentinel", "preview-sentinel");
+
+    for (const enabled of [true, false]) {
+      const response = await app.request(
+        "/plugins/preview-sentinel/auto-apply",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        },
+      );
+      expect(await response.json()).toEqual({ autoApply: enabled });
+    }
+    expect(await (await app.request("/plugins")).json()).toMatchObject({
+      plugins: [{ id: "preview-sentinel", autoApply: true }],
+    });
   });
 
   it("previews npm exact/range/default metadata and reports incompatible newer releases without mutation", async () => {
