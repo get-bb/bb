@@ -378,8 +378,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     manual update). Org kill-switch
     `generalSettings.pluginAutoApplyDisabled` disables all auto-apply.
   - `bb plugin history <id>` / `bb plugin history --all [--limit N]` — update
-    audit history (resolve/activate/skip/rollback/quarantine; 90-day
-    retention).
+    audit history (check, resolve, download, activate, auto-apply skip, and
+    rollback; 90-day retention).
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,

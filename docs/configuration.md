@@ -434,19 +434,20 @@ Automatic checking and application are **opt-in** and layered:
 | ----- | ------- | ------- |
 | Marketplace | `autoCheck` / `autoApply` (`bb plugin marketplace auto <name> --check/--apply`) | Official (`builtin`/`managed`): check on, apply off. User/third-party: both off. |
 | Plugin | per-plugin `autoApply` (`bb plugin auto-apply <id> on\|off`) | off; effective auto-apply is on when either the plugin or its marketplace enables it |
-| Organization | `generalSettings.pluginAutoApplyDisabled` (Settings → General / app settings API) | `false`. When `true`, **all** automatic application is disabled (checks and manual updates still work). |
+| Organization | `generalSettings.pluginAutoApplyDisabled` (app settings API) | `false`. When `true`, **all** automatic application is disabled (checks and manual updates still work). |
 
 Opted-in marketplaces with `autoCheck` refresh on a roughly hourly cadence:
 1 hour base delay plus a stable per-marketplace jitter (0–15 minutes). After
-refresh failures the delay doubles up to a 24-hour cap, then resumes the
-normal schedule when a refresh succeeds. Auto-apply only applies compatible,
-non-major, non-quarantined, non-ignored candidates that satisfy the plugin's
-update policy, using the same snapshot → activate → rollback/quarantine path
-as manual `bb plugin update`. A failed auto-apply restores the previous
-version and quarantines the candidate so it is not retried automatically.
+refresh failures the exponential base delay is capped at 24 hours, plus up to
+15 minutes of stable jitter, then resumes the normal schedule when a refresh
+succeeds. Auto-apply only applies compatible, non-major, non-quarantined,
+non-ignored candidates that satisfy the plugin's update policy, using the same
+snapshot → activate → rollback/quarantine path as manual `bb plugin update`.
+A failed auto-apply restores the previous version and quarantines the
+candidate so it is not retried automatically.
 
-Every resolve, download, activate, auto-apply skip, rollback, and quarantine
-is written to the plugin update audit history (`bb plugin history <id>` or
+Every check, resolve, download, activate, auto-apply skip, and rollback is
+written to the plugin update audit history (`bb plugin history <id>` or
 `bb plugin history --all [--limit N]`; Settings → Plugins shows a per-plugin
 history disclosure). Events carry a 90-day retention window
 (`retainedUntil`) and are pruned after that.
