@@ -9,7 +9,9 @@ import {
   type PluginArtifactRow,
 } from "@bb/db";
 
-function artifactStorageRoot(artifact: PluginArtifactRow): string | null {
+export function pluginArtifactStorageRoot(
+  artifact: PluginArtifactRow,
+): string | null {
   if (artifact.sourceKind === "npm") {
     const marker = `${sep}node_modules${sep}`;
     const index = artifact.path.lastIndexOf(marker);
@@ -50,7 +52,7 @@ export async function garbageCollectPluginArtifacts(args: {
     cutoff: args.now - args.retentionMs,
   });
   for (const artifact of artifacts) {
-    const storageRoot = artifactStorageRoot(artifact);
+    const storageRoot = pluginArtifactStorageRoot(artifact);
     if (
       storageRoot === null ||
       !isManagedCachePath(args.dataDir, storageRoot)

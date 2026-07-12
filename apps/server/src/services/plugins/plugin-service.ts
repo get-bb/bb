@@ -29,6 +29,8 @@ import type { NotificationHub } from "../../ws/hub.js";
 import {
   claimPluginScheduledRun,
   createPluginArtifact,
+  getPluginArtifact,
+  getPluginStateSnapshot,
   deleteAllPluginSettings,
   deleteInstalledPlugin,
   deletePluginSchedules,
@@ -38,6 +40,7 @@ import {
   getThread,
   listDuePluginSchedules,
   listInstalledPlugins,
+  listIncompletePluginRollbackSnapshots,
   listUnnormalizedPluginRegistrations,
   listPluginSchedules,
   markInstalledPluginRemoved,
@@ -49,6 +52,8 @@ import {
   setInstalledPluginSourceClassification,
   setInstalledPluginQuarantine,
   setPluginArtifactValidation,
+  setPluginStateSnapshotRollbackPending,
+  setPluginStateSnapshotStatus,
   upsertInstalledPlugin,
   upsertPluginSchedule,
   type InstalledPluginRow,
@@ -56,6 +61,7 @@ import {
   type PluginExactResolution,
   type PluginProvenance,
   type PluginSourceIntent,
+  type PluginStateSnapshotRow,
 } from "@bb/db";
 import {
   getLastThreadErrorMessage,
@@ -143,10 +149,14 @@ import {
 } from "./plugin-settings.js";
 import {
   createPluginStateSnapshotOnDisk,
+  readPluginSnapshotRegistration,
   restorePluginHostStateSnapshot,
   restorePluginStateSnapshot,
 } from "./plugin-state-snapshot.js";
-import { garbageCollectPluginArtifacts } from "./plugin-artifact-gc.js";
+import {
+  garbageCollectPluginArtifacts,
+  pluginArtifactStorageRoot,
+} from "./plugin-artifact-gc.js";
 
 /**
  * Live status of an installed plugin. Rows in the `plugins` table hold
@@ -313,6 +323,16 @@ export interface PluginServiceDeps {
   artifactRetentionMs?: number;
   /** Injectable policy clock for retention and activation tests. */
   now?: () => number;
+  /** Test seam for deterministic stabilization-window completion. */
+  scheduleStabilizationWindow?: (
+    durationMs: number,
+    onElapsed: () => void,
+  ) => () => void;
+  /** Test failpoint after state replay but before pointer restoration. */
+  afterPluginRollbackStateRestored?: (args: {
+    pluginId: string;
+    snapshotId: string;
+  }) => Promise<void>;
   /** Test seam for a crash after canonical promotion but before activation. */
   afterArtifactPromoted?: (args: {
     pluginId: string;
@@ -910,6 +930,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
+  const scheduleStabilizationWindow =
+    deps.scheduleStabilizationWindow ??
+    ((durationMs: number, onElapsed: () => void) => {
+      const timer = setTimeout(onElapsed, durationMs);
+      return () => clearTimeout(timer);
+    });
 
   const loaded = new Map<string, LoadedPlugin>();
   // Per-plugin lifecycle mutex: every load/dispose mutation for one plugin
@@ -3217,6 +3243,103 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return resolution;
   }
 
+  function requireRollbackMetadata(snapshot: PluginStateSnapshotRow) {
+    if (
+      snapshot.rollbackCandidateVersion === null ||
+      snapshot.rollbackSourceFingerprint === null ||
+      snapshot.rollbackBbVersion === null ||
+      snapshot.rollbackSdkVersion === null ||
+      snapshot.rollbackDetail === null
+    ) {
+      throw new Error(
+        `plugin rollback snapshot ${snapshot.id} is missing rollback metadata`,
+      );
+    }
+    return {
+      candidateVersion: snapshot.rollbackCandidateVersion,
+      sourceFingerprint: snapshot.rollbackSourceFingerprint,
+      bbVersion: snapshot.rollbackBbVersion,
+      sdkVersion: snapshot.rollbackSdkVersion,
+      detail: snapshot.rollbackDetail,
+    };
+  }
+
+  async function recoverRollbackWithinLifecycle(
+    snapshotId: string,
+  ): Promise<void> {
+    const snapshot = getPluginStateSnapshot(deps.db, snapshotId);
+    if (snapshot === undefined) {
+      throw new Error(`plugin rollback snapshot disappeared: ${snapshotId}`);
+    }
+    const rollback = requireRollbackMetadata(snapshot);
+    const previousRegistration = await readPluginSnapshotRegistration({
+      db: deps.db,
+      snapshotId,
+    });
+    if (previousRegistration.id !== snapshot.pluginId) {
+      throw new Error(
+        `plugin rollback snapshot ${snapshot.id} registration id does not match`,
+      );
+    }
+    await disposeOne(snapshot.pluginId);
+    // Rollback is intentionally limited to bb-owned state. Effects the
+    // candidate already caused in external systems cannot be reversed.
+    await restorePluginStateSnapshot({
+      db: deps.db,
+      dataDir: deps.dataDir,
+      snapshotId,
+      now: now(),
+    });
+    await deps.afterPluginRollbackStateRestored?.({
+      pluginId: snapshot.pluginId,
+      snapshotId,
+    });
+    restoreRegistration(previousRegistration);
+    if (
+      !setInstalledPluginQuarantine(deps.db, snapshot.pluginId, {
+        version: rollback.candidateVersion,
+        sourceFingerprint: rollback.sourceFingerprint,
+        bbVersion: rollback.bbVersion,
+        sdkVersion: rollback.sdkVersion,
+        detail: rollback.detail,
+        quarantinedAt: now(),
+      })
+    ) {
+      throw new Error(
+        `plugin "${snapshot.pluginId}" disappeared during rollback`,
+      );
+    }
+    const previous = getInstalledPlugin(deps.db, snapshot.pluginId);
+    if (previous && shouldLoadRow(previous)) await loadOne(previous);
+    else if (previous) await unloadOneForExperimentGate(previous);
+    const runtime = statuses.get(snapshot.pluginId);
+    if (runtime?.status === "error") {
+      throw new Error(
+        `plugin "${snapshot.pluginId}" failed to reload during rollback: ${runtime.detail ?? "unknown error"}`,
+      );
+    }
+    // Loading synchronizes schedule registrations; replay the captured host
+    // rows once more so rollback restores their exact run state.
+    await restorePluginHostStateSnapshot({ db: deps.db, snapshotId });
+    if (!setPluginStateSnapshotStatus(deps.db, snapshotId, "restored", now())) {
+      throw new Error(`plugin rollback snapshot disappeared: ${snapshotId}`);
+    }
+  }
+
+  async function recoverIncompletePluginRollbacks(): Promise<void> {
+    for (const snapshot of listIncompletePluginRollbackSnapshots(deps.db)) {
+      const artifact = getPluginArtifact(deps.db, snapshot.toArtifactId);
+      const artifactLockKey =
+        (artifact === undefined ? null : pluginArtifactStorageRoot(artifact)) ??
+        snapshot.snapshotPath;
+      await withArtifactLock(artifactLockKey, () =>
+        withLifecycleLock(snapshot.pluginId, () =>
+          recoverRollbackWithinLifecycle(snapshot.id),
+        ),
+      );
+    }
+  }
+
   async function activateManagedUpdate(args: {
     row: InstalledPluginRow;
     rootDir: string;
@@ -3257,6 +3380,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           toArtifactId: args.artifactId,
           now: snapshotNow,
           retainedUntil: snapshotNow + artifactRetentionMs,
+          previousRegistration: args.row,
         });
       } catch (error) {
         const previous = getInstalledPlugin(deps.db, args.row.id);
@@ -3300,14 +3424,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
         if (stabilizationWindowMs > 0) {
           const failure = await new Promise<string | null>((resolveFailure) => {
-            let timer: NodeJS.Timeout | undefined;
+            let cancelWindow = () => {};
             const listener = (
               status: PluginRuntimeStatus,
               detail: string | null,
             ) => {
               if (status !== "error") return;
-              if (timer !== undefined) clearTimeout(timer);
-              statusListeners.get(args.row.id)?.delete(listener);
+              cancelWindow();
+              const currentListeners = statusListeners.get(args.row.id);
+              currentListeners?.delete(listener);
+              if (currentListeners?.size === 0) {
+                statusListeners.delete(args.row.id);
+              }
               resolveFailure(detail ?? "plugin entered error status");
             };
             let listeners = statusListeners.get(args.row.id);
@@ -3316,11 +3444,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               statusListeners.set(args.row.id, listeners);
             }
             listeners.add(listener);
-            timer = setTimeout(() => {
-              listeners.delete(listener);
-              if (listeners.size === 0) statusListeners.delete(args.row.id);
-              resolveFailure(null);
-            }, stabilizationWindowMs);
+            cancelWindow = scheduleStabilizationWindow(
+              stabilizationWindowMs,
+              () => {
+                listeners.delete(listener);
+                if (listeners.size === 0) statusListeners.delete(args.row.id);
+                resolveFailure(null);
+              },
+            );
             const currentStatus = statuses.get(args.row.id);
             if (currentStatus?.status === "error") {
               listener(currentStatus.status, currentStatus.detail);
@@ -3335,40 +3466,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           else if (previous) await unloadOneForExperimentGate(previous);
           throw error;
         }
-        await disposeOne(args.row.id);
-        // Rollback is intentionally limited to bb-owned state. Effects the
-        // candidate already caused in external systems cannot be reversed.
-        await restorePluginStateSnapshot({
-          db: deps.db,
-          dataDir: deps.dataDir,
-          snapshotId: snapshot.id,
-          now: now(),
-        });
-        restoreRegistration(args.row);
         const detail = error instanceof Error ? error.message : String(error);
         if (
-          !setInstalledPluginQuarantine(deps.db, args.row.id, {
-            version: candidateVersion,
+          !setPluginStateSnapshotRollbackPending(deps.db, snapshot.id, {
+            candidateVersion,
             sourceFingerprint: sourceFingerprint(args.row),
             bbVersion: deps.appVersion,
             sdkVersion: PLUGIN_SDK_VERSION,
             detail,
-            quarantinedAt: now(),
+            updatedAt: now(),
           })
         ) {
           throw new Error(
-            `plugin "${args.row.id}" disappeared during rollback`,
+            `plugin rollback snapshot ${snapshot.id} could not be marked pending`,
           );
         }
-        const previous = getInstalledPlugin(deps.db, args.row.id);
-        if (previous && shouldLoadRow(previous)) await loadOne(previous);
-        else if (previous) await unloadOneForExperimentGate(previous);
-        // Loading synchronizes schedule registrations; replay the captured
-        // host rows once more so rollback restores their exact run state.
-        await restorePluginHostStateSnapshot({
-          db: deps.db,
-          snapshotId: snapshot.id,
-        });
+        await recoverRollbackWithinLifecycle(snapshot.id);
         throw new PluginActivationRolledBackError(
           `activation of ${args.manifest.version} failed and was rolled back: ${detail}; run apply update again to retry explicitly`,
         );
@@ -3908,6 +4021,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async start() {
       await backfillNormalizedPluginRegistrations();
+      await withPluginOperationLock(
+        REGISTRATION_MUTATION_KEY,
+        recoverIncompletePluginRollbacks,
+      );
       await reconcileBuiltins();
       await loadAll();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);

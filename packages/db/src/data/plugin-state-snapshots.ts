@@ -1,4 +1,14 @@
-import { and, asc, eq, gt, lte, notExists, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  lte,
+  notExists,
+  notInArray,
+  or,
+} from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import {
   installedPlugins,
@@ -20,7 +30,20 @@ export interface PluginStateSnapshotRow {
   databasePath: string | null;
   statePath: string;
   secretsPath: string | null;
-  status: "pending" | "ready" | "restoring" | "restored" | "failed";
+  /** Null only for snapshots created before restart-safe rollback journals. */
+  registrationPath: string | null;
+  status:
+    | "pending"
+    | "ready"
+    | "rollback-pending"
+    | "restoring"
+    | "restored"
+    | "failed";
+  rollbackCandidateVersion: string | null;
+  rollbackSourceFingerprint: string | null;
+  rollbackBbVersion: string | null;
+  rollbackSdkVersion: string | null;
+  rollbackDetail: string | null;
   createdAt: number;
   retainedUntil: number;
   updatedAt: number;
@@ -57,6 +80,53 @@ export function listPluginStateSnapshots(
     .all();
 }
 
+export function listIncompletePluginRollbackSnapshots(
+  db: DbConnection,
+): PluginStateSnapshotRow[] {
+  return db
+    .select()
+    .from(pluginStateSnapshots)
+    .where(
+      inArray(pluginStateSnapshots.status, ["rollback-pending", "restoring"]),
+    )
+    .orderBy(asc(pluginStateSnapshots.createdAt), asc(pluginStateSnapshots.id))
+    .all();
+}
+
+export function setPluginStateSnapshotRollbackPending(
+  db: DbConnection,
+  id: string,
+  rollback: {
+    candidateVersion: string;
+    sourceFingerprint: string;
+    bbVersion: string;
+    sdkVersion: string;
+    detail: string;
+    updatedAt: number;
+  },
+): boolean {
+  return (
+    db
+      .update(pluginStateSnapshots)
+      .set({
+        status: "rollback-pending",
+        rollbackCandidateVersion: rollback.candidateVersion,
+        rollbackSourceFingerprint: rollback.sourceFingerprint,
+        rollbackBbVersion: rollback.bbVersion,
+        rollbackSdkVersion: rollback.sdkVersion,
+        rollbackDetail: rollback.detail,
+        updatedAt: rollback.updatedAt,
+      })
+      .where(
+        and(
+          eq(pluginStateSnapshots.id, id),
+          eq(pluginStateSnapshots.status, "ready"),
+        ),
+      )
+      .run().changes > 0
+  );
+}
+
 export function setPluginStateSnapshotStatus(
   db: DbConnection,
   id: string,
@@ -79,7 +149,15 @@ export function listExpiredPluginStateSnapshots(
   return db
     .select()
     .from(pluginStateSnapshots)
-    .where(lte(pluginStateSnapshots.retainedUntil, now))
+    .where(
+      and(
+        lte(pluginStateSnapshots.retainedUntil, now),
+        notInArray(pluginStateSnapshots.status, [
+          "rollback-pending",
+          "restoring",
+        ]),
+      ),
+    )
     .orderBy(asc(pluginStateSnapshots.retainedUntil))
     .all();
 }
@@ -134,7 +212,13 @@ export function listGarbageCollectablePluginArtifacts(
     .from(pluginStateSnapshots)
     .where(
       and(
-        gt(pluginStateSnapshots.retainedUntil, args.now),
+        or(
+          gt(pluginStateSnapshots.retainedUntil, args.now),
+          inArray(pluginStateSnapshots.status, [
+            "rollback-pending",
+            "restoring",
+          ]),
+        ),
         or(
           eq(pluginStateSnapshots.fromArtifactId, pluginArtifacts.id),
           eq(pluginStateSnapshots.toArtifactId, pluginArtifacts.id),

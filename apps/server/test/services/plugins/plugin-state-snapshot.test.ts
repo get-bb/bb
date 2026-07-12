@@ -14,8 +14,10 @@ import {
   createConnection,
   createPluginArtifact,
   createPluginStateSnapshot,
+  getInstalledPlugin,
   getPluginKvValue,
   listPluginArtifacts,
+  listPluginStateSnapshots,
   migrate,
   setPluginKvValue,
   setPluginStateSnapshotStatus,
@@ -54,6 +56,29 @@ describe("plugin activation snapshots and garbage collection", () => {
     pluginDb.close();
     setPluginKvValue(db, "snapshot-test", "cursor", JSON.stringify("original"));
     await writeFile(secretPath, "opaque-secret", { mode: 0o600 });
+    upsertInstalledPlugin(db, {
+      id: "snapshot-test",
+      source: `path:${pluginDir}`,
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: pluginDir },
+      exactResolution: { kind: "path" },
+      updatePolicy: "manual",
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+        ignoredVersion: null,
+      },
+      activeArtifactId: null,
+      rootDir: pluginDir,
+      version: "1.0.0",
+      enabled: true,
+    });
+    const previousRegistration = getInstalledPlugin(db, "snapshot-test");
+    if (previousRegistration === undefined) {
+      throw new Error("missing snapshot-test registration");
+    }
     const snapshot = await createPluginStateSnapshotOnDisk({
       db,
       dataDir,
@@ -62,6 +87,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       toArtifactId: "artifact-new",
       now: 100,
       retainedUntil: 200,
+      previousRegistration,
     });
 
     const mutate = async () => {
@@ -173,9 +199,15 @@ describe("plugin activation snapshots and garbage collection", () => {
       databasePath: null,
       statePath: join(snapshotPath, "state.json"),
       secretsPath: null,
-      status: "ready",
+      registrationPath: null,
+      status: "rollback-pending",
+      rollbackCandidateVersion: "candidate",
+      rollbackSourceFingerprint: "source",
+      rollbackBbVersion: "1.0.0",
+      rollbackSdkVersion: "1.0.0",
+      rollbackDetail: "failed",
       createdAt: 1,
-      retainedUntil: Date.now() + 60_000,
+      retainedUntil: 1,
       updatedAt: 1,
     });
     const warnings: string[] = [];
@@ -188,6 +220,7 @@ describe("plugin activation snapshots and garbage collection", () => {
     });
 
     expect(listPluginArtifacts(db, "gc-test")).toHaveLength(3);
+    expect(listPluginStateSnapshots(db, "gc-test")).toHaveLength(1);
     await Promise.all(
       [activePath, retainedPath, localPath].map((path) =>
         stat(join(path, "sentinel")),

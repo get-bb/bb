@@ -240,9 +240,11 @@ export {
   getPluginStateSnapshot,
   listExpiredPluginStateSnapshots,
   listGarbageCollectablePluginArtifacts,
+  listIncompletePluginRollbackSnapshots,
   listPluginStateSnapshots,
   replacePluginSnapshotState,
   setPluginStateSnapshotStatus,
+  setPluginStateSnapshotRollbackPending,
   type PluginStateSnapshotRow,
 } from "./plugin-state-snapshots.js";
 

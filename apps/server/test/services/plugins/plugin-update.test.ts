@@ -464,6 +464,11 @@ describe("plugin update service and routes", () => {
     if (installedCommit === null || installedCommit === undefined) {
       throw new Error("missing installed commit");
     }
+    let rejectService!: (error: Error) => void;
+    const serviceCrash = new Promise<void>((_resolve, reject) => {
+      rejectService = reject;
+    });
+    vi.stubGlobal("__bbPluginStabilizationCrash", serviceCrash);
     await service.stop();
     service = createPluginService({
       db,
@@ -478,8 +483,12 @@ describe("plugin update service and routes", () => {
       isEnabled: () => true,
       isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
-      stabilizationWindowMs: 100,
+      stabilizationWindowMs: 1,
       serviceRestartBaseMs: 1000,
+      scheduleStabilizationWindow: () => {
+        rejectService(new Error("service exploded"));
+        return () => {};
+      },
     });
     await service.start();
     const candidateCommit = await commitPlugin(
@@ -488,8 +497,7 @@ describe("plugin update service and routes", () => {
       undefined,
       `export default function plugin(bb: any) {
         bb.background.service("unstable", { async start() {
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          throw new Error("service exploded");
+          await (globalThis as any).__bbPluginStabilizationCrash;
         }});
       }`,
     );
@@ -510,6 +518,132 @@ describe("plugin update service and routes", () => {
     expect(
       service.list().find((entry) => entry.id === "updater"),
     ).toMatchObject({ id: "updater", version: "1.0.0", status: "running" });
+  });
+
+  it("finishes an interrupted rollback before loading plugins after restart", async () => {
+    const pluginDir = join(workDir, "data", "plugins", "updater");
+    const databasePath = join(pluginDir, "data.db");
+    const secretPath = join(pluginDir, "secrets", "token");
+    const oldRegistration = getInstalledPluginRegistration(db, "updater");
+    if (
+      oldRegistration?.activeArtifactId === null ||
+      oldRegistration === undefined
+    ) {
+      throw new Error("missing old registration");
+    }
+    const oldArtifact = listPluginArtifacts(db, "updater").find(
+      (artifact) => artifact.id === oldRegistration.activeArtifactId,
+    );
+    if (oldArtifact === undefined) throw new Error("missing old artifact");
+    const api = service.getApi("updater");
+    if (api === undefined) throw new Error("updater did not load");
+    const pluginDb = api.storage.sqlite();
+    pluginDb.exec("CREATE TABLE restart_state (value TEXT NOT NULL)");
+    pluginDb.prepare("INSERT INTO restart_state VALUES (?)").run("old-db");
+    await api.storage.kv.set("restart-cursor", "old-kv");
+    setPluginSettingsValues(db, "updater", {
+      restartMode: JSON.stringify("old-setting"),
+    });
+    await mkdir(join(pluginDir, "secrets"), { recursive: true });
+    await writeFile(secretPath, "restart-secret", { mode: 0o600 });
+
+    await commitPlugin(
+      repo,
+      "1.1.0",
+      undefined,
+      `
+        import { writeFileSync } from "node:fs";
+        export default async function plugin(bb: any) {
+          const database = bb.storage.sqlite();
+          database.prepare("UPDATE restart_state SET value = ?").run("new-db");
+          await bb.storage.kv.set("restart-cursor", "new-kv");
+          writeFileSync(${JSON.stringify(secretPath)}, "changed-secret");
+          throw new Error("restart rollback candidate failed");
+        }
+      `,
+    );
+    await service.stop();
+    service = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "1.0.0",
+      isEnabled: () => true,
+      isConnectEnabled: () => false,
+      stabilizationWindowMs: 0,
+      afterPluginRollbackStateRestored: async () => {
+        throw new Error("simulated process exit during rollback");
+      },
+    });
+    await service.start();
+    upsertPluginSchedule(db, {
+      pluginId: "updater",
+      name: "restart-sync",
+      cron: "0 * * * *",
+      nextRunAt: 4321,
+    });
+    await expect(
+      service.applyUpdate("updater", { dryRun: false, latest: false }),
+    ).rejects.toThrow("simulated process exit during rollback");
+    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+      version: "1.1.0",
+      activeArtifactId: expect.not.stringMatching(
+        oldRegistration.activeArtifactId,
+      ),
+    });
+    expect(listPluginStateSnapshots(db, "updater")).toMatchObject([
+      { status: "restoring", fromArtifactId: oldRegistration.activeArtifactId },
+    ]);
+
+    await service.stop();
+    service = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "1.0.0",
+      isEnabled: () => true,
+      isConnectEnabled: () => false,
+      stabilizationWindowMs: 0,
+    });
+    await service.start();
+
+    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+      version: oldRegistration.version,
+      activeArtifactId: oldRegistration.activeArtifactId,
+      quarantinedVersion: expect.any(String),
+    });
+    expect(
+      service.list().find((entry) => entry.id === "updater"),
+    ).toMatchObject({ version: oldRegistration.version, status: "running" });
+    const restored = new Database(databasePath, { readonly: true });
+    expect(
+      restored.prepare("SELECT value FROM restart_state").pluck().get(),
+    ).toBe("old-db");
+    restored.close();
+    expect(getPluginKvValue(db, "updater", "restart-cursor")).toBe(
+      JSON.stringify("old-kv"),
+    );
+    expect(getPluginSettingsValues(db, "updater")).toEqual({
+      restartMode: JSON.stringify("old-setting"),
+    });
+    expect(listPluginSchedules(db, "updater")).toMatchObject([
+      { name: "restart-sync", cron: "0 * * * *", nextRunAt: 4321 },
+    ]);
+    expect(await readFile(secretPath, "utf8")).toBe("restart-secret");
+    await stat(oldArtifact.path);
+    expect(listPluginStateSnapshots(db, "updater")).toMatchObject([
+      { status: "restored" },
+    ]);
   });
 
   it("retains rollback state through the grace period and collects it afterward", async () => {

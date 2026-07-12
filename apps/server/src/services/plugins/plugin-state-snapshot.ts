@@ -20,6 +20,7 @@ import {
   replacePluginSnapshotState,
   setPluginStateSnapshotStatus,
   type DbConnection,
+  type InstalledPluginRow,
   type PluginStateSnapshotRow,
 } from "@bb/db";
 
@@ -45,6 +46,49 @@ const stateSchema = z.object({
   settings: z.array(settingRowSchema),
   schedules: z.array(scheduleRowSchema),
 });
+const installedPluginRowSchema = z
+  .object({
+    id: z.string(),
+    source: z.string(),
+    provenance: z.enum(["builtin", "direct", "marketplace"]),
+    marketplaceId: z.string().nullable(),
+    marketplaceEntryId: z.string().nullable(),
+    sourceKind: z.enum(["path", "builtin", "npm", "git"]),
+    sourcePath: z.string().nullable(),
+    sourceBuiltinName: z.string().nullable(),
+    sourceNpmPackage: z.string().nullable(),
+    sourceNpmRegistry: z.string().nullable(),
+    sourceNpmRequestedSpec: z.string().nullable(),
+    sourceNpmSpecKind: z.enum(["default", "exact", "tag", "range"]).nullable(),
+    sourceGitUrl: z.string().nullable(),
+    sourceGitSubdirectory: z.string().nullable(),
+    sourceGitRequestedRef: z.string().nullable(),
+    sourceGitRefKind: z.enum(["branch", "tag", "commit"]).nullable(),
+    npmResolvedVersion: z.string().nullable(),
+    npmIntegrity: z.string().nullable(),
+    gitResolvedCommit: z.string().nullable(),
+    updatePolicy: z.enum(["manual", "compatible", "patch", "minor"]),
+    lastUpdateCheckAt: z.number().int().nullable(),
+    availableCompatibleVersion: z.string().nullable(),
+    newestIncompatibleVersion: z.string().nullable(),
+    updateStatusDetail: z.string().nullable(),
+    ignoredVersion: z.string().nullable(),
+    quarantinedVersion: z.string().nullable(),
+    quarantineSourceFingerprint: z.string().nullable(),
+    quarantineBbVersion: z.string().nullable(),
+    quarantineSdkVersion: z.string().nullable(),
+    quarantinedAt: z.number().int().nullable(),
+    quarantineDetail: z.string().nullable(),
+    activeArtifactId: z.string().nullable(),
+    normalizationVersion: z.number().int(),
+    rootDir: z.string(),
+    version: z.string(),
+    enabled: z.boolean(),
+    removedAt: z.number().int().nullable(),
+    installedAt: z.number().int(),
+    updatedAt: z.number().int(),
+  })
+  .strict();
 
 async function exists(path: string): Promise<boolean> {
   return stat(path).then(
@@ -74,6 +118,7 @@ export async function createPluginStateSnapshotOnDisk(args: {
   toArtifactId: string;
   now: number;
   retainedUntil: number;
+  previousRegistration: InstalledPluginRow;
 }): Promise<PluginStateSnapshotRow> {
   const id = randomUUID();
   const snapshotPath = join(
@@ -87,6 +132,7 @@ export async function createPluginStateSnapshotOnDisk(args: {
   const sourceDatabasePath = join(sourceDir, "data.db");
   const databasePath = join(snapshotPath, "data.db");
   const statePath = join(snapshotPath, "host-state.json");
+  const registrationPath = join(snapshotPath, "previous-registration.json");
   const sourceSecretsPath = join(sourceDir, "secrets");
   const secretsPath = join(snapshotPath, "secrets");
   const hasDatabase = await exists(sourceDatabasePath);
@@ -100,7 +146,13 @@ export async function createPluginStateSnapshotOnDisk(args: {
     databasePath: hasDatabase ? databasePath : null,
     statePath,
     secretsPath: hasSecrets ? secretsPath : null,
+    registrationPath,
     status: "pending",
+    rollbackCandidateVersion: null,
+    rollbackSourceFingerprint: null,
+    rollbackBbVersion: null,
+    rollbackSdkVersion: null,
+    rollbackDetail: null,
     createdAt: args.now,
     retainedUntil: args.retainedUntil,
     updatedAt: args.now,
@@ -130,6 +182,11 @@ export async function createPluginStateSnapshotOnDisk(args: {
       }),
       { mode: 0o600 },
     );
+    await writeFile(
+      registrationPath,
+      JSON.stringify(args.previousRegistration),
+      { mode: 0o600 },
+    );
     setPluginStateSnapshotStatus(args.db, id, "ready", args.now);
     return { ...record, status: "ready" };
   } catch (error) {
@@ -150,6 +207,7 @@ export async function restorePluginStateSnapshot(args: {
   }
   if (
     snapshot.status !== "ready" &&
+    snapshot.status !== "rollback-pending" &&
     snapshot.status !== "restoring" &&
     snapshot.status !== "restored"
   ) {
@@ -177,7 +235,24 @@ export async function restorePluginStateSnapshot(args: {
     db: args.db,
     snapshotId: snapshot.id,
   });
-  setPluginStateSnapshotStatus(args.db, snapshot.id, "restored", args.now);
+}
+
+export async function readPluginSnapshotRegistration(args: {
+  db: DbConnection;
+  snapshotId: string;
+}): Promise<InstalledPluginRow> {
+  const snapshot = getPluginStateSnapshot(args.db, args.snapshotId);
+  if (snapshot === undefined) {
+    throw new Error(`plugin state snapshot disappeared: ${args.snapshotId}`);
+  }
+  if (snapshot.registrationPath === null) {
+    throw new Error(
+      `plugin state snapshot ${snapshot.id} predates restart-safe rollback metadata`,
+    );
+  }
+  return installedPluginRowSchema.parse(
+    JSON.parse(await readFile(snapshot.registrationPath, "utf8")),
+  );
 }
 
 export async function restorePluginHostStateSnapshot(args: {
