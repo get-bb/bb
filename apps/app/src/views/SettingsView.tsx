@@ -49,7 +49,6 @@ import { CommunitySettingsSection } from "@/components/settings/CommunitySetting
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
-import { ServersSettingsSection } from "@/components/settings/ServersSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -1261,8 +1260,6 @@ export function SettingsView() {
     );
   } else if (activeSection === "machines") {
     content = <MachinesSettingsSection />;
-  } else if (activeSection === "servers") {
-    content = <ServersSettingsSection />;
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection

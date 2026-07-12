@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
 import type { BbDesktopPopoutApi } from "./popout.js";
-import type { BbDesktopServersApi } from "./servers.js";
 import type { AppCommandId } from "@bb/domain";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
@@ -52,12 +51,6 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * typed commands over the preload bridge.
    */
   popout: BbDesktopPopoutApi;
-  /**
-   * Multi-server registry and per-window switching. Optional for version skew
-   * with desktop shells that predate multi-server support; callers should
-   * feature-detect before use.
-   */
-  servers?: BbDesktopServersApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   /**

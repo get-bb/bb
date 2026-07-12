@@ -17,6 +17,8 @@ export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 export const RELOAD_ACCELERATOR = "CommandOrControl+R";
 export const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
 export const SERVER_MENU_LABEL = "Server";
+export const SERVER_MENU_ITEM_ID = "bb-server-menu";
+export const SET_SERVER_URL_MENU_LABEL = "Set Server URL…";
 
 export interface ApplicationMenuServerItem {
   checked: boolean;
@@ -36,7 +38,10 @@ export interface InstallApplicationMenuArgs {
   closeWindowOrSideTab(browserWindow: BaseWindow | undefined): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
-  selectServer(serverId: string, browserWindow: BaseWindow | undefined): void;
+  selectServer(serverId: string): void;
+  setServerUrl(): void;
+  /** Fired when the Window ▸ Server submenu opens (freshness trigger). */
+  onServerMenuWillShow?: () => void;
   serverDaemonLogsMenuEnabled: boolean;
   servers: ApplicationMenuServerItem[];
 }
@@ -56,34 +61,29 @@ function createServerDaemonLogsMenuItems(
   ];
 }
 
-function serverMenuAccelerator(index: number): string | undefined {
-  if (index < 0 || index > 8) {
-    return undefined;
-  }
-  return `Command+Control+${index + 1}`;
-}
-
 function createServerMenuItems(
   args: InstallApplicationMenuArgs,
 ): MenuItemConstructorOptions[] {
-  if (args.servers.length === 0) {
-    return [
-      {
-        enabled: false,
-        label: "No Servers",
+  const serverItems: MenuItemConstructorOptions[] = args.servers.map(
+    (server) => ({
+      checked: server.checked,
+      click() {
+        args.selectServer(server.id);
       },
-    ];
-  }
-
-  return args.servers.map((server, index) => ({
-    accelerator: serverMenuAccelerator(index),
-    checked: server.checked,
-    click(_menuItem, browserWindow) {
-      args.selectServer(server.id, browserWindow);
+      label: server.name,
+      type: "radio" as const,
+    }),
+  );
+  return [
+    ...serverItems,
+    { type: "separator" },
+    {
+      label: SET_SERVER_URL_MENU_LABEL,
+      click() {
+        args.setServerUrl();
+      },
     },
-    label: server.name,
-    type: "radio" as const,
-  }));
+  ];
 }
 
 export function buildApplicationMenuTemplate(
@@ -196,6 +196,7 @@ export function buildApplicationMenuTemplate(
         { role: "zoom" },
         { type: "separator" },
         {
+          id: SERVER_MENU_ITEM_ID,
           label: SERVER_MENU_LABEL,
           submenu: createServerMenuItems(args),
         },
@@ -207,7 +208,14 @@ export function buildApplicationMenuTemplate(
 }
 
 export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate(buildApplicationMenuTemplate(args)),
-  );
+  const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate(args));
+  const onServerMenuWillShow = args.onServerMenuWillShow;
+  if (onServerMenuWillShow !== undefined) {
+    menu
+      .getMenuItemById(SERVER_MENU_ITEM_ID)
+      ?.submenu?.on("menu-will-show", () => {
+        onServerMenuWillShow();
+      });
+  }
+  Menu.setApplicationMenu(menu);
 }

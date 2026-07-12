@@ -360,9 +360,7 @@ const electronMock = vi.hoisted(() => {
       }
     }
 
-    emitBeforeInput(
-      input: Partial<FakeInput> & Pick<FakeInput, "key">,
-    ): boolean {
+    emitBeforeInput(input: Partial<FakeInput> & Pick<FakeInput, "key">): boolean {
       const event = new FakePreventableEventImpl();
       const resolvedInput: FakeInput = {
         alt: false,
@@ -698,58 +696,11 @@ function scopedOpenTabPushesOf(
 }
 
 describe("DesktopBrowserViewManager", () => {
-  it("isolates native browser tabs by cached server renderer", () => {
-    const sendToRenderer = vi.fn();
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-      sendToRenderer,
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 49,
-    });
-    const request = {
-      tabId: "browser:a",
-      url: "https://example.com",
-      bounds: { x: 100, y: 50, width: 500, height: 350 },
-      visible: true,
-    };
-
-    manager.attach({
-      hostWindow,
-      rendererWebContentsId: 501,
-      request,
-    });
-    manager.attach({
-      hostWindow,
-      rendererWebContentsId: 502,
-      request,
-    });
-    manager.setRendererActive(501, false);
-
-    expect(electronMock.fakeViews).toHaveLength(2);
-    expect(requireFakeView(0).visible).toBe(false);
-    expect(requireFakeView(1).visible).toBe(true);
-    expect(sendToRenderer).toHaveBeenCalledWith(
-      501,
-      expect.any(String),
-      expect.objectContaining({ tabId: "browser:a" }),
-    );
-    expect(sendToRenderer).toHaveBeenCalledWith(
-      502,
-      expect.any(String),
-      expect.objectContaining({ tabId: "browser:a" }),
-    );
-  });
-
   it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
     const dispatchAppCommand = vi.fn();
     const focusHostWebContents = vi.fn();
-    const resolveAppCommand = vi.fn(
-      (input: { key: string; metaKey: boolean }) =>
-        input.key === "l" && input.metaKey
-          ? ("browser.focusLocation" as const)
-          : null,
+    const resolveAppCommand = vi.fn((input: { key: string; metaKey: boolean }) =>
+      input.key === "l" && input.metaKey ? "browser.focusLocation" as const : null,
     );
     const manager = createDesktopBrowserViewManager({
       dispatchAppCommand,
@@ -895,7 +846,9 @@ describe("DesktopBrowserViewManager", () => {
         webContentsId: view.webContents.id,
       }),
     ).toBe(true);
-    expect(view.webContents.emitWillNavigate("http://192.168.1.1/")).toBe(true);
+    expect(view.webContents.emitWillNavigate("http://192.168.1.1/")).toBe(
+      true,
+    );
   });
 
   it("allows unattributed loopback main-frame requests with matching tabs", () => {
@@ -1456,11 +1409,9 @@ describe("DesktopBrowserViewManager", () => {
     });
     const view = requireFakeView(0);
 
-    expect(view.webContents.emitWindowOpen("https://example.com/docs")).toEqual(
-      {
-        action: "deny",
-      },
-    );
+    expect(view.webContents.emitWindowOpen("https://example.com/docs")).toEqual({
+      action: "deny",
+    });
     expect(openTabPushesOf(hostWindow)).toEqual(["https://example.com/docs"]);
     expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
       {

@@ -1,8 +1,4 @@
 import { z } from "zod";
-import {
-  connectServerId,
-  type ServerRegistry,
-} from "./server-registry.js";
 
 /** POST /api/v1/plugins/connect/rpc/listAccountServers result body. */
 export const connectAccountServerSchema = z
@@ -13,6 +9,7 @@ export const connectAccountServerSchema = z
     url: z.string().min(1),
   })
   .strict();
+export type ConnectAccountServer = z.infer<typeof connectAccountServerSchema>;
 
 export const connectListAccountServersResultSchema = z
   .object({
@@ -101,44 +98,23 @@ export async function fetchConnectAccountServers(
   return null;
 }
 
-export interface ApplyConnectServerSyncArgs {
-  registry: Pick<ServerRegistry, "upsert" | "removeBySource">;
-  result: ConnectListAccountServersResult;
-}
-
 /**
- * Upsert connect-source registry rows from an account list; drop connect rows
- * whose handle disappeared. Skips `selfHandle` (the local server's tunnel twin).
+ * The account servers a desktop can target: everything except `selfHandle`
+ * (the local server's own tunnel twin, already reachable as "This Mac").
  */
-export async function applyConnectServerSync(
-  args: ApplyConnectServerSyncArgs,
-): Promise<{ upsertedIds: string[]; removedIds: string[] }> {
-  const keepIds = new Set<string>();
-  const upsertedIds: string[] = [];
-
-  for (const server of args.result.servers) {
-    if (server.handle === args.result.selfHandle) {
-      continue;
-    }
-    const id = connectServerId(server.handle);
-    keepIds.add(id);
-    await args.registry.upsert({
-      id,
-      name: server.name,
-      source: "connect",
-      url: server.url,
-    });
-    upsertedIds.push(id);
-  }
-
-  const removedIds = await args.registry.removeBySource("connect", keepIds);
-  return { upsertedIds, removedIds };
+export function selectTargetableConnectServers(
+  result: ConnectListAccountServersResult,
+): ConnectAccountServer[] {
+  return result.servers.filter(
+    (server) => server.handle !== result.selfHandle,
+  );
 }
 
 export interface CreateConnectServerSyncArgs {
   /** Builtin/local server URL when the runtime is up; null when not. */
   getLocalServerUrl: () => string | null;
-  registry: Pick<ServerRegistry, "upsert" | "removeBySource">;
+  /** Fresh targetable server list after every successful sync. */
+  onServers: (servers: ConnectAccountServer[]) => void;
   fetchImpl?: ConnectServerSyncFetch;
   log?: ConnectServerSyncLog;
   now?: () => number;
@@ -155,7 +131,7 @@ export interface ConnectServerSync {
   /** After local runtime attach/spawn — sync immediately. */
   onRuntimeReady(): void;
   /**
-   * On servers list() IPC: sync when the last successful/attempted sync is
+   * On Server-menu open: sync when the last successful/attempted sync is
    * older than minIntervalMs (default 60s).
    */
   onListRequested(): void;
@@ -164,8 +140,8 @@ export interface ConnectServerSync {
 }
 
 /**
- * Periodically sync Connect account servers into the desktop registry via the
- * local builtin server's connect plugin RPC.
+ * Periodically pull Connect account servers from the local builtin server's
+ * connect plugin RPC and hand them to `onServers` for the Server menu.
  */
 export function createConnectServerSync(
   args: CreateConnectServerSyncArgs,
@@ -210,10 +186,7 @@ export function createConnectServerSync(
     }
 
     loggedFailure = false;
-    await applyConnectServerSync({
-      registry: args.registry,
-      result,
-    });
+    args.onServers(selectTargetableConnectServers(result));
   }
 
   function syncNow(): Promise<void> {

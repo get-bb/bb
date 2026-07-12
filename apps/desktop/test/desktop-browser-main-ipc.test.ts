@@ -1,4 +1,3 @@
-import type { BrowserWindow } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
@@ -99,14 +98,9 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly goForwardCalls: TabCommandCall[] = [];
   public readonly navigateCalls: NavigateCall[] = [];
   public readonly releaseWindowCalls: number[] = [];
-  public readonly releaseRendererCalls: number[] = [];
   public readonly reloadCalls: TabCommandCall[] = [];
   public readonly setBoundsCalls: SetBoundsCall[] = [];
   public readonly setVisibleCalls: SetVisibleCall[] = [];
-  public readonly setRendererActiveCalls: Array<{
-    active: boolean;
-    rendererWebContentsId: number;
-  }> = [];
   public readonly stopCalls: TabCommandCall[] = [];
 
   attach(args: AttachCall): void {
@@ -145,10 +139,6 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.releaseWindowCalls.push(hostWebContentsId);
   }
 
-  releaseRenderer(rendererWebContentsId: number): void {
-    this.releaseRendererCalls.push(rendererWebContentsId);
-  }
-
   reload(args: TabCommandCall): void {
     this.reloadCalls.push(args);
   }
@@ -159,10 +149,6 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
   setVisible(args: SetVisibleCall): void {
     this.setVisibleCalls.push(args);
-  }
-
-  setRendererActive(rendererWebContentsId: number, active: boolean): void {
-    this.setRendererActiveCalls.push({ active, rendererWebContentsId });
   }
 
   stop(args: TabCommandCall): void {
@@ -206,37 +192,6 @@ function oversizedBrowserUrl(): string {
 }
 
 describe("registerDesktopBrowserIpc", () => {
-  it("routes commands from cached child renderers to their host window", () => {
-    const manager = new RecordingDesktopBrowserViewManager();
-    const cachedRenderer = createUntrustedSender();
-    const hostWindow = {
-      label: "cached-host-window",
-    } as unknown as BrowserWindow;
-    registerDesktopBrowserIpc(manager, (webContentsId) =>
-      webContentsId === cachedRenderer.id ? hostWindow : null,
-    );
-    const attachRequest: BbDesktopBrowserAttachRequest = {
-      tabId: "browser:cached",
-      url: "https://example.com/",
-      bounds: { x: 0, y: 0, width: 800, height: 600 },
-      visible: true,
-    };
-
-    sendBrowserIpc({
-      channel: BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
-      payload: attachRequest,
-      sender: cachedRenderer,
-    });
-
-    expect(manager.attachCalls).toEqual([
-      {
-        hostWindow,
-        rendererWebContentsId: cachedRenderer.id,
-        request: attachRequest,
-      },
-    ]);
-  });
-
   it("dispatches valid browser commands only from BrowserWindow-owned senders", () => {
     const manager = new RecordingDesktopBrowserViewManager();
     registerDesktopBrowserIpc(manager);
@@ -276,22 +231,12 @@ describe("registerDesktopBrowserIpc", () => {
 
     expect(manager.attachCalls).toHaveLength(1);
     expect(manager.attachCalls[0]?.hostWindow).toBe(renderer.hostWindow);
-    expect(manager.attachCalls[0]?.rendererWebContentsId).toBe(
-      renderer.sender.id,
-    );
     expect(manager.attachCalls[0]?.request).toEqual(attachRequest);
     expect(manager.navigateCalls).toHaveLength(1);
     expect(manager.navigateCalls[0]?.hostWindow).toBe(renderer.hostWindow);
-    expect(manager.navigateCalls[0]?.rendererWebContentsId).toBe(
-      renderer.sender.id,
-    );
     expect(manager.navigateCalls[0]?.request).toEqual(navigateRequest);
     expect(manager.reloadCalls).toEqual([
-      {
-        hostWindow: renderer.hostWindow,
-        rendererWebContentsId: renderer.sender.id,
-        tabId: "browser:a",
-      },
+      { hostWindow: renderer.hostWindow, tabId: "browser:a" },
     ]);
   });
 
@@ -408,46 +353,22 @@ describe("registerDesktopBrowserIpc", () => {
     });
 
     expect(manager.setBoundsCalls).toEqual([
-      {
-        hostWindow: renderer.hostWindow,
-        rendererWebContentsId: renderer.sender.id,
-        request: boundsRequest,
-      },
+      { hostWindow: renderer.hostWindow, request: boundsRequest },
     ]);
     expect(manager.setVisibleCalls).toEqual([
-      {
-        hostWindow: renderer.hostWindow,
-        rendererWebContentsId: renderer.sender.id,
-        request: visibleRequest,
-      },
+      { hostWindow: renderer.hostWindow, request: visibleRequest },
     ]);
     expect(manager.detachCalls).toEqual([
-      {
-        hostWindow: renderer.hostWindow,
-        rendererWebContentsId: renderer.sender.id,
-        tabId: "browser:a",
-      },
+      { hostWindow: renderer.hostWindow, tabId: "browser:a" },
     ]);
     expect(manager.goBackCalls).toEqual([
-      {
-        hostWindow: renderer.hostWindow,
-        rendererWebContentsId: renderer.sender.id,
-        tabId: "browser:a",
-      },
+      { hostWindow: renderer.hostWindow, tabId: "browser:a" },
     ]);
     expect(manager.goForwardCalls).toEqual([
-      {
-        hostWindow: renderer.hostWindow,
-        rendererWebContentsId: renderer.sender.id,
-        tabId: "browser:a",
-      },
+      { hostWindow: renderer.hostWindow, tabId: "browser:a" },
     ]);
     expect(manager.stopCalls).toEqual([
-      {
-        hostWindow: renderer.hostWindow,
-        rendererWebContentsId: renderer.sender.id,
-        tabId: "browser:a",
-      },
+      { hostWindow: renderer.hostWindow, tabId: "browser:a" },
     ]);
   });
 });

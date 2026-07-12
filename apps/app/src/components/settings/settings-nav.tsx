@@ -9,7 +9,6 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { usePluginLogoUrl } from "@/lib/plugin-logos";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { isDesktopServersAvailable } from "@/lib/bb-desktop";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   SETTINGS_PLUGIN_ROUTE_PATH,
@@ -29,7 +28,6 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Laptop", id: "machines", label: "Machines" },
-  { icon: "Laptop", id: "servers", label: "Servers" },
   { icon: "Zap", id: "experiments", label: "Experiments" },
   { icon: "Layers", id: "plugins", label: "Plugins" },
   { icon: "MessageSquare", id: "community", label: "Community" },
@@ -128,10 +126,6 @@ export function useSettingsNavState(): SettingsNavState {
     if (section.id === "machines") {
       // Multi-machine experiment surface (Settings → Machines).
       return systemConfig.data?.experiments.multiMachine === true;
-    }
-    if (section.id === "servers") {
-      // Desktop multi-server registry only; older shells omit the surface.
-      return isDesktopServersAvailable();
     }
     if (section.id === "plugins") {
       return pluginsEnabled;

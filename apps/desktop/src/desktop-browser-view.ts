@@ -62,8 +62,6 @@ const ERR_ABORTED = -3;
 
 interface BrowserViewEntry {
   view: WebContentsView;
-  hostWindow: DesktopBrowserHostWindow;
-  hostWebContentsId: number;
   lastErrorText: string | null;
   currentMainFrameLocalOriginKey: string | null;
   /**
@@ -76,8 +74,6 @@ interface BrowserViewEntry {
    */
   desiredBounds: BbDesktopBrowserViewBounds;
   popupTimestamps: number[];
-  rendererWebContentsId: number;
-  tabId: string;
   visible: boolean;
 }
 
@@ -119,30 +115,22 @@ export interface CreateDesktopBrowserViewManagerArgs {
   dispatchAppCommand: (args: DispatchDesktopBrowserAppCommandArgs) => void;
   focusHostWebContents: (hostWebContentsId: number) => void;
   partition?: string;
-  sendToRenderer?: (
-    rendererWebContentsId: number,
-    channel: string,
-    payload: DesktopBrowserHostWebContentsPayload,
-  ) => void;
   resolveAppCommand: (input: AppShortcutInput) => AppCommandId | null;
 }
 
 interface HostScopedRequestArgs<TRequest> {
   hostWindow: DesktopBrowserHostWindow;
-  rendererWebContentsId?: number;
   request: TRequest;
 }
 
 interface HostScopedTabArgs {
   hostWindow: DesktopBrowserHostWindow;
-  rendererWebContentsId?: number;
   tabId: string;
 }
 
 interface CreateEntryArgs {
   desiredBounds: BbDesktopBrowserViewBounds;
   hostWindow: DesktopBrowserHostWindow;
-  rendererWebContentsId: number;
   tabId: string;
 }
 
@@ -200,30 +188,21 @@ export interface DesktopBrowserViewManager {
    * already torn down by the time `closed` fires.
    */
   releaseWindow(hostWebContentsId: number): void;
-  releaseRenderer(rendererWebContentsId: number): void;
-  setRendererActive(rendererWebContentsId: number, active: boolean): void;
   destroyAll(): void;
 }
 
 function browserViewKey(
   hostWindow: DesktopBrowserHostWindow,
   tabId: string,
-  rendererWebContentsId = hostWindow.webContents.id,
 ): string {
-  return `${rendererWebContentsId}:${tabId}`;
+  return `${hostWindow.webContents.id}:${tabId}`;
 }
 
 function send(
-  sendToRenderer: CreateDesktopBrowserViewManagerArgs["sendToRenderer"],
   hostWindow: DesktopBrowserHostWindow,
-  rendererWebContentsId: number,
   channel: string,
   payload: DesktopBrowserHostWebContentsPayload,
 ): void {
-  if (sendToRenderer !== undefined) {
-    sendToRenderer(rendererWebContentsId, channel, payload);
-    return;
-  }
   if (hostWindow.isDestroyed() || hostWindow.webContents.isDestroyed()) {
     return;
   }
@@ -341,7 +320,6 @@ export function createDesktopBrowserViewManager(
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
   const entriesByWebContentsId = new Map<number, BrowserViewEntry>();
-  const inactiveRendererIds = new Set<number>();
   // Host webContents ids with a native resize burst in flight: views of these
   // windows stay hidden regardless of renderer-declared visibility.
   const resizingHostIds = new Set<number>();
@@ -358,11 +336,7 @@ export function createDesktopBrowserViewManager(
     if (entry.view.webContents.isDestroyed()) {
       return;
     }
-    entry.view.setVisible(
-      entry.visible &&
-        !inactiveRendererIds.has(entry.rendererWebContentsId) &&
-        !isHostResizing(hostWindow),
-    );
+    entry.view.setVisible(entry.visible && !isHostResizing(hostWindow));
   }
 
   /**
@@ -388,13 +362,10 @@ export function createDesktopBrowserViewManager(
         const dataUrl = `data:image/jpeg;base64,${image
           .toJPEG(RESIZE_SNAPSHOT_JPEG_QUALITY)
           .toString("base64")}`;
-        send(
-          args.sendToRenderer,
-          hostWindow,
-          entry.rendererWebContentsId,
-          BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
-          { tabId, dataUrl },
-        );
+        send(hostWindow, BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL, {
+          tabId,
+          dataUrl,
+        });
       })
       .catch(() => {
         // No placeholder; the renderer's bare panel background shows instead.
@@ -465,19 +436,14 @@ export function createDesktopBrowserViewManager(
 
   function pushState(
     hostWindow: DesktopBrowserHostWindow,
-    rendererWebContentsId: number,
     tabId: string,
   ): void {
-    const entry = entries.get(
-      browserViewKey(hostWindow, tabId, rendererWebContentsId),
-    );
+    const entry = entries.get(browserViewKey(hostWindow, tabId));
     if (!entry || entry.view.webContents.isDestroyed()) {
       return;
     }
     send(
-      args.sendToRenderer,
       hostWindow,
-      rendererWebContentsId,
       BB_DESKTOP_BROWSER_STATE_CHANNEL,
       buildBrowserState(tabId, entry),
     );
@@ -491,7 +457,11 @@ export function createDesktopBrowserViewManager(
     const webContents = entry.view.webContents;
 
     webContents.on("before-input-event", (event, input) => {
-      if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing) {
+      if (
+        input.type !== "keyDown" ||
+        input.isAutoRepeat ||
+        input.isComposing
+      ) {
         return;
       }
       const command = args.resolveAppCommand({
@@ -547,20 +517,13 @@ export function createDesktopBrowserViewManager(
         });
         entry.popupTimestamps = decision.timestamps;
         if (decision.allowed) {
-          send(
-            args.sendToRenderer,
-            hostWindow,
-            entry.rendererWebContentsId,
-            BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
-            { url: openTabUrl },
-          );
-          send(
-            args.sendToRenderer,
-            hostWindow,
-            entry.rendererWebContentsId,
-            BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
-            { tabId, url: openTabUrl },
-          );
+          send(hostWindow, BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
+            url: openTabUrl,
+          });
+          send(hostWindow, BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL, {
+            tabId,
+            url: openTabUrl,
+          });
         }
       }
       return { action: "deny" };
@@ -598,8 +561,7 @@ export function createDesktopBrowserViewManager(
       menu.popup();
     });
 
-    const refresh = () =>
-      pushState(hostWindow, entry.rendererWebContentsId, tabId);
+    const refresh = () => pushState(hostWindow, tabId);
     webContents.on("did-start-loading", refresh);
     webContents.on("did-stop-loading", refresh);
     webContents.on("did-navigate", (_event, url) => {
@@ -652,22 +614,15 @@ export function createDesktopBrowserViewManager(
     });
     const entry: BrowserViewEntry = {
       view,
-      hostWindow: args.hostWindow,
-      hostWebContentsId: args.hostWindow.webContents.id,
       lastErrorText: null,
       currentMainFrameLocalOriginKey: null,
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
-      rendererWebContentsId: args.rendererWebContentsId,
-      tabId: args.tabId,
       visible: false,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
-    entries.set(
-      browserViewKey(args.hostWindow, args.tabId, args.rendererWebContentsId),
-      entry,
-    );
+    entries.set(browserViewKey(args.hostWindow, args.tabId), entry);
     entriesByWebContentsId.set(view.webContents.id, entry);
     return entry;
   }
@@ -711,9 +666,7 @@ export function createDesktopBrowserViewManager(
     args: HostScopedTabArgs,
     fn: (entry: BrowserViewEntry) => void,
   ): void {
-    const entry = entries.get(
-      browserViewKey(args.hostWindow, args.tabId, args.rendererWebContentsId),
-    );
+    const entry = entries.get(browserViewKey(args.hostWindow, args.tabId));
     if (!entry || entry.view.webContents.isDestroyed()) {
       return;
     }
@@ -721,16 +674,8 @@ export function createDesktopBrowserViewManager(
   }
 
   return {
-    attach({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      request,
-    }) {
-      const key = browserViewKey(
-        hostWindow,
-        request.tabId,
-        rendererWebContentsId,
-      );
+    attach({ hostWindow, request }) {
+      const key = browserViewKey(hostWindow, request.tabId);
       const existing = entries.get(key) ?? null;
       // A freshly-created entry starts hidden, so its prior visibility is false.
       const wasVisible = existing?.visible ?? false;
@@ -739,7 +684,6 @@ export function createDesktopBrowserViewManager(
         createEntry({
           desiredBounds: request.bounds,
           hostWindow,
-          rendererWebContentsId,
           tabId: request.tabId,
         });
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
@@ -751,129 +695,80 @@ export function createDesktopBrowserViewManager(
       if (
         request.visible &&
         !wasVisible &&
-        !inactiveRendererIds.has(rendererWebContentsId) &&
         !entry.view.webContents.isDestroyed()
       ) {
         entry.view.webContents.focus();
       }
       loadIfNeeded(entry, request.url);
-      pushState(hostWindow, rendererWebContentsId, request.tabId);
+      pushState(hostWindow, request.tabId);
     },
-    detach({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      tabId,
-    }) {
-      destroyEntry(
-        hostWindow,
-        browserViewKey(hostWindow, tabId, rendererWebContentsId),
-      );
+    detach({ hostWindow, tabId }) {
+      destroyEntry(hostWindow, browserViewKey(hostWindow, tabId));
     },
-    navigate({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      request,
-    }) {
-      withEntry(
-        { hostWindow, rendererWebContentsId, tabId: request.tabId },
-        (entry) => {
-          loadIfNeeded(entry, request.url);
-        },
-      );
+    navigate({ hostWindow, request }) {
+      withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        loadIfNeeded(entry, request.url);
+      });
     },
-    goBack({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      tabId,
-    }) {
-      withEntry({ hostWindow, rendererWebContentsId, tabId }, (entry) => {
+    goBack({ hostWindow, tabId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoBack()) {
           entry.view.webContents.navigationHistory.goBack();
         }
       });
     },
-    goForward({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      tabId,
-    }) {
-      withEntry({ hostWindow, rendererWebContentsId, tabId }, (entry) => {
+    goForward({ hostWindow, tabId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoForward()) {
           entry.view.webContents.navigationHistory.goForward();
         }
       });
     },
-    reload({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      tabId,
-    }) {
-      withEntry({ hostWindow, rendererWebContentsId, tabId }, (entry) => {
+    reload({ hostWindow, tabId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
         entry.view.webContents.reload();
       });
     },
-    stop({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      tabId,
-    }) {
-      withEntry({ hostWindow, rendererWebContentsId, tabId }, (entry) => {
+    stop({ hostWindow, tabId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
         entry.view.webContents.stop();
       });
     },
-    setBounds({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      request,
-    }) {
-      withEntry(
-        { hostWindow, rendererWebContentsId, tabId: request.tabId },
-        (entry) => {
-          setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
-        },
-      );
+    setBounds({ hostWindow, request }) {
+      withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
+      });
     },
-    setVisible({
-      hostWindow,
-      rendererWebContentsId = hostWindow.webContents.id,
-      request,
-    }) {
-      withEntry(
-        { hostWindow, rendererWebContentsId, tabId: request.tabId },
-        (entry) => {
-          const wasVisible = entry.visible;
-          entry.visible = request.visible;
-          applyEntryVisibility(entry, hostWindow);
-          // Focus the view only on a real not-visible → visible transition so the
-          // Edit-menu copy/cut/paste roles and Cmd+C target this view's
-          // webContents (the focused one). Skip redundant re-syncs so we never
-          // yank focus away from the React address bar mid-interaction.
-          if (
-            request.visible &&
-            !wasVisible &&
-            !inactiveRendererIds.has(rendererWebContentsId) &&
-            !entry.view.webContents.isDestroyed()
-          ) {
-            entry.view.webContents.focus();
-          }
-        },
-      );
+    setVisible({ hostWindow, request }) {
+      withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        const wasVisible = entry.visible;
+        entry.visible = request.visible;
+        applyEntryVisibility(entry, hostWindow);
+        // Focus the view only on a real not-visible → visible transition so the
+        // Edit-menu copy/cut/paste roles and Cmd+C target this view's
+        // webContents (the focused one). Skip redundant re-syncs so we never
+        // yank focus away from the React address bar mid-interaction.
+        if (
+          request.visible &&
+          !wasVisible &&
+          !entry.view.webContents.isDestroyed()
+        ) {
+          entry.view.webContents.focus();
+        }
+      });
     },
     beginWindowResize(hostWindow) {
       if (isHostResizing(hostWindow)) {
         return;
       }
       resizingHostIds.add(hostWindow.webContents.id);
-      for (const entry of entries.values()) {
-        if (
-          entry.hostWebContentsId !== hostWindow.webContents.id ||
-          inactiveRendererIds.has(entry.rendererWebContentsId) ||
-          entry.view.webContents.isDestroyed()
-        ) {
+      const prefix = `${hostWindow.webContents.id}:`;
+      for (const [key, entry] of entries.entries()) {
+        if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
           continue;
         }
         if (entry.visible) {
-          startResizeSnapshot(hostWindow, entry.tabId, entry);
+          startResizeSnapshot(hostWindow, key.slice(prefix.length), entry);
         }
       }
     },
@@ -882,90 +777,38 @@ export function createDesktopBrowserViewManager(
         return;
       }
       resizingHostIds.delete(hostWindow.webContents.id);
-      for (const entry of entries.values()) {
-        if (
-          entry.hostWebContentsId !== hostWindow.webContents.id ||
-          entry.view.webContents.isDestroyed()
-        ) {
+      const prefix = `${hostWindow.webContents.id}:`;
+      for (const [key, entry] of entries.entries()) {
+        if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
           continue;
         }
         if (entry.visible) {
           applyEntryDesiredBounds(entry, hostWindow);
         }
         applyEntryVisibility(entry, hostWindow);
-        send(
-          args.sendToRenderer,
-          hostWindow,
-          entry.rendererWebContentsId,
-          BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
-          { tabId: entry.tabId, dataUrl: null },
-        );
+        send(hostWindow, BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL, {
+          tabId: key.slice(prefix.length),
+          dataUrl: null,
+        });
       }
     },
     releaseWindow(hostWebContentsId) {
       resizingHostIds.delete(hostWebContentsId);
+      const prefix = `${hostWebContentsId}:`;
       for (const [key, entry] of [...entries.entries()]) {
-        if (entry.hostWebContentsId !== hostWebContentsId) {
+        if (!key.startsWith(prefix)) {
           continue;
         }
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryLocalOriginState(entry);
-        if (!entry.hostWindow.isDestroyed()) {
-          entry.hostWindow.contentView.removeChildView(entry.view);
-        }
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
-      }
-    },
-    releaseRenderer(rendererWebContentsId) {
-      inactiveRendererIds.delete(rendererWebContentsId);
-      for (const [key, entry] of [...entries.entries()]) {
-        if (entry.rendererWebContentsId !== rendererWebContentsId) {
-          continue;
-        }
-        entries.delete(key);
-        entriesByWebContentsId.delete(entry.view.webContents.id);
-        clearEntryLocalOriginState(entry);
-        if (!entry.hostWindow.isDestroyed()) {
-          entry.hostWindow.contentView.removeChildView(entry.view);
-        }
-        if (!entry.view.webContents.isDestroyed()) {
-          entry.view.webContents.close();
-        }
-      }
-    },
-    setRendererActive(rendererWebContentsId, active) {
-      if (active) {
-        inactiveRendererIds.delete(rendererWebContentsId);
-      } else {
-        inactiveRendererIds.add(rendererWebContentsId);
-      }
-      let visibleEntry: BrowserViewEntry | null = null;
-      for (const entry of entries.values()) {
-        if (entry.rendererWebContentsId !== rendererWebContentsId) {
-          continue;
-        }
-        entry.view.setVisible(
-          entry.visible &&
-            active &&
-            !resizingHostIds.has(entry.hostWebContentsId),
-        );
-        if (active && entry.visible && visibleEntry === null) {
-          visibleEntry = entry;
-        }
-      }
-      if (
-        visibleEntry !== null &&
-        !visibleEntry.view.webContents.isDestroyed()
-      ) {
-        visibleEntry.view.webContents.focus();
       }
     },
     destroyAll() {
       resizingHostIds.clear();
-      inactiveRendererIds.clear();
       for (const [key, entry] of [...entries.entries()]) {
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);

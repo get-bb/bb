@@ -25,7 +25,6 @@ import {
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
-import { ServerRail } from "./ServerRail";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
@@ -366,11 +365,6 @@ export function AppSidebar({
             />
           </div>
         ) : null}
-        {/* Server rail (desktop multi-server) sits left of everything below
-            the chrome row and collapses with the sidebar by construction. */}
-        <div className="flex min-h-0 flex-1">
-          <ServerRail />
-          <div className="flex min-w-0 flex-1 flex-col">
         <div
           data-testid="app-sidebar-primary-actions"
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
@@ -408,8 +402,6 @@ export function AppSidebar({
             }}
           />
         </SidebarContent>
-          </div>
-        </div>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />
           <SidebarMenu className="flex-row items-center gap-1">

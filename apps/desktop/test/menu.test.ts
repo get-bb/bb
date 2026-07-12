@@ -8,6 +8,7 @@ vi.mock("electron", () => ({
 
 import {
   buildApplicationMenuTemplate,
+  SET_SERVER_URL_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
 
@@ -32,9 +33,19 @@ function menuArgs(
     reloadWindow,
     selectServer: () => {},
     serverDaemonLogsMenuEnabled: false,
-    servers: [{ checked: true, id: "builtin-local", name: "This Mac" }],
+    servers: [{ checked: true, id: "builtin", name: "This Mac" }],
+    setServerUrl: () => {},
     ...overrides,
   };
+}
+
+function findServerSubmenu(
+  template: MenuItemConstructorOptions[],
+): MenuItemConstructorOptions[] {
+  const windowMenu = template.find((item) => item.label === "Window");
+  const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
+  const serverMenu = windowSubmenu.find((item) => item.label === "Server");
+  return serverMenu?.submenu as MenuItemConstructorOptions[];
 }
 
 describe("application menu", () => {
@@ -57,29 +68,31 @@ describe("application menu", () => {
     expect(reloadWindow).toHaveBeenNthCalledWith(2, focusedWindow, true);
   });
 
-  it("builds a Window ▸ Server radio submenu with numbered accelerators", () => {
+  it("builds a Window ▸ Server radio submenu with a Set Server URL item", () => {
     const selectServer = vi.fn();
+    const setServerUrl = vi.fn();
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, {
         selectServer,
         servers: [
-          { checked: true, id: "builtin-local", name: "This Mac" },
-          { checked: false, id: "remote-1", name: "Staging" },
+          { checked: false, id: "builtin", name: "This Mac" },
+          { checked: true, id: "custom", name: "example.com" },
         ],
+        setServerUrl,
       }),
     );
-    const windowMenu = template.find((item) => item.label === "Window");
-    const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
-    const serverMenu = windowSubmenu.find((item) => item.label === "Server");
-    const serverSubmenu = serverMenu?.submenu as MenuItemConstructorOptions[];
-    const focusedWindow = {} as BaseWindow;
+    const serverSubmenu = findServerSubmenu(template);
 
-    expect(serverSubmenu).toHaveLength(2);
+    expect(serverSubmenu).toHaveLength(4);
     expect(serverSubmenu[0]?.type).toBe("radio");
-    expect(serverSubmenu[0]?.checked).toBe(true);
-    expect(serverSubmenu[0]?.accelerator).toBe("Command+Control+1");
-    expect(serverSubmenu[1]?.accelerator).toBe("Command+Control+2");
-    serverSubmenu[1]?.click?.({} as never, focusedWindow, {} as never);
-    expect(selectServer).toHaveBeenCalledWith("remote-1", focusedWindow);
+    expect(serverSubmenu[0]?.checked).toBe(false);
+    expect(serverSubmenu[1]?.type).toBe("radio");
+    expect(serverSubmenu[1]?.checked).toBe(true);
+    expect(serverSubmenu[2]?.type).toBe("separator");
+    expect(serverSubmenu[3]?.label).toBe(SET_SERVER_URL_MENU_LABEL);
+    serverSubmenu[1]?.click?.({} as never, undefined, {} as never);
+    expect(selectServer).toHaveBeenCalledWith("custom");
+    serverSubmenu[3]?.click?.({} as never, undefined, {} as never);
+    expect(setServerUrl).toHaveBeenCalledTimes(1);
   });
 });

@@ -60,6 +60,13 @@ await Promise.all([
   }),
   build({
     ...commonOptions,
+    entryPoints: [resolve(packageRoot, "src", "server-url-dialog-preload.ts")],
+    external: ["electron"],
+    format: "cjs",
+    outfile: resolve(distDir, "server-url-dialog-preload.cjs"),
+  }),
+  build({
+    ...commonOptions,
     entryPoints: [resolve(packageRoot, "src", "bb-app-bridge.ts")],
     external: ["bb-app", "bb-app/*"],
     format: "esm",

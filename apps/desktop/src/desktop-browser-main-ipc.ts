@@ -21,7 +21,6 @@ import type { DesktopBrowserViewManager } from "./desktop-browser-view.js";
 
 interface DesktopBrowserTabCommandArgs {
   hostWindow: BrowserWindow;
-  rendererWebContentsId: number;
   tabId: string;
 }
 
@@ -34,20 +33,13 @@ interface RegisterDesktopBrowserTabCommandArgs {
 
 function hostWindowFromBrowserIpcEvent(
   event: IpcMainEvent,
-  resolveHostWindow: (senderWebContentsId: number) => BrowserWindow | null,
 ): BrowserWindow | null {
-  return (
-    resolveHostWindow(event.sender.id) ??
-    BrowserWindow.fromWebContents(event.sender)
-  );
+  return BrowserWindow.fromWebContents(event.sender);
 }
 
-function registerTabCommand(
-  args: RegisterDesktopBrowserTabCommandArgs,
-  resolveHostWindow: (senderWebContentsId: number) => BrowserWindow | null,
-): void {
+function registerTabCommand(args: RegisterDesktopBrowserTabCommandArgs): void {
   ipcMain.on(args.channel, (event, payload: unknown) => {
-    const hostWindow = hostWindowFromBrowserIpcEvent(event, resolveHostWindow);
+    const hostWindow = hostWindowFromBrowserIpcEvent(event);
     if (hostWindow === null) {
       return;
     }
@@ -55,26 +47,19 @@ function registerTabCommand(
     if (!parsed.success) {
       return;
     }
-    args.run({
-      hostWindow,
-      rendererWebContentsId: event.sender.id,
-      tabId: parsed.data.tabId,
-    });
+    args.run({ hostWindow, tabId: parsed.data.tabId });
   });
 }
 
 export function registerDesktopBrowserIpc(
   manager: DesktopBrowserViewManager,
-  resolveHostWindow: (
-    senderWebContentsId: number,
-  ) => BrowserWindow | null = () => null,
 ): void {
   // Every browser command is renderer -> main fire-and-forget; navigation state
   // flows back over `BB_DESKTOP_BROWSER_STATE_CHANNEL`. Each handler resolves
   // its own host window from the sender, so multi-window is safe, and zod-parses
   // the untrusted-content-adjacent payload before touching the view.
   ipcMain.on(BB_DESKTOP_BROWSER_ATTACH_CHANNEL, (event, payload: unknown) => {
-    const hostWindow = hostWindowFromBrowserIpcEvent(event, resolveHostWindow);
+    const hostWindow = hostWindowFromBrowserIpcEvent(event);
     if (hostWindow === null) {
       return;
     }
@@ -82,15 +67,11 @@ export function registerDesktopBrowserIpc(
     if (!parsed.success) {
       return;
     }
-    manager.attach({
-      hostWindow,
-      rendererWebContentsId: event.sender.id,
-      request: parsed.data,
-    });
+    manager.attach({ hostWindow, request: parsed.data });
   });
 
   ipcMain.on(BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL, (event, payload: unknown) => {
-    const hostWindow = hostWindowFromBrowserIpcEvent(event, resolveHostWindow);
+    const hostWindow = hostWindowFromBrowserIpcEvent(event);
     if (hostWindow === null) {
       return;
     }
@@ -98,20 +79,13 @@ export function registerDesktopBrowserIpc(
     if (!parsed.success) {
       return;
     }
-    manager.navigate({
-      hostWindow,
-      rendererWebContentsId: event.sender.id,
-      request: parsed.data,
-    });
+    manager.navigate({ hostWindow, request: parsed.data });
   });
 
   ipcMain.on(
     BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
     (event, payload: unknown) => {
-      const hostWindow = hostWindowFromBrowserIpcEvent(
-        event,
-        resolveHostWindow,
-      );
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
       if (hostWindow === null) {
         return;
       }
@@ -119,21 +93,14 @@ export function registerDesktopBrowserIpc(
       if (!parsed.success) {
         return;
       }
-      manager.setBounds({
-        hostWindow,
-        rendererWebContentsId: event.sender.id,
-        request: parsed.data,
-      });
+      manager.setBounds({ hostWindow, request: parsed.data });
     },
   );
 
   ipcMain.on(
     BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
     (event, payload: unknown) => {
-      const hostWindow = hostWindowFromBrowserIpcEvent(
-        event,
-        resolveHostWindow,
-      );
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
       if (hostWindow === null) {
         return;
       }
@@ -141,47 +108,28 @@ export function registerDesktopBrowserIpc(
       if (!parsed.success) {
         return;
       }
-      manager.setVisible({
-        hostWindow,
-        rendererWebContentsId: event.sender.id,
-        request: parsed.data,
-      });
+      manager.setVisible({ hostWindow, request: parsed.data });
     },
   );
 
-  registerTabCommand(
-    {
-      channel: BB_DESKTOP_BROWSER_DETACH_CHANNEL,
-      run: (args) => manager.detach(args),
-    },
-    resolveHostWindow,
-  );
-  registerTabCommand(
-    {
-      channel: BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
-      run: (args) => manager.goBack(args),
-    },
-    resolveHostWindow,
-  );
-  registerTabCommand(
-    {
-      channel: BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
-      run: (args) => manager.goForward(args),
-    },
-    resolveHostWindow,
-  );
-  registerTabCommand(
-    {
-      channel: BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
-      run: (args) => manager.reload(args),
-    },
-    resolveHostWindow,
-  );
-  registerTabCommand(
-    {
-      channel: BB_DESKTOP_BROWSER_STOP_CHANNEL,
-      run: (args) => manager.stop(args),
-    },
-    resolveHostWindow,
-  );
+  registerTabCommand({
+    channel: BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+    run: (args) => manager.detach(args),
+  });
+  registerTabCommand({
+    channel: BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
+    run: (args) => manager.goBack(args),
+  });
+  registerTabCommand({
+    channel: BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
+    run: (args) => manager.goForward(args),
+  });
+  registerTabCommand({
+    channel: BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
+    run: (args) => manager.reload(args),
+  });
+  registerTabCommand({
+    channel: BB_DESKTOP_BROWSER_STOP_CHANNEL,
+    run: (args) => manager.stop(args),
+  });
 }

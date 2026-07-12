@@ -55,8 +55,6 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
-import { useHasServerRail } from "@/hooks/useDesktopServerList";
-import { SERVER_RAIL_WIDTH_PX } from "@/components/sidebar/ServerRail";
 import {
   getLegacyProjectComposeRoutePath,
   getProjectArchivedRoutePath,
@@ -501,8 +499,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(sidebarWidth);
-  const railWidthOffsetRef = useRef(0);
-  const hasServerRail = useHasServerRail();
   const animationFrameRef = useRef<number | null>(null);
   const showHeader = !isThreadView && !isRootView;
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -512,14 +508,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     desktopInfo,
     windowState: desktopWindowState,
   });
-  // The server rail lives inside the sidebar panel; widen the panel by the
-  // rail width so the sidebar content keeps its full persisted width. The
-  // resize handlers below write the CSS var directly during drags, so they
-  // apply the same offset via railWidthOffsetRef.
-  const railWidthOffset = hasServerRail ? SERVER_RAIL_WIDTH_PX : 0;
-  railWidthOffsetRef.current = railWidthOffset;
   const sidebarProviderStyle: SidebarProviderStyle = {
-    "--sidebar-width": `${sidebarWidth + railWidthOffset}px`,
+    "--sidebar-width": `${sidebarWidth}px`,
   };
 
   const project = projectId
@@ -655,7 +645,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     providerRef.current?.style.setProperty(
       "--sidebar-width",
-      `${liveWidthRef.current + railWidthOffsetRef.current}px`,
+      `${liveWidthRef.current}px`,
     );
     dispatchBrowserViewBoundsSync();
     setSidebarWidth(liveWidthRef.current);
@@ -670,7 +660,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       animationFrameRef.current = null;
       providerRef.current?.style.setProperty(
         "--sidebar-width",
-        `${liveWidthRef.current + railWidthOffsetRef.current}px`,
+        `${liveWidthRef.current}px`,
       );
       dispatchBrowserViewBoundsSync();
     };
@@ -710,12 +700,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     liveWidthRef.current = sidebarWidth;
   }, [sidebarWidth]);
-
-  useEffect(() => {
-    // Rail appearing/disappearing changes the effective sidebar width; keep
-    // native browser-tab views in sync just like a sidebar toggle does.
-    window.requestAnimationFrame(dispatchBrowserViewBoundsSync);
-  }, [hasServerRail]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
