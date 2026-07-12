@@ -24,10 +24,7 @@ import {
 import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
-import {
-  managedInstallDir,
-  parsePluginSource,
-} from "../../../src/services/plugins/install-sources.js";
+import { parsePluginSource } from "../../../src/services/plugins/install-sources.js";
 import {
   createPluginService,
   type PluginService,
