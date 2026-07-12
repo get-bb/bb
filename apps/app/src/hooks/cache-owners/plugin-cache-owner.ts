@@ -4,6 +4,7 @@ import {
   pluginSettingsViewQueryKey,
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
+import { marketplacesQueryKey } from "../queries/plugin-marketplace-queries";
 
 /**
  * Cache owner for plugin management data. The PUT /plugins/:id/settings
@@ -32,5 +33,18 @@ export function invalidatePluginList(args: {
 }): void {
   void args.queryClient.invalidateQueries({
     queryKey: allPluginListQueryKeyPrefix(),
+  });
+}
+
+/**
+ * Refetch marketplace catalogs after add/refresh/remove. The realtime
+ * `plugins-changed` broadcast covers other windows; this gives the acting
+ * window an immediate refresh.
+ */
+export function invalidateMarketplaces(args: {
+  queryClient: QueryClient;
+}): void {
+  void args.queryClient.invalidateQueries({
+    queryKey: marketplacesQueryKey(),
   });
 }

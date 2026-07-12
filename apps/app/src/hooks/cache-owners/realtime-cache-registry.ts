@@ -90,6 +90,10 @@ import {
   allPluginListQueryKeyPrefix,
   allPluginSettingsViewQueryKeyPrefix,
 } from "../queries/plugin-settings-queries";
+import {
+  allPluginSourceQueryKeyPrefix,
+  marketplacesQueryKey,
+} from "../queries/plugin-marketplace-queries";
 import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend";
 import {
@@ -878,6 +882,10 @@ function dirtyPluginManagementQueries(): QueryKey[] {
     allPluginListQueryKeyPrefix(),
     allPluginSettingsViewQueryKeyPrefix(),
     allPluginSettingsQueryKeyPrefix(),
+    // Update/install/marketplace operations change source detail and
+    // catalogs alongside the plugin list.
+    allPluginSourceQueryKeyPrefix(),
+    marketplacesQueryKey(),
   ];
 }
 
