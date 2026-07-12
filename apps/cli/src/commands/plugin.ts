@@ -4,6 +4,7 @@ import { join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
+import { z } from "zod";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
 import { cliFetch } from "../client.js";
@@ -15,6 +16,7 @@ import {
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
+import { renderBorderlessTable } from "../table.js";
 
 interface PluginEntry {
   id: string;
@@ -53,6 +55,46 @@ interface PluginMutationResult {
   plugin?: PluginEntry;
   plugins?: PluginEntry[];
 }
+
+const pluginVersionSchema = z.object({
+  version: z.string(),
+  display: z.string(),
+});
+
+const pluginUpdateResultSchema = z.object({
+  id: z.string(),
+  outcome: z.enum([
+    "current",
+    "update-available",
+    "pinned",
+    "incompatible",
+    "unavailable",
+  ]),
+  devMode: z.literal(true).optional(),
+  installed: pluginVersionSchema,
+  candidate: pluginVersionSchema.optional(),
+  blocked: z
+    .object({ version: z.string(), reasons: z.array(z.string()) })
+    .optional(),
+  detail: z.string().optional(),
+});
+
+const pluginUpdatesSchema = z.object({
+  results: z.array(pluginUpdateResultSchema),
+});
+
+const pluginUpdateMutationSchema = z.object({
+  applied: z.boolean(),
+  dryRun: z.boolean(),
+  from: pluginVersionSchema,
+  to: pluginVersionSchema.optional(),
+  outcome: z.string(),
+  detail: z.string().optional(),
+});
+
+const pluginUpdateErrorSchema = z.object({ error: z.string() });
+
+type PluginUpdateResult = z.infer<typeof pluginUpdateResultSchema>;
 
 export function canDevelopPlugin(
   pluginsExperimentEnabled: boolean,
@@ -108,6 +150,70 @@ async function callPlugins<T>(
     throw new Error(`/api/v1/plugins${path} failed: HTTP ${response.status}`);
   }
   return parsed as T;
+}
+
+async function callPluginUpdates(
+  baseUrl: string,
+  path: string,
+  body: unknown,
+): Promise<z.infer<typeof pluginUpdatesSchema>> {
+  const value = await callPlugins<unknown>(baseUrl, path, "POST", body);
+  return pluginUpdatesSchema.parse(value);
+}
+
+async function callPluginUpdate(
+  baseUrl: string,
+  id: string,
+  body: { dryRun?: boolean; latest?: boolean },
+): Promise<
+  | z.infer<typeof pluginUpdateMutationSchema>
+  | z.infer<typeof pluginUpdateErrorSchema>
+> {
+  const value = await callPlugins<unknown>(
+    baseUrl,
+    `/${encodeURIComponent(id)}/update`,
+    "POST",
+    body,
+  );
+  const error = pluginUpdateErrorSchema.safeParse(value);
+  if (error.success) return error.data;
+  return pluginUpdateMutationSchema.parse(value);
+}
+
+const UPDATE_STATUS_LABELS: Record<PluginUpdateResult["outcome"], string> = {
+  current: "current",
+  "update-available": "update available",
+  pinned: "pinned",
+  incompatible: "incompatible",
+  unavailable: "unavailable",
+};
+
+function blockedSummary(result: PluginUpdateResult): string {
+  if (!result.blocked) return "—";
+  return `${result.blocked.version}: ${result.blocked.reasons.join("; ")}`;
+}
+
+function updateDetail(result: PluginUpdateResult): string {
+  return result.detail ?? result.blocked?.reasons.join("; ") ?? "";
+}
+
+async function confirmPluginAction(
+  prompt: string,
+  refusal: string,
+  yes: boolean,
+): Promise<void> {
+  if (yes) return;
+  if (!process.stdin.isTTY) {
+    console.error(refusal);
+    process.exit(1);
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = (await rl.question(`${prompt} [y/N] `)).trim().toLowerCase();
+  rl.close();
+  if (answer !== "y" && answer !== "yes") {
+    console.log("Aborted.");
+    process.exit(1);
+  }
 }
 
 function formatMs(ms: number): string {
@@ -320,6 +426,177 @@ export function registerPluginCommands(
           if (!result.ok || !result.plugin) exitWithError(result);
           console.log("Installed:");
           printPlugin(result.plugin);
+        },
+      ),
+    );
+
+  plugin
+    .command("outdated")
+    .description("Check installed plugins for compatible updates")
+    .option("--json", "Output the raw update results as JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        const { results } = await callPluginUpdates(
+          getUrl(),
+          "/updates/check",
+          {},
+        );
+        if (opts.json) {
+          outputJson(opts, results);
+          return;
+        }
+        const rows = results.map((result) => [
+          result.id,
+          result.installed.display,
+          result.candidate?.display ?? "—",
+          blockedSummary(result),
+          `${UPDATE_STATUS_LABELS[result.outcome]}${result.devMode ? " [dev build: engines.bb not enforced]" : ""}`,
+        ]);
+        console.log(
+          renderBorderlessTable(
+            {
+              head: [
+                "Plugin",
+                "Installed",
+                "Latest compatible",
+                "Blocked newer",
+                "Status",
+              ],
+              colWidths: [22, 20, 22, 42, 54],
+              trimTrailingWhitespace: true,
+            },
+            rows,
+          ),
+        );
+      }),
+    );
+
+  plugin
+    .command("update [id]")
+    .description("Update one plugin, or all plugins with --all")
+    .option("--all", "Update every plugin with a compatible update")
+    .option("--dry-run", "Show the selected updates without changing plugins")
+    .option(
+      "--latest",
+      "Widen one plugin's pinned/range source to the latest compatible version",
+    )
+    .option("--yes", "Skip confirmation prompts")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: {
+            all?: boolean;
+            dryRun?: boolean;
+            latest?: boolean;
+            yes?: boolean;
+          },
+        ) => {
+          if ((id === undefined) === !opts.all) {
+            console.error("Specify exactly one plugin id or --all.");
+            process.exit(1);
+          }
+          if (opts.all && opts.latest) {
+            console.error("--latest is only valid when updating one plugin.");
+            process.exit(1);
+          }
+
+          const { results } = await callPluginUpdates(
+            getUrl(),
+            "/updates/check",
+            id === undefined ? {} : { id },
+          );
+          const sources = new Map<string, string>();
+          if (
+            results.some(
+              (result) => result.outcome === "update-available" || opts.latest,
+            )
+          ) {
+            const list = await callPlugins<PluginListResponse>(
+              getUrl(),
+              "",
+              "GET",
+            );
+            for (const entry of list.plugins)
+              sources.set(entry.id, entry.source);
+          }
+
+          for (const result of results) {
+            const source = sources.get(result.id) ?? "unknown source";
+            const detail = updateDetail(result);
+            const shouldAttempt =
+              result.outcome === "update-available" ||
+              (opts.latest === true && result.outcome === "pinned");
+
+            if (!shouldAttempt) {
+              if (result.outcome === "pinned") {
+                console.log(
+                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; use --latest to widen the source intent.`,
+                );
+              } else if (result.outcome === "incompatible") {
+                console.log(
+                  `${result.id}: skipped — incompatible${detail ? `: ${detail}` : "."}`,
+                );
+              } else if (result.outcome === "unavailable") {
+                console.log(
+                  `${result.id}: skipped — unavailable${detail ? `: ${detail}` : "."}`,
+                );
+              } else {
+                console.log(
+                  `${result.id}: current (${result.installed.display}).`,
+                );
+              }
+              continue;
+            }
+
+            const target = result.candidate?.display ?? "latest compatible";
+            if (opts.latest) {
+              console.log(
+                `${result.id} source intent: ${source} → latest compatible`,
+              );
+              if (!opts.dryRun) {
+                await confirmPluginAction(
+                  "Change source intent?",
+                  "Refusing to change source intent without confirmation — re-run with --yes.",
+                  opts.yes === true,
+                );
+              }
+            }
+
+            if (opts.dryRun) {
+              console.log(
+                `${result.id}: dry run — would select ${target} from ${source}, activate ${result.installed.display} → ${target}.`,
+              );
+            } else {
+              console.log(
+                `${result.id}: ${result.installed.display} → ${target} from ${source}. Plugins are full-trust code.`,
+              );
+              await confirmPluginAction(
+                "Update and activate?",
+                "Refusing to update without confirmation — re-run with --yes.",
+                opts.yes === true,
+              );
+            }
+
+            const mutation = await callPluginUpdate(getUrl(), result.id, {
+              ...(opts.dryRun ? { dryRun: true } : {}),
+              ...(opts.latest ? { latest: true } : {}),
+            });
+            if ("error" in mutation) exitWithError(mutation);
+            if (mutation.dryRun) {
+              console.log(
+                `${result.id}: would update ${mutation.from.display} → ${mutation.to?.display ?? target}${mutation.detail ? ` — ${mutation.detail}` : ""}`,
+              );
+            } else if (mutation.applied) {
+              console.log(
+                `${result.id}: updated and activated ${mutation.from.display} → ${mutation.to?.display ?? target}.`,
+              );
+            } else {
+              console.log(
+                `${result.id}: ${mutation.outcome}${mutation.detail ? ` — ${mutation.detail}` : ""}`,
+              );
+            }
+          }
         },
       ),
     );
