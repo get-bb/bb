@@ -429,6 +429,8 @@ export async function applyPluginUpdate(
   };
 }
 
+const ignoreVersionResultSchema = z.object({ ignoredVersion: z.string() });
+
 export async function ignorePluginVersion(
   fetchImpl: FetchLike,
   pluginId: string,
@@ -442,14 +444,23 @@ export async function ignorePluginVersion(
       body: JSON.stringify({ version }),
     },
   );
-  if (response.ok) return;
-  throw new Error(
-    errorMessage(
-      await readBody(response),
-      `ignoring the version failed (HTTP ${response.status})`,
-    ),
-  );
+  const body = await readBody(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage(body, `ignoring the version failed (HTTP ${response.status})`),
+    );
+  }
+  const parsed = ignoreVersionResultSchema.safeParse(body);
+  // The echoed version must match what was asked; anything else means the
+  // server ignored a different release than the one on screen.
+  if (!parsed.success || parsed.data.ignoredVersion !== version) {
+    throw new Error("the server returned an unrecognized ignore-version result");
+  }
 }
+
+const updatePolicyResultSchema = z.object({
+  policy: z.enum(PLUGIN_UPDATE_POLICIES),
+});
 
 export async function setPluginUpdatePolicy(
   fetchImpl: FetchLike,
@@ -464,13 +475,21 @@ export async function setPluginUpdatePolicy(
       body: JSON.stringify({ policy }),
     },
   );
-  if (response.ok) return;
-  throw new Error(
-    errorMessage(
-      await readBody(response),
-      `changing the update policy failed (HTTP ${response.status})`,
-    ),
-  );
+  const body = await readBody(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage(
+        body,
+        `changing the update policy failed (HTTP ${response.status})`,
+      ),
+    );
+  }
+  const parsed = updatePolicyResultSchema.safeParse(body);
+  // The echoed policy must match the request; a mismatch means the server
+  // persisted something other than what the dropdown shows.
+  if (!parsed.success || parsed.data.policy !== policy) {
+    throw new Error("the server returned an unrecognized update-policy result");
+  }
 }
 
 // ---------------------------------------------------------------------------

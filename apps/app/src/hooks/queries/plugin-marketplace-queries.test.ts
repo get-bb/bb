@@ -4,8 +4,10 @@ import {
   checkPluginUpdates,
   fetchMarketplaces,
   fetchPluginUpdates,
+  ignorePluginVersion,
   installPlugin,
   searchMarketplaces,
+  setPluginUpdatePolicy,
 } from "./plugin-marketplace-queries";
 
 function fetchReturning(body: unknown, status = 200) {
@@ -131,6 +133,62 @@ describe("installPlugin", () => {
         source: "npm:x",
       }),
     ).rejects.toThrow(/unrecognized install result/);
+  });
+});
+
+describe("ignorePluginVersion", () => {
+  it("resolves when the server echoes the ignored version", async () => {
+    await expect(
+      ignorePluginVersion(
+        fetchReturning({ ignoredVersion: "1.7.0" }),
+        "linear",
+        "1.7.0",
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws on a malformed 2xx body", async () => {
+    await expect(
+      ignorePluginVersion(fetchReturning({ ok: true }), "linear", "1.7.0"),
+    ).rejects.toThrow(/unrecognized ignore-version result/);
+  });
+
+  it("throws when the echoed version differs from the requested one", async () => {
+    await expect(
+      ignorePluginVersion(
+        fetchReturning({ ignoredVersion: "1.6.0" }),
+        "linear",
+        "1.7.0",
+      ),
+    ).rejects.toThrow(/unrecognized ignore-version result/);
+  });
+});
+
+describe("setPluginUpdatePolicy", () => {
+  it("resolves when the server echoes the requested policy", async () => {
+    await expect(
+      setPluginUpdatePolicy(
+        fetchReturning({ policy: "patch" }),
+        "linear",
+        "patch",
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws on a malformed 2xx body", async () => {
+    await expect(
+      setPluginUpdatePolicy(fetchReturning({ ok: true }), "linear", "manual"),
+    ).rejects.toThrow(/unrecognized update-policy result/);
+  });
+
+  it("throws when the echoed policy differs from the requested one", async () => {
+    await expect(
+      setPluginUpdatePolicy(
+        fetchReturning({ policy: "compatible" }),
+        "linear",
+        "manual",
+      ),
+    ).rejects.toThrow(/unrecognized update-policy result/);
   });
 });
 
