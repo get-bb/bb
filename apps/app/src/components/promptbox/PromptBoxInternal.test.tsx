@@ -909,6 +909,26 @@ describe("PromptBoxInternal mention triggers", () => {
     expect(row.querySelector('[data-icon="FileText"]')).not.toBeNull();
   });
 
+  it("keeps a plugin mention's named icon hint in the inserted pill", async () => {
+    setPluginLogoUrls(new Map());
+    const suggestion = { ...githubIssueSuggestion, icon: "FileText" };
+    const { promptBoxRef } = renderPromptBox("@fix", {
+      mentionSuggestions: [suggestion],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    fireEvent.mouseDown(
+      await screen.findByRole("button", { name: /Fix login bug/u }),
+      { button: 0 },
+    );
+
+    await waitFor(() =>
+      expect(
+        getPromptEditorElement().querySelector('[data-icon="FileText"]'),
+      ).not.toBeNull(),
+    );
+  });
+
   it("reports hash mention queries with the active trigger", async () => {
     const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#42", {
       mentionTriggers: ["@", "#"],
@@ -968,6 +988,7 @@ describe("PromptBoxInternal mention triggers", () => {
         resource: {
           kind: "plugin",
           pluginId: "github",
+          icon: null,
           itemId: "issue:owner/repo#42",
           label: "#42 Fix login bug",
         },

@@ -36,6 +36,7 @@ describe("parsePromptMentionClipboardElement", () => {
     const resource = {
       kind: "plugin" as const,
       pluginId: "github",
+      icon: null,
       itemId: "issue:owner/repo#42",
       label: "#42 Fix login bug",
     };
@@ -61,6 +62,7 @@ describe("parsePromptMentionClipboardElement", () => {
         resource: {
           kind: "plugin",
           pluginId: "github",
+          icon: null,
           itemId: "issue:owner/repo#42",
           label: "#42 Fix login bug",
         },

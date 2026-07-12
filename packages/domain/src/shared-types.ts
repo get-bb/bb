@@ -188,6 +188,8 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("plugin"),
     pluginId: z.string(),
+    /** Named shared-UI icon hint supplied by the plugin mention item. */
+    icon: z.string().nullable().default(null),
     /**
      * Opaque item reference minted by the server's mention search
      * (`<providerId>:<provider item id>`); resolved back through the same

@@ -1064,6 +1064,7 @@ export function promptMentionResourceFromSuggestion(
     return {
       kind: "plugin",
       pluginId: suggestion.pluginId,
+      icon: suggestion.icon,
       itemId: suggestion.itemId,
       label: suggestion.title.trim() || suggestion.itemId,
     };

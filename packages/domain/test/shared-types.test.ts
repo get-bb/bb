@@ -30,7 +30,7 @@ describe("prompt mention command triggers", () => {
     ).toBe(true);
   });
 
-  it("accepts plugin mention resources and requires all fields", () => {
+  it("defaults old plugin mention icons and requires identity fields", () => {
     const resource = {
       kind: "plugin",
       pluginId: "linear",
@@ -40,7 +40,7 @@ describe("prompt mention command triggers", () => {
     const parsed = promptMentionResourceSchema.safeParse(resource);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data).toEqual(resource);
+      expect(parsed.data).toEqual({ ...resource, icon: null });
     }
     expect(
       promptMentionResourceSchema.safeParse({
