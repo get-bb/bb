@@ -196,8 +196,47 @@ export const appSettings = sqliteTable("app_settings", {
 // memory served via GET /api/v1/plugins.
 export const installedPlugins = sqliteTable("plugins", {
   id: text("id").primaryKey(),
-  /** Install source spec: "path:<abs>" | "git:<spec>" | "npm:<spec>" | "builtin:<name>". */
+  /** Legacy display/diagnostic spec. Normalized columns below are authoritative. */
   source: text("source").notNull(),
+  provenance: text("provenance", {
+    enum: ["builtin", "direct", "marketplace"],
+  })
+    .notNull()
+    .default("direct"),
+  marketplaceId: text("marketplace_id"),
+  marketplaceEntryId: text("marketplace_entry_id"),
+  sourceKind: text("source_kind", {
+    enum: ["path", "builtin", "npm", "git"],
+  })
+    .notNull()
+    .default("path"),
+  sourcePath: text("source_path"),
+  sourceBuiltinName: text("source_builtin_name"),
+  sourceNpmPackage: text("source_npm_package"),
+  sourceNpmRegistry: text("source_npm_registry"),
+  sourceNpmRequestedSpec: text("source_npm_requested_spec"),
+  sourceGitUrl: text("source_git_url"),
+  sourceGitSubdirectory: text("source_git_subdirectory"),
+  sourceGitRequestedRef: text("source_git_requested_ref"),
+  npmResolvedVersion: text("npm_resolved_version"),
+  npmIntegrity: text("npm_integrity"),
+  gitResolvedCommit: text("git_resolved_commit"),
+  updatePolicy: text("update_policy", {
+    enum: ["manual", "compatible", "patch", "minor"],
+  })
+    .notNull()
+    .default("manual"),
+  lastUpdateCheckAt: integer("last_update_check_at"),
+  availableCompatibleVersion: text("available_compatible_version"),
+  newestIncompatibleVersion: text("newest_incompatible_version"),
+  updateStatusDetail: text("update_status_detail"),
+  ignoredVersion: text("ignored_version"),
+  activeArtifactId: text("active_artifact_id").references(
+    (): AnySQLiteColumn => pluginArtifacts.id,
+    { onDelete: "set null" },
+  ),
+  /** 0 marks rows created before normalized persistence; startup upgrades to 1. */
+  normalizationVersion: integer("normalization_version").notNull().default(0),
   /** Absolute directory containing the plugin's package.json. */
   rootDir: text("root_dir").notNull(),
   /** package.json version recorded at install/update time. */
@@ -206,6 +245,56 @@ export const installedPlugins = sqliteTable("plugins", {
   /** Builtin remove tombstone; non-null rows are hidden and not auto-reconciled. */
   removedAt: integer("removed_at"),
   installedAt: integer("installed_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const pluginArtifacts = sqliteTable(
+  "plugin_artifacts",
+  {
+    id: text("id").primaryKey(),
+    pluginId: text("plugin_id")
+      .notNull()
+      .references(() => installedPlugins.id, { onDelete: "cascade" }),
+    sourceKind: text("source_kind", { enum: ["npm", "git"] }).notNull(),
+    npmResolvedVersion: text("npm_resolved_version"),
+    gitResolvedCommit: text("git_resolved_commit"),
+    path: text("path").notNull(),
+    integrity: text("integrity"),
+    contentHash: text("content_hash"),
+    validationResult: text("validation_result", {
+      enum: ["pending", "valid", "invalid"],
+    }).notNull(),
+    validationDetail: text("validation_detail"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    validatedAt: integer("validated_at"),
+  },
+  (table) => [index("plugin_artifacts_plugin_idx").on(table.pluginId)],
+);
+
+export const marketplaces = sqliteTable("marketplaces", {
+  id: text("id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  sourceKind: text("source_kind", {
+    enum: ["builtin", "path", "git"],
+  }).notNull(),
+  location: text("location").notNull(),
+  requestedGitRef: text("requested_git_ref"),
+  resolvedGitCommit: text("resolved_git_commit"),
+  cachePath: text("cache_path"),
+  contentHash: text("content_hash"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull(),
+  trusted: integer("trusted", { mode: "boolean" }).notNull(),
+  updatePolicy: text("update_policy", {
+    enum: ["manual", "compatible", "patch", "minor"],
+  }).notNull(),
+  lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
+  lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
+  lastError: text("last_error"),
+  scope: text("scope", {
+    enum: ["builtin", "user", "project", "managed"],
+  }).notNull(),
+  createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 

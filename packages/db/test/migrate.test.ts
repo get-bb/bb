@@ -208,12 +208,15 @@ function dropRewindAddedTables(db: DbConnection): void {
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
   // tables (added by 0039/0041), app_theme (added by 0042), the thread folder
-  // schema (thread folder columns + thread_folders table), and thread tabs.
+  // schema (thread folder columns + thread_folders table), thread tabs, and
+  // normalized plugin persistence tables.
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_settings").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_artifacts").run();
+  db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
