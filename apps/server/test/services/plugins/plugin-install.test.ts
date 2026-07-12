@@ -1,19 +1,28 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import {
+  createConnection,
+  getInstalledPluginRegistration,
+  migrate,
+  type DbConnection,
+} from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
-import {
-  managedInstallDir,
-  parsePluginSource,
-} from "../../../src/services/plugins/install-sources.js";
+import { parsePluginSource } from "../../../src/services/plugins/install-sources.js";
 import {
   createPluginService,
   type PluginService,
@@ -84,8 +93,13 @@ describe("plugin install sources", () => {
       installDir: "github.com/acme/bb-plugin-foo@v1",
     });
     expect(
-      parsePluginSource("git:https://github.com/acme/bb-plugin-foo.git@abc1234"),
-    ).toMatchObject({ kind: "git", url: "https://github.com/acme/bb-plugin-foo.git" });
+      parsePluginSource(
+        "git:https://github.com/acme/bb-plugin-foo.git@abc1234",
+      ),
+    ).toMatchObject({
+      kind: "git",
+      url: "https://github.com/acme/bb-plugin-foo.git",
+    });
     expect(() => parsePluginSource("git:github.com/acme/repo")).toThrowError(
       /must pin a ref/,
     );
@@ -133,10 +147,6 @@ describe("plugin install sources", () => {
       kind: "path",
       path: "/tmp/my-plugin",
     });
-    expect(managedInstallDir("/data", "path:/tmp/my-plugin")).toBeUndefined();
-    expect(managedInstallDir("/data", "npm:bb-plugin-x@1.0.0")).toBe(
-      "/data/plugins/npm/bb-plugin-x@1.0.0",
-    );
   });
 });
 
@@ -186,10 +196,35 @@ describe("plugin install flows", () => {
       expect(entry.status).toBe("running");
       expect(entry.source).toBe(source);
       expect(entry.rootDir).toBe(
-        join(dataDir, "plugins", "git", "local", ...repoDir.replace(/^\/+/, "").split("/")) +
-          "@v1",
+        join(
+          dataDir,
+          "plugins",
+          "git",
+          "local",
+          ...repoDir.replace(/^\/+/, "").split("/"),
+        ) + "@v1",
       );
       await stat(join(entry.rootDir, "package.json"));
+      expect(getInstalledPluginRegistration(db, "gitty")).toMatchObject({
+        provenance: "direct",
+        sourceKind: "git",
+        sourceGitUrl: repoDir,
+        sourceGitRequestedRef: "v1",
+        gitResolvedCommit: expect.stringMatching(/^[0-9a-f]{40}$/),
+        updatePolicy: "manual",
+      });
+    });
+
+    it("refuses a git plugin that shadows a builtin after materialization", async () => {
+      const repoDir = join(workDir, "repo-memory");
+      await writePluginFixture(repoDir, { name: "bb-plugin-memory" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+
+      await expect(service.install(`git:${repoDir}@main`)).rejects.toThrowError(
+        /reserved by the builtin plugin.*builtin:memory/,
+      );
+      expect(getInstalledPluginRegistration(db, "memory")).toBeUndefined();
     });
 
     it("installs a pinned commit sha via clone + checkout", async () => {
@@ -265,9 +300,14 @@ describe("plugin install flows", () => {
         /install refused.*requires bb >=99\.0\.0/,
       );
       expect(service.list()).toHaveLength(0);
-      const managed = managedInstallDir(dataDir, source);
-      expect(managed).toBeDefined();
-      await expect(stat(managed as string)).rejects.toThrowError();
+      const managed = join(
+        dataDir,
+        "plugins",
+        "git",
+        "local",
+        ...repoDir.replace(/^\/+/, "").split("/"),
+      );
+      await expect(stat(`${managed}@main`)).rejects.toThrowError();
     });
 
     it("remove deletes the managed git dir but never a path: dir", async () => {
@@ -317,7 +357,9 @@ describe("plugin install flows", () => {
           const server = createServer((request, response) => {
             const url = request.url ?? "";
             if (url === `/${name}/-/${name}-${version}.tgz`) {
-              response.writeHead(200, { "content-type": "application/octet-stream" });
+              response.writeHead(200, {
+                "content-type": "application/octet-stream",
+              });
               response.end(tarball);
               return;
             }
@@ -334,7 +376,9 @@ describe("plugin install flows", () => {
                       version,
                       dist: {
                         tarball: `${origin}/${name}/-/${name}-${version}.tgz`,
-                        shasum: createHash("sha1").update(tarball).digest("hex"),
+                        shasum: createHash("sha1")
+                          .update(tarball)
+                          .digest("hex"),
                         integrity: `sha512-${createHash("sha512").update(tarball).digest("base64")}`,
                       },
                     },
@@ -361,6 +405,16 @@ describe("plugin install flows", () => {
           expect(entry.source).toBe(source);
           const prefix = join(dataDir, "plugins", "npm", `${name}@${version}`);
           expect(entry.rootDir).toBe(join(prefix, "node_modules", name));
+          expect(getInstalledPluginRegistration(db, "npmhero")).toMatchObject({
+            provenance: "direct",
+            sourceKind: "npm",
+            sourceNpmPackage: name,
+            sourceNpmRegistry: `http://127.0.0.1:${port}`,
+            sourceNpmRequestedSpec: version,
+            npmResolvedVersion: version,
+            npmIntegrity: expect.stringMatching(/^sha512-/),
+            updatePolicy: "manual",
+          });
 
           expect(await service.remove("npmhero")).toBe(true);
           await expect(stat(prefix)).rejects.toThrowError();
@@ -381,6 +435,22 @@ describe("plugin install flows", () => {
         }
       },
     );
+  });
+
+  it("refuses an npm package whose derived id shadows a builtin before install", async () => {
+    await expect(
+      service.install("npm:bb-plugin-memory@1.2.3"),
+    ).rejects.toThrowError(/reserved by the builtin plugin.*builtin:memory/);
+    expect(getInstalledPluginRegistration(db, "memory")).toBeUndefined();
+  });
+
+  it("refuses a path plugin whose manifest id shadows a builtin", async () => {
+    const rootDir = join(workDir, "bb-plugin-memory");
+    await writePluginFixture(rootDir, { name: "bb-plugin-memory" });
+    await expect(service.installPath(rootDir)).rejects.toThrowError(
+      /reserved by the builtin plugin.*builtin:memory/,
+    );
+    expect(getInstalledPluginRegistration(db, "memory")).toBeUndefined();
   });
 
   it("the bb plugin new scaffold installs and loads through the plugin service", async () => {

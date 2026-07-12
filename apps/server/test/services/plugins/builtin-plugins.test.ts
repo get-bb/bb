@@ -11,7 +11,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import {
+  createConnection,
+  getInstalledPluginRegistration,
+  migrate,
+  type DbConnection,
+} from "@bb/db";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
@@ -202,6 +207,80 @@ describe("builtin plugin reconciliation", () => {
       },
     ]);
     expect(loadCount()).toBe(1);
+    expect(getInstalledPluginRegistration(db, "builtin-fixture")).toMatchObject(
+      {
+        provenance: "builtin",
+        sourceKind: "builtin",
+        sourceBuiltinName: "fixture",
+        updatePolicy: "manual",
+        normalizationVersion: 1,
+      },
+    );
+  });
+
+  it("backfills every legacy source form once while preserving registration state", async () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    const legacyRoot = join(workDir, "missing-legacy-root");
+    const legacyRows = [
+      ["legacy-path", `path:${fixtureRoot}`, 1, 101],
+      ["legacy-builtin", "builtin:fixture", 0, 102],
+      ["legacy-npm", "npm:bb-plugin-legacy@1.2.3", 1, 103],
+      ["legacy-git", `git:github.com/acme/bb-plugin-legacy@${sha}`, 0, 104],
+    ] as const;
+    const insert = db.$client.prepare(
+      `INSERT INTO plugins
+       (id, source, root_dir, version, enabled, removed_at, installed_at, updated_at)
+       VALUES (?, ?, ?, '0.1.0', ?, ?, 10, 20)`,
+    );
+    for (const [id, source, enabled, removedAt] of legacyRows) {
+      insert.run(id, source, legacyRoot, enabled, removedAt);
+    }
+
+    service = createService({ db, dataDir: join(workDir, "data") });
+    await service.start();
+
+    expect(getInstalledPluginRegistration(db, "legacy-path")).toMatchObject({
+      enabled: true,
+      removedAt: 101,
+      provenance: "direct",
+      sourceKind: "path",
+      sourcePath: fixtureRoot,
+      normalizationVersion: 1,
+    });
+    expect(getInstalledPluginRegistration(db, "legacy-builtin")).toMatchObject({
+      enabled: false,
+      removedAt: 102,
+      provenance: "builtin",
+      sourceKind: "builtin",
+      sourceBuiltinName: "fixture",
+    });
+    expect(getInstalledPluginRegistration(db, "legacy-npm")).toMatchObject({
+      enabled: true,
+      removedAt: 103,
+      sourceKind: "npm",
+      sourceNpmPackage: "bb-plugin-legacy",
+      sourceNpmRequestedSpec: "1.2.3",
+      npmResolvedVersion: "1.2.3",
+      updatePolicy: "manual",
+    });
+    expect(getInstalledPluginRegistration(db, "legacy-git")).toMatchObject({
+      enabled: false,
+      removedAt: 104,
+      sourceKind: "git",
+      sourceGitUrl: "https://github.com/acme/bb-plugin-legacy",
+      sourceGitRequestedRef: sha,
+      gitResolvedCommit: sha,
+    });
+
+    const once = legacyRows.map(([id]) =>
+      getInstalledPluginRegistration(db, id),
+    );
+    await service.stop();
+    service = createService({ db, dataDir: join(workDir, "data") });
+    await service.start();
+    expect(
+      legacyRows.map(([id]) => getInstalledPluginRegistration(db, id)),
+    ).toEqual(once);
   });
 
   it("installs a default-disabled builtin without loading it", async () => {

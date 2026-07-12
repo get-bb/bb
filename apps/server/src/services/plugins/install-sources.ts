@@ -4,9 +4,8 @@ import semver from "semver";
 import { spawnPortableOutputProcess } from "@bb/process-utils";
 
 /**
- * Parsed `bb plugin install` source spec (design §6). The spec string is
- * stored verbatim on the plugins row; parsing is repeated at remove time to
- * find the managed directory for git:/npm: sources.
+ * Parsed `bb plugin install` source spec (design §6). The original spec is
+ * retained for display/diagnostics; normalized persistence is authoritative.
  */
 export type ParsedPluginSource =
   | { kind: "path"; path: string }
@@ -136,29 +135,6 @@ export function npmInstallPrefix(
 }
 
 /**
- * The directory `remove` must delete for a managed (git:/npm:) source, or
- * undefined for path: sources (never delete a user's own directory).
- */
-export function managedInstallDir(
-  dataDir: string,
-  source: string,
-): string | undefined {
-  let parsed: ParsedPluginSource;
-  try {
-    parsed = parsePluginSource(source);
-  } catch {
-    return undefined;
-  }
-  if (parsed.kind === "git") {
-    return join(dataDir, "plugins", "git", ...parsed.installDir.split("/"));
-  }
-  if (parsed.kind === "npm") {
-    return npmInstallPrefix(dataDir, parsed.name, parsed.version);
-  }
-  return undefined;
-}
-
-/**
  * Promote a fully-materialized staging directory to its final location:
  * the previous install (if any) moves aside, the staging dir is renamed
  * into place, then the old copy is deleted. If the promotion rename fails,
@@ -203,11 +179,15 @@ export async function runInstallCommand(
   command: string,
   args: string[],
   options?: { timeoutMs?: number; notFoundHint?: string },
-): Promise<void> {
+): Promise<string> {
   const timeoutMs = options?.timeoutMs ?? INSTALL_COMMAND_TIMEOUT_MS;
   const child = spawnPortableOutputProcess({ command, args });
   let stderr = "";
-  child.stdout.on("data", () => {});
+  let stdout = "";
+  child.stdout.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString("utf8");
+    if (stdout.length > 8192) stdout = stdout.slice(-8192);
+  });
   child.stderr.on("data", (chunk: Buffer) => {
     stderr += chunk.toString("utf8");
     if (stderr.length > 8192) stderr = stderr.slice(-8192);
@@ -244,4 +224,5 @@ export async function runInstallCommand(
       );
     });
   });
+  return stdout.trim();
 }

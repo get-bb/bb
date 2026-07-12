@@ -18,6 +18,28 @@ import { testLogger } from "../../helpers/test-app.js";
 
 const logger = testLogger as unknown as Logger;
 
+function gitPersistence(url: string, requestedRef: string) {
+  return {
+    provenance: { kind: "direct" } as const,
+    sourceIntent: {
+      kind: "git" as const,
+      url,
+      subdirectory: null,
+      requestedRef,
+    },
+    exactResolution: { kind: "git" as const, commit: "test-commit" },
+    updatePolicy: "manual" as const,
+    updateState: {
+      lastCheckAt: null,
+      availableCompatibleVersion: null,
+      newestIncompatibleVersion: null,
+      statusDetail: null,
+      ignoredVersion: null,
+    },
+    activeArtifactId: null,
+  };
+}
+
 /**
  * Prebuilt backend distribution (design §3 loader amendment, §6): managed
  * (git:/npm:) installs prefer a fresh, SDK-major-compatible dist/server.js;
@@ -94,6 +116,7 @@ describe("prebuilt server bundle loading", () => {
     // Managed-source registration without the clone step (materialization is
     // not under test); the row's git: source is what flips the loader path.
     upsertInstalledPlugin(db, {
+      ...gitPersistence("https://github.com/acme/bb-plugin-gitdist", "v1"),
       id: "gitdist",
       source: "git:github.com/acme/bb-plugin-gitdist@v1",
       rootDir,
@@ -109,9 +132,9 @@ describe("prebuilt server bundle loading", () => {
     const entry = service.list().find((plugin) => plugin.id === "gitdist");
     expect(entry?.status).toBe("running");
     expect(entry?.statusDetail).toBeNull();
-    expect(
-      (globalThis as Record<string, unknown>).__prebuiltDistLoads,
-    ).toBe(before + 1);
+    expect((globalThis as Record<string, unknown>).__prebuiltDistLoads).toBe(
+      before + 1,
+    );
   });
 
   it("never prefers dist for path installs — edited source must win", async () => {
@@ -127,6 +150,7 @@ describe("prebuilt server bundle loading", () => {
       sdkVersion: "999.0.0",
     });
     upsertInstalledPlugin(db, {
+      ...gitPersistence("https://github.com/acme/bb-plugin-staledist", "v1"),
       id: "staledist",
       source: "git:github.com/acme/bb-plugin-staledist@v1",
       rootDir,
