@@ -50,89 +50,83 @@ case "$(uname -s)" in
     ;;
 esac
 
-bb_app=
-installed_version=
-server_version=
-if command -v bb-app >/dev/null 2>&1; then
-  bb_app=$(command -v bb-app)
-  if command -v node >/dev/null 2>&1; then
-    installed_version=$(node -e '
-      const fs = require("node:fs");
-      const path = require("node:path");
-      let current = path.dirname(fs.realpathSync(process.argv[1]));
-      while (current !== path.dirname(current)) {
-        try {
-          const pkg = JSON.parse(fs.readFileSync(path.join(current, "package.json"), "utf8"));
-          if (pkg.name === "bb-app" && typeof pkg.version === "string") {
-            process.stdout.write(pkg.version);
-            process.exit(0);
-          }
-        } catch {}
-        current = path.dirname(current);
-      }
-      process.exit(2);
-    ' "$bb_app" 2>/dev/null || true)
-  fi
-  version_response=$(curl -fsSL --connect-timeout 5 --max-time 10 "${server_url%/}/install/version" 2>/dev/null || true)
-  if [ -n "$version_response" ] && command -v node >/dev/null 2>&1; then
-    server_version=$(printf '%s' "$version_response" | node -e '
-      let input = "";
-      process.stdin.on("data", (chunk) => { input += chunk; });
-      process.stdin.on("end", () => {
-        const body = JSON.parse(input);
-        if (typeof body.version !== "string") process.exit(2);
-        process.stdout.write(body.version);
-      });
-    ' 2>/dev/null || true)
-  fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "bb-app requires Node.js 20.19 or newer (Node.js 22 LTS is recommended), but node is not on PATH." >&2
+  exit 1
 fi
+node_version=$(node -p 'process.versions.node')
+node_supported=$(node -e '
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  process.exit(major > 20 || (major === 20 && minor >= 19) ? 0 : 1);
+' && echo yes || echo no)
+if [ "$node_supported" != yes ]; then
+  echo "Node.js $node_version is too old; bb-app requires Node.js 20.19 or newer (Node.js 22 LTS is recommended)." >&2
+  exit 1
+fi
+node_bin=$(command -v node)
 
-if [ -n "$bb_app" ] && { [ -z "$server_version" ] || [ "$installed_version" = "$server_version" ]; }; then
-  echo "Using bb-app at $bb_app"
-else
-  if ! command -v node >/dev/null 2>&1; then
-    echo "bb-app installation requires Node.js 20.19 or newer (Node.js 22 LTS is recommended)." >&2
-    exit 1
-  fi
-  node_version=$(node -p 'process.versions.node')
-  node_supported=$(node -e '
-    const [major, minor] = process.versions.node.split(".").map(Number);
-    process.exit(major > 20 || (major === 20 && minor >= 19) ? 0 : 1);
-  ' && echo yes || echo no)
-  if [ "$node_supported" != yes ]; then
-    echo "Node.js $node_version is too old; bb-app requires Node.js 20.19 or newer (Node.js 22 LTS is recommended)." >&2
-    exit 1
-  fi
+require_npm() {
   if ! command -v npm >/dev/null 2>&1; then
     echo "bb-app installation requires npm." >&2
     exit 1
   fi
-  package_url="${server_url%/}/install/bb-app.tgz"
-  package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
-  package_file="$package_dir/bb-app.tgz"
-  package_status=$(curl -sS -L -o "$package_file" -w '%{http_code}' "$package_url") || {
-    rm -rf "$package_dir"
-    echo "Could not download the server's bb-app package from $package_url." >&2
-    exit 1
-  }
-  if [ "$package_status" = 404 ]; then
-    rm -rf "$package_dir"
-    echo "The server does not provide its bb-app package; falling back to the npm registry..."
-    install_source=bb-app
-  elif [ "$package_status" -ge 200 ] && [ "$package_status" -lt 300 ]; then
-    install_source=$package_file
-    echo "Installing bb-app $server_version from the server..."
-  else
-    rm -rf "$package_dir"
-    echo "Could not download the server's bb-app package (HTTP $package_status)." >&2
-    exit 1
-  fi
-  if ! npm install -g "$install_source"; then
+}
+
+server_host=$(node -e '
+  const url = new URL(process.argv[1]);
+  process.stdout.write(url.host.replace(/[^a-zA-Z0-9.-]/gu, "-"));
+' "$server_url") || {
+  echo "Could not parse the server URL $server_url." >&2
+  exit 1
+}
+service_slug=$(printf '%s' "$server_host" | tr '.' '-')
+
+# Each server gets its own data dir and daemon instance, so one machine can
+# serve several bb servers and a full local bb install keeps ~/.bb to itself.
+data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
+mkdir -p "$data_dir"
+mkdir -p "$data_dir/logs"
+
+# The server's own build is always installed when it offers one: version
+# strings cannot distinguish unpublished builds, so an existing bb-app is
+# trusted only when the server provides no package (404) or is unreachable.
+package_url="${server_url%/}/install/bb-app.tgz"
+package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
+package_file="$package_dir/bb-app.tgz"
+package_status=$(curl -sS -L -o "$package_file" -w '%{http_code}' "$package_url" 2>/dev/null) || package_status=000
+
+bb_app=
+if [ "$package_status" -ge 200 ] && [ "$package_status" -lt 300 ]; then
+  require_npm
+  echo "Installing the server's bb-app build..."
+  if ! npm install -g "$package_file"; then
     rm -rf "$package_dir"
     echo "Could not install bb-app globally. Fix npm global-install permissions, then rerun this command." >&2
     exit 1
   fi
+elif command -v bb-app >/dev/null 2>&1; then
+  bb_app=$(command -v bb-app)
+  if [ "$package_status" = 404 ]; then
+    echo "The server does not provide its bb-app package; using bb-app at $bb_app"
+  else
+    echo "Warning: could not download the server's bb-app package (HTTP $package_status); using bb-app at $bb_app" >&2
+  fi
+elif [ "$package_status" = 404 ]; then
+  require_npm
+  echo "The server does not provide its bb-app package; installing bb-app from the npm registry..."
+  if ! npm install -g bb-app; then
+    rm -rf "$package_dir"
+    echo "Could not install bb-app globally. Fix npm global-install permissions, then rerun this command." >&2
+    exit 1
+  fi
+else
   rm -rf "$package_dir"
+  echo "Could not download the server's bb-app package from $package_url (HTTP $package_status)." >&2
+  exit 1
+fi
+rm -rf "$package_dir"
+
+if [ -z "$bb_app" ]; then
   if ! command -v bb-app >/dev/null 2>&1; then
     echo "npm installed bb-app, but its global bin directory is not on PATH." >&2
     echo "Add npm's global bin directory to PATH, then rerun this command." >&2
@@ -140,16 +134,6 @@ else
   fi
   bb_app=$(command -v bb-app)
 fi
-
-if ! command -v node >/dev/null 2>&1; then
-  echo "bb-app requires Node.js, but node is not on PATH." >&2
-  exit 1
-fi
-node_bin=$(command -v node)
-
-data_dir=${BB_DATA_DIR:-"$HOME/.bb"}
-mkdir -p "$data_dir"
-mkdir -p "$data_dir/logs"
 
 if [ -n "$machine_code" ]; then
   connect_apex=$(node -e '
@@ -206,19 +190,29 @@ if [ -n "$machine_code" ]; then
   }
 fi
 
-already_joined=no
-if [ -f "$data_dir/auth.json" ] && [ -f "$data_dir/config.json" ]; then
-  if node -e '
+auth_matches_host() {
+  node -e '
     const fs = require("node:fs");
-    const [dataDir, expectedServer, expectedHost] = process.argv.slice(1);
+    const [dataDir, expectedHost] = process.argv.slice(1);
     const auth = JSON.parse(fs.readFileSync(`${dataDir}/auth.json`, "utf8"));
+    process.exit(auth.hostId === expectedHost ? 0 : 1);
+  ' "$data_dir" "$host_id" 2>/dev/null
+}
+
+already_joined=no
+if [ -f "$data_dir/auth.json" ]; then
+  if ! auth_matches_host; then
+    echo "$data_dir already holds credentials for a different host, not $host_id." >&2
+    echo "If this machine was removed from the server, delete $data_dir and rerun this command." >&2
+    exit 1
+  fi
+  if [ -f "$data_dir/config.json" ] && node -e '
+    const fs = require("node:fs");
+    const [dataDir, expectedServer] = process.argv.slice(1);
     const config = JSON.parse(fs.readFileSync(`${dataDir}/config.json`, "utf8"));
     const normalize = (value) => String(value).replace(/\/+$/, "");
-    process.exit(
-      auth.hostId === expectedHost &&
-      normalize(config.serverUrl) === normalize(expectedServer) ? 0 : 1
-    );
-  ' "$data_dir" "$server_url" "$host_id" 2>/dev/null; then
+    process.exit(normalize(config.serverUrl) === normalize(expectedServer) ? 0 : 1);
+  ' "$data_dir" "$server_url" 2>/dev/null; then
     already_joined=yes
     echo "This machine is already joined to $server_url as $host_id."
   fi
@@ -239,7 +233,7 @@ if [ "$already_joined" = no ]; then
   joined=no
   attempts=0
   while [ "$attempts" -lt 60 ]; do
-    if [ -f "$data_dir/auth.json" ]; then
+    if [ -f "$data_dir/auth.json" ] && auth_matches_host; then
       joined=yes
       break
     fi
@@ -292,7 +286,8 @@ systemd_escape() {
 
 if [ "$platform" = darwin ]; then
   service_dir="$HOME/Library/LaunchAgents"
-  service_file="$service_dir/app.getbb.host-daemon.plist"
+  service_label="app.getbb.host-daemon.$service_slug"
+  service_file="$service_dir/$service_label.plist"
   mkdir -p "$service_dir"
   escaped_node_bin=$(xml_escape "$node_bin")
   escaped_bb_app=$(xml_escape "$bb_app")
@@ -303,7 +298,7 @@ if [ "$platform" = darwin ]; then
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>app.getbb.host-daemon</string>
+  <key>Label</key><string>$service_label</string>
   <key>ProgramArguments</key>
   <array>
     <string>$escaped_node_bin</string>
@@ -324,12 +319,13 @@ if [ "$platform" = darwin ]; then
 EOF
   launchctl bootout "gui/$(id -u)" "$service_file" >/dev/null 2>&1 || true
   launchctl bootstrap "gui/$(id -u)" "$service_file"
-  launchctl kickstart -k "gui/$(id -u)/app.getbb.host-daemon"
+  launchctl kickstart -k "gui/$(id -u)/$service_label"
   echo "Installed and started launch agent: $service_file"
   echo "Uninstall: launchctl bootout gui/$(id -u) '$service_file' && rm '$service_file'"
 else
   service_dir="$HOME/.config/systemd/user"
-  service_file="$service_dir/bb-host-daemon.service"
+  service_name="bb-host-daemon-$service_slug"
+  service_file="$service_dir/$service_name.service"
   mkdir -p "$service_dir"
   escaped_node_bin=$(systemd_escape "$node_bin")
   escaped_bb_app=$(systemd_escape "$bb_app")
@@ -337,7 +333,7 @@ else
   escaped_data_dir=$(systemd_escape "$data_dir")
   cat >"$service_file" <<EOF
 [Unit]
-Description=bb host daemon
+Description=bb host daemon for $server_host
 After=network-online.target
 Wants=network-online.target
 
@@ -351,8 +347,8 @@ RestartSec=2
 WantedBy=default.target
 EOF
   systemctl --user daemon-reload
-  systemctl --user enable --now bb-host-daemon.service
+  systemctl --user enable --now "$service_name.service"
   echo "Installed and started systemd user service: $service_file"
   echo "It starts with your systemd user session."
-  echo "Uninstall: systemctl --user disable --now bb-host-daemon.service && rm '$service_file' && systemctl --user daemon-reload"
+  echo "Uninstall: systemctl --user disable --now $service_name.service && rm '$service_file' && systemctl --user daemon-reload"
 fi
