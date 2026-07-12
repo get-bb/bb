@@ -214,6 +214,7 @@ describe("useComposer", () => {
         resource: {
           kind: "plugin",
           pluginId: "demo",
+          icon: null,
           itemId: "notes:work/ideas.md",
           label: "ideas.md",
         },
