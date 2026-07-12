@@ -47,6 +47,7 @@ import {
   setInstalledPluginEnabled,
   setInstalledPluginUpdateState,
   setInstalledPluginSourceClassification,
+  setInstalledPluginQuarantine,
   setPluginArtifactValidation,
   upsertInstalledPlugin,
   upsertPluginSchedule,
@@ -140,6 +141,12 @@ import {
   PluginSettingsValidationError,
   type PluginSettingsView,
 } from "./plugin-settings.js";
+import {
+  createPluginStateSnapshotOnDisk,
+  restorePluginHostStateSnapshot,
+  restorePluginStateSnapshot,
+} from "./plugin-state-snapshot.js";
+import { garbageCollectPluginArtifacts } from "./plugin-artifact-gc.js";
 
 /**
  * Live status of an installed plugin. Rows in the `plugins` table hold
@@ -300,6 +307,12 @@ export interface PluginServiceDeps {
   mentionSearchTimeoutMs?: number;
   /** Time box per mention provider resolve call at send; tests shrink it. */
   mentionResolveTimeoutMs?: number;
+  /** Failed candidates must remain healthy for this long before activation commits. */
+  stabilizationWindowMs?: number;
+  /** Previous artifacts and activation snapshots remain rollbackable for this long. */
+  artifactRetentionMs?: number;
+  /** Injectable policy clock for retention and activation tests. */
+  now?: () => number;
   /** Test seam for a crash after canonical promotion but before activation. */
   afterArtifactPromoted?: (args: {
     pluginId: string;
@@ -698,9 +711,18 @@ const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
 // to, so it may do one real fetch — but it must not hang POST /threads/:id/send
 // forever when a provider never settles.
 const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
+const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
+const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SERVICE_RESTART_MAX_MS = 60_000;
 /** A crash after this much healthy runtime resets the backoff sequence. */
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
+
+class PluginActivationRolledBackError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PluginActivationRolledBackError";
+  }
+}
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
 const CONNECT_BUILTIN_PLUGIN_NAME = "connect";
 
@@ -883,6 +905,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
+  const stabilizationWindowMs =
+    deps.stabilizationWindowMs ?? DEFAULT_STABILIZATION_WINDOW_MS;
+  const artifactRetentionMs =
+    deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
+  const now = deps.now ?? Date.now;
 
   const loaded = new Map<string, LoadedPlugin>();
   // Per-plugin lifecycle mutex: every load/dispose mutation for one plugin
@@ -947,6 +974,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     string,
     { status: PluginRuntimeStatus; detail: string | null }
   >();
+  const statusListeners = new Map<
+    string,
+    Set<(status: PluginRuntimeStatus, detail: string | null) => void>
+  >();
+  const stabilizingPluginIds = new Set<string>();
   // Frontend bundle snapshots (design §5.1), keyed by plugin id: the wire
   // state for list() plus the on-disk asset paths + content hash the asset
   // routes serve. Refreshed on every load (install/boot/reload).
@@ -984,6 +1016,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     detail: string | null = null,
   ): void {
     statuses.set(id, { status, detail });
+    for (const listener of statusListeners.get(id) ?? []) {
+      listener(status, detail);
+    }
   }
 
   function statsFor(id: string): PluginHandlerStats {
@@ -1074,6 +1109,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       outcome.error instanceof Error
         ? outcome.error.message
         : String(outcome.error);
+    if (stabilizingPluginIds.has(id)) {
+      service.state = "stopped";
+      setStatus(id, "error", `service ${name} crashed: ${message}`);
+      logger.warn(
+        `[plugin:${id}] service ${name} crashed during activation: ${message}`,
+      );
+      return;
+    }
     if (Date.now() - service.startedAt >= SERVICE_HEALTHY_RESET_MS) {
       service.consecutiveCrashes = 0;
     }
@@ -1647,6 +1690,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         handle.api,
       );
     } catch (error) {
+      for (const database of handle.sqliteHandles.splice(0)) {
+        try {
+          database.close();
+        } catch {
+          // The load error below remains the actionable failure. Rollback
+          // replaces the database only after all candidate handles close.
+        }
+      }
       handle.invalidate();
       let message = error instanceof Error ? error.message : String(error);
       // --ignore-scripts already prevents gyp builds at install; a .node
@@ -2015,6 +2066,38 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       current.rootDir === expected.rootDir &&
       current.version === expected.version &&
       current.enabled === expected.enabled
+    );
+  }
+
+  function sourceFingerprint(row: InstalledPluginRow): string {
+    return JSON.stringify({
+      source: row.source,
+      provenance: row.provenance,
+      marketplaceId: row.marketplaceId,
+      marketplaceEntryId: row.marketplaceEntryId,
+      sourceKind: row.sourceKind,
+      sourcePath: row.sourcePath,
+      sourceBuiltinName: row.sourceBuiltinName,
+      sourceNpmPackage: row.sourceNpmPackage,
+      sourceNpmRegistry: row.sourceNpmRegistry,
+      sourceNpmRequestedSpec: row.sourceNpmRequestedSpec,
+      sourceNpmSpecKind: row.sourceNpmSpecKind,
+      sourceGitUrl: row.sourceGitUrl,
+      sourceGitSubdirectory: row.sourceGitSubdirectory,
+      sourceGitRequestedRef: row.sourceGitRequestedRef,
+      sourceGitRefKind: row.sourceGitRefKind,
+    });
+  }
+
+  function quarantineMatches(
+    row: InstalledPluginRow,
+    candidate: PluginResolvedUpdateVersion,
+  ): boolean {
+    return (
+      row.quarantinedVersion === candidate.version &&
+      row.quarantineSourceFingerprint === sourceFingerprint(row) &&
+      row.quarantineBbVersion === deps.appVersion &&
+      row.quarantineSdkVersion === PLUGIN_SDK_VERSION
     );
   }
 
@@ -2640,6 +2723,89 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return { version: row.version, display: row.source };
   }
 
+  function provenanceForRow(row: InstalledPluginRow): PluginProvenance {
+    if (row.provenance !== "marketplace") return { kind: row.provenance };
+    if (row.marketplaceId === null || row.marketplaceEntryId === null) {
+      throw new Error(`plugin "${row.id}" has corrupt marketplace provenance`);
+    }
+    return {
+      kind: "marketplace",
+      marketplaceId: row.marketplaceId,
+      entryId: row.marketplaceEntryId,
+    };
+  }
+
+  function sourceIntentForRow(row: InstalledPluginRow): PluginSourceIntent {
+    if (row.sourceKind === "path" && row.sourcePath !== null) {
+      return { kind: "path", canonicalPath: row.sourcePath };
+    }
+    if (row.sourceKind === "builtin" && row.sourceBuiltinName !== null) {
+      return { kind: "builtin", name: row.sourceBuiltinName };
+    }
+    if (row.sourceKind === "npm")
+      return { kind: "npm", ...npmIntentForRow(row) };
+    if (
+      row.sourceKind === "git" &&
+      row.sourceGitUrl !== null &&
+      row.sourceGitRequestedRef !== null &&
+      row.sourceGitRefKind !== null
+    ) {
+      return {
+        kind: "git",
+        url: row.sourceGitUrl,
+        subdirectory: row.sourceGitSubdirectory,
+        requestedRef: row.sourceGitRequestedRef,
+        refKind: row.sourceGitRefKind,
+      };
+    }
+    throw new Error(`plugin "${row.id}" has corrupt normalized source intent`);
+  }
+
+  function exactResolutionForRow(
+    row: InstalledPluginRow,
+  ): PluginExactResolution {
+    if (row.sourceKind === "path" || row.sourceKind === "builtin") {
+      return { kind: row.sourceKind };
+    }
+    if (
+      row.sourceKind === "npm" &&
+      row.npmResolvedVersion !== null &&
+      row.npmIntegrity !== null
+    ) {
+      return {
+        kind: "npm",
+        version: row.npmResolvedVersion,
+        integrity: row.npmIntegrity,
+      };
+    }
+    if (row.sourceKind === "git" && row.gitResolvedCommit !== null) {
+      return { kind: "git", commit: row.gitResolvedCommit };
+    }
+    throw new Error(`plugin "${row.id}" has corrupt exact resolution`);
+  }
+
+  function restoreRegistration(row: InstalledPluginRow): void {
+    upsertInstalledPlugin(deps.db, {
+      id: row.id,
+      source: row.source,
+      provenance: provenanceForRow(row),
+      sourceIntent: sourceIntentForRow(row),
+      exactResolution: exactResolutionForRow(row),
+      updatePolicy: row.updatePolicy,
+      updateState: {
+        lastCheckAt: row.lastUpdateCheckAt,
+        availableCompatibleVersion: row.availableCompatibleVersion,
+        newestIncompatibleVersion: row.newestIncompatibleVersion,
+        statusDetail: row.updateStatusDetail,
+        ignoredVersion: row.ignoredVersion,
+      },
+      activeArtifactId: row.activeArtifactId,
+      rootDir: row.rootDir,
+      version: row.version,
+      enabled: row.enabled,
+    });
+  }
+
   function problemMessages(problems: CompatibilityProblem[]): string[] {
     return problems.map((problem) => problem.message);
   }
@@ -2952,7 +3118,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
   }
 
-  async function resolveUpdateForRow(args: {
+  async function resolveUpdateForRowWithoutQuarantine(args: {
     row: InstalledPluginRow;
     npmRun: ReturnType<typeof createNpmResolverRun>;
     npmIntentOverride?: NpmSourceIntentForResolution;
@@ -3031,6 +3197,26 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     };
   }
 
+  async function resolveUpdateForRow(args: {
+    row: InstalledPluginRow;
+    npmRun: ReturnType<typeof createNpmResolverRun>;
+    npmIntentOverride?: NpmSourceIntentForResolution;
+    includeQuarantined?: boolean;
+  }): Promise<PluginUpdateResolution> {
+    const resolution = await resolveUpdateForRowWithoutQuarantine(args);
+    if (
+      args.includeQuarantined !== true &&
+      resolution.outcome === "update-available" &&
+      quarantineMatches(args.row, resolution.candidate)
+    ) {
+      return {
+        outcome: "unavailable",
+        detail: `${resolution.candidate.display} is quarantined after a failed activation; apply the update explicitly to retry`,
+      };
+    }
+    return resolution;
+  }
+
   async function activateManagedUpdate(args: {
     row: InstalledPluginRow;
     rootDir: string;
@@ -3042,24 +3228,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     artifactId: string;
     beforePersist?: () => Promise<void>;
   }): Promise<void> {
-    let provenance: PluginProvenance;
-    if (args.row.provenance === "marketplace") {
-      if (
-        args.row.marketplaceId === null ||
-        args.row.marketplaceEntryId === null
-      ) {
-        throw new Error(
-          `plugin "${args.row.id}" has corrupt marketplace provenance`,
-        );
-      }
-      provenance = {
-        kind: "marketplace",
-        marketplaceId: args.row.marketplaceId,
-        entryId: args.row.marketplaceEntryId,
-      };
-    } else {
-      provenance = { kind: args.row.provenance };
-    }
+    const provenance = provenanceForRow(args.row);
+    const candidateVersion =
+      args.exactResolution.kind === "npm"
+        ? args.exactResolution.version
+        : args.exactResolution.kind === "git"
+          ? args.exactResolution.commit
+          : args.manifest.version;
     await withLifecycleLock(args.row.id, async () => {
       const beforeDispose = getInstalledPlugin(deps.db, args.row.id);
       if (
@@ -3071,6 +3246,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         );
       }
       await disposeOne(args.row.id);
+      const snapshotNow = now();
+      let snapshot: Awaited<ReturnType<typeof createPluginStateSnapshotOnDisk>>;
+      try {
+        snapshot = await createPluginStateSnapshotOnDisk({
+          db: deps.db,
+          dataDir: deps.dataDir,
+          pluginId: args.row.id,
+          fromArtifactId: args.row.activeArtifactId,
+          toArtifactId: args.artifactId,
+          now: snapshotNow,
+          retainedUntil: snapshotNow + artifactRetentionMs,
+        });
+      } catch (error) {
+        const previous = getInstalledPlugin(deps.db, args.row.id);
+        if (previous && shouldLoadRow(previous)) await loadOne(previous);
+        else if (previous) await unloadOneForExperimentGate(previous);
+        throw error;
+      }
+      let pointerWritten = false;
       try {
         await args.beforePersist?.();
         const beforeWrite = getInstalledPlugin(deps.db, args.row.id);
@@ -3095,18 +3289,105 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           version: args.manifest.version,
           enabled: args.row.enabled,
         });
+        pointerWritten = true;
         const current = getInstalledPlugin(deps.db, args.row.id);
+        stabilizingPluginIds.add(args.row.id);
         if (current && shouldLoadRow(current)) await loadOne(current);
         else if (current) await unloadOneForExperimentGate(current);
+        const immediate = statuses.get(args.row.id);
+        if (immediate?.status === "error") {
+          throw new Error(immediate.detail ?? "plugin failed to load");
+        }
+        if (stabilizationWindowMs > 0) {
+          const failure = await new Promise<string | null>((resolveFailure) => {
+            let timer: NodeJS.Timeout | undefined;
+            const listener = (
+              status: PluginRuntimeStatus,
+              detail: string | null,
+            ) => {
+              if (status !== "error") return;
+              if (timer !== undefined) clearTimeout(timer);
+              statusListeners.get(args.row.id)?.delete(listener);
+              resolveFailure(detail ?? "plugin entered error status");
+            };
+            let listeners = statusListeners.get(args.row.id);
+            if (listeners === undefined) {
+              listeners = new Set();
+              statusListeners.set(args.row.id, listeners);
+            }
+            listeners.add(listener);
+            timer = setTimeout(() => {
+              listeners.delete(listener);
+              if (listeners.size === 0) statusListeners.delete(args.row.id);
+              resolveFailure(null);
+            }, stabilizationWindowMs);
+            const currentStatus = statuses.get(args.row.id);
+            if (currentStatus?.status === "error") {
+              listener(currentStatus.status, currentStatus.detail);
+            }
+          });
+          if (failure !== null) throw new Error(failure);
+        }
       } catch (error) {
+        if (!pointerWritten) {
+          const previous = getInstalledPlugin(deps.db, args.row.id);
+          if (previous && shouldLoadRow(previous)) await loadOne(previous);
+          else if (previous) await unloadOneForExperimentGate(previous);
+          throw error;
+        }
+        await disposeOne(args.row.id);
+        // Rollback is intentionally limited to bb-owned state. Effects the
+        // candidate already caused in external systems cannot be reversed.
+        await restorePluginStateSnapshot({
+          db: deps.db,
+          dataDir: deps.dataDir,
+          snapshotId: snapshot.id,
+          now: now(),
+        });
+        restoreRegistration(args.row);
+        const detail = error instanceof Error ? error.message : String(error);
+        if (
+          !setInstalledPluginQuarantine(deps.db, args.row.id, {
+            version: candidateVersion,
+            sourceFingerprint: sourceFingerprint(args.row),
+            bbVersion: deps.appVersion,
+            sdkVersion: PLUGIN_SDK_VERSION,
+            detail,
+            quarantinedAt: now(),
+          })
+        ) {
+          throw new Error(
+            `plugin "${args.row.id}" disappeared during rollback`,
+          );
+        }
         const previous = getInstalledPlugin(deps.db, args.row.id);
         if (previous && shouldLoadRow(previous)) await loadOne(previous);
         else if (previous) await unloadOneForExperimentGate(previous);
-        throw error;
+        // Loading synchronizes schedule registrations; replay the captured
+        // host rows once more so rollback restores their exact run state.
+        await restorePluginHostStateSnapshot({
+          db: deps.db,
+          snapshotId: snapshot.id,
+        });
+        throw new PluginActivationRolledBackError(
+          `activation of ${args.manifest.version} failed and was rolled back: ${detail}; run apply update again to retry explicitly`,
+        );
+      } finally {
+        stabilizingPluginIds.delete(args.row.id);
       }
     });
     await syncCliSkill();
     notifyPluginsChanged();
+  }
+
+  async function runArtifactGc(): Promise<void> {
+    await garbageCollectPluginArtifacts({
+      db: deps.db,
+      dataDir: deps.dataDir,
+      now: now(),
+      retentionMs: artifactRetentionMs,
+      warn: (message) => logger.warn(message),
+    });
   }
 
   async function applyNpmCandidate(args: {
@@ -3629,6 +3910,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await backfillNormalizedPluginRegistrations();
       await reconcileBuiltins();
       await loadAll();
+      await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
       if (deps.watchBuiltinPluginSources) {
         for (const builtin of builtinPlugins) {
           const row = listInstalledPlugins(deps.db).find(
@@ -3809,6 +4091,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const resolution = await resolveUpdateForRow({
           row,
           npmRun,
+          includeQuarantined: true,
           ...(sourceIntentChanged && npmIntent !== undefined
             ? { npmIntentOverride: npmIntent }
             : {}),
@@ -3868,59 +4151,79 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           };
         }
 
-        if (row.sourceKind === "npm" && npmIntent !== undefined) {
-          const selected = await selectNpmCandidate({
-            intent: npmIntent,
-            appVersion: deps.appVersion,
-            run: npmRun,
-          });
-          if (selected.outcome !== "selected") {
-            throw new Error(
-              `npm candidate changed during update: ${selected.outcome}`,
-            );
-          }
-          const activationRow = getInstalledPlugin(deps.db, id);
-          if (activationRow === undefined) {
-            throw new Error(`plugin "${id}" disappeared before activation`);
-          }
-          await applyNpmCandidate({
-            row: activationRow,
-            intent: npmIntent,
-            candidate: selected.candidate,
-          });
-        } else if (
-          row.sourceKind === "git" &&
-          resolution.outcome === "update-available"
-        ) {
-          const persistedRefKind =
-            row.sourceGitRefKind ??
-            getInstalledPlugin(deps.db, id)?.sourceGitRefKind ??
-            null;
-          if (
-            row.sourceGitUrl === null ||
-            row.sourceGitRequestedRef === null ||
-            persistedRefKind === null
+        try {
+          if (row.sourceKind === "npm" && npmIntent !== undefined) {
+            const selected = await selectNpmCandidate({
+              intent: npmIntent,
+              appVersion: deps.appVersion,
+              run: npmRun,
+            });
+            if (selected.outcome !== "selected") {
+              throw new Error(
+                `npm candidate changed during update: ${selected.outcome}`,
+              );
+            }
+            const activationRow = getInstalledPlugin(deps.db, id);
+            if (activationRow === undefined) {
+              throw new Error(`plugin "${id}" disappeared before activation`);
+            }
+            await applyNpmCandidate({
+              row: activationRow,
+              intent: npmIntent,
+              candidate: selected.candidate,
+            });
+          } else if (
+            row.sourceKind === "git" &&
+            resolution.outcome === "update-available"
           ) {
-            throw new Error(`plugin "${id}" has corrupt normalized git state`);
+            const persistedRefKind =
+              row.sourceGitRefKind ??
+              getInstalledPlugin(deps.db, id)?.sourceGitRefKind ??
+              null;
+            if (
+              row.sourceGitUrl === null ||
+              row.sourceGitRequestedRef === null ||
+              persistedRefKind === null
+            ) {
+              throw new Error(
+                `plugin "${id}" has corrupt normalized git state`,
+              );
+            }
+            const activationRow = getInstalledPlugin(deps.db, id);
+            if (activationRow === undefined) {
+              throw new Error(`plugin "${id}" disappeared before activation`);
+            }
+            const staged = await stageGitCandidate({
+              row: activationRow,
+              commit: resolution.candidate.version,
+              promote: true,
+              activationRefKind: persistedRefKind,
+            });
+            if (staged.outcome !== "valid") {
+              const detail =
+                staged.outcome === "invalid"
+                  ? staged.detail
+                  : problemMessages(staged.reasons).join("; ");
+              return { ok: false, error: `update refused: ${detail}` };
+            }
           }
-          const activationRow = getInstalledPlugin(deps.db, id);
-          if (activationRow === undefined) {
-            throw new Error(`plugin "${id}" disappeared before activation`);
+        } catch (error) {
+          if (error instanceof PluginActivationRolledBackError) {
+            return {
+              ok: true,
+              result: {
+                applied: false,
+                dryRun: false,
+                from,
+                to,
+                outcome: "rolled-back",
+                detail: error.message,
+              },
+            };
           }
-          const staged = await stageGitCandidate({
-            row: activationRow,
-            commit: resolution.candidate.version,
-            promote: true,
-            activationRefKind: persistedRefKind,
-          });
-          if (staged.outcome !== "valid") {
-            const detail =
-              staged.outcome === "invalid"
-                ? staged.detail
-                : problemMessages(staged.reasons).join("; ");
-            return { ok: false, error: `update refused: ${detail}` };
-          }
+          throw error;
         }
+        await runArtifactGc();
         const updatedRow = getInstalledPlugin(deps.db, id);
         if (!updatedRow) {
           throw new Error(`plugin "${id}" disappeared after update`);

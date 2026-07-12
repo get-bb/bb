@@ -1,0 +1,200 @@
+import Database from "better-sqlite3";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  createConnection,
+  createPluginArtifact,
+  createPluginStateSnapshot,
+  getPluginKvValue,
+  listPluginArtifacts,
+  migrate,
+  setPluginKvValue,
+  setPluginStateSnapshotStatus,
+  upsertInstalledPlugin,
+  type DbConnection,
+} from "@bb/db";
+import { garbageCollectPluginArtifacts } from "../../../src/services/plugins/plugin-artifact-gc.js";
+import {
+  createPluginStateSnapshotOnDisk,
+  restorePluginStateSnapshot,
+} from "../../../src/services/plugins/plugin-state-snapshot.js";
+
+describe("plugin activation snapshots and garbage collection", () => {
+  let db: DbConnection;
+  let dataDir: string;
+
+  beforeEach(async () => {
+    db = createConnection(":memory:");
+    migrate(db);
+    dataDir = await mkdtemp(join(tmpdir(), "bb-plugin-snapshot-"));
+  });
+
+  afterEach(async () => {
+    db.$client.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  it("replays a partially completed restore idempotently", async () => {
+    const pluginDir = join(dataDir, "plugins", "snapshot-test");
+    const databasePath = join(pluginDir, "data.db");
+    const secretPath = join(pluginDir, "secrets", "token");
+    await mkdir(join(pluginDir, "secrets"), { recursive: true });
+    const pluginDb = new Database(databasePath);
+    pluginDb.exec("CREATE TABLE state (value TEXT NOT NULL)");
+    pluginDb.prepare("INSERT INTO state VALUES (?)").run("original");
+    pluginDb.close();
+    setPluginKvValue(db, "snapshot-test", "cursor", JSON.stringify("original"));
+    await writeFile(secretPath, "opaque-secret", { mode: 0o600 });
+    const snapshot = await createPluginStateSnapshotOnDisk({
+      db,
+      dataDir,
+      pluginId: "snapshot-test",
+      fromArtifactId: "artifact-old",
+      toArtifactId: "artifact-new",
+      now: 100,
+      retainedUntil: 200,
+    });
+
+    const mutate = async () => {
+      const changed = new Database(databasePath);
+      changed.prepare("UPDATE state SET value = ?").run("changed");
+      changed.close();
+      setPluginKvValue(
+        db,
+        "snapshot-test",
+        "cursor",
+        JSON.stringify("changed"),
+      );
+      await writeFile(secretPath, "changed-secret");
+    };
+    await mutate();
+    await restorePluginStateSnapshot({
+      db,
+      dataDir,
+      snapshotId: snapshot.id,
+      now: 110,
+    });
+    await mutate();
+    setPluginStateSnapshotStatus(db, snapshot.id, "restoring", 120);
+    await restorePluginStateSnapshot({
+      db,
+      dataDir,
+      snapshotId: snapshot.id,
+      now: 130,
+    });
+
+    const restored = new Database(databasePath, { readonly: true });
+    expect(restored.prepare("SELECT value FROM state").pluck().get()).toBe(
+      "original",
+    );
+    restored.close();
+    expect(getPluginKvValue(db, "snapshot-test", "cursor")).toBe(
+      JSON.stringify("original"),
+    );
+    expect(await readFile(secretPath, "utf8")).toBe("opaque-secret");
+  });
+
+  it("never removes active, snapshot-retained, or unmanaged artifact roots", async () => {
+    const cacheRoot = join(dataDir, "plugins", "cache", "git", "source");
+    const activePath = join(cacheRoot, "active");
+    const retainedPath = join(cacheRoot, "retained");
+    const localPath = join(dataDir, "user-plugin");
+    await Promise.all(
+      [activePath, retainedPath, localPath].map(async (path) => {
+        await mkdir(path, { recursive: true });
+        await writeFile(join(path, "sentinel"), "keep");
+      }),
+    );
+    const makeArtifact = (id: string, path: string, commit: string) =>
+      createPluginArtifact(db, {
+        id,
+        pluginId: "gc-test",
+        sourceKind: "git",
+        npmResolvedVersion: null,
+        gitResolvedCommit: commit,
+        path,
+        integrity: null,
+        contentHash: "hash",
+        validationResult: "valid",
+        validationDetail: null,
+        validatedAt: 1,
+      });
+    makeArtifact("active", activePath, "active");
+    makeArtifact("retained", retainedPath, "retained");
+    makeArtifact("unmanaged", localPath, "user-plugin");
+    upsertInstalledPlugin(db, {
+      id: "gc-test",
+      source: "git:https://example.test/plugin.git@main",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: "https://example.test/plugin.git",
+        subdirectory: null,
+        requestedRef: "main",
+        refKind: "branch",
+      },
+      exactResolution: { kind: "git", commit: "active" },
+      updatePolicy: "compatible",
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+        ignoredVersion: null,
+      },
+      activeArtifactId: "active",
+      rootDir: activePath,
+      version: "1.0.0",
+      enabled: true,
+    });
+    const snapshotPath = join(
+      dataDir,
+      "plugins",
+      "snapshots",
+      "gc-test",
+      "one",
+    );
+    await mkdir(snapshotPath, { recursive: true });
+    createPluginStateSnapshot(db, {
+      id: "snapshot",
+      pluginId: "gc-test",
+      fromArtifactId: "retained",
+      toArtifactId: "active",
+      snapshotPath,
+      databasePath: null,
+      statePath: join(snapshotPath, "state.json"),
+      secretsPath: null,
+      status: "ready",
+      createdAt: 1,
+      retainedUntil: Date.now() + 60_000,
+      updatedAt: 1,
+    });
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    expect(listPluginArtifacts(db, "gc-test")).toHaveLength(3);
+    await Promise.all(
+      [activePath, retainedPath, localPath].map((path) =>
+        stat(join(path, "sentinel")),
+      ),
+    );
+    expect(warnings).toEqual([
+      expect.stringContaining("refusing to garbage collect unmanaged"),
+    ]);
+  });
+});

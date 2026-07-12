@@ -7,6 +7,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import Database from "better-sqlite3";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -14,9 +15,15 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  getPluginKvValue,
   getInstalledPluginRegistration,
+  getPluginSettingsValues,
+  listPluginSchedules,
   listPluginArtifacts,
+  listPluginStateSnapshots,
   migrate,
+  setPluginSettingsValues,
+  upsertPluginSchedule,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
@@ -39,6 +46,7 @@ async function commitPlugin(
   repo: string,
   version: string,
   engines?: { bb?: string; bbPluginSdk?: string },
+  serverSource?: string,
 ): Promise<string> {
   await mkdir(repo, { recursive: true });
   await writeFile(
@@ -52,7 +60,8 @@ async function commitPlugin(
   );
   await writeFile(
     join(repo, "server.ts"),
-    `export default function plugin(bb: any) { bb.log.info(${JSON.stringify(version)}); }`,
+    serverSource ??
+      `export default function plugin(bb: any) { bb.log.info(${JSON.stringify(version)}); }`,
   );
   await git(repo, ["add", "-A"]);
   await git(repo, ["commit", "-qm", version]);
@@ -97,6 +106,7 @@ describe("plugin update service and routes", () => {
       isEnabled: () => true,
       isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
+      stabilizationWindowMs: 0,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
     });
     await service.install(`git:${repo}@main`);
@@ -341,6 +351,217 @@ describe("plugin update service and routes", () => {
       oldPackage,
     );
     expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
+  });
+
+  it("rolls back full bb-owned state, quarantines the failed candidate, and allows explicit retry", async () => {
+    const infoLog = vi.spyOn(testLogger, "info");
+    const warningLog = vi.spyOn(testLogger, "warn");
+    const pluginDir = join(workDir, "data", "plugins", "updater");
+    const databasePath = join(pluginDir, "data.db");
+    const secretPath = join(pluginDir, "secrets", "token");
+    const failureMarker = join(workDir, "fail-activation");
+    const api = service.getApi("updater");
+    if (api === undefined) throw new Error("updater did not load");
+    const pluginDb = api.storage.sqlite();
+    pluginDb.exec("CREATE TABLE state (value TEXT NOT NULL)");
+    pluginDb.prepare("INSERT INTO state (value) VALUES (?)").run("old-db");
+    await api.storage.kv.set("cursor", "old-kv");
+    setPluginSettingsValues(db, "updater", {
+      mode: JSON.stringify("old-setting"),
+    });
+    upsertPluginSchedule(db, {
+      pluginId: "updater",
+      name: "sync",
+      cron: "0 * * * *",
+      nextRunAt: 1234,
+    });
+    await mkdir(join(pluginDir, "secrets"), { recursive: true });
+    await writeFile(secretPath, "super-secret-value", { mode: 0o600 });
+    await writeFile(failureMarker, "fail");
+
+    const candidateCommit = await commitPlugin(
+      repo,
+      "1.1.0",
+      undefined,
+      `
+        import { existsSync, writeFileSync } from "node:fs";
+        export default async function plugin(bb: any) {
+          const database = bb.storage.sqlite();
+          database.prepare("UPDATE state SET value = ?").run("new-db");
+          await bb.storage.kv.set("cursor", "new-kv");
+          writeFileSync(${JSON.stringify(secretPath)}, "changed-secret");
+          if (existsSync(${JSON.stringify(failureMarker)})) throw new Error("candidate factory exploded");
+        }
+      `,
+    );
+    const result = await service.applyUpdate("updater", {
+      dryRun: false,
+      latest: false,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        applied: false,
+        outcome: "rolled-back",
+        detail: expect.stringContaining("candidate factory exploded"),
+      },
+    });
+    expect(
+      service.list().find((entry) => entry.id === "updater"),
+    ).toMatchObject({ id: "updater", version: "1.0.0", status: "running" });
+    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+      quarantinedVersion: candidateCommit,
+      quarantineDetail: expect.stringContaining("candidate factory exploded"),
+    });
+    const restored = new Database(databasePath, { readonly: true });
+    expect(restored.prepare("SELECT value FROM state").pluck().get()).toBe(
+      "old-db",
+    );
+    restored.close();
+    expect(getPluginKvValue(db, "updater", "cursor")).toBe(
+      JSON.stringify("old-kv"),
+    );
+    expect(getPluginSettingsValues(db, "updater")).toEqual({
+      mode: JSON.stringify("old-setting"),
+    });
+    expect(listPluginSchedules(db, "updater")).toMatchObject([
+      { name: "sync", cron: "0 * * * *" },
+    ]);
+    expect(await readFile(secretPath, "utf8")).toBe("super-secret-value");
+    const snapshots = listPluginStateSnapshots(db, "updater");
+    expect(snapshots).toMatchObject([{ status: "restored" }]);
+    expect(JSON.stringify(snapshots)).not.toContain("super-secret-value");
+    expect(await readFile(snapshots[0]!.statePath, "utf8")).not.toContain(
+      "super-secret-value",
+    );
+    expect(
+      JSON.stringify([infoLog.mock.calls, warningLog.mock.calls]),
+    ).not.toContain("super-secret-value");
+
+    await expect(service.checkForUpdates("updater")).resolves.toMatchObject([
+      {
+        outcome: "unavailable",
+        detail: expect.stringContaining("quarantined"),
+      },
+    ]);
+    await rm(failureMarker);
+    await expect(
+      service.applyUpdate("updater", { dryRun: false, latest: false }),
+    ).resolves.toMatchObject({
+      ok: true,
+      result: { applied: true, outcome: "updated" },
+    });
+    expect(service.list()).toMatchObject([
+      { id: "updater", version: "1.1.0", status: "running" },
+    ]);
+  });
+
+  it("rolls back when a background service crashes during stabilization", async () => {
+    const installedCommit = getInstalledPluginRegistration(
+      db,
+      "updater",
+    )?.gitResolvedCommit;
+    if (installedCommit === null || installedCommit === undefined) {
+      throw new Error("missing installed commit");
+    }
+    await service.stop();
+    service = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "1.0.0",
+      isEnabled: () => true,
+      isConnectEnabled: () => false,
+      loadTimeoutMs: 2000,
+      stabilizationWindowMs: 100,
+      serviceRestartBaseMs: 1000,
+    });
+    await service.start();
+    const candidateCommit = await commitPlugin(
+      repo,
+      "1.1.0",
+      undefined,
+      `export default function plugin(bb: any) {
+        bb.background.service("unstable", { async start() {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          throw new Error("service exploded");
+        }});
+      }`,
+    );
+    await expect(
+      service.applyUpdate("updater", { dryRun: false, latest: false }),
+    ).resolves.toMatchObject({
+      ok: true,
+      result: {
+        applied: false,
+        outcome: "rolled-back",
+        detail: expect.stringContaining("service unstable crashed"),
+      },
+    });
+    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+      gitResolvedCommit: installedCommit,
+      quarantinedVersion: candidateCommit,
+    });
+    expect(
+      service.list().find((entry) => entry.id === "updater"),
+    ).toMatchObject({ id: "updater", version: "1.0.0", status: "running" });
+  });
+
+  it("retains rollback state through the grace period and collects it afterward", async () => {
+    await service.stop();
+    let clock = Date.now();
+    const makeService = () =>
+      createPluginService({
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger,
+        dataDir: join(workDir, "data"),
+        appVersion: "1.0.0",
+        isEnabled: () => true,
+        isConnectEnabled: () => false,
+        stabilizationWindowMs: 0,
+        artifactRetentionMs: 50,
+        now: () => clock,
+      });
+    service = makeService();
+    await service.start();
+    const oldArtifact = listPluginArtifacts(db, "updater").find(
+      (artifact) =>
+        artifact.id ===
+        getInstalledPluginRegistration(db, "updater")?.activeArtifactId,
+    );
+    if (oldArtifact === undefined) throw new Error("missing old artifact");
+    await commitPlugin(repo, "1.1.0");
+    await expect(
+      service.applyUpdate("updater", { dryRun: false, latest: false }),
+    ).resolves.toMatchObject({ ok: true, result: { applied: true } });
+    expect(listPluginStateSnapshots(db, "updater")).toHaveLength(1);
+    expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
+    await stat(oldArtifact.path);
+
+    clock += 51;
+    await service.stop();
+    service = makeService();
+    await service.start();
+    expect(listPluginStateSnapshots(db, "updater")).toHaveLength(0);
+    const remaining = listPluginArtifacts(db, "updater");
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.id).toBe(
+      getInstalledPluginRegistration(db, "updater")?.activeArtifactId,
+    );
+    await expect(stat(oldArtifact.path)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await stat(remaining[0]!.path);
   });
 
   it("orders removal after an in-flight update without resurrecting the plugin", async () => {
