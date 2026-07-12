@@ -108,6 +108,7 @@ describe("normalized plugin persistence", () => {
       resolvedGitCommit: null,
       cachePath: null,
       contentHash: null,
+      catalogJson: null,
       enabled: true,
       trusted: true,
       updatePolicy: "compatible",

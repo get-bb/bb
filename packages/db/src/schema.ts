@@ -335,6 +335,9 @@ export const marketplaces = sqliteTable("marketplaces", {
   resolvedGitCommit: text("resolved_git_commit"),
   cachePath: text("cache_path"),
   contentHash: text("content_hash"),
+  // The validated last-known-good catalog. Keeping this beside refresh state
+  // makes searches network-free and lets a failed refresh retain old data.
+  catalogJson: text("catalog_json"),
   enabled: integer("enabled", { mode: "boolean" }).notNull(),
   trusted: integer("trusted", { mode: "boolean" }).notNull(),
   updatePolicy: text("update_policy", {

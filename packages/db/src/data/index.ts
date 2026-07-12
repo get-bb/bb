@@ -192,6 +192,8 @@ export {
   type PluginUpdatePolicy,
   type PluginUpdateState,
   type UpsertInstalledPluginInput,
+  listInstalledPluginsFromMarketplace,
+  setInstalledPluginDirectProvenance,
 } from "./plugins.js";
 export {
   createPluginArtifact,
@@ -207,6 +209,7 @@ export {
   deleteMarketplace,
   getMarketplace,
   listMarketplaces,
+  updateMarketplaceRefreshFailure,
   upsertMarketplace,
   type MarketplaceRow,
   type UpsertMarketplaceInput,

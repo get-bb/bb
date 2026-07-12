@@ -417,6 +417,54 @@ export function deleteInstalledPlugin(db: DbConnection, id: string): boolean {
   return result.changes > 0;
 }
 
+export function listInstalledPluginsFromMarketplace(
+  db: DbConnection,
+  marketplaceId: string,
+): InstalledPluginRow[] {
+  return db
+    .select({ plugin: installedPlugins, artifactPath: pluginArtifacts.path })
+    .from(installedPlugins)
+    .leftJoin(pluginArtifacts, eq(installedPlugins.activeArtifactId, pluginArtifacts.id))
+    .where(
+      and(
+        eq(installedPlugins.provenance, "marketplace"),
+        eq(installedPlugins.marketplaceId, marketplaceId),
+        isNull(installedPlugins.removedAt),
+      ),
+    )
+    .all()
+    .map(({ plugin, artifactPath }) => ({
+      ...plugin,
+      rootDir:
+        plugin.activeArtifactId !== null && artifactPath !== null
+          ? artifactPath
+          : plugin.rootDir,
+    }));
+}
+
+export function setInstalledPluginDirectProvenance(
+  db: DbConnection,
+  id: string,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      provenance: "direct",
+      marketplaceId: null,
+      marketplaceEntryId: null,
+      updatedAt: Date.now(),
+    })
+    .where(
+      and(
+        eq(installedPlugins.id, id),
+        eq(installedPlugins.provenance, "marketplace"),
+        isNull(installedPlugins.removedAt),
+      ),
+    )
+    .run();
+  return result.changes > 0;
+}
+
 export function markInstalledPluginRemoved(
   db: DbConnection,
   id: string,

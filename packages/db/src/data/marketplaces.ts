@@ -12,6 +12,7 @@ export interface MarketplaceRow {
   resolvedGitCommit: string | null;
   cachePath: string | null;
   contentHash: string | null;
+  catalogJson: string | null;
   enabled: boolean;
   trusted: boolean;
   updatePolicy: PluginUpdatePolicy;
@@ -65,4 +66,21 @@ export function upsertMarketplace(
 
 export function deleteMarketplace(db: DbConnection, id: string): boolean {
   return db.delete(marketplaces).where(eq(marketplaces.id, id)).run().changes > 0;
+}
+
+export function updateMarketplaceRefreshFailure(
+  db: DbConnection,
+  id: string,
+  attemptedAt: number,
+  error: string,
+): MarketplaceRow | undefined {
+  db.update(marketplaces)
+    .set({
+      lastAttemptedRefreshAt: attemptedAt,
+      lastError: error,
+      updatedAt: attemptedAt,
+    })
+    .where(eq(marketplaces.id, id))
+    .run();
+  return getMarketplace(db, id);
 }

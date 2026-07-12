@@ -14,6 +14,7 @@ import { parsePluginSource } from "../services/plugins/install-sources.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import { z } from "zod";
+import type { MarketplaceService } from "../services/marketplaces/marketplace-service.js";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
 export interface PluginRoutesDeps {
@@ -186,6 +187,7 @@ export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
+  marketplaces?: MarketplaceService,
 ): void {
   const DISABLED = {
     ok: false as const,
@@ -510,23 +512,52 @@ export function registerPluginRoutes(
     }
   });
 
-  // Body: { source: "path:<dir>" | "git:<url>@<ref>" | "npm:<name>[@<spec>]" }
-  // (bare paths are treated as path: sources).
+  const installBodySchema = z.union([
+    z.object({ source: z.string().min(1) }).strict(),
+    z
+      .object({
+        marketplace: z
+          .object({
+            marketplaceId: z.string().min(1),
+            entryId: z.string().min(1),
+          })
+          .strict(),
+        version: z.string().min(1).optional(),
+      })
+      .strict(),
+  ]);
+
   app.post("/plugins/install", async (context) => {
-    const body = (await context.req.json().catch(() => null)) as {
-      source?: unknown;
-    } | null;
-    if (!body || typeof body.source !== "string" || body.source.length === 0) {
+    const json: unknown = await context.req.json().catch(() => null);
+    const parsed = installBodySchema.safeParse(json);
+    if (!parsed.success) {
       return context.json(
-        { ok: false, error: "expected { source: string }" },
-        400,
+        {
+          ok: false,
+          error: "exactly one of source or marketplace is required",
+        },
+        422,
       );
     }
-    if (!plugins.isEnabled() && !sourceBypassesGate(body.source)) {
+    if (
+      !plugins.isEnabled() &&
+      !("source" in parsed.data && sourceBypassesGate(parsed.data.source))
+    ) {
       return context.json(DISABLED, 422);
     }
     try {
-      const plugin = await plugins.install(body.source);
+      const plugin =
+        "source" in parsed.data
+          ? await plugins.install(parsed.data.source)
+          : marketplaces === undefined
+            ? (() => {
+                throw new Error("marketplace service is unavailable");
+              })()
+            : await marketplaces.install(
+                parsed.data.marketplace.marketplaceId,
+                parsed.data.marketplace.entryId,
+                parsed.data.version,
+              );
       return context.json({ ok: true, plugin });
     } catch (error) {
       return context.json(

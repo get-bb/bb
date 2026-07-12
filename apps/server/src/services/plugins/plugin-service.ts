@@ -61,6 +61,7 @@ import {
   type PluginExactResolution,
   type PluginProvenance,
   type PluginSourceIntent,
+  type PluginUpdatePolicy,
   type PluginStateSnapshotRow,
 } from "@bb/db";
 import {
@@ -87,6 +88,7 @@ import {
   npmInstallPrefix,
   parsePluginSource,
   promoteImmutableDir,
+  realPathInside,
   runInstallCommand,
 } from "./install-sources.js";
 import {
@@ -115,6 +117,7 @@ import {
   listBuiltinPluginRegistrations,
   type BuiltinPluginRegistration,
 } from "./builtin-registry.js";
+import { marketplacePolicyWideningProblem } from "../marketplaces/catalog.js";
 import {
   createPluginApi,
   isNeedsConfigurationError,
@@ -513,6 +516,15 @@ export interface PluginService {
    * spec refreshes the managed files.
    */
   install(source: string): Promise<PluginListEntry>;
+  installFromMarketplace(args: {
+    source: string;
+    marketplaceId: string;
+    entryId: string;
+    updatePolicy: PluginUpdatePolicy;
+    installation?: { engines: { bb?: string; bbPluginSdk?: string } };
+    gitSubdirectory?: string;
+    npmRegistry?: string;
+  }): Promise<PluginListEntry>;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   listUpdateResults(): PluginUpdateCheckEntry[];
@@ -2195,7 +2207,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     provenance: PluginProvenance;
     sourceIntent: PluginSourceIntent;
     exactResolution: PluginExactResolution;
-    updatePolicy?: "manual" | "compatible";
+    updatePolicy?: PluginUpdatePolicy;
+    installation?: { engines: { bb?: string; bbPluginSdk?: string } };
     refuseEngineMismatch: boolean;
     /** True when validateInstallDir already ran against a staging copy of
      * these exact files (managed installs validate before the swap). */
@@ -2210,6 +2223,26 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   ): Promise<PluginListEntry> {
     const initialManifest =
       args.preparedManifest ?? (await readPluginManifest(args.rootDir));
+    const catalogEngines = args.installation?.engines;
+    const wideningProblem = marketplacePolicyWideningProblem(
+      args.installation,
+      initialManifest,
+    );
+    if (wideningProblem !== null) {
+      throw new Error(`install refused: ${wideningProblem}`);
+    }
+    if (catalogEngines !== undefined) {
+      const catalogCompatibility = evaluateCompatibility({
+        bbRange: catalogEngines.bb,
+        sdkRange: catalogEngines.bbPluginSdk,
+        appVersion: deps.appVersion,
+      });
+      if (catalogCompatibility.effective.length > 0) {
+        throw new Error(
+          `install refused by marketplace compatibility policy: ${catalogCompatibility.effective.map((problem) => problem.message).join("; ")}`,
+        );
+      }
+    }
     if (args.provenance.kind !== "builtin") {
       refuseBuiltinShadow(initialManifest.id);
     }
@@ -2265,22 +2298,58 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return entry;
   }
 
-  async function installPathSource(path: string): Promise<PluginListEntry> {
+  interface InstallContext {
+    provenance: PluginProvenance;
+    updatePolicy?: PluginUpdatePolicy;
+    installation?: { engines: { bb?: string; bbPluginSdk?: string } };
+    gitSubdirectory?: string;
+    npmRegistry?: string;
+  }
+
+  const directInstallContext: InstallContext = {
+    provenance: { kind: "direct" },
+  };
+
+  function narrowUpdatePolicy(
+    requested: PluginUpdatePolicy | undefined,
+    sourceMaximum: PluginUpdatePolicy,
+  ): PluginUpdatePolicy {
+    const rank: Record<PluginUpdatePolicy, number> = {
+      manual: 0,
+      patch: 1,
+      minor: 2,
+      compatible: 3,
+    };
+    if (requested === undefined) return sourceMaximum;
+    return rank[requested] < rank[sourceMaximum] ? requested : sourceMaximum;
+  }
+
+  async function installPathSource(
+    path: string,
+    context: InstallContext = directInstallContext,
+  ): Promise<PluginListEntry> {
     const rootDir = resolve(path);
     return registerInstalled({
       rootDir,
       source: `path:${rootDir}`,
-      provenance: { kind: "direct" },
+      provenance: context.provenance,
       sourceIntent: { kind: "path", canonicalPath: rootDir },
       exactResolution: { kind: "path" },
       refuseEngineMismatch: false,
       validated: false,
+      ...(context.updatePolicy === undefined
+        ? {}
+        : { updatePolicy: context.updatePolicy }),
+      ...(context.installation === undefined
+        ? {}
+        : { installation: context.installation }),
     });
   }
 
   async function installGitSource(
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "git" }>,
     source: string,
+    context: InstallContext = directInstallContext,
   ): Promise<PluginListEntry> {
     const resolution = await resolveGitRef({
       url: parsed.url,
@@ -2298,16 +2367,28 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return withArtifactLock(targetDir, async () => {
       const stagingDir = `${targetDir}.staging`;
       await rm(stagingDir, { recursive: true, force: true });
-      const cachedManifest = await readPluginManifest(targetDir).catch(
-        () => null,
-      );
+      const targetRoot = resolve(targetDir, context.gitSubdirectory ?? ".");
+      if (targetRoot !== targetDir && !targetRoot.startsWith(`${targetDir}/`)) {
+        throw new Error(
+          `invalid git plugin subdirectory ${JSON.stringify(context.gitSubdirectory)}`,
+        );
+      }
+      const cachedRealRoot = await realPathInside(
+        targetDir,
+        targetRoot,
+        "git plugin subdirectory",
+      ).catch(() => null);
+      const cachedManifest =
+        cachedRealRoot === null
+          ? null
+          : await readPluginManifest(cachedRealRoot).catch(() => null);
       const existingArtifact =
         cachedManifest === null
           ? undefined
           : getPluginArtifactByResolution(deps.db, {
               sourceKind: "git",
               pluginId: cachedManifest.id,
-              path: targetDir,
+              path: targetRoot,
               commit: resolvedCommit,
             });
       if (
@@ -2326,19 +2407,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             });
           }
           return registerInstalled({
-            rootDir: targetDir,
+            rootDir: targetRoot,
             source,
-            provenance: { kind: "direct" },
+            provenance: context.provenance,
             sourceIntent: {
               kind: "git",
               url: parsed.url,
-              subdirectory: null,
+              subdirectory: context.gitSubdirectory ?? null,
               requestedRef: parsed.ref,
               refKind: resolution.refKind,
             },
             exactResolution: { kind: "git", commit: resolvedCommit },
-            updatePolicy:
+            updatePolicy: narrowUpdatePolicy(
+              context.updatePolicy,
               resolution.refKind === "branch" ? "compatible" : "manual",
+            ),
+            ...(context.installation === undefined
+              ? {}
+              : { installation: context.installation }),
             refuseEngineMismatch: true,
             validated: true,
             activeArtifactId: existingArtifact.id,
@@ -2363,7 +2449,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "--detach",
           resolvedCommit,
         ]);
-        const stagedManifest = await readPluginManifest(stagingDir);
+        const stagedRoot = resolve(stagingDir, context.gitSubdirectory ?? ".");
+        if (
+          stagedRoot !== stagingDir &&
+          !stagedRoot.startsWith(`${stagingDir}/`)
+        ) {
+          throw new Error(
+            `invalid git plugin subdirectory ${JSON.stringify(context.gitSubdirectory)}`,
+          );
+        }
+        const stagedRealRoot = await realPathInside(
+          stagingDir,
+          stagedRoot,
+          "git plugin subdirectory",
+        );
+        const stagedManifest = await readPluginManifest(stagedRealRoot);
         refuseBuiltinShadow(stagedManifest.id);
         const checkedOutCommit = await runInstallCommand("git", [
           "-C",
@@ -2377,7 +2477,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           );
         }
         await validateInstallDir({
-          rootDir: stagingDir,
+          rootDir: stagedRealRoot,
           source,
           refuseEngineMismatch: true,
         });
@@ -2387,7 +2487,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           getPluginArtifactByResolution(deps.db, {
             sourceKind: "git",
             pluginId: stagedManifest.id,
-            path: targetDir,
+            path: targetRoot,
             commit: resolvedCommit,
           });
         const artifact =
@@ -2398,7 +2498,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             sourceKind: "git",
             npmResolvedVersion: null,
             gitResolvedCommit: resolvedCommit,
-            path: targetDir,
+            path: targetRoot,
             integrity: null,
             contentHash,
             validationResult: "pending",
@@ -2414,19 +2514,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           });
         }
         return registerInstalled({
-          rootDir: targetDir,
+          rootDir: targetRoot,
           source,
-          provenance: { kind: "direct" },
+          provenance: context.provenance,
           sourceIntent: {
             kind: "git",
             url: parsed.url,
-            subdirectory: null,
+            subdirectory: context.gitSubdirectory ?? null,
             requestedRef: parsed.ref,
             refKind: resolution.refKind,
           },
           exactResolution: { kind: "git", commit: resolvedCommit },
-          updatePolicy:
+          updatePolicy: narrowUpdatePolicy(
+            context.updatePolicy,
             resolution.refKind === "branch" ? "compatible" : "manual",
+          ),
+          ...(context.installation === undefined
+            ? {}
+            : { installation: context.installation }),
           refuseEngineMismatch: true,
           validated: true,
           activeArtifactId: artifact.id,
@@ -2436,7 +2541,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             await deps.afterArtifactPromoted?.({
               pluginId: stagedManifest.id,
               artifactId: artifact.id,
-              path: targetDir,
+              path: targetRoot,
             });
             if (
               !setPluginArtifactValidation(deps.db, artifact.id, {
@@ -2461,10 +2566,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   async function installNpmSource(
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "npm" }>,
     source: string,
+    context: InstallContext = directInstallContext,
   ): Promise<PluginListEntry> {
     const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
     await mkdir(registryProbe, { recursive: true });
-    const registry = await resolveNpmRegistry(registryProbe, parsed.name);
+    const registry =
+      context.npmRegistry ??
+      (await resolveNpmRegistry(registryProbe, parsed.name));
     const intent: NpmSourceIntentForResolution = {
       packageName: parsed.name,
       registry,
@@ -2527,7 +2635,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           return registerInstalled({
             rootDir,
             source,
-            provenance: { kind: "direct" },
+            provenance: context.provenance,
             sourceIntent: {
               kind: "npm",
               packageName: parsed.name,
@@ -2540,7 +2648,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               version: candidate.version,
               integrity: candidate.integrity,
             },
-            updatePolicy: parsed.specKind === "exact" ? "manual" : "compatible",
+            updatePolicy: narrowUpdatePolicy(
+              context.updatePolicy,
+              parsed.specKind === "exact" ? "manual" : "compatible",
+            ),
+            ...(context.installation === undefined
+              ? {}
+              : { installation: context.installation }),
             refuseEngineMismatch: true,
             validated: true,
             activeArtifactId: existingArtifact.id,
@@ -2632,7 +2746,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         return registerInstalled({
           rootDir,
           source,
-          provenance: { kind: "direct" },
+          provenance: context.provenance,
           sourceIntent: {
             kind: "npm",
             packageName: parsed.name,
@@ -2645,7 +2759,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             version: candidate.version,
             integrity: candidate.integrity,
           },
-          updatePolicy: parsed.specKind === "exact" ? "manual" : "compatible",
+          updatePolicy: narrowUpdatePolicy(
+            context.updatePolicy,
+            parsed.specKind === "exact" ? "manual" : "compatible",
+          ),
+          ...(context.installation === undefined
+            ? {}
+            : { installation: context.installation }),
           refuseEngineMismatch: true,
           validated: true,
           activeArtifactId: artifact.id,
@@ -2951,7 +3071,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       (await hashInstallDir(targetDir).catch(() => null)) ===
         existingArtifact.contentHash
     ) {
-      const manifest = await readPluginManifest(targetRoot);
+      const targetRealRoot = await realPathInside(
+        targetDir,
+        targetRoot,
+        "git plugin subdirectory",
+      );
+      const manifest = await readPluginManifest(targetRealRoot);
       const compatibility = evaluateCompatibility({
         bbRange: manifest.bbEngineRange,
         sdkRange: manifest.bbPluginSdkRange,
@@ -2984,7 +3109,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           refKind: args.activationRefKind,
         },
         exactResolution: { kind: "git", commit: args.commit },
-        updatePolicy: "compatible",
+        updatePolicy: args.row.updatePolicy,
         artifactId: existingArtifact.id,
       });
       return {
@@ -3023,9 +3148,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         args.row.sourceGitSubdirectory === null
           ? stagingDir
           : join(stagingDir, args.row.sourceGitSubdirectory);
+      let realPluginRoot: string;
+      try {
+        realPluginRoot = await realPathInside(
+          stagingDir,
+          pluginRoot,
+          "git plugin subdirectory",
+        );
+      } catch (error) {
+        return {
+          outcome: "invalid",
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
       let manifest: PluginManifest;
       try {
-        manifest = await readPluginManifest(pluginRoot);
+        manifest = await readPluginManifest(realPluginRoot);
       } catch (error) {
         return {
           outcome: "invalid",
@@ -3053,7 +3191,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
       try {
         await validateInstallDir({
-          rootDir: pluginRoot,
+          rootDir: realPluginRoot,
           source: args.row.source,
           refuseEngineMismatch: true,
         });
@@ -3108,7 +3246,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             refKind: args.activationRefKind,
           },
           exactResolution: { kind: "git", commit: args.commit },
-          updatePolicy: "compatible",
+          updatePolicy: args.row.updatePolicy,
           artifactId: artifact.id,
           beforePersist: async () => {
             await promoteImmutableDir({ stagingDir, targetDir, contentHash });
@@ -3347,7 +3485,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     source: string;
     sourceIntent: PluginSourceIntent;
     exactResolution: PluginExactResolution;
-    updatePolicy: "manual" | "compatible";
+    updatePolicy: PluginUpdatePolicy;
     artifactId: string;
     beforePersist?: () => Promise<void>;
   }): Promise<void> {
@@ -3557,7 +3695,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             integrity: args.candidate.integrity,
           },
           updatePolicy:
-            args.intent.specKind === "exact" ? "manual" : "compatible",
+            args.row.provenance === "marketplace"
+              ? narrowUpdatePolicy(
+                  args.row.updatePolicy,
+                  args.intent.specKind === "exact" ? "manual" : "compatible",
+                )
+              : args.intent.specKind === "exact"
+                ? "manual"
+                : "compatible",
           artifactId: existingArtifact.id,
         });
         return;
@@ -3644,7 +3789,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             integrity: args.candidate.integrity,
           },
           updatePolicy:
-            args.intent.specKind === "exact" ? "manual" : "compatible",
+            args.row.provenance === "marketplace"
+              ? narrowUpdatePolicy(
+                  args.row.updatePolicy,
+                  args.intent.specKind === "exact" ? "manual" : "compatible",
+                )
+              : args.intent.specKind === "exact"
+                ? "manual"
+                : "compatible",
           artifactId: artifact.id,
           beforePersist: async () => {
             await promoteImmutableDir({
@@ -4097,6 +4249,41 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           return installNpmSource(parsed, source);
         }
         return installPathSource(parsed.path);
+      });
+    },
+
+    async installFromMarketplace(args) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const parsed = parsePluginSource(args.source);
+        const context: InstallContext = {
+          provenance: {
+            kind: "marketplace",
+            marketplaceId: args.marketplaceId,
+            entryId: args.entryId,
+          },
+          updatePolicy: args.updatePolicy,
+          ...(args.installation === undefined
+            ? {}
+            : { installation: args.installation }),
+          ...(args.gitSubdirectory === undefined
+            ? {}
+            : { gitSubdirectory: args.gitSubdirectory }),
+          ...(args.npmRegistry === undefined
+            ? {}
+            : { npmRegistry: args.npmRegistry }),
+        };
+        if (parsed.kind === "builtin") {
+          throw new Error(
+            "marketplace entries may not install builtin sources",
+          );
+        }
+        if (parsed.kind === "git")
+          return installGitSource(parsed, args.source, context);
+        if (parsed.kind === "npm") {
+          refuseBuiltinShadow(derivePluginId(parsed.name));
+          return installNpmSource(parsed, args.source, context);
+        }
+        return installPathSource(parsed.path, context);
       });
     },
 

@@ -498,6 +498,13 @@
       "when": 1783888685250,
       "tag": "0070_huge_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "6",
+      "when": 1783889374978,
+      "tag": "0071_odd_carlie_cooper",
+      "breakpoints": true
     }
   ]
 }
