@@ -5,6 +5,7 @@ import {
   threadSchema,
   turnScope,
 } from "@bb/domain";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   internalAuthHeaders,
@@ -857,7 +858,7 @@ describe("generated managed branch names", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            events: [
+            eventGroups: groupHostDaemonEvents([
               {
                 threadId: thread.id,
                 event: {
@@ -877,7 +878,7 @@ describe("generated managed branch names", () => {
                   status: "completed",
                 },
               },
-            ],
+            ]),
           }),
         },
       );

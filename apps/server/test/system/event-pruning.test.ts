@@ -1,5 +1,6 @@
 import { getThread, listEvents } from "@bb/db";
 import { turnScope } from "@bb/domain";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
 import {
@@ -546,7 +547,7 @@ describe("thread event pruning", () => {
         headers: internalAuthHeaders(harness),
         body: JSON.stringify({
           sessionId: session.id,
-          events: [
+          eventGroups: groupHostDaemonEvents([
             createTestDaemonEventEnvelope({
               event: {
                 type: "thread/tokenUsage/updated",
@@ -572,7 +573,7 @@ describe("thread event pruning", () => {
                 },
               },
             }),
-          ],
+          ]),
         }),
       });
 

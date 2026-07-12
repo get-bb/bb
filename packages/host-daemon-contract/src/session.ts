@@ -170,13 +170,68 @@ export type HostDaemonEventEnvelope = z.infer<
   typeof hostDaemonEventEnvelopeSchema
 >;
 
-export const hostDaemonEventBatchRequestSchema = z.object({
-  sessionId: z.string().min(1),
-  events: z.array(hostDaemonEventEnvelopeSchema),
-});
+const hostDaemonWireEventSchema = z
+  .unknown()
+  .superRefine((value, context) => {
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      Object.hasOwn(value, "sequence")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Daemon events must not provide a server-owned sequence",
+        path: ["sequence"],
+      });
+    }
+  })
+  .pipe(threadEventSchema);
+
+export const hostDaemonEventGroupSchema = z
+  .object({
+    threadId: z.string().min(1),
+    events: z.array(hostDaemonWireEventSchema).min(1),
+  })
+  .strict();
+export type HostDaemonEventGroup = z.infer<typeof hostDaemonEventGroupSchema>;
+
+export const hostDaemonEventBatchRequestSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    eventGroups: z.array(hostDaemonEventGroupSchema),
+  })
+  .strict();
 export type HostDaemonEventBatchRequest = z.infer<
   typeof hostDaemonEventBatchRequestSchema
 >;
+
+/**
+ * Compact consecutive events for the same thread without changing global
+ * event ordering. Keeping separate groups when a thread recurs later preserves
+ * response event indexes exactly.
+ */
+export function groupHostDaemonEvents(
+  envelopes: readonly HostDaemonEventEnvelope[],
+): HostDaemonEventGroup[] {
+  const groups: HostDaemonEventGroup[] = [];
+  for (const envelope of envelopes) {
+    const last = groups.at(-1);
+    if (last?.threadId === envelope.threadId) {
+      last.events.push(envelope.event);
+    } else {
+      groups.push({ threadId: envelope.threadId, events: [envelope.event] });
+    }
+  }
+  return groups;
+}
+
+export function ungroupHostDaemonEvents(
+  groups: readonly HostDaemonEventGroup[],
+): HostDaemonEventEnvelope[] {
+  return groups.flatMap((group) =>
+    group.events.map((event) => ({ threadId: group.threadId, event })),
+  );
+}
 
 export const hostDaemonEventRejectionReasonSchema = z.enum([
   "thread_not_owned_by_host",

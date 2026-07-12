@@ -522,14 +522,14 @@ export type TimelineToolArgs = JsonObject | null;
  * are preserved) and diffing it against the rows the client last received.
  *
  * `upsertRows` carries the full body of every row that was added or changed.
- * `rowOrder` is the complete, ordered id list of the current window, so the
- * client reconstructs the exact row order and membership without guessing —
- * any id present in `rowOrder` but absent from `upsertRows` is an unchanged row
- * the client already holds. See {@link applyTimelineDelta}.
+ * `rowOrder`, when present, is the complete, ordered id list of the current
+ * window, so the client reconstructs exact ordering and membership. It is
+ * omitted when both are unchanged, which avoids repeatedly sending every row
+ * id while an active row is merely streaming new content.
  */
 export const timelineDeltaSchema = z.object({
   upsertRows: z.array(timelineRowSchema),
-  rowOrder: z.array(z.string()),
+  rowOrder: z.array(z.string()).optional(),
 });
 export type TimelineDelta = z.infer<typeof timelineDeltaSchema>;
 
@@ -547,13 +547,17 @@ export function computeTimelineRowDelta(
   }
   const upsertRows: TimelineRow[] = [];
   const rowOrder: string[] = [];
+  let orderChanged = prevRows.length !== currentRows.length;
   for (const row of currentRows) {
     rowOrder.push(row.id);
+    if (prevRows[rowOrder.length - 1]?.id !== row.id) {
+      orderChanged = true;
+    }
     if (prevById.get(row.id) !== JSON.stringify(row)) {
       upsertRows.push(row);
     }
   }
-  return { upsertRows, rowOrder };
+  return orderChanged ? { upsertRows, rowOrder } : { upsertRows };
 }
 
 /**
@@ -574,7 +578,8 @@ export function applyTimelineDelta(
     byId.set(row.id, row);
   }
   const result: TimelineRow[] = [];
-  for (const id of delta.rowOrder) {
+  const rowOrder = delta.rowOrder ?? prevRows.map((row) => row.id);
+  for (const id of rowOrder) {
     const row = byId.get(id);
     if (row === undefined) {
       return null;

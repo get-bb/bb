@@ -68,6 +68,7 @@ describe("WatchInterestCoordinator", () => {
       kind: "environment-detail",
       environmentId: environment.id,
     });
+    expect(daemonSocket.messages).toHaveLength(1);
 
     expect(lastDaemonMessage(daemonSocket)).toMatchObject({
       type: "watch-set.replace",
@@ -87,6 +88,7 @@ describe("WatchInterestCoordinator", () => {
       kind: "environment-detail",
       environmentId: environment.id,
     });
+    expect(daemonSocket.messages).toHaveLength(1);
     expect(lastDaemonMessage(daemonSocket)).toMatchObject({
       type: "watch-set.replace",
       workspaceTargets: [
@@ -100,6 +102,7 @@ describe("WatchInterestCoordinator", () => {
       kind: "environment-detail",
       environmentId: environment.id,
     });
+    expect(daemonSocket.messages).toHaveLength(2);
     expect(lastDaemonMessage(daemonSocket)).toMatchObject({
       type: "watch-set.replace",
       workspaceTargets: [],
@@ -252,6 +255,23 @@ describe("WatchInterestCoordinator", () => {
     const snapshotCount = daemonSocket.messages.length;
 
     hub.notifyEnvironment(environment.id, ["work-status-changed"]);
+
+    expect(daemonSocket.messages).toHaveLength(snapshotCount);
+  });
+
+  it("does not replace a watch set when a relevant invalidation resolves identically", () => {
+    const { environment, host, hub, watchInterests } = setup();
+    const daemonSocket = createMockHubSocket();
+    const socket = createMockHubSocket();
+    hub.registerDaemon("session-1", host.id, daemonSocket);
+
+    watchInterests.subscribe(socket, {
+      kind: "environment-detail",
+      environmentId: environment.id,
+    });
+    const snapshotCount = daemonSocket.messages.length;
+
+    hub.notifyEnvironment(environment.id, ["metadata-changed"]);
 
     expect(daemonSocket.messages).toHaveLength(snapshotCount);
   });

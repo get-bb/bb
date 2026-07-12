@@ -224,8 +224,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Timeline responses carry a row-patch delta only when the request supplied a usable afterSequence; a full window omits it.",
-    fields: ["threadTimelineResponseSchema.delta"],
+      "Timeline responses carry a row-patch delta only for a usable afterSequence, and that delta carries rowOrder only when membership or ordering changed.",
+    fields: [
+      "threadTimelineResponseSchema.delta",
+      "threadTimelineResponseSchema.delta.rowOrder",
+    ],
   },
   {
     reason:

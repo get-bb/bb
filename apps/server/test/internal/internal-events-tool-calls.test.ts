@@ -10,7 +10,10 @@ import {
   threads,
 } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
-import type { HostDaemonEventEnvelope } from "@bb/host-daemon-contract";
+import {
+  groupHostDaemonEvents,
+  type HostDaemonEventEnvelope,
+} from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
   internalAuthHeaders,
@@ -40,7 +43,7 @@ async function postEventBatch(args: {
     headers: internalAuthHeaders(args.harness),
     body: JSON.stringify({
       sessionId: args.sessionId,
-      events: args.events,
+      eventGroups: groupHostDaemonEvents(args.events),
     }),
   });
 }

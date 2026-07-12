@@ -1,5 +1,6 @@
 import { createThread, getThread } from "@bb/db";
 import { threadScope } from "@bb/domain";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import {
   createTestDaemonEventEnvelope,
@@ -50,7 +51,7 @@ describe("internal event envelope threadId regression", () => {
         headers: internalAuthHeaders(harness, { hostId: hostA.host.id }),
         body: JSON.stringify({
           sessionId: hostA.session.id,
-          events: [
+          eventGroups: groupHostDaemonEvents([
             createTestDaemonEventEnvelope({
               threadId: threadA.id,
               event: {
@@ -61,7 +62,7 @@ describe("internal event envelope threadId regression", () => {
                 threadName: "hacked",
               },
             }),
-          ],
+          ]),
         }),
       });
 
@@ -97,7 +98,7 @@ describe("internal event envelope threadId regression", () => {
         headers: internalAuthHeaders(harness, { hostId: host.id }),
         body: JSON.stringify({
           sessionId: session.id,
-          events: [
+          eventGroups: groupHostDaemonEvents([
             createTestDaemonEventEnvelope({
               threadId: thread.id,
               event: {
@@ -108,7 +109,7 @@ describe("internal event envelope threadId regression", () => {
                 threadName: "Provider supplied name",
               },
             }),
-          ],
+          ]),
         }),
       });
 

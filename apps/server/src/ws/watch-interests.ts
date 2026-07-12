@@ -72,6 +72,7 @@ export class WatchInterestCoordinator {
   >();
   private readonly targetsByInterest = new Map<string, RealtimeSubscriptionTarget>();
   private readonly generationByHost = new Map<string, number>();
+  private readonly lastWatchTargetFingerprintByHost = new Map<string, string>();
   private readonly lastResolvedHostIdsByInterest = new Map<string, Set<string>>();
 
   constructor(private readonly deps: WatchInterestCoordinatorDeps) {
@@ -202,10 +203,19 @@ export class WatchInterestCoordinator {
   private sendSnapshotsForHosts(hostIds: ReadonlySet<string>): void {
     for (const hostId of hostIds) {
       const generation = (this.generationByHost.get(hostId) ?? 0) + 1;
+      const watchSet = this.resolveWatchSetForHost({ generation, hostId });
+      const fingerprint = JSON.stringify({
+        workspaceTargets: watchSet.workspaceTargets,
+        threadStorageTargets: watchSet.threadStorageTargets,
+      });
+      if (this.lastWatchTargetFingerprintByHost.get(hostId) === fingerprint) {
+        continue;
+      }
+      this.lastWatchTargetFingerprintByHost.set(hostId, fingerprint);
       this.generationByHost.set(hostId, generation);
       this.deps.hub.sendDaemonMessage(hostId, {
         type: "watch-set.replace",
-        ...this.resolveWatchSetForHost({ generation, hostId }),
+        ...watchSet,
       });
     }
   }

@@ -187,6 +187,7 @@ describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
       const delta = await getTimeline(harness, thread.id, before.maxSeq);
       expect(delta.delta).toBeDefined();
       expect(delta.delta!.upsertRows).toHaveLength(0);
+      expect(delta.delta!.rowOrder).toBeUndefined();
       expect(applyTimelineDelta(before.rows, delta.delta!)).toEqual(
         before.rows,
       );

@@ -15,6 +15,7 @@ import type {
 } from "@bb/db";
 import {
   hostDaemonEventBatchRequestSchema,
+  ungroupHostDaemonEvents,
   typedRoutes,
   type HostDaemonEventBatchResponse,
   type HostDaemonEventEnvelope,
@@ -851,11 +852,12 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
         }
         throw error;
       }
+      const events = ungroupHostDaemonEvents(payload.eventGroups);
       const { entries, rejectedEvents } = resolvePostableEventBatchEntries(
         deps,
         {
           hostId: session.hostId,
-          events: payload.events,
+          events,
         },
       );
       if (rejectedEvents.length > 0) {

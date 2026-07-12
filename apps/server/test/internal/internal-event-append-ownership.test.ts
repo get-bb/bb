@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { events, getThread } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import {
+  groupHostDaemonEvents,
   hostDaemonEventBatchResponseSchema,
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
@@ -38,7 +39,7 @@ async function postEventBatch(args: PostEventBatchArgs): Promise<Response> {
     headers: internalAuthHeaders(args.harness),
     body: JSON.stringify({
       sessionId: args.sessionId,
-      events: args.events,
+      eventGroups: groupHostDaemonEvents(args.events),
     }),
   });
 }

@@ -2594,21 +2594,23 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonEventBatchRequestSchema.parse({
         sessionId: "session_123",
-        events: [
+        eventGroups: [
           {
             threadId: "thr_123",
-            event: {
-              type: "system/error",
-              threadId: "thr_123",
-              scope: threadScope(),
-              message: "boom",
-            },
+            events: [
+              {
+                type: "system/error",
+                threadId: "thr_123",
+                scope: threadScope(),
+                message: "boom",
+              },
+            ],
           },
         ],
       }),
     ).toMatchObject({
       sessionId: "session_123",
-      events: [
+      eventGroups: [
         {
           threadId: "thr_123",
         },
@@ -2671,16 +2673,18 @@ describe("host-daemon session schemas", () => {
     expect(() =>
       hostDaemonEventBatchRequestSchema.parse({
         sessionId: "session_123",
-        events: [
+        eventGroups: [
           {
             threadId: "thr_123",
-            sequence: 1,
-            event: {
-              type: "system/error",
-              threadId: "thr_123",
-              scope: threadScope(),
-              message: "boom",
-            },
+            events: [
+              {
+                type: "system/error",
+                threadId: "thr_123",
+                scope: threadScope(),
+                message: "boom",
+                sequence: 1,
+              },
+            ],
           },
         ],
       }),

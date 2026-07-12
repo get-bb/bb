@@ -50,6 +50,16 @@ describe("timeline delta", () => {
     expect(merged?.[0]).toBe(a);
   });
 
+  it("omits row order when membership and ordering are unchanged", () => {
+    const prev = [row("a", 1), row("b", 2)];
+    const current = [row("a", 1), row("b", 2, "changed")];
+
+    const delta = computeTimelineRowDelta(prev, current);
+
+    expect(delta.rowOrder).toBeUndefined();
+    expect(applyTimelineDelta(prev, delta)).toEqual(current);
+  });
+
   it("returns null when the base is stale (id neither held nor sent)", () => {
     expect(
       applyTimelineDelta([row("a", 1)], {

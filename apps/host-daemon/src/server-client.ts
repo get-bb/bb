@@ -12,6 +12,7 @@ import {
   type HostDaemonActiveThread,
   type HostDaemonEventBatchRequest,
   type HostDaemonEventEnvelope,
+  groupHostDaemonEvents,
   type HostDaemonInteractiveInterruptRequest,
   type HostDaemonInteractiveRequest,
   type HostDaemonLoadedEnvironment,
@@ -425,7 +426,7 @@ export function createServerClient(
     ): Promise<EventPostResult> {
       const payload: HostDaemonEventBatchRequest = {
         sessionId: requireSessionId(),
-        events,
+        eventGroups: groupHostDaemonEvents(events),
       };
       const response = await fetchFn(buildInternalUrl("/session/events"), {
         method: "POST",

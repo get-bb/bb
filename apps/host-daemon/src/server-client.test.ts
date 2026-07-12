@@ -231,8 +231,24 @@ describe("createServerClient", () => {
   });
 
   it("returns accepted event mappings when posting events", async () => {
-    const fetchFn = vi.fn<FetchFn>(async (input) => {
+    const fetchFn = vi.fn<FetchFn>(async (input, init) => {
       expect(String(input)).toContain("/internal/session/events");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        sessionId: "session-1",
+        eventGroups: [
+          {
+            threadId: "thr_123",
+            events: [
+              {
+                type: "turn/started",
+                threadId: "thr_123",
+                providerThreadId: "provider-thread",
+                scope: { kind: "turn", turnId: "turn-1" },
+              },
+            ],
+          },
+        ],
+      });
       return new Response(
         JSON.stringify({
           acceptedEvents: [
