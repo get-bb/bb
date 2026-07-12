@@ -7,7 +7,10 @@ import {
 import type { Nodes, Parent, RootContent } from "mdast";
 // Side-effect import: augments mdast's `Data` with `hName`/`hProperties`.
 import type {} from "mdast-util-to-hast";
-import type { PluginMessageDirectiveProps } from "@bb/plugin-sdk";
+import type {
+  PluginMessageDirectiveProps,
+  PluginMessageDirectiveThreadPanelOptions,
+} from "@bb/plugin-sdk";
 import { visit } from "unist-util-visit";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
 import type { PluginMessageDirectiveSlot } from "@/lib/plugin-slots.js";
@@ -54,7 +57,12 @@ export interface MarkdownMessageDirectives {
   registry: MessageDirectiveRegistry;
   message: PluginMessageDirectiveProps["message"];
   openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
+  openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
 }
+
+export type MarkdownMessageDirectiveOpenThreadPanel = (
+  options: PluginMessageDirectiveThreadPanelOptions & { pluginId: string },
+) => boolean;
 
 /**
  * Resolved form held during a single MarkdownPreview render: registry + message
@@ -64,6 +72,7 @@ export interface ResolvedMessageDirectives {
   mounts: MountedMessageDirective[];
   message: PluginMessageDirectiveProps["message"];
   openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
+  openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
   registry: MessageDirectiveRegistry;
 }
 
@@ -296,6 +305,7 @@ interface BuildMessageDirectiveComponentArgs {
   mounts: readonly MountedMessageDirective[];
   message: PluginMessageDirectiveProps["message"];
   openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
+  openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
 }
 
 /**
@@ -308,6 +318,7 @@ export function buildMessageDirectiveComponent({
   mounts,
   message,
   openWorkspaceFile,
+  openThreadPanel,
 }: BuildMessageDirectiveComponentArgs): ComponentType<MessageDirectiveElementProps> {
   function MessageDirectiveElement(props: MessageDirectiveElementProps) {
     const rawIndex = props["data-directive-index"];
@@ -333,6 +344,12 @@ export function buildMessageDirectiveComponent({
           source={source}
           message={message}
           openWorkspaceFile={openWorkspaceFile}
+          openThreadPanel={
+            openThreadPanel === null
+              ? null
+              : (options) =>
+                  openThreadPanel({ ...options, pluginId: slot.pluginId })
+          }
         />
       </PluginSlotMount>
     );

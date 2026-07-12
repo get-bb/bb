@@ -29,6 +29,7 @@ export interface ThreadTimelinePanelContentProps {
   onSelectionReplyInSideChat?: ThreadTimelineSurfaceProps["onSelectionReplyInSideChat"];
   onOpenLink?: ThreadTimelineSurfaceProps["onOpenLink"];
   onOpenLocalFileLink?: ThreadTimelineSurfaceProps["onOpenLocalFileLink"];
+  onOpenPluginPanel?: ThreadTimelineSurfaceProps["onOpenPluginPanel"];
   onTitleAction?: ThreadTimelineSurfaceProps["onTitleAction"];
   projectId?: string;
   provisioningLabel?: string;
@@ -55,6 +56,7 @@ export function ThreadTimelinePanelContent({
   onSelectionReplyInSideChat,
   onOpenLink,
   onOpenLocalFileLink,
+  onOpenPluginPanel,
   onTitleAction,
   projectId,
   provisioningLabel = "Provisioning thread...",
@@ -143,6 +145,7 @@ export function ThreadTimelinePanelContent({
       }
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
+      onOpenPluginPanel={onOpenPluginPanel}
       onTitleAction={onTitleAction}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}

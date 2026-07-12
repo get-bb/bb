@@ -1,82 +1,116 @@
-// bb-plugin-simple-notes — a minimal Apple-Notes-style markdown notebook.
-//
-// One folder on disk (default ~/Notes, auto-created on load). The rpc surface
-// lists notes with a derived title/preview/mtime so the frontend can show a
-// recent-first list, and reads/creates/saves/deletes the underlying `.md`
-// files. Reads and writes go through `bb.sdk.files` for its compare-and-swap
-// guard; listing and delete use node fs directly (this is a local notebook).
-// The editor (Tiptap) is headless, so no stylesheet is served from here.
-import {
-  mkdir,
-  readFile,
-  readdir,
-  rename,
-  stat,
-  unlink,
-} from "node:fs/promises";
+// Docs — filesystem-first, multi-host Markdown and HTML vaults.
 import os from "node:os";
 import path from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 
 const DEFAULT_DIR = "~/Notes";
 const PREVIEW_LENGTH = 100;
+const MAX_TREE_ENTRIES = 5_000;
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+interface Vault {
+  id: string;
+  name: string;
+  hostId: string | null;
+  rootPath: string;
+}
+
+interface VaultEntry {
+  kind: "file" | "directory";
+  path: string;
+}
 
 interface NoteSummary {
-  path: string; // filename relative to the notes folder (flat, e.g. "Todo.md")
-  title: string; // first non-empty line, heading markers stripped
-  preview: string; // a short snippet of the body
+  path: string;
+  title: string;
+  preview: string;
   modifiedAtMs: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireRecord(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error("Expected an object");
+  return value;
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`"${field}" must be a non-empty string`);
+  }
+  return value.trim();
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function expandHome(rawPath: string): string {
   if (rawPath === "~") return os.homedir();
-  if (rawPath.startsWith("~/")) return path.join(os.homedir(), rawPath.slice(2));
+  if (rawPath.startsWith("~/"))
+    return path.join(os.homedir(), rawPath.slice(2));
   return rawPath;
 }
 
-function requireString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`"${field}" must be a non-empty string`);
+function requireVaultPath(
+  value: unknown,
+  options?: { extension?: string },
+): string {
+  const raw = requireString(value, "path").replace(/\\/g, "/");
+  if (raw.startsWith("/") || /^[a-zA-Z]:\//.test(raw) || raw.includes("\0")) {
+    throw new Error(`Invalid vault path: ${raw}`);
   }
-  return value;
-}
-
-/** A note name is a flat `.md` filename — reject anything that could escape the folder. */
-function requireNoteName(value: unknown): string {
-  const name = requireString(value, "path");
+  const segments = raw.split("/");
   if (
-    name.includes("/") ||
-    name.includes("\\") ||
-    name.includes("..") ||
-    name.startsWith(".") ||
-    !/\.md$/i.test(name)
+    segments.some(
+      (segment) =>
+        segment.length === 0 ||
+        segment === "." ||
+        segment === ".." ||
+        segment.startsWith("."),
+    )
   ) {
-    throw new Error(`Invalid note name: ${name}`);
+    throw new Error(`Invalid vault path: ${raw}`);
   }
-  return name;
+  const normalized = path.posix.normalize(raw);
+  if (
+    options?.extension &&
+    !normalized.toLowerCase().endsWith(options.extension)
+  ) {
+    throw new Error(`Path must end with ${options.extension}: ${normalized}`);
+  }
+  return normalized;
 }
 
-/** kebab-case an ASCII slug from a title ("My Note!" → "my-note"). */
-function kebabCase(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
-    .replace(/-+$/g, "");
+function requireOptionalDirectory(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "";
+  return requireVaultPath(value);
 }
 
-/** Turn a user-typed title into a safe filename base (no extension). */
-function sanitizeBase(raw: string): string {
-  return raw
-    .replace(/\.md$/i, "")
-    .replace(/[/\\:*?"<>|]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
+function absolutePath(vault: Vault, relativePath: string): string {
+  const parts = relativePath.split("/");
+  return /^[a-zA-Z]:[\\/]/.test(vault.rootPath) ||
+    vault.rootPath.startsWith("\\\\")
+    ? path.win32.join(vault.rootPath, ...parts)
+    : path.posix.join(vault.rootPath, ...parts);
 }
 
-/** Strip leading markdown markers (heading, quote, bullet, task checkbox). */
+function isAbsoluteHostPath(value: string): boolean {
+  return path.posix.isAbsolute(value) || path.win32.isAbsolute(value);
+}
+
+function normalizeHostRoot(value: string): string {
+  return path.win32.isAbsolute(value) && !path.posix.isAbsolute(value)
+    ? path.win32.normalize(value)
+    : path.posix.normalize(value);
+}
+
+function hostArgs(vault: Vault): { hostId?: string } {
+  return vault.hostId ? { hostId: vault.hostId } : {};
+}
+
 function cleanLine(line: string): string {
   return line
     .replace(/^\s*#{1,6}\s+/, "")
@@ -89,234 +123,723 @@ function cleanLine(line: string): string {
 function deriveTitle(content: string, fallback: string): string {
   for (const line of content.split("\n")) {
     const stripped = cleanLine(line);
-    if (stripped) return stripped.slice(0, 120);
+    if (stripped && !stripped.startsWith("::html{"))
+      return stripped.slice(0, 120);
   }
   return fallback;
 }
 
 function derivePreview(content: string, title: string): string {
-  const lines = content
+  return content
     .split("\n")
     .map(cleanLine)
-    .filter((line) => line.length > 0 && line !== title);
-  return lines.join(" ").slice(0, PREVIEW_LENGTH);
+    .filter((line) => line && line !== title && !line.startsWith("::html{"))
+    .join(" ")
+    .slice(0, PREVIEW_LENGTH);
+}
+
+function kebabCase(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .replace(/-+$/g, "");
+}
+
+function sanitizeName(raw: string): string {
+  return raw
+    .replace(/\.(md|html?)$/i, "")
+    .replace(/[/\\:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function parseVaultRow(value: unknown): Vault {
+  const row = requireRecord(value);
+  return {
+    id: requireString(row.id, "id"),
+    name: requireString(row.name, "name"),
+    hostId: typeof row.host_id === "string" && row.host_id ? row.host_id : null,
+    rootPath: requireString(row.root_path, "root_path"),
+  };
+}
+
+function parseCli(argv: string[]): {
+  command: string;
+  positionals: string[];
+  vaultId?: string;
+  content?: string;
+  json: boolean;
+} {
+  const positionals: string[] = [];
+  let vaultId: string | undefined;
+  let content: string | undefined;
+  let json = false;
+  for (let index = 1; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === "--vault") vaultId = argv[++index];
+    else if (arg === "--content") content = argv[++index] ?? "";
+    else if (arg === "--json") json = true;
+    else positionals.push(arg);
+  }
+  return { command: argv[0] ?? "help", positionals, vaultId, content, json };
+}
+
+function waitForDelay(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener("abort", finish, { once: true });
+  });
 }
 
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     directory: {
       type: "string",
-      label: "Notes folder (~ ok)",
+      label: "Legacy/default Docs folder (~ ok)",
       default: DEFAULT_DIR,
     },
   });
+  const db = bb.storage.sqlite();
+  bb.storage.migrate(db, [
+    `CREATE TABLE IF NOT EXISTS vaults (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      host_id TEXT,
+      root_path TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+  ]);
 
-  async function getRoot(): Promise<string> {
+  let seededDefaultVault = false;
+  if (
+    Number(db.prepare("SELECT COUNT(*) AS count FROM vaults").pluck().get()) ===
+    0
+  ) {
     const { directory } = await settings.get();
-    const raw = directory.trim() || DEFAULT_DIR;
-    return path.resolve(expandHome(raw));
+    const rootPath = path.resolve(expandHome(directory.trim() || DEFAULT_DIR));
+    db.prepare(
+      "INSERT INTO vaults (id, name, host_id, root_path, created_at) VALUES (?, ?, NULL, ?, ?)",
+    ).run("personal", "Personal", rootPath, Date.now());
+    seededDefaultVault = true;
   }
 
-  // Make the notebook usable out of the box — no configuration step needed.
-  try {
-    await mkdir(await getRoot(), { recursive: true });
-  } catch (error) {
-    bb.log.warn(
-      `could not create notes folder: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  function listVaults(): Vault[] {
+    return db
+      .prepare(
+        "SELECT id, name, host_id, root_path FROM vaults ORDER BY created_at, name",
+      )
+      .all()
+      .map(parseVaultRow);
   }
 
-  async function listNoteSummaries(): Promise<{
-    root: string;
-    notes: NoteSummary[];
-    error: string | null;
-  }> {
-    const root = await getRoot();
-    let entries;
+  function getVault(vaultId?: string): Vault {
+    const vaults = listVaults();
+    const vault = vaultId
+      ? vaults.find((candidate) => candidate.id === vaultId)
+      : vaults[0];
+    if (!vault)
+      throw new Error(
+        vaultId ? `Unknown vault: ${vaultId}` : "No vault configured",
+      );
+    return vault;
+  }
+
+  if (seededDefaultVault) {
+    const vault = getVault("personal");
     try {
-      entries = await readdir(root, { withFileTypes: true });
+      await bb.sdk.files.mkdir({ path: vault.rootPath, recursive: true });
+    } catch (error) {
+      bb.log.warn(
+        `could not create default vault: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  async function listEntries(
+    vault: Vault,
+  ): Promise<{ entries: VaultEntry[]; truncated: boolean }> {
+    const result = await bb.sdk.files.listPaths({
+      ...hostArgs(vault),
+      path: vault.rootPath,
+      includeFiles: true,
+      includeDirectories: true,
+      limit: MAX_TREE_ENTRIES,
+    });
+    return {
+      entries: result.paths
+        .filter(
+          (entry) =>
+            entry.kind === "directory" || /\.(md|html?)$/i.test(entry.path),
+        )
+        .map((entry) => ({
+          kind: entry.kind,
+          path: entry.path.replace(/\\/g, "/"),
+        })),
+      truncated: result.truncated,
+    };
+  }
+
+  async function listNoteSummaries(
+    vault: Vault,
+    knownEntries?: VaultEntry[],
+  ): Promise<NoteSummary[]> {
+    const entries = knownEntries ?? (await listEntries(vault)).entries;
+    const notes: NoteSummary[] = [];
+    const markdownPaths = entries
+      .filter((entry) => entry.kind === "file" && /\.md$/i.test(entry.path))
+      .map((entry) => entry.path);
+    for (const notePath of markdownPaths) {
+      try {
+        const file = await bb.sdk.files.read({
+          ...hostArgs(vault),
+          path: absolutePath(vault, notePath),
+          rootPath: vault.rootPath,
+        });
+        const fallback = path.posix.basename(notePath).replace(/\.md$/i, "");
+        const title = deriveTitle(file.content, fallback);
+        notes.push({
+          path: notePath,
+          title,
+          preview: derivePreview(file.content, title),
+          modifiedAtMs: file.modifiedAtMs ?? 0,
+        });
+      } catch {
+        // Files may disappear during a recursive refresh.
+      }
+    }
+    return notes.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
+  }
+
+  async function notebookData(vaultId?: string) {
+    const vault = getVault(vaultId);
+    try {
+      const [{ entries, truncated }, hosts] = await Promise.all([
+        listEntries(vault),
+        bb.sdk.hosts.list(),
+      ]);
+      const notes = await listNoteSummaries(vault, entries);
+      return {
+        vaults: listVaults(),
+        vault,
+        hosts,
+        entries,
+        notes,
+        truncated,
+        error: null,
+      };
     } catch (error) {
       return {
-        root,
+        vaults: listVaults(),
+        vault,
+        hosts: await bb.sdk.hosts.list().catch(() => []),
+        entries: [],
         notes: [],
+        truncated: false,
         error: error instanceof Error ? error.message : String(error),
       };
     }
-    const notes: NoteSummary[] = [];
-    for (const entry of entries) {
-      if (!entry.isFile() || !/\.md$/i.test(entry.name)) continue;
-      const full = path.join(root, entry.name);
-      try {
-        const [info, content] = await Promise.all([
-          stat(full),
-          readFile(full, "utf8"),
-        ]);
-        const title = deriveTitle(content, entry.name.replace(/\.md$/i, ""));
-        notes.push({
-          path: entry.name,
-          title,
-          preview: derivePreview(content, title),
-          modifiedAtMs: info.mtimeMs,
-        });
-      } catch {
-        // Skip files that vanish or can't be read mid-listing.
-      }
-    }
-    notes.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
-    return { root, notes, error: null };
   }
 
-  // --- rpc ------------------------------------------------------------------
+  async function readFile(vaultId: string | undefined, rawPath: unknown) {
+    const vault = getVault(vaultId);
+    const relativePath = requireVaultPath(rawPath);
+    const file = await bb.sdk.files.read({
+      ...hostArgs(vault),
+      path: absolutePath(vault, relativePath),
+      rootPath: vault.rootPath,
+    });
+    return { ...file, path: relativePath };
+  }
 
-  bb.rpc.register({
-    async listNotes(): Promise<{
-      root: string;
-      notes: NoteSummary[];
-      error: string | null;
-    }> {
-      return listNoteSummaries();
-    },
-
-    async readNote(input: { path?: unknown }) {
-      const root = await getRoot();
-      const name = requireNoteName(input.path);
-      // The bundled SDK types stub result shapes to `never` outside the bb
-      // monorepo, so narrow the read result to what we consume.
-      const file = (await bb.sdk.files.read({
-        path: path.join(root, name),
-        rootPath: root,
-      })) as { content: string; sha256: string };
-      return { content: file.content, sha256: file.sha256 };
-    },
-
-    async saveNote(input: {
-      path?: unknown;
-      content?: unknown;
-      expectedSha256?: unknown;
-    }) {
-      const root = await getRoot();
-      const name = requireNoteName(input.path);
-      if (typeof input.content !== "string") {
-        throw new Error(`"content" must be a string`);
-      }
-      return bb.sdk.files.write({
-        path: path.join(root, name),
-        rootPath: root,
-        content: input.content,
-        createParents: true,
-        ...(input.expectedSha256 === null ||
-        typeof input.expectedSha256 === "string"
-          ? { expectedSha256: input.expectedSha256 }
+  async function writeFile(args: {
+    vaultId?: string;
+    rawPath: unknown;
+    content: unknown;
+    contentEncoding?: "utf8" | "base64";
+    expectedSha256?: unknown;
+    createOnly?: boolean;
+  }) {
+    const vault = getVault(args.vaultId);
+    const relativePath = requireVaultPath(args.rawPath);
+    if (typeof args.content !== "string")
+      throw new Error('"content" must be a string');
+    const result = await bb.sdk.files.write({
+      ...hostArgs(vault),
+      path: absolutePath(vault, relativePath),
+      rootPath: vault.rootPath,
+      content: args.content,
+      contentEncoding: args.contentEncoding ?? "utf8",
+      createParents: true,
+      ...(args.createOnly
+        ? { expectedSha256: null }
+        : args.expectedSha256 === null ||
+            typeof args.expectedSha256 === "string"
+          ? { expectedSha256: args.expectedSha256 }
           : {}),
+    });
+    if (result.outcome === "written") {
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+    }
+    return result;
+  }
+
+  async function createNote(
+    vaultId: string | undefined,
+    input: Record<string, unknown>,
+  ) {
+    const vault = getVault(vaultId);
+    const parent = requireOptionalDirectory(input.parent);
+    const base =
+      sanitizeName(typeof input.name === "string" ? input.name : "") ||
+      "Untitled";
+    const { entries } = await listEntries(vault);
+    const existing = new Set(entries.map((entry) => entry.path.toLowerCase()));
+    let relativePath = parent ? `${parent}/${base}.md` : `${base}.md`;
+    let counter = 2;
+    while (existing.has(relativePath.toLowerCase())) {
+      relativePath = parent
+        ? `${parent}/${base} ${counter}.md`
+        : `${base} ${counter}.md`;
+      counter += 1;
+    }
+    await writeFile({
+      vaultId: vault.id,
+      rawPath: relativePath,
+      content: typeof input.content === "string" ? input.content : "",
+      createOnly: true,
+    });
+    return { path: relativePath };
+  }
+
+  async function movePath(
+    vaultId: string | undefined,
+    fromValue: unknown,
+    toValue: unknown,
+  ) {
+    const vault = getVault(vaultId);
+    const from = requireVaultPath(fromValue);
+    const to = requireVaultPath(toValue);
+    await bb.sdk.files.move({
+      ...hostArgs(vault),
+      sourcePath: absolutePath(vault, from),
+      destinationPath: absolutePath(vault, to),
+      rootPath: vault.rootPath,
+    });
+    bb.realtime.publish("vault-changed", { vaultId: vault.id });
+    return { path: to };
+  }
+
+  async function removePath(
+    vaultId: string | undefined,
+    rawPath: unknown,
+    recursive = false,
+  ) {
+    const vault = getVault(vaultId);
+    const relativePath = requireVaultPath(rawPath);
+    await bb.sdk.files.remove({
+      ...hostArgs(vault),
+      path: absolutePath(vault, relativePath),
+      rootPath: vault.rootPath,
+      recursive,
+    });
+    bb.realtime.publish("vault-changed", { vaultId: vault.id });
+    return { ok: true };
+  }
+
+  const handlers = {
+    async listNotes(input: unknown) {
+      const record = input === undefined ? {} : requireRecord(input);
+      return notebookData(optionalString(record.vaultId));
+    },
+    async readNote(input: unknown) {
+      const record = requireRecord(input);
+      return readFile(optionalString(record.vaultId), record.path);
+    },
+    async saveNote(input: unknown) {
+      const record = requireRecord(input);
+      return writeFile({
+        vaultId: optionalString(record.vaultId),
+        rawPath: record.path,
+        content: record.content,
+        expectedSha256: record.expectedSha256,
       });
     },
-
-    async createNote(input: { name?: unknown; content?: unknown }) {
-      const root = await getRoot();
-      await mkdir(root, { recursive: true });
-      const base =
-        sanitizeBase(typeof input.name === "string" ? input.name : "") ||
-        "Untitled";
-      const existing = new Set(
-        (await readdir(root).catch(() => [] as string[])).map((n) =>
-          n.toLowerCase(),
-        ),
+    async createNote(input: unknown) {
+      const record = requireRecord(input);
+      return createNote(optionalString(record.vaultId), record);
+    },
+    async deletePath(input: unknown) {
+      const record = requireRecord(input);
+      return removePath(
+        optionalString(record.vaultId),
+        record.path,
+        record.recursive === true,
       );
-      let name = `${base}.md`;
-      let counter = 2;
-      while (existing.has(name.toLowerCase())) {
-        name = `${base} ${counter}.md`;
-        counter += 1;
-      }
-      const content = typeof input.content === "string" ? input.content : "";
-      await bb.sdk.files.write({
-        path: path.join(root, name),
-        rootPath: root,
-        content,
-        createParents: true,
-        expectedSha256: null, // create-only: fail if it somehow already exists
-      });
-      return { path: name };
     },
-
-    async deleteNote(input: { path?: unknown }) {
-      const root = await getRoot();
-      const name = requireNoteName(input.path);
-      await unlink(path.join(root, name));
+    async createFolder(input: unknown) {
+      const record = requireRecord(input);
+      const vault = getVault(optionalString(record.vaultId));
+      const relativePath = requireVaultPath(record.path);
+      await bb.sdk.files.mkdir({
+        ...hostArgs(vault),
+        path: absolutePath(vault, relativePath),
+        rootPath: vault.rootPath,
+        recursive: false,
+      });
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      return { path: relativePath };
+    },
+    async movePath(input: unknown) {
+      const record = requireRecord(input);
+      return movePath(optionalString(record.vaultId), record.from, record.to);
+    },
+    async renameToTitle(input: unknown) {
+      const record = requireRecord(input);
+      const vaultId = optionalString(record.vaultId);
+      const currentPath = requireVaultPath(record.path, { extension: ".md" });
+      const file = await readFile(vaultId, currentPath);
+      const base = kebabCase(deriveTitle(file.content, ""));
+      if (!base) return { path: currentPath };
+      const parent = path.posix.dirname(currentPath);
+      const desired = parent === "." ? `${base}.md` : `${parent}/${base}.md`;
+      if (desired.toLowerCase() === currentPath.toLowerCase())
+        return { path: currentPath };
+      try {
+        return await movePath(vaultId, currentPath, desired);
+      } catch {
+        return { path: currentPath };
+      }
+    },
+    async createVault(input: unknown) {
+      const record = requireRecord(input);
+      const name = requireString(record.name, "name");
+      const rootPath = requireString(record.rootPath, "rootPath");
+      if (!isAbsoluteHostPath(rootPath))
+        throw new Error('"rootPath" must be absolute');
+      const hostId = optionalString(record.hostId) ?? null;
+      const resolvedRoot = normalizeHostRoot(rootPath);
+      await bb.sdk.files.mkdir({
+        ...(hostId ? { hostId } : {}),
+        path: resolvedRoot,
+        recursive: true,
+      });
+      const baseId = kebabCase(name) || "vault";
+      const ids = new Set(listVaults().map((vault) => vault.id));
+      let id = baseId;
+      let counter = 2;
+      while (ids.has(id)) id = `${baseId}-${counter++}`;
+      db.prepare(
+        "INSERT INTO vaults (id, name, host_id, root_path, created_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(id, name, hostId, resolvedRoot, Date.now());
+      bb.realtime.publish("vault-changed", { vaultId: id });
+      return getVault(id);
+    },
+    async removeVault(input: unknown) {
+      const record = requireRecord(input);
+      const id = requireString(record.vaultId, "vaultId");
+      if (listVaults().length <= 1)
+        throw new Error("At least one vault is required");
+      db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
+      bb.realtime.publish("vault-changed", { vaultId: id });
       return { ok: true };
     },
+    async uploadAttachment(input: unknown) {
+      const record = requireRecord(input);
+      const vaultId = optionalString(record.vaultId);
+      const notePath = requireVaultPath(record.notePath, { extension: ".md" });
+      const content = requireString(record.content, "content");
+      const bytes = Buffer.from(content, "base64");
+      if (bytes.length > MAX_ATTACHMENT_BYTES)
+        throw new Error("Attachment exceeds 20 MB");
+      const rawName = requireString(record.name, "name");
+      const extension = path.extname(rawName).toLowerCase();
+      const original =
+        sanitizeName(path.basename(rawName, extension)) || "image";
+      if (
+        !new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]).has(
+          extension,
+        )
+      ) {
+        throw new Error("Unsupported image type");
+      }
+      const parent = path.posix.dirname(notePath);
+      const attachment = `${original}-${Date.now().toString(36)}${extension}`;
+      const relativePath =
+        parent === "."
+          ? `_attachments/${attachment}`
+          : `${parent}/_attachments/${attachment}`;
+      const result = await writeFile({
+        vaultId,
+        rawPath: relativePath,
+        content,
+        contentEncoding: "base64",
+        createOnly: true,
+      });
+      return {
+        path: relativePath,
+        markdownPath: `./_attachments/${attachment}`,
+        result,
+      };
+    },
+    async preparePreview(input: unknown) {
+      const record = requireRecord(input);
+      const vault = getVault(optionalString(record.vaultId));
+      const relativePath = requireVaultPath(record.path);
+      await bb.sdk.files.read({
+        ...hostArgs(vault),
+        path: absolutePath(vault, relativePath),
+        rootPath: vault.rootPath,
+      });
+      return bb.sdk.files.createPreview({
+        ...hostArgs(vault),
+        rootPath: vault.rootPath,
+      });
+    },
+  };
 
-    /**
-     * Settle a note's filename to the kebab-case of its first header
-     * (Apple-Notes style). Called when leaving a note, not per keystroke, so
-     * the filename doesn't churn while the title is being typed. Returns the
-     * resulting path (unchanged when there's no title or it already matches).
-     */
-    async renameToTitle(input: { path?: unknown }) {
-      const root = await getRoot();
-      const name = requireNoteName(input.path);
-      let content: string;
+  bb.rpc.register(handlers);
+
+  bb.http.route(
+    "POST",
+    "/list",
+    async (context) => {
+      const input: unknown = await context.req.json();
+      return context.json(await handlers.listNotes(input));
+    },
+    { auth: "token" },
+  );
+  bb.http.route(
+    "POST",
+    "/read",
+    async (context) => {
+      const input: unknown = await context.req.json();
+      return context.json(await handlers.readNote(input));
+    },
+    { auth: "token" },
+  );
+  bb.http.route(
+    "POST",
+    "/write",
+    async (context) => {
+      const input: unknown = await context.req.json();
+      return context.json(await handlers.saveNote(input));
+    },
+    { auth: "token" },
+  );
+  bb.http.route(
+    "POST",
+    "/mkdir",
+    async (context) => {
+      const input: unknown = await context.req.json();
+      return context.json(await handlers.createFolder(input));
+    },
+    { auth: "token" },
+  );
+  bb.http.route(
+    "POST",
+    "/move",
+    async (context) => {
+      const input: unknown = await context.req.json();
+      return context.json(await handlers.movePath(input));
+    },
+    { auth: "token" },
+  );
+  bb.http.route(
+    "POST",
+    "/remove",
+    async (context) => {
+      const input: unknown = await context.req.json();
+      return context.json(await handlers.deletePath(input));
+    },
+    { auth: "token" },
+  );
+
+  bb.cli.register({
+    name: "docs",
+    summary: "Read and update Docs vaults",
+    commands: [
+      {
+        name: "vaults",
+        summary: "List configured vaults",
+        usage: "bb docs vaults [--json]",
+      },
+      {
+        name: "vault-add",
+        summary: "Add a vault",
+        usage: "bb docs vault-add <name> <absolute-root> [host-id]",
+      },
+      {
+        name: "vault-remove",
+        summary: "Remove a vault configuration",
+        usage: "bb docs vault-remove <id>",
+      },
+      {
+        name: "list",
+        summary: "List notes and folders",
+        usage: "bb docs list [--vault <id>] [--json]",
+      },
+      {
+        name: "read",
+        summary: "Read a file",
+        usage: "bb docs read <path> [--vault <id>]",
+      },
+      {
+        name: "write",
+        summary: "Write a UTF-8 file",
+        usage: "bb docs write <path> --content <text> [--vault <id>]",
+      },
+      {
+        name: "mkdir",
+        summary: "Create a folder",
+        usage: "bb docs mkdir <path> [--vault <id>]",
+      },
+      {
+        name: "move",
+        summary: "Move a path",
+        usage: "bb docs move <from> <to> [--vault <id>]",
+      },
+      {
+        name: "remove",
+        summary: "Remove a file",
+        usage: "bb docs remove <path> [--vault <id>]",
+      },
+    ],
+    async run(argv) {
       try {
-        content = await readFile(path.join(root, name), "utf8");
-      } catch {
-        return { path: name };
-      }
-      const base = kebabCase(deriveTitle(content, ""));
-      if (!base) return { path: name };
-      let desired = `${base}.md`;
-      if (desired.toLowerCase() === name.toLowerCase()) return { path: name };
-      const existing = new Set(
-        (await readdir(root).catch(() => [] as string[])).map((n) =>
-          n.toLowerCase(),
-        ),
-      );
-      if (existing.has(desired.toLowerCase())) {
-        let counter = 2;
-        while (existing.has(`${base}-${counter}.md`.toLowerCase())) {
-          counter += 1;
+        const args = parseCli(argv);
+        let result: unknown;
+        if (args.command === "vaults") result = listVaults();
+        else if (args.command === "vault-add")
+          result = await handlers.createVault({
+            name: args.positionals[0],
+            rootPath: args.positionals[1],
+            hostId: args.positionals[2],
+          });
+        else if (args.command === "vault-remove")
+          result = await handlers.removeVault({ vaultId: args.positionals[0] });
+        else if (args.command === "list")
+          result = await notebookData(args.vaultId);
+        else if (args.command === "read")
+          result = await readFile(args.vaultId, args.positionals[0]);
+        else if (args.command === "write") {
+          if (args.content === undefined)
+            throw new Error("write requires --content <text>");
+          result = await writeFile({
+            vaultId: args.vaultId,
+            rawPath: args.positionals[0],
+            content: args.content,
+          });
+        } else if (args.command === "mkdir") {
+          result = await handlers.createFolder({
+            vaultId: args.vaultId,
+            path: args.positionals[0],
+          });
+        } else if (args.command === "move") {
+          result = await movePath(
+            args.vaultId,
+            args.positionals[0],
+            args.positionals[1],
+          );
+        } else if (args.command === "remove") {
+          result = await removePath(args.vaultId, args.positionals[0]);
+        } else {
+          return {
+            exitCode: 1,
+            stderr:
+              "Usage: bb docs <vaults|vault-add|vault-remove|list|read|write|mkdir|move|remove>",
+          };
         }
-        desired = `${base}-${counter}.md`;
+        const output =
+          args.command === "read" &&
+          !args.json &&
+          isRecord(result) &&
+          typeof result.content === "string"
+            ? result.content
+            : JSON.stringify(result, null, 2);
+        return { exitCode: 0, stdout: output };
+      } catch (error) {
+        return {
+          exitCode: 1,
+          stderr: error instanceof Error ? error.message : String(error),
+        };
       }
-      await rename(path.join(root, name), path.join(root, desired));
-      return { path: desired };
     },
   });
 
-  // --- @ mentions -----------------------------------------------------------
-
   bb.ui.registerMentionProvider({
     id: "note",
-    label: "Simple Notes",
+    label: "Docs",
     async search({ query }) {
       const needle = query.trim().toLowerCase();
-      const { notes } = await listNoteSummaries();
-      return notes
-        .filter(
-          (note) =>
-            needle.length === 0 ||
-            note.title.toLowerCase().includes(needle) ||
-            note.preview.toLowerCase().includes(needle) ||
-            note.path.toLowerCase().includes(needle),
-        )
-        .slice(0, 25)
-        .map((note) => ({
-          id: note.path,
-          title: note.title,
-          subtitle: note.preview || note.path,
-          icon: "FileText",
-        }));
+      const matches = [];
+      for (const vault of listVaults()) {
+        for (const note of await listNoteSummaries(vault)) {
+          if (
+            needle &&
+            !`${vault.name} ${note.title} ${note.preview} ${note.path}`
+              .toLowerCase()
+              .includes(needle)
+          )
+            continue;
+          matches.push({
+            id: `${vault.id}:${note.path}`,
+            title: note.title,
+            subtitle: `${vault.name} · ${note.preview || note.path}`,
+            icon: "FileText",
+          });
+          if (matches.length === 25) return matches;
+        }
+      }
+      return matches;
     },
     async resolve(itemId) {
-      const root = await getRoot();
-      const name = requireNoteName(itemId);
-      const file = await bb.sdk.files.read({
-        path: path.join(root, name),
-        rootPath: root,
-      });
-      const title = deriveTitle(file.content, name.replace(/\.md$/i, ""));
+      const separator = itemId.indexOf(":");
+      if (separator < 1) throw new Error("Invalid note mention");
+      const vaultId = itemId.slice(0, separator);
+      const relativePath = itemId.slice(separator + 1);
+      const file = await readFile(vaultId, relativePath);
       return {
-        context: `Simple Note "${title}" (${name}):\n\n${file.content}`,
+        context: `Docs document (${vaultId}/${relativePath}):\n\n${file.content}`,
       };
+    },
+  });
+
+  bb.background.service("watch-vaults", {
+    async start(signal) {
+      let previous = "";
+      while (!signal.aborted) {
+        const snapshots: string[] = [];
+        for (const vault of listVaults()) {
+          try {
+            const { entries } = await listEntries(vault);
+            const notes = await listNoteSummaries(vault, entries);
+            snapshots.push(
+              JSON.stringify({
+                id: vault.id,
+                entries: entries.map((entry) => `${entry.kind}:${entry.path}`),
+                notes: notes.map((note) => `${note.path}:${note.modifiedAtMs}`),
+              }),
+            );
+          } catch {
+            snapshots.push(`${vault.id}:offline`);
+          }
+        }
+        const next = snapshots.join("\n");
+        if (previous && previous !== next) {
+          bb.realtime.publish("vault-changed", {});
+        }
+        previous = next;
+        await waitForDelay(10_000, signal);
+      }
     },
   });
 }

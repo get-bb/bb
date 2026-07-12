@@ -42,6 +42,7 @@ export function ThreadTimelinePane({
   onLoadOlderRows,
   onOpenLink,
   onOpenLocalFileLink,
+  onOpenPluginPanel,
   onTitleAction,
   projectId,
   resolveMentionLink,
@@ -95,6 +96,7 @@ export function ThreadTimelinePane({
           onLoadOlderRows={onLoadOlderRows}
           onOpenLink={onOpenLink}
           onOpenLocalFileLink={onOpenLocalFileLink}
+          onOpenPluginPanel={onOpenPluginPanel}
           onTitleAction={onTitleAction}
           projectId={projectId}
           resolveMentionLink={resolveMentionLink}

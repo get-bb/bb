@@ -35,6 +35,11 @@ import {
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { writeHostFile } from "./command-handlers/file-write.js";
+import {
+  mkdirHostPath,
+  moveHostPath,
+  removeHostPath,
+} from "./command-handlers/path-mutations.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
 import { pickHostFolder } from "./command-handlers/native-folder-picker.js";
 import {
@@ -358,6 +363,9 @@ const commandHandlers: CommandHandlerMap = {
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
+  "host.mkdir": mkdirHostPath,
+  "host.move_path": moveHostPath,
+  "host.remove_path": removeHostPath,
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
   "project.inspect": async (command) => inspectProjectPath(command.path),

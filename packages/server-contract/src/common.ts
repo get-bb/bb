@@ -13,6 +13,9 @@ export type PathThreadAndQueuedMessage = {
 export type PathThreadAndFilePath = {
   param: { id: string; filePath: string };
 };
+export type PathPreviewAndFilePath = {
+  param: { id: string; filePath: string };
+};
 export type PathThreadAndTerminal = {
   param: { id: string; terminalId: string };
 };

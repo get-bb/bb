@@ -42,6 +42,7 @@ export type {
   ThreadTimelineImageViewSrcTarget,
   ThreadTimelineLocalFileLink,
   ThreadTimelineLocalFileLinkHandler,
+  ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineUnreadDividerPlacement,
   ThreadTimelineTheme,
   UserAttachmentImageSrcResolver,

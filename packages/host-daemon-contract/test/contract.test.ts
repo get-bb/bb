@@ -188,6 +188,9 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     truncated: false,
   },
+  "host.mkdir": { ok: true },
+  "host.move_path": { ok: true },
+  "host.remove_path": { ok: true },
   "host.browse_directory": {
     directory: "/home/me/project",
     parent: "/home/me",

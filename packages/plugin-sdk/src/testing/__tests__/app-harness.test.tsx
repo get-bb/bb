@@ -44,12 +44,16 @@ function InlineVis({
   attributes,
   source,
   message,
+  openThreadPanel,
 }: PluginMessageDirectiveProps) {
   return (
     <div>
       <span data-testid="file">{attributes.file ?? ""}</span>
       <span data-testid="source">{source}</span>
       <span data-testid="thread">{message.threadId}</span>
+      <span data-testid="thread-panel">
+        {openThreadPanel === null ? "unavailable" : "available"}
+      </span>
     </div>
   );
 }
@@ -164,11 +168,13 @@ describe("renderSlot", () => {
         projectId: "proj_1",
       },
       openWorkspaceFile: null,
+      openThreadPanel: null,
     });
     expect(slot.getByTestId("file").textContent).toBe("demo.html");
     expect(slot.getByTestId("source").textContent).toBe(
       '::inline-vis{file="demo.html"}',
     );
     expect(slot.getByTestId("thread").textContent).toBe("thr_1");
+    expect(slot.getByTestId("thread-panel").textContent).toBe("unavailable");
   });
 });

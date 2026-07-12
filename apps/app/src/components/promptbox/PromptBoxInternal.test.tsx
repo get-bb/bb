@@ -154,7 +154,10 @@ function PromptBoxFocusOnMountHarness() {
   }, []);
 
   return (
-    <PromptBoxInternal {...createPromptBoxProps()} promptBoxRef={promptBoxRef} />
+    <PromptBoxInternal
+      {...createPromptBoxProps()}
+      promptBoxRef={promptBoxRef}
+    />
   );
 }
 
@@ -241,9 +244,7 @@ function renderPromptBox(
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
-    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
-      [],
-    );
+    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
     return (
       <PromptBoxInternal
         value={value}
@@ -517,13 +518,17 @@ describe("PromptBoxInternal controlled value sync", () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {
       const view = render(
-        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness historyResetKey={0} />,
+        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness
+          historyResetKey={0}
+        />,
       );
 
       await waitForPromptFocus();
 
       view.rerender(
-        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness historyResetKey={1} />,
+        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness
+          historyResetKey={1}
+        />,
       );
 
       await waitForPromptFocus();
@@ -558,18 +563,13 @@ describe("PromptBoxInternal controlled value sync", () => {
 
   it("applies an added quote before focus-end insertion can edit the old document", () => {
     const onChange = vi.fn();
-    const view = render(
-      <PromptBoxRaceHarness onChange={onChange} value="" />,
-    );
+    const view = render(<PromptBoxRaceHarness onChange={onChange} value="" />);
 
     view.rerender(
       <PromptBoxRaceHarness onChange={onChange} value={"> selected text\n"} />,
     );
 
-    expect(onChange).toHaveBeenLastCalledWith(
-      "> selected text\n\nreply",
-      [],
-    );
+    expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
   });
 
   it("places focus-end insertion below an added quote", async () => {
@@ -596,10 +596,7 @@ describe("PromptBoxInternal controlled value sync", () => {
       promptBoxRef.current?.insertTextAtCursor("reply");
     });
 
-    expect(onChange).toHaveBeenLastCalledWith(
-      "> selected text\n\nreply",
-      [],
-    );
+    expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
   });
 });
 
@@ -655,8 +652,10 @@ describe("PromptBoxInternal zen mode layout", () => {
     render(
       <PromptBoxInternal
         {...createPromptBoxProps({
-          value: Array.from({ length: 40 }, (_, index) => `Line ${index + 1}`)
-            .join("\n"),
+          value: Array.from(
+            { length: 40 },
+            (_, index) => `Line ${index + 1}`,
+          ).join("\n"),
           zenMode: { storageKey },
         })}
       />,
@@ -680,9 +679,8 @@ describe("PromptBoxInternal zen mode layout", () => {
       );
     });
 
-    const footerRow =
-      screen.getByRole("button", { name: "Attach files" }).parentElement
-        ?.parentElement;
+    const footerRow = screen.getByRole("button", { name: "Attach files" })
+      .parentElement?.parentElement;
     expect(footerRow?.classList.contains("shrink-0")).toBe(true);
 
     window.localStorage.removeItem(storageKey);
@@ -803,9 +801,7 @@ describe("PromptBoxInternal minimized layout", () => {
     );
     expect(editor.querySelector("br")).toBeTruthy();
     expect(editor.children.length).toBeGreaterThan(1);
-    expect(editor.textContent).toContain(
-      "A hidden paragraph after the quote",
-    );
+    expect(editor.textContent).toContain("A hidden paragraph after the quote");
   });
 
   it("shows only the smaller control in the normal mobile layout", () => {
@@ -961,6 +957,7 @@ describe("PromptBoxInternal mention triggers", () => {
         [
           "github",
           {
+            icon: null,
             logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
             logoDarkUrl: null,
           },

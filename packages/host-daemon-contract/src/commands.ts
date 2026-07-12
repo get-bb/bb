@@ -499,6 +499,33 @@ const hostListPathsCommandSchema = z
     message: "At least one path kind must be included",
   });
 
+const hostMkdirCommandSchema = z
+  .object({
+    type: z.literal("host.mkdir"),
+    path: z.string().min(1),
+    rootPath: z.string().min(1).optional(),
+    recursive: z.boolean(),
+  })
+  .strict();
+
+const hostMovePathCommandSchema = z
+  .object({
+    type: z.literal("host.move_path"),
+    sourcePath: z.string().min(1),
+    destinationPath: z.string().min(1),
+    rootPath: z.string().min(1).optional(),
+  })
+  .strict();
+
+const hostRemovePathCommandSchema = z
+  .object({
+    type: z.literal("host.remove_path"),
+    path: z.string().min(1),
+    rootPath: z.string().min(1).optional(),
+    recursive: z.boolean(),
+  })
+  .strict();
+
 // Single-level directory listing for the interactive path browser. Unlike
 // `host.list_paths` (a recursive fuzzy-search walk over relative paths), this
 // reads exactly one directory and returns absolute child paths so the UI can
@@ -967,6 +994,8 @@ const pathListResultSchema = z.object({
   truncated: z.boolean(),
 });
 
+const hostPathMutationResultSchema = z.object({ ok: z.literal(true) }).strict();
+
 const hostCaffeinateResultSchema = z
   .object({
     enabled: z.boolean(),
@@ -1304,6 +1333,33 @@ export const hostDaemonCommandRegistry = {
     resultSchema: pathListResultSchema,
     transport: "onlineRpc",
     retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.mkdir": defineHostDaemonCommandDescriptor({
+    type: "host.mkdir",
+    schema: hostMkdirCommandSchema,
+    resultSchema: hostPathMutationResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.move_path": defineHostDaemonCommandDescriptor({
+    type: "host.move_path",
+    schema: hostMovePathCommandSchema,
+    resultSchema: hostPathMutationResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.remove_path": defineHostDaemonCommandDescriptor({
+    type: "host.remove_path",
+    schema: hostRemovePathCommandSchema,
+    resultSchema: hostPathMutationResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

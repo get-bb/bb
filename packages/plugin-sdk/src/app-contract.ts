@@ -117,6 +117,18 @@ export interface PluginMessageDirectiveMessage {
  */
 export type PluginMessageDirectiveOpenWorkspaceFile = (path: string) => boolean;
 
+export interface PluginMessageDirectiveThreadPanelOptions {
+  /** A `threadPanelAction` id registered by this same plugin. */
+  actionId: string;
+  title?: string;
+  params?: JsonValue;
+}
+
+/** Open this plugin's registered action in the current thread side panel. */
+export type PluginMessageDirectiveOpenThreadPanel = (
+  options: PluginMessageDirectiveThreadPanelOptions,
+) => boolean;
+
 /**
  * Props passed to a `messageDirective` component. Attributes are untrusted
  * strings parsed from the directive; the plugin validates its own fields.
@@ -132,6 +144,12 @@ export interface PluginMessageDirectiveProps {
    * when the message surface has no workspace viewer available.
    */
   openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
+  /**
+   * Opens one of this plugin's own `threadPanelAction` components in the
+   * current thread side panel. Omitted by older hosts; null on message
+   * surfaces without a thread panel.
+   */
+  openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
 }
 
 // ---------------------------------------------------------------------------

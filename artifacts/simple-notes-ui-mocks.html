@@ -1,0 +1,943 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Simple Notes — proposed UI</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --canvas: #f5f4ef;
+        --paper: #fffefa;
+        --ink: #25241f;
+        --muted: #75736a;
+        --line: #dedcd4;
+        --soft: #efede5;
+        --accent: #7667d8;
+        --accent-soft: #ebe8ff;
+        --green: #258364;
+        --shadow: 0 18px 50px rgba(39, 35, 24, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        background:
+          radial-gradient(
+            circle at 14% 0%,
+            rgba(118, 103, 216, 0.12),
+            transparent 28rem
+          ),
+          var(--canvas);
+        color: var(--ink);
+        font:
+          14px/1.45 Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      button,
+      select {
+        font: inherit;
+      }
+      button {
+        color: inherit;
+      }
+
+      .stage {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 28px auto;
+      }
+
+      .caption {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 0 2px 14px;
+      }
+
+      .caption h1 {
+        margin: 0;
+        font:
+          650 21px/1.2 ui-serif,
+          Georgia,
+          serif;
+      }
+      .caption p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .view-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 254, 250, 0.72);
+      }
+
+      .view-tabs button,
+      .icon-button,
+      .quiet-button,
+      .primary-button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      .view-tabs button {
+        padding: 6px 10px;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .view-tabs button.active {
+        background: var(--paper);
+        color: var(--ink);
+        box-shadow: 0 1px 5px rgba(30, 28, 22, 0.1);
+      }
+
+      .app {
+        height: min(760px, calc(100vh - 110px));
+        min-height: 590px;
+        overflow: hidden;
+        border: 1px solid #cfcdc4;
+        border-radius: 16px;
+        background: var(--paper);
+        box-shadow: var(--shadow);
+      }
+
+      .topbar {
+        height: 53px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 254, 250, 0.92);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 650;
+      }
+      .mark {
+        width: 27px;
+        height: 27px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--accent);
+        color: white;
+      }
+      .top-spacer {
+        flex: 1;
+      }
+
+      .vault-select {
+        max-width: 230px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 6px 28px 6px 9px;
+        color: var(--ink);
+      }
+
+      .host-state {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .host-state::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 0 3px rgba(37, 131, 100, 0.12);
+      }
+
+      .workspace {
+        height: calc(100% - 53px);
+        display: grid;
+        grid-template-columns: 255px minmax(0, 1fr);
+      }
+
+      .sidebar {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--line);
+        background: #faf9f4;
+      }
+      .sidebar-tools {
+        display: grid;
+        grid-template-columns: 1fr 32px;
+        gap: 7px;
+        padding: 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .search {
+        height: 32px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        padding: 0 10px;
+        color: var(--muted);
+      }
+      .icon-button {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: transparent;
+        font-size: 18px;
+      }
+      .icon-button:hover,
+      .quiet-button:hover {
+        background: var(--soft);
+      }
+
+      .tree {
+        flex: 1;
+        overflow: auto;
+        padding: 10px 7px;
+      }
+      .tree-label {
+        margin: 9px 8px 6px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+      .tree-row {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 31px;
+        padding: 5px 8px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tree-row:hover {
+        background: var(--soft);
+      }
+      .tree-row.selected {
+        background: var(--accent-soft);
+        color: #4939ad;
+      }
+      .tree-row .glyph {
+        width: 16px;
+        color: var(--muted);
+        text-align: center;
+      }
+      .tree-row .name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tree-row .count {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .nested {
+        margin-left: 16px;
+        padding-left: 6px;
+        border-left: 1px solid var(--line);
+      }
+      .folder-children.hidden {
+        display: none;
+      }
+
+      .sidebar-foot {
+        padding: 9px 12px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--paper);
+      }
+      .docbar {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 13px;
+        border-bottom: 1px solid var(--line);
+      }
+      .crumbs {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .crumbs strong {
+        color: var(--ink);
+        font-weight: 550;
+      }
+      .doc-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 5px;
+      }
+      .quiet-button {
+        padding: 6px 9px;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .primary-button {
+        padding: 7px 11px;
+        border-radius: 8px;
+        background: var(--accent);
+        color: white;
+        font-size: 12px;
+      }
+
+      .view {
+        display: none;
+        min-height: 0;
+        flex: 1;
+      }
+      .view.active {
+        display: flex;
+      }
+
+      .editor-view {
+        overflow: auto;
+      }
+      .document {
+        width: min(720px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 48px 0 140px;
+      }
+      .eyebrow {
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .document h2 {
+        margin: 7px 0 8px;
+        font:
+          650 35px/1.14 ui-serif,
+          Georgia,
+          serif;
+        letter-spacing: -0.02em;
+      }
+      .byline {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .document p {
+        margin: 23px 0 0;
+        font:
+          16px/1.75 ui-serif,
+          Georgia,
+          serif;
+      }
+
+      .photo-card {
+        margin-top: 26px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #e9e6db;
+      }
+      .photo-art {
+        height: 190px;
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(
+          155deg,
+          #b9cbd0 0 42%,
+          #e4c98f 42% 58%,
+          #608070 58%
+        );
+      }
+      .photo-art::before {
+        content: "";
+        position: absolute;
+        width: 330px;
+        height: 170px;
+        left: 7%;
+        bottom: -95px;
+        border-radius: 50%;
+        background: #365c50;
+        transform: rotate(-8deg);
+        box-shadow: 210px -15px 0 #77978c;
+      }
+      .photo-art::after {
+        content: "";
+        position: absolute;
+        width: 72px;
+        height: 72px;
+        right: 16%;
+        top: 27px;
+        border-radius: 50%;
+        background: rgba(255, 246, 197, 0.82);
+        box-shadow: 0 0 35px rgba(255, 244, 183, 0.75);
+      }
+      .asset-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 11px;
+        background: var(--paper);
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .asset-meta code {
+        color: var(--ink);
+      }
+
+      .embed {
+        margin-top: 28px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        background: #fbfbff;
+      }
+      .embed-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 11px;
+        border-bottom: 1px solid var(--line);
+        background: #f5f3ff;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .embed-head code {
+        color: #4939ad;
+      }
+      .embed-head .safe {
+        margin-left: auto;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: rgba(37, 131, 100, 0.1);
+        color: var(--green);
+      }
+      .mini-report {
+        padding: 22px;
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 24px;
+        align-items: end;
+      }
+      .metric strong {
+        display: block;
+        font:
+          650 31px/1 ui-serif,
+          Georgia,
+          serif;
+      }
+      .metric span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .bars {
+        height: 105px;
+        display: flex;
+        align-items: end;
+        gap: 9px;
+        border-bottom: 1px solid var(--line);
+      }
+      .bar {
+        flex: 1;
+        min-width: 9px;
+        border-radius: 5px 5px 0 0;
+        background: linear-gradient(#9588e8, #6554ce);
+      }
+
+      .html-view {
+        flex-direction: column;
+        background: #f1f2f5;
+      }
+      .browserbar {
+        display: flex;
+        gap: 8px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--line);
+        background: var(--paper);
+      }
+      .address {
+        flex: 1;
+        padding: 6px 10px;
+        border-radius: 7px;
+        background: var(--soft);
+        color: var(--muted);
+        font:
+          11px ui-monospace,
+          monospace;
+      }
+      .page {
+        flex: 1;
+        overflow: auto;
+        padding: 38px;
+        background: linear-gradient(135deg, #15172a, #27284b);
+        color: white;
+      }
+      .page-inner {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+      .page .tag {
+        color: #bab2ff;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .page h2 {
+        max-width: 650px;
+        margin: 10px 0;
+        font:
+          600 clamp(34px, 6vw, 67px)/0.98 ui-serif,
+          Georgia,
+          serif;
+        letter-spacing: -0.04em;
+      }
+      .page p {
+        max-width: 520px;
+        color: #c8c9dc;
+      }
+      .page-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 42px;
+      }
+      .page-card {
+        min-height: 120px;
+        padding: 17px;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .page-card strong {
+        display: block;
+        font-size: 25px;
+      }
+      .page-card span {
+        color: #b8bad0;
+        font-size: 11px;
+      }
+
+      .vault-view {
+        overflow: auto;
+        padding: 32px;
+        background: #f8f7f2;
+      }
+      .vault-panel {
+        width: min(720px, 100%);
+        margin: 0 auto;
+      }
+      .vault-panel h2 {
+        margin: 0;
+        font:
+          650 28px/1.2 ui-serif,
+          Georgia,
+          serif;
+      }
+      .vault-panel > p {
+        margin: 7px 0 24px;
+        color: var(--muted);
+      }
+      .vault-card {
+        display: grid;
+        grid-template-columns: 42px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 14px;
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper);
+      }
+      .vault-icon {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        background: var(--accent-soft);
+        color: #4939ad;
+        font-size: 20px;
+      }
+      .vault-card strong {
+        display: block;
+      }
+      .vault-card code {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .pill {
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(37, 131, 100, 0.1);
+        color: var(--green);
+        font-size: 10px;
+      }
+      .flow {
+        margin-top: 24px;
+        padding: 16px;
+        border: 1px dashed #c7c3b7;
+        border-radius: 12px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .flow strong {
+        color: var(--ink);
+      }
+
+      @media (max-width: 760px) {
+        .stage {
+          width: 100%;
+          margin: 0;
+        }
+        .caption {
+          padding: 12px;
+          align-items: start;
+          flex-direction: column;
+        }
+        .app {
+          height: calc(100vh - 108px);
+          min-height: 560px;
+          border-radius: 0;
+          border-inline: 0;
+        }
+        .workspace {
+          grid-template-columns: 190px minmax(0, 1fr);
+        }
+        .host-state {
+          display: none;
+        }
+        .document {
+          width: calc(100% - 30px);
+          padding-top: 30px;
+        }
+        .document h2 {
+          font-size: 29px;
+        }
+        .mini-report {
+          grid-template-columns: 1fr;
+        }
+        .page-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <div class="caption">
+        <div>
+          <h1>Simple Notes — proposed experience</h1>
+          <p>
+            Interactive concept mock · folders, media, HTML, and host-routed
+            vaults
+          </p>
+        </div>
+        <div class="view-tabs" aria-label="Mock view">
+          <button class="active" data-view="editor">Rich note</button>
+          <button data-view="html">HTML page</button>
+          <button data-view="vaults">Vaults</button>
+        </div>
+      </div>
+
+      <section class="app" aria-label="Simple Notes mock application">
+        <header class="topbar">
+          <div class="brand"><span class="mark">✦</span> Simple Notes</div>
+          <div class="top-spacer"></div>
+          <select
+            class="vault-select"
+            id="vault-select"
+            aria-label="Current vault"
+          >
+            <option value="personal">Personal · Sawyer’s MacBook</option>
+            <option value="work">Work · Studio workstation</option>
+          </select>
+          <span class="host-state" id="host-state">Connected</span>
+        </header>
+
+        <div class="workspace">
+          <aside class="sidebar">
+            <div class="sidebar-tools">
+              <div class="search">⌕&nbsp;&nbsp; Search this vault</div>
+              <button class="icon-button" title="New note">＋</button>
+            </div>
+            <nav class="tree">
+              <div class="tree-label">Library</div>
+              <button class="tree-row">
+                <span class="glyph">◷</span><span class="name">Recent</span
+                ><span class="count">8</span>
+              </button>
+              <button class="tree-row">
+                <span class="glyph">☆</span><span class="name">Starred</span
+                ><span class="count">3</span>
+              </button>
+              <div class="tree-label">Folders</div>
+              <button class="tree-row folder-toggle" data-folder="projects">
+                <span class="glyph">⌄</span><span class="name">Projects</span
+                ><span class="count">4</span>
+              </button>
+              <div class="nested folder-children" id="folder-projects">
+                <button class="tree-row">
+                  <span class="glyph">▱</span
+                  ><span class="name">Launch notes</span>
+                </button>
+                <button class="tree-row selected note-link">
+                  <span class="glyph">▱</span
+                  ><span class="name">Q3 planning</span>
+                </button>
+                <button class="tree-row html-link">
+                  <span class="glyph">◇</span
+                  ><span class="name">metrics.html</span>
+                </button>
+              </div>
+              <button class="tree-row folder-toggle" data-folder="research">
+                <span class="glyph">›</span><span class="name">Research</span
+                ><span class="count">7</span>
+              </button>
+              <div class="nested folder-children hidden" id="folder-research">
+                <button class="tree-row">
+                  <span class="glyph">▱</span
+                  ><span class="name">Reading list</span>
+                </button>
+                <button class="tree-row">
+                  <span class="glyph">▱</span
+                  ><span class="name">Field notes</span>
+                </button>
+              </div>
+              <button class="tree-row">
+                <span class="glyph">›</span><span class="name">Daily</span
+                ><span class="count">21</span>
+              </button>
+              <button class="tree-row">
+                <span class="glyph">▱</span><span class="name">Inbox</span>
+              </button>
+            </nav>
+            <div class="sidebar-foot" id="vault-root">
+              ~/Notes · host_macbook
+            </div>
+          </aside>
+
+          <section class="main">
+            <div class="docbar">
+              <div class="crumbs">
+                <span>Projects</span><span>›</span
+                ><strong id="doc-name">Q3 planning.md</strong>
+              </div>
+              <div class="doc-actions">
+                <button class="quiet-button">Copy link</button>
+                <button class="quiet-button">•••</button>
+              </div>
+            </div>
+
+            <div class="view editor-view active" data-view-panel="editor">
+              <article class="document">
+                <div class="eyebrow">Planning note</div>
+                <h2>Make the important work visible</h2>
+                <div class="byline">
+                  Edited 4 minutes ago · saved to Projects/Q3 planning.md
+                </div>
+                <p>
+                  Our notes should stay ordinary files while becoming a better
+                  home for the things we make: images, live prototypes, and the
+                  supporting context around them.
+                </p>
+
+                <figure class="photo-card">
+                  <div
+                    class="photo-art"
+                    role="img"
+                    aria-label="Abstract landscape placeholder"
+                  ></div>
+                  <figcaption class="asset-meta">
+                    <span>▧</span><code>./_attachments/site-sketch.png</code
+                    ><span>· 1.8 MB</span>
+                  </figcaption>
+                </figure>
+
+                <p>
+                  The report below is a sibling HTML file. The Markdown source
+                  remains a single portable directive.
+                </p>
+                <section class="embed">
+                  <div class="embed-head">
+                    <span>◇</span
+                    ><code>::html{src="./metrics.html" height="260"}</code
+                    ><span class="safe">sandboxed</span>
+                  </div>
+                  <div class="mini-report">
+                    <div class="metric">
+                      <strong>72%</strong><span>milestones complete</span>
+                    </div>
+                    <div class="bars" aria-label="Seven period bar chart">
+                      <div class="bar" style="height: 34%"></div>
+                      <div class="bar" style="height: 47%"></div>
+                      <div class="bar" style="height: 43%"></div>
+                      <div class="bar" style="height: 66%"></div>
+                      <div class="bar" style="height: 59%"></div>
+                      <div class="bar" style="height: 78%"></div>
+                      <div class="bar" style="height: 92%"></div>
+                    </div>
+                  </div>
+                </section>
+              </article>
+            </div>
+
+            <div class="view html-view" data-view-panel="html">
+              <div class="browserbar">
+                <button class="quiet-button">↻</button>
+                <div class="address">
+                  vault://personal/Projects/metrics.html
+                </div>
+                <button class="quiet-button">View source</button>
+                <button class="quiet-button">Open in panel ↗</button>
+              </div>
+              <div class="page">
+                <div class="page-inner">
+                  <div class="tag">Q3 operating report</div>
+                  <h2>A calmer view of momentum.</h2>
+                  <p>
+                    This is a full HTML document rendered in an isolated
+                    preview. Relative styles, scripts, images, and data files
+                    resolve within the selected vault.
+                  </p>
+                  <div class="page-grid">
+                    <div class="page-card">
+                      <strong>18</strong><span>initiatives shipped</span>
+                    </div>
+                    <div class="page-card">
+                      <strong>4.2d</strong><span>median cycle time</span>
+                    </div>
+                    <div class="page-card">
+                      <strong>94%</strong><span>healthy services</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="view vault-view" data-view-panel="vaults">
+              <div class="vault-panel">
+                <h2>Vaults</h2>
+                <p>Each vault is a confined folder on a connected bb host.</p>
+                <div class="vault-card">
+                  <div class="vault-icon">⌂</div>
+                  <div>
+                    <strong>Personal</strong
+                    ><code>Sawyer’s MacBook · ~/Notes</code>
+                  </div>
+                  <span class="pill">Connected</span>
+                </div>
+                <div class="vault-card">
+                  <div class="vault-icon">▦</div>
+                  <div>
+                    <strong>Work</strong
+                    ><code>Studio workstation · /home/sawyer/work-notes</code>
+                  </div>
+                  <span class="pill">Connected</span>
+                </div>
+                <div class="vault-card">
+                  <div class="vault-icon">＋</div>
+                  <div>
+                    <strong>Add a vault</strong
+                    ><code>Choose a host and an absolute root folder</code>
+                  </div>
+                  <button class="primary-button">Add vault</button>
+                </div>
+                <div class="flow">
+                  <strong>Access path:</strong> Simple Notes policy → bb server
+                  → host-routed files API → selected daemon → confined vault
+                  folder
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const tabs = [...document.querySelectorAll("[data-view]")];
+      const panels = [...document.querySelectorAll("[data-view-panel]")];
+      const docName = document.getElementById("doc-name");
+
+      function showView(view) {
+        tabs.forEach((tab) =>
+          tab.classList.toggle("active", tab.dataset.view === view),
+        );
+        panels.forEach((panel) =>
+          panel.classList.toggle("active", panel.dataset.viewPanel === view),
+        );
+        docName.textContent =
+          view === "html"
+            ? "metrics.html"
+            : view === "vaults"
+              ? "Vault settings"
+              : "Q3 planning.md";
+      }
+
+      tabs.forEach((tab) =>
+        tab.addEventListener("click", () => showView(tab.dataset.view)),
+      );
+      document
+        .querySelector(".html-link")
+        .addEventListener("click", () => showView("html"));
+      document
+        .querySelector(".note-link")
+        .addEventListener("click", () => showView("editor"));
+
+      document.querySelectorAll(".folder-toggle").forEach((toggle) => {
+        toggle.addEventListener("click", () => {
+          const children = document.getElementById(
+            `folder-${toggle.dataset.folder}`,
+          );
+          const hidden = children.classList.toggle("hidden");
+          toggle.querySelector(".glyph").textContent = hidden ? "›" : "⌄";
+        });
+      });
+
+      document
+        .getElementById("vault-select")
+        .addEventListener("change", (event) => {
+          const work = event.target.value === "work";
+          document.getElementById("vault-root").textContent = work
+            ? "/home/sawyer/work-notes · host_studio"
+            : "~/Notes · host_macbook";
+        });
+    </script>
+  </body>
+</html>

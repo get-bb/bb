@@ -1,5 +1,5 @@
 import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
-import { usePluginLogoUrl } from "@/lib/plugin-logos";
+import { usePluginIconHint, usePluginLogoUrl } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 /** Plugin icon hints are freeform strings; unknown ones get a generic icon. */
@@ -29,6 +29,7 @@ export function PluginIcon({
   className?: string;
 }) {
   const logoUrl = usePluginLogoUrl(pluginId);
+  const pluginIcon = usePluginIconHint(pluginId);
   if (logoUrl !== null) {
     return (
       <img
@@ -42,7 +43,7 @@ export function PluginIcon({
   }
   return (
     <Icon
-      name={pluginIconName(icon)}
+      name={pluginIconName(pluginIcon ?? icon)}
       className={cn("size-4 shrink-0", className)}
       aria-hidden="true"
     />

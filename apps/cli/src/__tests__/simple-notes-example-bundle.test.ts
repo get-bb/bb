@@ -4,13 +4,13 @@ import { basename, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The Simple Notes example bundles Tiptap (prosemirror) — a large graph that
+// The Docs example bundles Tiptap (prosemirror) — a large graph that
 // blows the 5s default on cold CI runners.
 vi.setConfig({ testTimeout: 120_000 });
 import { buildPluginApp } from "@bb/plugin-build";
 
 /**
- * Evaluates the Simple Notes example's built bundle against a stub runtime (the
+ * Evaluates the Docs example's built bundle against a stub runtime (the
  * github-example-bundle.test.ts pattern) and asserts its default export
  * registers the installed plugin's nav panel surface.
  */
@@ -28,7 +28,7 @@ interface SlotRegistration {
   component: unknown;
 }
 
-describe("simple notes example frontend bundle", () => {
+describe("Docs example frontend bundle", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -41,7 +41,7 @@ describe("simple notes example frontend bundle", () => {
     delete (globalThis as { document?: unknown }).document;
   });
 
-  it("registers the Simple Notes nav panel", async () => {
+  it("registers the Docs nav, directive, and thread-panel surfaces", async () => {
     const pluginDir = join(root, "simple-notes");
     await cp(SIMPLE_NOTES_DIR, pluginDir, {
       recursive: true,
@@ -66,6 +66,7 @@ describe("simple notes example frontend bundle", () => {
       composerAccessory: [],
       sidebarFooterAction: [],
       fileOpener: [],
+      messageDirective: [],
     };
     const componentStub: unknown = new Proxy(function stub() {}, {
       get: (target, prop) =>
@@ -90,6 +91,8 @@ describe("simple notes example frontend bundle", () => {
       vaul: componentStub,
       pierreDiffs: componentStub,
       pierreDiffsReact: componentStub,
+      radixDialog: componentStub,
+      radixSelect: componentStub,
     };
     // Some browser-bundle dependencies touch `document` at module scope.
     // Registration evaluation never renders, so inert stubs suffice.
@@ -116,20 +119,27 @@ describe("simple notes example frontend bundle", () => {
         composerAccessory: (r) => registered.composerAccessory.push(r),
         sidebarFooterAction: (r) => registered.sidebarFooterAction.push(r),
         fileOpener: (r) => registered.fileOpener.push(r),
+        messageDirective: (r) => registered.messageDirective.push(r),
       },
     });
 
     expect(registered.navPanel).toHaveLength(1);
     expect(registered.navPanel[0]).toMatchObject({
-      id: "simple-notes",
-      title: "Simple Notes",
-      path: "simple-notes",
+      id: "docs",
+      title: "Docs",
+      path: "docs",
       chrome: "none",
     });
     expect(typeof registered.navPanel[0]?.component).toBe("function");
 
     expect(registered.homepageSection).toHaveLength(0);
-    expect(registered.threadPanelAction).toHaveLength(0);
+    expect(registered.threadPanelAction[0]).toMatchObject({
+      id: "document",
+      title: "Docs",
+    });
+    expect(typeof registered.threadPanelAction[0]?.component).toBe("function");
+    expect(registered.messageDirective[0]).toMatchObject({ id: "docs" });
+    expect(typeof registered.messageDirective[0]?.component).toBe("function");
     expect(registered.composerAccessory).toHaveLength(0);
     expect(registered.sidebarFooterAction).toHaveLength(0);
     expect(registered.fileOpener).toHaveLength(0);

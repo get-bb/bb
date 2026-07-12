@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast.js";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -33,7 +34,6 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getSettingsPluginRoutePath } from "@/lib/route-paths";
 
@@ -316,30 +316,6 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "degraded",
 ];
 
-function PluginLogo({
-  plugin,
-  className,
-}: {
-  plugin: PluginListItem;
-  className: string;
-}) {
-  const theme = usePreferredTheme();
-  const logoUrl =
-    theme === "dark" && plugin.logoDarkUrl !== null
-      ? plugin.logoDarkUrl
-      : plugin.logoUrl;
-  if (logoUrl === null) return null;
-  return (
-    <img
-      src={logoUrl}
-      alt=""
-      aria-hidden="true"
-      data-testid={`plugin-settings-logo-${plugin.id}`}
-      className={className}
-    />
-  );
-}
-
 /** Exported for tests (enable/disable round-trip). */
 export function PluginToggleRow({ plugin }: { plugin: PluginListItem }) {
   const queryClient = useQueryClient();
@@ -351,9 +327,12 @@ export function PluginToggleRow({ plugin }: { plugin: PluginListItem }) {
     mutationFn: (enabled: boolean) =>
       setPluginEnabled(fetch, plugin.id, enabled),
     onError: (error, enabled) => {
-      appToast.error(`${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`, {
-        description: error instanceof Error ? error.message : String(error),
-      });
+      appToast.error(
+        `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
+        {
+          description: error instanceof Error ? error.message : String(error),
+        },
+      );
     },
     onSettled: () => invalidatePluginList({ queryClient }),
   });
@@ -367,10 +346,7 @@ export function PluginToggleRow({ plugin }: { plugin: PluginListItem }) {
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <PluginLogo
-            plugin={plugin}
-            className="size-4 shrink-0 rounded-sm object-contain"
-          />
+          <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
           <span className="text-sm font-medium text-foreground">
             {plugin.id}
           </span>
@@ -462,10 +438,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
         <div className="space-y-3">
           <div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <PluginLogo
-                plugin={plugin}
-                className="size-4 shrink-0 rounded-sm object-contain"
-              />
+              <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
               <h2 className="text-sm font-semibold text-foreground">
                 {displayName}
               </h2>

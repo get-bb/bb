@@ -122,7 +122,9 @@ file link for a one-off choice), and messageDirective (replace a leaf
 component; unknown, disabled, incomplete, code-fenced, or crashing
 directives fall back to the original source; components receive a nullable
 openWorkspaceFile(path) callback for opening a worktree-relative file in the
-host workspace viewer). Hooks:
+host workspace viewer and a nullable
+openThreadPanel({ actionId, title?, params? }) callback for opening one of the
+same plugin's thread-panel actions). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
 useBbNavigate, and useComposer (quote selections / insert mention pills
 into the chat composer draft). Components are vendored shadcn source the plugin owns (the
@@ -170,9 +172,10 @@ panel title bar, composer command and mention menus, thread action
 buttons, and Settings → Plugins. Optional `bb.logo` in the manifest
 relocates the file (svg/png/webp only). An optional dark-theme variant —
 logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while
-the app is in dark mode. Without a logo bb falls back to each contribution's
-named icon; its Settings entry uses the manifest-level `bb.icon` hint. Unknown
-icon names use the generic fallback. Reload the plugin to pick up logo or icon
+the app is in dark mode. Without a logo, manifest-level `bb.icon` is the
+canonical app icon on every plugin surface; contribution icon hints are the
+fallback when it is omitted. Unknown icon names use the generic fallback.
+Reload the plugin to pick up logo or icon
 changes.
 
 The backend entry default-exports a factory receiving the full plugin API:

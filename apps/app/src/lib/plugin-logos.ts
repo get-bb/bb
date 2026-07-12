@@ -12,6 +12,8 @@ import { usePreferredTheme } from "@/hooks/useTheme";
 
 /** One plugin's logo asset URLs; either is null when that variant is absent. */
 export interface PluginLogoUrls {
+  /** Canonical manifest icon used when the plugin has no image logo. */
+  icon: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;
 }
@@ -50,6 +52,12 @@ export function usePluginLogoUrl(pluginId: string): string | null {
   if (entry === undefined) return null;
   if (theme === "dark" && entry.logoDarkUrl !== null) return entry.logoDarkUrl;
   return entry.logoUrl;
+}
+
+/** Canonical manifest icon hint, or null when the plugin did not declare one. */
+export function usePluginIconHint(pluginId: string): string | null {
+  const entries = useSyncExternalStore(subscribePluginLogos, getPluginLogoUrls);
+  return entries.get(pluginId)?.icon ?? null;
 }
 
 /** Test-only. */
