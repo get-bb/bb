@@ -101,14 +101,22 @@ export function createNpmResolverRun(options?: {
       const existing = cache.get(key);
       if (existing) return existing;
       const pending = (async () => {
-        const response = await fetchImpl(
-          `${registry}/${encodeURIComponent(intent.packageName)}`,
-          {
-            headers: {
-              accept: "application/vnd.npm.install-v1+json, application/json",
+        let response: Response;
+        try {
+          response = await fetchImpl(
+            `${registry}/${encodeURIComponent(intent.packageName)}`,
+            {
+              headers: {
+                accept: "application/vnd.npm.install-v1+json, application/json",
+              },
             },
-          },
-        );
+          );
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          throw new NpmPackageUnavailableError(
+            `${intent.packageName} registry request failed: ${detail}`,
+          );
+        }
         if (!response.ok) {
           throw new NpmPackageUnavailableError(
             `${intent.packageName} registry request failed: ${response.status} ${response.statusText}`,

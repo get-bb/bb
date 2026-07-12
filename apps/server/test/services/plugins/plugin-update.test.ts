@@ -4,11 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
   getInstalledPluginRegistration,
   migrate,
+  upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
@@ -87,9 +88,105 @@ describe("plugin update service and routes", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await service.stop();
     db.$client.close();
     await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("keeps a multi-plugin check usable when one npm registry is offline", async () => {
+    const updateState = {
+      lastCheckAt: null,
+      availableCompatibleVersion: null,
+      newestIncompatibleVersion: null,
+      statusDetail: null,
+      ignoredVersion: null,
+    };
+    for (const packageName of [
+      "bb-plugin-offline-registry",
+      "bb-plugin-healthy-registry",
+    ]) {
+      const id = packageName.replace("bb-plugin-", "");
+      upsertInstalledPlugin(db, {
+        id,
+        source: `npm:${packageName}`,
+        provenance: { kind: "direct" },
+        sourceIntent: {
+          kind: "npm",
+          packageName,
+          registry: `https://${id}.test`,
+          requestedSpec: "",
+          specKind: "default",
+        },
+        exactResolution: {
+          kind: "npm",
+          version: "1.0.0",
+          integrity: "sha512-current",
+        },
+        updatePolicy: "compatible",
+        updateState,
+        activeArtifactId: null,
+        rootDir: join(workDir, id),
+        version: "1.0.0",
+        enabled: false,
+      });
+    }
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request): Promise<Response> => {
+        const url = String(input);
+        if (url.startsWith("https://offline-registry.test/")) {
+          throw new TypeError("network unreachable");
+        }
+        if (url.startsWith("https://healthy-registry.test/")) {
+          return new Response(
+            JSON.stringify({
+              versions: {
+                "1.0.0": {
+                  version: "1.0.0",
+                  dist: { integrity: "sha512-current" },
+                },
+                "1.1.0": {
+                  version: "1.1.0",
+                  dist: { integrity: "sha512-next" },
+                },
+              },
+              "dist-tags": { latest: "1.1.0" },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        throw new Error(`unexpected registry request: ${url}`);
+      },
+    );
+
+    const results = await service.checkForUpdates();
+    expect(results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "offline-registry",
+          outcome: "unavailable",
+          detail: expect.stringContaining("network unreachable"),
+        }),
+        expect.objectContaining({
+          id: "healthy-registry",
+          outcome: "update-available",
+          candidate: expect.objectContaining({ version: "1.1.0" }),
+        }),
+      ]),
+    );
+    expect(service.listUpdateResults()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "offline-registry",
+          outcome: "unavailable",
+        }),
+        expect.objectContaining({
+          id: "healthy-registry",
+          outcome: "update-available",
+        }),
+      ]),
+    );
   });
 
   it("checks, reads persisted state, and dry-runs through the exact HTTP contract", async () => {
