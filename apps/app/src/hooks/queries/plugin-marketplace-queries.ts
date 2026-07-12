@@ -7,12 +7,14 @@ import {
 } from "./plugin-settings-queries";
 
 /**
- * Typed fetchers for the Phase 5 plugin marketplace/update contract:
- * per-plugin source detail, install preview + install, update check/apply,
- * ignore-version, update-policy, and marketplace CRUD/refresh/search. Like
- * plugin-settings-queries, these routes are server-policy glue outside the
- * typed contract, so they are fetched directly and validated locally with
- * injected fetch for tests.
+ * Typed fetchers for the plugin marketplace/update contract: per-plugin
+ * source detail, install preview + install, update check/apply,
+ * ignore-version, update-policy, and marketplace CRUD/refresh/search. The
+ * marketplace and update shapes mirror the landed Phase 4 server contract
+ * (apps/server marketplace-service MarketplaceView/MarketplaceSearchResult
+ * and plugin-service PluginUpdateCheckEntry/applyUpdate) exactly; success
+ * responses are validated at this boundary so a drifted server never
+ * renders as success UI. Fetchers take an injected fetch for tests.
  */
 
 type FetchLike = (
@@ -32,7 +34,7 @@ function errorMessage(body: unknown, fallback: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/plugins/:id/source
+// GET /api/v1/plugins/:id/source (Phase 5 sibling endpoint)
 // ---------------------------------------------------------------------------
 
 export interface PluginSourceDetail {
@@ -219,6 +221,8 @@ export async function previewPluginInstall(
   };
 }
 
+const installResultSchema = z.object({ ok: z.literal(true) });
+
 export async function installPlugin(
   fetchImpl: FetchLike,
   request: PluginInstallRequest,
@@ -228,92 +232,169 @@ export async function installPlugin(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(request),
   });
-  if (response.ok) return;
-  throw new Error(
-    errorMessage(
-      await readBody(response),
-      `installing the plugin failed (HTTP ${response.status})`,
-    ),
-  );
+  const body = await readBody(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage(body, `installing the plugin failed (HTTP ${response.status})`),
+    );
+  }
+  if (!installResultSchema.safeParse(body).success) {
+    throw new Error("the server returned an unrecognized install result");
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Update operations
+// Update operations (Phase 2 contract: plugin-service PluginUpdateCheckEntry
+// and applyUpdate result)
 // ---------------------------------------------------------------------------
 
-/** POST /api/v1/plugins/updates/check — refresh update state (one or all). */
-export async function checkPluginUpdates(
-  fetchImpl: FetchLike,
-  args: { id?: string } = {},
-): Promise<void> {
-  const response = await fetchImpl("/api/v1/plugins/updates/check", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(args.id === undefined ? {} : { id: args.id }),
-  });
-  if (response.ok) return;
-  throw new Error(
-    errorMessage(
-      await readBody(response),
-      `checking for updates failed (HTTP ${response.status})`,
-    ),
-  );
+export interface PluginResolvedVersion {
+  /** Exact npm version or git commit. */
+  version: string;
+  display: string;
 }
 
-/** One row of GET /api/v1/plugins/updates (Phase 2 resolution shapes). */
+const resolvedVersionSchema = z.object({
+  version: z.string(),
+  display: z.string(),
+});
+
+export type PluginUpdatesOutcome =
+  | "current"
+  | "update-available"
+  | "pinned"
+  | "incompatible"
+  | "unavailable";
+
+/** One row of GET/POST /api/v1/plugins/updates[/check] ({ results }). */
 export interface PluginUpdatesEntry {
   id: string;
-  /** "current" | "update-available" | "pinned" | "incompatible" | … */
-  outcome: string;
-  availableVersion: string | null;
-  blockedVersion: string | null;
+  outcome: PluginUpdatesOutcome;
+  devMode: boolean;
+  installed: PluginResolvedVersion;
+  candidate: PluginResolvedVersion | null;
+  blocked: { version: string; reasons: string[] } | null;
   detail: string | null;
+  /** Derived: the applicable candidate version, else null. */
+  availableVersion: string | null;
+  /** Derived: the newer-but-incompatible version, else null. */
+  blockedVersion: string | null;
 }
 
 const updatesEntrySchema = z.object({
   id: z.string(),
-  outcome: z.string(),
-  availableVersion: z.string().nullish(),
-  blockedVersion: z.string().nullish(),
-  detail: z.string().nullish(),
+  outcome: z.enum([
+    "current",
+    "update-available",
+    "pinned",
+    "incompatible",
+    "unavailable",
+  ]),
+  devMode: z.literal(true).optional(),
+  installed: resolvedVersionSchema,
+  candidate: resolvedVersionSchema.optional(),
+  blocked: z
+    .object({ version: z.string(), reasons: z.array(z.string()) })
+    .optional(),
+  detail: z.string().optional(),
+});
+
+function toUpdatesEntry(
+  data: z.infer<typeof updatesEntrySchema>,
+): PluginUpdatesEntry {
+  const candidate = data.candidate ?? null;
+  const blocked = data.blocked ?? null;
+  return {
+    id: data.id,
+    outcome: data.outcome,
+    devMode: data.devMode === true,
+    installed: data.installed,
+    candidate,
+    blocked,
+    detail: data.detail ?? null,
+    availableVersion:
+      data.outcome === "update-available" && candidate !== null
+        ? candidate.version
+        : null,
+    blockedVersion: blocked?.version ?? null,
+  };
+}
+
+const updatesEnvelopeSchema = z.object({
+  results: z.array(updatesEntrySchema),
 });
 
 /**
- * The bulk update report. The Settings UI drives off the richer per-plugin
- * `updateState` on GET /plugins; this endpoint mirrors `bb plugin outdated`.
+ * The bulk update report ({ results }). The Settings UI drives off the
+ * richer per-plugin `updateState` on GET /plugins; this mirrors
+ * `bb plugin outdated`.
  */
 export async function fetchPluginUpdates(
   fetchImpl: FetchLike,
 ): Promise<PluginUpdatesEntry[]> {
   const response = await fetchImpl("/api/v1/plugins/updates");
   if (!response.ok) return [];
-  const body = (await readBody(response)) as { updates?: unknown } | null;
-  if (!Array.isArray(body?.updates)) return [];
-  const entries: PluginUpdatesEntry[] = [];
-  for (const value of body.updates) {
-    const parsed = updatesEntrySchema.safeParse(value);
-    if (!parsed.success) continue;
-    entries.push({
-      id: parsed.data.id,
-      outcome: parsed.data.outcome,
-      availableVersion: parsed.data.availableVersion ?? null,
-      blockedVersion: parsed.data.blockedVersion ?? null,
-      detail: parsed.data.detail ?? null,
-    });
-  }
-  return entries;
+  const parsed = updatesEnvelopeSchema.safeParse(await readBody(response));
+  if (!parsed.success) return [];
+  return parsed.data.results.map(toUpdatesEntry);
 }
 
+/**
+ * POST /api/v1/plugins/updates/check — refresh update state for one or all
+ * plugins. Returns the checked entries; throws when the response doesn't
+ * match the contract so a drifted server never reads as a clean check.
+ */
+export async function checkPluginUpdates(
+  fetchImpl: FetchLike,
+  args: { id?: string } = {},
+): Promise<PluginUpdatesEntry[]> {
+  const response = await fetchImpl("/api/v1/plugins/updates/check", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(args.id === undefined ? {} : { id: args.id }),
+  });
+  const body = await readBody(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage(body, `checking for updates failed (HTTP ${response.status})`),
+    );
+  }
+  const parsed = updatesEnvelopeSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error("the server returned an unrecognized update-check result");
+  }
+  return parsed.data.results.map(toUpdatesEntry);
+}
+
+export type PluginUpdateApplyOutcome =
+  | "current"
+  | "update-available"
+  | "updated"
+  | "rolled-back";
+
 export interface PluginUpdateResult {
-  /** Phase 2 resolution outcome; "rolled-back" means activation failed. */
-  outcome: string;
+  applied: boolean;
+  dryRun: boolean;
+  outcome: PluginUpdateApplyOutcome;
+  from: PluginResolvedVersion;
+  to: PluginResolvedVersion | null;
   detail: string | null;
 }
+
+const applyResultSchema = z.object({
+  applied: z.boolean(),
+  dryRun: z.boolean(),
+  outcome: z.enum(["current", "update-available", "updated", "rolled-back"]),
+  from: resolvedVersionSchema,
+  to: resolvedVersionSchema.optional(),
+  detail: z.string().optional(),
+});
 
 /**
  * POST /api/v1/plugins/:id/update. Applies (or dry-runs) the selected
  * update. A "rolled-back" outcome is a resolved value, not a thrown error —
- * the dialog renders it as the failure story.
+ * the dialog renders it as the failure story. A 2xx body that doesn't match
+ * the contract throws instead of defaulting to success.
  */
 export async function applyPluginUpdate(
   fetchImpl: FetchLike,
@@ -334,19 +415,18 @@ export async function applyPluginUpdate(
       errorMessage(body, `updating the plugin failed (HTTP ${response.status})`),
     );
   }
-  const typed = body as {
-    outcome?: unknown;
-    detail?: unknown;
-    failure?: { detail?: unknown } | null;
-  } | null;
-  const outcome = typeof typed?.outcome === "string" ? typed.outcome : "applied";
-  const detail =
-    typeof typed?.detail === "string"
-      ? typed.detail
-      : typeof typed?.failure?.detail === "string"
-        ? typed.failure.detail
-        : null;
-  return { outcome, detail };
+  const parsed = applyResultSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error("the server returned an unrecognized update result");
+  }
+  return {
+    applied: parsed.data.applied,
+    dryRun: parsed.data.dryRun,
+    outcome: parsed.data.outcome,
+    from: parsed.data.from,
+    to: parsed.data.to ?? null,
+    detail: parsed.data.detail ?? null,
+  };
 }
 
 export async function ignorePluginVersion(
@@ -394,33 +474,56 @@ export async function setPluginUpdatePolicy(
 }
 
 // ---------------------------------------------------------------------------
-// Marketplaces
+// Marketplaces (Phase 4 contract: marketplace-service MarketplaceView)
 // ---------------------------------------------------------------------------
 
-export type MarketplaceScope = "builtin" | "managed" | "user" | "project";
-
 export interface MarketplaceListItem {
+  /** Stable ID; `name` mirrors it in the wire view. */
   id: string;
   name: string;
-  /** builtin/managed render the "official" badge. */
-  scope: MarketplaceScope;
+  displayName: string;
+  /** Human source line ("github.com/acme/bb-marketplace@main" or a path). */
+  source: string;
+  /** Exact commit for git-backed catalogs; null for path catalogs. */
+  resolvedCommit: string | null;
   pluginCount: number;
-  sourceDisplay: string | null;
   /** Epoch ms of the last successful refresh; null when never refreshed. */
   lastRefreshAt: number | null;
+  lastAttemptAt: number | null;
   /** Set when the last refresh failed; the cached catalog stays in use. */
   lastError: string | null;
+  enabled: boolean;
 }
 
-const marketplaceSchema = z.object({
+const marketplaceViewSchema = z.object({
   id: z.string(),
   name: z.string(),
-  scope: z.enum(["builtin", "managed", "user", "project"]).optional(),
-  pluginCount: z.number().optional(),
-  sourceDisplay: z.string().nullish(),
-  lastRefreshAt: z.union([z.number(), z.string()]).nullish(),
-  lastError: z.string().nullish(),
+  displayName: z.string(),
+  source: z.string(),
+  resolvedCommit: z.string().optional(),
+  pluginCount: z.number(),
+  lastRefreshAt: z.number().optional(),
+  lastAttemptAt: z.number().optional(),
+  lastError: z.string().optional(),
+  enabled: z.boolean(),
 });
+
+function toMarketplaceListItem(
+  data: z.infer<typeof marketplaceViewSchema>,
+): MarketplaceListItem {
+  return {
+    id: data.id,
+    name: data.name,
+    displayName: data.displayName,
+    source: data.source,
+    resolvedCommit: data.resolvedCommit ?? null,
+    pluginCount: data.pluginCount,
+    lastRefreshAt: data.lastRefreshAt ?? null,
+    lastAttemptAt: data.lastAttemptAt ?? null,
+    lastError: data.lastError ?? null,
+    enabled: data.enabled,
+  };
+}
 
 export async function fetchMarketplaces(
   fetchImpl: FetchLike,
@@ -432,18 +535,8 @@ export async function fetchMarketplaces(
   if (!Array.isArray(body?.marketplaces)) return [];
   const items: MarketplaceListItem[] = [];
   for (const value of body.marketplaces) {
-    const parsed = marketplaceSchema.safeParse(value);
-    if (!parsed.success) continue;
-    const data = parsed.data;
-    items.push({
-      id: data.id,
-      name: data.name,
-      scope: data.scope ?? "user",
-      pluginCount: data.pluginCount ?? 0,
-      sourceDisplay: data.sourceDisplay ?? null,
-      lastRefreshAt: toEpochMs(data.lastRefreshAt ?? undefined),
-      lastError: data.lastError ?? null,
-    });
+    const parsed = marketplaceViewSchema.safeParse(value);
+    if (parsed.success) items.push(toMarketplaceListItem(parsed.data));
   }
   return items;
 }
@@ -461,39 +554,54 @@ export function useMarketplaces(options: { enabled: boolean }) {
   });
 }
 
+const marketplaceEnvelopeSchema = z.object({
+  marketplace: marketplaceViewSchema,
+});
+
 export async function addMarketplace(
   fetchImpl: FetchLike,
   args: { source: string; name?: string },
-): Promise<void> {
+): Promise<MarketplaceListItem> {
   const response = await fetchImpl("/api/v1/marketplaces", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(args),
   });
-  if (response.ok) return;
-  throw new Error(
-    errorMessage(
-      await readBody(response),
-      `adding the marketplace failed (HTTP ${response.status})`,
-    ),
-  );
+  const body = await readBody(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage(body, `adding the marketplace failed (HTTP ${response.status})`),
+    );
+  }
+  const parsed = marketplaceEnvelopeSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error("the server returned an unrecognized marketplace");
+  }
+  return toMarketplaceListItem(parsed.data.marketplace);
 }
 
 export async function refreshMarketplace(
   fetchImpl: FetchLike,
   marketplaceId: string,
-): Promise<void> {
+): Promise<MarketplaceListItem> {
   const response = await fetchImpl(
     `/api/v1/marketplaces/${encodeURIComponent(marketplaceId)}/refresh`,
     { method: "POST" },
   );
-  if (response.ok) return;
-  throw new Error(
-    errorMessage(
-      await readBody(response),
-      `refreshing the marketplace failed (HTTP ${response.status})`,
-    ),
-  );
+  const body = await readBody(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage(
+        body,
+        `refreshing the marketplace failed (HTTP ${response.status})`,
+      ),
+    );
+  }
+  const parsed = marketplaceEnvelopeSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error("the server returned an unrecognized marketplace");
+  }
+  return toMarketplaceListItem(parsed.data.marketplace);
 }
 
 export interface MarketplaceAffectedPlugin {
@@ -525,11 +633,21 @@ const affectedPluginsSchema = z.array(
   z.object({ id: z.string(), version: z.string() }),
 );
 
+const removeResultSchema = z.object({
+  kept: z.array(z.string()),
+  uninstalled: z.array(z.string()),
+});
+
+export interface MarketplaceRemoveResult {
+  kept: string[];
+  uninstalled: string[];
+}
+
 export async function removeMarketplace(
   fetchImpl: FetchLike,
   marketplaceId: string,
   dispositions: MarketplacePluginDisposition[],
-): Promise<void> {
+): Promise<MarketplaceRemoveResult> {
   const response = await fetchImpl(
     `/api/v1/marketplaces/${encodeURIComponent(marketplaceId)}`,
     {
@@ -538,8 +656,14 @@ export async function removeMarketplace(
       body: JSON.stringify({ dispositions }),
     },
   );
-  if (response.ok) return;
   const body = await readBody(response);
+  if (response.ok) {
+    const parsed = removeResultSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new Error("the server returned an unrecognized removal result");
+    }
+    return parsed.data;
+  }
   if (response.status === 422) {
     const affected = affectedPluginsSchema.safeParse(
       (body as { affectedPlugins?: unknown } | null)?.affectedPlugins,
@@ -560,36 +684,35 @@ export async function removeMarketplace(
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/marketplaces/search?q=
+// GET /api/v1/marketplaces/search?q= (Phase 4 MarketplaceSearchResult)
 // ---------------------------------------------------------------------------
 
 export interface MarketplaceSearchEntry {
   marketplaceId: string;
-  marketplaceName: string;
   entryId: string;
   displayName: string;
-  description: string | null;
+  description: string;
   category: string | null;
-  version: string | null;
-  /** "npm" | "git" | … — display only. */
-  sourceType: string | null;
-  /** Set when this entry's plugin id is already installed. */
+  /** Human source line for the catalog entry (npm package or git URL). */
+  source: string;
+  /** True when this entry's plugin id is already installed. */
   installed: boolean;
-  /** Human reason the entry can't install here ("requires bb ≥ 0.15"). */
+  /** Install gating: false disables Install regardless of reason text. */
+  compatible: boolean;
+  /** Human reason the entry can't install here ("requires bb >= 0.15"). */
   incompatibleReason: string | null;
 }
 
 const searchEntrySchema = z.object({
   marketplaceId: z.string(),
-  marketplaceName: z.string().optional(),
   entryId: z.string(),
   displayName: z.string(),
-  description: z.string().nullish(),
-  category: z.string().nullish(),
-  version: z.string().nullish(),
-  sourceType: z.string().nullish(),
-  installed: z.boolean().optional(),
-  incompatibleReason: z.string().nullish(),
+  description: z.string(),
+  category: z.string().optional(),
+  source: z.string(),
+  installed: z.boolean(),
+  compatible: z.boolean(),
+  incompatibleReason: z.string().optional(),
 });
 
 export async function searchMarketplaces(
@@ -609,14 +732,13 @@ export async function searchMarketplaces(
     const data = parsed.data;
     entries.push({
       marketplaceId: data.marketplaceId,
-      marketplaceName: data.marketplaceName ?? data.marketplaceId,
       entryId: data.entryId,
       displayName: data.displayName,
-      description: data.description ?? null,
+      description: data.description,
       category: data.category ?? null,
-      version: data.version ?? null,
-      sourceType: data.sourceType ?? null,
-      installed: data.installed === true,
+      source: data.source,
+      installed: data.installed,
+      compatible: data.compatible,
       incompatibleReason: data.incompatibleReason ?? null,
     });
   }
@@ -625,6 +747,11 @@ export async function searchMarketplaces(
 
 export function marketplaceSearchQueryKey(query: string): QueryKey {
   return ["marketplace-search", query];
+}
+
+/** Prefix invalidated when catalogs or installed plugins change. */
+export function allMarketplaceSearchQueryKeyPrefix(): QueryKey {
+  return ["marketplace-search"];
 }
 
 export function useMarketplaceSearch(

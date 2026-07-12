@@ -13,7 +13,10 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { appToast } from "@/components/ui/app-toast.js";
-import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
+import {
+  invalidateMarketplaces,
+  invalidatePluginList,
+} from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   installPlugin,
   previewPluginInstall,
@@ -122,10 +125,12 @@ function AddPluginDialogContent({
   const previewPending =
     request !== null && (previewQuery.isPending || previewQuery.isFetching);
 
+  // Installability rides SOLELY on the server's verdict: devMode is an
+  // explanatory annotation (host 0.0.0), never an override — the server
+  // still emits outcome "incompatible" when the SDK range fails on a dev
+  // build, and would reject the install.
   const installable =
-    preview !== undefined &&
-    (preview.compatibility.outcome === "compatible" ||
-      preview.compatibility.devMode);
+    preview !== undefined && preview.compatibility.outcome === "compatible";
 
   const install = useMutation({
     mutationFn: () => {
@@ -135,6 +140,8 @@ function AddPluginDialogContent({
     },
     onSuccess: () => {
       invalidatePluginList({ queryClient });
+      // Search rows carry installed flags; a fresh install flips them.
+      invalidateMarketplaces({ queryClient });
       appToast.success(
         `${preview?.plugin?.displayName ?? preview?.plugin?.id ?? "Plugin"} installed`,
       );
@@ -316,7 +323,6 @@ function PreviewVerdict({ preview }: { preview: PluginInstallPreview }) {
           <span aria-hidden="true">✕</span>
           <span>
             {label} {version} isn&rsquo;t compatible with this bb
-            {preview.compatibility.devMode ? " (dev-mode override allowed)" : ""}
           </span>
         </div>
       )}

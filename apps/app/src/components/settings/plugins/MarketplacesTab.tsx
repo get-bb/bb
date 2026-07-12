@@ -18,7 +18,6 @@ import {
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
-import { Pill } from "@bb/shared-ui/pill";
 import { RadioGroup, RadioGroupItem } from "@bb/shared-ui/radio-group";
 import { Label } from "@bb/shared-ui/label";
 import { appToast } from "@/components/ui/app-toast.js";
@@ -70,14 +69,14 @@ export function MarketplacesTab() {
       removeMarketplace(fetch, marketplace.id, []),
     onSuccess: (_result, marketplace) => {
       invalidate();
-      appToast.success(`Removed ${marketplace.name}`);
+      appToast.success(`Removed ${marketplace.displayName}`);
     },
     onError: (error, marketplace) => {
       if (error instanceof MarketplaceRemovalBlockedError) {
         setRemoval({ marketplace, affectedPlugins: error.affectedPlugins });
         return;
       }
-      appToast.error(`Removing ${marketplace.name} failed`, {
+      appToast.error(`Removing ${marketplace.displayName} failed`, {
         description: error instanceof Error ? error.message : String(error),
       });
     },
@@ -155,14 +154,12 @@ function MarketplaceRow({
       invalidateMarketplaces({ queryClient });
     },
     onError: (error) => {
-      appToast.error(`Refreshing ${marketplace.name} failed`, {
+      appToast.error(`Refreshing ${marketplace.displayName} failed`, {
         description: error instanceof Error ? error.message : String(error),
       });
     },
   });
 
-  const official =
-    marketplace.scope === "builtin" || marketplace.scope === "managed";
   const failed = marketplace.lastError !== null;
   const countLabel = `${marketplace.pluginCount} plugin${marketplace.pluginCount === 1 ? "" : "s"}`;
   const refreshLabel = failed
@@ -179,17 +176,12 @@ function MarketplaceRow({
       className="flex items-start gap-3 py-3"
       data-testid={`marketplace-row-${marketplace.id}`}
     >
-      <LetterBadge label={marketplace.name} className="size-6" />
+      <LetterBadge label={marketplace.displayName} className="size-6" />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-foreground">
-            {marketplace.name}
+            {marketplace.displayName}
           </span>
-          {official ? (
-            <Pill variant="secondary" size="sm">
-              official
-            </Pill>
-          ) : null}
           {failed ? (
             <span
               className="inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium"
@@ -207,11 +199,12 @@ function MarketplaceRow({
             {marketplace.lastError}
           </p>
         ) : null}
-        {marketplace.sourceDisplay !== null ? (
-          <p className="mt-1 truncate font-mono text-2xs text-subtle-foreground">
-            {marketplace.sourceDisplay}
-          </p>
-        ) : null}
+        <p className="mt-1 truncate font-mono text-2xs text-subtle-foreground">
+          {marketplace.source}
+          {marketplace.resolvedCommit !== null
+            ? ` → ${marketplace.resolvedCommit.slice(0, 7)}`
+            : ""}
+        </p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
         <Button
@@ -235,7 +228,7 @@ function MarketplaceRow({
               variant="ghost"
               size="sm"
               className="h-7 w-7 px-0"
-              aria-label={`Marketplace actions for ${marketplace.name}`}
+              aria-label={`Marketplace actions for ${marketplace.displayName}`}
             >
               <Icon name="MoreHorizontal" className="size-3.5" />
             </Button>
@@ -391,11 +384,11 @@ export function RemoveMarketplaceDialog({
     },
     onSuccess: () => {
       onRemoved();
-      appToast.success(`Removed ${marketplace.name}`);
+      appToast.success(`Removed ${marketplace.displayName}`);
       onOpenChange(false);
     },
     onError: (error) => {
-      appToast.error(`Removing ${marketplace.name} failed`, {
+      appToast.error(`Removing ${marketplace.displayName} failed`, {
         description: error instanceof Error ? error.message : String(error),
       });
     },
@@ -405,7 +398,7 @@ export function RemoveMarketplaceDialog({
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Remove {marketplace.name}?</DialogTitle>
+          <DialogTitle>Remove {marketplace.displayName}?</DialogTitle>
           <DialogDescription>
             {affectedPlugins.length} installed plugin
             {affectedPlugins.length === 1 ? " came" : "s came"} from this

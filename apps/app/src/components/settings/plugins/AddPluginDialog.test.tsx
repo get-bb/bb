@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { marketplaceSearchQueryKey } from "@/hooks/queries/plugin-marketplace-queries";
 import { AddPluginDialog } from "./AddPluginDialog";
 
 interface RecordedRequest {
@@ -150,6 +151,30 @@ describe("AddPluginDialog", () => {
     ).toBe(true);
   });
 
+  it("keeps Continue disabled when devMode is set but the outcome is incompatible (dev mode annotates, never overrides)", async () => {
+    stubFetch({
+      ...COMPATIBLE_PREVIEW,
+      compatibility: {
+        outcome: "incompatible",
+        devMode: true,
+        problems: ["plugin SDK ^3.0 — you have 1.0.0"],
+      },
+    });
+    renderDialog();
+
+    fireEvent.change(screen.getByLabelText("Plugin source"), {
+      target: { value: "npm:@bb-plugins/linear@2.0.0" },
+    });
+
+    await screen.findByTestId("install-preview-verdict", undefined, {
+      timeout: 3000,
+    });
+    expect(
+      (screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   it("pre-expands details when a newer release was skipped", async () => {
     stubFetch({
       ...COMPATIBLE_PREVIEW,
@@ -192,6 +217,29 @@ describe("AddPluginDialog", () => {
         { timeout: 3000 },
       ),
     ).toBeTruthy();
+  });
+
+  it("invalidates marketplace-search queries after a successful install", async () => {
+    stubFetch(COMPATIBLE_PREVIEW);
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    // A cached Browse search must refetch so the card flips to Installed ✓.
+    queryClient.setQueryData(marketplaceSearchQueryKey(""), []);
+    render(<AddPluginDialog open onOpenChange={() => {}} />, { wrapper });
+
+    fireEvent.change(screen.getByLabelText("Plugin source"), {
+      target: { value: "npm:@bb-plugins/linear" },
+    });
+    await screen.findByTestId("install-preview-verdict", undefined, {
+      timeout: 3000,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+
+    await vi.waitFor(() => {
+      expect(
+        queryClient.getQueryState(marketplaceSearchQueryKey(""))?.isInvalidated,
+      ).toBe(true);
+    });
   });
 
   it("previews marketplace installs with the marketplace body form", async () => {

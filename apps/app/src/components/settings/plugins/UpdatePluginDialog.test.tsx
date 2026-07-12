@@ -99,7 +99,12 @@ describe("UpdatePluginDialog", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
+        // The exact applyUpdate result shape from plugin-service.
         jsonResponse({
+          applied: false,
+          dryRun: false,
+          from: { version: "1.6.2", display: "1.6.2" },
+          to: { version: "1.7.0", display: "1.7.0" },
           outcome: "rolled-back",
           detail: "factory threw during activation",
         }),
@@ -124,5 +129,34 @@ describe("UpdatePluginDialog", () => {
       screen.getByText("factory threw during activation"),
     ).toBeTruthy();
     expect(screen.getByText(/Needs attention/)).toBeTruthy();
+  });
+
+  it("treats a malformed 2xx update response as an error, never success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ status: "ok" })),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({ availableVersion: "1.7.0" })}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    // The dialog neither closes as a success nor shows the rollback view —
+    // the drifted response surfaces as an error and the confirmation stays.
+    await vi.waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: "Update" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    expect(screen.getByText("Update Linear to 1.7.0?")).toBeTruthy();
+    expect(screen.queryByText("Update failed — rolled back")).toBeNull();
   });
 });

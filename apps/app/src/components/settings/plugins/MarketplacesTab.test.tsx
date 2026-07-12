@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { marketplaceSearchQueryKey } from "@/hooks/queries/plugin-marketplace-queries";
 import { MarketplacesTab } from "./MarketplacesTab";
 
 interface RecordedRequest {
@@ -18,18 +19,17 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as Response;
 }
 
-const MARKETPLACES = {
-  marketplaces: [
-    {
-      id: "acme",
-      name: "acme-tools",
-      scope: "user",
-      pluginCount: 2,
-      sourceDisplay: "github.com/acme/bb-marketplace @ main",
-      lastRefreshAt: 1752300000000,
-      lastError: null,
-    },
-  ],
+// Server-shaped MarketplaceView (marketplace-service): name mirrors the id,
+// displayName is the human label; no scope/sourceDisplay fields exist.
+const ACME_VIEW = {
+  id: "acme",
+  name: "acme",
+  displayName: "Acme Tools",
+  source: "https://github.com/acme/bb-marketplace@main",
+  resolvedCommit: "9e12f04aa00c",
+  pluginCount: 2,
+  lastRefreshAt: 1752300000000,
+  enabled: true,
 };
 
 afterEach(() => {
@@ -46,7 +46,7 @@ describe("MarketplacesTab removal", () => {
       vi.fn(async (url: string, init?: RequestInit) => {
         requests.push({ url, init });
         if (url === "/api/v1/marketplaces" && init?.method === undefined) {
-          return jsonResponse(MARKETPLACES);
+          return jsonResponse({ marketplaces: [ACME_VIEW] });
         }
         if (url === "/api/v1/marketplaces/acme" && init?.method === "DELETE") {
           deletes += 1;
@@ -64,7 +64,7 @@ describe("MarketplacesTab removal", () => {
               422,
             );
           }
-          return jsonResponse({ ok: true });
+          return jsonResponse({ kept: ["datadog"], uninstalled: ["todoist"] });
         }
         return jsonResponse({ error: "not found" }, 404);
       }),
@@ -74,16 +74,18 @@ describe("MarketplacesTab removal", () => {
     render(<MarketplacesTab />, { wrapper });
 
     await screen.findByTestId("marketplace-row-acme");
+    // The row shows the human display name, not the stable id.
+    expect(screen.getByText("Acme Tools")).toBeTruthy();
     fireEvent.pointerDown(
       screen.getByRole("button", {
-        name: "Marketplace actions for acme-tools",
+        name: "Marketplace actions for Acme Tools",
       }),
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Remove…" }));
 
     // The blocked DELETE opens the chooser with keep-as-direct defaults.
-    expect(await screen.findByText("Remove acme-tools?")).toBeTruthy();
+    expect(await screen.findByText("Remove Acme Tools?")).toBeTruthy();
     const firstDelete = requests.filter(
       (request) => request.init?.method === "DELETE",
     )[0];
@@ -92,10 +94,12 @@ describe("MarketplacesTab removal", () => {
     });
 
     // Uninstall todoist, keep datadog.
-    fireEvent.click(screen.getByLabelText("Uninstall", { selector: "#dispose-todoist-uninstall" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Remove marketplace" }),
+      screen.getByLabelText("Uninstall", {
+        selector: "#dispose-todoist-uninstall",
+      }),
     );
+    fireEvent.click(screen.getByRole("button", { name: "Remove marketplace" }));
 
     await vi.waitFor(() => {
       const finalDelete = requests.filter(
@@ -117,12 +121,7 @@ describe("MarketplacesTab removal", () => {
       vi.fn(async (url: string) => {
         if (url === "/api/v1/marketplaces") {
           return jsonResponse({
-            marketplaces: [
-              {
-                ...MARKETPLACES.marketplaces[0],
-                lastError: "fetch failed: 502",
-              },
-            ],
+            marketplaces: [{ ...ACME_VIEW, lastError: "fetch failed: 502" }],
           });
         }
         return jsonResponse({ error: "not found" }, 404);
@@ -136,5 +135,35 @@ describe("MarketplacesTab removal", () => {
     expect(screen.getByText(/using cached catalog from/)).toBeTruthy();
     // A failing marketplace offers Retry, not Refresh.
     expect(screen.getByRole("button", { name: /Retry/ })).toBeTruthy();
+  });
+
+  it("invalidates marketplace-search queries after a refresh", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/v1/marketplaces" && init?.method === undefined) {
+          return jsonResponse({ marketplaces: [ACME_VIEW] });
+        }
+        if (url === "/api/v1/marketplaces/acme/refresh") {
+          return jsonResponse({ marketplace: ACME_VIEW });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    // A Browse-tab search result already in the cache must refetch after a
+    // catalog refresh, or removed entries keep rendering.
+    queryClient.setQueryData(marketplaceSearchQueryKey(""), []);
+    render(<MarketplacesTab />, { wrapper });
+
+    await screen.findByTestId("marketplace-row-acme");
+    fireEvent.click(screen.getByRole("button", { name: /Refresh/ }));
+
+    await vi.waitFor(() => {
+      expect(
+        queryClient.getQueryState(marketplaceSearchQueryKey(""))?.isInvalidated,
+      ).toBe(true);
+    });
   });
 });

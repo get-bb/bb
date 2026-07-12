@@ -77,12 +77,14 @@ function UpdatePluginDialogContent({
         setRolledBack(result);
         return;
       }
-      appToast.success(`${displayName} updated`, {
-        description:
-          state.availableVersion !== null
-            ? `Now running ${state.availableVersion}.`
-            : undefined,
-      });
+      if (result.applied) {
+        appToast.success(`${displayName} updated`, {
+          description:
+            result.to !== null ? `Now running ${result.to.display}.` : undefined,
+        });
+      } else {
+        appToast.message(`${displayName} is already up to date`);
+      }
       onOpenChange(false);
     },
     onError: (error) => {

@@ -24,6 +24,9 @@ import {
  * incompatible entries say why Install is off. Install opens the shared
  * Add-plugin dialog pre-filled — one pipeline (the top-level store page is
  * deferred; this tab is Phase 5's whole discovery surface).
+ *
+ * Search results carry only the marketplace id; display names come from
+ * joining the marketplace list.
  */
 export function BrowsePluginsTab({
   onInstall,
@@ -39,6 +42,9 @@ export function BrowsePluginsTab({
   const searchQuery = useMarketplaceSearch(debouncedQuery, { enabled: true });
 
   const marketplaces = marketplacesQuery.data ?? [];
+  const marketplaceNames = new Map(
+    marketplaces.map((marketplace) => [marketplace.id, marketplace.displayName]),
+  );
   const entries = (searchQuery.data ?? []).filter(
     (entry) =>
       marketplaceFilter === null || entry.marketplaceId === marketplaceFilter,
@@ -78,7 +84,7 @@ export function BrowsePluginsTab({
             {marketplaces.map((marketplace) => (
               <FilterChip
                 key={marketplace.id}
-                label={marketplace.name}
+                label={marketplace.displayName}
                 active={marketplaceFilter === marketplace.id}
                 onClick={() => setMarketplaceFilter(marketplace.id)}
               />
@@ -111,6 +117,10 @@ export function BrowsePluginsTab({
                 <BrowseCard
                   key={`${entry.marketplaceId}:${entry.entryId}`}
                   entry={entry}
+                  marketplaceName={
+                    marketplaceNames.get(entry.marketplaceId) ??
+                    entry.marketplaceId
+                  }
                   onInstall={onInstall}
                 />
               ))}
@@ -150,17 +160,13 @@ function FilterChip({
 
 function BrowseCard({
   entry,
+  marketplaceName,
   onInstall,
 }: {
   entry: MarketplaceSearchEntry;
+  marketplaceName: string;
   onInstall: (initial: AddPluginInitial) => void;
 }) {
-  const meta = [
-    entry.marketplaceName,
-    entry.sourceType,
-    entry.version !== null ? `v${entry.version}` : null,
-  ].filter((part): part is string => part !== null);
-
   return (
     <div
       className="flex items-start gap-3 rounded-lg border border-border bg-card p-3.5"
@@ -171,16 +177,16 @@ function BrowseCard({
         <p className="text-sm font-medium text-foreground">
           {entry.displayName}
         </p>
-        {entry.description !== null ? (
+        {entry.description.length > 0 ? (
           <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
             {entry.description}
           </p>
         ) : null}
         <p className="mt-1.5 text-2xs text-subtle-foreground">
-          {meta.join(" · ")}
-          {entry.incompatibleReason !== null ? (
+          {marketplaceName} · {entry.source}
+          {!entry.compatible && entry.incompatibleReason !== null ? (
             <span className="text-warning-text">
-              {meta.length > 0 ? " · " : ""}
+              {" · "}
               {entry.incompatibleReason}
             </span>
           ) : null}
@@ -199,11 +205,11 @@ function BrowseCard({
           variant="outline"
           size="sm"
           className="mt-0.5 h-7 shrink-0 px-2.5 text-xs"
-          disabled={entry.incompatibleReason !== null}
+          disabled={!entry.compatible}
           onClick={() =>
             onInstall({
               marketplaceId: entry.marketplaceId,
-              marketplaceName: entry.marketplaceName,
+              marketplaceName,
               entryId: entry.entryId,
               displayName: entry.displayName,
             })
