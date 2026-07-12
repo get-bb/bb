@@ -34,14 +34,20 @@ import {
   getThread,
   listDuePluginSchedules,
   listInstalledPlugins,
+  listUnnormalizedPluginRegistrations,
   listPluginSchedules,
   markInstalledPluginRemoved,
+  normalizeInstalledPluginRegistration,
   prunePluginSchedules,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
   upsertInstalledPlugin,
   upsertPluginSchedule,
   type InstalledPluginRow,
+  type LegacyPluginExactResolution,
+  type PluginExactResolution,
+  type PluginProvenance,
+  type PluginSourceIntent,
 } from "@bb/db";
 import {
   getLastThreadErrorMessage,
@@ -61,14 +67,18 @@ import {
 } from "./app-bundle.js";
 import {
   isCommitSha,
-  managedInstallDir,
   npmInstallPrefix,
   parsePluginSource,
   runInstallCommand,
   swapDirIntoPlace,
 } from "./install-sources.js";
-import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import {
+  derivePluginId,
+  readPluginManifest,
+  type PluginManifest,
+} from "./manifest.js";
+import {
+  BUILTIN_PLUGIN_NAMES,
   builtinPluginSource,
   listBuiltinPluginRegistrations,
   type BuiltinPluginRegistration,
@@ -1183,7 +1193,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
   }
 
-  /** Parsed source kind; stored sources always parse, but never throw here. */
+  /** Parse an incoming install display spec for validation/build policy. */
   function sourceKind(source: string): "path" | "git" | "npm" | "builtin" {
     try {
       return parsePluginSource(source).kind;
@@ -1192,17 +1202,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
   }
 
-  function isBuiltinSource(source: string): boolean {
-    return sourceKind(source) === "builtin";
-  }
-
-  function builtinNameFromSource(source: string): string | null {
-    try {
-      const parsed = parsePluginSource(source);
-      return parsed.kind === "builtin" ? parsed.name : null;
-    } catch {
-      return null;
-    }
+  function builtinName(row: InstalledPluginRow): string | null {
+    return row.sourceKind === "builtin" ? row.sourceBuiltinName : null;
   }
 
   function isPackagedBuiltinAppEntry(args: {
@@ -1270,7 +1271,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
-    return row !== undefined && isBuiltinSource(row.source);
+    return row?.sourceKind === "builtin";
   }
 
   function isBuiltinPluginLoadEnabled(name: string): boolean {
@@ -1283,19 +1284,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   function experimentGateDisabledDetail(
     row: InstalledPluginRow,
   ): string | null {
-    const builtinName = builtinNameFromSource(row.source);
-    if (builtinName === CONNECT_BUILTIN_PLUGIN_NAME) {
+    const name = builtinName(row);
+    if (name === CONNECT_BUILTIN_PLUGIN_NAME) {
       return 'disabled by the "bb connect" experiment';
     }
-    if (builtinName === null) {
+    if (name === null) {
       return 'disabled by the "Plugins" experiment';
     }
     return null;
   }
 
   function shouldLoadRow(row: InstalledPluginRow): boolean {
-    const builtinName = builtinNameFromSource(row.source);
-    if (builtinName !== null) return isBuiltinPluginLoadEnabled(builtinName);
+    const name = builtinName(row);
+    if (name !== null) return isBuiltinPluginLoadEnabled(name);
     return deps.isEnabled();
   }
 
@@ -1332,7 +1333,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     row: InstalledPluginRow,
     manifest: PluginManifest,
   ): Promise<string> {
-    if (sourceKind(row.source) === "path") return manifest.serverEntry;
+    if (row.sourceKind === "path") return manifest.serverEntry;
     const distJsPath = join(row.rootDir, "dist", "server.js");
     try {
       await stat(distJsPath);
@@ -1377,7 +1378,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
       return null;
     }
-    const kind = sourceKind(row.source);
+    const kind = row.sourceKind;
     if (
       kind !== "npm" &&
       !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })
@@ -1536,7 +1537,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
       return;
     }
-    const builtinName = builtinNameFromSource(row.source);
+    const loadedBuiltinName = builtinName(row);
     const plugin: LoadedPlugin = {
       manifest,
       handle,
@@ -1550,8 +1551,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         startedAt: 0,
         disposed: false,
       })),
-      isBuiltin: builtinName !== null,
-      builtinName,
+      isBuiltin: loadedBuiltinName !== null,
+      builtinName: loadedBuiltinName,
     };
     loaded.set(row.id, plugin);
     // Sync durable schedule rows to this load's registrations: upsert each
@@ -1809,19 +1810,143 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
    * Shared install tail: validate the materialized files (unless the caller
    * already validated them in a staging dir), upsert the row, and (re)load.
    */
+  const builtinPluginIds = new Set<string>(BUILTIN_PLUGIN_NAMES);
+
+  function refuseBuiltinShadow(pluginId: string): void {
+    if (!builtinPluginIds.has(pluginId)) return;
+    throw new Error(
+      `install refused: plugin id "${pluginId}" is reserved by the builtin plugin of the same name; install "builtin:${pluginId}" instead`,
+    );
+  }
+
+  function emptyPluginUpdateState() {
+    return {
+      lastCheckAt: null,
+      availableCompatibleVersion: null,
+      newestIncompatibleVersion: null,
+      statusDetail: null,
+      ignoredVersion: null,
+    } as const;
+  }
+
+  function rowMatchesInstallSource(
+    row: InstalledPluginRow,
+    provenance: PluginProvenance,
+    intent: PluginSourceIntent,
+  ): boolean {
+    if (row.provenance !== provenance.kind || row.sourceKind !== intent.kind) {
+      return false;
+    }
+    if (
+      provenance.kind === "marketplace" &&
+      (row.marketplaceId !== provenance.marketplaceId ||
+        row.marketplaceEntryId !== provenance.entryId)
+    ) {
+      return false;
+    }
+    if (intent.kind === "path") return row.sourcePath === intent.canonicalPath;
+    if (intent.kind === "builtin") {
+      return row.sourceBuiltinName === intent.name;
+    }
+    if (intent.kind === "npm") {
+      return (
+        row.sourceNpmPackage === intent.packageName &&
+        row.sourceNpmRegistry === intent.registry &&
+        row.sourceNpmRequestedSpec === intent.requestedSpec
+      );
+    }
+    return (
+      row.sourceGitUrl === intent.url &&
+      row.sourceGitSubdirectory === intent.subdirectory &&
+      row.sourceGitRequestedRef === intent.requestedRef
+    );
+  }
+
+  async function readNpmIntegrity(
+    prefix: string,
+    packageName: string,
+  ): Promise<string | null> {
+    let value: unknown;
+    try {
+      value = JSON.parse(
+        await readFile(join(prefix, "package-lock.json"), "utf8"),
+      );
+    } catch {
+      return null;
+    }
+    if (typeof value !== "object" || value === null) return null;
+    const lock = value as Record<string, unknown>;
+    const packages = lock.packages;
+    if (typeof packages === "object" && packages !== null) {
+      const entry = (packages as Record<string, unknown>)[
+        `node_modules/${packageName}`
+      ];
+      if (typeof entry === "object" && entry !== null && "integrity" in entry) {
+        if (typeof entry.integrity === "string") return entry.integrity;
+      }
+    }
+    const dependencies = lock.dependencies;
+    if (typeof dependencies !== "object" || dependencies === null) return null;
+    const dependency = (dependencies as Record<string, unknown>)[packageName];
+    if (
+      typeof dependency !== "object" ||
+      dependency === null ||
+      !("integrity" in dependency)
+    ) {
+      return null;
+    }
+    return typeof dependency.integrity === "string"
+      ? dependency.integrity
+      : null;
+  }
+
+  async function resolveNpmRegistry(
+    prefix: string,
+    packageName: string,
+  ): Promise<string> {
+    const scope = packageName.startsWith("@")
+      ? packageName.slice(0, packageName.indexOf("/"))
+      : null;
+    const keys =
+      scope === null ? ["registry"] : [`${scope}:registry`, "registry"];
+    for (const key of keys) {
+      const value = await runInstallCommand("npm", [
+        "config",
+        "get",
+        key,
+        "--prefix",
+        prefix,
+      ]);
+      if (value.length > 0 && value !== "undefined" && value !== "null") {
+        return value;
+      }
+    }
+    throw new Error(`npm did not resolve a registry for ${packageName}`);
+  }
+
   async function registerInstalled(args: {
     rootDir: string;
     source: string;
+    provenance: PluginProvenance;
+    sourceIntent: PluginSourceIntent;
+    exactResolution: PluginExactResolution;
     refuseEngineMismatch: boolean;
     /** True when validateInstallDir already ran against a staging copy of
      * these exact files (managed installs validate before the swap). */
     validated: boolean;
   }): Promise<PluginListEntry> {
+    const initialManifest = await readPluginManifest(args.rootDir);
+    if (args.provenance.kind !== "builtin") {
+      refuseBuiltinShadow(initialManifest.id);
+    }
     const manifest = args.validated
-      ? await readPluginManifest(args.rootDir)
+      ? initialManifest
       : await validateInstallDir(args);
     const existing = getInstalledPlugin(deps.db, manifest.id);
-    if (existing && existing.source !== args.source) {
+    if (
+      existing &&
+      !rowMatchesInstallSource(existing, args.provenance, args.sourceIntent)
+    ) {
       throw new Error(
         `plugin id "${manifest.id}" is already installed from ${existing.source}; remove it first`,
       );
@@ -1829,6 +1954,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     upsertInstalledPlugin(deps.db, {
       id: manifest.id,
       source: args.source,
+      provenance: args.provenance,
+      sourceIntent: args.sourceIntent,
+      exactResolution: args.exactResolution,
+      updatePolicy: "manual",
+      updateState: emptyPluginUpdateState(),
+      activeArtifactId: null,
       rootDir: args.rootDir,
       version: manifest.version,
       enabled: existing?.enabled ?? true,
@@ -1856,6 +1987,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return registerInstalled({
       rootDir,
       source: `path:${rootDir}`,
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: rootDir },
+      exactResolution: { kind: "path" },
       refuseEngineMismatch: false,
       validated: false,
     });
@@ -1876,6 +2010,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // place once it is fully good, so a failed refresh keeps the previous
     // (still-loadable) install intact.
     const stagingDir = `${targetDir}.staging`;
+    let resolvedCommit: string;
     await rm(stagingDir, { recursive: true, force: true });
     await mkdir(dirname(targetDir), { recursive: true });
     const notFoundHint =
@@ -1912,6 +2047,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           { notFoundHint },
         );
       }
+      const stagedManifest = await readPluginManifest(stagingDir);
+      refuseBuiltinShadow(stagedManifest.id);
+      resolvedCommit = await runInstallCommand("git", [
+        "-C",
+        stagingDir,
+        "rev-parse",
+        "HEAD",
+      ]);
       await validateInstallDir({
         rootDir: stagingDir,
         source,
@@ -1925,6 +2068,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return registerInstalled({
       rootDir: targetDir,
       source,
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: parsed.url,
+        subdirectory: null,
+        requestedRef: parsed.ref,
+      },
+      exactResolution: { kind: "git", commit: resolvedCommit },
       refuseEngineMismatch: true,
       validated: true,
     });
@@ -1938,9 +2089,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // Materialize + validate in a staging sibling; swap only once good, so
     // a failed refresh keeps the previous (still-loadable) install intact.
     const stagingPrefix = `${prefix}.staging`;
+    let registry: string;
+    let integrity: string | null;
     await rm(stagingPrefix, { recursive: true, force: true });
     await mkdir(stagingPrefix, { recursive: true });
     try {
+      registry = await resolveNpmRegistry(stagingPrefix, parsed.name);
       await runInstallCommand(
         "npm",
         [
@@ -1951,6 +2105,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "--omit=optional",
           "--no-audit",
           "--no-fund",
+          "--registry",
+          registry,
           `${parsed.name}@${parsed.version}`,
         ],
         {
@@ -1963,6 +2119,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         source,
         refuseEngineMismatch: true,
       });
+      integrity = await readNpmIntegrity(stagingPrefix, parsed.name);
+      if (integrity === null) {
+        const integrityOutput = await runInstallCommand("npm", [
+          "view",
+          `${parsed.name}@${parsed.version}`,
+          "dist.integrity",
+          "--json",
+          "--registry",
+          registry,
+        ]);
+        const registryIntegrity: unknown = JSON.parse(integrityOutput);
+        integrity =
+          typeof registryIntegrity === "string" ? registryIntegrity : null;
+      }
+      if (integrity === null) {
+        throw new Error(
+          `install failed: npm registry did not provide integrity for ${parsed.name}@${parsed.version}`,
+        );
+      }
       await swapDirIntoPlace(stagingPrefix, prefix);
     } catch (error) {
       await rm(stagingPrefix, { recursive: true, force: true });
@@ -1971,6 +2146,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return registerInstalled({
       rootDir: join(prefix, "node_modules", ...parsed.name.split("/")),
       source,
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: parsed.name,
+        registry,
+        requestedSpec: parsed.version,
+      },
+      exactResolution: {
+        kind: "npm",
+        version: parsed.version,
+        integrity,
+      },
       refuseEngineMismatch: true,
       validated: true,
     });
@@ -1992,6 +2179,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return registerInstalled({
       rootDir: builtin.rootDir,
       source: builtinPluginSource(parsed.name),
+      provenance: { kind: "builtin" },
+      sourceIntent: { kind: "builtin", name: parsed.name },
+      exactResolution: { kind: "builtin" },
       refuseEngineMismatch: false,
       validated: false,
     });
@@ -2015,7 +2205,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (existing?.removedAt !== null && existing?.removedAt !== undefined) {
         continue;
       }
-      if (existing !== undefined && existing.source !== source) {
+      if (
+        existing !== undefined &&
+        !rowMatchesInstallSource(
+          existing,
+          { kind: "builtin" },
+          { kind: "builtin", name: builtin.name },
+        )
+      ) {
         logger.warn(
           `builtin plugin ${builtin.name} resolved to id "${manifest.id}", but that id is already installed from ${existing.source}; skipping builtin reconciliation`,
         );
@@ -2029,11 +2226,76 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         upsertInstalledPlugin(deps.db, {
           id: manifest.id,
           source,
+          provenance: { kind: "builtin" },
+          sourceIntent: { kind: "builtin", name: builtin.name },
+          exactResolution: { kind: "builtin" },
+          updatePolicy: "manual",
+          updateState: emptyPluginUpdateState(),
+          activeArtifactId: null,
           rootDir: builtin.rootDir,
           version: manifest.version,
           enabled: existing?.enabled ?? builtin.defaultEnabled,
         });
       }
+    }
+  }
+
+  async function backfillNormalizedPluginRegistrations(): Promise<void> {
+    for (const row of listUnnormalizedPluginRegistrations(deps.db)) {
+      const parsed = parsePluginSource(row.source);
+      let sourceIntent: PluginSourceIntent;
+      let exactResolution: LegacyPluginExactResolution;
+      let provenance: PluginProvenance = { kind: "direct" };
+      if (parsed.kind === "path") {
+        sourceIntent = { kind: "path", canonicalPath: resolve(parsed.path) };
+        exactResolution = { kind: "path" };
+      } else if (parsed.kind === "builtin") {
+        provenance = { kind: "builtin" };
+        sourceIntent = { kind: "builtin", name: parsed.name };
+        exactResolution = { kind: "builtin" };
+      } else if (parsed.kind === "npm") {
+        sourceIntent = {
+          kind: "npm",
+          packageName: parsed.name,
+          registry:
+            process.env.npm_config_registry ?? "https://registry.npmjs.org",
+          requestedSpec: parsed.version,
+        };
+        exactResolution = {
+          kind: "npm",
+          version: parsed.version,
+          integrity: null,
+        };
+      } else {
+        sourceIntent = {
+          kind: "git",
+          url: parsed.url,
+          subdirectory: null,
+          requestedRef: parsed.ref,
+        };
+        let commit: string | null = isCommitSha(parsed.ref) ? parsed.ref : null;
+        try {
+          commit = await runInstallCommand("git", [
+            "-C",
+            row.rootDir,
+            "rev-parse",
+            "HEAD",
+          ]);
+        } catch {
+          // A legacy registration may point at missing files. Preserve its
+          // load behavior and retain the requested pin when it is a SHA.
+        }
+        exactResolution = { kind: "git", commit };
+      }
+      normalizeInstalledPluginRegistration(deps.db, {
+        ...row,
+        provenance,
+        sourceIntent,
+        exactResolution,
+        updatePolicy: "manual",
+        updateState: emptyPluginUpdateState(),
+        activeArtifactId: null,
+      });
     }
   }
 
@@ -2232,13 +2494,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async start() {
+      await backfillNormalizedPluginRegistrations();
       await reconcileBuiltins();
       await loadAll();
       if (deps.watchBuiltinPluginSources) {
         for (const builtin of builtinPlugins) {
           const row = listInstalledPlugins(deps.db).find(
             (candidate) =>
-              candidate.source === builtinPluginSource(builtin.name),
+              candidate.sourceKind === "builtin" &&
+              candidate.sourceBuiltinName === builtin.name,
           );
           if (row === undefined) continue;
           const manifest = await readPluginManifest(builtin.rootDir);
@@ -2296,7 +2560,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const parsed = parsePluginSource(source);
       if (parsed.kind === "builtin") return installBuiltinSource(parsed);
       if (parsed.kind === "git") return installGitSource(parsed, source);
-      if (parsed.kind === "npm") return installNpmSource(parsed, source);
+      if (parsed.kind === "npm") {
+        refuseBuiltinShadow(derivePluginId(parsed.name));
+        return installNpmSource(parsed, source);
+      }
       return installPathSource(parsed.path);
     },
 
@@ -2311,7 +2578,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       appBundles.delete(id);
       logos.delete(id);
       const removed = row
-        ? isBuiltinSource(row.source)
+        ? row.sourceKind === "builtin"
           ? markInstalledPluginRemoved(deps.db, id)
           : deleteInstalledPlugin(deps.db, id)
         : false;
@@ -2329,9 +2596,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         // Managed installs (git:/npm:) own their files under
         // <dataDir>/plugins; path: sources are the user's directory and are
         // never deleted.
-        const managedDir = isBuiltinSource(row.source)
-          ? undefined
-          : managedInstallDir(deps.dataDir, row.source);
+        const managedDir =
+          row.sourceKind === "git"
+            ? row.rootDir
+            : row.sourceKind === "npm" &&
+                row.sourceNpmPackage !== null &&
+                row.sourceNpmRequestedSpec !== null
+              ? npmInstallPrefix(
+                  deps.dataDir,
+                  row.sourceNpmPackage,
+                  row.sourceNpmRequestedSpec,
+                )
+              : undefined;
         if (managedDir !== undefined) {
           await rm(managedDir, { recursive: true, force: true });
         }

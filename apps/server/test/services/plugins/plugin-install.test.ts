@@ -5,6 +5,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   stat,
   writeFile,
@@ -14,7 +15,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import {
+  createConnection,
+  getInstalledPluginRegistration,
+  migrate,
+  type DbConnection,
+} from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
@@ -182,10 +188,6 @@ describe("plugin install sources", () => {
       kind: "path",
       path: "/tmp/my-plugin",
     });
-    expect(managedInstallDir("/data", "path:/tmp/my-plugin")).toBeUndefined();
-    expect(managedInstallDir("/data", "npm:bb-plugin-x@1.0.0")).toBe(
-      "/data/plugins/npm/bb-plugin-x@1.0.0",
-    );
   });
 });
 
@@ -244,6 +246,26 @@ describe("plugin install flows", () => {
         ) + "@v1",
       );
       await stat(join(entry.rootDir, "package.json"));
+      expect(getInstalledPluginRegistration(db, "gitty")).toMatchObject({
+        provenance: "direct",
+        sourceKind: "git",
+        sourceGitUrl: repoDir,
+        sourceGitRequestedRef: "v1",
+        gitResolvedCommit: expect.stringMatching(/^[0-9a-f]{40}$/),
+        updatePolicy: "manual",
+      });
+    });
+
+    it("refuses a git plugin that shadows a builtin after materialization", async () => {
+      const repoDir = join(workDir, "repo-memory");
+      await writePluginFixture(repoDir, { name: "bb-plugin-memory" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+
+      await expect(service.install(`git:${repoDir}@main`)).rejects.toThrowError(
+        /reserved by the builtin plugin.*builtin:memory/,
+      );
+      expect(getInstalledPluginRegistration(db, "memory")).toBeUndefined();
     });
 
     it("installs a pinned commit sha via clone + checkout", async () => {
@@ -365,9 +387,14 @@ describe("plugin install flows", () => {
         /install refused.*requires bb >=99\.0\.0/,
       );
       expect(service.list()).toHaveLength(0);
-      const managed = managedInstallDir(dataDir, source);
-      expect(managed).toBeDefined();
-      await expect(stat(managed as string)).rejects.toThrowError();
+      const managed = join(
+        dataDir,
+        "plugins",
+        "git",
+        "local",
+        ...repoDir.replace(/^\/+/, "").split("/"),
+      );
+      await expect(stat(`${managed}@main`)).rejects.toThrowError();
     });
 
     it("hard-fails managed install on an engines.bbPluginSdk mismatch", async () => {
@@ -450,10 +477,10 @@ describe("plugin install flows", () => {
 
   describe.skipIf(!hasNpm)("npm sources", () => {
     it(
-      "installs an exact version from a registry, loads it, and remove deletes the prefix",
+      "installs without a lockfile, records registry integrity, and removes the prefix",
       { timeout: 120_000 },
       async () => {
-        const name = "bb-plugin-npmhero";
+        const name = "@acme/bb-plugin-npmhero";
         const version = "0.1.0";
         const fixtureDir = join(workDir, "npm-fixture");
         await writePluginFixture(fixtureDir, { name, version });
@@ -462,21 +489,24 @@ describe("plugin install flows", () => {
         await run("npm", ["pack", "--pack-destination", packDir], {
           cwd: fixtureDir,
         });
-        const tarball = await readFile(join(packDir, `${name}-${version}.tgz`));
+        const [tarballName] = await readdir(packDir);
+        if (tarballName === undefined)
+          throw new Error("npm pack produced no tarball");
+        const tarball = await readFile(join(packDir, tarballName));
 
         // Minimal npm registry over loopback: packument + tarball. Keeps the
         // real `npm install` code path while staying offline.
         const registry = await new Promise<Server>((resolvePromise) => {
           const server = createServer((request, response) => {
             const url = request.url ?? "";
-            if (url === `/${name}/-/${name}-${version}.tgz`) {
+            if (url === "/package.tgz") {
               response.writeHead(200, {
                 "content-type": "application/octet-stream",
               });
               response.end(tarball);
               return;
             }
-            if (url === `/${name}`) {
+            if (decodeURIComponent(url) === `/${name}`) {
               const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
               response.writeHead(200, { "content-type": "application/json" });
               response.end(
@@ -488,7 +518,7 @@ describe("plugin install flows", () => {
                       name,
                       version,
                       dist: {
-                        tarball: `${origin}/${name}/-/${name}-${version}.tgz`,
+                        tarball: `${origin}/package.tgz`,
                         shasum: createHash("sha1")
                           .update(tarball)
                           .digest("hex"),
@@ -506,10 +536,17 @@ describe("plugin install flows", () => {
           server.listen(0, "127.0.0.1", () => resolvePromise(server));
         });
         const port = (registry.address() as AddressInfo).port;
-        const previousRegistry = process.env.npm_config_registry;
         const previousCache = process.env.npm_config_cache;
-        process.env.npm_config_registry = `http://127.0.0.1:${port}`;
+        const previousPackageLock = process.env.npm_config_package_lock;
+        const previousUserConfig = process.env.NPM_CONFIG_USERCONFIG;
+        const userConfig = join(workDir, "npmrc");
+        await writeFile(
+          userConfig,
+          `@acme:registry=http://127.0.0.1:${port}\nregistry=https://registry.npmjs.org\n`,
+        );
+        process.env.NPM_CONFIG_USERCONFIG = userConfig;
         process.env.npm_config_cache = join(workDir, "npm-cache");
+        process.env.npm_config_package_lock = "false";
         try {
           const source = `npm:${name}@${version}`;
           const entry = await service.install(source);
@@ -518,19 +555,37 @@ describe("plugin install flows", () => {
           expect(entry.source).toBe(source);
           const prefix = join(dataDir, "plugins", "npm", `${name}@${version}`);
           expect(entry.rootDir).toBe(join(prefix, "node_modules", name));
+          await expect(
+            stat(join(prefix, "package-lock.json")),
+          ).rejects.toThrow();
+          expect(getInstalledPluginRegistration(db, "npmhero")).toMatchObject({
+            provenance: "direct",
+            sourceKind: "npm",
+            sourceNpmPackage: name,
+            sourceNpmRegistry: `http://127.0.0.1:${port}`,
+            sourceNpmRequestedSpec: version,
+            npmResolvedVersion: version,
+            npmIntegrity: expect.stringMatching(/^sha512-/),
+            updatePolicy: "manual",
+          });
 
           expect(await service.remove("npmhero")).toBe(true);
           await expect(stat(prefix)).rejects.toThrowError();
         } finally {
-          if (previousRegistry === undefined) {
-            delete process.env.npm_config_registry;
-          } else {
-            process.env.npm_config_registry = previousRegistry;
-          }
           if (previousCache === undefined) {
             delete process.env.npm_config_cache;
           } else {
             process.env.npm_config_cache = previousCache;
+          }
+          if (previousPackageLock === undefined) {
+            delete process.env.npm_config_package_lock;
+          } else {
+            process.env.npm_config_package_lock = previousPackageLock;
+          }
+          if (previousUserConfig === undefined) {
+            delete process.env.NPM_CONFIG_USERCONFIG;
+          } else {
+            process.env.NPM_CONFIG_USERCONFIG = previousUserConfig;
           }
           await new Promise<void>((resolvePromise) =>
             registry.close(() => resolvePromise()),
@@ -538,6 +593,22 @@ describe("plugin install flows", () => {
         }
       },
     );
+  });
+
+  it("refuses an npm package whose derived id shadows a builtin before install", async () => {
+    await expect(
+      service.install("npm:bb-plugin-memory@1.2.3"),
+    ).rejects.toThrowError(/reserved by the builtin plugin.*builtin:memory/);
+    expect(getInstalledPluginRegistration(db, "memory")).toBeUndefined();
+  });
+
+  it("refuses a path plugin whose manifest id shadows a builtin", async () => {
+    const rootDir = join(workDir, "bb-plugin-memory");
+    await writePluginFixture(rootDir, { name: "bb-plugin-memory" });
+    await expect(service.installPath(rootDir)).rejects.toThrowError(
+      /reserved by the builtin plugin.*builtin:memory/,
+    );
+    expect(getInstalledPluginRegistration(db, "memory")).toBeUndefined();
   });
 
   it("the bb plugin new scaffold installs and loads through the plugin service", async () => {

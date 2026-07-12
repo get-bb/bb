@@ -34,6 +34,32 @@ async function hasBinary(command: string): Promise<boolean> {
 
 const hasNpm = await hasBinary("npm");
 
+function npmPersistence(packageName: string, version: string) {
+  return {
+    provenance: { kind: "direct" } as const,
+    sourceIntent: {
+      kind: "npm" as const,
+      packageName,
+      registry: "https://registry.npmjs.org",
+      requestedSpec: version,
+    },
+    exactResolution: {
+      kind: "npm" as const,
+      version,
+      integrity: "test-integrity",
+    },
+    updatePolicy: "manual" as const,
+    updateState: {
+      lastCheckAt: null,
+      availableCompatibleVersion: null,
+      newestIncompatibleVersion: null,
+      statusDetail: null,
+      ignoredVersion: null,
+    },
+    activeArtifactId: null,
+  };
+}
+
 const SERVER_SOURCE = `export default function plugin(bb: any) { bb.log.info("loaded"); }`;
 // Minimal real frontend entry: the automatic JSX transform exercises the
 // react/jsx-runtime shim, and the utility class exercises the Tailwind pass.
@@ -214,6 +240,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     // Registered as an npm source (the managed-materialization step is not
     // under test); load must serve the published dist verbatim.
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-oldie", "0.1.0"),
       id: "oldie",
       source: "npm:bb-plugin-oldie@0.1.0",
       rootDir,
@@ -262,6 +289,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       }),
     );
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-devy", "0.1.0"),
       id: "devy",
       source: "npm:bb-plugin-devy@0.1.0",
       rootDir,
@@ -345,6 +373,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       }),
     );
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-meta", "0.1.0"),
       id: "meta",
       source: "npm:bb-plugin-meta@0.1.0",
       rootDir,
@@ -382,6 +411,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     await mkdir(join(rootDir, "dist"), { recursive: true });
     await writeFile(join(rootDir, "dist", "app.js"), "export default 1;\n");
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-malformed", "0.1.0"),
       id: "malformed",
       source: "npm:bb-plugin-malformed@0.1.0",
       rootDir,
@@ -426,6 +456,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       }),
     );
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-gated", "0.1.0"),
       id: "gated",
       source: "npm:bb-plugin-gated@0.1.0",
       rootDir,
@@ -451,6 +482,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-bare");
     await writeAppPluginFixture(rootDir, { name: "bb-plugin-bare" });
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-bare", "0.1.0"),
       id: "bare",
       source: "npm:bb-plugin-bare@0.1.0",
       rootDir,
