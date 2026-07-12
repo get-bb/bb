@@ -415,6 +415,17 @@ function hasPathSyntax(source: string): boolean {
   );
 }
 
+function isLocalMarketplaceSource(source: string): boolean {
+  return (
+    source.startsWith("path:") ||
+    source.startsWith(".") ||
+    source.startsWith("~") ||
+    source.startsWith("/") ||
+    source.startsWith("\\") ||
+    /^[A-Za-z]:[\\/]/.test(source)
+  );
+}
+
 async function existsOnDisk(source: string): Promise<boolean> {
   try {
     await access(resolve(source));
@@ -627,10 +638,7 @@ export function registerPluginCommands(
     .option("--yes", "Skip the trust confirmation for a remote marketplace")
     .action(
       action(async (source: string, opts: { name?: string; yes?: boolean }) => {
-        const remote =
-          /^(?:https?|git|github):/i.test(source) ||
-          (!hasPathSyntax(source) && !source.startsWith("path:"));
-        if (remote) {
+        if (!isLocalMarketplaceSource(source)) {
           console.log(
             "Marketplace catalogs can introduce full-trust plugin code. Adding this marketplace installs NOTHING.",
           );

@@ -61,9 +61,10 @@ added/updated/unchanged counts.
   bb plugin marketplace remove <name> [--keep-all|--uninstall-all]
                                  Add, inspect, refresh, or remove catalogs
   bb plugin search <query>       Search all configured marketplaces
-  bb plugin install <src> [--version <range>]
-                                 Install from a marketplace name, local path,
-                                 builtin:<name>,
+  bb plugin install <entry>[@<marketplace>] [--version <range>]
+                                 Install a unique marketplace entry (qualify
+                                 with @marketplace when ambiguous; --version
+                                 is marketplace-only), a local path, builtin:<name>,
                                  git:<url>@<ref>, or
                                  npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —

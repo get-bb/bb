@@ -72,6 +72,45 @@ describe("bb plugin marketplaces", () => {
     );
   });
 
+  it.each([
+    "owner/catalog",
+    "ssh://git@example.com/owner/catalog.git",
+    "git@github.com:owner/catalog.git",
+  ])("--yes explicitly trusts Git marketplace source %s", async (source) => {
+    vi.mocked(fetch).mockResolvedValueOnce(json({ marketplace }, 201));
+
+    await runCommand(
+      ["plugin", "marketplace", "add", source, "--yes"],
+      register,
+    );
+
+    expect(readlineMocks.question).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
+    ).toEqual({ source });
+  });
+
+  it.each([
+    "owner/catalog",
+    "ssh://git@example.com/owner/catalog.git",
+    "git@github.com:owner/catalog.git",
+  ])("refuses Git marketplace source %s in non-TTY mode", async (source) => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+
+    await expect(
+      runCommand(["plugin", "marketplace", "add", source], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(collectLogPayloads(vi.mocked(console.error)).join("\n")).toContain(
+      "Refusing to add a remote marketplace without confirmation",
+    );
+  });
+
   it("renders search status and marketplace names", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(json({ results: [searchResult] }))
