@@ -17,6 +17,8 @@ import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { buildPluginApp } from "@bb/plugin-build";
 
+const TEST_BB_VERSION = "0.9.0-test";
+
 // Pass-through wrapper around the real Tailwind compiler (a third-party
 // boundary) so a single test can make the CSS step fail after esbuild
 // succeeded. Every other test hits the real `compile`.
@@ -83,7 +85,7 @@ describe("buildPluginApp", () => {
 
   it("builds an ESM bundle with runtime shims, plugin-scoped CSS, and the SDK meta sidecar", async () => {
     await writeFixture();
-    const result = await buildPluginApp(root);
+    const result = await buildPluginApp(root, TEST_BB_VERSION);
 
     const js = await readFile(result.jsPath, "utf8");
     // ESM output.
@@ -92,7 +94,12 @@ describe("buildPluginApp", () => {
     // production jsx-runtime included (the automatic JSX transform's import
     // must not survive as a bare specifier or bundle React's own copy).
     expect(js).toContain("globalThis.__bbPluginRuntime");
-    for (const slot of ["react", "reactDomClient", "jsxRuntime", "pluginSdkApp"]) {
+    for (const slot of [
+      "react",
+      "reactDomClient",
+      "jsxRuntime",
+      "pluginSdkApp",
+    ]) {
       expect(js).toContain(`.${slot}`);
     }
     expect(js).not.toMatch(/from\s*["']react/);
@@ -106,7 +113,9 @@ describe("buildPluginApp", () => {
     // Host token bridge: semantic utilities compile against the live host
     // CSS variables (no bridge → these classes are silently absent).
     expect(css).toMatch(/\.bg-background\s*\{[^}]*var\(--background\)/);
-    expect(css).toMatch(/\.text-muted-foreground\s*\{[^}]*var\(--muted-foreground\)/);
+    expect(css).toMatch(
+      /\.text-muted-foreground\s*\{[^}]*var\(--muted-foreground\)/,
+    );
     expect(css).toMatch(/\.rounded-lg\s*\{[^}]*var\(--radius\)/);
     // Host typography scale: the utility reads the token, and the plugin
     // sheet carries the host's override (0.8125rem, not Tailwind's 0.875rem).
@@ -122,12 +131,19 @@ describe("buildPluginApp", () => {
     expect(meta).toEqual({
       sdkMajor: PLUGIN_SDK_MAJOR,
       sdkVersion: PLUGIN_SDK_VERSION,
+      artifactFormatVersion: 1,
+      pluginId: "fixture",
+      pluginVersion: "0.1.0",
+      builtWith: {
+        bbVersion: TEST_BB_VERSION,
+        pluginSdkVersion: PLUGIN_SDK_VERSION,
+      },
     });
   });
 
   it("throws at import time without the BB runtime and loads once slots are set", async () => {
     await writeFixture();
-    const { jsPath } = await buildPluginApp(root);
+    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION);
     const url = pathToFileURL(jsPath).href;
 
     await expect(import(/* @vite-ignore */ url)).rejects.toThrow(
@@ -163,7 +179,7 @@ describe("buildPluginApp", () => {
         `export default () => [Dialog, AlertDialog, toast, Drawer, parsePatchFiles, FileDiff];`,
       ].join("\n"),
     );
-    const { jsPath } = await buildPluginApp(root);
+    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION);
     const js = await readFile(jsPath, "utf8");
     for (const slot of [
       "radixDialog",
@@ -189,7 +205,7 @@ describe("buildPluginApp", () => {
       `import { jsxDEV } from "react/jsx-dev-runtime";\n` +
         `export default () => jsxDEV("div", { children: "x" }, undefined, false, undefined, undefined);\n`,
     );
-    const { jsPath } = await buildPluginApp(root);
+    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION);
     const js = await readFile(jsPath, "utf8");
     expect(js).toContain(".jsxDevRuntime");
     expect(js).not.toMatch(/from\s*["']react/);
@@ -197,7 +213,7 @@ describe("buildPluginApp", () => {
 
   it("keeps the previous dist artifacts intact when a rebuild fails after esbuild", async () => {
     await writeFixture();
-    const first = await buildPluginApp(root);
+    const first = await buildPluginApp(root, TEST_BB_VERSION);
     const originalJs = await readFile(first.jsPath, "utf8");
     const originalCss = await readFile(first.cssPath, "utf8");
     const originalMeta = await readFile(first.metaPath, "utf8");
@@ -210,7 +226,9 @@ describe("buildPluginApp", () => {
     );
     tailwindFailure.error = new Error("tailwind exploded");
 
-    await expect(buildPluginApp(root)).rejects.toThrow("tailwind exploded");
+    await expect(buildPluginApp(root, TEST_BB_VERSION)).rejects.toThrow(
+      "tailwind exploded",
+    );
 
     // dist/ still serves the last complete build — no fresh app.js beside
     // stale css/meta, and no staging leftovers.
@@ -233,12 +251,16 @@ describe("buildPluginApp", () => {
         bb: { server: "./server.ts" },
       }),
     );
-    await expect(buildPluginApp(root)).rejects.toThrow(/no frontend entry/);
+    await expect(buildPluginApp(root, TEST_BB_VERSION)).rejects.toThrow(
+      /no frontend entry/,
+    );
   });
 
   it("errors when bb.app points at a missing file", async () => {
     await writeFile(join(root, "package.json"), FIXTURE_PACKAGE_JSON);
-    await expect(buildPluginApp(root)).rejects.toThrow(/missing file/);
+    await expect(buildPluginApp(root, TEST_BB_VERSION)).rejects.toThrow(
+      /missing file/,
+    );
   });
 
   it("builds the `bb plugin new --app` scaffold end to end", async () => {
@@ -260,7 +282,7 @@ describe("buildPluginApp", () => {
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
     ]);
-    const result = await buildPluginApp(targetDir);
+    const result = await buildPluginApp(targetDir, TEST_BB_VERSION);
     const js = await readFile(result.jsPath, "utf8");
     expect(js).toContain("globalThis.__bbPluginRuntime");
     const css = await readFile(result.cssPath, "utf8");

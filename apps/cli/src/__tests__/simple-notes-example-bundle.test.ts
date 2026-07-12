@@ -57,7 +57,7 @@ describe("simple notes example frontend bundle", () => {
       join(pluginDir, "node_modules"),
       "dir",
     );
-    const { jsPath } = await buildPluginApp(pluginDir);
+    const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test");
 
     const registered: Record<string, SlotRegistration[]> = {
       homepageSection: [],

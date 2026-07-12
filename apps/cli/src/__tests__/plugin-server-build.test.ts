@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { buildPluginServer } from "@bb/plugin-build";
 
+const TEST_BB_VERSION = "0.9.0-test";
+
 const FIXTURE_PACKAGE_JSON = JSON.stringify(
   {
     name: "bb-plugin-server-fixture",
@@ -47,7 +49,7 @@ describe("buildPluginServer", () => {
 
   it("bundles the server entry into a self-contained ESM dist/server.js with a meta sidecar", async () => {
     await writeFixture();
-    const result = await buildPluginServer(root);
+    const result = await buildPluginServer(root, TEST_BB_VERSION);
 
     expect(result.jsPath).toBe(join(root, "dist", "server.js"));
     const js = await readFile(result.jsPath, "utf8");
@@ -66,6 +68,13 @@ describe("buildPluginServer", () => {
     expect(meta).toEqual({
       sdkMajor: PLUGIN_SDK_MAJOR,
       sdkVersion: PLUGIN_SDK_VERSION,
+      artifactFormatVersion: 1,
+      pluginId: "server-fixture",
+      pluginVersion: "0.1.0",
+      builtWith: {
+        bbVersion: TEST_BB_VERSION,
+        pluginSdkVersion: PLUGIN_SDK_VERSION,
+      },
     });
   });
 
@@ -82,7 +91,7 @@ describe("buildPluginServer", () => {
       }
       `,
     );
-    const result = await buildPluginServer(root);
+    const result = await buildPluginServer(root, TEST_BB_VERSION);
     const js = await readFile(result.jsPath, "utf8");
     expect(js).toMatch(/from\s*"@bb\/plugin-sdk"/);
   });
@@ -92,21 +101,23 @@ describe("buildPluginServer", () => {
       join(root, "package.json"),
       JSON.stringify({ name: "bb-plugin-headless", version: "0.1.0" }),
     );
-    await expect(buildPluginServer(root)).rejects.toThrowError(
+    await expect(buildPluginServer(root, TEST_BB_VERSION)).rejects.toThrowError(
       /no server entry/,
     );
   });
 
   it("preserves the previous dist/server.js when a rebuild fails", async () => {
     await writeFixture();
-    const first = await buildPluginServer(root);
+    const first = await buildPluginServer(root, TEST_BB_VERSION);
     const before = await readFile(first.jsPath, "utf8");
     const metaBefore = await readFile(first.metaPath, "utf8");
 
     // Break the entry: the failed rebuild must not clobber the previous
     // artifacts (they are staged and only renamed into place on success).
     await writeFile(join(root, "server.ts"), "export default function ( {\n");
-    await expect(buildPluginServer(root)).rejects.toThrowError();
+    await expect(
+      buildPluginServer(root, TEST_BB_VERSION),
+    ).rejects.toThrowError();
 
     expect(await readFile(first.jsPath, "utf8")).toBe(before);
     expect(await readFile(first.metaPath, "utf8")).toBe(metaBefore);

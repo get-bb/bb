@@ -63,7 +63,7 @@ describe("github example frontend bundle", () => {
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
     ]);
-    const { jsPath } = await buildPluginApp(pluginDir);
+    const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test");
 
     const registered: Record<string, SlotRegistration[]> = {
       homepageSection: [],

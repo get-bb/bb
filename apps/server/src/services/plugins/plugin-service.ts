@@ -53,6 +53,7 @@ import {
   loadPluginLogos,
   parsePluginAppBundleMeta,
   readPluginAppBundleMeta,
+  validatePluginArtifactMeta,
   type PluginAppBundleSnapshot,
   type PluginAppState,
   type PluginLogoSet,
@@ -1153,6 +1154,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return undefined;
   }
 
+  function checkPluginSdkRange(manifest: PluginManifest): string | undefined {
+    if (!manifest.bbPluginSdkRange) return undefined;
+    if (!semver.satisfies(PLUGIN_SDK_VERSION, manifest.bbPluginSdkRange)) {
+      return `requires bb plugin SDK ${manifest.bbPluginSdkRange}, running SDK is ${PLUGIN_SDK_VERSION}`;
+    }
+    return undefined;
+  }
+
   async function runFactoryTimeBoxed(
     factory: (api: BbPluginApi) => unknown,
     api: BbPluginApi,
@@ -1327,7 +1336,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           `plugin ${row.id}: rebuilding frontend bundle (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION})`,
         );
         try {
-          await buildPluginApp(row.rootDir);
+          await buildPluginApp(row.rootDir, deps.appVersion);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -1389,7 +1398,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
       return;
     }
-    const engineProblem = checkEngineRange(manifest);
+    const engineProblem =
+      checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
     if (engineProblem) {
       setStatus(row.id, "incompatible", engineProblem);
       return;
@@ -1665,7 +1675,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }): Promise<PluginManifest> {
     const manifest = await readPluginManifest(args.rootDir);
     if (args.refuseEngineMismatch) {
-      const engineProblem = checkEngineRange(manifest);
+      const engineProblem =
+        checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
       if (engineProblem) {
         throw new Error(
           `install refused: plugin "${manifest.id}" ${engineProblem}`,
@@ -1675,18 +1686,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // Frontend policy (design §5.1): path:/git: sources build dist/ at
     // install time — a build failure fails the install, like a manifest
     // error would. npm packages are never built here; they must ship a
-    // prebuilt dist (a major mismatch is tolerated: the backend runs, the
-    // frontend marks the bundle "needs update").
+    // prebuilt dist whose metadata is compatible with this SDK.
     if (manifest.appEntry !== undefined) {
       const kind = sourceKind(args.source);
       if (kind === "npm") {
         const jsPresent = await stat(join(args.rootDir, "dist", "app.js"))
           .then(() => true)
           .catch(() => false);
-        if (
-          !jsPresent ||
-          (await readPluginAppBundleMeta(args.rootDir)) === null
-        ) {
+        if (!jsPresent) {
           throw new Error(
             `install refused: npm plugins with a frontend (bb.app) must publish a prebuilt bundle — "${manifest.id}" is missing dist/app.js + dist/app.meta.json`,
           );
@@ -1695,13 +1702,45 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: args.rootDir })
       ) {
         try {
-          await buildPluginApp(args.rootDir);
+          await buildPluginApp(args.rootDir, deps.appVersion);
         } catch (error) {
           throw new Error(
             `install failed: frontend bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
+    }
+
+    async function validateArtifact(
+      artifact: "server" | "app",
+      required: boolean,
+    ): Promise<void> {
+      const metaPath = join(args.rootDir, "dist", `${artifact}.meta.json`);
+      let raw: string;
+      try {
+        raw = await readFile(metaPath, "utf8");
+      } catch {
+        if (required) {
+          throw new Error(
+            `install refused: ${artifact} artifact for plugin "${manifest.id}" is missing dist/${artifact}.meta.json`,
+          );
+        }
+        return;
+      }
+      const problem = validatePluginArtifactMeta({
+        artifact,
+        raw,
+        pluginId: manifest.id,
+        pluginVersion: manifest.version,
+      });
+      if (problem !== null) {
+        throw new Error(`install refused: ${problem}`);
+      }
+    }
+
+    await validateArtifact("server", false);
+    if (manifest.appEntry !== undefined) {
+      await validateArtifact("app", sourceKind(args.source) === "npm");
     }
     return manifest;
   }
@@ -2147,7 +2186,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             pluginId: row.id,
             hasApp: manifest.appEntry !== undefined,
             buildApp: async () => {
-              await buildPluginApp(builtin.rootDir);
+              await buildPluginApp(builtin.rootDir, deps.appVersion);
             },
             reloadPlugin: async () => {
               await withLifecycleLock(row.id, async () => {

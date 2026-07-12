@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -61,8 +68,9 @@ describe("plugin component registry", () => {
     expect(itemNames.length).toBeGreaterThanOrEqual(50);
 
     // Entry importing every vendored module, so esbuild compiles them all.
-    const uiFiles = (await readdir(path.join(fixtureDir, "components", "ui")))
-      .filter((name) => name.endsWith(".tsx") || name.endsWith(".ts"));
+    const uiFiles = (
+      await readdir(path.join(fixtureDir, "components", "ui"))
+    ).filter((name) => name.endsWith(".tsx") || name.endsWith(".ts"));
     const imports = uiFiles
       .map(
         (name, i) =>
@@ -107,7 +115,7 @@ describe("plugin component registry", () => {
       ),
     );
 
-    const result = await buildPluginApp(fixtureDir);
+    const result = await buildPluginApp(fixtureDir, "0.9.0-test");
 
     const js = await readFile(result.jsPath, "utf8");
     // Shared singletons resolve through the runtime, never bundled copies.

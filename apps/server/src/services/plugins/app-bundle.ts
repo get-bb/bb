@@ -4,6 +4,23 @@ import { join } from "node:path";
 import semver from "semver";
 import { PLUGIN_SDK_MAJOR } from "@bb/domain";
 
+export interface PluginArtifactMeta {
+  sdkMajor: number;
+  sdkVersion: string;
+  artifactFormatVersion?: 1;
+  pluginId?: string;
+  pluginVersion?: string;
+  builtWith?: {
+    bbVersion: string;
+    pluginSdkVersion: string;
+  };
+}
+
+export interface PluginArtifactMetaParseResult {
+  meta: PluginArtifactMeta | null;
+  error: string | null;
+}
+
 /**
  * Frontend bundle inventory + asset state for plugins that declare `bb.app`
  * (design §5.1). The plugin service refreshes this per load (install, boot,
@@ -153,33 +170,138 @@ export async function loadPluginLogos(
  * and the two must agree (semver.major(sdkVersion) === sdkMajor) — an
  * inconsistent sidecar would make the compatibility gate lie.
  */
-export function parsePluginAppBundleMeta(
+export function parsePluginArtifactMeta(
   raw: string,
-): { sdkMajor: number; sdkVersion: string } | null {
+): PluginArtifactMetaParseResult {
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    return null;
+    return { meta: null, error: "metadata is not valid JSON" };
   }
-  const meta = json as { sdkMajor?: unknown; sdkVersion?: unknown } | null;
+  if (typeof json !== "object" || json === null || Array.isArray(json)) {
+    return { meta: null, error: "metadata must be a JSON object" };
+  }
+  const meta = Object.fromEntries(Object.entries(json));
   if (
-    typeof meta?.sdkMajor !== "number" ||
+    typeof meta.sdkMajor !== "number" ||
     !Number.isSafeInteger(meta.sdkMajor) ||
     meta.sdkMajor < 0 ||
     typeof meta.sdkVersion !== "string" ||
     semver.valid(meta.sdkVersion) === null ||
     semver.major(meta.sdkVersion) !== meta.sdkMajor
   ) {
-    return null;
+    return {
+      meta: null,
+      error:
+        "sdkMajor must be a non-negative integer and must match the valid semver sdkVersion",
+    };
   }
-  return { sdkMajor: meta.sdkMajor, sdkVersion: meta.sdkVersion };
+  const authoritativeKeys = [
+    "artifactFormatVersion",
+    "pluginId",
+    "pluginVersion",
+    "builtWith",
+  ];
+  const hasAuthoritativeField = authoritativeKeys.some((key) => key in meta);
+  if (!hasAuthoritativeField) {
+    return {
+      meta: { sdkMajor: meta.sdkMajor, sdkVersion: meta.sdkVersion },
+      error: null,
+    };
+  }
+  if (meta.artifactFormatVersion !== 1) {
+    return {
+      meta: null,
+      error: `unknown artifactFormatVersion ${JSON.stringify(meta.artifactFormatVersion)}; supported value is 1`,
+    };
+  }
+  if (typeof meta.pluginId !== "string" || meta.pluginId.length === 0) {
+    return { meta: null, error: "pluginId must be a non-empty string" };
+  }
+  if (
+    typeof meta.pluginVersion !== "string" ||
+    meta.pluginVersion.length === 0
+  ) {
+    return { meta: null, error: "pluginVersion must be a non-empty string" };
+  }
+  if (
+    typeof meta.builtWith !== "object" ||
+    meta.builtWith === null ||
+    Array.isArray(meta.builtWith)
+  ) {
+    return { meta: null, error: "builtWith must be an object" };
+  }
+  const builtWith = Object.fromEntries(Object.entries(meta.builtWith));
+  if (
+    typeof builtWith.bbVersion !== "string" ||
+    builtWith.bbVersion.length === 0 ||
+    typeof builtWith.pluginSdkVersion !== "string" ||
+    semver.valid(builtWith.pluginSdkVersion) === null
+  ) {
+    return {
+      meta: null,
+      error:
+        "builtWith.bbVersion must be non-empty and builtWith.pluginSdkVersion must be a valid semver",
+    };
+  }
+  if (builtWith.pluginSdkVersion !== meta.sdkVersion) {
+    return {
+      meta: null,
+      error: `builtWith.pluginSdkVersion ${builtWith.pluginSdkVersion} does not match sdkVersion ${meta.sdkVersion}`,
+    };
+  }
+  return {
+    meta: {
+      sdkMajor: meta.sdkMajor,
+      sdkVersion: meta.sdkVersion,
+      artifactFormatVersion: 1,
+      pluginId: meta.pluginId,
+      pluginVersion: meta.pluginVersion,
+      builtWith: {
+        bbVersion: builtWith.bbVersion,
+        pluginSdkVersion: builtWith.pluginSdkVersion,
+      },
+    },
+    error: null,
+  };
+}
+
+export function parsePluginAppBundleMeta(
+  raw: string,
+): PluginArtifactMeta | null {
+  return parsePluginArtifactMeta(raw).meta;
+}
+
+/** Validate one install artifact against the running SDK and its manifest. */
+export function validatePluginArtifactMeta(args: {
+  artifact: "server" | "app";
+  raw: string;
+  pluginId: string;
+  pluginVersion: string;
+}): string | null {
+  const parsed = parsePluginArtifactMeta(args.raw);
+  if (parsed.meta === null) {
+    return `${args.artifact} artifact for plugin "${args.pluginId}" has invalid metadata: ${parsed.error ?? "unknown error"}`;
+  }
+  const meta = parsed.meta;
+  if (meta.sdkMajor !== PLUGIN_SDK_MAJOR) {
+    return `${args.artifact} artifact for plugin "${args.pluginId}" was built for SDK major ${meta.sdkMajor}, running SDK major is ${PLUGIN_SDK_MAJOR}; rebuild the ${args.artifact} artifact with this bb version`;
+  }
+  if (meta.artifactFormatVersion !== 1) return null;
+  if (meta.pluginId !== args.pluginId) {
+    return `${args.artifact} artifact pluginId "${meta.pluginId}" does not match manifest pluginId "${args.pluginId}"`;
+  }
+  if (meta.pluginVersion !== args.pluginVersion) {
+    return `${args.artifact} artifact pluginVersion "${meta.pluginVersion}" does not match manifest version "${args.pluginVersion}"`;
+  }
+  return null;
 }
 
 /** `dist/app.meta.json` contents, or null when missing/malformed. */
 export async function readPluginAppBundleMeta(
   rootDir: string,
-): Promise<{ sdkMajor: number; sdkVersion: string } | null> {
+): Promise<PluginArtifactMeta | null> {
   let raw: string;
   try {
     raw = await readFile(join(rootDir, "dist", "app.meta.json"), "utf8");

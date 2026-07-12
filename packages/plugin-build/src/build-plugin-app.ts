@@ -10,13 +10,13 @@ import {
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Plugin } from "esbuild";
-import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { PLUGIN_SDK_APP_EXPORT_NAMES } from "@bb/plugin-sdk";
 import {
   PLUGIN_THEME_CSS,
   TW_ANIMATE_CSS,
 } from "./generated/plugin-theme.generated.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
+import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.app` entry (app.tsx) into a
@@ -32,8 +32,8 @@ import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
  *   sources. Host theme tokens are live CSS variables at runtime, so this
  *   pass only needs to emit the plugin's own utility classes (theme +
  *   utilities layers; no preflight — the host already loads it).
- * - `dist/app.meta.json` — `{ sdkMajor, sdkVersion }` sidecar the host checks
- *   before loading the bundle.
+ * - `dist/app.meta.json` — SDK compatibility plus authoritative plugin,
+ *   artifact-format, and build-version metadata.
  */
 
 /**
@@ -141,6 +141,7 @@ interface PluginAppConfig {
   /** Absolute path of the `bb.app` entry file. */
   appEntry: string;
   packageName: string;
+  pluginVersion: string;
 }
 
 type ScannerSource = {
@@ -279,10 +280,17 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
   } catch {
     throw new Error(`manifest bb.app points at a missing file: ${app}`);
   }
-  return {
-    appEntry,
-    packageName: typeof pkg.name === "string" ? pkg.name : rootDir,
-  };
+  if (typeof pkg.name !== "string" || pkg.name.length === 0) {
+    throw new Error(
+      `plugin package.json has no non-empty name at ${packageJsonPath}`,
+    );
+  }
+  if (typeof pkg.version !== "string" || pkg.version.length === 0) {
+    throw new Error(
+      `plugin package.json has no non-empty version at ${packageJsonPath}`,
+    );
+  }
+  return { appEntry, packageName: pkg.name, pluginVersion: pkg.version };
 }
 
 /**
@@ -377,8 +385,10 @@ export interface PluginAppBuildResult {
  */
 export async function buildPluginApp(
   rootDir: string,
+  bbVersion: string,
 ): Promise<PluginAppBuildResult> {
-  const { appEntry } = await readPluginAppConfig(rootDir);
+  const { appEntry, packageName, pluginVersion } =
+    await readPluginAppConfig(rootDir);
   const distDir = join(rootDir, "dist");
   await mkdir(distDir, { recursive: true });
   const jsPath = join(distDir, "app.js");
@@ -425,7 +435,7 @@ export async function buildPluginApp(
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
-        { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
+        createPluginArtifactMeta({ packageName, pluginVersion, bbVersion }),
         null,
         2,
       ) + "\n",

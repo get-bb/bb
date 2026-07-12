@@ -1,7 +1,14 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   managedInstallDir,
   parsePluginSource,
@@ -39,7 +47,12 @@ const [hasGit, hasNpm] = await Promise.all([
 
 async function writePluginFixture(
   rootDir: string,
-  options: { name: string; version?: string; engines?: string },
+  options: {
+    name: string;
+    version?: string;
+    engines?: string;
+    pluginSdkRange?: string;
+  },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
   await writeFile(
@@ -47,7 +60,16 @@ async function writePluginFixture(
     JSON.stringify({
       name: options.name,
       version: options.version ?? "0.1.0",
-      ...(options.engines ? { engines: { bb: options.engines } } : {}),
+      ...(options.engines || options.pluginSdkRange
+        ? {
+            engines: {
+              ...(options.engines ? { bb: options.engines } : {}),
+              ...(options.pluginSdkRange
+                ? { bbPluginSdk: options.pluginSdkRange }
+                : {}),
+            },
+          }
+        : {}),
       bb: { server: "./server.ts" },
     }),
   );
@@ -84,8 +106,13 @@ describe("plugin install sources", () => {
       installDir: "github.com/acme/bb-plugin-foo@v1",
     });
     expect(
-      parsePluginSource("git:https://github.com/acme/bb-plugin-foo.git@abc1234"),
-    ).toMatchObject({ kind: "git", url: "https://github.com/acme/bb-plugin-foo.git" });
+      parsePluginSource(
+        "git:https://github.com/acme/bb-plugin-foo.git@abc1234",
+      ),
+    ).toMatchObject({
+      kind: "git",
+      url: "https://github.com/acme/bb-plugin-foo.git",
+    });
     expect(() => parsePluginSource("git:github.com/acme/repo")).toThrowError(
       /must pin a ref/,
     );
@@ -186,8 +213,13 @@ describe("plugin install flows", () => {
       expect(entry.status).toBe("running");
       expect(entry.source).toBe(source);
       expect(entry.rootDir).toBe(
-        join(dataDir, "plugins", "git", "local", ...repoDir.replace(/^\/+/, "").split("/")) +
-          "@v1",
+        join(
+          dataDir,
+          "plugins",
+          "git",
+          "local",
+          ...repoDir.replace(/^\/+/, "").split("/"),
+        ) + "@v1",
       );
       await stat(join(entry.rootDir, "package.json"));
     });
@@ -270,6 +302,22 @@ describe("plugin install flows", () => {
       await expect(stat(managed as string)).rejects.toThrowError();
     });
 
+    it("hard-fails managed install on an engines.bbPluginSdk mismatch", async () => {
+      const repoDir = join(workDir, "repo-sdk-too-new");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-sdk-too-new",
+        pluginSdkRange: ">=99.0.0",
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+
+      await expect(service.install(`git:${repoDir}@main`)).rejects.toThrowError(
+        new RegExp(
+          `install refused.*requires bb plugin SDK >=99\\.0\\.0, running SDK is ${PLUGIN_SDK_VERSION.replaceAll(".", "\\.")}`,
+        ),
+      );
+    });
+
     it("remove deletes the managed git dir but never a path: dir", async () => {
       const repoDir = join(workDir, "repo-rm");
       await writePluginFixture(repoDir, { name: "bb-plugin-managed" });
@@ -295,6 +343,20 @@ describe("plugin install flows", () => {
     });
   });
 
+  it("keeps path installs developer-friendly while surfacing SDK incompatibility", async () => {
+    const rootDir = join(workDir, "local-sdk-mismatch");
+    await writePluginFixture(rootDir, {
+      name: "bb-plugin-local-sdk-mismatch",
+      pluginSdkRange: ">=99.0.0",
+    });
+
+    const entry = await service.installPath(rootDir);
+    expect(entry.status).toBe("incompatible");
+    expect(entry.statusDetail).toContain(
+      `requires bb plugin SDK >=99.0.0, running SDK is ${PLUGIN_SDK_VERSION}`,
+    );
+  });
+
   describe.skipIf(!hasNpm)("npm sources", () => {
     it(
       "installs an exact version from a registry, loads it, and remove deletes the prefix",
@@ -317,7 +379,9 @@ describe("plugin install flows", () => {
           const server = createServer((request, response) => {
             const url = request.url ?? "";
             if (url === `/${name}/-/${name}-${version}.tgz`) {
-              response.writeHead(200, { "content-type": "application/octet-stream" });
+              response.writeHead(200, {
+                "content-type": "application/octet-stream",
+              });
               response.end(tarball);
               return;
             }
@@ -334,7 +398,9 @@ describe("plugin install flows", () => {
                       version,
                       dist: {
                         tarball: `${origin}/${name}/-/${name}-${version}.tgz`,
-                        shasum: createHash("sha1").update(tarball).digest("hex"),
+                        shasum: createHash("sha1")
+                          .update(tarball)
+                          .digest("hex"),
                         integrity: `sha512-${createHash("sha512").update(tarball).digest("base64")}`,
                       },
                     },

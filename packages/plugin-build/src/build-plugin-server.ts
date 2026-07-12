@@ -8,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
+import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.server` entry into a
@@ -20,8 +20,8 @@ import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
  *   resolves it to the live in-process implementation) and so does
  *   better-sqlite3 (plugins get sqlite from the host via `bb.storage`;
  *   native deps are unsupported in plugins regardless).
- * - `dist/server.meta.json` — `{ sdkMajor, sdkVersion }` sidecar the loader
- *   checks before preferring the bundle over jiti-from-source.
+ * - `dist/server.meta.json` — SDK compatibility plus authoritative plugin,
+ *   artifact-format, and build-version metadata.
  */
 
 // Same shim scripts/build-utils.mjs applies to our own node bundles: plugin
@@ -39,6 +39,12 @@ const NODE_ESM_REQUIRE_BANNER = [
 interface PluginServerConfig {
   /** Absolute path of the `bb.server` entry file. */
   serverEntry: string;
+  packageName: string;
+  pluginVersion: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Read `<rootDir>/package.json` and resolve its `bb.server` entry, or throw. */
@@ -58,8 +64,13 @@ async function readPluginServerConfig(
   } catch {
     throw new Error(`package.json is not valid JSON at ${packageJsonPath}`);
   }
-  const pkg = json as { bb?: { server?: unknown } };
-  const server = pkg.bb?.server;
+  if (!isRecord(json)) {
+    throw new Error(
+      `package.json must contain a JSON object at ${packageJsonPath}`,
+    );
+  }
+  const bb = isRecord(json.bb) ? json.bb : undefined;
+  const server = bb?.server;
   if (typeof server !== "string" || server.length === 0) {
     throw new Error(
       `no server entry: ${packageJsonPath} has no "bb": { "server": "./server.ts" } field`,
@@ -79,7 +90,21 @@ async function readPluginServerConfig(
   } catch {
     throw new Error(`manifest bb.server points at a missing file: ${server}`);
   }
-  return { serverEntry };
+  if (typeof json.name !== "string" || json.name.length === 0) {
+    throw new Error(
+      `plugin package.json has no non-empty name at ${packageJsonPath}`,
+    );
+  }
+  if (typeof json.version !== "string" || json.version.length === 0) {
+    throw new Error(
+      `plugin package.json has no non-empty version at ${packageJsonPath}`,
+    );
+  }
+  return {
+    serverEntry,
+    packageName: json.name,
+    pluginVersion: json.version,
+  };
 }
 
 export interface PluginServerBuildResult {
@@ -94,8 +119,10 @@ export interface PluginServerBuildResult {
  */
 export async function buildPluginServer(
   rootDir: string,
+  bbVersion: string,
 ): Promise<PluginServerBuildResult> {
-  const { serverEntry } = await readPluginServerConfig(rootDir);
+  const { serverEntry, packageName, pluginVersion } =
+    await readPluginServerConfig(rootDir);
   const distDir = join(rootDir, "dist");
   await mkdir(distDir, { recursive: true });
   const jsPath = join(distDir, "server.js");
@@ -129,7 +156,7 @@ export async function buildPluginServer(
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
-        { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
+        createPluginArtifactMeta({ packageName, pluginVersion, bbVersion }),
         null,
         2,
       ) + "\n",

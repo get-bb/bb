@@ -18,6 +18,14 @@ const targetRoot = path.resolve(
   "dist",
   BUILTIN_PLUGINS_DIRECTORY_NAME,
 );
+const bbAppPackageJsonPath = path.resolve(
+  serverRoot,
+  "..",
+  "..",
+  "packages",
+  "bb-app",
+  "package.json",
+);
 
 const RUNTIME_DIRS = ["dist", "skills"] as const;
 const LOGO_FILES = LOGO_CONVENTION_EXTENSIONS.flatMap((extension) => [
@@ -43,6 +51,21 @@ async function exists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function resolveBuildBbVersion(): Promise<string> {
+  const envVersion = process.env.BB_APP_VERSION?.trim();
+  if (envVersion) return envVersion;
+  try {
+    const json: unknown = JSON.parse(
+      await readFile(bbAppPackageJsonPath, "utf8"),
+    );
+    const parsed = z.object({ version: z.string().min(1) }).safeParse(json);
+    if (parsed.success) return parsed.data.version;
+  } catch {
+    // The source package is absent in some packaged-script contexts.
+  }
+  return "0.0.0-dev";
 }
 
 async function copyIfExists(from: string, to: string): Promise<void> {
@@ -78,20 +101,21 @@ async function writeRuntimePackageJson(args: {
 }
 
 async function copyBuiltinPlugin(args: {
+  bbVersion: string;
   build: boolean;
   name: string;
   sourceRoot: string;
   targetRoot: string;
 }): Promise<void> {
   if (args.build) {
-    await buildPluginServer(args.sourceRoot);
+    await buildPluginServer(args.sourceRoot, args.bbVersion);
     const raw = await readFile(
       path.join(args.sourceRoot, "package.json"),
       "utf8",
     );
     const packageJson = pluginPackageJsonSchema.parse(JSON.parse(raw));
     if (packageJson.bb.app !== undefined) {
-      await buildPluginApp(args.sourceRoot);
+      await buildPluginApp(args.sourceRoot, args.bbVersion);
     }
   }
 
@@ -118,6 +142,7 @@ async function copyBuiltinPlugin(args: {
 
 export async function copyBuiltinPlugins(
   args: {
+    bbVersion?: string;
     build?: boolean;
     sourceModuleDir?: string;
     targetRoot?: string;
@@ -126,6 +151,7 @@ export async function copyBuiltinPlugins(
   const resolvedSourceModuleDir = args.sourceModuleDir ?? sourceModuleDir;
   const resolvedTargetRoot = args.targetRoot ?? targetRoot;
   const build = args.build ?? true;
+  const bbVersion = args.bbVersion ?? (await resolveBuildBbVersion());
 
   await rm(resolvedTargetRoot, { recursive: true, force: true });
 
@@ -135,6 +161,7 @@ export async function copyBuiltinPlugins(
 
   for (const name of BUILTIN_PLUGIN_NAMES) {
     await copyBuiltinPlugin({
+      bbVersion,
       build,
       name,
       sourceRoot: resolveBuiltinPluginRootPathForModuleDir({

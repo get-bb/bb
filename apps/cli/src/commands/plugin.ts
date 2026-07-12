@@ -391,10 +391,11 @@ export function registerPluginCommands(
     .action(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
+        const bbVersion = resolveBbCliVersion();
         // buildPluginServer errors legibly on a missing/invalid bb.server —
         // every plugin has one, so a headless plugin succeeds with just the
         // backend bundle (prebuilt distribution, design §6).
-        const server = await buildPluginServer(rootDir);
+        const server = await buildPluginServer(rootDir, bbVersion);
         const files = [server.jsPath, server.mapPath, server.metaPath];
         let hasApp = false;
         try {
@@ -406,7 +407,7 @@ export function registerPluginCommands(
           // Unreachable in practice: buildPluginServer already read it.
         }
         if (hasApp) {
-          const app = await buildPluginApp(rootDir);
+          const app = await buildPluginApp(rootDir, bbVersion);
           files.push(app.jsPath, app.cssPath, app.metaPath);
         }
         for (const file of files) {
@@ -466,7 +467,7 @@ export function registerPluginCommands(
           pluginId: entry.id,
           hasApp,
           buildApp: async () => {
-            await buildPluginApp(rootDir);
+            await buildPluginApp(rootDir, resolveBbCliVersion());
           },
           reloadPlugin: async () => {
             const result = await callPlugins<PluginMutationResult>(

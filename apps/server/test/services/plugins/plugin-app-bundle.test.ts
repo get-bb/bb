@@ -16,6 +16,7 @@ import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { validatePluginArtifactMeta } from "../../../src/services/plugins/app-bundle.js";
 
 // The harness config uses serverPort 3334, so this host is on the local-app
 // origin allowlist (asset routes take no auth, but keep requests realistic).
@@ -483,7 +484,9 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
 
         // Package 2: ships a prebuilt dist stamped with the current SDK.
         const prebuiltDir = join(workDir, "prebuilt");
-        await writeAppPluginFixture(prebuiltDir, { name: "bb-plugin-prebuilt" });
+        await writeAppPluginFixture(prebuiltDir, {
+          name: "bb-plugin-prebuilt",
+        });
         await mkdir(join(prebuiltDir, "dist"), { recursive: true });
         await writeFile(
           join(prebuiltDir, "dist", "app.js"),
@@ -507,7 +510,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           await run("npm", ["pack", "--pack-destination", packDir], {
             cwd: dir,
           });
-          tarballs.set(name, await readFile(join(packDir, `${name}-0.1.0.tgz`)));
+          tarballs.set(
+            name,
+            await readFile(join(packDir, `${name}-0.1.0.tgz`)),
+          );
         }
 
         // Minimal loopback npm registry (packument + tarball per package).
@@ -601,6 +607,64 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           );
         }
       },
+    );
+  });
+});
+
+describe("plugin artifact identity validation", () => {
+  function meta(overrides: Record<string, unknown> = {}): string {
+    return JSON.stringify({
+      sdkMajor: PLUGIN_SDK_MAJOR,
+      sdkVersion: PLUGIN_SDK_VERSION,
+      artifactFormatVersion: 1,
+      pluginId: "contract",
+      pluginVersion: "2.3.4",
+      builtWith: {
+        bbVersion: "0.9.0",
+        pluginSdkVersion: PLUGIN_SDK_VERSION,
+      },
+      ...overrides,
+    });
+  }
+
+  const validate = (artifact: "server" | "app", raw: string) =>
+    validatePluginArtifactMeta({
+      artifact,
+      raw,
+      pluginId: "contract",
+      pluginVersion: "2.3.4",
+    });
+
+  it("rejects authoritative plugin id and version mismatches", () => {
+    expect(validate("server", meta({ pluginId: "other" }))).toMatch(
+      /server artifact pluginId.*other.*contract/,
+    );
+    expect(validate("app", meta({ pluginVersion: "9.9.9" }))).toMatch(
+      /app artifact pluginVersion.*9\.9\.9.*2\.3\.4/,
+    );
+  });
+
+  it("names the incompatible frontend when backend compatibility is only partial", () => {
+    expect(validate("server", meta())).toBeNull();
+    const incompatibleMajor = PLUGIN_SDK_MAJOR + 1;
+    expect(
+      validate(
+        "app",
+        meta({
+          sdkMajor: incompatibleMajor,
+          sdkVersion: `${incompatibleMajor}.0.0`,
+          builtWith: {
+            bbVersion: "0.9.0",
+            pluginSdkVersion: `${incompatibleMajor}.0.0`,
+          },
+        }),
+      ),
+    ).toMatch(/app artifact.*SDK major.*rebuild the app artifact/);
+  });
+
+  it("rejects unknown artifact format versions", () => {
+    expect(validate("server", meta({ artifactFormatVersion: 2 }))).toMatch(
+      /server artifact.*unknown artifactFormatVersion 2.*supported value is 1/,
     );
   });
 });
