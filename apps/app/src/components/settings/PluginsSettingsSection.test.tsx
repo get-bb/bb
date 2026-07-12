@@ -18,8 +18,9 @@ import {
   PluginSettingsDetail,
   PluginSettingsDetailSection,
   PluginSettingsForm,
-  PluginToggleRow,
 } from "./PluginsSettingsSection";
+import { InstalledPluginRow } from "./plugins/InstalledPluginsTab";
+import { EMPTY_PLUGIN_UPDATE_STATE } from "@/hooks/queries/plugin-settings-queries";
 
 interface RecordedRequest {
   url: string;
@@ -174,6 +175,11 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     logoUrl,
     logoDarkUrl: null,
     hasSettings: true,
+    provenance: null,
+    marketplaceName: null,
+    sourceDisplay: null,
+    updatePolicy: null,
+    updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };
 }
 
@@ -258,7 +264,7 @@ describe("PluginSettingsDetail settings gating", () => {
   });
 });
 
-describe("PluginToggleRow", () => {
+describe("InstalledPluginRow", () => {
   it("POSTs disable when toggling an enabled plugin off", async () => {
     const requests: RecordedRequest[] = [];
     vi.stubGlobal(
@@ -272,7 +278,10 @@ describe("PluginToggleRow", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
-        <PluginToggleRow plugin={rowPlugin("running")} />
+        <InstalledPluginRow
+          plugin={rowPlugin("running")}
+          onUpdateClick={() => {}}
+        />
       </MemoryRouter>,
       { wrapper },
     );
@@ -283,5 +292,61 @@ describe("PluginToggleRow", () => {
       const post = requests.find((request) => request.init?.method === "POST");
       expect(post?.url).toBe("/api/v1/plugins/linear/disable");
     });
+  });
+
+  it("badges an available update and routes the pill to the confirmation", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ ok: true })),
+    );
+    const onUpdateClick = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <InstalledPluginRow
+          plugin={{
+            ...rowPlugin("running"),
+            updateState: {
+              ...EMPTY_PLUGIN_UPDATE_STATE,
+              availableVersion: "1.7.0",
+            },
+          }}
+          onUpdateClick={onUpdateClick}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    // At rest the row shows no version, no source string, no menu.
+    expect(screen.queryByText(/v0\.1\.0/)).toBeNull();
+    fireEvent.click(screen.getByTestId("plugin-update-pill-linear"));
+    expect(onUpdateClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("never badges a newer-but-incompatible release (nothing is actionable)", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ ok: true })),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <InstalledPluginRow
+          plugin={{
+            ...rowPlugin("running"),
+            updateState: {
+              ...EMPTY_PLUGIN_UPDATE_STATE,
+              blockedVersion: "1.9.0",
+              blockedReasons: ["requires bb >= 0.15"],
+            },
+          }}
+          onUpdateClick={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(screen.queryByTestId("plugin-update-pill-linear")).toBeNull();
+    expect(screen.queryByTestId("plugin-attention-pill-linear")).toBeNull();
   });
 });

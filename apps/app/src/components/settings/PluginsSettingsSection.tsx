@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
@@ -14,38 +13,46 @@ import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Pill, type PillVariant } from "@bb/shared-ui/pill";
-import {
-  SettingsSection,
-  SettingsWithControl,
-} from "@/components/ui/settings-section.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { Switch } from "@bb/shared-ui/switch";
+import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
-  applyPluginSettingsView,
-  invalidatePluginList,
-} from "@/hooks/cache-owners/plugin-cache-owner";
-import {
-  setPluginEnabled,
   updatePluginSettings,
   usePluginList,
   usePluginSettingsView,
   type PluginListItem,
   type PluginSettingFieldDescriptor,
 } from "@/hooks/queries/plugin-settings-queries";
+import { useMarketplaces } from "@/hooks/queries/plugin-marketplace-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { getSettingsPluginRoutePath } from "@/lib/route-paths";
+import {
+  AddPluginDialog,
+  type AddPluginInitial,
+} from "./plugins/AddPluginDialog";
+import { BrowsePluginsTab } from "./plugins/BrowsePluginsTab";
+import { InstalledPluginsTab } from "./plugins/InstalledPluginsTab";
+import { MarketplacesTab } from "./plugins/MarketplacesTab";
+import {
+  PluginUpdateBanner,
+  PluginUpdatesSourceCard,
+  pluginHasUpdateSurfaces,
+} from "./plugins/PluginUpdatesCard";
+import { PluginLogo } from "./plugins/plugin-ui";
 
 /**
- * The Settings "Plugins" surfaces (plugin design §5.2 settingsSection):
+ * The Settings "Plugins" surfaces (plugin design §5.2 settingsSection; the
+ * marketplace design's locked three-layer disclosure model):
  *
- * - PluginsSettingsSection: the management bucket — installed plugins with
- *   enable/disable switches. Install/remove stays on the bb CLI.
- * - PluginSettingsDetailSection: one plugin's settings page, rendering its
- *   declarative settings schema as a host-rendered form — no plugin code
- *   runs on this surface. Secrets are write-only: the server reports only
- *   `{ set }`, and an empty secret input means "leave unchanged".
+ * - PluginsSettingsSection: management — Installed / Browse / Marketplaces
+ *   tabs plus the Add-plugin dialog. The installed list is Layer 1: quiet
+ *   rows that answer "is anything asking for my attention?".
+ * - PluginSettingsDetailSection: one plugin's page (Layer 2) — update
+ *   banner, "Updates & source" card, and the host-rendered settings form.
+ *   Secrets are write-only: the server reports only `{ set }`, and an empty
+ *   secret input means "leave unchanged".
  *
  * Both render a hint instead of content while the `plugins` experiment is
  * off (the settings nav only links here while it is on).
@@ -316,124 +323,117 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "degraded",
 ];
 
-function PluginLogo({
-  plugin,
-  className,
+type PluginsTab = "installed" | "browse" | "marketplaces";
+
+function PluginsTabButton({
+  label,
+  count,
+  active,
+  onClick,
 }: {
-  plugin: PluginListItem;
-  className: string;
+  label: string;
+  count?: number;
+  active: boolean;
+  onClick: () => void;
 }) {
-  const theme = usePreferredTheme();
-  const logoUrl =
-    theme === "dark" && plugin.logoDarkUrl !== null
-      ? plugin.logoDarkUrl
-      : plugin.logoUrl;
-  if (logoUrl === null) return null;
   return (
-    <img
-      src={logoUrl}
-      alt=""
-      aria-hidden="true"
-      data-testid={`plugin-settings-logo-${plugin.id}`}
-      className={className}
-    />
-  );
-}
-
-/** Exported for tests (enable/disable round-trip). */
-export function PluginToggleRow({ plugin }: { plugin: PluginListItem }) {
-  const queryClient = useQueryClient();
-  const { settingsSections } = usePluginSlots();
-  const hasSettingsSections = settingsSections.some(
-    (section) => section.pluginId === plugin.id,
-  );
-  const toggle = useMutation({
-    mutationFn: (enabled: boolean) =>
-      setPluginEnabled(fetch, plugin.id, enabled),
-    onError: (error, enabled) => {
-      appToast.error(`${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`, {
-        description: error instanceof Error ? error.message : String(error),
-      });
-    },
-    onSettled: () => invalidatePluginList({ queryClient }),
-  });
-  // Reflect the in-flight target immediately; the invalidated list settles it.
-  const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
-
-  return (
-    <div
-      className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
-      data-testid={`plugin-row-${plugin.id}`}
+    <button
+      type="button"
+      aria-pressed={active}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium",
+        active
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+      onClick={onClick}
     >
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <PluginLogo
-            plugin={plugin}
-            className="size-4 shrink-0 rounded-sm object-contain"
-          />
-          <span className="text-sm font-medium text-foreground">
-            {plugin.id}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            v{plugin.version}
-          </span>
-          <Pill variant={statusPillVariant(plugin.status)} size="sm">
-            {plugin.status}
-          </Pill>
-        </div>
-        {plugin.description !== null && plugin.description.length > 0 ? (
-          <p className="mt-1 text-xs leading-snug text-muted-foreground">
-            {plugin.description}
-          </p>
-        ) : null}
-        {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
-          <p className="mt-1 text-xs leading-snug text-subtle-foreground/75">
-            {plugin.statusDetail}
-          </p>
-        ) : null}
-        {plugin.enabled && (plugin.hasSettings || hasSettingsSections) ? (
-          <Link
-            to={getSettingsPluginRoutePath(plugin.id)}
-            className="mt-1.5 inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Plugin settings
-            <Icon name="ChevronRight" className="size-3.5" />
-          </Link>
-        ) : null}
-      </div>
-      <Switch
-        checked={enabled}
-        disabled={toggle.isPending}
-        onCheckedChange={(next) => toggle.mutate(next)}
-        aria-label={`Enable ${plugin.id}`}
-      />
-    </div>
+      {label}
+      {count !== undefined ? (
+        <span className="text-2xs text-subtle-foreground">{count}</span>
+      ) : null}
+    </button>
   );
 }
 
-/** The "Plugins" bucket: install state and enable/disable per plugin. */
+/** The "Plugins" bucket: Installed / Browse / Marketplaces (Layer 1). */
 export function PluginsSettingsSection() {
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
   const listQuery = usePluginList({ enabled: pluginsEnabled });
+  const marketplacesQuery = useMarketplaces({ enabled: pluginsEnabled });
   const plugins = listQuery.data ?? [];
+  const [tab, setTab] = useState<PluginsTab>("installed");
+  const [addDialog, setAddDialog] = useState<{
+    open: boolean;
+    initial: AddPluginInitial | null;
+  }>({ open: false, initial: null });
+
+  if (systemConfig.data === undefined) return null;
+
   return (
-    <SettingsSection
-      title="Plugins"
-      description="Enable or disable installed BB plugins. Install or remove plugins with the bb CLI (bb plugin install / remove)."
-    >
-      {systemConfig.data === undefined ? null : !pluginsEnabled ? (
-        <EmptyState message={PLUGINS_EXPERIMENT_OFF_MESSAGE} />
-      ) : plugins.length === 0 ? (
-        <EmptyState message='No plugins installed. Install one with "bb plugin install <source>".' />
-      ) : (
-        <div className="divide-y divide-border">
-          {plugins.map((plugin) => (
-            <PluginToggleRow key={plugin.id} plugin={plugin} />
-          ))}
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Plugins</h2>
+        <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+          Full-trust extensions running inside the BB server.
+        </p>
+      </div>
+      {!pluginsEnabled ? (
+        <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+          <EmptyState message={PLUGINS_EXPERIMENT_OFF_MESSAGE} />
         </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1" role="tablist">
+              <PluginsTabButton
+                label="Installed"
+                count={plugins.length}
+                active={tab === "installed"}
+                onClick={() => setTab("installed")}
+              />
+              <PluginsTabButton
+                label="Browse"
+                active={tab === "browse"}
+                onClick={() => setTab("browse")}
+              />
+              <PluginsTabButton
+                label="Marketplaces"
+                count={marketplacesQuery.data?.length}
+                active={tab === "marketplaces"}
+                onClick={() => setTab("marketplaces")}
+              />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              onClick={() => setAddDialog({ open: true, initial: null })}
+            >
+              <Icon name="Plus" className="size-3.5" />
+              Add plugin
+            </Button>
+          </div>
+          {tab === "installed" ? (
+            <InstalledPluginsTab plugins={plugins} />
+          ) : tab === "browse" ? (
+            <BrowsePluginsTab
+              onInstall={(initial) => setAddDialog({ open: true, initial })}
+            />
+          ) : (
+            <MarketplacesTab />
+          )}
+          <AddPluginDialog
+            open={addDialog.open}
+            initial={addDialog.initial}
+            onOpenChange={(open) =>
+              setAddDialog((current) => ({ ...current, open }))
+            }
+          />
+        </>
       )}
-    </SettingsSection>
+    </section>
   );
 }
 
@@ -449,13 +449,20 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
     plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
   const displayName = plugin.displayName ?? plugin.id;
   const isRunning = plugin.status === "running";
+  const hasUpdateSurfaces = pluginHasUpdateSurfaces(plugin);
   // A running plugin whose only surface is a settingsSection lets that
   // section own the chrome (its own SettingsSection title + description), so
   // the diagnostic header (version + status pill + manifest description)
-  // doesn't stack a second heading above it. The diagnostic header stays for
-  // every other case — it's what explains why a section is missing.
+  // doesn't stack a second heading above it — unless the marketplace update
+  // surfaces render here too, which need the header for context.
   const sectionOwnsHeader =
-    isRunning && hasSettingsSections && !plugin.hasSettings;
+    isRunning && hasSettingsSections && !plugin.hasSettings && !hasUpdateSurfaces;
+  const provenanceLine =
+    plugin.marketplaceName !== null
+      ? `v${plugin.version} · from ${plugin.marketplaceName} marketplace`
+      : plugin.provenance === "direct"
+        ? `v${plugin.version} · direct install`
+        : null;
   return (
     <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
       {sectionOwnsHeader ? null : (
@@ -487,6 +494,11 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
                 </>
               ) : null}
             </div>
+            {isRunning && provenanceLine !== null ? (
+              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                {provenanceLine}
+              </p>
+            ) : null}
             {!isRunning &&
             plugin.description !== null &&
             plugin.description.length > 0 ? (
@@ -500,6 +512,8 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
               </p>
             ) : null}
           </div>
+          <PluginUpdateBanner plugin={plugin} />
+          <PluginUpdatesSourceCard plugin={plugin} />
           {showDeclarativeSettingsCard ? (
             <div className="rounded-lg border border-border bg-card px-4 py-3.5">
               {settingsAvailable ? (
