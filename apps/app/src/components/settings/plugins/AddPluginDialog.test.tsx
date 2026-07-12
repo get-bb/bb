@@ -27,6 +27,7 @@ const COMPATIBLE_PREVIEW = {
   resolved: { display: "1.6.2 · sha512-9f2c…e1", version: "1.6.2" },
   compatibility: { outcome: "compatible", devMode: false, problems: [] },
   updatePolicy: "compatible",
+  updatePolicyDisplay: "tracks compatible releases in ^1.4.0",
   skipped: [],
   warnings: [],
 };
@@ -81,6 +82,10 @@ describe("AddPluginDialog", () => {
       { timeout: 3000 },
     );
     expect(verdict.textContent).toContain("✓ compatible");
+    // The server's human policy phrasing renders verbatim in the preview.
+    expect(verdict.textContent).toContain(
+      "tracks compatible releases in ^1.4.0",
+    );
     const preview = requests.find(
       (request) => request.url === "/api/v1/plugins/install/preview",
     );

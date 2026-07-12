@@ -180,7 +180,9 @@ function AddPluginDialogContent({
               },
               {
                 key: "Update policy",
-                value: UPDATE_POLICY_LABELS[preview.updatePolicy],
+                value:
+                  preview.updatePolicyDisplay ??
+                  UPDATE_POLICY_LABELS[preview.updatePolicy],
                 mono: false,
               },
             ]}
@@ -304,7 +306,8 @@ function PreviewVerdict({ preview }: { preview: PluginInstallPreview }) {
               ) : null}
             </div>
             <div className="text-2xs text-muted-foreground">
-              {UPDATE_POLICY_CONSEQUENCE[preview.updatePolicy]}
+              {preview.updatePolicyDisplay ??
+                UPDATE_POLICY_CONSEQUENCE[preview.updatePolicy]}
             </div>
           </div>
         </div>

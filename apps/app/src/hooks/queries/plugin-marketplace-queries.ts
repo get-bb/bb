@@ -139,6 +139,8 @@ export interface PluginInstallPreview {
     problems: string[];
   };
   updatePolicy: PluginUpdatePolicy;
+  /** Server-phrased policy line ("tracks compatible releases in ^1.4.0"). */
+  updatePolicyDisplay: string | null;
   skipped: { version: string; reason: string }[];
   warnings: string[];
 }
@@ -162,6 +164,8 @@ const installPreviewSchema = z.object({
     problems: z.array(z.string()),
   }),
   updatePolicy: z.enum(PLUGIN_UPDATE_POLICIES),
+  // Tolerate absence while the server side lands the amendment.
+  updatePolicyDisplay: z.string().nullish(),
   skipped: z
     .array(z.object({ version: z.string(), reason: z.string() }))
     .nullish(),
@@ -209,6 +213,7 @@ export async function previewPluginInstall(
       problems: data.compatibility.problems,
     },
     updatePolicy: data.updatePolicy,
+    updatePolicyDisplay: data.updatePolicyDisplay ?? null,
     skipped: data.skipped ?? [],
     warnings: data.warnings ?? [],
   };
