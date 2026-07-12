@@ -84,6 +84,31 @@ export function hasOpenClaudeBackgroundTasks(tasks: ClaudeTaskMap): boolean {
   return false;
 }
 
+/**
+ * Whether Claude still has bounded agent work that will reinvoke the parent
+ * model when it settles. A successful SDK result while one of these tasks is
+ * open ends only the current SDK loop segment, not the logical bb turn.
+ *
+ * Backgrounded shell commands are deliberately excluded: they are detached
+ * work and may be long-lived (for example, a dev server). Ambient tasks are
+ * excluded for the same reason.
+ */
+export function hasCompletionBlockingClaudeTasks(
+  tasks: ClaudeTaskMap,
+): boolean {
+  for (const task of tasks.values()) {
+    if (
+      !task.terminal &&
+      !task.skipTranscript &&
+      (isBackgroundAgentTaskType(task.taskType) ||
+        task.taskType === LOCAL_WORKFLOW_TASK_TYPE)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function buildClaudeTaskItemId(taskId: string, generation: number): string {
   return generation > 1 ? `task:${taskId}#${generation}` : `task:${taskId}`;
 }

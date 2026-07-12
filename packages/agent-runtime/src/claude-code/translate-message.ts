@@ -39,6 +39,7 @@ import {
 } from "./schemas.js";
 import { buildClaudeProviderErrorInfo } from "./error-info.js";
 import {
+  hasCompletionBlockingClaudeTasks,
   translateClaudeTaskMessage,
   type ClaudeTaskMap,
 } from "./task-translation.js";
@@ -277,14 +278,15 @@ function buildClaudeRateLimitEventDetail(
   return details.join("; ");
 }
 
-function isHardClaudeRateLimitRejection(message: ClaudeRateLimitEvent): boolean {
+function isHardClaudeRateLimitRejection(
+  message: ClaudeRateLimitEvent,
+): boolean {
   const info = message.rate_limit_info;
   if (info.status !== "rejected") {
     return false;
   }
   return (
-    info.overageStatus !== "allowed" &&
-    info.overageStatus !== "allowed_warning"
+    info.overageStatus !== "allowed" && info.overageStatus !== "allowed_warning"
   );
 }
 
@@ -463,6 +465,9 @@ export function translateClaudeSdkMessage(
             : undefined);
         if (!turnId) {
           return [];
+        }
+        if (hasCompletionBlockingClaudeTasks(state.tasksById)) {
+          return events;
         }
         events.push({
           type: "turn/completed",
@@ -697,7 +702,8 @@ export function translateClaudeSdkMessage(
             tokenUsage,
           });
         }
-        if (isClaudeResultFailure(message)) {
+        const failed = isClaudeResultFailure(message);
+        if (failed) {
           events.push(
             buildClaudeProviderErrorEvent({
               detail: getClaudeResultErrorDetail(message),
@@ -710,15 +716,21 @@ export function translateClaudeSdkMessage(
             }),
           );
         }
+        // Claude emits a successful result at the end of each SDK loop
+        // segment. Background agents and workflows notify the CLI when they
+        // settle, which reinvokes the parent model. Keep the logical bb turn
+        // open across those segments so idle status, waiters, queued messages,
+        // pruning, and parent completion notifications only observe the final
+        // result. Failures still close immediately.
+        if (!failed && hasCompletionBlockingClaudeTasks(state.tasksById)) {
+          break;
+        }
         events.push({
           type: "turn/completed",
           threadId,
           providerThreadId: "",
           scope: turnScope(state.currentTurnId),
-          status:
-            message.is_error || message.subtype.startsWith("error")
-              ? "failed"
-              : "completed",
+          status: failed ? "failed" : "completed",
         });
         args.turnState.finishTurn({ state, threadId: stateKey });
       }

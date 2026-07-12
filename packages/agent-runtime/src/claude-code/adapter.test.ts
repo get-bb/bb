@@ -2147,6 +2147,54 @@ describe("claude-code provider adapter", () => {
     ]);
   });
 
+  it("keeps an open turn for synthetic no-response messages while an agent is running", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+    adapter.translateEvent(loadFixture("task-started-subagent.json"), context);
+
+    const events = adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "No response requested." }],
+          model: "<synthetic>",
+          stop_reason: "stop_sequence",
+          stop_sequence: "",
+          usage: {
+            input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+            output_tokens: 0,
+          },
+        },
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+
+    expect(events).toEqual([]);
+    adapter.translateEvent(
+      loadFixture("task-notification-subagent.json"),
+      context,
+    );
+    const finalEvents = adapter.translateEvent(
+      {
+        type: "result",
+        subtype: "end_turn",
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+    expect(finalEvents).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
+  });
+
   it("translateEvent keeps assistant message ids distinct within one turn", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
@@ -3463,6 +3511,214 @@ describe("claude-code provider adapter", () => {
         type: "turn/completed",
         scope: turnScope("turn-1"),
         status: "completed",
+      }),
+    );
+  });
+
+  it("keeps one logical turn open across Claude background-agent reinvocations", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "I will wait for the agent." }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    adapter.translateEvent(loadFixture("task-started-subagent.json"), context);
+
+    const intermediateResult = adapter.translateEvent(
+      {
+        type: "result",
+        subtype: "end_turn",
+        session_id: "sess-1",
+      },
+      context,
+    );
+    expect(intermediateResult).not.toContainEqual(
+      expect.objectContaining({ type: "turn/completed" }),
+    );
+
+    adapter.translateEvent(
+      loadFixture("task-notification-subagent.json"),
+      context,
+    );
+    const resumed = adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "The agent finished." }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    expect(resumed).not.toContainEqual(
+      expect.objectContaining({ type: "turn/started" }),
+    );
+    expect(resumed).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "The agent finished.",
+        }),
+      }),
+    );
+
+    const finalResult = adapter.translateEvent(
+      {
+        type: "result",
+        subtype: "end_turn",
+        session_id: "sess-1",
+      },
+      context,
+    );
+    expect(finalResult).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
+  });
+
+  it("treats workflows and legacy subagents as completion-blocking", () => {
+    const blockingTasks = [
+      loadFixture("task-started-workflow.json"),
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "subagent-1",
+        tool_use_id: "tool-subagent-1",
+        description: "Legacy subagent",
+        task_type: "local_subagent",
+        subagent_type: "Explore",
+        uuid: "uuid-subagent-1",
+        session_id: "sess-1",
+      },
+    ];
+
+    for (const [index, task] of blockingTasks.entries()) {
+      const adapter = createClaudeCodeProviderAdapter();
+      const context = { threadId: `bb-thread-${index}` };
+      adapter.translateEvent(
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "waiting" }],
+          },
+          session_id: "sess-1",
+        },
+        context,
+      );
+      adapter.translateEvent(task, context);
+
+      const events = adapter.translateEvent(
+        {
+          type: "result",
+          subtype: "end_turn",
+          session_id: "sess-1",
+        },
+        context,
+      );
+      expect(events).not.toContainEqual(
+        expect.objectContaining({ type: "turn/completed" }),
+      );
+    }
+  });
+
+  it("does not let detached or ambient tasks block turn completion", () => {
+    for (const task of [
+      {
+        task_id: "bash-1",
+        task_type: "local_bash",
+        description: "Run a detached server",
+      },
+      {
+        task_id: "ambient-agent-1",
+        task_type: "local_agent",
+        description: "Ambient agent",
+        skip_transcript: true,
+      },
+    ]) {
+      const adapter = createClaudeCodeProviderAdapter();
+      const context = { threadId: `bb-thread-${task.task_id}` };
+      adapter.translateEvent(
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "done" }],
+          },
+          session_id: "sess-1",
+        },
+        context,
+      );
+      adapter.translateEvent(
+        {
+          type: "system",
+          subtype: "task_started",
+          tool_use_id: `tool-${task.task_id}`,
+          uuid: `uuid-${task.task_id}`,
+          session_id: "sess-1",
+          ...task,
+        },
+        context,
+      );
+
+      const events = adapter.translateEvent(
+        {
+          type: "result",
+          subtype: "end_turn",
+          session_id: "sess-1",
+        },
+        context,
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope("turn-1"),
+          status: "completed",
+        }),
+      );
+    }
+  });
+
+  it("closes a failed result even while a background agent is open", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        message: { role: "assistant", content: [{ type: "text", text: "x" }] },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    adapter.translateEvent(loadFixture("task-started-subagent.json"), context);
+
+    const events = adapter.translateEvent(
+      {
+        type: "result",
+        subtype: "error",
+        session_id: "sess-1",
+      },
+      context,
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "failed",
       }),
     );
   });
