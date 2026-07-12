@@ -71,6 +71,12 @@ export interface InstalledPluginRow {
   newestIncompatibleVersion: string | null;
   updateStatusDetail: string | null;
   ignoredVersion: string | null;
+  quarantinedVersion: string | null;
+  quarantineSourceFingerprint: string | null;
+  quarantineBbVersion: string | null;
+  quarantineSdkVersion: string | null;
+  quarantinedAt: number | null;
+  quarantineDetail: string | null;
   activeArtifactId: string | null;
   normalizationVersion: number;
   rootDir: string;
@@ -175,6 +181,12 @@ function normalizedColumns(
     newestIncompatibleVersion: plugin.updateState.newestIncompatibleVersion,
     updateStatusDetail: plugin.updateState.statusDetail,
     ignoredVersion: plugin.updateState.ignoredVersion,
+    quarantinedVersion: null,
+    quarantineSourceFingerprint: null,
+    quarantineBbVersion: null,
+    quarantineSdkVersion: null,
+    quarantinedAt: null,
+    quarantineDetail: null,
     activeArtifactId: plugin.activeArtifactId,
     normalizationVersion: 1,
   } as const;
@@ -325,6 +337,34 @@ export function setInstalledPluginUpdateState(
       updateStatusDetail: state.statusDetail,
       ignoredVersion: state.ignoredVersion,
       updatedAt: Date.now(),
+    })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
+}
+
+export function setInstalledPluginQuarantine(
+  db: DbConnection,
+  id: string,
+  quarantine: {
+    version: string;
+    sourceFingerprint: string;
+    bbVersion: string;
+    sdkVersion: string;
+    detail: string;
+    quarantinedAt: number;
+  },
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      quarantinedVersion: quarantine.version,
+      quarantineSourceFingerprint: quarantine.sourceFingerprint,
+      quarantineBbVersion: quarantine.bbVersion,
+      quarantineSdkVersion: quarantine.sdkVersion,
+      quarantinedAt: quarantine.quarantinedAt,
+      quarantineDetail: quarantine.detail,
+      updatedAt: quarantine.quarantinedAt,
     })
     .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
     .run();

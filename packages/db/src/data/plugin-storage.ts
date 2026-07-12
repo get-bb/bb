@@ -2,6 +2,20 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { pluginKv, pluginSettings } from "../schema.js";
 
+export interface PluginKvRow {
+  pluginId: string;
+  key: string;
+  value: string;
+  updatedAt: number;
+}
+
+export interface PluginSettingRow {
+  pluginId: string;
+  key: string;
+  value: string;
+  updatedAt: number;
+}
+
 // --- plugin_kv: namespaced JSON-text values (`bb.storage.kv`) ---
 
 export function getPluginKvValue(
@@ -116,4 +130,28 @@ export function deleteAllPluginSettings(
   db.delete(pluginSettings)
     .where(eq(pluginSettings.pluginId, pluginId))
     .run();
+}
+
+export function listPluginKvRows(
+  db: DbConnection,
+  pluginId: string,
+): PluginKvRow[] {
+  return db
+    .select()
+    .from(pluginKv)
+    .where(eq(pluginKv.pluginId, pluginId))
+    .orderBy(asc(pluginKv.key))
+    .all();
+}
+
+export function listPluginSettingRows(
+  db: DbConnection,
+  pluginId: string,
+): PluginSettingRow[] {
+  return db
+    .select()
+    .from(pluginSettings)
+    .where(eq(pluginSettings.pluginId, pluginId))
+    .orderBy(asc(pluginSettings.key))
+    .all();
 }

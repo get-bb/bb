@@ -237,6 +237,12 @@ export const installedPlugins = sqliteTable("plugins", {
   newestIncompatibleVersion: text("newest_incompatible_version"),
   updateStatusDetail: text("update_status_detail"),
   ignoredVersion: text("ignored_version"),
+  quarantinedVersion: text("quarantined_version"),
+  quarantineSourceFingerprint: text("quarantine_source_fingerprint"),
+  quarantineBbVersion: text("quarantine_bb_version"),
+  quarantineSdkVersion: text("quarantine_sdk_version"),
+  quarantinedAt: integer("quarantined_at"),
+  quarantineDetail: text("quarantine_detail"),
   // deletePluginArtifact clears this before deleting in the same transaction.
   // NO ACTION is intentional: drizzle-kit cannot faithfully emit SET NULL
   // when adding this circular FK to the pre-existing plugins table.
@@ -278,6 +284,30 @@ export const pluginArtifacts = sqliteTable(
     validatedAt: integer("validated_at"),
   },
   (table) => [index("plugin_artifacts_plugin_idx").on(table.pluginId)],
+);
+
+export const pluginStateSnapshots = sqliteTable(
+  "plugin_state_snapshots",
+  {
+    id: text("id").primaryKey(),
+    pluginId: text("plugin_id").notNull(),
+    fromArtifactId: text("from_artifact_id"),
+    toArtifactId: text("to_artifact_id").notNull(),
+    snapshotPath: text("snapshot_path").notNull(),
+    databasePath: text("database_path"),
+    statePath: text("state_path").notNull(),
+    secretsPath: text("secrets_path"),
+    status: text("status", {
+      enum: ["pending", "ready", "restoring", "restored", "failed"],
+    }).notNull(),
+    createdAt: integer("created_at").notNull(),
+    retainedUntil: integer("retained_until").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("plugin_state_snapshots_plugin_idx").on(table.pluginId),
+    index("plugin_state_snapshots_retention_idx").on(table.retainedUntil),
+  ],
 );
 
 export const marketplaces = sqliteTable("marketplaces", {

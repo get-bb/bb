@@ -180,6 +180,7 @@ export {
   setInstalledPluginEnabled,
   setInstalledPluginUpdateState,
   setInstalledPluginSourceClassification,
+  setInstalledPluginQuarantine,
   upsertInstalledPlugin,
   type InstalledPluginRow,
   type LegacyInstalledPluginRegistration,
@@ -218,6 +219,10 @@ export {
   listPluginKvKeys,
   setPluginKvValue,
   setPluginSettingsValues,
+  listPluginKvRows,
+  listPluginSettingRows,
+  type PluginKvRow,
+  type PluginSettingRow,
 } from "./plugin-storage.js";
 export {
   claimPluginScheduledRun,
@@ -229,6 +234,17 @@ export {
   upsertPluginSchedule,
   type PluginScheduleRow,
 } from "./plugin-schedules.js";
+export {
+  createPluginStateSnapshot,
+  deletePluginStateSnapshot,
+  getPluginStateSnapshot,
+  listExpiredPluginStateSnapshots,
+  listGarbageCollectablePluginArtifacts,
+  listPluginStateSnapshots,
+  replacePluginSnapshotState,
+  setPluginStateSnapshotStatus,
+  type PluginStateSnapshotRow,
+} from "./plugin-state-snapshots.js";
 
 export {
   getStoredThemeId,

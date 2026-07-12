@@ -484,6 +484,13 @@
       "when": 1783884911815,
       "tag": "0068_yielding_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "6",
+      "when": 1783887508543,
+      "tag": "0069_silky_senator_kelly",
+      "breakpoints": true
     }
   ]
 }
