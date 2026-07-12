@@ -88,6 +88,7 @@ import {
   npmInstallPrefix,
   parsePluginSource,
   promoteImmutableDir,
+  realPathInside,
   runInstallCommand,
 } from "./install-sources.js";
 import {
@@ -2372,9 +2373,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           `invalid git plugin subdirectory ${JSON.stringify(context.gitSubdirectory)}`,
         );
       }
-      const cachedManifest = await readPluginManifest(targetRoot).catch(
-        () => null,
-      );
+      const cachedRealRoot = await realPathInside(
+        targetDir,
+        targetRoot,
+        "git plugin subdirectory",
+      ).catch(() => null);
+      const cachedManifest =
+        cachedRealRoot === null
+          ? null
+          : await readPluginManifest(cachedRealRoot).catch(() => null);
       const existingArtifact =
         cachedManifest === null
           ? undefined
@@ -2451,7 +2458,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             `invalid git plugin subdirectory ${JSON.stringify(context.gitSubdirectory)}`,
           );
         }
-        const stagedManifest = await readPluginManifest(stagedRoot);
+        const stagedRealRoot = await realPathInside(
+          stagingDir,
+          stagedRoot,
+          "git plugin subdirectory",
+        );
+        const stagedManifest = await readPluginManifest(stagedRealRoot);
         refuseBuiltinShadow(stagedManifest.id);
         const checkedOutCommit = await runInstallCommand("git", [
           "-C",
@@ -2465,7 +2477,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           );
         }
         await validateInstallDir({
-          rootDir: stagedRoot,
+          rootDir: stagedRealRoot,
           source,
           refuseEngineMismatch: true,
         });
@@ -3059,7 +3071,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       (await hashInstallDir(targetDir).catch(() => null)) ===
         existingArtifact.contentHash
     ) {
-      const manifest = await readPluginManifest(targetRoot);
+      const targetRealRoot = await realPathInside(
+        targetDir,
+        targetRoot,
+        "git plugin subdirectory",
+      );
+      const manifest = await readPluginManifest(targetRealRoot);
       const compatibility = evaluateCompatibility({
         bbRange: manifest.bbEngineRange,
         sdkRange: manifest.bbPluginSdkRange,
@@ -3131,9 +3148,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         args.row.sourceGitSubdirectory === null
           ? stagingDir
           : join(stagingDir, args.row.sourceGitSubdirectory);
+      let realPluginRoot: string;
+      try {
+        realPluginRoot = await realPathInside(
+          stagingDir,
+          pluginRoot,
+          "git plugin subdirectory",
+        );
+      } catch (error) {
+        return {
+          outcome: "invalid",
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
       let manifest: PluginManifest;
       try {
-        manifest = await readPluginManifest(pluginRoot);
+        manifest = await readPluginManifest(realPluginRoot);
       } catch (error) {
         return {
           outcome: "invalid",
@@ -3161,7 +3191,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
       try {
         await validateInstallDir({
-          rootDir: pluginRoot,
+          rootDir: realPluginRoot,
           source: args.row.source,
           refuseEngineMismatch: true,
         });

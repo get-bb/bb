@@ -1,5 +1,13 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -19,6 +27,10 @@ import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import {
+  createMarketplaceService,
+  MarketplaceDispositionError,
+} from "../../../src/services/marketplaces/marketplace-service.js";
 
 const run = promisify(execFile);
 
@@ -281,7 +293,7 @@ describe("marketplace HTTP routes", () => {
       marketplaceId: null,
       marketplaceEntryId: null,
       updatePolicy: "manual",
-      sourcePath: join(marketplaceRoot, "notes"),
+      sourcePath: await realpath(join(marketplaceRoot, "notes")),
     });
     expect(getInstalledPlugin(harness.db, "tasks")).toBeUndefined();
   });
@@ -390,5 +402,247 @@ describe("marketplace HTTP routes", () => {
       await rm(pluginRepo, { recursive: true, force: true });
       await rm(catalogRepo, { recursive: true, force: true });
     }
+  });
+
+  it("rejects an explicit traversal name before materialization or cache writes", async () => {
+    const catalogRepo = await mkdtemp(
+      join(tmpdir(), "bb-marketplace-name-traversal-"),
+    );
+    try {
+      await writeFile(
+        join(catalogRepo, "marketplace.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          name: "safe-name",
+          displayName: "Safe Name",
+          plugins: [],
+        }),
+      );
+      await initRepo(catalogRepo);
+      await commit(catalogRepo, "catalog");
+      const injectedRoot = join(
+        harness.config.dataDir,
+        "plugins",
+        "cache",
+        "injected",
+      );
+      const response = await harness.app.request("/api/v1/marketplaces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          source: `file://${catalogRepo}@main`,
+          name: "../../plugins/cache/injected",
+        }),
+      });
+      expect(response.status).toBe(422);
+      expect(await json(response)).toMatchObject({
+        error: expect.stringMatching(/invalid marketplace name/),
+      });
+      await expect(stat(injectedRoot)).rejects.toThrow();
+    } finally {
+      await rm(catalogRepo, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a git plugin subdir symlink that resolves outside its checkout", async () => {
+    const pluginRepo = await mkdtemp(
+      join(tmpdir(), "bb-marketplace-subdir-git-"),
+    );
+    const outside = await mkdtemp(
+      join(tmpdir(), "bb-marketplace-subdir-outside-"),
+    );
+    const catalogRoot = await mkdtemp(
+      join(tmpdir(), "bb-marketplace-subdir-catalog-"),
+    );
+    try {
+      await writeManagedPlugin(
+        outside,
+        "bb-plugin-subdir-escape",
+        "subdir-escape",
+      );
+      await symlink(outside, join(pluginRepo, "escape"));
+      await initRepo(pluginRepo);
+      await commit(pluginRepo, "escaping subdir");
+      await writeFile(
+        join(catalogRoot, "marketplace.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          name: "subdir-test",
+          displayName: "Subdir Test",
+          plugins: [
+            {
+              id: "subdir-escape",
+              displayName: "Subdir Escape",
+              description: "Must not load",
+              source: {
+                git: { url: pluginRepo, ref: "main", subdir: "escape" },
+              },
+            },
+          ],
+        }),
+      );
+      const added = await harness.app.request("/api/v1/marketplaces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source: catalogRoot }),
+      });
+      expect(added.status).toBe(201);
+      const installed = await harness.app.request("/api/v1/plugins/install", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          marketplace: {
+            marketplaceId: "subdir-test",
+            entryId: "subdir-escape",
+          },
+        }),
+      });
+      expect(installed.status).toBe(422);
+      expect(await json(installed)).toMatchObject({
+        error: expect.stringMatching(/resolves outside its root/),
+      });
+      await expect(stat(join(outside, "loaded.marker"))).rejects.toThrow();
+    } finally {
+      await rm(pluginRepo, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+      await rm(catalogRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a local path entry symlink before persisting its marketplace", async () => {
+    const outside = await mkdtemp(
+      join(tmpdir(), "bb-marketplace-path-outside-"),
+    );
+    try {
+      await writePlugin(
+        outside,
+        "bb-plugin-path-escape",
+        join(outside, "loaded.marker"),
+      );
+      await symlink(outside, join(marketplaceRoot, "escape"));
+      await writeFile(
+        join(marketplaceRoot, "marketplace.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          name: "path-symlink-test",
+          displayName: "Path Symlink Test",
+          plugins: [
+            {
+              id: "path-escape",
+              displayName: "Path Escape",
+              description: "Must not load",
+              source: { path: "escape" },
+            },
+          ],
+        }),
+      );
+      const response = await harness.app.request("/api/v1/marketplaces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source: marketplaceRoot }),
+      });
+      expect(response.status).toBe(422);
+      expect(await json(response)).toMatchObject({
+        error: expect.stringMatching(/resolves outside its root/),
+      });
+      expect(getMarketplace(harness.db, "path-symlink-test")).toBeUndefined();
+      await expect(stat(join(outside, "loaded.marker"))).rejects.toThrow();
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent refreshes for one marketplace", async () => {
+    let blockRefresh = false;
+    let materializations = 0;
+    let totalMaterializations = 0;
+    let releaseFirst = (): void => {};
+    let markFirstEntered = (): void => {};
+    const firstEntered = new Promise<void>((resolvePromise) => {
+      markFirstEntered = resolvePromise;
+    });
+    const firstGate = new Promise<void>((resolvePromise) => {
+      releaseFirst = resolvePromise;
+    });
+    const service = createMarketplaceService({
+      db: harness.db,
+      dataDir: harness.config.dataDir,
+      appVersion: harness.config.appVersion,
+      plugins: harness.pluginService,
+      beforeMaterialize: async ({ idHint }) => {
+        totalMaterializations += 1;
+        if (!blockRefresh || idHint !== "serialized-test") return;
+        materializations += 1;
+        if (materializations === 1) {
+          markFirstEntered();
+          await firstGate;
+        }
+      },
+    });
+    await service.add(marketplaceRoot, "serialized-test");
+    expect(totalMaterializations).toBe(1);
+    await expect(
+      service.add("/definitely/missing/marketplace", "serialized-test"),
+    ).rejects.toThrow(/already exists/);
+    expect(totalMaterializations).toBe(1);
+    blockRefresh = true;
+    const first = service.refresh("serialized-test");
+    await firstEntered;
+    const second = service.refresh("serialized-test");
+    await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 20));
+    expect(materializations).toBe(1);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(materializations).toBe(2);
+  });
+
+  it("orders install before removal and never leaves orphaned provenance", async () => {
+    let releaseInstall = (): void => {};
+    let markInstallEntered = (): void => {};
+    const installEntered = new Promise<void>((resolvePromise) => {
+      markInstallEntered = resolvePromise;
+    });
+    const installGate = new Promise<void>((resolvePromise) => {
+      releaseInstall = resolvePromise;
+    });
+    const originalInstall = harness.pluginService.installFromMarketplace.bind(
+      harness.pluginService,
+    );
+    const service = createMarketplaceService({
+      db: harness.db,
+      dataDir: harness.config.dataDir,
+      appVersion: harness.config.appVersion,
+      plugins: {
+        ...harness.pluginService,
+        async installFromMarketplace(args) {
+          markInstallEntered();
+          await installGate;
+          return originalInstall(args);
+        },
+      },
+    });
+    await service.add(marketplaceRoot, "install-remove-test");
+    const install = service.install("install-remove-test", "notes");
+    await installEntered;
+    const removal = service.remove("install-remove-test", []);
+    let removalSettled = false;
+    void removal.then(
+      () => {
+        removalSettled = true;
+      },
+      () => {
+        removalSettled = true;
+      },
+    );
+    await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 20));
+    expect(removalSettled).toBe(false);
+    releaseInstall();
+    await install;
+    await expect(removal).rejects.toBeInstanceOf(MarketplaceDispositionError);
+    expect(getMarketplace(harness.db, "install-remove-test")).toBeDefined();
+    expect(getInstalledPlugin(harness.db, "notes")).toMatchObject({
+      provenance: "marketplace",
+      marketplaceId: "install-remove-test",
+    });
   });
 });

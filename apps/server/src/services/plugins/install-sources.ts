@@ -7,6 +7,7 @@ import {
   readdir,
   readFile,
   readlink,
+  realpath,
   rename,
   rm,
 } from "node:fs/promises";
@@ -187,6 +188,23 @@ function resolveInside(root: string, segments: string[], label: string): string 
     throw new Error(`invalid ${label} cache path`);
   }
   return target;
+}
+
+/** Resolve symlinks and require target to remain within root. */
+export async function realPathInside(
+  root: string,
+  target: string,
+  label: string,
+): Promise<string> {
+  const [realRoot, realTarget] = await Promise.all([
+    realpath(root),
+    realpath(target),
+  ]);
+  const fromRoot = relative(realRoot, realTarget);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`)) {
+    throw new Error(`${label} resolves outside its root`);
+  }
+  return realTarget;
 }
 
 /** Immutable npm install prefix: node_modules lives beneath this directory. */

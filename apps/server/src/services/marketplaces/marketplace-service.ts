@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import {
   deleteMarketplace,
   getInstalledPlugin,
@@ -17,13 +17,17 @@ import {
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import semver from "semver";
 import type { PluginService } from "../plugins/plugin-service.js";
-import { runInstallCommand } from "../plugins/install-sources.js";
+import {
+  realPathInside,
+  runInstallCommand,
+} from "../plugins/install-sources.js";
 import {
   catalogEntrySourceDisplay,
   parseMarketplaceCatalog,
   resolvedCatalogEntrySource,
   type MarketplaceCatalog,
   type MarketplaceCatalogEntry,
+  validateMarketplaceCatalogRealPaths,
 } from "./catalog.js";
 
 interface MarketplaceSource {
@@ -217,7 +221,52 @@ export function createMarketplaceService(deps: {
   dataDir: string;
   appVersion: string;
   plugins: PluginService;
+  beforeMaterialize?: (args: {
+    idHint: string;
+    sourceKind: "path" | "git";
+  }) => Promise<void>;
 }): MarketplaceService {
+  const marketplaceChains = new Map<string, Promise<void>>();
+  const addLockKey = "\0marketplace-add";
+  const cacheRoot = resolve(deps.dataDir, "marketplaces", "cache");
+
+  async function withMarketplaceLock<T>(
+    id: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = marketplaceChains.get(id) ?? Promise.resolve();
+    const result = previous.then(operation, operation);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    marketplaceChains.set(id, tail);
+    try {
+      return await result;
+    } finally {
+      if (marketplaceChains.get(id) === tail) marketplaceChains.delete(id);
+    }
+  }
+
+  function assertMarketplaceId(id: string): void {
+    if (!/^[a-z0-9][a-z0-9-]*$/u.test(id)) {
+      throw new Error(`invalid marketplace name "${id}"`);
+    }
+  }
+
+  function marketplaceCacheTarget(id: string, commit: string): string {
+    assertMarketplaceId(id);
+    if (!/^[0-9a-f]{40,64}$/u.test(commit)) {
+      throw new Error(`invalid marketplace git commit "${commit}"`);
+    }
+    const target = resolve(cacheRoot, id, commit);
+    const fromRoot = relative(cacheRoot, target);
+    if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`)) {
+      throw new Error("invalid marketplace cache path");
+    }
+    return target;
+  }
+
   async function materialize(
     source: MarketplaceSource,
     idHint: string,
@@ -227,16 +276,25 @@ export function createMarketplaceService(deps: {
     catalog: MarketplaceCatalog;
     hash: string;
   }> {
+    await deps.beforeMaterialize?.({ idHint, sourceKind: source.kind });
     if (source.kind === "path") {
-      const raw = await readFile(
+      const catalogPath = await realPathInside(
+        source.location,
         join(source.location, "marketplace.json"),
-        "utf8",
+        "marketplace catalog",
       );
+      const raw = await readFile(catalogPath, "utf8");
       const json: unknown = JSON.parse(raw);
+      const catalog = parseMarketplaceCatalog(json, "path", source.location);
+      await validateMarketplaceCatalogRealPaths(
+        catalog,
+        "path",
+        source.location,
+      );
       return {
         root: source.location,
         commit: null,
-        catalog: parseMarketplaceCatalog(json, "path", source.location),
+        catalog,
         hash: createHash("sha256").update(raw).digest("hex"),
       };
     }
@@ -281,18 +339,17 @@ export function createMarketplaceService(deps: {
         "rev-parse",
         "HEAD",
       ]);
-      const raw = await readFile(join(staging, "marketplace.json"), "utf8");
+      const catalogPath = await realPathInside(
+        staging,
+        join(staging, "marketplace.json"),
+        "marketplace catalog",
+      );
+      const raw = await readFile(catalogPath, "utf8");
       const json: unknown = JSON.parse(raw);
       const catalog = parseMarketplaceCatalog(json, "git", staging);
       const hash = createHash("sha256").update(raw).digest("hex");
       await rm(join(staging, ".git"), { recursive: true, force: true });
-      const target = join(
-        deps.dataDir,
-        "marketplaces",
-        "cache",
-        idHint,
-        commit,
-      );
+      const target = marketplaceCacheTarget(idHint, commit);
       await mkdir(dirname(target), { recursive: true });
       const exists = await stat(target)
         .then(() => true)
@@ -308,53 +365,61 @@ export function createMarketplaceService(deps: {
 
   return {
     async add(rawSource, requestedName) {
-      const source = await parseSource(rawSource);
-      const materialized = await materialize(
-        source,
-        requestedName ?? "pending",
-      );
-      const id = requestedName ?? materialized.catalog.name;
-      if (!/^[a-z0-9][a-z0-9-]*$/u.test(id))
-        throw new Error(`invalid marketplace name "${id}"`);
-      if (getMarketplace(deps.db, id) !== undefined)
-        throw new Error(`marketplace "${id}" already exists`);
-      let root = materialized.root;
-      if (source.kind === "git" && requestedName === undefined) {
-        const target = join(
-          deps.dataDir,
-          "marketplaces",
-          "cache",
-          id,
-          materialized.commit ?? "unknown",
+      return withMarketplaceLock(addLockKey, async () => {
+        if (requestedName !== undefined) {
+          assertMarketplaceId(requestedName);
+          if (getMarketplace(deps.db, requestedName) !== undefined) {
+            throw new Error(`marketplace "${requestedName}" already exists`);
+          }
+        }
+        const source = await parseSource(rawSource);
+        const materialized = await materialize(
+          source,
+          requestedName ?? "pending",
         );
-        await mkdir(dirname(target), { recursive: true });
-        const exists = await stat(target)
-          .then(() => true)
-          .catch(() => false);
-        if (!exists) await rename(root, target);
-        root = target;
-      }
-      const now = Date.now();
-      return view(
-        upsertMarketplace(deps.db, {
-          id,
-          displayName: materialized.catalog.displayName,
-          sourceKind: source.kind,
-          location: source.location,
-          requestedGitRef: source.requestedRef,
-          resolvedGitCommit: materialized.commit,
-          cachePath: root,
-          contentHash: materialized.hash,
-          catalogJson: JSON.stringify(materialized.catalog),
-          enabled: true,
-          trusted: false,
-          updatePolicy: "compatible",
-          lastSuccessfulRefreshAt: now,
-          lastAttemptedRefreshAt: now,
-          lastError: null,
-          scope: "user",
-        }),
-      );
+        const id = requestedName ?? materialized.catalog.name;
+        assertMarketplaceId(id);
+        if (getMarketplace(deps.db, id) !== undefined) {
+          throw new Error(`marketplace "${id}" already exists`);
+        }
+        let root = materialized.root;
+        if (source.kind === "git" && requestedName === undefined) {
+          if (materialized.commit === null) {
+            throw new Error("git marketplace materialization has no commit");
+          }
+          const target = marketplaceCacheTarget(id, materialized.commit);
+          await mkdir(dirname(target), { recursive: true });
+          const exists = await stat(target)
+            .then(() => true)
+            .catch(() => false);
+          if (!exists) await rename(root, target);
+          else if (root !== target) {
+            await rm(root, { recursive: true, force: true });
+          }
+          root = target;
+        }
+        const now = Date.now();
+        return view(
+          upsertMarketplace(deps.db, {
+            id,
+            displayName: materialized.catalog.displayName,
+            sourceKind: source.kind,
+            location: source.location,
+            requestedGitRef: source.requestedRef,
+            resolvedGitCommit: materialized.commit,
+            cachePath: root,
+            contentHash: materialized.hash,
+            catalogJson: JSON.stringify(materialized.catalog),
+            enabled: true,
+            trusted: false,
+            updatePolicy: "compatible",
+            lastSuccessfulRefreshAt: now,
+            lastAttemptedRefreshAt: now,
+            lastError: null,
+            scope: "user",
+          }),
+        );
+      });
     },
 
     list() {
@@ -362,42 +427,45 @@ export function createMarketplaceService(deps: {
     },
 
     async refresh(id) {
-      const row = getMarketplace(deps.db, id);
-      if (row === undefined) throw new Error(`unknown marketplace "${id}"`);
-      const attemptedAt = Date.now();
-      try {
-        const source: MarketplaceSource = {
-          kind: row.sourceKind === "path" ? "path" : "git",
-          location: row.location,
-          requestedRef: row.requestedGitRef,
-          display: sourceDisplay(row),
-        };
-        const materialized = await materialize(source, row.id);
-        return view(
-          upsertMarketplace(deps.db, {
-            id: row.id,
-            displayName: materialized.catalog.displayName,
-            sourceKind: row.sourceKind,
+      return withMarketplaceLock(id, async () => {
+        const row = getMarketplace(deps.db, id);
+        if (row === undefined) throw new Error(`unknown marketplace "${id}"`);
+        const attemptedAt = Date.now();
+        try {
+          const source: MarketplaceSource = {
+            kind: row.sourceKind === "path" ? "path" : "git",
             location: row.location,
-            requestedGitRef: row.requestedGitRef,
-            resolvedGitCommit: materialized.commit,
-            cachePath: materialized.root,
-            contentHash: materialized.hash,
-            catalogJson: JSON.stringify(materialized.catalog),
-            enabled: row.enabled,
-            trusted: row.trusted,
-            updatePolicy: row.updatePolicy,
-            lastSuccessfulRefreshAt: attemptedAt,
-            lastAttemptedRefreshAt: attemptedAt,
-            lastError: null,
-            scope: row.scope,
-          }),
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        updateMarketplaceRefreshFailure(deps.db, id, attemptedAt, message);
-        throw new Error(message);
-      }
+            requestedRef: row.requestedGitRef,
+            display: sourceDisplay(row),
+          };
+          const materialized = await materialize(source, row.id);
+          return view(
+            upsertMarketplace(deps.db, {
+              id: row.id,
+              displayName: materialized.catalog.displayName,
+              sourceKind: row.sourceKind,
+              location: row.location,
+              requestedGitRef: row.requestedGitRef,
+              resolvedGitCommit: materialized.commit,
+              cachePath: materialized.root,
+              contentHash: materialized.hash,
+              catalogJson: JSON.stringify(materialized.catalog),
+              enabled: row.enabled,
+              trusted: row.trusted,
+              updatePolicy: row.updatePolicy,
+              lastSuccessfulRefreshAt: attemptedAt,
+              lastAttemptedRefreshAt: attemptedAt,
+              lastError: null,
+              scope: row.scope,
+            }),
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          updateMarketplaceRefreshFailure(deps.db, id, attemptedAt, message);
+          throw new Error(message);
+        }
+      });
     },
 
     search(rawQuery) {
@@ -448,88 +516,99 @@ export function createMarketplaceService(deps: {
     },
 
     async install(marketplaceId, entryId, version) {
-      const row = getMarketplace(deps.db, marketplaceId);
-      if (row === undefined || !row.enabled)
-        throw new Error(`unknown or disabled marketplace "${marketplaceId}"`);
-      const catalog = catalogFromRow(row);
-      const entry = catalog?.plugins.find(
-        (candidate) => candidate.id === entryId,
-      );
-      if (entry === undefined || row.cachePath === null)
-        throw new Error(
-          `unknown marketplace entry "${entryId}" in "${marketplaceId}"`,
+      return withMarketplaceLock(marketplaceId, async () => {
+        const row = getMarketplace(deps.db, marketplaceId);
+        if (row === undefined || !row.enabled)
+          throw new Error(`unknown or disabled marketplace "${marketplaceId}"`);
+        const catalog = catalogFromRow(row);
+        const entry = catalog?.plugins.find(
+          (candidate) => candidate.id === entryId,
         );
-      if (version !== undefined && !("npm" in entry.source)) {
-        throw new Error(
-          "version is only supported for npm marketplace entries",
-        );
-      }
-      const resolved = resolvedCatalogEntrySource(entry, row.cachePath);
-      let source = resolved.source;
-      if (version !== undefined && "npm" in entry.source)
-        source = `npm:${entry.source.npm.package}@${version}`;
-      return deps.plugins.installFromMarketplace({
-        source,
-        marketplaceId,
-        entryId,
-        updatePolicy: effectivePolicy(row.updatePolicy, entry.updatePolicy),
-        installation: entry.installation,
-        ...("npm" in entry.source && entry.source.npm.registry !== undefined
-          ? { npmRegistry: entry.source.npm.registry }
-          : {}),
-        ...(resolved.gitSubdirectory === undefined
-          ? {}
-          : { gitSubdirectory: resolved.gitSubdirectory }),
+        if (entry === undefined || row.cachePath === null)
+          throw new Error(
+            `unknown marketplace entry "${entryId}" in "${marketplaceId}"`,
+          );
+        if (version !== undefined && !("npm" in entry.source)) {
+          throw new Error(
+            "version is only supported for npm marketplace entries",
+          );
+        }
+        const resolved = resolvedCatalogEntrySource(entry, row.cachePath);
+        if ("path" in entry.source) {
+          resolved.source = `path:${await realPathInside(
+            row.cachePath,
+            resolve(row.cachePath, entry.source.path),
+            `marketplace entry "${entry.id}" path`,
+          )}`;
+        }
+        let source = resolved.source;
+        if (version !== undefined && "npm" in entry.source)
+          source = `npm:${entry.source.npm.package}@${version}`;
+        return deps.plugins.installFromMarketplace({
+          source,
+          marketplaceId,
+          entryId,
+          updatePolicy: effectivePolicy(row.updatePolicy, entry.updatePolicy),
+          installation: entry.installation,
+          ...("npm" in entry.source && entry.source.npm.registry !== undefined
+            ? { npmRegistry: entry.source.npm.registry }
+            : {}),
+          ...(resolved.gitSubdirectory === undefined
+            ? {}
+            : { gitSubdirectory: resolved.gitSubdirectory }),
+        });
       });
     },
 
     async remove(id, dispositions) {
-      const row = getMarketplace(deps.db, id);
-      if (row === undefined) throw new Error(`unknown marketplace "${id}"`);
-      const affected = listInstalledPluginsFromMarketplace(deps.db, id);
-      const dispositionById = new Map(
-        dispositions.map((item) => [item.pluginId, item.action]),
-      );
-      const missing = affected.filter(
-        (plugin) => !dispositionById.has(plugin.id),
-      );
-      const unknown = dispositions.filter(
-        (item) => !affected.some((plugin) => plugin.id === item.pluginId),
-      );
-      if (
-        missing.length > 0 ||
-        unknown.length > 0 ||
-        dispositionById.size !== dispositions.length
-      ) {
-        throw new MarketplaceDispositionError(
-          missing.length > 0
-            ? "explicit dispositions are required for every installed plugin from this marketplace"
-            : "dispositions must name each affected plugin exactly once",
-          affected.map(({ id: pluginId, version }) => ({
-            id: pluginId,
-            version,
-          })),
+      return withMarketplaceLock(id, async () => {
+        const row = getMarketplace(deps.db, id);
+        if (row === undefined) throw new Error(`unknown marketplace "${id}"`);
+        const affected = listInstalledPluginsFromMarketplace(deps.db, id);
+        const dispositionById = new Map(
+          dispositions.map((item) => [item.pluginId, item.action]),
         );
-      }
-      const kept: string[] = [];
-      const uninstalled: string[] = [];
-      for (const plugin of affected) {
-        if (dispositionById.get(plugin.id) === "keep") {
-          if (!setInstalledPluginDirectProvenance(deps.db, plugin.id))
-            throw new Error(
-              `plugin "${plugin.id}" disappeared during marketplace removal`,
-            );
-          kept.push(plugin.id);
-        } else {
-          if (!(await deps.plugins.remove(plugin.id)))
-            throw new Error(
-              `plugin "${plugin.id}" disappeared during marketplace removal`,
-            );
-          uninstalled.push(plugin.id);
+        const missing = affected.filter(
+          (plugin) => !dispositionById.has(plugin.id),
+        );
+        const unknown = dispositions.filter(
+          (item) => !affected.some((plugin) => plugin.id === item.pluginId),
+        );
+        if (
+          missing.length > 0 ||
+          unknown.length > 0 ||
+          dispositionById.size !== dispositions.length
+        ) {
+          throw new MarketplaceDispositionError(
+            missing.length > 0
+              ? "explicit dispositions are required for every installed plugin from this marketplace"
+              : "dispositions must name each affected plugin exactly once",
+            affected.map(({ id: pluginId, version }) => ({
+              id: pluginId,
+              version,
+            })),
+          );
         }
-      }
-      deleteMarketplace(deps.db, id);
-      return { kept, uninstalled };
+        const kept: string[] = [];
+        const uninstalled: string[] = [];
+        for (const plugin of affected) {
+          if (dispositionById.get(plugin.id) === "keep") {
+            if (!setInstalledPluginDirectProvenance(deps.db, plugin.id))
+              throw new Error(
+                `plugin "${plugin.id}" disappeared during marketplace removal`,
+              );
+            kept.push(plugin.id);
+          } else {
+            if (!(await deps.plugins.remove(plugin.id)))
+              throw new Error(
+                `plugin "${plugin.id}" disappeared during marketplace removal`,
+              );
+            uninstalled.push(plugin.id);
+          }
+        }
+        deleteMarketplace(deps.db, id);
+        return { kept, uninstalled };
+      });
     },
   };
 }

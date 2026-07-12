@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import { z } from "zod";
+import { realPathInside } from "../plugins/install-sources.js";
 
 const semverRange = z
   .string()
@@ -182,6 +183,23 @@ export function parseMarketplaceCatalog(
     }
   }
   return parsed.data;
+}
+
+/** Re-check path entries after materialization so symlinks cannot escape. */
+export async function validateMarketplaceCatalogRealPaths(
+  catalog: MarketplaceCatalog,
+  sourceKind: "path" | "git",
+  marketplaceRoot: string,
+): Promise<void> {
+  if (sourceKind !== "path") return;
+  for (const entry of catalog.plugins) {
+    if (!("path" in entry.source)) continue;
+    await realPathInside(
+      marketplaceRoot,
+      resolve(marketplaceRoot, entry.source.path),
+      `marketplace entry "${entry.id}" path`,
+    );
+  }
 }
 
 export function catalogEntrySourceDisplay(

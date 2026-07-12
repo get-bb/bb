@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   marketplacePolicyWideningProblem,
   parseMarketplaceCatalog,
+  validateMarketplaceCatalogRealPaths,
 } from "../../../src/services/marketplaces/catalog.js";
 
 function catalog(source: unknown) {
@@ -66,6 +67,23 @@ describe("marketplace catalog validation", () => {
     expect(() =>
       parseMarketplaceCatalog(catalog({ path: "plugins/notes" }), "git", root),
     ).toThrow(/remote entry.*local path/);
+  });
+
+  it("rejects a local path entry whose symlink resolves outside the marketplace", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "bb-marketplace-outside-"));
+    try {
+      await symlink(outside, join(root, "plugins", "escape"));
+      const parsed = parseMarketplaceCatalog(
+        catalog({ path: "plugins/escape" }),
+        "path",
+        root,
+      );
+      await expect(
+        validateMarketplaceCatalogRealPaths(parsed, "path", root),
+      ).rejects.toThrow(/resolves outside its root/);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   it("accepts narrowing compatibility policy and rejects widening policy", () => {
