@@ -81,7 +81,19 @@ export interface PluginListItem {
   sourceDisplay: string | null;
   /** null on older servers that predate update policies. */
   updatePolicy: PluginUpdatePolicy | null;
+  /**
+   * Effective automatic-application state (per-plugin OR inherited from the
+   * marketplace); null on older servers, which hides the control. The org
+   * kill-switch is separate: `PluginListResult.autoApplyDisabled`.
+   */
+  autoApply: boolean | null;
   updateState: PluginUpdateState;
+}
+
+export interface PluginListResult {
+  /** Org policy kill-switch; overrides every effective `autoApply`. */
+  autoApplyDisabled: boolean;
+  plugins: PluginListItem[];
 }
 
 /** Servers send epoch ms or ISO strings; normalize to epoch ms once here. */
@@ -142,6 +154,7 @@ const pluginListItemSchema = z.object({
   marketplaceName: z.string().nullish(),
   sourceDisplay: z.string().nullish(),
   updatePolicy: z.enum(PLUGIN_UPDATE_POLICIES).optional(),
+  autoApply: z.boolean().optional(),
   updateState: updateStateSchema.optional(),
 });
 
@@ -166,6 +179,7 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     marketplaceName: item.marketplaceName ?? null,
     sourceDisplay: item.sourceDisplay ?? null,
     updatePolicy: item.updatePolicy ?? null,
+    autoApply: item.autoApply ?? null,
     updateState:
       state === undefined
         ? EMPTY_PLUGIN_UPDATE_STATE
@@ -191,19 +205,24 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
 
 export async function fetchPluginList(
   fetchImpl: FetchLike,
-): Promise<PluginListItem[]> {
+): Promise<PluginListResult> {
   const response = await fetchImpl("/api/v1/plugins");
   // Nothing to list rather than an error: an older server or a disabled
   // experiment both mean "no plugins".
-  if (!response.ok) return [];
+  if (!response.ok) return { autoApplyDisabled: false, plugins: [] };
   const body = (await response.json().catch(() => null)) as {
+    autoApplyDisabled?: unknown;
     plugins?: unknown;
   } | null;
-  return Array.isArray(body?.plugins)
-    ? body.plugins
-        .map(parsePluginListItem)
-        .filter((item): item is PluginListItem => item !== null)
-    : [];
+  return {
+    // Older servers omit the flag; absence means "no org restriction".
+    autoApplyDisabled: body?.autoApplyDisabled === true,
+    plugins: Array.isArray(body?.plugins)
+      ? body.plugins
+          .map(parsePluginListItem)
+          .filter((item): item is PluginListItem => item !== null)
+      : [],
+  };
 }
 
 /** Client mirror of the server's plain-data setting descriptors. */

@@ -132,7 +132,7 @@ export function useSettingsNavState(): SettingsNavState {
     }
     return true;
   });
-  const pluginEntries = (pluginListQuery.data ?? []).filter(
+  const pluginEntries = (pluginListQuery.data?.plugins ?? []).filter(
     (plugin) =>
       plugin.enabled &&
       (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),

@@ -3,10 +3,13 @@ import {
   applyPluginUpdate,
   checkPluginUpdates,
   fetchMarketplaces,
+  fetchPluginUpdateHistory,
   fetchPluginUpdates,
   ignorePluginVersion,
   installPlugin,
   searchMarketplaces,
+  setMarketplaceAutoPolicy,
+  setPluginAutoApply,
   setPluginUpdatePolicy,
 } from "./plugin-marketplace-queries";
 
@@ -192,6 +195,88 @@ describe("setPluginUpdatePolicy", () => {
   });
 });
 
+describe("setPluginAutoApply", () => {
+  it("resolves when the server echoes the requested persisted value", async () => {
+    await expect(
+      setPluginAutoApply(fetchReturning({ autoApply: true }), "linear", true),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws when the echo differs from the request (persisted the opposite)", async () => {
+    await expect(
+      setPluginAutoApply(fetchReturning({ autoApply: false }), "linear", true),
+    ).rejects.toThrow(/unrecognized auto-apply result/);
+  });
+
+  it("throws on a malformed 2xx body", async () => {
+    await expect(
+      setPluginAutoApply(fetchReturning({ ok: true }), "linear", true),
+    ).rejects.toThrow(/unrecognized auto-apply result/);
+  });
+});
+
+describe("setMarketplaceAutoPolicy", () => {
+  it("resolves when the server echoes both requested flags", async () => {
+    await expect(
+      setMarketplaceAutoPolicy(
+        fetchReturning({ autoCheck: true, autoApply: false }),
+        "acme",
+        { autoCheck: true, autoApply: false },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws when either echoed flag differs from the request", async () => {
+    await expect(
+      setMarketplaceAutoPolicy(
+        fetchReturning({ autoCheck: true, autoApply: true }),
+        "acme",
+        { autoCheck: true, autoApply: false },
+      ),
+    ).rejects.toThrow(/unrecognized auto-policy result/);
+  });
+});
+
+describe("fetchPluginUpdateHistory", () => {
+  it("parses events, dropping half-shaped rows instead of defaulting them", async () => {
+    const events = await fetchPluginUpdateHistory(
+      fetchReturning({
+        events: [
+          {
+            kind: "rollback",
+            fromVersion: "1.7.0",
+            toVersion: "1.6.2",
+            outcome: "rolled-back",
+            detail: "failed to start",
+            at: 1752300000000,
+          },
+          { kind: "check", outcome: "current" }, // no `at` → drops
+        ],
+      }),
+      "linear",
+    );
+    expect(events).toEqual([
+      {
+        kind: "rollback",
+        fromVersion: "1.7.0",
+        toVersion: "1.6.2",
+        outcome: "rolled-back",
+        detail: "failed to start",
+        at: 1752300000000,
+      },
+    ]);
+  });
+
+  it("returns null (unavailable) on a non-2xx or unshaped response", async () => {
+    expect(
+      await fetchPluginUpdateHistory(fetchReturning({}, 404), "linear"),
+    ).toBeNull();
+    expect(
+      await fetchPluginUpdateHistory(fetchReturning({ ok: true }), "linear"),
+    ).toBeNull();
+  });
+});
+
 describe("marketplace parsers (landed Phase 4 shapes)", () => {
   it("maps MarketplaceView fields, keeping displayName distinct from the id", async () => {
     const items = await fetchMarketplaces(
@@ -207,6 +292,9 @@ describe("marketplace parsers (landed Phase 4 shapes)", () => {
             lastRefreshAt: 1752300000000,
             lastError: "fetch failed",
             enabled: true,
+            scope: "user",
+            autoCheck: true,
+            autoApply: false,
           },
         ],
       }),
@@ -223,6 +311,9 @@ describe("marketplace parsers (landed Phase 4 shapes)", () => {
         lastAttemptAt: null,
         lastError: "fetch failed",
         enabled: true,
+        scope: "user",
+        autoCheck: true,
+        autoApply: false,
       },
     ]);
   });
@@ -231,6 +322,25 @@ describe("marketplace parsers (landed Phase 4 shapes)", () => {
     const items = await fetchMarketplaces(
       fetchReturning({
         marketplaces: [{ id: "half", name: "half", displayName: "Half" }],
+      }),
+    );
+    expect(items).toEqual([]);
+  });
+
+  it("drops rows missing the Phase 6 policy fields instead of inventing a policy", async () => {
+    const items = await fetchMarketplaces(
+      fetchReturning({
+        marketplaces: [
+          {
+            id: "old",
+            name: "old",
+            displayName: "Old Server",
+            source: "/tmp/catalog",
+            pluginCount: 1,
+            enabled: true,
+            // no scope/autoCheck/autoApply
+          },
+        ],
       }),
     );
     expect(items).toEqual([]);

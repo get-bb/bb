@@ -3,8 +3,16 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { marketplaceSearchQueryKey } from "@/hooks/queries/plugin-marketplace-queries";
-import { MarketplacesTab } from "./MarketplacesTab";
+import {
+  marketplaceSearchQueryKey,
+  marketplacesQueryKey,
+} from "@/hooks/queries/plugin-marketplace-queries";
+import { appToast } from "@/components/ui/app-toast.js";
+import {
+  MarketplacesTab,
+  marketplaceCheckPolicySummary,
+  marketplaceIsOfficial,
+} from "./MarketplacesTab";
 
 interface RecordedRequest {
   url: string;
@@ -20,7 +28,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 // Server-shaped MarketplaceView (marketplace-service): name mirrors the id,
-// displayName is the human label; no scope/sourceDisplay fields exist.
+// displayName is the human label.
 const ACME_VIEW = {
   id: "acme",
   name: "acme",
@@ -30,11 +38,163 @@ const ACME_VIEW = {
   pluginCount: 2,
   lastRefreshAt: 1752300000000,
   enabled: true,
+  scope: "user",
+  autoCheck: false,
+  autoApply: false,
 };
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("official badge + check-policy summary derivation", () => {
+  it("badges only builtin and managed scopes", () => {
+    expect(marketplaceIsOfficial("builtin")).toBe(true);
+    expect(marketplaceIsOfficial("managed")).toBe(true);
+    expect(marketplaceIsOfficial("user")).toBe(false);
+    expect(marketplaceIsOfficial("project")).toBe(false);
+  });
+
+  it("derives the four policy summaries from autoCheck × autoApply", () => {
+    expect(
+      marketplaceCheckPolicySummary({ autoCheck: true, autoApply: false }),
+    ).toBe("checks hourly · updates need approval");
+    expect(
+      marketplaceCheckPolicySummary({ autoCheck: true, autoApply: true }),
+    ).toBe("checks hourly · automatic updates");
+    expect(
+      marketplaceCheckPolicySummary({ autoCheck: false, autoApply: false }),
+    ).toBe("manual checks");
+    expect(
+      marketplaceCheckPolicySummary({ autoCheck: false, autoApply: true }),
+    ).toBe("manual checks · automatic updates");
+  });
+});
+
+describe("MarketplacesTab auto-policy", () => {
+  it("renders the official badge and the policy summary line from the wire fields", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/marketplaces") {
+          return jsonResponse({
+            marketplaces: [
+              { ...ACME_VIEW, scope: "managed", autoCheck: true },
+            ],
+          });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<MarketplacesTab />, { wrapper });
+
+    await screen.findByTestId("marketplace-row-acme");
+    expect(screen.getByText("official")).toBeTruthy();
+    expect(
+      screen.getByText(/checks hourly · updates need approval/),
+    ).toBeTruthy();
+  });
+
+  it("POSTs the toggled auto-policy and refetches on a matching echo", async () => {
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (url === "/api/v1/marketplaces" && init?.method === undefined) {
+          return jsonResponse({ marketplaces: [ACME_VIEW] });
+        }
+        if (url === "/api/v1/marketplaces/acme/auto-policy") {
+          return jsonResponse({ autoCheck: false, autoApply: true });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<MarketplacesTab />, { wrapper });
+
+    await screen.findByTestId("marketplace-row-acme");
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "Marketplace actions for Acme Tools",
+      }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitemcheckbox", {
+        name: "Apply compatible updates automatically",
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const post = requests.find((request) =>
+        request.url.endsWith("/auto-policy"),
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        autoCheck: false,
+        autoApply: true,
+      });
+      // The matching echo invalidates the catalog list, which refetches.
+      expect(
+        requests.filter(
+          (request) =>
+            request.url === "/api/v1/marketplaces" &&
+            request.init?.method === undefined,
+        ).length,
+      ).toBeGreaterThan(1);
+    });
+  });
+
+  it("rejects an echo mismatch with an error toast and no refetch", async () => {
+    const errorToast = vi.spyOn(appToast, "error").mockReturnValue("toast");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/v1/marketplaces" && init?.method === undefined) {
+          return jsonResponse({ marketplaces: [ACME_VIEW] });
+        }
+        if (url === "/api/v1/marketplaces/acme/auto-policy") {
+          // The server persisted something other than what was asked.
+          return jsonResponse({ autoCheck: false, autoApply: false });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    render(<MarketplacesTab />, { wrapper });
+
+    await screen.findByTestId("marketplace-row-acme");
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "Marketplace actions for Acme Tools",
+      }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitemcheckbox", {
+        name: "Apply compatible updates automatically",
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(errorToast).toHaveBeenCalledWith(
+        "Changing the Acme Tools update policy failed",
+        expect.objectContaining({
+          description: expect.stringMatching(/unrecognized auto-policy/),
+        }),
+      );
+    });
+    expect(
+      queryClient.getQueryState(marketplacesQueryKey())?.isInvalidated,
+    ).toBe(false);
+  });
 });
 
 describe("MarketplacesTab removal", () => {

@@ -362,7 +362,7 @@ export function PluginsSettingsSection() {
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
   const listQuery = usePluginList({ enabled: pluginsEnabled });
   const marketplacesQuery = useMarketplaces({ enabled: pluginsEnabled });
-  const plugins = listQuery.data ?? [];
+  const plugins = listQuery.data?.plugins ?? [];
   const [tab, setTab] = useState<PluginsTab>("installed");
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
@@ -438,7 +438,14 @@ export function PluginsSettingsSection() {
 }
 
 /** Exported for tests (status gating of the settings form). */
-export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
+export function PluginSettingsDetail({
+  plugin,
+  autoApplyDisabled,
+}: {
+  plugin: PluginListItem;
+  /** Org kill-switch from the plugin-list envelope. */
+  autoApplyDisabled: boolean;
+}) {
   const { settingsSections } = usePluginSlots();
   const hasSettingsSections = settingsSections.some(
     (section) => section.pluginId === plugin.id,
@@ -513,7 +520,10 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
             ) : null}
           </div>
           <PluginUpdateBanner plugin={plugin} />
-          <PluginUpdatesSourceCard plugin={plugin} />
+          <PluginUpdatesSourceCard
+            plugin={plugin}
+            autoApplyDisabled={autoApplyDisabled}
+          />
           {showDeclarativeSettingsCard ? (
             <div className="rounded-lg border border-border bg-card px-4 py-3.5">
               {settingsAvailable ? (
@@ -561,11 +571,16 @@ export function PluginSettingsDetailSection({
   if (!pluginsEnabled && !hasSettingsSections) {
     return <EmptyState message={PLUGINS_EXPERIMENT_OFF_MESSAGE} />;
   }
-  const plugin = listQuery.data?.find((entry) => entry.id === pluginId);
+  const plugin = listQuery.data?.plugins.find((entry) => entry.id === pluginId);
   if (plugin === undefined) {
     return listQuery.data === undefined ? null : (
       <EmptyState message={`Plugin "${pluginId}" is not installed.`} />
     );
   }
-  return <PluginSettingsDetail plugin={plugin} />;
+  return (
+    <PluginSettingsDetail
+      plugin={plugin}
+      autoApplyDisabled={listQuery.data?.autoApplyDisabled === true}
+    />
+  );
 }

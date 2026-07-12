@@ -29,6 +29,7 @@ function plugin(
     marketplaceName: "bb-official",
     sourceDisplay: "npm · @bb-plugins/linear · tracking ^1.4.0",
     updatePolicy: "compatible",
+    autoApply: null,
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
     ...overrides,
   };

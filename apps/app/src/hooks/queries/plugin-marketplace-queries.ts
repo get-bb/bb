@@ -492,9 +492,122 @@ export async function setPluginUpdatePolicy(
   }
 }
 
+const autoApplyResultSchema = z.object({ autoApply: z.boolean() });
+
+/**
+ * POST /api/v1/plugins/:id/auto-apply. The response echoes the PERSISTED
+ * per-plugin value (not the marketplace-inherited effective one), so it must
+ * equal the request; a mismatch means the server persisted the opposite of
+ * what the switch shows.
+ */
+export async function setPluginAutoApply(
+  fetchImpl: FetchLike,
+  pluginId: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetchImpl(
+    `/api/v1/plugins/${encodeURIComponent(pluginId)}/auto-apply`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+  const body = await readBody(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage(
+        body,
+        `changing automatic updates failed (HTTP ${response.status})`,
+      ),
+    );
+  }
+  const parsed = autoApplyResultSchema.safeParse(body);
+  if (!parsed.success || parsed.data.autoApply !== enabled) {
+    throw new Error("the server returned an unrecognized auto-apply result");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/plugins/:id/history (Phase 6 update audit trail)
+// ---------------------------------------------------------------------------
+
+/** One audit event; newest first, capped at 50 by the server. */
+export interface PluginUpdateHistoryEvent {
+  /** "check" | "resolve" | "download" | "activate" | "rollback" | …; kept
+   *  open so future kinds render instead of dropping the row. */
+  kind: string;
+  fromVersion: string | null;
+  toVersion: string | null;
+  outcome: string;
+  detail: string | null;
+  /** Epoch ms; null when the server sent an unparsable time. */
+  at: number | null;
+}
+
+const historyEventSchema = z.object({
+  kind: z.string(),
+  fromVersion: z.string().optional(),
+  toVersion: z.string().optional(),
+  outcome: z.string(),
+  detail: z.string().optional(),
+  at: z.union([z.number(), z.string()]),
+});
+
+/** Null when the plugin is unknown or the server predates the route. */
+export async function fetchPluginUpdateHistory(
+  fetchImpl: FetchLike,
+  pluginId: string,
+): Promise<PluginUpdateHistoryEvent[] | null> {
+  const response = await fetchImpl(
+    `/api/v1/plugins/${encodeURIComponent(pluginId)}/history`,
+  );
+  if (!response.ok) return null;
+  const body = (await readBody(response)) as { events?: unknown } | null;
+  if (!Array.isArray(body?.events)) return null;
+  const events: PluginUpdateHistoryEvent[] = [];
+  for (const value of body.events) {
+    const parsed = historyEventSchema.safeParse(value);
+    if (!parsed.success) continue;
+    const data = parsed.data;
+    events.push({
+      kind: data.kind,
+      fromVersion: data.fromVersion ?? null,
+      toVersion: data.toVersion ?? null,
+      outcome: data.outcome,
+      detail: data.detail ?? null,
+      at: toEpochMs(data.at),
+    });
+  }
+  return events;
+}
+
+export function pluginUpdateHistoryQueryKey(pluginId: string): QueryKey {
+  return ["plugin-update-history", pluginId];
+}
+
+/** Prefix the realtime `plugins-changed` broadcast invalidates. */
+export function allPluginUpdateHistoryQueryKeyPrefix(): QueryKey {
+  return ["plugin-update-history"];
+}
+
+export function usePluginUpdateHistory(
+  pluginId: string,
+  options: { enabled: boolean },
+) {
+  return useQuery({
+    queryKey: pluginUpdateHistoryQueryKey(pluginId),
+    queryFn: () => fetchPluginUpdateHistory(fetch, pluginId),
+    enabled: options.enabled,
+    staleTime: 30_000,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Marketplaces (Phase 4 contract: marketplace-service MarketplaceView)
 // ---------------------------------------------------------------------------
+
+export type MarketplaceScope = "builtin" | "user" | "project" | "managed";
 
 export interface MarketplaceListItem {
   /** Stable ID; `name` mirrors it in the wire view. */
@@ -512,8 +625,17 @@ export interface MarketplaceListItem {
   /** Set when the last refresh failed; the cached catalog stays in use. */
   lastError: string | null;
   enabled: boolean;
+  /** Who owns the catalog; builtin/managed render the "official" badge. */
+  scope: MarketplaceScope;
+  /** Scheduled catalog refresh + update checks. */
+  autoCheck: boolean;
+  /** Marketplace-wide automatic application, inherited by its plugins. */
+  autoApply: boolean;
 }
 
+// scope/autoCheck/autoApply are required (Phase 6 servers always send
+// them): a half-shaped row drops rather than defaulting to a policy the
+// server never stated.
 const marketplaceViewSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -525,6 +647,9 @@ const marketplaceViewSchema = z.object({
   lastAttemptAt: z.number().optional(),
   lastError: z.string().optional(),
   enabled: z.boolean(),
+  scope: z.enum(["builtin", "user", "project", "managed"]),
+  autoCheck: z.boolean(),
+  autoApply: z.boolean(),
 });
 
 function toMarketplaceListItem(
@@ -541,6 +666,9 @@ function toMarketplaceListItem(
     lastAttemptAt: data.lastAttemptAt ?? null,
     lastError: data.lastError ?? null,
     enabled: data.enabled,
+    scope: data.scope,
+    autoCheck: data.autoCheck,
+    autoApply: data.autoApply,
   };
 }
 
@@ -621,6 +749,53 @@ export async function refreshMarketplace(
     throw new Error("the server returned an unrecognized marketplace");
   }
   return toMarketplaceListItem(parsed.data.marketplace);
+}
+
+export interface MarketplaceAutoPolicy {
+  autoCheck: boolean;
+  autoApply: boolean;
+}
+
+const autoPolicyResultSchema = z.object({
+  autoCheck: z.boolean(),
+  autoApply: z.boolean(),
+});
+
+/**
+ * POST /api/v1/marketplaces/:id/auto-policy. The response echoes both
+ * persisted flags, which must match the request; a mismatch means the server
+ * persisted a policy other than the one on screen.
+ */
+export async function setMarketplaceAutoPolicy(
+  fetchImpl: FetchLike,
+  marketplaceId: string,
+  policy: MarketplaceAutoPolicy,
+): Promise<void> {
+  const response = await fetchImpl(
+    `/api/v1/marketplaces/${encodeURIComponent(marketplaceId)}/auto-policy`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(policy),
+    },
+  );
+  const body = await readBody(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage(
+        body,
+        `changing the update policy failed (HTTP ${response.status})`,
+      ),
+    );
+  }
+  const parsed = autoPolicyResultSchema.safeParse(body);
+  if (
+    !parsed.success ||
+    parsed.data.autoCheck !== policy.autoCheck ||
+    parsed.data.autoApply !== policy.autoApply
+  ) {
+    throw new Error("the server returned an unrecognized auto-policy result");
+  }
 }
 
 export interface MarketplaceAffectedPlugin {

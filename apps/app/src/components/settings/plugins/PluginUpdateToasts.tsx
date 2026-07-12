@@ -31,7 +31,7 @@ export function PluginUpdateToasts() {
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
   const listQuery = usePluginList({ enabled: pluginsEnabled });
-  const plugins = listQuery.data;
+  const plugins = listQuery.data?.plugins;
   const [reviewPluginId, setReviewPluginId] = useState<string | null>(null);
   // The dialog reads live list data so a re-check between toast and click
   // shows current state.
