@@ -19,10 +19,6 @@ function buildPluginCommand(): Command {
 }
 
 describe("plugins guide chapter", () => {
-  // Phase 2 update commands intentionally land before the coordinated guide
-  // and skill documentation sweep.
-  const pendingDocsSweep = new Set(["outdated", "update"]);
-
   it("mentions every bb plugin subcommand", () => {
     const plugin = buildPluginCommand();
     const names = plugin.commands.map((command) => command.name());
@@ -30,7 +26,6 @@ describe("plugins guide chapter", () => {
 
     const guide = renderTemplate("bbGuidePlugins", {});
     for (const name of names) {
-      if (pendingDocsSweep.has(name)) continue;
       // Allow pipe-joined forms like "bb plugin enable|disable <id>".
       const pattern = new RegExp(`bb plugin (?:[a-z-]+\\|)*${name}\\b`);
       expect(
@@ -45,7 +40,6 @@ describe("plugins guide chapter", () => {
     const guide = renderTemplate("bbGuidePlugins", {});
     let optionCount = 0;
     for (const command of plugin.commands) {
-      if (pendingDocsSweep.has(command.name())) continue;
       for (const option of command.options) {
         optionCount += 1;
         // Either spelling counts: the guide's compact usage lines use short
