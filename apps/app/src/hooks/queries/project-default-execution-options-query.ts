@@ -4,21 +4,10 @@ import { apiClient } from "@/lib/api-server";
 import { request, requestOptions } from "@/lib/api";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { requireEnabledQueryArg } from "./query-helpers";
-
-export const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
-  "projectDefaultExecutionOptions";
-
-export type ProjectDefaultExecutionOptionsQueryKey = readonly [
-  typeof PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
-  string,
-];
+import { projectDefaultExecutionOptionsQueryKey } from "./query-keys";
 
 interface QueryOptions {
   enabled?: boolean;
-}
-
-interface ProjectDefaultExecutionOptionsQueryKeyArgs {
-  projectId: string;
 }
 
 interface UseProjectDefaultExecutionOptionsArgs {
@@ -41,13 +30,7 @@ function requireProjectId(
   });
 }
 
-export function projectDefaultExecutionOptionsQueryKey({
-  projectId,
-}: ProjectDefaultExecutionOptionsQueryKeyArgs): ProjectDefaultExecutionOptionsQueryKey {
-  return [PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY, projectId];
-}
-
-export function fetchProjectDefaultExecutionOptions({
+function fetchProjectDefaultExecutionOptions({
   projectId,
   signal,
 }: FetchProjectDefaultExecutionOptionsArgs): Promise<ProjectExecutionDefaults | null> {

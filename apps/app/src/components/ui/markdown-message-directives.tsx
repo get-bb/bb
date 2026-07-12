@@ -346,7 +346,7 @@ export function buildMessageDirectiveComponent({
  * build the registry, and provide it here so individual messages do not each
  * open a store subscription.
  */
-export const MessageDirectiveRegistryContext =
+const MessageDirectiveRegistryContext =
   createContext<MessageDirectiveRegistry | null>(null);
 
 export function MessageDirectiveRegistryProvider({

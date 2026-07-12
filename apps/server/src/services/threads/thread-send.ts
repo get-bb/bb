@@ -34,7 +34,7 @@ import {
 import {
   ensureThreadCanStartRequest,
   prepareReadyThreadTurnCommand,
-  prepareReadyThreadTurnDispatchInTransaction,
+  prepareReadyThreadTurnDispatch,
 } from "./thread-lifecycle.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
@@ -522,7 +522,7 @@ export async function sendThreadMessage(
       input,
       inputGroups,
       queueInTransaction: ({ tx }) => {
-        const dispatchKind = prepareReadyThreadTurnDispatchInTransaction(tx, {
+        const dispatchKind = prepareReadyThreadTurnDispatch({
           command,
           thread,
         });

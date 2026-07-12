@@ -1,5 +1,5 @@
 import {
-  realtimeSubscriptionTargetKey,
+  realtimeSubscriptionTargetKey as subscriptionKey,
   type RealtimeSubscriptionTarget,
   type ChangedMessage,
   type EnvironmentChangeKind,
@@ -32,10 +32,6 @@ interface HubSocket {
 }
 
 type ChangedMessageListener = (message: ChangedMessage) => void;
-
-function subscriptionKey(target: RealtimeSubscriptionTarget): string {
-  return realtimeSubscriptionTargetKey(target);
-}
 
 function subscriptionKeysForMessage(message: ChangedMessage): string[] {
   switch (message.entity) {

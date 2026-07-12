@@ -1,17 +1,5 @@
-import { capitalize } from "@bb/thread-view";
-import { useId, useState, type FormEvent, type RefObject } from "react";
-import { Button } from "@bb/shared-ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@bb/shared-ui/dialog";
-import { Input } from "@bb/shared-ui/input";
-import { useNameValidation } from "./useNameValidation.js";
-import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
+import type { RefObject } from "react";
+import { RenameDialog, RenameDialogContent } from "./RenameDialog";
 
 export const THREAD_RENAME_DIALOG_SHELL_CLASS =
   "max-w-[24rem] sm:gap-3 sm:p-5";
@@ -38,14 +26,14 @@ export function ThreadRenameDialog({
   onOpenChange,
   onRename,
 }: ThreadRenameDialogProps) {
-  const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent
-        className={THREAD_RENAME_DIALOG_SHELL_CLASS}
-        onOpenAutoFocus={handleOpenAutoFocus}
-      >
-        {target ? (
+    <RenameDialog
+      open={target !== null}
+      onOpenChange={onOpenChange}
+      shellClassName={THREAD_RENAME_DIALOG_SHELL_CLASS}
+    >
+      {(inputRef) =>
+        target ? (
           <ThreadRenameDialogContent
             key={target.id}
             target={target}
@@ -53,9 +41,9 @@ export function ThreadRenameDialog({
             onRename={onRename}
             inputRef={inputRef}
           />
-        ) : null}
-      </DialogContent>
-    </Dialog>
+        ) : null
+      }
+    </RenameDialog>
   );
 }
 
@@ -72,57 +60,15 @@ export function ThreadRenameDialogContent({
   onRename,
   inputRef,
 }: ThreadRenameDialogContentProps) {
-  const inputId = useId();
-  const [nextTitle, setNextTitle] = useState(target.currentTitle);
-  const label = "thread";
-  const { validationMessage, validate, clearMessage } = useNameValidation({
-    emptyMessage: `${capitalize(label)} name cannot be empty.`,
-  });
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (pending) return;
-
-    const trimmedTitle = validate(nextTitle);
-    if (trimmedTitle === null) return;
-
-    onRename(target.id, { title: trimmedTitle });
-  };
-
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Rename {label}</DialogTitle>
-        <DialogDescription>
-          Choose a new name for this {label}.
-        </DialogDescription>
-      </DialogHeader>
-      <form className="space-y-3" onSubmit={handleSubmit}>
-        <div className="space-y-1.5">
-          <Input
-            ref={inputRef}
-            id={inputId}
-            aria-label={`${capitalize(label)} name`}
-            value={nextTitle}
-            autoCapitalize="sentences"
-            autoCorrect="off"
-            spellCheck={false}
-            disabled={pending}
-            onChange={(event) => {
-              setNextTitle(event.target.value);
-              clearMessage();
-            }}
-          />
-          {validationMessage ? (
-            <p className="text-sm text-destructive">{validationMessage}</p>
-          ) : null}
-        </div>
-        <DialogFooter>
-          <Button type="submit" disabled={pending}>
-            Rename {label}
-          </Button>
-        </DialogFooter>
-      </form>
-    </>
+    <RenameDialogContent
+      entityLabel="thread"
+      initialName={target.currentTitle}
+      pending={pending}
+      autoCapitalize="sentences"
+      compact
+      onRename={(title) => onRename(target.id, { title })}
+      inputRef={inputRef}
+    />
   );
 }

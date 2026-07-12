@@ -1,3 +1,5 @@
+import { atomWithStorage } from "jotai/utils";
+
 type StringValueGuard<T extends string> = (value: string) => value is T;
 type StoredValueListener = (storedValue: string | null) => void;
 
@@ -91,6 +93,18 @@ export function createJsonLocalStorage<T>(): SyncStorage<T> {
     },
     serialize: (value) => JSON.stringify(value),
   });
+}
+
+export function createBooleanPreferenceAtom(
+  storageKey: string,
+  defaultValue: boolean,
+) {
+  return atomWithStorage<boolean>(
+    storageKey,
+    defaultValue,
+    createJsonLocalStorage<boolean>(),
+    { getOnInit: true },
+  );
 }
 
 export function createLocalStorageSyncStorage<T>(

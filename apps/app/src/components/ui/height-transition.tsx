@@ -3,11 +3,9 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
 // Shared animation tokens for height transitions across the timeline.
-// Exported so adjacent surfaces (future affordances) can match the easing
-// without duplicating the curve.
-export const HEIGHT_TRANSITION_DURATION_MS = 180;
+const HEIGHT_TRANSITION_DURATION_MS = 180;
 // Cubic-bezier ease-out-expo: fast initial expansion, gentle settle.
-export const HEIGHT_TRANSITION_EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
+const HEIGHT_TRANSITION_EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
 
 // While content is reflowing (window/panel resize, sidebar collapse, font
 // load), the wrapper's height changes every frame. Letting the CSS height

@@ -204,7 +204,7 @@ export async function startHostDaemon(
           },
         }),
       );
-      hostWatcher = await createHostWatcher();
+      hostWatcher = createHostWatcher();
     }
     const resolveRuntimeShellEnv = async () =>
       prepareRuntimeShellEnv({

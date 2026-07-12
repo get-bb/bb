@@ -8,8 +8,6 @@ import { registerSpawnCommand } from "./spawn.js";
 import { registerTerminalCommands } from "./terminals.js";
 import { registerWaitCommand } from "./wait.js";
 
-export { statusText } from "./helpers.js";
-
 export function registerThreadCommands(
   program: Command,
   getUrl: () => string,

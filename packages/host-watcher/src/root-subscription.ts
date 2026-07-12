@@ -8,6 +8,7 @@ import {
 } from "./parcel-watcher-backend.js";
 import { pathExists } from "./path-exists.js";
 import { isRescanRequiredMessage } from "./watch-recovery.js";
+import { toWatchErrorMessage } from "./watch-error.js";
 
 export type {
   ParcelWatcherEventBatch,
@@ -30,13 +31,6 @@ export interface RootSubscriptionArgs {
   /** Genuine, non-recoverable watch failure. Reported at most once until the
    * subscription successfully (re-)establishes. */
   onWatchError: (message: string) => void;
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  return "Unknown watch error";
 }
 
 /**
@@ -163,7 +157,7 @@ export class RootSubscription {
             return;
           }
           if (error) {
-            const message = toErrorMessage(error);
+            const message = toWatchErrorMessage(error);
             if (isRescanRequiredMessage(message)) {
               recoverableFailureObserved = true;
               this.recoveryPending = true;
@@ -209,7 +203,7 @@ export class RootSubscription {
       if (this.disposed) {
         return;
       }
-      this.reportWatchError(toErrorMessage(error));
+      this.reportWatchError(toWatchErrorMessage(error));
       this.scheduleRetry();
     }
   }

@@ -317,31 +317,6 @@ function resolveDaemonTurnStartDisposition(
   });
 }
 
-function parseAcceptedInputClientRequestIdFromInput(
-  input: AppendDaemonEventInput,
-): ClientTurnRequestId | null {
-  if (input.type !== "turn/input/accepted") {
-    return null;
-  }
-  let data: unknown;
-  try {
-    data = JSON.parse(input.data);
-  } catch {
-    return null;
-  }
-  if (typeof data !== "object" || data === null) {
-    return null;
-  }
-  if (!("clientRequestId" in data)) {
-    return null;
-  }
-  const result = clientTurnRequestIdSchema.safeParse(data.clientRequestId);
-  if (!result.success) {
-    return null;
-  }
-  return result.data;
-}
-
 function isStoredEventPayload(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -551,11 +526,6 @@ export function appendDaemonEventsInTransaction(
           buildThreadTurnKey({ threadId: input.threadId, turnId }),
         );
       }
-    }
-    const acceptedClientRequestId =
-      parseAcceptedInputClientRequestIdFromInput(input);
-    if (acceptedClientRequestId !== null) {
-      void acceptedClientRequestId;
     }
     nextSequencesByThreadId.set(input.threadId, sequence + 1);
   }

@@ -49,12 +49,6 @@ export type SafeProcessDiagnosticKind =
   | "startupFailure"
   | "uncaughtException";
 
-export type CreateSafeProcessDiagnosticDate = () => Date;
-
-export type CreateSafeProcessDiagnosticReportId = () => string;
-
-export type DisposeSafeProcessDiagnostics = () => void;
-
 export interface SafeProcessDiagnosticsOptions {
   logsDir: string;
   processName: string;
@@ -64,30 +58,28 @@ export interface WriteSafeProcessDiagnosticReportArgs
   extends SafeProcessDiagnosticsOptions {
   kind: SafeProcessDiagnosticKind;
   error: unknown;
-  now?: CreateSafeProcessDiagnosticDate;
-  createReportId?: CreateSafeProcessDiagnosticReportId;
+  now?: () => Date;
+  createReportId?: () => string;
 }
 
-export interface SafeProcessDiagnosticError {
+interface SafeProcessDiagnosticError {
   name: string;
   message: string;
   stack?: string;
 }
 
-export interface SafeProcessDiagnosticRuntime {
-  nodeVersion: string;
-  platform: NodeJS.Platform;
-  arch: string;
-  execPath: string;
-}
-
-export interface SafeProcessDiagnosticReport {
+interface SafeProcessDiagnosticReport {
   diagnosticVersion: 1;
   kind: SafeProcessDiagnosticKind;
   processName: string;
   occurredAt: string;
   pid: number;
-  runtime: SafeProcessDiagnosticRuntime;
+  runtime: {
+    nodeVersion: string;
+    platform: NodeJS.Platform;
+    arch: string;
+    execPath: string;
+  };
   error: SafeProcessDiagnosticError;
 }
 
@@ -107,7 +99,7 @@ export function spawnPortableProcess(
   });
 }
 
-export function assertPortablePipedProcess(
+function assertPortablePipedProcess(
   child: PortableChildProcess,
 ): asserts child is PortablePipedChildProcess {
   if (!child.stdin || !child.stdout || !child.stderr) {
@@ -115,7 +107,7 @@ export function assertPortablePipedProcess(
   }
 }
 
-export function assertPortableOutputProcess(
+function assertPortableOutputProcess(
   child: PortableChildProcess,
 ): asserts child is PortableOutputChildProcess {
   if (child.stdin || !child.stdout || !child.stderr) {
@@ -264,7 +256,7 @@ export function writeSafeProcessDiagnosticReport(
  */
 export function installSafeProcessDiagnostics(
   options: SafeProcessDiagnosticsOptions,
-): DisposeSafeProcessDiagnostics {
+): () => void {
   mkdirSync(options.logsDir, { recursive: true });
   const handleUncaughtExceptionMonitor: UncaughtExceptionMonitorHandler = (
     error,

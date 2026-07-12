@@ -14,9 +14,7 @@ import type { ResolvedId } from "../context-env.js";
 export {
   type ResolvedId,
   type ThreadSelfTargetOptions,
-  requireProjectIdWithLabel,
-  requireThreadIdWithLabel,
-  requireThreadIdWithLabelOrSelf,
+  requireThreadId,
   requireThreadIdOrSelf,
 } from "../context-env.js";
 

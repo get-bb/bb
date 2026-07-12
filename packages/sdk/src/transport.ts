@@ -59,19 +59,3 @@ export interface CreateHttpTransportArgs {
   runtime: BbSdkRuntime;
   websocket?: BbRealtimeSocketFactory;
 }
-
-export interface ApiFetchArgs {
-  body?: string;
-  headers?: HeadersInit;
-  method: string;
-  path: string;
-}
-
-export interface BuildApiUrlArgs {
-  baseUrl: string;
-  path: string;
-}
-
-export function buildApiUrl(args: BuildApiUrlArgs): string {
-  return `${args.baseUrl.replace(/\/$/u, "")}/api/v1${args.path}`;
-}

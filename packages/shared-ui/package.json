@@ -4,11 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "source": "./src/index.ts",
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
-    },
     "./accordion": {
       "source": "./src/components/ui/accordion.tsx",
       "types": "./src/components/ui/accordion.tsx",
@@ -295,7 +290,6 @@
       "default": "./src/lib/portal-scope.ts"
     }
   },
-  "types": "./src/index.ts",
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
     "typecheck": "tsc --noEmit"

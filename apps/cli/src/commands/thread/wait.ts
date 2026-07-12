@@ -3,11 +3,7 @@ import { threadStatusSchema, threadStatusValues } from "@bb/domain";
 import { ThreadWaitTimeoutError, ThreadWaitUnreachableError } from "@bb/sdk";
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import {
-  outputJson,
-  printContextLabel,
-  requireThreadIdWithLabel,
-} from "../helpers.js";
+import { outputJson, requireThreadId } from "../helpers.js";
 import {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
@@ -53,9 +49,7 @@ export function registerWaitCommand(
     .action(
       action(async (id: string | undefined, opts: ThreadWaitCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const resolved = requireThreadIdWithLabel(id);
-        const threadId = resolved.id;
-        printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
+        const threadId = requireThreadId(id);
         const target = parseThreadWaitTarget(opts);
         const timeoutSeconds = parseThreadWaitTimeoutSeconds(opts.timeout);
         const pollIntervalMs = parseThreadWaitPollIntervalMs(opts.pollInterval);

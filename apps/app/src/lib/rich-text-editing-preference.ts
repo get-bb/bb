@@ -1,6 +1,5 @@
 import { useAtom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
-import { createJsonLocalStorage } from "./browser-storage";
+import { createBooleanPreferenceAtom } from "./browser-storage";
 
 export const RICH_TEXT_EDITING_STORAGE_KEY = "bb.promptbox.rich-text-editing";
 
@@ -14,13 +13,9 @@ export const RICH_TEXT_EDITING_STORAGE_KEY = "bb.promptbox.rich-text-editing";
  */
 export const RICH_TEXT_EDITING_DEFAULT = false;
 
-const richTextEditingStorage = createJsonLocalStorage<boolean>();
-
-export const richTextEditingPreferenceAtom = atomWithStorage<boolean>(
+export const richTextEditingPreferenceAtom = createBooleanPreferenceAtom(
   RICH_TEXT_EDITING_STORAGE_KEY,
   RICH_TEXT_EDITING_DEFAULT,
-  richTextEditingStorage,
-  { getOnInit: true },
 );
 
 export function useRichTextEditingPreference() {

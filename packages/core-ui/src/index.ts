@@ -3,8 +3,6 @@ export { assertNever } from "./assert-never.js";
 export { formatEnvironmentDisplay } from "./environment-display.js";
 export type {
   EnvironmentDisplayHostContext,
-  EnvironmentDisplayHostIdentity,
-  EnvironmentDisplayHostLocality,
   EnvironmentDisplayInfo,
 } from "./environment-display.js";
 
@@ -18,12 +16,5 @@ export {
   formatPendingInteractionSummary,
   formatPendingInteractionUserQuestionOptionLabel,
 } from "./pending-interaction-presentation.js";
-export type {
-  FormatPendingInteractionSummaryArgs,
-  FormatPendingInteractionUserQuestionOptionLabelArgs,
-  PendingInteractionPresentationSurface,
-} from "./pending-interaction-presentation.js";
-
-export { timeAgo } from "./format-helpers.js";
 
 export { extractErrorMessage, toRecord } from "./unknown-helpers.js";

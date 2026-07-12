@@ -144,7 +144,7 @@ function useImmediateTimeoutSignalFor(args: ImmediateTimeoutSignalArgs): void {
 }
 
 function readJson<TBody>(response: Response): Promise<TBody> {
-  return readJsonResponse({ response: Promise.resolve(response) });
+  return readJsonResponse(Promise.resolve(response));
 }
 
 describe("readJsonResponse()", () => {
@@ -172,7 +172,7 @@ describe("readJsonResponse()", () => {
     const response = new Response("", { status: 200 });
 
     await expect(
-      readVoidResponse({ response: Promise.resolve(response) }),
+      readVoidResponse(Promise.resolve(response)),
     ).resolves.toBeUndefined();
   });
 
@@ -180,7 +180,7 @@ describe("readJsonResponse()", () => {
     const response = new Response(null, { status: 204 });
 
     await expect(
-      readVoidResponse({ response: Promise.resolve(response) }),
+      readVoidResponse(Promise.resolve(response)),
     ).resolves.toBeUndefined();
   });
 
@@ -191,7 +191,7 @@ describe("readJsonResponse()", () => {
     });
 
     await expect(
-      readVoidResponse({ response: Promise.resolve(response) }),
+      readVoidResponse(Promise.resolve(response)),
     ).rejects.toThrow("HTTP 500: Internal Server Error");
   });
 
@@ -268,7 +268,7 @@ describe("readJsonResponse()", () => {
     });
 
     await expect(
-      readJsonResponse({ response: Promise.reject(connError) }),
+      readJsonResponse(Promise.reject(connError)),
     ).rejects.toThrow(
       "Cannot connect to BB server. Ensure it is running and BB_SERVER_URL is correct.",
     );
@@ -278,7 +278,7 @@ describe("readJsonResponse()", () => {
     const otherError = new Error("Network timeout");
 
     await expect(
-      readJsonResponse({ response: Promise.reject(otherError) }),
+      readJsonResponse(Promise.reject(otherError)),
     ).rejects.toThrow("Network timeout");
   });
 
@@ -286,10 +286,10 @@ describe("readJsonResponse()", () => {
     const error = new RangeError("something wrong");
 
     await expect(
-      readJsonResponse({ response: Promise.reject(error) }),
+      readJsonResponse(Promise.reject(error)),
     ).rejects.toThrow("something wrong");
     await expect(
-      readJsonResponse({ response: Promise.reject(error) }),
+      readJsonResponse(Promise.reject(error)),
     ).rejects.toBeInstanceOf(RangeError);
   });
 });
@@ -413,7 +413,7 @@ describe("createRequestTimeoutFetch()", () => {
 
     expect(response.body).toBeNull();
     await expect(
-      readVoidResponse({ response: Promise.resolve(response) }),
+      readVoidResponse(Promise.resolve(response)),
     ).resolves.toBeUndefined();
   });
 
@@ -485,9 +485,7 @@ describe("createRequestTimeoutFetch()", () => {
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
     await expect(
-      readJsonResponse({
-        response: timeoutFetch("http://server/api/v1/threads"),
-      }),
+      readJsonResponse(timeoutFetch("http://server/api/v1/threads")),
     ).rejects.toThrow(IMMEDIATE_TIMEOUT_MESSAGE);
   });
 
@@ -603,9 +601,7 @@ describe("createRequestTimeoutFetch()", () => {
     const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
 
     await expect(
-      readJsonResponse({
-        response: timeoutFetch("http://server/api/v1/hosts"),
-      }),
+      readJsonResponse(timeoutFetch("http://server/api/v1/hosts")),
     ).rejects.toThrow(SyntaxError);
   });
 

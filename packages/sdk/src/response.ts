@@ -31,18 +31,6 @@ interface WrapRequestTimeoutBodyArgs {
   stream: ReadableStream<Uint8Array>;
 }
 
-interface ResolveResponseArgs<TResponse extends Response> {
-  response: Promise<TResponse>;
-}
-
-interface ReadJsonResponseArgs<TResponse extends Response> {
-  response: Promise<TResponse>;
-}
-
-interface ReadVoidResponseArgs<TResponse extends Response> {
-  response: Promise<TResponse>;
-}
-
 export type JsonBodyOf<TResponse> = TResponse extends {
   json(): Promise<infer TBody>;
 }
@@ -132,24 +120,24 @@ export function createRequestTimeoutFetch(
 }
 
 export async function readJsonResponse<TResponse extends Response>(
-  args: ReadJsonResponseArgs<TResponse>,
+  response: Promise<TResponse>,
 ): Promise<JsonBodyOf<TResponse>> {
-  const response = await resolveResponse({ response: args.response });
-  return response.json();
+  const resolved = await resolveResponse(response);
+  return resolved.json();
 }
 
 export async function readVoidResponse<TResponse extends Response>(
-  args: ReadVoidResponseArgs<TResponse>,
+  response: Promise<TResponse>,
 ): Promise<void> {
-  await resolveResponse({ response: args.response });
+  await resolveResponse(response);
 }
 
 export async function resolveResponse<TResponse extends Response>(
-  args: ResolveResponseArgs<TResponse>,
+  responsePromise: Promise<TResponse>,
 ): Promise<TResponse> {
   let response: TResponse;
   try {
-    response = await args.response;
+    response = await responsePromise;
   } catch (error) {
     if (isTypeErrorWithCauseCode(error, "ECONNREFUSED")) {
       throw new Error(

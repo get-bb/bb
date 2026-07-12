@@ -5,7 +5,7 @@ import type {
   SystemThreadProvisioningStatus,
   ThreadEventRow,
 } from "@bb/domain";
-import { decodeThreadEventRow } from "../src/index.js";
+import { decodeThreadEventRow } from "../src/event-decode.js";
 import {
   finalizeOperationMessage,
   interruptOperationMessage,
@@ -145,14 +145,20 @@ describe("parseOperationMessage operation titles", () => {
       expect(
         ownershipTitle(
           "assign",
-          { nextParentThreadTitle: "Release manager", previousParentThreadTitle: null },
+          {
+            nextParentThreadTitle: "Release manager",
+            previousParentThreadTitle: null,
+          },
           THREAD_NAME,
         ),
       ).toBe("Fix auth bug assigned to Release manager");
       expect(
         ownershipTitle(
           "release",
-          { nextParentThreadTitle: null, previousParentThreadTitle: "Release manager" },
+          {
+            nextParentThreadTitle: null,
+            previousParentThreadTitle: "Release manager",
+          },
           THREAD_NAME,
         ),
       ).toBe("Fix auth bug released from Release manager");

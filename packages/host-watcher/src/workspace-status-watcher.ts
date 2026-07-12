@@ -8,6 +8,7 @@ import {
 } from "./root-subscription.js";
 import { createDebouncedCallbackScheduler } from "./watch-callback-scheduler.js";
 import { pathExists } from "./path-exists.js";
+import { toWatchErrorMessage } from "./watch-error.js";
 import {
   collectWorkspaceStatusChanges,
   resolveMetadataWatchSpecs,
@@ -52,13 +53,6 @@ interface GitStatusCommandResult {
 interface WorkspaceRootWatchSpecArgs {
   cwd: string;
   rootPath: string;
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  return "Unknown watch error";
 }
 
 function runGitIgnoredMatchingStatus(
@@ -128,7 +122,7 @@ function createWorkspaceStatusCallbackError(
   error: unknown,
 ): WorkspaceStatusWatchError {
   return {
-    message: `Workspace status callback failed: ${toErrorMessage(error)}`,
+    message: `Workspace status callback failed: ${toWatchErrorMessage(error)}`,
     rootPath: cwd,
   };
 }
@@ -241,7 +235,7 @@ export class WorkspaceStatusWatcher {
     }
     this.workspaceRootSetupWarned = true;
     this.args.onWatchError({
-      message: `Workspace root ignore discovery failed: ${toErrorMessage(error)}`,
+      message: `Workspace root ignore discovery failed: ${toWatchErrorMessage(error)}`,
       rootPath,
     });
   }

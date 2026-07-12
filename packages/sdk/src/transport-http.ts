@@ -5,11 +5,9 @@ import {
   resolveResponse,
 } from "./response.js";
 import type {
-  ApiFetchArgs,
   BbSdkTransport,
   CreateHttpTransportArgs,
 } from "./transport.js";
-import { buildApiUrl } from "./transport.js";
 
 const SAME_ORIGIN_BASE_URL = "";
 
@@ -27,16 +25,8 @@ export function createHttpTransport(
     ...(args.realtimeUrl ? { realtimeUrl: args.realtimeUrl } : {}),
     runtime: args.runtime,
     websocket: args.websocket,
-    readJson: (response) => readJsonResponse({ response }),
-    readVoid: (response) => readVoidResponse({ response }),
-    resolve: (response) => resolveResponse({ response }),
+    readJson: readJsonResponse,
+    readVoid: readVoidResponse,
+    resolve: resolveResponse,
   };
-}
-
-export function fetchApi(args: ApiFetchArgs, transport: BbSdkTransport) {
-  return transport.fetch(buildApiUrl({ baseUrl: transport.baseUrl, path: args.path }), {
-    body: args.body,
-    headers: args.headers,
-    method: args.method,
-  });
 }

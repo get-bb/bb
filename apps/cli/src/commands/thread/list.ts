@@ -7,7 +7,6 @@ import {
 } from "../../context-env.js";
 import { renderBorderlessTable } from "../../table.js";
 import { outputJson } from "../helpers.js";
-import { statusText } from "./helpers.js";
 
 interface ThreadListCommandOptions {
   project?: string;
@@ -87,7 +86,7 @@ function formatThreadListStatus(thread: Thread): string {
     flags.push("pinned");
   }
   if (flags.length === 0) {
-    return statusText(thread.status);
+    return thread.status;
   }
-  return `${statusText(thread.status)} (${flags.join(", ")})`;
+  return `${thread.status} (${flags.join(", ")})`;
 }

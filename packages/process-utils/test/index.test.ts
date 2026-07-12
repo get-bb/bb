@@ -4,14 +4,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
-  assertPortableOutputProcess,
-  assertPortablePipedProcess,
   installSafeProcessDiagnostics,
   resolveContainedPath,
   sanitizeInheritedChildProcessEnv,
   spawnPortableOutputProcess,
   spawnPortablePipedProcess,
-  spawnPortableProcess,
   writeSafeProcessDiagnosticReport,
 } from "../src/index.js";
 
@@ -119,18 +116,6 @@ describe("process utils", () => {
     });
   });
 
-  it("rejects non-piped child processes when pipe access is required", () => {
-    const child = spawnPortableProcess({
-      command: process.execPath,
-      args: ["-e", ""],
-      stdio: "ignore",
-    });
-
-    expect(() => assertPortablePipedProcess(child)).toThrow(
-      "Portable child process did not attach piped stdio",
-    );
-  });
-
   it("spawns a process with stdin closed and output piped", async () => {
     const child = spawnPortableOutputProcess({
       command: process.execPath,
@@ -148,17 +133,6 @@ describe("process utils", () => {
     expect(exitCode).toBe(0);
     expect(child.stdin).toBeNull();
     expect(Buffer.concat(stdoutChunks).toString("utf8")).toBe("closed");
-  });
-
-  it("rejects child processes that keep stdin open when output-only access is required", () => {
-    const child = spawnPortablePipedProcess({
-      command: process.execPath,
-      args: ["-e", ""],
-    });
-
-    expect(() => assertPortableOutputProcess(child)).toThrow(
-      "Portable child process did not attach output-only stdio",
-    );
   });
 
   it("resolves paths that stay within the configured root", () => {

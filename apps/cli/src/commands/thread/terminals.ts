@@ -9,11 +9,7 @@ import {
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { renderBorderlessTable } from "../../table.js";
-import {
-  outputJson,
-  printContextLabel,
-  requireThreadIdWithLabel,
-} from "../helpers.js";
+import { outputJson, requireThreadId } from "../helpers.js";
 
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
@@ -85,11 +81,10 @@ export function registerTerminalCommands(
     .action(
       action(
         async (threadId: string | undefined, opts: TerminalListOptions) => {
-          const resolved = requireThreadIdWithLabel(threadId);
+          const resolvedThreadId = requireThreadId(threadId);
           const sdk = createCliBbSdk(getUrl());
-          printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
           const result = await sdk.threads.terminals.list({
-            threadId: resolved.id,
+            threadId: resolvedThreadId,
           });
           if (outputJson(opts, result)) return;
           printTerminalTable(result.sessions);
@@ -123,11 +118,9 @@ export function registerTerminalCommands(
             commandParts,
             threadId,
           });
-          const resolvedThread = requireThreadIdWithLabel(
-            resolvedStart.threadId,
-          );
+          const resolvedThreadId = requireThreadId(resolvedStart.threadId);
           const session = await sdk.threads.terminals.create({
-            threadId: resolvedThread.id,
+            threadId: resolvedThreadId,
             cols: parsePositiveInteger(opts.cols, DEFAULT_COLS, "--cols"),
             rows: parsePositiveInteger(opts.rows, DEFAULT_ROWS, "--rows"),
             title: opts.title,
@@ -142,7 +135,7 @@ export function registerTerminalCommands(
             await attachTerminal({
               baseUrl: getUrl(),
               terminalId: session.id,
-              threadId: resolvedThread.id,
+              threadId: resolvedThreadId,
             });
           }
         },
@@ -160,18 +153,18 @@ export function registerTerminalCommands(
           threadId: string | undefined,
           opts: TerminalAttachOptions,
         ) => {
-          const resolved = requireThreadIdWithLabel(threadId);
+          const resolvedThreadId = requireThreadId(threadId);
           if (opts.json) {
             const sdk = createCliBbSdk(getUrl());
             const result = await sdk.threads.terminals.list({
-              threadId: resolved.id,
+              threadId: resolvedThreadId,
             });
             const session = result.sessions.find(
               (candidate) => candidate.id === terminalId,
             );
             if (session === undefined) {
               throw new Error(
-                `Terminal ${terminalId} was not found in thread ${resolved.id}`,
+                `Terminal ${terminalId} was not found in thread ${resolvedThreadId}`,
               );
             }
             outputJson(opts, session);
@@ -180,7 +173,7 @@ export function registerTerminalCommands(
           await attachTerminal({
             baseUrl: getUrl(),
             terminalId,
-            threadId: resolved.id,
+            threadId: resolvedThreadId,
           });
         },
       ),
@@ -201,10 +194,10 @@ export function registerTerminalCommands(
           opts: TerminalSendOptions,
         ) => {
           const text = await resolveSendText(opts);
-          const resolved = requireThreadIdWithLabel(threadId);
+          const resolvedThreadId = requireThreadId(threadId);
           const sdk = createCliBbSdk(getUrl());
           const session = await sdk.threads.terminals.input({
-            threadId: resolved.id,
+            threadId: resolvedThreadId,
             terminalId,
             dataBase64: Buffer.from(text, "utf8").toString("base64"),
           });
@@ -227,10 +220,10 @@ export function registerTerminalCommands(
           threadId: string | undefined,
           opts: TerminalResizeOptions,
         ) => {
-          const resolved = requireThreadIdWithLabel(threadId);
+          const resolvedThreadId = requireThreadId(threadId);
           const sdk = createCliBbSdk(getUrl());
           const session = await sdk.threads.terminals.resize({
-            threadId: resolved.id,
+            threadId: resolvedThreadId,
             terminalId,
             cols: parseRequiredPositiveInteger(opts.cols, "--cols"),
             rows: parseRequiredPositiveInteger(opts.rows, "--rows"),
@@ -257,10 +250,10 @@ export function registerTerminalCommands(
           threadId: string | undefined,
           opts: TerminalOutputOptions,
         ) => {
-          const resolved = requireThreadIdWithLabel(threadId);
+          const resolvedThreadId = requireThreadId(threadId);
           const sdk = createCliBbSdk(getUrl());
           const output = await sdk.threads.terminals.output({
-            threadId: resolved.id,
+            threadId: resolvedThreadId,
             terminalId,
             ...terminalOutputQuery(opts),
           });
@@ -296,7 +289,7 @@ export function registerTerminalCommands(
             baseUrl: getUrl(),
             opts,
             terminalId,
-            threadId: requireThreadIdWithLabel(threadId).id,
+            threadId: requireThreadId(threadId),
           });
           if (outputJson(opts, result)) return;
           console.log(`Terminal ${terminalId} matched ${result.matched}`);
@@ -316,10 +309,10 @@ export function registerTerminalCommands(
           threadId: string | undefined,
           opts: TerminalStopOptions,
         ) => {
-          const resolved = requireThreadIdWithLabel(threadId);
+          const resolvedThreadId = requireThreadId(threadId);
           const sdk = createCliBbSdk(getUrl());
           const session = await sdk.threads.terminals.close({
-            threadId: resolved.id,
+            threadId: resolvedThreadId,
             terminalId,
             mode: opts.ifClean ? "if-clean" : "force",
             reason: "user",

@@ -4,8 +4,6 @@ import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import { useDeletedResourceRouteOwner } from "./cache-owners/resource-route-owner";
 import { wsManager } from "../lib/ws";
 
-export { shouldFlushThreadChangesImmediately } from "./realtime-cache-effects";
-
 export function useWebSocket(): void {
   const queryClient = useQueryClient();
   const handleDeletedResourceRouteChange = useDeletedResourceRouteOwner();

@@ -21,7 +21,6 @@ import {
   parsePermissionMode,
   PERMISSION_MODE_HELP,
   parseServiceTier,
-  statusText,
 } from "./helpers.js";
 
 interface ThreadSpawnCommandOptions {
@@ -290,7 +289,7 @@ function printThread(thread: Thread): void {
   console.log(
     `  Project:  ${thread.projectId === PERSONAL_PROJECT_ID ? "-" : thread.projectId}`,
   );
-  console.log(`  Status:   ${statusText(thread.status)}`);
+  console.log(`  Status:   ${thread.status}`);
   if (thread.archivedAt !== null) {
     console.log(`  Archived: ${new Date(thread.archivedAt).toLocaleString()}`);
   }

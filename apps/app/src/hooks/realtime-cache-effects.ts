@@ -26,8 +26,6 @@ import {
   shouldFlushThreadChangesImmediately,
 } from "./cache-owners/realtime-cache-registry";
 
-export { shouldFlushThreadChangesImmediately } from "./cache-owners/realtime-cache-registry";
-
 const INVALIDATION_DEBOUNCE_MS = 50;
 const INVALIDATION_MAX_WAIT_MS = 200;
 const ENVIRONMENT_INVALIDATION_DEBOUNCE_MS = 250;

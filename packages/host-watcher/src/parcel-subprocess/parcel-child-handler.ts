@@ -4,18 +4,12 @@ import type {
   ParcelWatcherBackend,
   ParcelWatcherEventBatch,
 } from "../parcel-watcher-backend.js";
+import { toWatchErrorMessage } from "../watch-error.js";
 import type {
   ChildToParentMessage,
   ParentToChildMessage,
   SerializedParcelEvent,
 } from "./messages.js";
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  return "Unknown watch error";
-}
 
 function serializeEvents(
   events: ParcelWatcherEventBatch,
@@ -75,7 +69,7 @@ export function createParcelChildHandler(args: {
             args.send({
               kind: "watch-error",
               id: message.id,
-              message: toErrorMessage(error),
+              message: toWatchErrorMessage(error),
             });
             return;
           }
@@ -103,7 +97,7 @@ export function createParcelChildHandler(args: {
         args.send({
           kind: "subscribe-failed",
           id: message.id,
-          message: toErrorMessage(error),
+          message: toWatchErrorMessage(error),
         });
       });
   }

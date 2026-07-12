@@ -22,15 +22,13 @@ import { createCliBbSdk } from "../../client.js";
 import {
   getErrorMessage,
   outputJson,
-  printContextLabel,
-  requireThreadIdWithLabelOrSelf,
+  requireThreadIdOrSelf,
 } from "../helpers.js";
 import {
   type ThreadEnvironmentInfo,
   fetchEnvironmentInfo,
   printEnvironmentInfo,
 } from "../environment-helpers.js";
-import { statusText } from "./helpers.js";
 import { fetchThreadPendingTodos, printPendingTodos } from "./pending-todos.js";
 
 interface ThreadShowCommandOptions {
@@ -204,10 +202,8 @@ export function registerShowCommand(
     )
     .action(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
-        const resolved = requireThreadIdWithLabelOrSelf(id, opts);
+        const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
-        const threadId = resolved.id;
-        printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
         const thread = await sdk.threads.get({ threadId });
 
         const statusPayload: ThreadStatusPayload = { thread };
@@ -441,10 +437,8 @@ export function registerShowCommand(
     )
     .action(
       action(async (id: string | undefined, opts: ThreadLogCommandOptions) => {
-        const resolved = requireThreadIdWithLabelOrSelf(id, opts);
+        const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
-        const threadId = resolved.id;
-        printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
         const format = resolveThreadTimelineTextFormat(opts);
 
         if (format !== "json" && (opts.limit || opts.afterSeq)) {
@@ -483,10 +477,9 @@ export function registerShowCommand(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string | undefined, opts: ThreadOutputCommandOptions) => {
-        const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-        printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
+        const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
-        const result = await sdk.threads.output({ threadId: resolved.id });
+        const result = await sdk.threads.output({ threadId });
         if (outputJson(opts, result)) return;
         if (result.output) {
           console.log(result.output);
@@ -504,7 +497,7 @@ function printThreadStatus(
 ): void {
   const { thread } = payload;
   console.log(`Thread: ${thread.id}`);
-  console.log(`  Status: ${statusText(thread.status)}`);
+  console.log(`  Status: ${thread.status}`);
   if (thread.title) {
     console.log(`  Title: ${thread.title}`);
   }

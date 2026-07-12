@@ -10,8 +10,6 @@ export {
   buildTimelineRowTitle,
   findActiveLatestBundleId,
   findTimelineFrontierRow,
-  formatTimelineDecorationText,
-  renderTitlePlain,
 } from "./timeline-row-title.js";
 export {
   hasTimelineExplorationIntent,
@@ -45,39 +43,21 @@ export {
   buildThreadTimelineFromEvents,
   buildThreadTimelineTurnDetailsFromEvents,
 } from "./build-thread-timeline.js";
-export type { ThreadTimelineFromEventsResult } from "./build-thread-timeline.js";
 export { extractThreadTimelineActivePromptMode } from "./active-prompt-mode-extraction.js";
 export { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
-export {
-  EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-  buildAcceptedClientRequestById,
-} from "./accepted-client-request-context.js";
-export type {
-  AcceptedClientRequest,
-  AcceptedClientRequestContext,
-} from "./accepted-client-request-context.js";
+export type { AcceptedClientRequestContext } from "./accepted-client-request-context.js";
 export {
   buildTimelineViewRows,
-  buildTimelineWorkSummaryLabel,
-  buildTimelineWorkSummaryLabelParts,
   createTimelineViewRowsCache,
-  isTimelineStepBoundary,
 } from "./timeline-view.js";
 export type {
   BuildTimelineViewRowsOptions,
   ThreadTimelineViewRow,
-  TimelineBundleSummaryRow,
   TimelineImageViewViewWorkRow,
-  TimelineStepSummaryRow,
   TimelineQuestionViewWorkRow,
-  TimelineViewDelegationWorkRow,
-  TimelineViewRowsCache,
   TimelineViewTurnRow,
   TimelineViewWorkflowWorkRow,
   TimelineViewWorkRow,
-  TimelineWorkSummaryKind,
-  TimelineWorkSummaryRow,
 } from "./timeline-view.js";
 export { compactThreadTimelineSummaryEvents } from "./summary-event-compaction.js";
-export { decodeThreadEventRow } from "./event-decode.js";
 export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";

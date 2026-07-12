@@ -1,7 +1,6 @@
 import {
   permissionModeSchema,
   type PermissionMode,
-  type ThreadStatus,
   serviceTierSchema,
   type ServiceTier,
 } from "@bb/domain";
@@ -10,7 +9,6 @@ import {
   DEFAULT_THREAD_WAIT_TIMEOUT_MS,
   type ThreadWaitTarget,
 } from "@bb/sdk";
-import { assertNever } from "@bb/core-ui";
 import { joinValues } from "../helpers.js";
 
 export const THREAD_WAIT_EXIT_CODE_TIMEOUT = 2;
@@ -25,23 +23,6 @@ export type { ThreadWaitTarget };
 const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
 export const PERMISSION_MODE_HELP =
   "Permission mode: full, workspace-write, or readonly";
-
-export function statusText(status: ThreadStatus): string {
-  switch (status) {
-    case "starting":
-      return "starting";
-    case "error":
-      return "error";
-    case "idle":
-      return "idle";
-    case "active":
-      return "active";
-    case "stopping":
-      return "stopping";
-    default:
-      return assertNever(status);
-  }
-}
 
 export function parseThreadWaitTimeoutSeconds(
   value: string | undefined,

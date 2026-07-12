@@ -26,6 +26,6 @@ export type {
   WorkspaceStatusWatchChangeKind,
 } from "./watch-status-types.js";
 
-export async function createHostWatcher(): Promise<HostWatcher | undefined> {
+export function createHostWatcher(): HostWatcher {
   return createParcelHostWatcher();
 }

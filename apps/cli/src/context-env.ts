@@ -44,18 +44,6 @@ export function resolveServerUrl(
   return context.cliConfig.BB_SERVER_URL;
 }
 
-export function resolveProjectId(flagValue?: string): string | undefined {
-  const fromFlag = trimToUndefined(flagValue);
-  if (fromFlag) return validateId(fromFlag, "--project flag");
-  return undefined;
-}
-
-export function resolveThreadId(flagValue?: string): string | undefined {
-  const fromFlag = trimToUndefined(flagValue);
-  if (fromFlag) return validateId(fromFlag, "--thread flag");
-  return undefined;
-}
-
 export function resolveContextProjectId(): string | undefined {
   const fromEnv = trimToUndefined(process.env.BB_PROJECT_ID);
   if (fromEnv) return validateId(fromEnv, "BB_PROJECT_ID");
@@ -77,21 +65,27 @@ export function resolveExplicitIdFlag(
 }
 
 export function requireProjectId(flagValue?: string): string {
-  const projectId = resolveProjectId(flagValue);
+  const projectId = resolveExplicitIdFlag({
+    flagName: "--project flag",
+    value: flagValue,
+  });
   if (projectId) return projectId;
   throw new Error("Missing project ID. Pass --project <id>.");
 }
 
-export function requireThreadId(flagValue?: string): string {
-  const threadId = resolveThreadId(flagValue);
+export function requireThreadId(positionalId?: string): string {
+  const threadId = resolveExplicitIdFlag({
+    flagName: "<threadId> argument",
+    value: positionalId,
+  });
   if (threadId) return threadId;
   throw new Error("Missing thread ID. Pass <threadId>.");
 }
 
 export interface ResolvedId {
   id: string;
-  /** "arg" when provided as a positional/flag, "env" when resolved from the environment variable, "self" when explicitly targeted via --self. */
-  source: "arg" | "env" | "self";
+  /** "arg" when provided as a positional/flag, "env" when resolved from BB_* env. */
+  source: "arg" | "env";
 }
 
 export interface ThreadSelfTargetOptions {
@@ -99,74 +93,7 @@ export interface ThreadSelfTargetOptions {
 }
 
 /**
- * Resolve a project ID with source tracking. Returns undefined when neither the
- * flag nor the environment variable provides a value (useful for optional
- * project filters like thread list).
- */
-export function resolveProjectIdWithLabel(
-  flagValue?: string,
-): ResolvedId | undefined {
-  const fromFlag = trimToUndefined(flagValue);
-  if (fromFlag)
-    return { id: validateId(fromFlag, "--project flag"), source: "arg" };
-  return undefined;
-}
-
-/**
- * Require a project ID for read-only commands. Returns the resolved ID and its
- * source so the caller can print a context label when the value came from the
- * environment variable.
- */
-export function requireProjectIdWithLabel(flagValue?: string): ResolvedId {
-  const resolved = resolveProjectIdWithLabel(flagValue);
-  if (resolved) return resolved;
-  throw new Error("Missing project ID. Pass --project <id>.");
-}
-
-/**
- * Require a thread ID for read-only commands. Returns the resolved ID and its
- * source so the caller can print a context label when the value came from the
- * environment variable.
- */
-export function requireThreadIdWithLabel(positionalId?: string): ResolvedId {
-  const fromArg = trimToUndefined(positionalId);
-  if (fromArg)
-    return { id: validateId(fromArg, "<threadId> argument"), source: "arg" };
-  throw new Error("Missing thread ID. Pass <threadId>.");
-}
-
-/**
- * Require a thread ID for read-only commands that support `--self`.
- *
- * - Positional `<id>` and `--self` are mutually exclusive.
- * - `--self` resolves from BB_THREAD_ID.
- * - If neither is provided, error with guidance.
- */
-export function requireThreadIdWithLabelOrSelf(
-  positionalId: string | undefined,
-  opts: ThreadSelfTargetOptions,
-): ResolvedId {
-  if (opts.self && positionalId) {
-    throw new Error("Cannot combine a thread ID argument with --self.");
-  }
-  if (positionalId) {
-    return {
-      id: validateId(positionalId, "<threadId> argument"),
-      source: "arg",
-    };
-  }
-  if (opts.self) {
-    const envThreadId = resolveContextThreadId();
-    if (!envThreadId) {
-      throw new Error("--self requires BB_THREAD_ID to be set.");
-    }
-    return { id: envThreadId, source: "self" };
-  }
-  throw new Error("Missing thread ID. Pass <threadId> or use --self.");
-}
-
-/**
- * Require a thread ID for mutating commands that support `--self`.
+ * Require a thread ID for commands that support `--self`.
  *
  * - Positional `<id>` and `--self` are mutually exclusive.
  * - `--self` resolves from BB_THREAD_ID.
@@ -189,9 +116,7 @@ export function requireThreadIdOrSelf(
   if (positionalId) {
     return validateId(positionalId, "<threadId> argument");
   }
-  throw new Error(
-    "Provide a thread ID or use --self to target the current thread.",
-  );
+  throw new Error("Missing thread ID. Pass <threadId> or use --self.");
 }
 
 export interface ContextSnapshot {

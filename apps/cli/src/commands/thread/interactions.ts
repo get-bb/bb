@@ -31,8 +31,7 @@ import { renderBorderlessTable } from "../../table.js";
 import {
   outputJson,
   prependErrorContext,
-  printContextLabel,
-  requireThreadIdWithLabelOrSelf,
+  requireThreadIdOrSelf,
 } from "../helpers.js";
 
 interface ThreadInteractionTargetOptions {
@@ -674,12 +673,11 @@ export function registerInteractionCommands(
           id: string | undefined,
           opts: ThreadInteractionTargetOptions,
         ) => {
-          const resolved = requireThreadIdWithLabelOrSelf(id, opts);
+          const threadId = requireThreadIdOrSelf(id, opts);
           const sdk = createCliBbSdk(getUrl());
-          printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
 
           const items = await sdk.threads.interactions.list({
-            threadId: resolved.id,
+            threadId,
           });
 
           if (outputJson(opts, items)) {
@@ -725,12 +723,11 @@ export function registerInteractionCommands(
           id: string | undefined,
           opts: ThreadInteractionTargetOptions,
         ) => {
-          const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-          printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
+          const threadId = requireThreadIdOrSelf(id, opts);
           const interaction = await fetchInteraction({
             getUrl,
             interactionId,
-            threadId: resolved.id,
+            threadId,
           });
 
           if (outputJson(opts, interaction)) {
@@ -753,8 +750,7 @@ export function registerInteractionCommands(
           id: string | undefined,
           opts: ThreadInteractionTargetOptions,
         ) => {
-          const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-          printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
+          const threadId = requireThreadIdOrSelf(id, opts);
           await resolveInteraction({
             buildResolution: (interaction) =>
               buildBinaryResolution(interaction, "approve"),
@@ -762,7 +758,7 @@ export function registerInteractionCommands(
             getUrl,
             interactionId,
             json: opts.json,
-            threadId: resolved.id,
+            threadId,
             successMessage: ({ resolution, updated }) =>
               formatResolutionSuccessMessage({
                 interactionId,
@@ -787,8 +783,7 @@ export function registerInteractionCommands(
           id: string | undefined,
           opts: ThreadInteractionGrantOptions,
         ) => {
-          const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-          printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
+          const threadId = requireThreadIdOrSelf(id, opts);
           const scope = parsePermissionGrantScope(opts.scope);
           await resolveInteraction({
             buildResolution: (interaction) =>
@@ -797,7 +792,7 @@ export function registerInteractionCommands(
             getUrl,
             interactionId,
             json: opts.json,
-            threadId: resolved.id,
+            threadId,
             successMessage: ({ resolution, updated }) =>
               formatResolutionSuccessMessage({
                 interactionId,
@@ -833,8 +828,7 @@ export function registerInteractionCommands(
           id: string | undefined,
           opts: ThreadInteractionAnswerOptions,
         ) => {
-          const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-          printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
+          const threadId = requireThreadIdOrSelf(id, opts);
           await resolveInteraction({
             buildResolution: (interaction) =>
               buildUserAnswerResolution({
@@ -846,7 +840,7 @@ export function registerInteractionCommands(
             getUrl,
             interactionId,
             json: opts.json,
-            threadId: resolved.id,
+            threadId,
             successMessage: ({ updated }) =>
               formatAnswerResolutionSuccessMessage({
                 interactionId,
@@ -869,8 +863,7 @@ export function registerInteractionCommands(
           id: string | undefined,
           opts: ThreadInteractionTargetOptions,
         ) => {
-          const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-          printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
+          const threadId = requireThreadIdOrSelf(id, opts);
           await resolveInteraction({
             buildResolution: (interaction) =>
               buildBinaryResolution(interaction, "deny"),
@@ -878,7 +871,7 @@ export function registerInteractionCommands(
             getUrl,
             interactionId,
             json: opts.json,
-            threadId: resolved.id,
+            threadId,
             successMessage: ({ resolution, updated }) =>
               formatResolutionSuccessMessage({
                 interactionId,

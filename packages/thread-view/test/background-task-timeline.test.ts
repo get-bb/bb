@@ -8,10 +8,10 @@ import type { TimelineRow, TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   buildThreadTimelineFromEvents,
-  EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-  type ThreadTimelineFromEventsResult,
   type ThreadEventWithMeta,
 } from "../src/index.js";
+import { EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT } from "../src/accepted-client-request-context.js";
+import type { ThreadTimelineFromEventsResult } from "../src/build-thread-timeline.js";
 
 function withMeta(event: ThreadEvent, seq: number): ThreadEventWithMeta {
   return {
@@ -99,7 +99,8 @@ function bashTaskItem(args: {
     type: "backgroundTask",
     id: args.id ?? "task:bmn5wv33k",
     taskType: "local_bash",
-    description: args.description ?? "Count ticks from 1 to 6 with 1 second delays",
+    description:
+      args.description ?? "Count ticks from 1 to 6 with 1 second delays",
     status: args.status,
     taskStatus: args.taskStatus,
     skipTranscript: false,
@@ -575,10 +576,14 @@ describe("background task timeline projection", () => {
 
     // The workflow drives the workflow banner; non-workflow background tasks
     // drive the background-activity card, ordered most recently started first.
-    expect(timeline.activeWorkflow).toMatchObject({ taskType: "local_workflow" });
-    expect(
-      timeline.activeBackgroundCommands.map((row) => row.itemId),
-    ).toEqual(["task:agent-latest", "task:cmd-late", "task:cmd-early"]);
+    expect(timeline.activeWorkflow).toMatchObject({
+      taskType: "local_workflow",
+    });
+    expect(timeline.activeBackgroundCommands.map((row) => row.itemId)).toEqual([
+      "task:agent-latest",
+      "task:cmd-late",
+      "task:cmd-early",
+    ]);
   });
 
   it("excludes background tasks spawned inside a background agent from the parent active list", () => {
@@ -694,9 +699,9 @@ describe("background task timeline projection", () => {
       { includeNestedRows: false, turnMessageDetail: "summary" },
     );
 
-    expect(
-      timeline.activeBackgroundCommands.map((row) => row.itemId),
-    ).toEqual(["task:root-agent"]);
+    expect(timeline.activeBackgroundCommands.map((row) => row.itemId)).toEqual([
+      "task:root-agent",
+    ]);
   });
 
   it("hides skip_transcript tasks from the timeline", () => {

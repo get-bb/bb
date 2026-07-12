@@ -1156,7 +1156,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   async function runFactoryTimeBoxed(
     factory: (api: BbPluginApi) => unknown,
     api: BbPluginApi,
-    id: string,
   ): Promise<void> {
     let timer: NodeJS.Timeout | undefined;
     try {
@@ -1173,7 +1172,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
-    void id;
   }
 
   /** Parsed source kind; stored sources always parse, but never throw here. */
@@ -1456,7 +1454,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await runFactoryTimeBoxed(
         factory as (api: BbPluginApi) => unknown,
         handle.api,
-        row.id,
       );
     } catch (error) {
       handle.invalidate();

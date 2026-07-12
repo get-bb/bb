@@ -8,13 +8,15 @@ import type {
 } from "@bb/server-contract";
 import {
   buildTimelineViewRows,
-  buildTimelineWorkSummaryLabel,
   findActiveLatestBundleId,
   findTimelineFrontierRow,
   type ThreadTimelineViewRow,
+} from "../src/index.js";
+import {
+  buildTimelineWorkSummaryLabel,
   type TimelineBundleSummaryRow,
   type TimelineStepSummaryRow,
-} from "../src/index.js";
+} from "../src/timeline-view.js";
 
 /**
  * Frame-by-frame progression test. The frames mirror Michael's

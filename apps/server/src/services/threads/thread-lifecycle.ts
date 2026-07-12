@@ -130,7 +130,7 @@ export type PreparedReadyThreadTurnCommand =
   | PreparedThreadStartCommand
   | PreparedReadyTurnSubmitCommand;
 
-export interface PrepareReadyThreadTurnDispatchInTransactionArgs {
+export interface PrepareReadyThreadTurnDispatchArgs {
   command: PreparedReadyThreadTurnCommand;
   thread: Thread;
 }
@@ -922,9 +922,8 @@ export async function prepareReadyThreadTurnCommand(
   };
 }
 
-export function prepareReadyThreadTurnDispatchInTransaction(
-  _tx: DbTransaction,
-  args: PrepareReadyThreadTurnDispatchInTransactionArgs,
+export function prepareReadyThreadTurnDispatch(
+  args: PrepareReadyThreadTurnDispatchArgs,
 ): ReadyThreadTurnDispatchKind {
   if (args.command.mode === "turn.submit") {
     return "turn.submit";

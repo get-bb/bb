@@ -5,6 +5,7 @@ import {
   type ParcelWatcherEventBatch,
 } from "./root-subscription.js";
 import { createDebouncedCallbackScheduler } from "./watch-callback-scheduler.js";
+import { toWatchErrorMessage } from "./watch-error.js";
 import type {
   PathChangeEvent,
   PathChangeCallback,
@@ -26,19 +27,12 @@ interface PathChangeWatcherArgs extends PathChangeWatchArgs {
   retryDelayMs: number;
 }
 
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  return "Unknown watch error";
-}
-
 function createPathChangeCallbackError(
   watchedPath: string,
   error: unknown,
 ): PathChangeWatchError {
   return {
-    message: `Path change callback failed: ${toErrorMessage(error)}`,
+    message: `Path change callback failed: ${toWatchErrorMessage(error)}`,
     rootPath: watchedPath,
   };
 }

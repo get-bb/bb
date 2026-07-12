@@ -1,18 +1,12 @@
-import { useId, useState, type FormEvent, type RefObject } from "react";
-import { Button } from "@bb/shared-ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@bb/shared-ui/dialog";
-import { Input } from "@bb/shared-ui/input";
-import { useNameValidation } from "./useNameValidation.js";
-import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
+import type { RefObject } from "react";
+import { RenameDialog, RenameDialogContent } from "./RenameDialog";
 
 const ENVIRONMENT_NAME_MAX_LENGTH = 80;
+
+const ENVIRONMENT_NAME_LENGTH_RULE = {
+  limit: ENVIRONMENT_NAME_MAX_LENGTH,
+  message: `Environment name must be ${ENVIRONMENT_NAME_MAX_LENGTH} characters or fewer.`,
+};
 
 export interface EnvironmentRenameDialogTarget {
   branchName?: string;
@@ -44,11 +38,10 @@ export function EnvironmentRenameDialog({
   onOpenChange,
   onRename,
 }: EnvironmentRenameDialogProps) {
-  const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
-        {target ? (
+    <RenameDialog open={target !== null} onOpenChange={onOpenChange}>
+      {(inputRef) =>
+        target ? (
           <EnvironmentRenameDialogContent
             key={target.id}
             target={target}
@@ -57,9 +50,9 @@ export function EnvironmentRenameDialog({
             onRename={onRename}
             inputRef={inputRef}
           />
-        ) : null}
-      </DialogContent>
-    </Dialog>
+        ) : null
+      }
+    </RenameDialog>
   );
 }
 
@@ -70,75 +63,25 @@ export function EnvironmentRenameDialogContent({
   onRename,
   inputRef,
 }: EnvironmentRenameDialogContentProps) {
-  const inputId = useId();
-  const [nextName, setNextName] = useState(target.currentName);
-  const { validationMessage, validate, clearMessage } = useNameValidation({
-    emptyMessage: "Environment name cannot be empty.",
-    maxLength: {
-      limit: ENVIRONMENT_NAME_MAX_LENGTH,
-      message: `Environment name must be ${ENVIRONMENT_NAME_MAX_LENGTH} characters or fewer.`,
-    },
-  });
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (pending) return;
-
-    const trimmedName = validate(nextName);
-    if (trimmedName === null) return;
-
-    onRename(target.id, trimmedName);
-  };
-  const displayedErrorMessage = validationMessage ?? errorMessage;
-
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Rename environment</DialogTitle>
-        <DialogDescription>
-          Choose a new name for this environment.
-        </DialogDescription>
-      </DialogHeader>
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2">
-          <Input
-            ref={inputRef}
-            id={inputId}
-            aria-label="Environment name"
-            value={nextName}
-            placeholder={target.branchName ?? "Environment name"}
-            maxLength={ENVIRONMENT_NAME_MAX_LENGTH}
-            autoCapitalize="sentences"
-            autoCorrect="off"
-            spellCheck={false}
-            disabled={pending}
-            onChange={(event) => {
-              setNextName(event.target.value);
-              clearMessage();
-            }}
-          />
-          {displayedErrorMessage ? (
-            <p className="text-sm text-destructive">{displayedErrorMessage}</p>
-          ) : null}
-        </div>
-        <DialogFooter>
-          {target.canClearName ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              onClick={() => {
-                onRename(target.id, null);
-              }}
-            >
-              Use branch name
-            </Button>
-          ) : null}
-          <Button type="submit" disabled={pending}>
-            Rename environment
-          </Button>
-        </DialogFooter>
-      </form>
-    </>
+    <RenameDialogContent
+      entityLabel="environment"
+      initialName={target.currentName}
+      pending={pending}
+      errorMessage={errorMessage}
+      placeholder={target.branchName ?? "Environment name"}
+      maxLength={ENVIRONMENT_NAME_LENGTH_RULE}
+      autoCapitalize="sentences"
+      clearAction={
+        target.canClearName
+          ? {
+              label: "Use branch name",
+              onClear: () => onRename(target.id, null),
+            }
+          : undefined
+      }
+      onRename={(name) => onRename(target.id, name)}
+      inputRef={inputRef}
+    />
   );
 }

@@ -3,14 +3,12 @@ import {
   createCliRuntimeContext,
   requireProjectId,
   requireThreadId,
-  requireThreadIdWithLabelOrSelf,
+  requireThreadIdOrSelf,
   resolveContextProjectId,
   resolveContextThreadId,
   resolveContextSnapshot,
   resolveExplicitIdFlag,
-  resolveProjectId,
   resolveServerUrl,
-  resolveThreadId,
 } from "../context-env.js";
 
 describe("context-env", () => {
@@ -36,24 +34,45 @@ describe("context-env", () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-env");
     vi.stubEnv("BB_THREAD_ID", "thread-env");
 
-    expect(resolveProjectId(undefined)).toBeUndefined();
-    expect(resolveThreadId(undefined)).toBeUndefined();
+    expect(
+      resolveExplicitIdFlag({ flagName: "--project flag", value: undefined }),
+    ).toBeUndefined();
+    expect(
+      resolveExplicitIdFlag({
+        flagName: "<threadId> argument",
+        value: undefined,
+      }),
+    ).toBeUndefined();
   });
 
   it("resolves explicit project and thread flags", () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-env");
     vi.stubEnv("BB_THREAD_ID", "thread-env");
 
-    expect(resolveProjectId("proj-flag")).toBe("proj-flag");
-    expect(resolveThreadId("thread-flag")).toBe("thread-flag");
+    expect(
+      resolveExplicitIdFlag({ flagName: "--project flag", value: "proj-flag" }),
+    ).toBe("proj-flag");
+    expect(
+      resolveExplicitIdFlag({
+        flagName: "<threadId> argument",
+        value: "thread-flag",
+      }),
+    ).toBe("thread-flag");
   });
 
   it("normalizes empty values as undefined", () => {
     vi.stubEnv("BB_PROJECT_ID", "");
     vi.stubEnv("BB_THREAD_ID", "   ");
 
-    expect(resolveProjectId(undefined)).toBeUndefined();
-    expect(resolveThreadId(undefined)).toBeUndefined();
+    expect(
+      resolveExplicitIdFlag({ flagName: "--project flag", value: undefined }),
+    ).toBeUndefined();
+    expect(
+      resolveExplicitIdFlag({
+        flagName: "<threadId> argument",
+        value: undefined,
+      }),
+    ).toBeUndefined();
   });
 
   it("resolves explicit ID flags without environment fallback", () => {
@@ -114,20 +133,19 @@ describe("context-env", () => {
     );
   });
 
-  it("resolves --self from BB_THREAD_ID for read-only thread commands", () => {
+  it("resolves --self from BB_THREAD_ID for thread commands", () => {
     vi.stubEnv("BB_THREAD_ID", "thread-self");
 
-    expect(requireThreadIdWithLabelOrSelf(undefined, { self: true })).toEqual({
-      id: "thread-self",
-      source: "self",
-    });
+    expect(requireThreadIdOrSelf(undefined, { self: true })).toBe(
+      "thread-self",
+    );
   });
 
-  it("rejects combining a thread id with --self for read-only thread commands", () => {
+  it("rejects combining a thread id with --self for thread commands", () => {
     vi.stubEnv("BB_THREAD_ID", "thread-self");
 
     expect(() =>
-      requireThreadIdWithLabelOrSelf("thread-explicit", { self: true }),
+      requireThreadIdOrSelf("thread-explicit", { self: true }),
     ).toThrow("Cannot combine a thread ID argument with --self.");
   });
 });

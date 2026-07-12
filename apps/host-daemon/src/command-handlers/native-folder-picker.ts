@@ -2,17 +2,13 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
-import {
-  ExpectedCommandDispatchError,
-  type CommandOf,
-} from "../command-dispatch-support.js";
+import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
 
 const execFileAsync = promisify(execFile);
 
-export async function pickHostFolder(
-  command: CommandOf<"host.pick_folder">,
-): Promise<HostDaemonOnlineRpcResult<"host.pick_folder">> {
-  void command;
+export async function pickHostFolder(): Promise<
+  HostDaemonOnlineRpcResult<"host.pick_folder">
+> {
   if (process.platform !== "darwin") {
     throw new ExpectedCommandDispatchError(
       "unsupported_platform",

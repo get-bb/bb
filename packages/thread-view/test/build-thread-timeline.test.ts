@@ -24,9 +24,9 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
   buildThreadTimelineFromEvents,
-  EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
   type ThreadEventWithMeta,
 } from "../src/index.js";
+import { EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT } from "../src/accepted-client-request-context.js";
 import { parseOperationMessage } from "../src/parse-operation-message.js";
 import {
   createTimelineEventFactory,

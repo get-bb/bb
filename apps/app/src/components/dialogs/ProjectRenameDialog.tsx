@@ -1,9 +1,5 @@
-import { useId, useState, type FormEvent, type RefObject } from "react";
-import { Button } from "@bb/shared-ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@bb/shared-ui/dialog";
-import { Input } from "@bb/shared-ui/input";
-import { useNameValidation } from "./useNameValidation.js";
-import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
+import type { RefObject } from "react";
+import { RenameDialog, RenameDialogContent } from "./RenameDialog";
 
 export interface ProjectRenameDialogTarget {
   id: string;
@@ -30,11 +26,10 @@ export function ProjectRenameDialog({
   onOpenChange,
   onRename,
 }: ProjectRenameDialogProps) {
-  const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
-        {target ? (
+    <RenameDialog open={target !== null} onOpenChange={onOpenChange}>
+      {(inputRef) =>
+        target ? (
           <ProjectRenameDialogContent
             key={target.id}
             target={target}
@@ -42,9 +37,9 @@ export function ProjectRenameDialog({
             onRename={onRename}
             inputRef={inputRef}
           />
-        ) : null}
-      </DialogContent>
-    </Dialog>
+        ) : null
+      }
+    </RenameDialog>
   );
 }
 
@@ -54,56 +49,14 @@ export function ProjectRenameDialogContent({
   onRename,
   inputRef,
 }: ProjectRenameDialogContentProps) {
-  const inputId = useId();
-  const [nextName, setNextName] = useState(target.currentName);
-  const { validationMessage, validate, clearMessage } = useNameValidation({
-    emptyMessage: "Project name cannot be empty.",
-  });
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (pending) return;
-
-    const trimmedName = validate(nextName);
-    if (trimmedName === null) return;
-
-    onRename(target.id, trimmedName);
-  };
-
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Rename project</DialogTitle>
-        <DialogDescription>
-          Choose a new name for this project.
-        </DialogDescription>
-      </DialogHeader>
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2">
-          <Input
-            ref={inputRef}
-            id={inputId}
-            aria-label="Project name"
-            value={nextName}
-            autoCapitalize="words"
-            autoCorrect="off"
-            spellCheck={false}
-            disabled={pending}
-            onChange={(event) => {
-              setNextName(event.target.value);
-              clearMessage();
-            }}
-          />
-          {validationMessage ? (
-            <p className="text-sm text-destructive">{validationMessage}</p>
-          ) : null}
-        </div>
-        <DialogFooter>
-          <Button type="submit" disabled={pending}>
-            Rename project
-          </Button>
-        </DialogFooter>
-      </form>
-    </>
+    <RenameDialogContent
+      entityLabel="project"
+      initialName={target.currentName}
+      pending={pending}
+      autoCapitalize="words"
+      onRename={(name) => onRename(target.id, name)}
+      inputRef={inputRef}
+    />
   );
 }

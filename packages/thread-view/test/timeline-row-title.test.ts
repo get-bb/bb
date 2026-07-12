@@ -16,14 +16,16 @@ import type {
 import {
   buildTimelineActivityIntentTitles,
   buildTimelineRowTitle,
-  formatTimelineDecorationText,
   type BuildTimelineRowTitleOptions,
-  type TimelineViewDelegationWorkRow,
   type TimelineViewTurnRow,
   type TimelineViewWorkRow,
-  type TimelineWorkSummaryKind,
-  type TimelineWorkSummaryRow,
 } from "../src/index.js";
+import { formatTimelineDecorationText } from "../src/timeline-row-title.js";
+import type {
+  TimelineViewDelegationWorkRow,
+  TimelineWorkSummaryKind,
+  TimelineWorkSummaryRow,
+} from "../src/timeline-view.js";
 
 const DEFAULT_OPTIONS: BuildTimelineRowTitleOptions = {
   summaryStyle: "bundle",

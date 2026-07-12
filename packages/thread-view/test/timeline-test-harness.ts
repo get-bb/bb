@@ -28,10 +28,10 @@ import type {
 } from "../src/event-projection-types.js";
 import {
   buildThreadTimelineFromEvents,
-  decodeThreadEventRow,
-  EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
   formatThreadTimelineText,
 } from "../src/index.js";
+import { decodeThreadEventRow } from "../src/event-decode.js";
+import { EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT } from "../src/accepted-client-request-context.js";
 import { flattenEventProjectionMessagesDeep } from "../src/event-projection-flatten.js";
 import { buildEventProjection } from "../src/build-event-projection.js";
 import type { ThreadEventWithMeta } from "../src/build-event-projection.js";

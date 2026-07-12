@@ -1,6 +1,5 @@
 import { useAtom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
-import { createJsonLocalStorage } from "./browser-storage";
+import { createBooleanPreferenceAtom } from "./browser-storage";
 
 export const OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY = "bb.openLinksInAppBrowser";
 
@@ -12,10 +11,7 @@ export const OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY = "bb.openLinksInAppBrowser";
  */
 export const OPEN_LINKS_IN_APP_BROWSER_DEFAULT = true;
 
-export type UrlOpenTarget =
-  | "in-app-browser"
-  | "external-browser"
-  | "unhandled";
+export type UrlOpenTarget = "in-app-browser" | "external-browser" | "unhandled";
 
 interface ResolveUrlOpenTargetArgs {
   /** Whether the desktop in-app browser surface is available in this build. */
@@ -83,13 +79,9 @@ export function openUrlByPreference({
   }
 }
 
-const openLinksInAppBrowserStorage = createJsonLocalStorage<boolean>();
-
-export const openLinksInAppBrowserPreferenceAtom = atomWithStorage<boolean>(
+export const openLinksInAppBrowserPreferenceAtom = createBooleanPreferenceAtom(
   OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY,
   OPEN_LINKS_IN_APP_BROWSER_DEFAULT,
-  openLinksInAppBrowserStorage,
-  { getOnInit: true },
 );
 
 export function useOpenLinksInAppBrowserPreference() {

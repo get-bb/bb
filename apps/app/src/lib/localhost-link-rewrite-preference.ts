@@ -1,9 +1,7 @@
 import { useAtom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
-import { createJsonLocalStorage } from "./browser-storage";
+import { createBooleanPreferenceAtom } from "./browser-storage";
 
-export const REWRITE_LOCALHOST_LINKS_STORAGE_KEY =
-  "bb.rewriteLocalhostLinks";
+export const REWRITE_LOCALHOST_LINKS_STORAGE_KEY = "bb.rewriteLocalhostLinks";
 
 export const REWRITE_LOCALHOST_LINKS_DEFAULT = true;
 
@@ -46,13 +44,9 @@ export function rewriteLocalhostLinkHref({
   return url.toString();
 }
 
-const rewriteLocalhostLinksStorage = createJsonLocalStorage<boolean>();
-
-export const rewriteLocalhostLinksPreferenceAtom = atomWithStorage<boolean>(
+export const rewriteLocalhostLinksPreferenceAtom = createBooleanPreferenceAtom(
   REWRITE_LOCALHOST_LINKS_STORAGE_KEY,
   REWRITE_LOCALHOST_LINKS_DEFAULT,
-  rewriteLocalhostLinksStorage,
-  { getOnInit: true },
 );
 
 export function useRewriteLocalhostLinksPreference() {

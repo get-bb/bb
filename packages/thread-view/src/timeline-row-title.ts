@@ -361,7 +361,7 @@ export function formatTimelineDecorationText(
   }
 }
 
-export function renderTitlePlain(
+function renderTitlePlain(
   segments: readonly TimelineTitleSegment[],
   decorations: readonly TimelineTitleDecoration[],
 ): string {
