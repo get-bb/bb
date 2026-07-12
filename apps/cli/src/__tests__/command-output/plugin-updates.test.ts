@@ -89,6 +89,24 @@ describe("bb plugin update commands", () => {
     expect(output).toContain("unavailable");
   });
 
+  it("outdated --json prints the raw results and accepts devMode false", async () => {
+    const results = [
+      {
+        id: "notes",
+        outcome: "current",
+        devMode: false,
+        installed: version("1.0.0"),
+      },
+    ];
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ results }));
+
+    await runCommand(["plugin", "outdated", "--json"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify(results, null, 2),
+    ]);
+  });
+
   it("dry-run sends dryRun and explains selection and activation", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
@@ -177,9 +195,93 @@ describe("bb plugin update commands", () => {
     await runCommand(["plugin", "update", "notes", "--latest"], register);
 
     expect(readlineMocks.question).toHaveBeenCalledTimes(2);
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "notes source intent: npm:notes@1.0.0 → latest compatible",
+    );
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
       latest: true,
     });
+  });
+
+  it.each([
+    { name: "source-intent", answers: ["no"] },
+    { name: "full-trust", answers: ["yes", "no"] },
+  ])("declining the $name prompt prevents mutation", async ({ answers }) => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          results: [
+            {
+              id: "notes",
+              outcome: "pinned",
+              installed: version("1.0.0"),
+              candidate: version("2.0.0"),
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(pluginList("notes", "npm:notes@1.0.0")),
+      );
+    for (const answer of answers) {
+      readlineMocks.question.mockResolvedValueOnce(answer);
+    }
+
+    await expect(
+      runCommand(["plugin", "update", "notes", "--latest"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(readlineMocks.question).toHaveBeenCalledTimes(answers.length);
+  });
+
+  it("--yes skips both latest prompts", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          results: [
+            {
+              id: "notes",
+              outcome: "pinned",
+              installed: version("1.0.0"),
+              candidate: version("2.0.0"),
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(pluginList("notes", "npm:notes@1.0.0")),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          applied: true,
+          dryRun: false,
+          from: version("1.0.0"),
+          to: version("2.0.0"),
+          outcome: "updated",
+        }),
+      );
+
+    await runCommand(
+      ["plugin", "update", "notes", "--latest", "--yes"],
+      register,
+    );
+
+    expect(readlineMocks.question).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects --all with --latest before making a request", async () => {
+    await expect(
+      runCommand(["plugin", "update", "--all", "--latest"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "--latest is only valid when updating one plugin.",
+    );
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
   it("--all updates compatible results and skips pinned and incompatible", async () => {

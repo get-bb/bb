@@ -70,7 +70,7 @@ const pluginUpdateResultSchema = z.object({
     "incompatible",
     "unavailable",
   ]),
-  devMode: z.literal(true).optional(),
+  devMode: z.boolean().optional(),
   installed: pluginVersionSchema,
   candidate: pluginVersionSchema.optional(),
   blocked: z
@@ -93,6 +93,10 @@ const pluginUpdateMutationSchema = z.object({
 });
 
 const pluginUpdateErrorSchema = z.object({ error: z.string() });
+
+const pluginSourceListSchema = z.object({
+  plugins: z.array(z.object({ id: z.string(), source: z.string() })),
+});
 
 type PluginUpdateResult = z.infer<typeof pluginUpdateResultSchema>;
 
@@ -178,6 +182,13 @@ async function callPluginUpdate(
   const error = pluginUpdateErrorSchema.safeParse(value);
   if (error.success) return error.data;
   return pluginUpdateMutationSchema.parse(value);
+}
+
+async function callPluginSources(
+  baseUrl: string,
+): Promise<z.infer<typeof pluginSourceListSchema>> {
+  const value = await callPlugins<unknown>(baseUrl, "", "GET");
+  return pluginSourceListSchema.parse(value);
 }
 
 const UPDATE_STATUS_LABELS: Record<PluginUpdateResult["outcome"], string> = {
@@ -512,11 +523,7 @@ export function registerPluginCommands(
               (result) => result.outcome === "update-available" || opts.latest,
             )
           ) {
-            const list = await callPlugins<PluginListResponse>(
-              getUrl(),
-              "",
-              "GET",
-            );
+            const list = await callPluginSources(getUrl());
             for (const entry of list.plugins)
               sources.set(entry.id, entry.source);
           }
