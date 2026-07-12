@@ -1216,6 +1216,58 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     );
   }
 
+  function isPackagedBuiltinServerEntry(args: {
+    kind: ReturnType<typeof sourceKind>;
+    manifest: PluginManifest;
+    rootDir: string;
+  }): boolean {
+    return (
+      args.kind === "builtin" &&
+      args.manifest.serverEntry === resolve(args.rootDir, "dist", "server.js")
+    );
+  }
+
+  async function packagedBuiltinArtifactProblem(
+    row: InstalledPluginRow,
+    manifest: PluginManifest,
+  ): Promise<string | null> {
+    const kind = sourceKind(row.source);
+    if (
+      !isPackagedBuiltinServerEntry({
+        kind,
+        manifest,
+        rootDir: row.rootDir,
+      })
+    ) {
+      return null;
+    }
+    async function validate(
+      artifact: "server" | "app",
+    ): Promise<string | null> {
+      let raw: string;
+      try {
+        raw = await readFile(
+          join(row.rootDir, "dist", `${artifact}.meta.json`),
+          "utf8",
+        );
+      } catch {
+        return `${artifact} artifact for plugin "${manifest.id}" is missing dist/${artifact}.meta.json`;
+      }
+      return validatePluginArtifactMeta({
+        artifact,
+        raw,
+        pluginId: manifest.id,
+        pluginVersion: manifest.version,
+      });
+    }
+    const serverProblem = await validate("server");
+    if (serverProblem !== null) return serverProblem;
+    if (isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })) {
+      return validate("app");
+    }
+    return null;
+  }
+
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
     return row !== undefined && isBuiltinSource(row.source);
@@ -1402,6 +1454,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
     if (engineProblem) {
       setStatus(row.id, "incompatible", engineProblem);
+      return;
+    }
+    const artifactProblem = await packagedBuiltinArtifactProblem(row, manifest);
+    if (artifactProblem !== null) {
+      setStatus(row.id, "incompatible", artifactProblem);
       return;
     }
     // Before the factory runs, so a backend load failure still leaves
