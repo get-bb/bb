@@ -18,13 +18,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createConnection,
   getInstalledPluginRegistration,
+  listPluginArtifacts,
   migrate,
+  setInstalledPluginActiveArtifact,
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
-import { parsePluginSource } from "../../../src/services/plugins/install-sources.js";
+import {
+  gitArtifactCacheDir,
+  npmArtifactCacheDir,
+  parsePluginSource,
+} from "../../../src/services/plugins/install-sources.js";
 import {
   createPluginService,
   type PluginService,
@@ -129,6 +135,7 @@ describe("plugin install sources", () => {
       url: "https://github.com/acme/bb-plugin-foo",
       ref: "v1",
       installDir: "github.com/acme/bb-plugin-foo@v1",
+      cachePath: "github.com/acme/bb-plugin-foo",
     });
     expect(
       parsePluginSource(
@@ -141,11 +148,9 @@ describe("plugin install sources", () => {
     expect(() => parsePluginSource("git:github.com/acme/repo")).toThrowError(
       /must specify a ref/,
     );
-    // Shorthand/https specs are URL-normalized (".." collapses safely);
-    // on-disk paths are not, so traversal there must be rejected.
-    expect(parsePluginSource("git:github.com/acme/../evil@v1")).toMatchObject({
-      installDir: "github.com/evil@v1",
-    });
+    expect(() =>
+      parsePluginSource("git:github.com/acme/../evil@v1"),
+    ).toThrowError(/invalid git repository path/);
     expect(() => parsePluginSource("git:/tmp/../evil@v1")).toThrowError(
       /invalid git repository path/,
     );
@@ -196,6 +201,27 @@ describe("plugin install sources", () => {
       path: "/tmp/my-plugin",
     });
   });
+
+  it("keeps scoped npm and nested git cache paths inside their roots", () => {
+    expect(npmArtifactCacheDir("/data", "@acme/plugin", "1.2.3")).toBe(
+      "/data/plugins/cache/npm/@acme/plugin/1.2.3",
+    );
+    expect(
+      gitArtifactCacheDir(
+        "/data",
+        "github.com/acme/nested/plugin",
+        "abcdef1234567",
+      ),
+    ).toBe(
+      "/data/plugins/cache/git/github.com/acme/nested/plugin/abcdef1234567",
+    );
+    expect(() =>
+      npmArtifactCacheDir("/data", "../plugin", "1.2.3"),
+    ).toThrow(/invalid npm package/);
+    expect(() =>
+      gitArtifactCacheDir("/data", "github.com/acme/../evil", "abcdef1"),
+    ).toThrow(/invalid git artifact/);
+  });
 });
 
 describe("plugin install flows", () => {
@@ -231,11 +257,11 @@ describe("plugin install flows", () => {
   });
 
   describe.skipIf(!hasGit)("git sources", () => {
-    it("clones a pinned tag into the managed dir and loads the plugin", async () => {
+    it("clones a pinned tag into its exact immutable cache dir and loads it", async () => {
       const repoDir = join(workDir, "repo");
       await writePluginFixture(repoDir, { name: "bb-plugin-gitty" });
       await initGitRepo(repoDir);
-      await commitAll(repoDir, "init");
+      const commit = await commitAll(repoDir, "init");
       await git(repoDir, ["tag", "v1"]);
 
       const source = `git:${repoDir}@v1`;
@@ -247,10 +273,12 @@ describe("plugin install flows", () => {
         join(
           dataDir,
           "plugins",
+          "cache",
           "git",
           "local",
           ...repoDir.replace(/^\/+/, "").split("/"),
-        ) + "@v1",
+          commit,
+        ),
       );
       await stat(join(entry.rootDir, "package.json"));
       expect(getInstalledPluginRegistration(db, "gitty")).toMatchObject({
@@ -260,6 +288,7 @@ describe("plugin install flows", () => {
         sourceGitRequestedRef: "v1",
         gitResolvedCommit: expect.stringMatching(/^[0-9a-f]{40}$/),
         updatePolicy: "manual",
+        activeArtifactId: expect.any(String),
       });
     });
 
@@ -290,6 +319,40 @@ describe("plugin install flows", () => {
       const entry = await service.install(`git:${repoDir}@${sha}`);
       expect(entry.status).toBe("running");
       expect(entry.version).toBe("0.1.0");
+    });
+
+    it("recovers an interrupted pointer write, reuses valid bytes, and repairs hash mismatch", async () => {
+      const repoDir = join(workDir, "repo-retry");
+      await writePluginFixture(repoDir, { name: "bb-plugin-retry" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1"]);
+      const source = `git:${repoDir}@v1`;
+      const first = await service.install(source);
+      const artifact = listPluginArtifacts(db, "retry")[0];
+      expect(artifact).toBeDefined();
+      if (artifact === undefined) throw new Error("missing retry artifact");
+      const packageStats = await stat(join(first.rootDir, "package.json"));
+
+      expect(setInstalledPluginActiveArtifact(db, "retry", null)).toBe(true);
+      await mkdir(`${first.rootDir}.staging`, { recursive: true });
+      await writeFile(join(`${first.rootDir}.staging`, "stale"), "stale");
+      const retried = await service.install(source);
+      expect(retried.rootDir).toBe(first.rootDir);
+      expect(
+        getInstalledPluginRegistration(db, "retry")?.activeArtifactId,
+      ).toBe(artifact.id);
+      await expect(stat(`${first.rootDir}.staging`)).rejects.toThrowError();
+      expect((await stat(join(first.rootDir, "package.json"))).ino).toBe(
+        packageStats.ino,
+      );
+
+      await writeFile(join(first.rootDir, "server.ts"), "corrupt");
+      await service.install(source);
+      expect(await readFile(join(first.rootDir, "server.ts"), "utf8")).toContain(
+        "bb.log.info",
+      );
+      expect(listPluginArtifacts(db, "retry")).toHaveLength(1);
     });
 
     it("re-installing the same spec refreshes the clone", async () => {
@@ -420,7 +483,7 @@ describe("plugin install flows", () => {
       );
     });
 
-    it("remove deletes the managed git dir but never a path: dir", async () => {
+    it("remove retains immutable git artifacts and never touches a path source", async () => {
       const repoDir = join(workDir, "repo-rm");
       await writePluginFixture(repoDir, { name: "bb-plugin-managed" });
       await initGitRepo(repoDir);
@@ -432,7 +495,7 @@ describe("plugin install flows", () => {
       await service.install(pathDir);
 
       expect(await service.remove("managed")).toBe(true);
-      await expect(stat(managedEntry.rootDir)).rejects.toThrowError();
+      await stat(managedEntry.rootDir);
       // The user's original repo is untouched.
       await stat(join(repoDir, "package.json"));
 
@@ -484,7 +547,7 @@ describe("plugin install flows", () => {
 
   describe.skipIf(!hasNpm)("npm sources", () => {
     it(
-      "installs without a lockfile, records registry integrity, and removes the prefix",
+      "installs a scoped package into the immutable cache and retains it on removal",
       { timeout: 120_000 },
       async () => {
         const name = "@acme/bb-plugin-npmhero";
@@ -500,6 +563,7 @@ describe("plugin install flows", () => {
         if (tarballName === undefined)
           throw new Error("npm pack produced no tarball");
         const tarball = await readFile(join(packDir, tarballName));
+        let tarballRequests = 0;
 
         // Minimal npm registry over loopback: packument + tarball. Keeps the
         // real `npm install` code path while staying offline.
@@ -507,6 +571,7 @@ describe("plugin install flows", () => {
           const server = createServer((request, response) => {
             const url = request.url ?? "";
             if (url === "/package.tgz") {
+              tarballRequests += 1;
               response.writeHead(200, {
                 "content-type": "application/octet-stream",
               });
@@ -557,10 +622,18 @@ describe("plugin install flows", () => {
         try {
           const source = `npm:${name}@${version}`;
           const entry = await service.install(source);
+          expect(tarballRequests).toBe(1);
           expect(entry.id).toBe("npmhero");
           expect(entry.status).toBe("running");
           expect(entry.source).toBe(source);
-          const prefix = join(dataDir, "plugins", "npm", `${name}@${version}`);
+          const prefix = join(
+            dataDir,
+            "plugins",
+            "cache",
+            "npm",
+            ...name.split("/"),
+            version,
+          );
           expect(entry.rootDir).toBe(join(prefix, "node_modules", name));
           await expect(
             stat(join(prefix, "package-lock.json")),
@@ -575,6 +648,7 @@ describe("plugin install flows", () => {
             npmResolvedVersion: version,
             npmIntegrity: expect.stringMatching(/^sha512-/),
             updatePolicy: "manual",
+            activeArtifactId: expect.any(String),
           });
 
           const widened = await service.applyUpdate("npmhero", {
@@ -590,24 +664,19 @@ describe("plugin install flows", () => {
               detail: expect.stringContaining("widened"),
             },
           });
-          const trackingPrefix = join(
-            dataDir,
-            "plugins",
-            "npm",
-            `${name}@latest`,
-          );
+          expect(tarballRequests).toBe(1);
           expect(getInstalledPluginRegistration(db, "npmhero")).toMatchObject({
             source: `npm:${name}`,
             sourceNpmRequestedSpec: "",
             sourceNpmSpecKind: "default",
             updatePolicy: "compatible",
-            rootDir: join(trackingPrefix, "node_modules", name),
+            rootDir: join(prefix, "node_modules", name),
           });
-          await expect(stat(prefix)).rejects.toThrowError();
+          await stat(prefix);
 
           expect(await service.remove("npmhero")).toBe(true);
-          await expect(stat(trackingPrefix)).rejects.toThrowError();
-          await expect(stat(prefix)).rejects.toThrowError();
+          await stat(prefix);
+          expect(listPluginArtifacts(db, "npmhero")).toHaveLength(1);
         } finally {
           if (previousCache === undefined) {
             delete process.env.npm_config_cache;

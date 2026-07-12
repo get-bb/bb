@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
   getInstalledPluginRegistration,
+  listPluginArtifacts,
   migrate,
   upsertInstalledPlugin,
   type DbConnection,
@@ -279,6 +280,10 @@ describe("plugin update service and routes", () => {
   });
 
   it("serializes two updates for one plugin so only one applies", async () => {
+    const before = getInstalledPluginRegistration(db, "updater");
+    if (before === undefined) throw new Error("missing installed updater");
+    const oldRoot = before.rootDir;
+    const oldPackage = await readFile(join(oldRoot, "package.json"), "utf8");
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const results = await Promise.all([
       service.applyUpdate("updater", { dryRun: false, latest: false }),
@@ -309,6 +314,17 @@ describe("plugin update service and routes", () => {
     expect(service.list()).toMatchObject([
       { id: "updater", version: "1.1.0", status: "running" },
     ]);
+    const updated = getInstalledPluginRegistration(db, "updater");
+    expect(updated).toMatchObject({
+      rootDir: expect.stringContaining(nextCommit),
+      activeArtifactId: expect.any(String),
+    });
+    expect(updated?.rootDir).not.toBe(oldRoot);
+    await stat(oldRoot);
+    expect(await readFile(join(oldRoot, "package.json"), "utf8")).toBe(
+      oldPackage,
+    );
+    expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
   });
 
   it("refuses a pinned git tag unless the source is changed explicitly", async () => {
@@ -325,5 +341,57 @@ describe("plugin update service and routes", () => {
       error:
         'plugin "updater" is pinned to a git ref; install a branch source to track updates',
     });
+  });
+
+  it("loads a legacy-layout plugin unchanged, then migrates lazily on update", async () => {
+    await service.remove("updater");
+    const legacyRoot = join(workDir, "data", "plugins", "git", "legacy-updater");
+    await run("git", ["clone", "--quiet", repo, legacyRoot]);
+    const currentCommit = await git(repo, ["rev-parse", "HEAD"]);
+    upsertInstalledPlugin(db, {
+      id: "updater",
+      source: `git:${repo}@main`,
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: repo,
+        subdirectory: null,
+        requestedRef: "main",
+        refKind: "branch",
+      },
+      exactResolution: { kind: "git", commit: currentCommit },
+      updatePolicy: "compatible",
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+        ignoredVersion: null,
+      },
+      activeArtifactId: null,
+      rootDir: legacyRoot,
+      version: "1.0.0",
+      enabled: true,
+    });
+    await service.reload("updater");
+    expect(service.list()).toMatchObject([
+      { id: "updater", rootDir: legacyRoot, status: "running" },
+    ]);
+
+    const nextCommit = await commitPlugin(repo, "1.1.0");
+    const applied = await service.applyUpdate("updater", {
+      dryRun: false,
+      latest: false,
+    });
+    expect(applied).toMatchObject({ ok: true, result: { applied: true } });
+    const migrated = getInstalledPluginRegistration(db, "updater");
+    expect(migrated).toMatchObject({
+      rootDir: expect.stringContaining(
+        join("plugins", "cache", "git", "local"),
+      ),
+      activeArtifactId: expect.any(String),
+      gitResolvedCommit: nextCommit,
+    });
+    await stat(join(legacyRoot, "package.json"));
   });
 });

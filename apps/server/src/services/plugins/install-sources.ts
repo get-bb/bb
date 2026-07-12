@@ -1,5 +1,16 @@
-import { rename, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import {
+  cp,
+  lstat,
+  open,
+  readdir,
+  readFile,
+  readlink,
+  rename,
+  rm,
+} from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import { spawnPortableOutputProcess } from "@bb/process-utils";
 
@@ -18,6 +29,8 @@ export type ParsedPluginSource =
       ref: string;
       /** Managed dir relative to <dataDir>/plugins/git: "<host>/<path>@<ref>". */
       installDir: string;
+      /** Cache namespace relative to plugins/cache/git: "<host>/<path>". */
+      cachePath: string;
     }
   | {
       kind: "npm";
@@ -63,6 +76,15 @@ function parseGitSource(spec: string): ParsedPluginSource {
   let url: string;
   let host: string;
   let repoPath: string;
+  let decodedUrlish: string;
+  try {
+    decodedUrlish = decodeURIComponent(urlish);
+  } catch {
+    throw new Error(`invalid git url "${urlish}"`);
+  }
+  if (decodedUrlish.split("/").some((segment) => segment === "..")) {
+    throw new Error(`invalid git repository path "${urlish}"`);
+  }
   if (/^https?:\/\//.test(urlish)) {
     const parsed = new URL(urlish);
     url = urlish;
@@ -89,7 +111,13 @@ function parseGitSource(spec: string): ParsedPluginSource {
   if (host.includes("..") || host.includes("/")) {
     throw new Error(`invalid git host "${host}"`);
   }
-  return { kind: "git", url, ref, installDir: `${host}/${repoPath}@${ref}` };
+  return {
+    kind: "git",
+    url,
+    ref,
+    installDir: `${host}/${repoPath}@${ref}`,
+    cachePath: `${host}/${repoPath}`,
+  };
 }
 
 function parseNpmSource(spec: string): ParsedPluginSource {
@@ -144,6 +172,154 @@ export function npmInstallPrefix(
   version: string,
 ): string {
   return join(dataDir, "plugins", "npm", ...`${name}@${version}`.split("/"));
+}
+
+function resolveInside(root: string, segments: string[], label: string): string {
+  for (const segment of segments) assertSafeSegments(segment, label);
+  const absoluteRoot = resolve(root);
+  const target = resolve(absoluteRoot, ...segments);
+  const pathFromRoot = relative(absoluteRoot, target);
+  if (
+    pathFromRoot === "" ||
+    pathFromRoot === ".." ||
+    pathFromRoot.startsWith(`..${sep}`)
+  ) {
+    throw new Error(`invalid ${label} cache path`);
+  }
+  return target;
+}
+
+/** Immutable npm install prefix: node_modules lives beneath this directory. */
+export function npmArtifactCacheDir(
+  dataDir: string,
+  packageName: string,
+  version: string,
+): string {
+  if (!NPM_NAME_PATTERN.test(packageName)) {
+    throw new Error(`invalid npm package name "${packageName}"`);
+  }
+  return resolveInside(
+    join(dataDir, "plugins", "cache", "npm"),
+    [...packageName.split("/"), version],
+    "npm artifact",
+  );
+}
+
+/** Immutable git checkout directory for an exact commit. */
+export function gitArtifactCacheDir(
+  dataDir: string,
+  cachePath: string,
+  commit: string,
+): string {
+  if (!isCommitSha(commit)) throw new Error(`invalid git commit "${commit}"`);
+  return resolveInside(
+    join(dataDir, "plugins", "cache", "git"),
+    [...cachePath.split("/"), commit],
+    "git artifact",
+  );
+}
+
+/** Stable hash of names, kinds, link targets, and file bytes in a directory. */
+export async function hashInstallDir(rootDir: string): Promise<string> {
+  const hash = createHash("sha256");
+  async function visit(directory: string, prefix: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      const name = prefix.length === 0 ? entry.name : `${prefix}/${entry.name}`;
+      const stats = await lstat(path);
+      if (stats.isDirectory()) {
+        hash.update(`d\0${name}\0`);
+        await visit(path, name);
+      } else if (stats.isSymbolicLink()) {
+        hash.update(`l\0${name}\0${await readlink(path)}\0`);
+      } else if (stats.isFile()) {
+        hash.update(`f\0${name}\0${stats.mode & 0o777}\0`);
+        hash.update(await readFile(path));
+      }
+    }
+  }
+  await visit(rootDir, "");
+  return `sha256:${hash.digest("hex")}`;
+}
+
+async function fsyncTree(rootDir: string): Promise<void> {
+  const entries = await readdir(rootDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const path = join(rootDir, entry.name);
+    if (entry.isDirectory()) await fsyncTree(path);
+    else if (entry.isFile()) {
+      const handle = await open(path, constants.O_RDONLY);
+      try {
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+    }
+  }
+  const handle = await open(rootDir, constants.O_RDONLY);
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Promote staged bytes into a never-overwritten cache path. EXDEV falls back
+ * to a fully fsynced sibling copy followed by an atomic rename. An identical
+ * target left by an interrupted attempt wins and the staging copy is dropped.
+ */
+export async function promoteImmutableDir(args: {
+  stagingDir: string;
+  targetDir: string;
+  contentHash: string;
+}): Promise<void> {
+  await rm(`${args.targetDir}.promoting`, { recursive: true, force: true });
+  const corruptDir = `${args.targetDir}.corrupt`;
+  let movedCorruptTarget = false;
+  try {
+    if ((await hashInstallDir(args.targetDir)) === args.contentHash) {
+      await rm(args.stagingDir, { recursive: true, force: true });
+      return;
+    }
+    await rm(corruptDir, { recursive: true, force: true });
+    await rename(args.targetDir, corruptDir);
+    movedCorruptTarget = true;
+  } catch {
+    // Missing targets are the normal first-install case.
+  }
+  await rm(`${args.targetDir}.promoting`, { recursive: true, force: true });
+  try {
+    await rename(args.stagingDir, args.targetDir);
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "EXDEV") {
+      if (movedCorruptTarget) await rename(corruptDir, args.targetDir);
+      throw error;
+    }
+    const copyDir = `${args.targetDir}.promoting`;
+    try {
+      await cp(args.stagingDir, copyDir, { recursive: true, preserveTimestamps: true });
+      await fsyncTree(copyDir);
+      await rename(copyDir, args.targetDir);
+      const parent = await open(dirname(args.targetDir), constants.O_RDONLY);
+      try {
+        await parent.sync();
+      } finally {
+        await parent.close();
+      }
+      await rm(args.stagingDir, { recursive: true, force: true });
+    } catch (copyError) {
+      if (movedCorruptTarget) await rename(corruptDir, args.targetDir);
+      throw copyError;
+    } finally {
+      await rm(copyDir, { recursive: true, force: true });
+    }
+  }
+  if (movedCorruptTarget) {
+    await rm(corruptDir, { recursive: true, force: true });
+  }
 }
 
 /**
