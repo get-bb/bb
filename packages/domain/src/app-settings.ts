@@ -21,6 +21,8 @@ export const appSettingsSchema = z
     claudeCodeSubagentsDisabled: z.boolean(),
     /** Prevent Claude Code from exposing its native Workflow tool. */
     claudeCodeWorkflowsDisabled: z.boolean(),
+    /** Prevent scheduled plugin update application without disabling checks. */
+    pluginAutoApplyDisabled: z.boolean(),
   })
   .strict();
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -32,4 +34,5 @@ export const defaultAppSettings: AppSettings = {
   codexSubagentsDisabled: false,
   claudeCodeSubagentsDisabled: false,
   claudeCodeWorkflowsDisabled: false,
+  pluginAutoApplyDisabled: false,
 };

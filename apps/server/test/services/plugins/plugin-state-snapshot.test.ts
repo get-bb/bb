@@ -63,6 +63,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       sourceIntent: { kind: "path", canonicalPath: pluginDir },
       exactResolution: { kind: "path" },
       updatePolicy: "manual",
+      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
@@ -170,6 +171,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       },
       exactResolution: { kind: "git", commit: "active" },
       updatePolicy: "compatible",
+      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,

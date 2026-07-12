@@ -49,6 +49,7 @@ describe("normalized plugin persistence", () => {
         integrity: "sha512-example",
       },
       updatePolicy: "compatible",
+      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
@@ -112,6 +113,8 @@ describe("normalized plugin persistence", () => {
       enabled: true,
       trusted: true,
       updatePolicy: "compatible",
+      autoCheck: true,
+      autoApply: false,
       lastSuccessfulRefreshAt: null,
       lastAttemptedRefreshAt: null,
       lastError: null,
@@ -158,6 +161,7 @@ describe("normalized plugin persistence", () => {
       },
       exactResolution: { kind: "git", commit: "abcdef1234567" },
       updatePolicy: "compatible",
+      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,

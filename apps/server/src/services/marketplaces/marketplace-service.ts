@@ -7,6 +7,7 @@ import {
   getMarketplace,
   listInstalledPluginsFromMarketplace,
   listMarketplaces,
+  setMarketplaceAutoPolicy,
   setInstalledPluginDirectProvenance,
   updateMarketplaceRefreshFailure,
   upsertMarketplace,
@@ -40,6 +41,32 @@ interface MarketplaceSource {
   display: string;
 }
 
+export const MARKETPLACE_REFRESH_BASE_DELAY_MS = 60 * 60_000;
+export const MARKETPLACE_REFRESH_MAX_DELAY_MS =
+  24 * MARKETPLACE_REFRESH_BASE_DELAY_MS;
+
+export function marketplaceRefreshJitterMs(id: string): number {
+  return (
+    Number.parseInt(
+      createHash("sha256").update(id).digest("hex").slice(0, 8),
+      16,
+    ) %
+    (15 * 60_000)
+  );
+}
+
+export function marketplaceRefreshDelayMs(
+  id: string,
+  failureCount: number,
+): number {
+  return (
+    Math.min(
+      MARKETPLACE_REFRESH_MAX_DELAY_MS,
+      MARKETPLACE_REFRESH_BASE_DELAY_MS * 2 ** failureCount,
+    ) + marketplaceRefreshJitterMs(id)
+  );
+}
+
 export interface MarketplaceView {
   id: string;
   name: string;
@@ -51,6 +78,9 @@ export interface MarketplaceView {
   lastAttemptAt?: number;
   lastError?: string;
   enabled: boolean;
+  scope: "builtin" | "user" | "project" | "managed";
+  autoCheck: boolean;
+  autoApply: boolean;
 }
 
 export interface MarketplaceSearchResult {
@@ -77,7 +107,7 @@ export class MarketplaceDispositionError extends Error {
 export interface MarketplaceService {
   add(source: string, name?: string): Promise<MarketplaceView>;
   list(): MarketplaceView[];
-  refresh(id: string): Promise<MarketplaceView>;
+  refresh(id: string, attemptedAt?: number): Promise<MarketplaceView>;
   search(query: string): MarketplaceSearchResult[];
   install(
     marketplaceId: string,
@@ -93,6 +123,11 @@ export interface MarketplaceService {
     id: string,
     dispositions: Array<{ pluginId: string; action: "keep" | "uninstall" }>,
   ): Promise<{ kept: string[]; uninstalled: string[] }>;
+  setAutoPolicy(
+    id: string,
+    policy: { autoCheck: boolean; autoApply: boolean },
+  ): Promise<MarketplaceView | undefined>;
+  sweepAutomaticChecks(now: number): Promise<void>;
 }
 
 function catalogFromRow(row: MarketplaceRow): MarketplaceCatalog | null {
@@ -129,6 +164,9 @@ function view(row: MarketplaceRow): MarketplaceView {
       : { lastAttemptAt: row.lastAttemptedRefreshAt }),
     ...(row.lastError === null ? {} : { lastError: row.lastError }),
     enabled: row.enabled,
+    scope: row.scope,
+    autoCheck: row.autoCheck,
+    autoApply: row.autoApply,
   };
 }
 
@@ -235,6 +273,7 @@ export function createMarketplaceService(deps: {
   }) => Promise<void>;
 }): MarketplaceService {
   const marketplaceChains = new Map<string, Promise<void>>();
+  const refreshFailureCounts = new Map<string, number>();
   const addLockKey = "\0marketplace-add";
   const cacheRoot = resolve(deps.dataDir, "marketplaces", "cache");
 
@@ -421,6 +460,8 @@ export function createMarketplaceService(deps: {
             enabled: true,
             trusted: false,
             updatePolicy: "compatible",
+            autoCheck: false,
+            autoApply: false,
             lastSuccessfulRefreshAt: now,
             lastAttemptedRefreshAt: now,
             lastError: null,
@@ -434,11 +475,10 @@ export function createMarketplaceService(deps: {
       return listMarketplaces(deps.db).map(view);
     },
 
-    async refresh(id) {
+    async refresh(id, attemptedAt = Date.now()) {
       return withMarketplaceLock(id, async () => {
         const row = getMarketplace(deps.db, id);
         if (row === undefined) throw new Error(`unknown marketplace "${id}"`);
-        const attemptedAt = Date.now();
         try {
           const source: MarketplaceSource = {
             kind: row.sourceKind === "path" ? "path" : "git",
@@ -447,7 +487,7 @@ export function createMarketplaceService(deps: {
             display: sourceDisplay(row),
           };
           const materialized = await materialize(source, row.id);
-          return view(
+          const refreshed = view(
             upsertMarketplace(deps.db, {
               id: row.id,
               displayName: materialized.catalog.displayName,
@@ -461,16 +501,21 @@ export function createMarketplaceService(deps: {
               enabled: row.enabled,
               trusted: row.trusted,
               updatePolicy: row.updatePolicy,
+              autoCheck: row.autoCheck,
+              autoApply: row.autoApply,
               lastSuccessfulRefreshAt: attemptedAt,
               lastAttemptedRefreshAt: attemptedAt,
               lastError: null,
               scope: row.scope,
             }),
           );
+          refreshFailureCounts.delete(id);
+          return refreshed;
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
           updateMarketplaceRefreshFailure(deps.db, id, attemptedAt, message);
+          refreshFailureCounts.set(id, (refreshFailureCounts.get(id) ?? 0) + 1);
           throw new Error(message);
         }
       });
@@ -667,6 +712,33 @@ export function createMarketplaceService(deps: {
         deleteMarketplace(deps.db, id);
         return { kept, uninstalled };
       });
+    },
+
+    setAutoPolicy(id, policy) {
+      return withMarketplaceLock(id, async () => {
+        const row = setMarketplaceAutoPolicy(deps.db, id, policy);
+        return row === undefined ? undefined : view(row);
+      });
+    },
+
+    async sweepAutomaticChecks(sweepNow) {
+      for (const row of listMarketplaces(deps.db)) {
+        if (!row.enabled || !row.autoCheck) continue;
+        const failures =
+          row.lastError === null ? 0 : (refreshFailureCounts.get(row.id) ?? 1);
+        const lastAttempt = row.lastAttemptedRefreshAt ?? 0;
+        if (
+          sweepNow - lastAttempt <
+          marketplaceRefreshDelayMs(row.id, failures)
+        )
+          continue;
+        try {
+          await this.refresh(row.id, sweepNow);
+          refreshFailureCounts.delete(row.id);
+        } catch {
+          // refresh persists its ordinary failure state; keep checking others.
+        }
+      }
     },
   };
 }

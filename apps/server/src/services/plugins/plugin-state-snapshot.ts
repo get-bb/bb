@@ -68,6 +68,8 @@ const installedPluginRowSchema = z
     npmIntegrity: z.string().nullable(),
     gitResolvedCommit: z.string().nullable(),
     updatePolicy: z.enum(["manual", "compatible", "patch", "minor"]),
+    // Registration snapshots written before Phase 6 predate this field.
+    autoApply: z.boolean().default(false),
     lastUpdateCheckAt: z.number().int().nullable(),
     availableCompatibleVersion: z.string().nullable(),
     newestIncompatibleVersion: z.string().nullable(),

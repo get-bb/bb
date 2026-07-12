@@ -50,6 +50,7 @@ function npmPersistence(packageName: string, version: string) {
       integrity: "test-integrity",
     },
     updatePolicy: "manual" as const,
+    autoApply: false,
     updateState: {
       lastCheckAt: null,
       availableCompatibleVersion: null,
