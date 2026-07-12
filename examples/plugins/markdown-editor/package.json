@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": "^1.0.0"
   },
   "bb": {
     "server": "./server.ts",

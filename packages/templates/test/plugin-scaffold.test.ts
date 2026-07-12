@@ -48,6 +48,10 @@ describe("scaffoldPlugin bundled types", () => {
     const pkg = JSON.parse(
       await readFile(join(targetDir, "package.json"), "utf8"),
     );
+    expect(pkg.engines).toEqual({
+      bb: ">=0.9",
+      bbPluginSdk: "^1.0.0",
+    });
     expect(pkg.devDependencies["@bb/plugin-sdk"]).toBeUndefined();
     expect(pkg.devDependencies.zod).toBeDefined();
 

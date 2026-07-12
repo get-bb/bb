@@ -11,7 +11,7 @@
 // this when existing path/git installs must rebuild at load (the server
 // rebuilds when the recorded sdkVersion differs) and bump the major for
 // breaking changes.
-export const PLUGIN_SDK_VERSION = "0.1.0";
+export const PLUGIN_SDK_VERSION = "1.0.0";
 
 /** Major of {@link PLUGIN_SDK_VERSION} — the plugin API compatibility number. */
 export const PLUGIN_SDK_MAJOR = Number(PLUGIN_SDK_VERSION.split(".", 1)[0]);

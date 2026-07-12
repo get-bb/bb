@@ -1,6 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
+import semver from "semver";
 import { z } from "zod";
+import { derivePluginId } from "@bb/domain";
 
 /**
  * The `bb` field of a plugin's package.json. `server` is the backend entry
@@ -26,7 +28,10 @@ const bbManifestFieldSchema = z.object({
   themes: z
     .array(
       z.object({
-        id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).max(64),
+        id: z
+          .string()
+          .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/)
+          .max(64),
         name: z.string().min(1),
         description: z.string().min(1).optional(),
         css: z.string().min(1),
@@ -39,7 +44,18 @@ const pluginPackageJsonSchema = z.object({
   name: z.string().min(1),
   version: z.string().min(1),
   description: z.string().optional(),
-  engines: z.object({ bb: z.string().min(1).optional() }).optional(),
+  engines: z
+    .object({
+      bb: z.string().min(1).optional(),
+      bbPluginSdk: z
+        .string()
+        .min(1)
+        .refine((range) => semver.validRange(range) !== null, {
+          message: "must be a valid semver range",
+        })
+        .optional(),
+    })
+    .optional(),
   bb: bbManifestFieldSchema,
 });
 
@@ -57,6 +73,8 @@ export interface PluginManifest {
   icon: string | null;
   /** semver range from engines.bb, when declared. */
   bbEngineRange: string | undefined;
+  /** semver range from engines.bbPluginSdk; absent manifests are legacy. */
+  bbPluginSdkRange: string | undefined;
   /** Absolute path of the backend entry file. */
   serverEntry: string;
   /** Absolute path of the frontend entry file, when declared. */
@@ -90,26 +108,7 @@ export interface PluginManifest {
   rootDir: string;
 }
 
-/**
- * `bb-plugin-linear` → `linear`; scoped names drop the scope. The id
- * namespaces routes, storage, settings, and CLI subcommands.
- */
-export function derivePluginId(packageName: string): string {
-  const base = packageName.includes("/")
-    ? (packageName.split("/").at(-1) ?? packageName)
-    : packageName;
-  const id = base
-    .replace(/^bb-plugin-/, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/^-+|-+$/g, "");
-  if (id.length === 0) {
-    throw new Error(
-      `cannot derive a plugin id from package name "${packageName}"`,
-    );
-  }
-  return id;
-}
+export { derivePluginId } from "@bb/domain";
 
 /** Resolve a manifest-relative entry path, rejecting escapes out of rootDir. */
 function resolveEntry(rootDir: string, entry: string, label: string): string {
@@ -218,6 +217,7 @@ export async function readPluginManifest(
     displayName: bb.displayName ?? null,
     icon: bb.icon ?? null,
     bbEngineRange: engines?.bb,
+    bbPluginSdkRange: engines?.bbPluginSdk,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
     logoPath,

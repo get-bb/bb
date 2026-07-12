@@ -333,7 +333,10 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         name: packageName,
         version: "0.1.0",
         type: "module",
-        engines: { bb: enginesRange(bbVersion) },
+        engines: {
+          bb: enginesRange(bbVersion),
+          bbPluginSdk: "^1.0.0",
+        },
         bb: app
           ? { server: "./server.ts", app: "./app.tsx" }
           : { server: "./server.ts" },
