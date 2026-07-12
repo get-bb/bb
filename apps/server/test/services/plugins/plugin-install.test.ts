@@ -20,7 +20,6 @@ import {
   getInstalledPluginRegistration,
   listPluginArtifacts,
   migrate,
-  setInstalledPluginActiveArtifact,
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
@@ -215,9 +214,9 @@ describe("plugin install sources", () => {
     ).toBe(
       "/data/plugins/cache/git/github.com/acme/nested/plugin/abcdef1234567",
     );
-    expect(() =>
-      npmArtifactCacheDir("/data", "../plugin", "1.2.3"),
-    ).toThrow(/invalid npm package/);
+    expect(() => npmArtifactCacheDir("/data", "../plugin", "1.2.3")).toThrow(
+      /invalid npm package/,
+    );
     expect(() =>
       gitArtifactCacheDir("/data", "github.com/acme/../evil", "abcdef1"),
     ).toThrow(/invalid git artifact/);
@@ -229,12 +228,22 @@ describe("plugin install flows", () => {
   let workDir: string;
   let dataDir: string;
   let service: PluginService;
+  let afterArtifactPromoted:
+    | ((args: {
+        pluginId: string;
+        artifactId: string;
+        path: string;
+      }) => Promise<void>)
+    | undefined;
+  let materializationCount: number;
 
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-install-"));
     dataDir = join(workDir, "data");
+    afterArtifactPromoted = undefined;
+    materializationCount = 0;
     service = createPluginService({
       db,
       hub: {
@@ -248,6 +257,10 @@ describe("plugin install flows", () => {
       isEnabled: () => true,
       isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
+      afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
+      onArtifactMaterialize: () => {
+        materializationCount += 1;
+      },
     });
   });
 
@@ -321,38 +334,123 @@ describe("plugin install flows", () => {
       expect(entry.version).toBe("0.1.0");
     });
 
-    it("recovers an interrupted pointer write, reuses valid bytes, and repairs hash mismatch", async () => {
+    it("recovers a crash after promotion without changing the live registration or downloading again", async () => {
       const repoDir = join(workDir, "repo-retry");
       await writePluginFixture(repoDir, { name: "bb-plugin-retry" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      const source = `git:${repoDir}@main`;
+      await service.install(source);
+      const previous = getInstalledPluginRegistration(db, "retry");
+      if (previous === undefined) throw new Error("missing retry registration");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-retry",
+        version: "0.2.0",
+      });
+      await commitAll(repoDir, "next");
+      afterArtifactPromoted = async () => {
+        throw new Error("simulated crash after promotion");
+      };
+
+      await expect(service.install(source)).rejects.toThrow(
+        /simulated crash after promotion/,
+      );
+      expect(getInstalledPluginRegistration(db, "retry")).toMatchObject({
+        rootDir: previous.rootDir,
+        activeArtifactId: previous.activeArtifactId,
+        version: "0.1.0",
+      });
+      expect(service.list()).toMatchObject([
+        {
+          id: "retry",
+          rootDir: previous.rootDir,
+          version: "0.1.0",
+          status: "running",
+        },
+      ]);
+      const promoted = listPluginArtifacts(db, "retry").find(
+        (artifact) => artifact.id !== previous.activeArtifactId,
+      );
+      expect(promoted).toMatchObject({ validationResult: "pending" });
+      if (promoted === undefined) throw new Error("missing promoted artifact");
+      await stat(promoted.path);
+      const downloadsAfterCrash = materializationCount;
+
+      afterArtifactPromoted = undefined;
+      const retried = await service.install(source);
+      expect(retried).toMatchObject({
+        rootDir: promoted.path,
+        version: "0.2.0",
+        status: "running",
+      });
+      expect(materializationCount).toBe(downloadsAfterCrash);
+      expect(
+        getInstalledPluginRegistration(db, "retry")?.activeArtifactId,
+      ).toBe(promoted.id);
+    });
+
+    it("repairs a hash mismatch under the lifecycle lock", async () => {
+      const repoDir = join(workDir, "repo-repair");
+      await writePluginFixture(repoDir, { name: "bb-plugin-repair" });
       await initGitRepo(repoDir);
       await commitAll(repoDir, "init");
       await git(repoDir, ["tag", "v1"]);
       const source = `git:${repoDir}@v1`;
       const first = await service.install(source);
-      const artifact = listPluginArtifacts(db, "retry")[0];
-      expect(artifact).toBeDefined();
-      if (artifact === undefined) throw new Error("missing retry artifact");
-      const packageStats = await stat(join(first.rootDir, "package.json"));
-
-      expect(setInstalledPluginActiveArtifact(db, "retry", null)).toBe(true);
-      await mkdir(`${first.rootDir}.staging`, { recursive: true });
-      await writeFile(join(`${first.rootDir}.staging`, "stale"), "stale");
-      const retried = await service.install(source);
-      expect(retried.rootDir).toBe(first.rootDir);
-      expect(
-        getInstalledPluginRegistration(db, "retry")?.activeArtifactId,
-      ).toBe(artifact.id);
-      await expect(stat(`${first.rootDir}.staging`)).rejects.toThrowError();
-      expect((await stat(join(first.rootDir, "package.json"))).ino).toBe(
-        packageStats.ino,
-      );
-
       await writeFile(join(first.rootDir, "server.ts"), "corrupt");
+
       await service.install(source);
-      expect(await readFile(join(first.rootDir, "server.ts"), "utf8")).toContain(
-        "bb.log.info",
-      );
-      expect(listPluginArtifacts(db, "retry")).toHaveLength(1);
+      expect(
+        await readFile(join(first.rootDir, "server.ts"), "utf8"),
+      ).toContain("bb.log.info");
+      expect(service.list()).toMatchObject([
+        { id: "repair", status: "running" },
+      ]);
+      expect(listPluginArtifacts(db, "repair")).toHaveLength(1);
+    });
+
+    it("never reuses an exact-resolution artifact owned by another plugin", async () => {
+      const repoDir = join(workDir, "repo-owner");
+      await writePluginFixture(repoDir, { name: "bb-plugin-owner" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1"]);
+      const source = `git:${repoDir}@v1`;
+      await service.install(source);
+      const original = listPluginArtifacts(db, "owner")[0];
+      if (original === undefined) throw new Error("missing owner artifact");
+      await service.remove("owner");
+      db.$client
+        .prepare("UPDATE plugin_artifacts SET plugin_id = ? WHERE id = ?")
+        .run("different-plugin", original.id);
+
+      const reinstalled = await service.install(source);
+      const activeId = getInstalledPluginRegistration(
+        db,
+        "owner",
+      )?.activeArtifactId;
+      expect(activeId).not.toBe(original.id);
+      expect(reinstalled.status).toBe("running");
+      expect(listPluginArtifacts(db, "owner")).toMatchObject([
+        { id: activeId, pluginId: "owner", validationResult: "valid" },
+      ]);
+    });
+
+    it("serializes concurrent installs of the same exact resolution", async () => {
+      const repoDir = join(workDir, "repo-concurrent");
+      await writePluginFixture(repoDir, { name: "bb-plugin-concurrent" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1"]);
+      const source = `git:${repoDir}@v1`;
+
+      const [first, second] = await Promise.all([
+        service.install(source),
+        service.install(source),
+      ]);
+      expect(first.rootDir).toBe(second.rootDir);
+      expect(materializationCount).toBe(1);
+      expect(listPluginArtifacts(db, "concurrent")).toHaveLength(1);
     });
 
     it("re-installing the same spec refreshes the clone", async () => {

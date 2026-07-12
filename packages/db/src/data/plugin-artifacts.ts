@@ -97,11 +97,12 @@ export function getPluginArtifactByResolution(
   resolution:
     | {
         sourceKind: "npm";
+        pluginId: string;
         path: string;
         version: string;
         integrity: string;
       }
-    | { sourceKind: "git"; path: string; commit: string },
+    | { sourceKind: "git"; pluginId: string; path: string; commit: string },
 ): PluginArtifactRow | undefined {
   if (resolution.sourceKind === "npm") {
     return db
@@ -110,6 +111,7 @@ export function getPluginArtifactByResolution(
       .where(
         and(
           eq(pluginArtifacts.sourceKind, "npm"),
+          eq(pluginArtifacts.pluginId, resolution.pluginId),
           eq(pluginArtifacts.path, resolution.path),
           eq(pluginArtifacts.npmResolvedVersion, resolution.version),
           eq(pluginArtifacts.integrity, resolution.integrity),
@@ -123,6 +125,7 @@ export function getPluginArtifactByResolution(
     .where(
       and(
         eq(pluginArtifacts.sourceKind, "git"),
+        eq(pluginArtifacts.pluginId, resolution.pluginId),
         eq(pluginArtifacts.path, resolution.path),
         eq(pluginArtifacts.gitResolvedCommit, resolution.commit),
       ),
@@ -133,12 +136,19 @@ export function getPluginArtifactByResolution(
 export function setPluginArtifactValidation(
   db: DbConnection,
   id: string,
-  validation: {
-    contentHash: string;
-    validationResult: "valid" | "invalid";
-    validationDetail: string | null;
-    validatedAt: number;
-  },
+  validation:
+    | {
+        contentHash: string;
+        validationResult: "pending";
+        validationDetail: null;
+        validatedAt: null;
+      }
+    | {
+        contentHash: string;
+        validationResult: "valid" | "invalid";
+        validationDetail: string | null;
+        validatedAt: number;
+      },
 ): boolean {
   return (
     db
