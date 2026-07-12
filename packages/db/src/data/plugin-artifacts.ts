@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
@@ -89,6 +89,25 @@ export function listPluginArtifacts(
     .from(pluginArtifacts)
     .where(eq(pluginArtifacts.pluginId, pluginId))
     .orderBy(asc(pluginArtifacts.createdAt), asc(pluginArtifacts.id))
+    .all();
+}
+
+export function listRecentPluginArtifacts(
+  db: DbConnection,
+  pluginId: string,
+  limit: number,
+): PluginArtifactRow[] {
+  return db
+    .select()
+    .from(pluginArtifacts)
+    .where(
+      and(
+        eq(pluginArtifacts.pluginId, pluginId),
+        eq(pluginArtifacts.validationResult, "valid"),
+      ),
+    )
+    .orderBy(desc(pluginArtifacts.updatedAt), desc(pluginArtifacts.id))
+    .limit(limit)
     .all();
 }
 

@@ -216,6 +216,93 @@ describe("plugin update service and routes", () => {
     );
   });
 
+  it("persists patch/minor policy and skips an ignored version until a newer release appears", async () => {
+    upsertInstalledPlugin(db, {
+      id: "policy-test",
+      source: "npm:bb-plugin-policy-test@^1.0.0",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-policy-test",
+        registry: "https://policy.test",
+        requestedSpec: "^1.0.0",
+        specKind: "range",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.0.0",
+        integrity: "sha512-current",
+      },
+      updatePolicy: "compatible",
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+        ignoredVersion: null,
+      },
+      activeArtifactId: null,
+      rootDir: join(workDir, "policy-test"),
+      version: "1.0.0",
+      enabled: false,
+    });
+    let versions = ["1.0.0", "1.0.9", "1.1.0", "2.0.0"];
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({
+            versions: Object.fromEntries(
+              versions.map((version) => [
+                version,
+                { version, dist: { integrity: `sha512-${version}` } },
+              ]),
+            ),
+            "dist-tags": { latest: versions.at(-1) },
+          }),
+          { status: 200 },
+        ),
+    );
+
+    const patchPolicy = await app.request(
+      "/plugins/policy-test/update-policy",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ policy: "patch" }),
+      },
+    );
+    expect(patchPolicy.status).toBe(200);
+    expect(await patchPolicy.json()).toEqual({ policy: "patch" });
+    await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
+      [{ outcome: "update-available", candidate: { version: "1.0.9" } }],
+    );
+
+    const ignored = await app.request("/plugins/policy-test/ignore-version", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version: "1.0.9" }),
+    });
+    expect(ignored.status).toBe(200);
+    expect(await ignored.json()).toEqual({ ignoredVersion: "1.0.9" });
+    await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
+      [{ outcome: "current", detail: "version 1.0.9 is ignored" }],
+    );
+
+    versions = ["1.0.0", "1.0.9", "1.0.10", "1.1.0", "2.0.0"];
+    await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
+      [{ outcome: "update-available", candidate: { version: "1.0.10" } }],
+    );
+    expect(getInstalledPluginRegistration(db, "policy-test")).toMatchObject({
+      ignoredVersion: null,
+    });
+
+    service.setUpdatePolicy("policy-test", "minor");
+    await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
+      [{ outcome: "update-available", candidate: { version: "1.1.0" } }],
+    );
+  });
+
   it("checks, reads persisted state, and dry-runs through the exact HTTP contract", async () => {
     // Simulate a Phase 1 normalized row migrated before ref classification
     // existed. The first network resolution classifies and persists it.
@@ -412,6 +499,35 @@ describe("plugin update service and routes", () => {
     expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
       quarantinedVersion: candidateCommit,
       quarantineDetail: expect.stringContaining("candidate factory exploded"),
+    });
+    expect(
+      service.list().find((entry) => entry.id === "updater"),
+    ).toMatchObject({
+      provenance: "direct",
+      sourceDisplay: expect.stringContaining("git ·"),
+      updatePolicy: "compatible",
+      updateState: {
+        quarantined: true,
+        lastFailure: {
+          version: candidateCommit,
+          at: expect.any(Number),
+          detail: expect.stringContaining("candidate factory exploded"),
+        },
+      },
+    });
+    const sourceResponse = await app.request("/plugins/updater/source");
+    expect(sourceResponse.status).toBe(200);
+    expect(await sourceResponse.json()).toMatchObject({
+      requested: `git:${repo}@main`,
+      resolved: expect.stringContaining(repo),
+      engines: {},
+      installedAt: expect.any(Number),
+      history: expect.arrayContaining([
+        {
+          version: expect.stringMatching(/^[0-9a-f]{40}$/),
+          activatedAt: expect.any(Number),
+        },
+      ]),
     });
     const restored = new Database(databasePath, { readonly: true });
     expect(restored.prepare("SELECT value FROM state").pluck().get()).toBe(

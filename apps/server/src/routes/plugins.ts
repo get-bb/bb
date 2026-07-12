@@ -527,6 +527,37 @@ export function registerPluginRoutes(
       .strict(),
   ]);
 
+  app.post("/plugins/install/preview", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const parsed = installBodySchema.safeParse(json);
+    if (!parsed.success) {
+      return context.json(
+        { error: "exactly one of source or marketplace is required" },
+        422,
+      );
+    }
+    try {
+      const preview =
+        "source" in parsed.data
+          ? await plugins.previewInstall(parsed.data.source)
+          : marketplaces === undefined
+            ? (() => {
+                throw new Error("marketplace service is unavailable");
+              })()
+            : await marketplaces.preview(
+                parsed.data.marketplace.marketplaceId,
+                parsed.data.marketplace.entryId,
+                parsed.data.version,
+              );
+      return context.json(preview);
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+  });
+
   app.post("/plugins/install", async (context) => {
     const json: unknown = await context.req.json().catch(() => null);
     const parsed = installBodySchema.safeParse(json);
@@ -568,6 +599,57 @@ export function registerPluginRoutes(
         422,
       );
     }
+  });
+
+  app.get("/plugins/:id/source", async (context) => {
+    const source = await plugins.getSource(context.req.param("id"));
+    if (source === undefined) {
+      return context.json({ error: "unknown plugin" }, 404);
+    }
+    return context.json(source);
+  });
+
+  const ignoreVersionBodySchema = z
+    .object({ version: z.string().trim().min(1) })
+    .strict();
+  app.post("/plugins/:id/ignore-version", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = ignoreVersionBodySchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        { error: 'expected { "version": non-empty string }' },
+        422,
+      );
+    }
+    const outcome = plugins.ignoreVersion(
+      context.req.param("id"),
+      body.data.version,
+    );
+    if (!outcome.ok) return context.json({ error: outcome.error }, 422);
+    return context.json({ ignoredVersion: body.data.version });
+  });
+
+  const updatePolicyBodySchema = z
+    .object({ policy: z.enum(["manual", "compatible", "patch", "minor"]) })
+    .strict();
+  app.post("/plugins/:id/update-policy", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = updatePolicyBodySchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        {
+          error:
+            'expected { "policy": "manual" | "compatible" | "patch" | "minor" }',
+        },
+        422,
+      );
+    }
+    const outcome = plugins.setUpdatePolicy(
+      context.req.param("id"),
+      body.data.policy,
+    );
+    if (!outcome.ok) return context.json({ error: outcome.error }, 422);
+    return context.json({ policy: body.data.policy });
   });
 
   app.post("/plugins/reload", async (context) => {
