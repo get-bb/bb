@@ -332,8 +332,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin marketplace add <source> [--name <n>] [--yes]` — register and
     refresh a catalog only (installs nothing). Sources: local path / `path:`,
     `owner/repo[@ref]`, or a git URL`[@ref]`. Every remote/git source requires
-    trust confirmation; `--yes` skips; non-TTY refuses without it. Local paths
-    skip the prompt.
+    trust confirmation; `--yes` skips; non-TTY refuses without it. Unmistakable
+    local path forms (`path:`, `./…`, or absolute paths) skip the prompt;
+    ambiguous bare sources are conservatively prompted.
   - `bb plugin marketplace list [--json]` / `bb plugin marketplace update
     [name]` — list catalogs or re-fetch one/all. Catalog refresh is not plugin
     update; a failed refresh keeps the last-known-good catalog.

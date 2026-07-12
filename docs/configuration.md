@@ -417,8 +417,9 @@ re-fetches catalog metadata only — it does not upgrade installed plugins. On
 refresh failure the previous successful catalog is retained and `lastError` is
 set (list shows the failed state). Trust is enforced at the CLI for every
 remote/git `bb plugin marketplace add` (confirmation or `--yes`; non-TTY
-refuses without it); adding never installs plugins. Local path marketplaces
-skip the trust prompt. See `bb guide plugins` for search, install
+refuses without it); adding never installs plugins. Unmistakable local path
+forms (`path:`, `./…`, or absolute paths) skip the prompt; ambiguous bare
+sources are conservatively prompted. See `bb guide plugins` for search, install
 disambiguation, and removal dispositions.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH

@@ -129,9 +129,10 @@ optional `@ref`. Server routes live under `/api/v1/marketplaces`.
 
 Trust model: every remote/git source requires an interactive trust confirmation
 before add (catalogs can introduce full-trust plugin code later). Pass `--yes`
-to skip; non-TTY refuses without `--yes`. Local path marketplaces skip the
-prompt. Trusting a marketplace does not install plugins — install still prompts
-separately as full-trust server code.
+to skip; non-TTY refuses without `--yes`. Unmistakable local path forms
+(`path:`, `./…`, or absolute paths) skip the prompt; ambiguous bare sources
+are conservatively prompted. Trusting a marketplace does not install plugins —
+install still prompts separately as full-trust server code.
 
 Refresh vs plugin update: `bb plugin marketplace update [name]` re-fetches
 catalog metadata (one marketplace, or all when name is omitted). It does not
