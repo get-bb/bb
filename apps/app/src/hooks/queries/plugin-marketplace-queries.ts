@@ -255,6 +255,50 @@ export async function checkPluginUpdates(
   );
 }
 
+/** One row of GET /api/v1/plugins/updates (Phase 2 resolution shapes). */
+export interface PluginUpdatesEntry {
+  id: string;
+  /** "current" | "update-available" | "pinned" | "incompatible" | … */
+  outcome: string;
+  availableVersion: string | null;
+  blockedVersion: string | null;
+  detail: string | null;
+}
+
+const updatesEntrySchema = z.object({
+  id: z.string(),
+  outcome: z.string(),
+  availableVersion: z.string().nullish(),
+  blockedVersion: z.string().nullish(),
+  detail: z.string().nullish(),
+});
+
+/**
+ * The bulk update report. The Settings UI drives off the richer per-plugin
+ * `updateState` on GET /plugins; this endpoint mirrors `bb plugin outdated`.
+ */
+export async function fetchPluginUpdates(
+  fetchImpl: FetchLike,
+): Promise<PluginUpdatesEntry[]> {
+  const response = await fetchImpl("/api/v1/plugins/updates");
+  if (!response.ok) return [];
+  const body = (await readBody(response)) as { updates?: unknown } | null;
+  if (!Array.isArray(body?.updates)) return [];
+  const entries: PluginUpdatesEntry[] = [];
+  for (const value of body.updates) {
+    const parsed = updatesEntrySchema.safeParse(value);
+    if (!parsed.success) continue;
+    entries.push({
+      id: parsed.data.id,
+      outcome: parsed.data.outcome,
+      availableVersion: parsed.data.availableVersion ?? null,
+      blockedVersion: parsed.data.blockedVersion ?? null,
+      detail: parsed.data.detail ?? null,
+    });
+  }
+  return entries;
+}
+
 export interface PluginUpdateResult {
   /** Phase 2 resolution outcome; "rolled-back" means activation failed. */
   outcome: string;
