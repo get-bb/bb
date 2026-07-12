@@ -104,6 +104,46 @@ On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
 rotated at 5MB). Settings edits never auto-reload — `bb plugin reload <id>`
 after configuring.
 
+## Publishing to a marketplace
+
+A marketplace is a directory (local path or git repo) whose root has
+`marketplace.json`. Catalog schema version is currently **1**:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "my-market",
+  "displayName": "My Market",
+  "plugins": [
+    {
+      "id": "notes",
+      "displayName": "Notes",
+      "description": "Local notes",
+      "source": { "npm": { "package": "bb-plugin-notes", "range": "^1.0.0" } },
+      "updatePolicy": "compatible",
+      "category": "productivity",
+      "installation": { "engines": { "bb": ">=0.9", "bbPluginSdk": "^1.0.0" } }
+    }
+  ]
+}
+```
+
+- **source** — one of `npm` (`package`, optional `registry` / `range`), `git`
+  (`url`, `ref`, optional `subdir`), or `path` (relative path **only** for
+  local path marketplaces; remote/git catalogs cannot list path entries).
+- **updatePolicy** (optional on each entry) — `manual` | `patch` | `minor` |
+  `compatible`. The marketplace defaults to `compatible`; an entry policy may
+  only narrow the marketplace default (manual < patch < minor < compatible).
+- **category** (optional) — free-form string; `bb plugin search` matches it.
+- **installation.engines** (optional) — catalog-level `bb` / `bbPluginSdk`
+  ranges. Policy **can narrow but never widen** the plugin package manifest's
+  `engines.bb` / `engines.bbPluginSdk`: the catalog range must be a semver
+  subset of the manifest range, or install is refused.
+
+Users add your catalog with `bb plugin marketplace add <source>` (trust prompt
+for remotes; add installs nothing), then `bb plugin search` / `bb plugin install
+<entry>[@<marketplace>]`. See `bb guide plugins` for CLI details.
+
 ## The backend factory
 
 ```ts

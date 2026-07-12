@@ -398,10 +398,28 @@ Plugin state lives under the data dir:
 <dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
                                    at 5MB; read with `bb plugin logs <id>`)
 <dataDir>/plugins/git/, npm/       Managed installs for git:/npm: sources
+<dataDir>/marketplaces/cache/      Materialized git marketplace trees
+                                   (keyed by marketplace id + commit)
+<dataDir>/marketplaces/staging/    Transient git clones during refresh
 <dataDir>/skills-generated/        Server-generated skills (the
                                    plugin-commands skill listing plugin CLI
                                    commands, injected into agent threads)
 ```
+
+Marketplace configuration (rows in the server DB, API under
+`/api/v1/marketplaces`) stores each catalog's source, last-known-good
+`marketplace.json` payload, content hash, optional resolved git commit, and
+timestamps. Defaults on add: `enabled: true`, marketplace-level
+`updatePolicy: "compatible"`, scope `user`. Path marketplaces point at the
+directory on disk; git marketplaces materialize under
+`<dataDir>/marketplaces/cache/<id>/<commit>/`. `bb plugin marketplace update`
+re-fetches catalog metadata only — it does not upgrade installed plugins. On
+refresh failure the previous successful catalog is retained and `lastError` is
+set (list shows the failed state). Trust is enforced at the CLI for every
+remote/git `bb plugin marketplace add` (confirmation or `--yes`; non-TTY
+refuses without it); adding never installs plugins. Local path marketplaces
+skip the trust prompt. See `bb guide plugins` for search, install
+disambiguation, and removal dispositions.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
 (packages are installed with `--ignore-scripts`). An omitted npm spec tracks

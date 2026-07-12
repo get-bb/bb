@@ -328,10 +328,29 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   (`builtin:<name>`) ship with bb and remain available even when the experiment
   is off, except `connect`, which is gated by the **"bb connect"**
   experiment.
+- **Plugin marketplaces** (catalogs under `/api/v1/marketplaces`):
+  - `bb plugin marketplace add <source> [--name <n>] [--yes]` — register and
+    refresh a catalog only (installs nothing). Sources: local path / `path:`,
+    `owner/repo[@ref]`, or a git URL`[@ref]`. Every remote/git source requires
+    trust confirmation; `--yes` skips; non-TTY refuses without it. Local paths
+    skip the prompt.
+  - `bb plugin marketplace list [--json]` / `bb plugin marketplace update
+    [name]` — list catalogs or re-fetch one/all. Catalog refresh is not plugin
+    update; a failed refresh keeps the last-known-good catalog.
+  - `bb plugin marketplace remove <name> [--keep-all|--uninstall-all]` — remove
+    a catalog. Installed plugins from it need a keep-as-direct vs uninstall
+    disposition per plugin (TTY prompts); non-interactive must pass
+    `--keep-all` or `--uninstall-all`.
+  - `bb plugin search <query>` — search configured catalogs (id, name,
+    description, category); status shows installed / compatible / requires
+    newer bb.
 - Commands:
-  - `bb plugin install <src>` — local path, `builtin:<name>`,
-    `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
-    required for `npm:`). Omit the npm spec to track compatible stable
+  - `bb plugin install <src>` — marketplace entry (bare name when unique;
+    `<entry>@<marketplace>` when ambiguous; `--version <range>` marketplace-only),
+    local path, `builtin:<name>`, `git:<url>@<ref>`, or
+    `npm:<package>[@<version|tag|range>]` (npm on PATH required for `npm:`).
+    Prefixes `path:` / `npm:` / `git:` / `builtin:` skip marketplace resolution.
+    Omit the npm spec to track compatible stable
     releases; ranges and dist-tags track, while exact versions are pinned.
     Git branches track; tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip.

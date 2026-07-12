@@ -119,6 +119,40 @@ added/updated/unchanged counts.
                                  (if it declares bb.app) and reload the
                                  plugin; Ctrl+C to stop
 
+Plugin marketplaces
+
+A marketplace is a catalog (`marketplace.json`) that lists plugins others can
+discover and install. Adding a marketplace registers and refreshes that catalog
+only — it installs nothing. Catalog sources: a local directory (`path:` or a
+filesystem path), `owner/repo[@ref]` (GitHub shorthand), or a git URL with an
+optional `@ref`. Server routes live under `/api/v1/marketplaces`.
+
+Trust model: every remote/git source requires an interactive trust confirmation
+before add (catalogs can introduce full-trust plugin code later). Pass `--yes`
+to skip; non-TTY refuses without `--yes`. Local path marketplaces skip the
+prompt. Trusting a marketplace does not install plugins — install still prompts
+separately as full-trust server code.
+
+Refresh vs plugin update: `bb plugin marketplace update [name]` re-fetches
+catalog metadata (one marketplace, or all when name is omitted). It does not
+upgrade installed plugins. Failed refresh keeps the last-known-good cached
+catalog and records the error (list shows "refresh failed" state).
+`bb plugin outdated` / `bb plugin update` move installed plugin artifacts for
+tracking sources.
+
+Removal dispositions: when plugins were installed from a marketplace, remove
+asks keep-as-direct vs uninstall for each (`k` / `u` on a TTY). `--keep-all`
+converts them to direct installs; `--uninstall-all` removes them. Non-interactive
+remove without one of those flags fails when plugins are affected.
+
+Search and install disambiguation: `bb plugin search <query>` matches id,
+display name, description, and category across configured marketplaces (status:
+installed / compatible / requires newer bb). Install a bare marketplace entry
+name only when it is unique across catalogs; qualify as
+`<entry>@<marketplace>` when ambiguous. `--version <range>` applies only to
+marketplace installs (npm entries). Escape hatches that skip marketplace
+resolution: `path:`, `npm:`, `git:`, `builtin:` prefixes (and path-like syntax).
+
 Frontend builds are automatic once installed: path and git installs compile
 dist/ at install time (a build failure fails the install), and the server
 rebuilds them at load after a bb upgrade. npm packages must publish a
