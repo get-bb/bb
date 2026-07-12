@@ -55,7 +55,15 @@ never appear in command arguments, model-visible output, or persisted
 interaction data; success prints only the path, variable names, and
 added/updated/unchanged counts.
 
-  bb plugin install <src>        Install from a local path, builtin:<name>,
+  bb plugin marketplace add <source> [--name <n>] [--yes]
+  bb plugin marketplace list [--json]
+  bb plugin marketplace update [name]
+  bb plugin marketplace remove <name> [--keep-all|--uninstall-all]
+                                 Add, inspect, refresh, or remove catalogs
+  bb plugin search <query>       Search all configured marketplaces
+  bb plugin install <src> [--version <range>]
+                                 Install from a marketplace name, local path,
+                                 builtin:<name>,
                                  git:<url>@<ref>, or
                                  npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —
