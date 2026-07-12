@@ -403,8 +403,11 @@ Plugin state lives under the data dir:
                                    commands, injected into agent threads)
 ```
 
-`bb plugin install npm:<name>@<version>` requires `npm` on PATH (packages are
-installed with `--ignore-scripts`); `git:<url>@<ref>` requires `git`. Local
+`bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
+(packages are installed with `--ignore-scripts`). An omitted npm spec tracks
+the newest compatible stable release, ranges track within the range, dist-tags
+track the tag, and exact versions are pinned. `git:<url>@<ref>` requires `git`;
+branches track their head while tags and commits are pinned. Local
 path installs register the directory in place and never delete it. Builtin
 plugins use `builtin:<name>`, ship with bb, and remain available when the
 Plugins experiment is off unless removed. Managed (`git:`/`npm:`) installs

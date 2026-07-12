@@ -6,6 +6,7 @@ import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
 import { createJiti } from "jiti";
 import semver from "semver";
+import { z } from "zod";
 import type { DbConnection } from "@bb/db";
 import {
   PLUGIN_SDK_MAJOR,
@@ -41,6 +42,8 @@ import {
   prunePluginSchedules,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
+  setInstalledPluginUpdateState,
+  setInstalledPluginSourceClassification,
   upsertInstalledPlugin,
   upsertPluginSchedule,
   type InstalledPluginRow,
@@ -72,6 +75,21 @@ import {
   runInstallCommand,
   swapDirIntoPlace,
 } from "./install-sources.js";
+import {
+  createNpmResolverRun,
+  evaluateCompatibility,
+  gitResolvedVersion,
+  resolveGitRef,
+  resolveGitUpdate,
+  resolveNpmUpdate,
+  selectNpmCandidate,
+  type CompatibilityProblem,
+  type GitRefKind,
+  type NpmResolvedCandidate,
+  type NpmSourceIntentForResolution,
+  type PluginResolvedUpdateVersion,
+  type PluginUpdateResolution,
+} from "./update-resolver.js";
 import {
   derivePluginId,
   readPluginManifest,
@@ -364,6 +382,57 @@ export type PluginWireLookup<T> =
   | { outcome: "not-found" }
   | { outcome: "found"; value: T };
 
+export interface PluginUpdateCheckEntry {
+  id: string;
+  outcome:
+    | "current"
+    | "update-available"
+    | "pinned"
+    | "incompatible"
+    | "unavailable";
+  devMode?: true;
+  installed: PluginResolvedUpdateVersion;
+  candidate?: PluginResolvedUpdateVersion;
+  blocked?: { version: string; reasons: string[] };
+  detail?: string;
+}
+
+const pluginResolvedUpdateVersionSchema = z.object({
+  version: z.string(),
+  display: z.string(),
+});
+
+const pluginUpdateCheckEntrySchema = z.object({
+  id: z.string(),
+  outcome: z.enum([
+    "current",
+    "update-available",
+    "pinned",
+    "incompatible",
+    "unavailable",
+  ]),
+  devMode: z.literal(true).optional(),
+  installed: pluginResolvedUpdateVersionSchema,
+  candidate: pluginResolvedUpdateVersionSchema.optional(),
+  blocked: z
+    .object({ version: z.string(), reasons: z.array(z.string()) })
+    .optional(),
+  detail: z.string().optional(),
+});
+
+export interface PluginApplyUpdateResult {
+  applied: boolean;
+  dryRun: boolean;
+  from: PluginResolvedUpdateVersion;
+  to?: PluginResolvedUpdateVersion;
+  outcome: string;
+  detail?: string;
+}
+
+export type PluginApplyUpdateOutcome =
+  | { ok: true; result: PluginApplyUpdateResult }
+  | { ok: false; error: string };
+
 export interface PluginService {
   /** Whether the `plugins` experiment is currently on. */
   isEnabled(): boolean;
@@ -390,13 +459,19 @@ export interface PluginService {
   /**
    * Install from a source spec: `path:<dir>` (bare paths accepted),
    * `git:<url-ish>@<ref>` (ref required; cloned into the managed dir under
-   * <dataDir>/plugins/git), or `npm:<name>@<exact-version>` (installed with
-   * npm --ignore-scripts under <dataDir>/plugins/npm). git/npm installs
+   * <dataDir>/plugins/git), or `npm:<name>[@<version|tag|range>]` (installed
+   * with npm --ignore-scripts under <dataDir>/plugins/npm). git/npm installs
    * hard-fail on an engines.bb mismatch (design §6); re-installing the same
    * spec refreshes the managed files.
    */
   install(source: string): Promise<PluginListEntry>;
   installPath(path: string): Promise<PluginListEntry>;
+  checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
+  listUpdateResults(): PluginUpdateCheckEntry[];
+  applyUpdate(
+    id: string,
+    options: { dryRun: boolean; latest: boolean },
+  ): Promise<PluginApplyUpdateOutcome>;
   remove(id: string): Promise<boolean>;
   setEnabled(
     id: string,
@@ -1852,13 +1927,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return (
         row.sourceNpmPackage === intent.packageName &&
         row.sourceNpmRegistry === intent.registry &&
-        row.sourceNpmRequestedSpec === intent.requestedSpec
+        row.sourceNpmRequestedSpec === intent.requestedSpec &&
+        row.sourceNpmSpecKind === intent.specKind
       );
     }
     return (
       row.sourceGitUrl === intent.url &&
       row.sourceGitSubdirectory === intent.subdirectory &&
-      row.sourceGitRequestedRef === intent.requestedRef
+      row.sourceGitRequestedRef === intent.requestedRef &&
+      row.sourceGitRefKind === intent.refKind
     );
   }
 
@@ -1930,6 +2007,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     provenance: PluginProvenance;
     sourceIntent: PluginSourceIntent;
     exactResolution: PluginExactResolution;
+    updatePolicy?: "manual" | "compatible";
     refuseEngineMismatch: boolean;
     /** True when validateInstallDir already ran against a staging copy of
      * these exact files (managed installs validate before the swap). */
@@ -1957,7 +2035,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       provenance: args.provenance,
       sourceIntent: args.sourceIntent,
       exactResolution: args.exactResolution,
-      updatePolicy: "manual",
+      updatePolicy: args.updatePolicy ?? "manual",
       updateState: emptyPluginUpdateState(),
       activeArtifactId: null,
       rootDir: args.rootDir,
@@ -2010,51 +2088,45 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // place once it is fully good, so a failed refresh keeps the previous
     // (still-loadable) install intact.
     const stagingDir = `${targetDir}.staging`;
-    let resolvedCommit: string;
+    const resolution = await resolveGitRef({
+      url: parsed.url,
+      ref: parsed.ref,
+    });
+    if (resolution.outcome === "unavailable") {
+      throw new Error(`install failed: ${resolution.detail}`);
+    }
+    const resolvedCommit = resolution.commit;
     await rm(stagingDir, { recursive: true, force: true });
     await mkdir(dirname(targetDir), { recursive: true });
     const notFoundHint =
       '"git" was not found on PATH — git: plugin installs require git';
     try {
-      if (isCommitSha(parsed.ref)) {
-        // A sha cannot be cloned with --branch; clone, then pin by checkout.
-        await runInstallCommand(
-          "git",
-          ["clone", "--quiet", parsed.url, stagingDir],
-          { notFoundHint },
-        );
-        await runInstallCommand("git", [
-          "-C",
-          stagingDir,
-          "checkout",
-          "--quiet",
-          "--detach",
-          parsed.ref,
-        ]);
-      } else {
-        await runInstallCommand(
-          "git",
-          [
-            "clone",
-            "--quiet",
-            "--depth",
-            "1",
-            "--branch",
-            parsed.ref,
-            parsed.url,
-            stagingDir,
-          ],
-          { notFoundHint },
-        );
-      }
+      await runInstallCommand(
+        "git",
+        ["clone", "--quiet", parsed.url, stagingDir],
+        { notFoundHint },
+      );
+      await runInstallCommand("git", [
+        "-C",
+        stagingDir,
+        "checkout",
+        "--quiet",
+        "--detach",
+        resolvedCommit,
+      ]);
       const stagedManifest = await readPluginManifest(stagingDir);
       refuseBuiltinShadow(stagedManifest.id);
-      resolvedCommit = await runInstallCommand("git", [
+      const checkedOutCommit = await runInstallCommand("git", [
         "-C",
         stagingDir,
         "rev-parse",
         "HEAD",
       ]);
+      if (!checkedOutCommit.startsWith(resolvedCommit)) {
+        throw new Error(
+          `git resolved ${parsed.ref} to ${resolvedCommit}, but checked out ${checkedOutCommit}`,
+        );
+      }
       await validateInstallDir({
         rootDir: stagingDir,
         source,
@@ -2074,8 +2146,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         url: parsed.url,
         subdirectory: null,
         requestedRef: parsed.ref,
+        refKind: resolution.refKind,
       },
-      exactResolution: { kind: "git", commit: resolvedCommit },
+      exactResolution: {
+        kind: "git",
+        commit: await runInstallCommand("git", [
+          "-C",
+          targetDir,
+          "rev-parse",
+          "HEAD",
+        ]),
+      },
+      updatePolicy: resolution.refKind === "branch" ? "compatible" : "manual",
       refuseEngineMismatch: true,
       validated: true,
     });
@@ -2085,16 +2167,40 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "npm" }>,
     source: string,
   ): Promise<PluginListEntry> {
-    const prefix = npmInstallPrefix(deps.dataDir, parsed.name, parsed.version);
+    const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
+    await mkdir(registryProbe, { recursive: true });
+    const registry = await resolveNpmRegistry(registryProbe, parsed.name);
+    const intent: NpmSourceIntentForResolution = {
+      packageName: parsed.name,
+      registry,
+      requestedSpec: parsed.spec,
+      specKind: parsed.specKind,
+    };
+    const selected = await selectNpmCandidate({
+      intent,
+      appVersion: deps.appVersion,
+      run: createNpmResolverRun(),
+    });
+    if (selected.outcome === "unavailable") {
+      throw new Error(`install failed: ${selected.detail}`);
+    }
+    if (selected.outcome === "incompatible") {
+      throw new Error(
+        `install refused: ${selected.newest.display} ${selected.reasons.map((problem) => problem.message).join("; ")}`,
+      );
+    }
+    const candidate = selected.candidate;
+    const prefix = npmInstallPrefix(
+      deps.dataDir,
+      parsed.name,
+      parsed.spec || "latest",
+    );
     // Materialize + validate in a staging sibling; swap only once good, so
     // a failed refresh keeps the previous (still-loadable) install intact.
     const stagingPrefix = `${prefix}.staging`;
-    let registry: string;
-    let integrity: string | null;
     await rm(stagingPrefix, { recursive: true, force: true });
     await mkdir(stagingPrefix, { recursive: true });
     try {
-      registry = await resolveNpmRegistry(stagingPrefix, parsed.name);
       await runInstallCommand(
         "npm",
         [
@@ -2107,7 +2213,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "--no-fund",
           "--registry",
           registry,
-          `${parsed.name}@${parsed.version}`,
+          `${parsed.name}@${candidate.version}`,
         ],
         {
           notFoundHint:
@@ -2119,23 +2225,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         source,
         refuseEngineMismatch: true,
       });
-      integrity = await readNpmIntegrity(stagingPrefix, parsed.name);
-      if (integrity === null) {
-        const integrityOutput = await runInstallCommand("npm", [
-          "view",
-          `${parsed.name}@${parsed.version}`,
-          "dist.integrity",
-          "--json",
-          "--registry",
-          registry,
-        ]);
-        const registryIntegrity: unknown = JSON.parse(integrityOutput);
-        integrity =
-          typeof registryIntegrity === "string" ? registryIntegrity : null;
-      }
-      if (integrity === null) {
+      const installedIntegrity = await readNpmIntegrity(
+        stagingPrefix,
+        parsed.name,
+      );
+      if (
+        installedIntegrity !== null &&
+        installedIntegrity !== candidate.integrity
+      ) {
         throw new Error(
-          `install failed: npm registry did not provide integrity for ${parsed.name}@${parsed.version}`,
+          `install failed: integrity for ${candidate.display} did not match registry metadata`,
         );
       }
       await swapDirIntoPlace(stagingPrefix, prefix);
@@ -2151,16 +2250,468 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         kind: "npm",
         packageName: parsed.name,
         registry,
-        requestedSpec: parsed.version,
+        requestedSpec: parsed.spec,
+        specKind: parsed.specKind,
       },
       exactResolution: {
         kind: "npm",
-        version: parsed.version,
-        integrity,
+        version: candidate.version,
+        integrity: candidate.integrity,
       },
+      updatePolicy: parsed.specKind === "exact" ? "manual" : "compatible",
       refuseEngineMismatch: true,
       validated: true,
     });
+  }
+
+  function npmIntentForRow(
+    row: InstalledPluginRow,
+  ): NpmSourceIntentForResolution {
+    if (
+      row.sourceKind !== "npm" ||
+      row.sourceNpmPackage === null ||
+      row.sourceNpmRegistry === null ||
+      row.sourceNpmRequestedSpec === null
+    ) {
+      throw new Error(`plugin "${row.id}" has corrupt normalized npm state`);
+    }
+    let specKind = row.sourceNpmSpecKind;
+    if (specKind === null) {
+      const parsed = parsePluginSource(
+        row.sourceNpmRequestedSpec.length === 0
+          ? `npm:${row.sourceNpmPackage}`
+          : `npm:${row.sourceNpmPackage}@${row.sourceNpmRequestedSpec}`,
+      );
+      if (parsed.kind !== "npm") {
+        throw new Error(`plugin "${row.id}" has corrupt normalized npm state`);
+      }
+      specKind = parsed.specKind;
+      if (
+        !setInstalledPluginSourceClassification(deps.db, row.id, {
+          kind: "npm",
+          specKind,
+        })
+      ) {
+        throw new Error(`plugin "${row.id}" disappeared during normalization`);
+      }
+    }
+    return {
+      packageName: row.sourceNpmPackage,
+      registry: row.sourceNpmRegistry,
+      requestedSpec: row.sourceNpmRequestedSpec,
+      specKind,
+    };
+  }
+
+  function installedUpdateVersion(
+    row: InstalledPluginRow,
+  ): PluginResolvedUpdateVersion {
+    if (row.sourceKind === "npm") {
+      if (row.sourceNpmPackage === null || row.npmResolvedVersion === null) {
+        throw new Error(`plugin "${row.id}" has corrupt normalized npm state`);
+      }
+      return {
+        version: row.npmResolvedVersion,
+        display: `${row.sourceNpmPackage}@${row.npmResolvedVersion}`,
+      };
+    }
+    if (row.sourceKind === "git") {
+      if (
+        row.sourceGitUrl === null ||
+        row.sourceGitRequestedRef === null ||
+        row.gitResolvedCommit === null
+      ) {
+        throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
+      }
+      return gitResolvedVersion({
+        url: row.sourceGitUrl,
+        ref: row.sourceGitRequestedRef,
+        commit: row.gitResolvedCommit,
+      });
+    }
+    return { version: row.version, display: row.source };
+  }
+
+  function problemMessages(problems: CompatibilityProblem[]): string[] {
+    return problems.map((problem) => problem.message);
+  }
+
+  function checkEntryFromResolution(
+    id: string,
+    installed: PluginResolvedUpdateVersion,
+    resolution: PluginUpdateResolution,
+  ): PluginUpdateCheckEntry {
+    const dev = resolution.devMode ? { devMode: true as const } : {};
+    const packagedDetail =
+      resolution.packagedBuildProblems !== undefined &&
+      resolution.packagedBuildProblems.length > 0
+        ? `dev mode selected this candidate; a packaged build would reject it: ${problemMessages(resolution.packagedBuildProblems).join("; ")}`
+        : undefined;
+    const blocked =
+      resolution.outcome === "incompatible"
+        ? {
+            version: resolution.newest.version,
+            reasons: problemMessages(resolution.reasons),
+          }
+        : resolution.blocked !== undefined
+          ? {
+              version: resolution.blocked.version.version,
+              reasons: problemMessages(resolution.blocked.reasons),
+            }
+          : undefined;
+    const common = {
+      id,
+      outcome: resolution.outcome,
+      installed,
+      ...dev,
+      ...(blocked ? { blocked } : {}),
+      ...(packagedDetail ? { detail: packagedDetail } : {}),
+    };
+    if (resolution.outcome === "update-available") {
+      return { ...common, candidate: resolution.candidate };
+    }
+    if (resolution.outcome === "unavailable") {
+      return { ...common, detail: resolution.detail };
+    }
+    return common;
+  }
+
+  function persistUpdateEntry(entry: PluginUpdateCheckEntry): void {
+    const changed = setInstalledPluginUpdateState(deps.db, entry.id, {
+      lastCheckAt: Date.now(),
+      availableCompatibleVersion: entry.candidate?.version ?? null,
+      newestIncompatibleVersion: entry.blocked?.version ?? null,
+      statusDetail: JSON.stringify(entry),
+      ignoredVersion: null,
+    });
+    if (!changed) {
+      throw new Error(`plugin "${entry.id}" disappeared during update check`);
+    }
+  }
+
+  async function stageGitCandidate(args: {
+    row: InstalledPluginRow;
+    commit: string;
+    promote: boolean;
+  }): Promise<
+    | {
+        outcome: "valid";
+        manifest: PluginManifest;
+        devMode: boolean;
+        packagedBuildProblems: CompatibilityProblem[];
+      }
+    | {
+        outcome: "incompatible";
+        manifest: PluginManifest;
+        devMode: boolean;
+        reasons: CompatibilityProblem[];
+      }
+    | { outcome: "invalid"; detail: string }
+  > {
+    if (args.row.sourceGitUrl === null) {
+      throw new Error(
+        `plugin "${args.row.id}" has corrupt normalized git state`,
+      );
+    }
+    const stagingDir = `${args.row.rootDir}.update-staging`;
+    await rm(stagingDir, { recursive: true, force: true });
+    await mkdir(dirname(args.row.rootDir), { recursive: true });
+    try {
+      await runInstallCommand(
+        "git",
+        ["clone", "--quiet", args.row.sourceGitUrl, stagingDir],
+        {
+          notFoundHint:
+            '"git" was not found on PATH — git plugin updates require git',
+        },
+      );
+      await runInstallCommand("git", [
+        "-C",
+        stagingDir,
+        "checkout",
+        "--quiet",
+        "--detach",
+        args.commit,
+      ]);
+      const pluginRoot =
+        args.row.sourceGitSubdirectory === null
+          ? stagingDir
+          : join(stagingDir, args.row.sourceGitSubdirectory);
+      let manifest: PluginManifest;
+      try {
+        manifest = await readPluginManifest(pluginRoot);
+      } catch (error) {
+        return {
+          outcome: "invalid",
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+      if (manifest.id !== args.row.id) {
+        return {
+          outcome: "invalid",
+          detail: `candidate manifest id changed from "${args.row.id}" to "${manifest.id}"`,
+        };
+      }
+      const compatibility = evaluateCompatibility({
+        bbRange: manifest.bbEngineRange,
+        sdkRange: manifest.bbPluginSdkRange,
+        appVersion: deps.appVersion,
+      });
+      if (compatibility.effective.length > 0) {
+        return {
+          outcome: "incompatible",
+          manifest,
+          devMode: compatibility.devMode,
+          reasons: compatibility.effective,
+        };
+      }
+      try {
+        await validateInstallDir({
+          rootDir: pluginRoot,
+          source: args.row.source,
+          refuseEngineMismatch: true,
+        });
+      } catch (error) {
+        return {
+          outcome: "invalid",
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+      if (args.promote) await swapDirIntoPlace(stagingDir, args.row.rootDir);
+      return {
+        outcome: "valid",
+        manifest,
+        devMode: compatibility.devMode,
+        packagedBuildProblems: compatibility.packaged,
+      };
+    } finally {
+      await rm(stagingDir, { recursive: true, force: true });
+    }
+  }
+
+  async function resolveUpdateForRow(args: {
+    row: InstalledPluginRow;
+    npmRun: ReturnType<typeof createNpmResolverRun>;
+    npmIntentOverride?: NpmSourceIntentForResolution;
+  }): Promise<PluginUpdateResolution> {
+    const installed = installedUpdateVersion(args.row);
+    if (args.row.sourceKind === "path" || args.row.sourceKind === "builtin") {
+      return { outcome: "pinned", current: installed };
+    }
+    if (args.row.sourceKind === "npm") {
+      return resolveNpmUpdate({
+        intent: args.npmIntentOverride ?? npmIntentForRow(args.row),
+        current: installed,
+        appVersion: deps.appVersion,
+        run: args.npmRun,
+        includePinned: args.npmIntentOverride !== undefined,
+      });
+    }
+    if (
+      args.row.sourceGitUrl === null ||
+      args.row.sourceGitRequestedRef === null ||
+      args.row.gitResolvedCommit === null
+    ) {
+      throw new Error(
+        `plugin "${args.row.id}" has corrupt normalized git state`,
+      );
+    }
+    let refKind = args.row.sourceGitRefKind;
+    if (refKind === null) {
+      const classified = await resolveGitRef({
+        url: args.row.sourceGitUrl,
+        ref: args.row.sourceGitRequestedRef,
+      });
+      if (classified.outcome === "unavailable") return classified;
+      refKind = classified.refKind;
+      if (
+        !setInstalledPluginSourceClassification(deps.db, args.row.id, {
+          kind: "git",
+          refKind,
+        })
+      ) {
+        throw new Error(
+          `plugin "${args.row.id}" disappeared during normalization`,
+        );
+      }
+    }
+    const remote = await resolveGitUpdate({
+      url: args.row.sourceGitUrl,
+      ref: args.row.sourceGitRequestedRef,
+      refKind,
+      currentCommit: args.row.gitResolvedCommit,
+    });
+    if (remote.outcome !== "update-available") return remote;
+    const staged = await stageGitCandidate({
+      row: args.row,
+      commit: remote.candidate.version,
+      promote: false,
+    });
+    if (staged.outcome === "invalid") {
+      return { outcome: "unavailable", detail: staged.detail };
+    }
+    if (staged.outcome === "incompatible") {
+      return {
+        outcome: "incompatible",
+        current: remote.current,
+        newest: remote.candidate,
+        reasons: staged.reasons,
+        ...(staged.devMode ? { devMode: true } : {}),
+      };
+    }
+    return {
+      ...remote,
+      ...(staged.devMode ? { devMode: true } : {}),
+      ...(staged.packagedBuildProblems.length > 0
+        ? { packagedBuildProblems: staged.packagedBuildProblems }
+        : {}),
+    };
+  }
+
+  async function activateManagedUpdate(args: {
+    row: InstalledPluginRow;
+    rootDir: string;
+    manifest: PluginManifest;
+    source: string;
+    sourceIntent: PluginSourceIntent;
+    exactResolution: PluginExactResolution;
+    updatePolicy: "manual" | "compatible";
+  }): Promise<void> {
+    let provenance: PluginProvenance;
+    if (args.row.provenance === "marketplace") {
+      if (
+        args.row.marketplaceId === null ||
+        args.row.marketplaceEntryId === null
+      ) {
+        throw new Error(
+          `plugin "${args.row.id}" has corrupt marketplace provenance`,
+        );
+      }
+      provenance = {
+        kind: "marketplace",
+        marketplaceId: args.row.marketplaceId,
+        entryId: args.row.marketplaceEntryId,
+      };
+    } else {
+      provenance = { kind: args.row.provenance };
+    }
+    upsertInstalledPlugin(deps.db, {
+      id: args.row.id,
+      source: args.source,
+      provenance,
+      sourceIntent: args.sourceIntent,
+      exactResolution: args.exactResolution,
+      updatePolicy: args.updatePolicy,
+      updateState: emptyPluginUpdateState(),
+      activeArtifactId: null,
+      rootDir: args.rootDir,
+      version: args.manifest.version,
+      enabled: args.row.enabled,
+    });
+    await disposeOne(args.row.id);
+    const current = getInstalledPlugin(deps.db, args.row.id);
+    if (current && shouldLoadRow(current)) await loadOne(current);
+    else if (current) await unloadOneForExperimentGate(current);
+    await syncCliSkill();
+    notifyPluginsChanged();
+  }
+
+  async function applyNpmCandidate(args: {
+    row: InstalledPluginRow;
+    intent: NpmSourceIntentForResolution;
+    candidate: NpmResolvedCandidate;
+  }): Promise<void> {
+    const oldIntent = npmIntentForRow(args.row);
+    const oldPrefix = npmInstallPrefix(
+      deps.dataDir,
+      oldIntent.packageName,
+      oldIntent.requestedSpec || "latest",
+    );
+    const targetPrefix = npmInstallPrefix(
+      deps.dataDir,
+      args.intent.packageName,
+      args.intent.requestedSpec || "latest",
+    );
+    const stagingPrefix = `${targetPrefix}.update-staging`;
+    await rm(stagingPrefix, { recursive: true, force: true });
+    await mkdir(stagingPrefix, { recursive: true });
+    try {
+      await runInstallCommand(
+        "npm",
+        [
+          "install",
+          "--prefix",
+          stagingPrefix,
+          "--ignore-scripts",
+          "--omit=optional",
+          "--no-audit",
+          "--no-fund",
+          "--registry",
+          args.intent.registry,
+          `${args.intent.packageName}@${args.candidate.version}`,
+        ],
+        {
+          notFoundHint:
+            '"npm" was not found on PATH — npm plugin updates require npm',
+        },
+      );
+      const stagedRoot = join(
+        stagingPrefix,
+        "node_modules",
+        ...args.intent.packageName.split("/"),
+      );
+      const manifest = await validateInstallDir({
+        rootDir: stagedRoot,
+        source: args.row.source,
+        refuseEngineMismatch: true,
+      });
+      if (manifest.id !== args.row.id) {
+        throw new Error(
+          `update refused: candidate manifest id changed from "${args.row.id}" to "${manifest.id}"`,
+        );
+      }
+      const installedIntegrity = await readNpmIntegrity(
+        stagingPrefix,
+        args.intent.packageName,
+      );
+      if (
+        installedIntegrity !== null &&
+        installedIntegrity !== args.candidate.integrity
+      ) {
+        throw new Error(
+          `update refused: integrity for ${args.candidate.display} did not match registry metadata`,
+        );
+      }
+      await swapDirIntoPlace(stagingPrefix, targetPrefix);
+      const targetRoot = join(
+        targetPrefix,
+        "node_modules",
+        ...args.intent.packageName.split("/"),
+      );
+      await activateManagedUpdate({
+        row: args.row,
+        rootDir: targetRoot,
+        manifest,
+        source:
+          args.intent.specKind === "default"
+            ? `npm:${args.intent.packageName}`
+            : `npm:${args.intent.packageName}@${args.intent.requestedSpec}`,
+        sourceIntent: { kind: "npm", ...args.intent },
+        exactResolution: {
+          kind: "npm",
+          version: args.candidate.version,
+          integrity: args.candidate.integrity,
+        },
+        updatePolicy:
+          args.intent.specKind === "exact" ? "manual" : "compatible",
+      });
+      if (oldPrefix !== targetPrefix) {
+        await rm(oldPrefix, { recursive: true, force: true });
+      }
+    } catch (error) {
+      await rm(stagingPrefix, { recursive: true, force: true });
+      throw error;
+    }
   }
 
   function findBuiltinPlugin(
@@ -2259,19 +2810,32 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           packageName: parsed.name,
           registry:
             process.env.npm_config_registry ?? "https://registry.npmjs.org",
-          requestedSpec: parsed.version,
+          requestedSpec: parsed.spec,
+          specKind: parsed.specKind,
         };
         exactResolution = {
           kind: "npm",
-          version: parsed.version,
+          version: parsed.specKind === "exact" ? parsed.spec : row.version,
           integrity: null,
         };
       } else {
+        let refKind: GitRefKind = isCommitSha(parsed.ref) ? "commit" : "branch";
+        try {
+          const remote = await resolveGitRef({
+            url: parsed.url,
+            ref: parsed.ref,
+          });
+          if (remote.outcome === "resolved") refKind = remote.refKind;
+        } catch {
+          // Preserve startup for an offline legacy install. Non-SHA legacy
+          // refs historically refreshed, so branch is the safe fallback.
+        }
         sourceIntent = {
           kind: "git",
           url: parsed.url,
           subdirectory: null,
           requestedRef: parsed.ref,
+          refKind,
         };
         let commit: string | null = isCommitSha(parsed.ref) ? parsed.ref : null;
         try {
@@ -2569,6 +3133,267 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     installPath: installPathSource,
 
+    async checkForUpdates(id) {
+      const rows =
+        id === undefined
+          ? listInstalledPlugins(deps.db)
+          : (() => {
+              const row = getInstalledPlugin(deps.db, id);
+              if (!row) throw new Error(`unknown plugin "${id}"`);
+              return [row];
+            })();
+      const npmRun = createNpmResolverRun();
+      return Promise.all(
+        rows
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((row) =>
+            withLifecycleLock(row.id, async () => {
+              const current = getInstalledPlugin(deps.db, row.id);
+              if (!current) {
+                throw new Error(
+                  `plugin "${row.id}" disappeared during update check`,
+                );
+              }
+              const installed = installedUpdateVersion(current);
+              const resolution = await resolveUpdateForRow({
+                row: current,
+                npmRun,
+              });
+              const entry = checkEntryFromResolution(
+                current.id,
+                installed,
+                resolution,
+              );
+              persistUpdateEntry(entry);
+              return entry;
+            }),
+          ),
+      );
+    },
+
+    listUpdateResults() {
+      return listInstalledPlugins(deps.db)
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((row) => {
+          if (
+            row.lastUpdateCheckAt === null ||
+            row.updateStatusDetail === null
+          ) {
+            return {
+              id: row.id,
+              outcome: "unavailable" as const,
+              installed: installedUpdateVersion(row),
+              detail: "updates have not been checked yet",
+            };
+          }
+          let json: unknown;
+          try {
+            json = JSON.parse(row.updateStatusDetail);
+          } catch {
+            throw new Error(
+              `plugin "${row.id}" has corrupt persisted update state`,
+            );
+          }
+          const parsed = pluginUpdateCheckEntrySchema.safeParse(json);
+          if (!parsed.success || parsed.data.id !== row.id) {
+            throw new Error(
+              `plugin "${row.id}" has corrupt persisted update state`,
+            );
+          }
+          return parsed.data;
+        });
+    },
+
+    async applyUpdate(id, options) {
+      return withLifecycleLock(id, async () => {
+        const row = getInstalledPlugin(deps.db, id);
+        if (!row) return { ok: false, error: `unknown plugin "${id}"` };
+        const from = installedUpdateVersion(row);
+        if (
+          options.latest &&
+          (row.sourceKind === "path" || row.sourceKind === "builtin")
+        ) {
+          return {
+            ok: false,
+            error: `plugin "${id}" uses ${row.sourceKind}: source and cannot track registry updates`,
+          };
+        }
+        const npmRun = createNpmResolverRun();
+        const originalNpmIntent =
+          row.sourceKind === "npm" ? npmIntentForRow(row) : undefined;
+        const npmIntent =
+          originalNpmIntent !== undefined && options.latest
+            ? {
+                ...originalNpmIntent,
+                requestedSpec: "",
+                specKind: "default" as const,
+              }
+            : originalNpmIntent;
+        const sourceIntentChanged =
+          originalNpmIntent !== undefined &&
+          npmIntent !== undefined &&
+          originalNpmIntent.specKind !== npmIntent.specKind;
+        const resolution = await resolveUpdateForRow({
+          row,
+          npmRun,
+          ...(sourceIntentChanged && npmIntent !== undefined
+            ? { npmIntentOverride: npmIntent }
+            : {}),
+        });
+        const checked = checkEntryFromResolution(id, from, resolution);
+        persistUpdateEntry(checked);
+
+        if (resolution.outcome === "pinned") {
+          return {
+            ok: false,
+            error:
+              row.sourceKind === "npm"
+                ? `plugin "${id}" is pinned; pass latest=true to widen its npm source intent`
+                : `plugin "${id}" is pinned to a git ref; install a branch source to track updates`,
+          };
+        }
+        if (resolution.outcome === "incompatible") {
+          return {
+            ok: false,
+            error: `${resolution.newest.display} is incompatible: ${problemMessages(resolution.reasons).join("; ")}`,
+          };
+        }
+        if (resolution.outcome === "unavailable") {
+          return { ok: false, error: resolution.detail };
+        }
+        const to =
+          resolution.outcome === "update-available"
+            ? resolution.candidate
+            : from;
+        if (options.dryRun) {
+          return {
+            ok: true,
+            result: {
+              applied: false,
+              dryRun: true,
+              from,
+              to,
+              outcome: resolution.outcome,
+              ...(sourceIntentChanged
+                ? {
+                    detail:
+                      "would widen npm source intent to newest compatible stable",
+                  }
+                : {}),
+            },
+          };
+        }
+        if (resolution.outcome === "current" && !sourceIntentChanged) {
+          return {
+            ok: true,
+            result: {
+              applied: false,
+              dryRun: false,
+              from,
+              outcome: "current",
+            },
+          };
+        }
+
+        if (row.sourceKind === "npm" && npmIntent !== undefined) {
+          const selected = await selectNpmCandidate({
+            intent: npmIntent,
+            appVersion: deps.appVersion,
+            run: npmRun,
+          });
+          if (selected.outcome !== "selected") {
+            throw new Error(
+              `npm candidate changed during update: ${selected.outcome}`,
+            );
+          }
+          await applyNpmCandidate({
+            row,
+            intent: npmIntent,
+            candidate: selected.candidate,
+          });
+        } else if (
+          row.sourceKind === "git" &&
+          resolution.outcome === "update-available"
+        ) {
+          const persistedRefKind =
+            row.sourceGitRefKind ??
+            getInstalledPlugin(deps.db, id)?.sourceGitRefKind ??
+            null;
+          if (
+            row.sourceGitUrl === null ||
+            row.sourceGitRequestedRef === null ||
+            persistedRefKind === null
+          ) {
+            throw new Error(`plugin "${id}" has corrupt normalized git state`);
+          }
+          const staged = await stageGitCandidate({
+            row,
+            commit: resolution.candidate.version,
+            promote: true,
+          });
+          if (staged.outcome !== "valid") {
+            const detail =
+              staged.outcome === "invalid"
+                ? staged.detail
+                : problemMessages(staged.reasons).join("; ");
+            return { ok: false, error: `update refused: ${detail}` };
+          }
+          const targetRoot =
+            row.sourceGitSubdirectory === null
+              ? row.rootDir
+              : join(row.rootDir, row.sourceGitSubdirectory);
+          await activateManagedUpdate({
+            row,
+            rootDir: targetRoot,
+            manifest: staged.manifest,
+            source: row.source,
+            sourceIntent: {
+              kind: "git",
+              url: row.sourceGitUrl,
+              subdirectory: row.sourceGitSubdirectory,
+              requestedRef: row.sourceGitRequestedRef,
+              refKind: persistedRefKind,
+            },
+            exactResolution: {
+              kind: "git",
+              commit: resolution.candidate.version,
+            },
+            updatePolicy: "compatible",
+          });
+        }
+        const updatedRow = getInstalledPlugin(deps.db, id);
+        if (!updatedRow) {
+          throw new Error(`plugin "${id}" disappeared after update`);
+        }
+        const updatedVersion = installedUpdateVersion(updatedRow);
+        persistUpdateEntry(
+          checkEntryFromResolution(id, updatedVersion, {
+            outcome: "current",
+            current: updatedVersion,
+            ...(semver.coerce(deps.appVersion)?.version === "0.0.0"
+              ? { devMode: true }
+              : {}),
+          }),
+        );
+        return {
+          ok: true,
+          result: {
+            applied: true,
+            dryRun: false,
+            from,
+            to,
+            outcome: "updated",
+            ...(sourceIntentChanged
+              ? {
+                  detail:
+                    "npm source intent widened to newest compatible stable",
+                }
+              : {}),
+          },
+        };
+      });
+    },
+
     async remove(id) {
       const row = getInstalledPlugin(deps.db, id);
       await withLifecycleLock(id, () => disposeOne(id));
@@ -2605,7 +3430,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               ? npmInstallPrefix(
                   deps.dataDir,
                   row.sourceNpmPackage,
-                  row.sourceNpmRequestedSpec,
+                  row.sourceNpmRequestedSpec || "latest",
                 )
               : undefined;
         if (managedDir !== undefined) {

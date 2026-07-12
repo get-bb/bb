@@ -14,12 +14,18 @@ export type ParsedPluginSource =
       kind: "git";
       /** Clone URL (https, or an on-disk repo path). */
       url: string;
-      /** Pinned ref — branch, tag, or commit sha. Always required. */
+      /** Requested branch, tag, or commit. Classified with ls-remote. */
       ref: string;
       /** Managed dir relative to <dataDir>/plugins/git: "<host>/<path>@<ref>". */
       installDir: string;
     }
-  | { kind: "npm"; name: string; version: string };
+  | {
+      kind: "npm";
+      name: string;
+      /** Empty for an omitted spec (`npm:pkg`). */
+      spec: string;
+      specKind: "default" | "exact" | "tag" | "range";
+    };
 
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 // Loose npm package-name shape; enough to keep names safe as path segments.
@@ -46,7 +52,7 @@ function parseGitSource(spec: string): ParsedPluginSource {
   const at = spec.lastIndexOf("@");
   if (at <= 0 || at === spec.length - 1) {
     throw new Error(
-      "git installs must pin a ref: git:<url>@<ref> (branch, tag, or commit sha)",
+      "git installs must specify a ref: git:<url>@<ref> (branch, tag, or commit sha)",
     );
   }
   const urlish = spec.slice(0, at);
@@ -88,22 +94,28 @@ function parseGitSource(spec: string): ParsedPluginSource {
 
 function parseNpmSource(spec: string): ParsedPluginSource {
   const at = spec.lastIndexOf("@");
-  if (at <= 0 || at === spec.length - 1) {
-    throw new Error(
-      "npm installs must pin an exact version: npm:<name>@<version>",
-    );
+  const hasSpec = at > 0 && at < spec.length - 1;
+  if (at > 0 && at === spec.length - 1) {
+    throw new Error(`npm source has an empty version spec: "${spec}"`);
   }
-  const name = spec.slice(0, at);
-  const version = spec.slice(at + 1);
+  const name = hasSpec ? spec.slice(0, at) : spec;
+  const requestedSpec = hasSpec ? spec.slice(at + 1) : "";
   if (!NPM_NAME_PATTERN.test(name)) {
     throw new Error(`invalid npm package name "${name}"`);
   }
-  if (semver.valid(version) === null) {
-    throw new Error(
-      `npm installs must pin an exact version, got "${version}" — ranges and tags are not allowed`,
-    );
+  if (requestedSpec.length === 0) {
+    return { kind: "npm", name, spec: "", specKind: "default" };
   }
-  return { kind: "npm", name, version };
+  if (semver.valid(requestedSpec) !== null) {
+    return { kind: "npm", name, spec: requestedSpec, specKind: "exact" };
+  }
+  if (semver.validRange(requestedSpec) !== null) {
+    return { kind: "npm", name, spec: requestedSpec, specKind: "range" };
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9._-]*$/.test(requestedSpec)) {
+    return { kind: "npm", name, spec: requestedSpec, specKind: "tag" };
+  }
+  throw new Error(`invalid npm version, range, or dist-tag "${requestedSpec}"`);
 }
 
 function parseBuiltinSource(spec: string): ParsedPluginSource {

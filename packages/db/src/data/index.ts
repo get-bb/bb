@@ -178,6 +178,8 @@ export {
   normalizeInstalledPluginRegistration,
   setInstalledPluginActiveArtifact,
   setInstalledPluginEnabled,
+  setInstalledPluginUpdateState,
+  setInstalledPluginSourceClassification,
   upsertInstalledPlugin,
   type InstalledPluginRow,
   type LegacyInstalledPluginRegistration,

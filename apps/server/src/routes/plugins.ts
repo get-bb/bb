@@ -13,6 +13,7 @@ import type {
 import { parsePluginSource } from "../services/plugins/install-sources.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
+import { z } from "zod";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
 export interface PluginRoutesDeps {
@@ -438,7 +439,78 @@ export function registerPluginRoutes(
     return context.json({ ok: true, lines });
   });
 
-  // Body: { source: "path:<dir>" | "git:<url>@<ref>" | "npm:<name>@<version>" }
+  const updateCheckBodySchema = z
+    .object({ id: z.string().min(1).optional() })
+    .strict();
+  const applyUpdateBodySchema = z
+    .object({
+      dryRun: z.boolean().optional(),
+      latest: z.boolean().optional(),
+    })
+    .strict();
+
+  app.post("/plugins/updates/check", async (context) => {
+    if (!plugins.isEnabled()) {
+      return context.json({ error: DISABLED.error }, 422);
+    }
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = updateCheckBodySchema.safeParse(json);
+    if (!body.success) {
+      return context.json({ error: 'expected { "id"?: string }' }, 400);
+    }
+    try {
+      const results = await plugins.checkForUpdates(body.data.id);
+      return context.json({ results });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+  });
+
+  app.get("/plugins/updates", (context) => {
+    if (!plugins.isEnabled()) {
+      return context.json({ error: DISABLED.error }, 422);
+    }
+    try {
+      return context.json({ results: plugins.listUpdateResults() });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+  });
+
+  app.post("/plugins/:id/update", async (context) => {
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json({ error: DISABLED.error }, 422);
+    }
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = applyUpdateBodySchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        { error: 'expected { "dryRun"?: boolean, "latest"?: boolean }' },
+        400,
+      );
+    }
+    try {
+      const outcome = await plugins.applyUpdate(context.req.param("id"), {
+        dryRun: body.data.dryRun ?? false,
+        latest: body.data.latest ?? false,
+      });
+      if (!outcome.ok) return context.json({ error: outcome.error }, 422);
+      return context.json(outcome.result);
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+  });
+
+  // Body: { source: "path:<dir>" | "git:<url>@<ref>" | "npm:<name>[@<spec>]" }
   // (bare paths are treated as path: sources).
   app.post("/plugins/install", async (context) => {
     const body = (await context.req.json().catch(() => null)) as {

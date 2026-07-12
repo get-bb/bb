@@ -56,12 +56,16 @@ interaction data; success prints only the path, variable names, and
 added/updated/unchanged counts.
 
   bb plugin install <src>        Install from a local path, builtin:<name>,
-                                 git:<url>@<ref>, or npm:<name>@<version>
+                                 git:<url>@<ref>, or
+                                 npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —
                                  pass --yes to skip). Managed git:/npm:
                                  installs refuse engines.bb / engines.bbPluginSdk
                                  mismatches, manifest/artifact identity
                                  mismatches, and ids reserved by builtins
+                                 Omitted npm specs, ranges, dist-tags, and git
+                                 branches track; exact npm versions, git tags,
+                                 and git commits are pinned
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources

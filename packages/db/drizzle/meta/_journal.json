@@ -470,6 +470,13 @@
       "when": 1783881499409,
       "tag": "0066_faithful_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1783882382385,
+      "tag": "0067_milky_the_order",
+      "breakpoints": true
     }
   ]
 }

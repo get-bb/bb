@@ -15,12 +15,14 @@ export type PluginSourceIntent =
       packageName: string;
       registry: string;
       requestedSpec: string;
+      specKind: "default" | "exact" | "tag" | "range";
     }
   | {
       kind: "git";
       url: string;
       subdirectory: string | null;
       requestedRef: string;
+      refKind: "branch" | "tag" | "commit";
     };
 
 export type PluginExactResolution =
@@ -55,9 +57,11 @@ export interface InstalledPluginRow {
   sourceNpmPackage: string | null;
   sourceNpmRegistry: string | null;
   sourceNpmRequestedSpec: string | null;
+  sourceNpmSpecKind: "default" | "exact" | "tag" | "range" | null;
   sourceGitUrl: string | null;
   sourceGitSubdirectory: string | null;
   sourceGitRequestedRef: string | null;
+  sourceGitRefKind: "branch" | "tag" | "commit" | null;
   npmResolvedVersion: string | null;
   npmIntegrity: string | null;
   gitResolvedCommit: string | null;
@@ -137,6 +141,10 @@ function normalizedColumns(
       plugin.sourceIntent.kind === "npm"
         ? plugin.sourceIntent.requestedSpec
         : null,
+    sourceNpmSpecKind:
+      plugin.sourceIntent.kind === "npm"
+        ? plugin.sourceIntent.specKind
+        : null,
     sourceGitUrl:
       plugin.sourceIntent.kind === "git" ? plugin.sourceIntent.url : null,
     sourceGitSubdirectory:
@@ -147,6 +155,8 @@ function normalizedColumns(
       plugin.sourceIntent.kind === "git"
         ? plugin.sourceIntent.requestedRef
         : null,
+    sourceGitRefKind:
+      plugin.sourceIntent.kind === "git" ? plugin.sourceIntent.refKind : null,
     npmResolvedVersion:
       plugin.exactResolution.kind === "npm"
         ? plugin.exactResolution.version
@@ -274,6 +284,51 @@ export function setInstalledPluginEnabled(
     .update(installedPlugins)
     .set({ enabled, updatedAt: Date.now() })
     .where(eq(installedPlugins.id, id))
+    .run();
+  return result.changes > 0;
+}
+
+export function setInstalledPluginUpdateState(
+  db: DbConnection,
+  id: string,
+  state: PluginUpdateState,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      lastUpdateCheckAt: state.lastCheckAt,
+      availableCompatibleVersion: state.availableCompatibleVersion,
+      newestIncompatibleVersion: state.newestIncompatibleVersion,
+      updateStatusDetail: state.statusDetail,
+      ignoredVersion: state.ignoredVersion,
+      updatedAt: Date.now(),
+    })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
+}
+
+export function setInstalledPluginSourceClassification(
+  db: DbConnection,
+  id: string,
+  classification:
+    | { kind: "npm"; specKind: "default" | "exact" | "tag" | "range" }
+    | { kind: "git"; refKind: "branch" | "tag" | "commit" },
+): boolean {
+  const values =
+    classification.kind === "npm"
+      ? { sourceNpmSpecKind: classification.specKind }
+      : { sourceGitRefKind: classification.refKind };
+  const result = db
+    .update(installedPlugins)
+    .set({ ...values, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(installedPlugins.id, id),
+        eq(installedPlugins.sourceKind, classification.kind),
+        isNull(installedPlugins.removedAt),
+      ),
+    )
     .run();
   return result.changes > 0;
 }

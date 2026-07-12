@@ -39,6 +39,7 @@ describe("normalized plugin persistence", () => {
         packageName: "bb-plugin-linear",
         registry: "https://registry.npmjs.org",
         requestedSpec: "^1.2.0",
+        specKind: "range",
       },
       exactResolution: {
         kind: "npm",
@@ -81,6 +82,7 @@ describe("normalized plugin persistence", () => {
       marketplaceEntryId: "linear",
       sourceKind: "npm",
       sourceNpmRequestedSpec: "^1.2.0",
+      sourceNpmSpecKind: "range",
       npmResolvedVersion: "1.2.3",
       activeArtifactId: "artifact-1",
     });

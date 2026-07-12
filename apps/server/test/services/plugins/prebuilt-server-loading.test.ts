@@ -26,6 +26,7 @@ function gitPersistence(url: string, requestedRef: string) {
       url,
       subdirectory: null,
       requestedRef,
+      refKind: "branch" as const,
     },
     exactResolution: { kind: "git" as const, commit: "test-commit" },
     updatePolicy: "manual" as const,
