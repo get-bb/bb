@@ -61,6 +61,11 @@ export interface NpmSourceIntentForResolution {
 
 export interface NpmResolvedCandidate extends PluginResolvedUpdateVersion {
   integrity: string;
+  plugin: {
+    id: string;
+    displayName: string | undefined;
+    description: string | undefined;
+  };
   engines: {
     bb: string | undefined;
     bbPluginSdk: string | undefined;
@@ -68,7 +73,10 @@ export interface NpmResolvedCandidate extends PluginResolvedUpdateVersion {
 }
 
 const packumentVersionSchema = z.object({
+  name: z.string().optional(),
   version: z.string(),
+  description: z.string().optional(),
+  bb: z.object({ displayName: z.string().optional() }).optional(),
   engines: z
     .object({
       bb: z.string().optional(),
@@ -307,6 +315,11 @@ export async function selectNpmCandidate(args: {
       version,
       display: npmDisplay(args.intent.packageName, version),
       integrity: metadata.dist?.integrity ?? "",
+      plugin: {
+        id: metadata.name ?? args.intent.packageName,
+        displayName: metadata.bb?.displayName,
+        description: metadata.description,
+      },
       engines: {
         bb: metadata.engines?.bb,
         bbPluginSdk: metadata.engines?.bbPluginSdk,

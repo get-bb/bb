@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
@@ -36,6 +37,7 @@ import {
   deletePluginSchedules,
   getInstalledPluginRegistration,
   getInstalledPlugin,
+  getMarketplace,
   getPluginArtifactByResolution,
   getThread,
   listDuePluginSchedules,
@@ -43,11 +45,14 @@ import {
   listIncompletePluginRollbackSnapshots,
   listUnnormalizedPluginRegistrations,
   listPluginSchedules,
+  listRecentPluginArtifacts,
   markInstalledPluginRemoved,
   normalizeInstalledPluginRegistration,
   prunePluginSchedules,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
+  setInstalledPluginIgnoredVersion,
+  setInstalledPluginUpdatePolicy,
   setInstalledPluginUpdateState,
   setInstalledPluginSourceClassification,
   setInstalledPluginQuarantine,
@@ -213,6 +218,20 @@ export interface PluginListEntry {
   source: string;
   rootDir: string;
   version: string;
+  provenance: "builtin" | "direct" | "marketplace";
+  marketplaceName?: string;
+  sourceDisplay: string;
+  updatePolicy: PluginUpdatePolicy;
+  updateState: {
+    outcome?: PluginUpdateCheckEntry["outcome"];
+    availableVersion?: string;
+    blockedVersion?: string;
+    blockedReasons?: string[];
+    lastCheckAt?: number;
+    ignoredVersion?: string;
+    quarantined?: boolean;
+    lastFailure?: { version: string; at: number; detail: string };
+  };
   enabled: boolean;
   /** Manifest description (package.json), null when not currently loaded. */
   description: string | null;
@@ -480,6 +499,30 @@ export interface PluginApplyUpdateResult {
   detail?: string;
 }
 
+export interface PluginInstallPreview {
+  plugin?: { id: string; displayName?: string; description?: string };
+  resolved: { display: string; version?: string; commit?: string };
+  compatibility: {
+    outcome: "compatible" | "incompatible";
+    devMode?: true;
+    problems: string[];
+  };
+  updatePolicy: PluginUpdatePolicy;
+  updatePolicyDisplay: string;
+  skipped?: Array<{ version: string; reason: string }>;
+  warnings?: string[];
+}
+
+export interface PluginSourceView {
+  requested: string;
+  resolved: string;
+  integrity?: string;
+  registry?: string;
+  engines: { bb?: string; bbPluginSdk?: string };
+  installedAt?: number;
+  history: Array<{ version: string; activatedAt: number }>;
+}
+
 export type PluginApplyUpdateOutcome =
   | { ok: true; result: PluginApplyUpdateResult }
   | { ok: false; error: string };
@@ -516,6 +559,15 @@ export interface PluginService {
    * spec refreshes the managed files.
    */
   install(source: string): Promise<PluginListEntry>;
+  previewInstall(source: string): Promise<PluginInstallPreview>;
+  previewInstallFromMarketplace(args: {
+    source: string;
+    updatePolicy: PluginUpdatePolicy;
+    plugin: { id: string; displayName: string; description: string };
+    installation?: { engines: { bb?: string; bbPluginSdk?: string } };
+    gitSubdirectory?: string;
+    npmRegistry?: string;
+  }): Promise<PluginInstallPreview>;
   installFromMarketplace(args: {
     source: string;
     marketplaceId: string;
@@ -528,6 +580,15 @@ export interface PluginService {
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   listUpdateResults(): PluginUpdateCheckEntry[];
+  getSource(id: string): Promise<PluginSourceView | undefined>;
+  ignoreVersion(
+    id: string,
+    version: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }>;
+  setUpdatePolicy(
+    id: string,
+    policy: PluginUpdatePolicy,
+  ): Promise<{ ok: true } | { ok: false; error: string }>;
   applyUpdate(
     id: string,
     options: { dryRun: boolean; latest: boolean },
@@ -2324,6 +2385,217 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return rank[requested] < rank[sourceMaximum] ? requested : sourceMaximum;
   }
 
+  function policyPhrase(
+    policy: PluginUpdatePolicy,
+    parsed: ReturnType<typeof parsePluginSource>,
+  ): string {
+    if (policy === "manual") return "pinned";
+    if (parsed.kind === "npm") {
+      const cadence =
+        policy === "patch"
+          ? "patch releases"
+          : policy === "minor"
+            ? "minor releases"
+            : "compatible releases";
+      if (parsed.specKind === "range") {
+        return `tracks ${cadence} in ${parsed.spec}`;
+      }
+      if (parsed.specKind === "tag") {
+        return `tracks ${cadence} on ${parsed.spec}`;
+      }
+      return `tracks ${cadence}`;
+    }
+    if (parsed.kind === "git") return `tracks branch ${parsed.ref}`;
+    return "pinned";
+  }
+
+  function compatibilityView(args: {
+    bb: string | undefined;
+    sdk: string | undefined;
+    installation?: { engines: { bb?: string; bbPluginSdk?: string } };
+  }): PluginInstallPreview["compatibility"] {
+    const manifest = evaluateCompatibility({
+      bbRange: args.bb,
+      sdkRange: args.sdk,
+      appVersion: deps.appVersion,
+    });
+    const catalog =
+      args.installation === undefined
+        ? undefined
+        : evaluateCompatibility({
+            bbRange: args.installation.engines.bb,
+            sdkRange: args.installation.engines.bbPluginSdk,
+            appVersion: deps.appVersion,
+          });
+    const problems = [...manifest.effective, ...(catalog?.effective ?? [])].map(
+      (problem) => problem.message,
+    );
+    const widening = marketplacePolicyWideningProblem(args.installation, {
+      bbEngineRange: args.bb,
+      bbPluginSdkRange: args.sdk,
+    });
+    if (widening !== null) problems.push(widening);
+    return {
+      outcome: problems.length === 0 ? "compatible" : "incompatible",
+      ...(manifest.devMode || catalog?.devMode ? { devMode: true } : {}),
+      problems,
+    };
+  }
+
+  async function resolveNpmPreviewRegistry(
+    packageName: string,
+  ): Promise<string> {
+    const scope = packageName.startsWith("@")
+      ? packageName.slice(0, packageName.indexOf("/"))
+      : null;
+    for (const key of scope === null
+      ? ["registry"]
+      : [`${scope}:registry`, "registry"]) {
+      const value = await runInstallCommand("npm", ["config", "get", key]);
+      if (value.length > 0 && value !== "undefined" && value !== "null") {
+        return value;
+      }
+    }
+    throw new Error(`npm did not resolve a registry for ${packageName}`);
+  }
+
+  async function previewInstallSource(
+    source: string,
+    context: {
+      updatePolicy?: PluginUpdatePolicy;
+      plugin?: { id: string; displayName: string; description: string };
+      installation?: { engines: { bb?: string; bbPluginSdk?: string } };
+      gitSubdirectory?: string;
+      npmRegistry?: string;
+    } = {},
+  ): Promise<PluginInstallPreview> {
+    const parsed = parsePluginSource(source);
+    if (parsed.kind === "npm") {
+      const policy = narrowUpdatePolicy(
+        context.updatePolicy,
+        parsed.specKind === "exact" ? "manual" : "compatible",
+      );
+      const selected = await selectNpmCandidate({
+        intent: {
+          packageName: parsed.name,
+          registry:
+            context.npmRegistry ??
+            (await resolveNpmPreviewRegistry(parsed.name)),
+          requestedSpec: parsed.spec,
+          specKind: parsed.specKind,
+        },
+        appVersion: deps.appVersion,
+        run: createNpmResolverRun(),
+      });
+      if (selected.outcome === "unavailable") {
+        throw new Error(selected.detail);
+      }
+      const candidate =
+        selected.outcome === "selected" ? selected.candidate : selected.newest;
+      const compatibility = compatibilityView({
+        bb: candidate.engines.bb,
+        sdk: candidate.engines.bbPluginSdk,
+        installation: context.installation,
+      });
+      const metadata = context.plugin ?? {
+        id: derivePluginId(candidate.plugin.id),
+        ...(candidate.plugin.displayName === undefined
+          ? {}
+          : { displayName: candidate.plugin.displayName }),
+        ...(candidate.plugin.description === undefined
+          ? {}
+          : { description: candidate.plugin.description }),
+      };
+      return {
+        plugin: metadata,
+        resolved: { display: candidate.display, version: candidate.version },
+        compatibility,
+        updatePolicy: policy,
+        updatePolicyDisplay: policyPhrase(policy, parsed),
+        ...(selected.outcome === "selected" && selected.blocked !== undefined
+          ? {
+              skipped: [
+                {
+                  version: selected.blocked.candidate.version,
+                  reason: selected.blocked.reasons
+                    .map((problem) => problem.message)
+                    .join("; "),
+                },
+              ],
+            }
+          : {}),
+      };
+    }
+    if (parsed.kind === "git") {
+      const resolution = await resolveGitRef({
+        url: parsed.url,
+        ref: parsed.ref,
+      });
+      if (resolution.outcome === "unavailable")
+        throw new Error(resolution.detail);
+      const policy = narrowUpdatePolicy(
+        context.updatePolicy,
+        resolution.refKind === "branch" ? "compatible" : "manual",
+      );
+      const catalogCompatibility = compatibilityView({
+        bb: undefined,
+        sdk: undefined,
+        installation: context.installation,
+      });
+      return {
+        ...(context.plugin === undefined ? {} : { plugin: context.plugin }),
+        resolved: {
+          display: gitResolvedVersion({
+            url: parsed.url,
+            ref: parsed.ref,
+            commit: resolution.commit,
+          }).display,
+          commit: resolution.commit,
+        },
+        compatibility: catalogCompatibility,
+        updatePolicy: policy,
+        updatePolicyDisplay: policyPhrase(policy, parsed),
+        warnings: ["manifest not inspected until install"],
+      };
+    }
+    const rootDir =
+      parsed.kind === "builtin"
+        ? builtinPlugins.find((plugin) => plugin.name === parsed.name)?.rootDir
+        : resolve(parsed.path);
+    if (rootDir === undefined) {
+      throw new Error(
+        `unknown builtin plugin "${parsed.kind === "builtin" ? parsed.name : source}"`,
+      );
+    }
+    const manifest = await readPluginManifest(rootDir);
+    const policy = narrowUpdatePolicy(context.updatePolicy, "manual");
+    return {
+      plugin: context.plugin ?? {
+        id: manifest.id,
+        ...(manifest.displayName === null
+          ? {}
+          : { displayName: manifest.displayName }),
+        ...(manifest.description === null
+          ? {}
+          : { description: manifest.description }),
+      },
+      resolved: {
+        display:
+          parsed.kind === "builtin"
+            ? `builtin:${parsed.name}`
+            : `path:${rootDir}`,
+        version: manifest.version,
+      },
+      compatibility: compatibilityView({
+        bb: manifest.bbEngineRange,
+        sdk: manifest.bbPluginSdkRange,
+        installation: context.installation,
+      }),
+      updatePolicy: policy,
+      updatePolicyDisplay: policyPhrase(policy, parsed),
+    };
+  }
+
   async function installPathSource(
     path: string,
     context: InstallContext = directInstallContext,
@@ -2840,6 +3112,34 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     };
   }
 
+  function npmIntentForPolicy(
+    row: InstalledPluginRow,
+  ): NpmSourceIntentForResolution {
+    const intent = npmIntentForRow(row);
+    if (
+      (row.updatePolicy !== "patch" && row.updatePolicy !== "minor") ||
+      intent.specKind === "exact"
+    ) {
+      return intent;
+    }
+    const current =
+      row.npmResolvedVersion === null
+        ? null
+        : semver.parse(row.npmResolvedVersion);
+    if (current === null) return intent;
+    const upper =
+      row.updatePolicy === "patch"
+        ? `${current.major}.${current.minor + 1}.0`
+        : `${current.major + 1}.0.0`;
+    const intentRange =
+      intent.specKind === "range" ? intent.requestedSpec : "*";
+    return {
+      ...intent,
+      requestedSpec: `${intentRange} >=${current.version} <${upper}`,
+      specKind: "range",
+    };
+  }
+
   function installedUpdateVersion(
     row: InstalledPluginRow,
   ): PluginResolvedUpdateVersion {
@@ -2996,13 +3296,54 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return common;
   }
 
-  function persistUpdateEntry(entry: PluginUpdateCheckEntry): void {
+  function applyIgnoredVersion(
+    row: InstalledPluginRow,
+    entry: PluginUpdateCheckEntry,
+  ): { entry: PluginUpdateCheckEntry; ignoredVersion: string | null } {
+    const ignored = row.ignoredVersion;
+    if (ignored === null) return { entry, ignoredVersion: null };
+    const reportedVersions = [
+      entry.candidate?.version,
+      entry.blocked?.version,
+    ].filter((version): version is string => version !== undefined);
+    const newerAppeared = reportedVersions.some((version) => {
+      const candidateSemver = semver.parse(version);
+      const ignoredSemver = semver.parse(ignored);
+      return candidateSemver !== null && ignoredSemver !== null
+        ? semver.gt(candidateSemver, ignoredSemver)
+        : version !== ignored;
+    });
+    if (newerAppeared) return { entry, ignoredVersion: null };
+    const candidateIgnored = entry.candidate?.version === ignored;
+    const blockedIgnored = entry.blocked?.version === ignored;
+    if (!candidateIgnored && !blockedIgnored) {
+      return { entry, ignoredVersion: ignored };
+    }
+    const blocked = blockedIgnored ? undefined : entry.blocked;
+    const ignoredEntry: PluginUpdateCheckEntry = {
+      id: entry.id,
+      outcome:
+        candidateIgnored || entry.outcome === "incompatible"
+          ? "current"
+          : entry.outcome,
+      installed: entry.installed,
+      ...(entry.devMode ? { devMode: true } : {}),
+      ...(blocked === undefined ? {} : { blocked }),
+      detail: `version ${ignored} is ignored`,
+    };
+    return { entry: ignoredEntry, ignoredVersion: ignored };
+  }
+
+  function persistUpdateEntry(
+    entry: PluginUpdateCheckEntry,
+    ignoredVersion: string | null,
+  ): void {
     const changed = setInstalledPluginUpdateState(deps.db, entry.id, {
       lastCheckAt: Date.now(),
       availableCompatibleVersion: entry.candidate?.version ?? null,
       newestIncompatibleVersion: entry.blocked?.version ?? null,
       statusDetail: JSON.stringify(entry),
-      ignoredVersion: null,
+      ignoredVersion,
     });
     if (!changed) {
       throw new Error(`plugin "${entry.id}" disappeared during update check`);
@@ -3293,7 +3634,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
     if (args.row.sourceKind === "npm") {
       return resolveNpmUpdate({
-        intent: args.npmIntentOverride ?? npmIntentForRow(args.row),
+        intent: args.npmIntentOverride ?? npmIntentForPolicy(args.row),
         current: installed,
         appVersion: deps.appVersion,
         run: args.npmRun,
@@ -3643,18 +3984,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   async function applyNpmCandidate(args: {
     row: InstalledPluginRow;
-    intent: NpmSourceIntentForResolution;
+    selectionIntent: NpmSourceIntentForResolution;
+    sourceIntent: NpmSourceIntentForResolution;
+    updatePolicy: PluginUpdatePolicy;
     candidate: NpmResolvedCandidate;
   }): Promise<void> {
     const targetPrefix = npmArtifactCacheDir(
       deps.dataDir,
-      args.intent.packageName,
+      args.selectionIntent.packageName,
       args.candidate.version,
     );
     const targetRoot = join(
       targetPrefix,
       "node_modules",
-      ...args.intent.packageName.split("/"),
+      ...args.selectionIntent.packageName.split("/"),
     );
     return withArtifactLock(targetPrefix, async () => {
       const existingArtifact = getPluginArtifactByResolution(deps.db, {
@@ -3685,24 +4028,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: targetRoot,
           manifest,
           source:
-            args.intent.specKind === "default"
-              ? `npm:${args.intent.packageName}`
-              : `npm:${args.intent.packageName}@${args.intent.requestedSpec}`,
-          sourceIntent: { kind: "npm", ...args.intent },
+            args.sourceIntent.specKind === "default"
+              ? `npm:${args.sourceIntent.packageName}`
+              : `npm:${args.sourceIntent.packageName}@${args.sourceIntent.requestedSpec}`,
+          sourceIntent: { kind: "npm", ...args.sourceIntent },
           exactResolution: {
             kind: "npm",
             version: args.candidate.version,
             integrity: args.candidate.integrity,
           },
-          updatePolicy:
-            args.row.provenance === "marketplace"
-              ? narrowUpdatePolicy(
-                  args.row.updatePolicy,
-                  args.intent.specKind === "exact" ? "manual" : "compatible",
-                )
-              : args.intent.specKind === "exact"
-                ? "manual"
-                : "compatible",
+          updatePolicy: args.updatePolicy,
           artifactId: existingArtifact.id,
         });
         return;
@@ -3723,8 +4058,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             "--no-audit",
             "--no-fund",
             "--registry",
-            args.intent.registry,
-            `${args.intent.packageName}@${args.candidate.version}`,
+            args.selectionIntent.registry,
+            `${args.selectionIntent.packageName}@${args.candidate.version}`,
           ],
           {
             notFoundHint:
@@ -3734,7 +4069,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const stagedRoot = join(
           stagingPrefix,
           "node_modules",
-          ...args.intent.packageName.split("/"),
+          ...args.selectionIntent.packageName.split("/"),
         );
         const manifest = await validateInstallDir({
           rootDir: stagedRoot,
@@ -3748,7 +4083,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
         const installedIntegrity = await readNpmIntegrity(
           stagingPrefix,
-          args.intent.packageName,
+          args.selectionIntent.packageName,
         );
         if (
           installedIntegrity !== null &&
@@ -3779,24 +4114,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: targetRoot,
           manifest,
           source:
-            args.intent.specKind === "default"
-              ? `npm:${args.intent.packageName}`
-              : `npm:${args.intent.packageName}@${args.intent.requestedSpec}`,
-          sourceIntent: { kind: "npm", ...args.intent },
+            args.sourceIntent.specKind === "default"
+              ? `npm:${args.sourceIntent.packageName}`
+              : `npm:${args.sourceIntent.packageName}@${args.sourceIntent.requestedSpec}`,
+          sourceIntent: { kind: "npm", ...args.sourceIntent },
           exactResolution: {
             kind: "npm",
             version: args.candidate.version,
             integrity: args.candidate.integrity,
           },
-          updatePolicy:
-            args.row.provenance === "marketplace"
-              ? narrowUpdatePolicy(
-                  args.row.updatePolicy,
-                  args.intent.specKind === "exact" ? "manual" : "compatible",
-                )
-              : args.intent.specKind === "exact"
-                ? "manual"
-                : "compatible",
+          updatePolicy: args.updatePolicy,
           artifactId: artifact.id,
           beforePersist: async () => {
             await promoteImmutableDir({
@@ -4040,6 +4367,79 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.hub.notifySystem(["plugins-changed"]);
   }
 
+  function compactPath(path: string): string {
+    const home = homedir();
+    return path === home
+      ? "~"
+      : path.startsWith(`${home}/`)
+        ? `~/${path.slice(home.length + 1)}`
+        : path;
+  }
+
+  function updatePolicyForRow(row: InstalledPluginRow): string {
+    return policyPhrase(row.updatePolicy, parsePluginSource(row.source));
+  }
+
+  function sourceDisplayForRow(row: InstalledPluginRow): string {
+    if (row.sourceKind === "path") {
+      return `path · ${compactPath(row.sourcePath ?? row.rootDir)}`;
+    }
+    if (row.sourceKind === "builtin") return `builtin · ${row.id}`;
+    if (row.sourceKind === "npm") {
+      return `npm · ${row.sourceNpmPackage ?? row.id} · ${updatePolicyForRow(row)}`;
+    }
+    return `git · ${row.sourceGitUrl ?? row.source} · ${updatePolicyForRow(row)}`;
+  }
+
+  function updateStateForRow(
+    row: InstalledPluginRow,
+  ): PluginListEntry["updateState"] {
+    let persisted: PluginUpdateCheckEntry | undefined;
+    if (row.updateStatusDetail !== null) {
+      try {
+        const parsed = pluginUpdateCheckEntrySchema.safeParse(
+          JSON.parse(row.updateStatusDetail),
+        );
+        if (parsed.success && parsed.data.id === row.id)
+          persisted = parsed.data;
+      } catch {
+        // The list remains usable if one persisted status is corrupt; the
+        // dedicated updates route retains its strict corruption diagnostic.
+      }
+    }
+    const failure =
+      row.quarantinedVersion !== null &&
+      row.quarantinedAt !== null &&
+      row.quarantineDetail !== null
+        ? {
+            version: row.quarantinedVersion,
+            at: row.quarantinedAt,
+            detail: row.quarantineDetail,
+          }
+        : undefined;
+    return {
+      ...(persisted === undefined ? {} : { outcome: persisted.outcome }),
+      ...(row.availableCompatibleVersion === null
+        ? {}
+        : { availableVersion: row.availableCompatibleVersion }),
+      ...(row.newestIncompatibleVersion === null
+        ? {}
+        : { blockedVersion: row.newestIncompatibleVersion }),
+      ...(persisted?.blocked === undefined
+        ? {}
+        : { blockedReasons: persisted.blocked.reasons }),
+      ...(row.lastUpdateCheckAt === null
+        ? {}
+        : { lastCheckAt: row.lastUpdateCheckAt }),
+      ...(row.ignoredVersion === null
+        ? {}
+        : { ignoredVersion: row.ignoredVersion }),
+      ...(failure === undefined
+        ? {}
+        : { quarantined: true, lastFailure: failure }),
+    };
+  }
+
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
     return listInstalledPlugins(deps.db)
@@ -4058,6 +4458,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           source: row.source,
           rootDir: row.rootDir,
           version: row.version,
+          provenance: row.provenance,
+          ...(row.marketplaceId === null
+            ? {}
+            : {
+                marketplaceName:
+                  getMarketplace(deps.db, row.marketplaceId)?.displayName ??
+                  row.marketplaceId,
+              }),
+          sourceDisplay: sourceDisplayForRow(row),
+          updatePolicy: row.updatePolicy,
+          updateState: updateStateForRow(row),
           enabled: row.enabled,
           description: exposedPlugin?.manifest.description ?? null,
           displayName: exposedPlugin?.manifest.displayName ?? null,
@@ -4252,6 +4663,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
     },
 
+    previewInstall: (source) => previewInstallSource(source),
+
+    previewInstallFromMarketplace(args) {
+      return previewInstallSource(args.source, {
+        updatePolicy: args.updatePolicy,
+        plugin: args.plugin,
+        ...(args.installation === undefined
+          ? {}
+          : { installation: args.installation }),
+        ...(args.gitSubdirectory === undefined
+          ? {}
+          : { gitSubdirectory: args.gitSubdirectory }),
+        ...(args.npmRegistry === undefined
+          ? {}
+          : { npmRegistry: args.npmRegistry }),
+      });
+    },
+
     async installFromMarketplace(args) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const parsed = parsePluginSource(args.source);
@@ -4302,7 +4731,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               return [row];
             })();
       const npmRun = createNpmResolverRun();
-      return Promise.all(
+      const results = await Promise.all(
         rows
           .sort((a, b) => a.id.localeCompare(b.id))
           .map((row) =>
@@ -4318,16 +4747,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 row: current,
                 npmRun,
               });
-              const entry = checkEntryFromResolution(
+              const checked = checkEntryFromResolution(
                 current.id,
                 installed,
                 resolution,
               );
-              persistUpdateEntry(entry);
-              return entry;
+              const ignored = applyIgnoredVersion(current, checked);
+              persistUpdateEntry(ignored.entry, ignored.ignoredVersion);
+              return ignored.entry;
             }),
           ),
       );
+      notifyPluginsChanged();
+      return results;
     },
 
     listUpdateResults() {
@@ -4363,6 +4795,135 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         });
     },
 
+    async getSource(id) {
+      const row = getInstalledPlugin(deps.db, id);
+      if (row === undefined) return undefined;
+      const manifest = await readPluginManifest(row.rootDir).catch(() => null);
+      const artifacts = listRecentPluginArtifacts(deps.db, id, 10);
+      return {
+        requested: row.source,
+        resolved: installedUpdateVersion(row).display,
+        ...(row.npmIntegrity === null ? {} : { integrity: row.npmIntegrity }),
+        ...(row.sourceNpmRegistry === null
+          ? {}
+          : { registry: row.sourceNpmRegistry }),
+        engines: {
+          ...(manifest?.bbEngineRange === undefined
+            ? {}
+            : { bb: manifest.bbEngineRange }),
+          ...(manifest?.bbPluginSdkRange === undefined
+            ? {}
+            : { bbPluginSdk: manifest.bbPluginSdkRange }),
+        },
+        installedAt: row.installedAt,
+        history: artifacts.map((artifact) => ({
+          version:
+            artifact.sourceKind === "npm"
+              ? (artifact.npmResolvedVersion ?? "unknown")
+              : (artifact.gitResolvedCommit ?? "unknown"),
+          activatedAt: artifact.validatedAt ?? artifact.updatedAt,
+        })),
+      };
+    },
+
+    ignoreVersion(id, version) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        withLifecycleLock(id, async () => {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row === undefined) {
+            return { ok: false, error: `unknown plugin "${id}"` };
+          }
+          const pinned =
+            row.sourceKind === "path" ||
+            row.sourceKind === "builtin" ||
+            (row.sourceKind === "git" && row.sourceGitRefKind !== "branch") ||
+            (row.sourceKind === "npm" && row.sourceNpmSpecKind === "exact");
+          if (pinned) {
+            return {
+              ok: false,
+              error: `plugin "${id}" is pinned and has no update version to ignore`,
+            };
+          }
+          const changed = setInstalledPluginIgnoredVersion(
+            deps.db,
+            id,
+            version,
+          );
+          if (changed) notifyPluginsChanged();
+          return changed
+            ? { ok: true }
+            : { ok: false, error: `plugin "${id}" disappeared` };
+        }),
+      );
+    },
+
+    setUpdatePolicy(id, policy) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        withLifecycleLock(id, async () => {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row === undefined) {
+            return { ok: false, error: `unknown plugin "${id}"` };
+          }
+          if (
+            (row.sourceKind === "path" || row.sourceKind === "builtin") &&
+            policy !== "manual"
+          ) {
+            return {
+              ok: false,
+              error: `${row.sourceKind} plugins are pinned and only support the manual update policy`,
+            };
+          }
+          if (
+            row.sourceKind === "git" &&
+            (policy === "patch" || policy === "minor")
+          ) {
+            return {
+              ok: false,
+              error: `${policy} update policy is only supported for npm range sources`,
+            };
+          }
+          if (
+            row.sourceKind === "git" &&
+            row.sourceGitRefKind !== "branch" &&
+            policy !== "manual"
+          ) {
+            return {
+              ok: false,
+              error:
+                "git tags and commits are pinned and only support the manual update policy",
+            };
+          }
+          if (
+            row.sourceKind === "npm" &&
+            row.sourceNpmSpecKind !== "range" &&
+            row.sourceNpmSpecKind !== "default" &&
+            (policy === "patch" || policy === "minor")
+          ) {
+            return {
+              ok: false,
+              error: `${policy} update policy requires an npm range or omitted version`,
+            };
+          }
+          if (
+            row.sourceKind === "npm" &&
+            row.sourceNpmSpecKind === "exact" &&
+            policy !== "manual"
+          ) {
+            return {
+              ok: false,
+              error:
+                "exact npm versions are pinned and only support the manual update policy",
+            };
+          }
+          const changed = setInstalledPluginUpdatePolicy(deps.db, id, policy);
+          if (changed) notifyPluginsChanged();
+          return changed
+            ? { ok: true }
+            : { ok: false, error: `plugin "${id}" disappeared` };
+        }),
+      );
+    },
+
     async applyUpdate(id, options) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
@@ -4380,7 +4941,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const npmRun = createNpmResolverRun();
         const originalNpmIntent =
           row.sourceKind === "npm" ? npmIntentForRow(row) : undefined;
-        const npmIntent =
+        const persistedNpmIntent =
           originalNpmIntent !== undefined && options.latest
             ? {
                 ...originalNpmIntent,
@@ -4388,20 +4949,26 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 specKind: "default" as const,
               }
             : originalNpmIntent;
+        const selectionNpmIntent =
+          row.sourceKind !== "npm"
+            ? undefined
+            : options.latest
+              ? persistedNpmIntent
+              : npmIntentForPolicy(row);
         const sourceIntentChanged =
           originalNpmIntent !== undefined &&
-          npmIntent !== undefined &&
-          originalNpmIntent.specKind !== npmIntent.specKind;
+          persistedNpmIntent !== undefined &&
+          originalNpmIntent.specKind !== persistedNpmIntent.specKind;
         const resolution = await resolveUpdateForRow({
           row,
           npmRun,
           includeQuarantined: true,
-          ...(sourceIntentChanged && npmIntent !== undefined
-            ? { npmIntentOverride: npmIntent }
+          ...(options.latest && selectionNpmIntent !== undefined
+            ? { npmIntentOverride: selectionNpmIntent }
             : {}),
         });
         const checked = checkEntryFromResolution(id, from, resolution);
-        persistUpdateEntry(checked);
+        persistUpdateEntry(checked, null);
 
         if (resolution.outcome === "pinned") {
           return {
@@ -4456,9 +5023,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
 
         try {
-          if (row.sourceKind === "npm" && npmIntent !== undefined) {
+          if (
+            row.sourceKind === "npm" &&
+            selectionNpmIntent !== undefined &&
+            persistedNpmIntent !== undefined
+          ) {
             const selected = await selectNpmCandidate({
-              intent: npmIntent,
+              intent: selectionNpmIntent,
               appVersion: deps.appVersion,
               run: npmRun,
             });
@@ -4467,13 +5038,28 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 `npm candidate changed during update: ${selected.outcome}`,
               );
             }
+            if (selected.candidate.version !== to.version) {
+              throw new Error(
+                `npm candidate changed during update: resolved ${to.version}, selected ${selected.candidate.version}`,
+              );
+            }
             const activationRow = getInstalledPlugin(deps.db, id);
             if (activationRow === undefined) {
               throw new Error(`plugin "${id}" disappeared before activation`);
             }
             await applyNpmCandidate({
               row: activationRow,
-              intent: npmIntent,
+              selectionIntent: selectionNpmIntent,
+              sourceIntent: persistedNpmIntent,
+              updatePolicy:
+                sourceIntentChanged && row.provenance !== "marketplace"
+                  ? "compatible"
+                  : narrowUpdatePolicy(
+                      row.updatePolicy,
+                      persistedNpmIntent.specKind === "exact"
+                        ? "manual"
+                        : "compatible",
+                    ),
               candidate: selected.candidate,
             });
           } else if (
@@ -4541,6 +5127,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               ? { devMode: true }
               : {}),
           }),
+          null,
         );
         return {
           ok: true,

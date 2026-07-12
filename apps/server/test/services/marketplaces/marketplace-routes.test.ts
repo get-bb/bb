@@ -371,6 +371,15 @@ describe("marketplace HTTP routes", () => {
         },
       );
       expect(marketplaceInstall.status).toBe(200);
+      expect(await json(marketplaceInstall)).toMatchObject({
+        plugin: {
+          provenance: "marketplace",
+          marketplaceName: "Remote Test Updated",
+          sourceDisplay: expect.stringContaining("git ·"),
+          updatePolicy: "compatible",
+          updateState: {},
+        },
+      });
       expect(getInstalledPlugin(harness.db, "git-notes")).toMatchObject({
         provenance: "marketplace",
       });

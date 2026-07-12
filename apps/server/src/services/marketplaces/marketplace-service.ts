@@ -16,7 +16,10 @@ import {
 } from "@bb/db";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import semver from "semver";
-import type { PluginService } from "../plugins/plugin-service.js";
+import type {
+  PluginInstallPreview,
+  PluginService,
+} from "../plugins/plugin-service.js";
 import {
   realPathInside,
   runInstallCommand,
@@ -81,6 +84,11 @@ export interface MarketplaceService {
     entryId: string,
     version?: string,
   ): Promise<unknown>;
+  preview(
+    marketplaceId: string,
+    entryId: string,
+    version?: string,
+  ): Promise<PluginInstallPreview>;
   remove(
     id: string,
     dispositions: Array<{ pluginId: string; action: "keep" | "uninstall" }>,
@@ -557,6 +565,56 @@ export function createMarketplaceService(deps: {
             ? {}
             : { gitSubdirectory: resolved.gitSubdirectory }),
         });
+      });
+    },
+
+    async preview(marketplaceId, entryId, version) {
+      const row = getMarketplace(deps.db, marketplaceId);
+      if (row === undefined || !row.enabled)
+        throw new Error(`unknown or disabled marketplace "${marketplaceId}"`);
+      const catalog = catalogFromRow(row);
+      const entry = catalog?.plugins.find(
+        (candidate) => candidate.id === entryId,
+      );
+      if (entry === undefined || row.cachePath === null) {
+        throw new Error(
+          `unknown marketplace entry "${entryId}" in "${marketplaceId}"`,
+        );
+      }
+      if (version !== undefined && !("npm" in entry.source)) {
+        throw new Error(
+          "version is only supported for npm marketplace entries",
+        );
+      }
+      const resolved = resolvedCatalogEntrySource(entry, row.cachePath);
+      if ("path" in entry.source) {
+        resolved.source = `path:${await realPathInside(
+          row.cachePath,
+          resolve(row.cachePath, entry.source.path),
+          `marketplace entry "${entry.id}" path`,
+        )}`;
+      }
+      let source = resolved.source;
+      if (version !== undefined && "npm" in entry.source) {
+        source = `npm:${entry.source.npm.package}@${version}`;
+      }
+      return deps.plugins.previewInstallFromMarketplace({
+        source,
+        updatePolicy: effectivePolicy(row.updatePolicy, entry.updatePolicy),
+        plugin: {
+          id: entry.id,
+          displayName: entry.displayName,
+          description: entry.description,
+        },
+        ...(entry.installation === undefined
+          ? {}
+          : { installation: entry.installation }),
+        ...("npm" in entry.source && entry.source.npm.registry !== undefined
+          ? { npmRegistry: entry.source.npm.registry }
+          : {}),
+        ...(resolved.gitSubdirectory === undefined
+          ? {}
+          : { gitSubdirectory: resolved.gitSubdirectory }),
       });
     },
 

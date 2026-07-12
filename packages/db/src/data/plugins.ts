@@ -343,6 +343,32 @@ export function setInstalledPluginUpdateState(
   return result.changes > 0;
 }
 
+export function setInstalledPluginIgnoredVersion(
+  db: DbConnection,
+  id: string,
+  ignoredVersion: string | null,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({ ignoredVersion, updatedAt: Date.now() })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
+}
+
+export function setInstalledPluginUpdatePolicy(
+  db: DbConnection,
+  id: string,
+  updatePolicy: PluginUpdatePolicy,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({ updatePolicy, updatedAt: Date.now() })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
+}
+
 export function setInstalledPluginQuarantine(
   db: DbConnection,
   id: string,
