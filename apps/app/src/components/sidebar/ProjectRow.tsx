@@ -155,7 +155,9 @@ export interface ProjectRowProps {
 }
 
 interface ProjectThreadTreeProps {
-  projectId: string;
+  // Route every row to this project; omit to derive each row's project from
+  // its own thread (cross-project views such as By machine).
+  projectId?: string;
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
   selectedThreadId?: string;

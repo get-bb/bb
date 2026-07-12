@@ -119,7 +119,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
   it("expands the personal threads section in project mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
-        isFolderOrganizationMode: false,
+        organizationMode: "project",
         isPinned: false,
         selectedThread: thread({ projectId: PERSONAL_PROJECT_ID }),
       }),
@@ -129,7 +129,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
   it("expands the owning project in project mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
-        isFolderOrganizationMode: false,
+        organizationMode: "project",
         isPinned: false,
         selectedThread: thread({ projectId: "proj_app" }),
       }),
@@ -139,7 +139,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
   it("expands the threads section for unfiled project threads in folders mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
-        isFolderOrganizationMode: true,
+        organizationMode: "chronological",
         isPinned: false,
         selectedThread: thread({ folderId: null, projectId: "proj_app" }),
       }),
@@ -149,7 +149,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
   it("expands the containing folder for foldered threads in folders mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
-        isFolderOrganizationMode: true,
+        organizationMode: "chronological",
         isPinned: false,
         selectedThread: thread({ folderId: "fld_work", projectId: "proj_app" }),
       }),
@@ -159,10 +159,30 @@ describe("getSelectedThreadSidebarExpansion", () => {
     });
   });
 
+  it("expands the owning machine group in machine mode", () => {
+    expect(
+      getSelectedThreadSidebarExpansion({
+        organizationMode: "machine",
+        isPinned: false,
+        selectedThread: thread({
+          projectId: "proj_app",
+          environmentHostId: "host_a",
+        }),
+      }),
+    ).toEqual({ machineKey: "host_a" });
+    expect(
+      getSelectedThreadSidebarExpansion({
+        organizationMode: "machine",
+        isPinned: false,
+        selectedThread: thread({ projectId: "proj_app" }),
+      }),
+    ).toEqual({ machineKey: "no-machine" });
+  });
+
   it("expands the pinned section for pinned threads", () => {
     expect(
       getSelectedThreadSidebarExpansion({
-        isFolderOrganizationMode: true,
+        organizationMode: "chronological",
         isPinned: true,
         selectedThread: thread({ folderId: null, projectId: "proj_app" }),
       }),

@@ -45,7 +45,7 @@ import {
   isHostPathMissing,
   useHostPathExistence,
 } from "@/hooks/queries/host-path-queries";
-import { usePrimaryHost } from "@/hooks/queries/host-queries";
+import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   getFolderArchivedRoutePath,
@@ -119,6 +119,7 @@ import {
   DEFAULT_SIDEBAR_SECTION_ORDER,
   sidebarChronologicalSortAtom,
   sidebarCollapsedFoldersAtom,
+  sidebarCollapsedMachinesAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
   type SidebarChronologicalSort,
@@ -127,6 +128,10 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import { folderKeyForThreadFolder } from "./folderKeys";
+import {
+  buildMachineThreadGroups,
+  NO_MACHINE_GROUP_KEY,
+} from "./machineThreadGroups";
 import { CHRONOLOGICAL_CONTAINER_ID } from "./projectThreadGroups";
 import {
   DropdownMenu,
@@ -267,13 +272,14 @@ interface ToggleCollapsedIdListArgs {
 }
 
 interface SelectedThreadSidebarExpansionArgs {
-  isFolderOrganizationMode: boolean;
+  organizationMode: SidebarOrganizationMode;
   isPinned: boolean;
   selectedThread: ThreadListEntry;
 }
 
 interface SelectedThreadSidebarExpansion {
   folderKey?: string;
+  machineKey?: string;
   projectId?: string;
   sidebarSectionId?: CollapsibleSidebarSectionId;
 }
@@ -286,6 +292,7 @@ type OpenSidebarMenu =
   | "projectsDisplayOptions"
   | "threadsDisplayOptions"
   | "allThreadsOverflow"
+  | `machineDisplayOptions:${string}`
   | null;
 
 interface TopLevelSidebarSectionProps {
@@ -341,7 +348,7 @@ function removeCollapsedIds<T extends string>(
 }
 
 export function getSelectedThreadSidebarExpansion({
-  isFolderOrganizationMode,
+  organizationMode,
   isPinned,
   selectedThread,
 }: SelectedThreadSidebarExpansionArgs): SelectedThreadSidebarExpansion {
@@ -349,7 +356,13 @@ export function getSelectedThreadSidebarExpansion({
     return { sidebarSectionId: "pinned" };
   }
 
-  if (isFolderOrganizationMode) {
+  if (organizationMode === "machine") {
+    return {
+      machineKey: selectedThread.environmentHostId ?? NO_MACHINE_GROUP_KEY,
+    };
+  }
+
+  if (organizationMode === "chronological") {
     const folderKey = folderKeyForThreadFolder(
       CHRONOLOGICAL_CONTAINER_ID,
       selectedThread.folderId,
@@ -616,6 +629,7 @@ function ProjectListThreadsSectionActions({
 // the stored atom value stays "chronological".
 const SIDEBAR_ORGANIZE_OPTIONS = [
   { label: "By project", mode: "project" },
+  { label: "By machine", mode: "machine" },
   { label: "In one list", mode: "chronological" },
 ] as const satisfies readonly {
   label: string;
@@ -1187,6 +1201,7 @@ function ProjectListComponent({
     ),
   });
   const primaryHost = usePrimaryHost();
+  const { data: hosts } = useHosts();
   const workHostId =
     primaryHost?.status === "connected" ? primaryHost.id : null;
   const { threadId: selectedThreadId } = useRouteState();
@@ -1438,6 +1453,9 @@ function ProjectListComponent({
   const [collapsedEnvironmentIdList, setCollapsedEnvironmentIdList] = useAtom(
     collapsedEnvironmentIdsAtom,
   );
+  const [collapsedMachineKeyList, setCollapsedMachineKeyList] = useAtom(
+    sidebarCollapsedMachinesAtom,
+  );
   const [collapsedSidebarSectionIdList, setCollapsedSidebarSectionIdList] =
     useAtom(collapsedSidebarSectionIdsAtom);
   const [sidebarSectionOrderList, setSidebarSectionOrderList] = useAtom(
@@ -1474,6 +1492,7 @@ function ProjectListComponent({
     sidebarChronologicalSortAtom,
   );
   const isFolderOrganizationMode = organizationMode === "chronological";
+  const isMachineOrganizationMode = organizationMode === "machine";
   const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () => getSidebarThreadComparator(chronologicalSort),
@@ -1490,6 +1509,10 @@ function ProjectListComponent({
   const collapsedEnvironmentIds = useMemo(
     () => new Set(collapsedEnvironmentIdList),
     [collapsedEnvironmentIdList],
+  );
+  const collapsedMachineKeys = useMemo(
+    () => new Set(collapsedMachineKeyList),
+    [collapsedMachineKeyList],
   );
   const sidebarSectionOrder = useMemo(
     () => normalizeSidebarSectionOrder(sidebarSectionOrderList),
@@ -1592,10 +1615,16 @@ function ProjectListComponent({
     const isPinned =
       pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
     const expansion = getSelectedThreadSidebarExpansion({
-      isFolderOrganizationMode,
+      organizationMode,
       isPinned,
       selectedThread,
     });
+    if (expansion.machineKey) {
+      const machineKey = expansion.machineKey;
+      setCollapsedMachineKeyList((current) =>
+        removeCollapsedIds(current, new Set([machineKey])),
+      );
+    }
     if (expansion.folderKey) {
       const folderKey = expansion.folderKey;
       setCollapsedFolderList((current) =>
@@ -1615,11 +1644,12 @@ function ProjectListComponent({
       );
     }
   }, [
-    isFolderOrganizationMode,
+    organizationMode,
     pinnedSidebarState.effectivePinnedThreadIds,
     selectedThreadId,
     setCollapsedEnvironmentIdList,
     setCollapsedFolderList,
+    setCollapsedMachineKeyList,
     setCollapsedProjectIdList,
     setCollapsedSidebarSectionIdList,
     setCollapsedThreadIdList,
@@ -1723,6 +1753,15 @@ function ProjectListComponent({
     [setCollapsedEnvironmentIdList],
   );
 
+  const toggleMachineCollapsed = useCallback<ToggleCollapsedId>(
+    (machineKey) => {
+      setCollapsedMachineKeyList((current) => {
+        return toggleCollapsedIdList({ current, id: machineKey });
+      });
+    },
+    [setCollapsedMachineKeyList],
+  );
+
   const toggleSidebarSectionCollapsed =
     useCallback<ToggleCollapsedSidebarSectionId>(
       (sectionId) => {
@@ -1789,6 +1828,21 @@ function ProjectListComponent({
     status: projectsState.status,
     threads: nonPinnedThreads,
   });
+
+  // Machine mode buckets every non-pinned thread by its environment's host,
+  // one top-level section per machine.
+  const machineSections = useMemo(
+    () =>
+      buildMachineThreadGroups(nonPinnedThreads, hosts ?? []).map((group) => ({
+        key: group.key,
+        label: group.label,
+        threadListState: {
+          status: "ready",
+          threads: group.threads,
+        } satisfies ProjectThreadListState,
+      })),
+    [hosts, nonPinnedThreads],
+  );
 
   const pinnedSectionContent = (
     <PinnedThreadTree
@@ -2015,6 +2069,84 @@ function ProjectListComponent({
     return (
       <ProjectListShell>
         <ProjectListNavigationLoadingState />
+      </ProjectListShell>
+    );
+  }
+
+  if (isMachineOrganizationMode) {
+    return (
+      <ProjectListShell>
+        <div className="space-y-4">
+          {hasPinnedSection ? (
+            <TopLevelSidebarSection
+              label="Pinned"
+              collapseControl={{
+                isCollapsed: collapsedSidebarSectionIds.has("pinned"),
+                onToggleCollapsed: () =>
+                  toggleSidebarSectionCollapsed("pinned"),
+              }}
+            >
+              {pinnedSectionContent}
+            </TopLevelSidebarSection>
+          ) : null}
+          {machineSections.length === 0 ? (
+            <TopLevelSidebarSection
+              label="Threads"
+              actions={threadsSectionActions}
+              actionsOpen={threadsDisplayOptionsMenuOpen}
+              actionsMobileAlways
+            >
+              <ProjectThreadTree
+                threadListState={allThreadsListState}
+                compareThreads={sidebarThreadComparator}
+                variant="section"
+                selectedThreadId={selectedThreadId}
+                collapsedThreadIds={collapsedThreadIds}
+                collapsedEnvironmentIds={collapsedEnvironmentIds}
+                onProjectSelect={onProjectSelect}
+                onToggleThreadCollapsed={toggleThreadCollapsed}
+                onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+              />
+            </TopLevelSidebarSection>
+          ) : (
+            machineSections.map((section) => {
+              const machineMenuId =
+                `machineDisplayOptions:${section.key}` as const;
+              return (
+                <TopLevelSidebarSection
+                  key={section.key}
+                  label={section.label}
+                  actions={
+                    <SidebarDisplayOptionsMenu
+                      open={openSidebarMenu === machineMenuId}
+                      onOpenChange={(open) =>
+                        setSidebarMenuOpen(machineMenuId, open)
+                      }
+                    />
+                  }
+                  actionsOpen={openSidebarMenu === machineMenuId}
+                  actionsMobileAlways
+                  collapseControl={{
+                    isCollapsed: collapsedMachineKeys.has(section.key),
+                    onToggleCollapsed: () => toggleMachineCollapsed(section.key),
+                  }}
+                >
+                  <ProjectThreadTree
+                    threadListState={section.threadListState}
+                    compareThreads={sidebarThreadComparator}
+                    variant="section"
+                    selectedThreadId={selectedThreadId}
+                    collapsedThreadIds={collapsedThreadIds}
+                    collapsedEnvironmentIds={collapsedEnvironmentIds}
+                    onProjectSelect={onProjectSelect}
+                    onToggleThreadCollapsed={toggleThreadCollapsed}
+                    onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+                  />
+                </TopLevelSidebarSection>
+              );
+            })
+          )}
+        </div>
       </ProjectListShell>
     );
   }

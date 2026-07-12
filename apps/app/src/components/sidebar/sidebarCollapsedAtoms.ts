@@ -9,6 +9,7 @@ const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
 const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
+const COLLAPSED_MACHINES_STORAGE_KEY = "bb.sidebar.collapsedMachines";
 
 export type SidebarSectionId = "pinned" | "projects" | "threads";
 export type CollapsibleSidebarSectionId =
@@ -18,8 +19,9 @@ export type CollapsibleSidebarSectionId =
   | "threads";
 
 // "project" keeps the per-project grouping; "chronological" is the persisted
-// value for the cross-project Folders view that replaced the old None view.
-export type SidebarOrganizationMode = "project" | "chronological";
+// value for the cross-project Folders view that replaced the old None view;
+// "machine" groups threads by the host their environment runs on.
+export type SidebarOrganizationMode = "project" | "chronological" | "machine";
 // Controls thread ordering in both grouped and ungrouped sidebar views. Time
 // sorts show newest first and alphabetical sorts A→Z. "none" is a legacy value
 // that the runtime normalizes back to "updated".
@@ -88,6 +90,15 @@ export const sidebarChronologicalSortAtom =
 // matching collapsedThreadIds / collapsedProjectIds.
 export const sidebarCollapsedFoldersAtom = atomWithStorage<string[]>(
   COLLAPSED_FOLDERS_STORAGE_KEY,
+  [],
+  createJsonLocalStorage<string[]>(),
+  { getOnInit: true },
+);
+
+// Collapsed machine-mode group keys (host ids plus the no-machine sentinel;
+// see machineThreadGroups.ts).
+export const sidebarCollapsedMachinesAtom = atomWithStorage<string[]>(
+  COLLAPSED_MACHINES_STORAGE_KEY,
   [],
   createJsonLocalStorage<string[]>(),
   { getOnInit: true },

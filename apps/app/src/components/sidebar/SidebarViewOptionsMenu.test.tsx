@@ -101,6 +101,18 @@ describe("sidebar display options menu", () => {
     ).toBe("true");
   });
 
+  it("switches to machine organization", async () => {
+    renderMobileViewOptions(<ControlledDisplayOptionsMenu />);
+
+    fireEvent.click(
+      await screen.findByRole("menuitemcheckbox", { name: "By machine" }),
+    );
+
+    expect(screen.getByTestId("organization-mode").textContent).toBe(
+      "machine",
+    );
+  });
+
   it("selects one fixed-direction sort field and closes", async () => {
     renderMobileViewOptions(<ControlledDisplayOptionsMenu />);
 
