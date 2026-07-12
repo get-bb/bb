@@ -17,7 +17,7 @@ const marketplace = {
   pluginCount: 2,
   lastRefreshAt: "2026-07-12T12:00:00.000Z",
   enabled: true,
-  scope: "official" as const,
+  scope: "builtin" as const,
   autoCheck: true,
   autoApply: false,
 };
@@ -69,7 +69,7 @@ describe("bb plugin marketplaces", () => {
     expect(output).toContain("Scope");
     expect(output).toContain("Auto-check");
     expect(output).toContain("Auto-apply");
-    expect(output).toContain("official");
+    expect(output).toContain("builtin");
     expect(output).toContain("on");
     expect(output).toContain("off");
   });

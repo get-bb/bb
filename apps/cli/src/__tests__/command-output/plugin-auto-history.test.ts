@@ -15,7 +15,7 @@ const marketplace = {
   source: "https://example.com/catalog.git",
   pluginCount: 2,
   enabled: true,
-  scope: "official",
+  scope: "builtin",
   autoCheck: false,
   autoApply: false,
 };
@@ -108,6 +108,19 @@ describe("bb plugin automatic updates and history", () => {
     );
   });
 
+  it("surfaces an unknown-plugin error instead of a response parse error", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({ error: 'Unknown plugin "missing".' }, 404),
+    );
+
+    await expect(
+      runCommand(["plugin", "auto-apply", "missing", "on"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      'Unknown plugin "missing".',
+    );
+  });
+
   it("renders plugin history and the cross-plugin audit feed", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json({ events: [event] }));
     await runCommand(["plugin", "history", "notes"], register);
@@ -125,6 +138,16 @@ describe("bb plugin automatic updates and history", () => {
     expect(output).toContain("Plugin");
     expect(output).toContain("notes");
     expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toContain("limit=12");
+  });
+
+  it("rejects --limit for one plugin before making a request", async () => {
+    await expect(
+      runCommand(["plugin", "history", "notes", "--limit", "12"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(collectLogPayloads(vi.mocked(console.error)).join("\n")).toContain(
+      "--limit is only valid with --all.",
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("documents automatic policy and history flags in help", async () => {

@@ -102,7 +102,7 @@ const marketplaceViewSchema = z.object({
   lastAttemptAt: z.union([z.string(), z.number()]).optional(),
   lastError: z.string().optional(),
   enabled: z.boolean(),
-  scope: z.enum(["official", "user"]),
+  scope: z.enum(["builtin", "user", "project", "managed"]),
   autoCheck: z.boolean(),
   autoApply: z.boolean(),
 });
@@ -621,6 +621,12 @@ function exitWithError(result: { error?: string }): never {
   process.exit(1);
 }
 
+function exitOnApiError(response: { status: number; value: unknown }): void {
+  if (response.status >= 400) {
+    exitWithError(marketplaceErrorSchema.parse(response.value));
+  }
+}
+
 function printSettings(result: PluginSettingsResult): void {
   const schema = result.schema ?? {};
   const values = result.values ?? {};
@@ -711,8 +717,7 @@ export function registerPluginCommands(
           source,
           ...(opts.name === undefined ? {} : { name: opts.name }),
         });
-        const error = marketplaceErrorSchema.safeParse(response.value);
-        if (response.status === 422 && error.success) exitWithError(error.data);
+        exitOnApiError(response);
         printMarketplace(
           marketplaceMutationSchema.parse(response.value).marketplace,
         );
@@ -801,8 +806,7 @@ export function registerPluginCommands(
           "POST",
           requested,
         );
-        const error = marketplaceErrorSchema.safeParse(response.value);
-        if (response.status === 422 && error.success) exitWithError(error.data);
+        exitOnApiError(response);
         const result = marketplaceAutoPolicySchema.parse(response.value);
         assertEchoedBoolean(
           "auto-check",
@@ -816,7 +820,7 @@ export function registerPluginCommands(
         );
         console.log(`Auto-check: ${result.autoCheck ? "on" : "off"}`);
         console.log(`Auto-apply: ${result.autoApply ? "on" : "off"}`);
-        if (entry.scope === "official" && result.autoApply) {
+        if (entry.scope === "builtin" && result.autoApply) {
           console.log(
             "Note: official marketplace auto-apply remains limited to compatible, non-major updates.",
           );
@@ -1000,8 +1004,7 @@ export function registerPluginCommands(
           "POST",
           { enabled },
         );
-        const error = marketplaceErrorSchema.safeParse(response.value);
-        if (response.status === 422 && error.success) exitWithError(error.data);
+        exitOnApiError(response);
         const result = autoApplyResultSchema.parse(response.value);
         assertEchoedBoolean("auto-apply", enabled, result.autoApply);
         console.log(`Auto-apply for ${id}: ${result.autoApply ? "on" : "off"}`);
@@ -1026,18 +1029,21 @@ export function registerPluginCommands(
     .command("history [id]")
     .description("Show plugin update history or the cross-plugin audit feed")
     .option("--all", "Show update events for all plugins")
-    .option("--limit <number>", "Limit the cross-plugin audit feed", "50")
+    .option("--limit <number>", "Limit the cross-plugin audit feed")
     .option("--json", "Output the raw response as JSON")
     .action(
       action(
         async (
           id: string | undefined,
-          opts: JsonOutputOptions & { all?: boolean; limit: string },
+          opts: JsonOutputOptions & { all?: boolean; limit?: string },
         ) => {
           if ((id === undefined) === (opts.all !== true)) {
             throw new Error("Pass a plugin id or --all, but not both.");
           }
-          const limit = Number(opts.limit);
+          if (opts.limit !== undefined && opts.all !== true) {
+            throw new Error("--limit is only valid with --all.");
+          }
+          const limit = Number(opts.limit ?? "50");
           if (!Number.isInteger(limit) || limit < 1) {
             throw new Error("--limit must be a positive integer.");
           }
@@ -1046,9 +1052,7 @@ export function registerPluginCommands(
               ? `/plugins/updates/audit?limit=${limit}`
               : `/plugins/${encodeURIComponent(id ?? "")}/history`;
           const response = await callApi(getUrl(), path, "GET");
-          const error = marketplaceErrorSchema.safeParse(response.value);
-          if (response.status === 422 && error.success)
-            exitWithError(error.data);
+          exitOnApiError(response);
           let rows: string[][];
           if (opts.all === true) {
             const result = pluginAuditSchema.parse(response.value);
