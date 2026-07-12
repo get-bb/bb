@@ -72,6 +72,10 @@ The manifest is `package.json`:
   (currently `1.0.0`; the scaffold writes `"^1.0.0"`). Absent means a legacy
   manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
   the running SDK; path installs surface it as `incompatible` at load.
+  Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
+  candidates that satisfy these ranges; newer incompatible releases are
+  reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip
+  enforcing `engines.bb` and annotate that on check results.
 - `bb plugin build` stamps authoritative metadata into both
   `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
   `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and

@@ -66,6 +66,22 @@ added/updated/unchanged counts.
                                  Omitted npm specs, ranges, dist-tags, and git
                                  branches track; exact npm versions, git tags,
                                  and git commits are pinned
+  bb plugin outdated             Check installed plugins for compatible
+                                 updates (table; --json for raw results).
+                                 Columns: installed, latest compatible,
+                                 blocked newer (incompatible releases not
+                                 selected), status. Dev builds (bb 0.0.0)
+                                 annotate that engines.bb is not enforced
+  bb plugin update <id> | --all  Apply compatible updates for one plugin or
+                                 every plugin with an update. [--dry-run]
+                                 previews without changing plugins; [--latest]
+                                 widens a pinned/range npm source to the
+                                 newest compatible after confirmation (refused
+                                 for pinned git refs — install a branch to
+                                 track). Same full-trust confirmation as
+                                 install (--yes skips; non-TTY refuses without
+                                 --yes). Only tracking sources move; pinned
+                                 installs stay put unless --latest applies
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources

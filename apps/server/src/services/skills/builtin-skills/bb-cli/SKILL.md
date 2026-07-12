@@ -339,6 +339,15 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     path/git sources; npm packages must publish a prebuilt `dist/`. Managed
     git/npm installs refuse `engines.bb` / `engines.bbPluginSdk` mismatches,
     manifest vs. artifact identity mismatches, and ids reserved by builtins.
+  - `bb plugin outdated` — check installed plugins for compatible updates
+    (table; `--json` for raw results). Shows latest compatible candidate and
+    any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate
+    that `engines.bb` is not enforced.
+  - `bb plugin update <id>` / `bb plugin update --all` — apply compatible
+    updates for tracking sources. `--dry-run` previews; `--latest` (single
+    plugin only) widens a pinned/range npm source to newest compatible after
+    confirmation and is refused for pinned git refs. Same full-trust
+    confirmation as install (`--yes` skips; non-TTY refuses without it).
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,

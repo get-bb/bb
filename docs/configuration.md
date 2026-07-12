@@ -415,9 +415,18 @@ refuse plugins whose optional `engines.bb` or `engines.bbPluginSdk` ranges
 do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
 does not match the package manifest; installing a non-builtin source whose
 derived id collides with a builtin name (automations, connect,
-custom-instructions, inline-vis, memory, secrets) is also refused. Plugins
-are full-trust code running inside the bb server process: they can read all
-local bb data, including other plugins' secrets.
+custom-instructions, inline-vis, memory, secrets) is also refused.
+
+The same tracking intent drives updates: `bb plugin outdated` checks for
+compatible candidates (and reports blocked incompatible newer releases);
+`bb plugin update <id>` / `bb plugin update --all` applies them
+(`--dry-run` previews). `--latest` on a single plugin widens a pinned or
+range npm source to the newest compatible release after confirmation; it is
+refused for pinned git refs (install a branch source to track). Dev builds
+(bb `0.0.0`) do not enforce `engines.bb` and annotate that on check results.
+Update confirmation matches install (full-trust code; `--yes` skips; non-TTY
+refuses without it). Plugins are full-trust code running inside the bb server
+process: they can read all local bb data, including other plugins' secrets.
 
 ## Startup Flags
 
