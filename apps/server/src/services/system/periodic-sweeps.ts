@@ -59,8 +59,18 @@ export interface PluginScheduleSweeper {
   sweepDueSchedules(now: number): Promise<void>;
 }
 
+export interface PluginUpdateSweeper {
+  sweepAutomaticUpdates(now: number): Promise<void>;
+}
+
+export interface MarketplaceUpdateSweeper {
+  sweepAutomaticChecks(now: number): Promise<void>;
+}
+
 export type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
   pluginSchedules: PluginScheduleSweeper;
+  pluginService: PluginUpdateSweeper;
+  marketplaceService: MarketplaceUpdateSweeper;
 };
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
@@ -583,6 +593,15 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   },
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
+    category: "scheduler",
+    name: "plugin-update",
+    async run(deps, now) {
+      await deps.marketplaceService.sweepAutomaticChecks(now);
+      await deps.pluginService.sweepAutomaticUpdates(now);
+    },
+  },
+  {
+    cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
     name: "database-maintenance",
     run: runDatabaseMaintenanceSweep,
@@ -597,7 +616,9 @@ export async function runStartupRecoverySweep(
   await evaluateManagedEnvironmentArchiveCleanupCandidates(deps, Date.now());
 }
 
-export async function runPeriodicSweeps(deps: PeriodicSweepDeps): Promise<void> {
+export async function runPeriodicSweeps(
+  deps: PeriodicSweepDeps,
+): Promise<void> {
   const now = Date.now();
   await runPeriodicSweepJobs(deps, PERIODIC_SWEEP_JOBS, now);
 }

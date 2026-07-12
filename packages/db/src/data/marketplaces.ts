@@ -16,6 +16,8 @@ export interface MarketplaceRow {
   enabled: boolean;
   trusted: boolean;
   updatePolicy: PluginUpdatePolicy;
+  autoCheck: boolean;
+  autoApply: boolean;
   lastSuccessfulRefreshAt: number | null;
   lastAttemptedRefreshAt: number | null;
   lastError: string | null;
@@ -80,6 +82,18 @@ export function updateMarketplaceRefreshFailure(
       lastError: error,
       updatedAt: attemptedAt,
     })
+    .where(eq(marketplaces.id, id))
+    .run();
+  return getMarketplace(db, id);
+}
+
+export function setMarketplaceAutoPolicy(
+  db: DbConnection,
+  id: string,
+  policy: { autoCheck: boolean; autoApply: boolean },
+): MarketplaceRow | undefined {
+  db.update(marketplaces)
+    .set({ ...policy, updatedAt: Date.now() })
     .where(eq(marketplaces.id, id))
     .run();
   return getMarketplace(db, id);

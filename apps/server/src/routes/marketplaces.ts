@@ -27,6 +27,10 @@ const dispositionsSchema = z
   })
   .strict();
 
+const autoPolicySchema = z
+  .object({ autoCheck: z.boolean(), autoApply: z.boolean() })
+  .strict();
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -73,6 +77,28 @@ export function registerMarketplaceRoutes(
     } catch (error) {
       return context.json({ error: message(error) }, 422);
     }
+  });
+
+  app.post("/marketplaces/:id/auto-policy", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = autoPolicySchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        { error: 'expected { "autoCheck": boolean, "autoApply": boolean }' },
+        422,
+      );
+    }
+    const updated = await marketplaces.setAutoPolicy(
+      context.req.param("id"),
+      body.data,
+    );
+    if (updated === undefined) {
+      return context.json({ error: "unknown marketplace" }, 404);
+    }
+    return context.json({
+      autoCheck: updated.autoCheck,
+      autoApply: updated.autoApply,
+    });
   });
 
   app.delete("/marketplaces/:id", async (context) => {

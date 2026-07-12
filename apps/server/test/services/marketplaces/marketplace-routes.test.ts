@@ -165,7 +165,25 @@ describe("marketplace HTTP routes", () => {
     });
     expect(added.status).toBe(201);
     expect(await json(added)).toMatchObject({
-      marketplace: { id: "local-test", pluginCount: 3 },
+      marketplace: {
+        id: "local-test",
+        pluginCount: 3,
+        scope: "user",
+        autoCheck: false,
+        autoApply: false,
+      },
+    });
+    const autoPolicy = await harness.app.request(
+      "/api/v1/marketplaces/local-test/auto-policy",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ autoCheck: true, autoApply: true }),
+      },
+    );
+    expect(await json(autoPolicy)).toEqual({
+      autoCheck: true,
+      autoApply: true,
     });
     await expect(
       import("node:fs/promises").then(({ stat }) => stat(marker)),
@@ -603,6 +621,39 @@ describe("marketplace HTTP routes", () => {
     releaseFirst();
     await Promise.all([first, second]);
     expect(materializations).toBe(2);
+  });
+
+  it("backs off repeated automatic refresh failures and resets after success", async () => {
+    let attempts = 0;
+    let fail = false;
+    const service = createMarketplaceService({
+      db: harness.db,
+      dataDir: harness.config.dataDir,
+      appVersion: harness.config.appVersion,
+      plugins: harness.pluginService,
+      beforeMaterialize: async () => {
+        attempts += 1;
+        if (fail) throw new Error("synthetic refresh failure");
+      },
+    });
+    await service.add(marketplaceRoot, "backoff-test");
+    await service.setAutoPolicy("backoff-test", {
+      autoCheck: true,
+      autoApply: false,
+    });
+    fail = true;
+    await service.sweepAutomaticChecks(Date.now() + 2 * 60 * 60_000);
+    expect(attempts).toBe(2);
+    await service.sweepAutomaticChecks(Date.now() + 60 * 60_000);
+    expect(attempts).toBe(2);
+    await service.sweepAutomaticChecks(Date.now() + 3 * 60 * 60_000);
+    expect(attempts).toBe(3);
+
+    fail = false;
+    await service.sweepAutomaticChecks(Date.now() + 5 * 60 * 60_000);
+    expect(attempts).toBe(4);
+    await service.sweepAutomaticChecks(Date.now() + 76 * 60_000);
+    expect(attempts).toBe(5);
   });
 
   it("orders install before removal and never leaves orphaned provenance", async () => {

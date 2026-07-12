@@ -15,10 +15,12 @@ import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import { z } from "zod";
 import type { MarketplaceService } from "../services/marketplaces/marketplace-service.js";
+import { getAppSettings } from "@bb/db";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
 export interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
+  db: import("@bb/db").DbConnection;
 }
 
 interface WireAuthProblem {
@@ -205,7 +207,33 @@ export function registerPluginRoutes(
   };
 
   app.get("/plugins", (context) =>
-    context.json({ enabled: plugins.isEnabled(), plugins: plugins.list() }),
+    context.json({
+      enabled: plugins.isEnabled(),
+      autoApplyDisabled: getAppSettings(deps.db).pluginAutoApplyDisabled,
+      plugins: plugins.list(),
+    }),
+  );
+
+  app.get("/plugins/updates/audit", (context) => {
+    const parsed = z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(200)
+      .safeParse(context.req.query("limit") ?? "50");
+    if (!parsed.success) {
+      return context.json(
+        { error: "limit must be an integer from 1 to 200" },
+        422,
+      );
+    }
+    return context.json({ events: plugins.listUpdateAudit(parsed.data) });
+  });
+
+  app.get("/plugins/:id/history", (context) =>
+    context.json({
+      events: plugins.listUpdateHistory(context.req.param("id"), 50),
+    }),
   );
 
   // Fast metadata for the bb CLI's help/proxy path and the app's
@@ -650,6 +678,21 @@ export function registerPluginRoutes(
     );
     if (!outcome.ok) return context.json({ error: outcome.error }, 422);
     return context.json({ policy: body.data.policy });
+  });
+
+  const autoApplyBodySchema = z.object({ enabled: z.boolean() }).strict();
+  app.post("/plugins/:id/auto-apply", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = autoApplyBodySchema.safeParse(json);
+    if (!body.success) {
+      return context.json({ error: 'expected { "enabled": boolean }' }, 422);
+    }
+    const outcome = await plugins.setAutoApply(
+      context.req.param("id"),
+      body.data.enabled,
+    );
+    if (!outcome.ok) return context.json({ error: outcome.error }, 404);
+    return context.json({ autoApply: outcome.autoApply });
   });
 
   app.post("/plugins/reload", async (context) => {

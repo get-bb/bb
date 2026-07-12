@@ -26,11 +26,13 @@ import {
   listPluginArtifacts,
   listPluginStateSnapshots,
   migrate,
+  setAppSettings,
   setPluginSettingsValues,
   upsertPluginSchedule,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import { defaultAppSettings } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
 import {
@@ -115,7 +117,7 @@ describe("plugin update service and routes", () => {
     });
     await service.install(`git:${repo}@main`);
     app = new Hono();
-    registerPluginRoutes(app, { config: { serverPort: 3334 } }, service);
+    registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
   });
 
   afterEach(async () => {
@@ -155,6 +157,7 @@ describe("plugin update service and routes", () => {
           integrity: "sha512-current",
         },
         updatePolicy: "compatible",
+        autoApply: false,
         updateState,
         activeArtifactId: null,
         rootDir: join(workDir, id),
@@ -220,6 +223,115 @@ describe("plugin update service and routes", () => {
     );
   });
 
+  it("automatically applies an opted-in compatible update through activation", async () => {
+    await service.setUpdatePolicy("updater", "compatible");
+    await service.setAutoApply("updater", true);
+    const candidateCommit = await commitPlugin(repo, "1.1.0");
+
+    await service.sweepAutomaticUpdates(Date.now());
+
+    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+      gitResolvedCommit: candidateCommit,
+      version: "1.1.0",
+    });
+    expect(service.list()).toMatchObject([
+      { id: "updater", version: "1.1.0", status: "running", autoApply: true },
+    ]);
+    expect(service.listUpdateHistory("updater", 20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "check", outcome: "update-available" }),
+        expect.objectContaining({ kind: "download", outcome: "started" }),
+        expect.objectContaining({ kind: "activate", outcome: "updated" }),
+      ]),
+    );
+  });
+
+  it("audits a discovered candidate when automatic application is off", async () => {
+    await service.setUpdatePolicy("updater", "compatible");
+    const installedCommit = getInstalledPluginRegistration(
+      db,
+      "updater",
+    )?.gitResolvedCommit;
+    await commitPlugin(repo, "1.1.0");
+
+    await service.sweepAutomaticUpdates(Date.now());
+
+    expect(
+      getInstalledPluginRegistration(db, "updater")?.gitResolvedCommit,
+    ).toBe(installedCommit);
+    expect(service.listUpdateHistory("updater", 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "auto-apply-skipped",
+          outcome: "skipped",
+          detail: "automatic application is not enabled",
+        }),
+      ]),
+    );
+  });
+
+  it("never automatically applies a major git plugin version", async () => {
+    await service.setUpdatePolicy("updater", "compatible");
+    await service.setAutoApply("updater", true);
+    const installedCommit = getInstalledPluginRegistration(
+      db,
+      "updater",
+    )?.gitResolvedCommit;
+    await commitPlugin(repo, "2.0.0");
+
+    await service.sweepAutomaticUpdates(Date.now());
+
+    expect(
+      getInstalledPluginRegistration(db, "updater")?.gitResolvedCommit,
+    ).toBe(installedCommit);
+    expect(service.listUpdateHistory("updater", 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "auto-apply-skipped",
+          detail: "major updates are never automatically applied",
+        }),
+      ]),
+    );
+  });
+
+  it("respects ignored candidates and the organization disable toggle", async () => {
+    await service.setUpdatePolicy("updater", "compatible");
+    await service.setAutoApply("updater", true);
+    const ignoredCommit = await commitPlugin(repo, "1.1.0");
+    await service.ignoreVersion("updater", ignoredCommit);
+    await service.sweepAutomaticUpdates(Date.now());
+    expect(getInstalledPluginRegistration(db, "updater")?.version).toBe(
+      "1.0.0",
+    );
+    expect(service.listUpdateHistory("updater", 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "auto-apply-skipped",
+          detail: expect.stringContaining("ignored"),
+        }),
+      ]),
+    );
+
+    await service.ignoreVersion("updater", "older-candidate");
+    await commitPlugin(repo, "1.2.0");
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      pluginAutoApplyDisabled: true,
+    });
+    await service.sweepAutomaticUpdates(Date.now());
+    expect(getInstalledPluginRegistration(db, "updater")?.version).toBe(
+      "1.0.0",
+    );
+    expect(service.listUpdateHistory("updater", 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "auto-apply-skipped",
+          detail: "organization policy disables automatic application",
+        }),
+      ]),
+    );
+  });
+
   it("persists patch/minor policy and skips an ignored version until a newer release appears", async () => {
     upsertInstalledPlugin(db, {
       id: "policy-test",
@@ -238,6 +350,7 @@ describe("plugin update service and routes", () => {
         integrity: "sha512-current",
       },
       updatePolicy: "compatible",
+      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
@@ -325,6 +438,7 @@ describe("plugin update service and routes", () => {
         integrity: "sha512-current",
       },
       updatePolicy: "compatible",
+      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
@@ -519,6 +633,7 @@ describe("plugin update service and routes", () => {
               integrity: `sha512-${scenario.current}`,
             },
             updatePolicy: scenario.policy,
+            autoApply: false,
             updateState: {
               lastCheckAt: null,
               availableCompatibleVersion: null,
@@ -774,6 +889,7 @@ describe("plugin update service and routes", () => {
       provenance: "direct",
       sourceDisplay: expect.stringContaining("git ·"),
       updatePolicy: "compatible",
+      autoApply: false,
       updateState: {
         quarantined: true,
         lastFailure: {
@@ -828,6 +944,21 @@ describe("plugin update service and routes", () => {
         detail: expect.stringContaining("quarantined"),
       },
     ]);
+    await service.setAutoApply("updater", true);
+    await service.sweepAutomaticUpdates(Date.now());
+    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+      version: "1.0.0",
+      quarantinedVersion: candidateCommit,
+    });
+    expect(service.listUpdateHistory("updater", 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "auto-apply-skipped",
+          detail: expect.stringContaining("quarantined"),
+        }),
+        expect.objectContaining({ kind: "rollback", outcome: "restored" }),
+      ]),
+    );
     await rm(failureMarker);
     await expect(
       service.applyUpdate("updater", { dryRun: false, latest: false }),
@@ -1202,6 +1333,7 @@ describe("plugin update service and routes", () => {
       },
       exactResolution: { kind: "git", commit: currentCommit },
       updatePolicy: "compatible",
+      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,

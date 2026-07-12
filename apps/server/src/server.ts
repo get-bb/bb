@@ -77,6 +77,7 @@ export interface ServerApp {
   closeWebSockets: CloseWebSockets;
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
+  marketplaceService: import("./services/marketplaces/marketplace-service.js").MarketplaceService;
 }
 
 interface CloseWebSocketServerArgs {
@@ -598,5 +599,6 @@ export function createApp(
       }),
     injectWebSocket,
     pluginService,
+    marketplaceService,
   };
 }

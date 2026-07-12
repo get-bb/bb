@@ -30,6 +30,7 @@ function gitPersistence(url: string, requestedRef: string) {
     },
     exactResolution: { kind: "git" as const, commit: "test-commit" },
     updatePolicy: "manual" as const,
+    autoApply: false,
     updateState: {
       lastCheckAt: null,
       availableCompatibleVersion: null,

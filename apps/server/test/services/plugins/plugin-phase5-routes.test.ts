@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
   createPluginArtifact,
+  createPluginUpdateEvent,
   getInstalledPluginRegistration,
   migrate,
   upsertInstalledPlugin,
@@ -160,6 +161,7 @@ describe("Phase 5 plugin routes", () => {
         integrity: "sha512-sentinel",
       },
       updatePolicy: "patch",
+      autoApply: false,
       updateState: {
         lastCheckAt: 123,
         availableCompatibleVersion: "1.0.1",
@@ -186,7 +188,7 @@ describe("Phase 5 plugin routes", () => {
       validatedAt: 123,
     });
     app = new Hono();
-    registerPluginRoutes(app, { config: { serverPort: 3334 } }, service);
+    registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
   });
 
   afterEach(async () => {
@@ -194,6 +196,48 @@ describe("Phase 5 plugin routes", () => {
     await service.stop();
     db.$client.close();
     await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("exposes automatic policy and newest-first audit history contracts", async () => {
+    const enabled = await app.request("/plugins/preview-sentinel/auto-apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(await enabled.json()).toEqual({ autoApply: true });
+    expect(await (await app.request("/plugins")).json()).toMatchObject({
+      autoApplyDisabled: false,
+      plugins: [{ id: "preview-sentinel", autoApply: true }],
+    });
+
+    createPluginUpdateEvent(db, {
+      id: "route-event",
+      pluginId: "preview-sentinel",
+      kind: "auto-apply-skipped",
+      fromVersion: "1.0.0",
+      toVersion: "2.0.0",
+      outcome: "skipped",
+      detail: "major updates are never automatically applied",
+      createdAt: 100,
+      retainedUntil: 1_000,
+    });
+    expect(
+      await (await app.request("/plugins/preview-sentinel/history")).json(),
+    ).toEqual({
+      events: [
+        {
+          kind: "auto-apply-skipped",
+          fromVersion: "1.0.0",
+          toVersion: "2.0.0",
+          outcome: "skipped",
+          detail: "major updates are never automatically applied",
+          at: 100,
+        },
+      ],
+    });
+    expect(
+      await (await app.request("/plugins/updates/audit?limit=1")).json(),
+    ).toMatchObject({ events: [{ pluginId: "preview-sentinel" }] });
   });
 
   it("previews npm exact/range/default metadata and reports incompatible newer releases without mutation", async () => {
@@ -339,7 +383,7 @@ describe("Phase 5 plugin routes", () => {
     const marketplaceApp = new Hono();
     registerPluginRoutes(
       marketplaceApp,
-      { config: { serverPort: 3334 } },
+      { config: { serverPort: 3334 }, db },
       service,
       marketplaces,
     );

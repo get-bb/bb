@@ -66,6 +66,7 @@ export interface InstalledPluginRow {
   npmIntegrity: string | null;
   gitResolvedCommit: string | null;
   updatePolicy: PluginUpdatePolicy;
+  autoApply: boolean;
   lastUpdateCheckAt: number | null;
   availableCompatibleVersion: string | null;
   newestIncompatibleVersion: string | null;
@@ -94,6 +95,7 @@ export interface UpsertInstalledPluginInput {
   sourceIntent: PluginSourceIntent;
   exactResolution: PluginExactResolution;
   updatePolicy: PluginUpdatePolicy;
+  autoApply: boolean;
   updateState: PluginUpdateState;
   activeArtifactId: string | null;
   rootDir: string;
@@ -111,7 +113,7 @@ export interface LegacyInstalledPluginRegistration {
 
 export type NormalizeLegacyInstalledPluginInput = Omit<
   UpsertInstalledPluginInput,
-  "exactResolution"
+  "exactResolution" | "autoApply"
 > & { exactResolution: LegacyPluginExactResolution };
 
 function normalizedColumns(
@@ -176,6 +178,7 @@ function normalizedColumns(
         ? plugin.exactResolution.commit
         : null,
     updatePolicy: plugin.updatePolicy,
+    autoApply: "autoApply" in plugin ? plugin.autoApply : false,
     lastUpdateCheckAt: plugin.updateState.lastCheckAt,
     availableCompatibleVersion: plugin.updateState.availableCompatibleVersion,
     newestIncompatibleVersion: plugin.updateState.newestIncompatibleVersion,
@@ -367,6 +370,20 @@ export function setInstalledPluginUpdatePolicy(
     .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
     .run();
   return result.changes > 0;
+}
+
+export function setInstalledPluginAutoApply(
+  db: DbConnection,
+  id: string,
+  autoApply: boolean,
+): boolean {
+  return (
+    db
+      .update(installedPlugins)
+      .set({ autoApply, updatedAt: Date.now() })
+      .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+      .run().changes > 0
+  );
 }
 
 export function setInstalledPluginQuarantine(

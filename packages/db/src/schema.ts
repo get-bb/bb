@@ -187,6 +187,11 @@ export const appSettings = sqliteTable("app_settings", {
   })
     .notNull()
     .default(false),
+  pluginAutoApplyDisabled: integer("plugin_auto_apply_disabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   keybindingOverrides: text("keybinding_overrides").notNull().default("[]"),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -232,6 +237,9 @@ export const installedPlugins = sqliteTable("plugins", {
   })
     .notNull()
     .default("manual"),
+  autoApply: integer("auto_apply", { mode: "boolean" })
+    .notNull()
+    .default(false),
   lastUpdateCheckAt: integer("last_update_check_at"),
   availableCompatibleVersion: text("available_compatible_version"),
   newestIncompatibleVersion: text("newest_incompatible_version"),
@@ -324,6 +332,38 @@ export const pluginStateSnapshots = sqliteTable(
   ],
 );
 
+export const pluginUpdateEvents = sqliteTable(
+  "plugin_update_events",
+  {
+    id: text("id").primaryKey(),
+    // Deliberately not an FK: update history survives plugin removal.
+    pluginId: text("plugin_id").notNull(),
+    kind: text("kind", {
+      enum: [
+        "check",
+        "resolve",
+        "download",
+        "activate",
+        "rollback",
+        "auto-apply-skipped",
+      ],
+    }).notNull(),
+    fromVersion: text("from_version"),
+    toVersion: text("to_version"),
+    outcome: text("outcome").notNull(),
+    detail: text("detail"),
+    createdAt: integer("created_at").notNull(),
+    retainedUntil: integer("retained_until").notNull(),
+  },
+  (table) => [
+    index("plugin_update_events_plugin_idx").on(
+      table.pluginId,
+      table.createdAt,
+    ),
+    index("plugin_update_events_retention_idx").on(table.retainedUntil),
+  ],
+);
+
 export const marketplaces = sqliteTable("marketplaces", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -343,6 +383,12 @@ export const marketplaces = sqliteTable("marketplaces", {
   updatePolicy: text("update_policy", {
     enum: ["manual", "compatible", "patch", "minor"],
   }).notNull(),
+  autoCheck: integer("auto_check", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  autoApply: integer("auto_apply", { mode: "boolean" })
+    .notNull()
+    .default(false),
   lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
   lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
   lastError: text("last_error"),

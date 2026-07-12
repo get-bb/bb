@@ -29,6 +29,7 @@ import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import {
   claimPluginScheduledRun,
+  createPluginUpdateEvent,
   createPluginArtifact,
   getPluginArtifact,
   getPluginStateSnapshot,
@@ -38,6 +39,7 @@ import {
   getInstalledPluginRegistration,
   getInstalledPlugin,
   getMarketplace,
+  getAppSettings,
   getPluginArtifactByResolution,
   getThread,
   listDuePluginSchedules,
@@ -46,13 +48,16 @@ import {
   listUnnormalizedPluginRegistrations,
   listPluginSchedules,
   listRecentPluginArtifacts,
+  listPluginUpdateEvents,
   markInstalledPluginRemoved,
   normalizeInstalledPluginRegistration,
   prunePluginSchedules,
+  pruneExpiredPluginUpdateEvents,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
   setInstalledPluginIgnoredVersion,
   setInstalledPluginUpdatePolicy,
+  setInstalledPluginAutoApply,
   setInstalledPluginUpdateState,
   setInstalledPluginSourceClassification,
   setInstalledPluginQuarantine,
@@ -222,6 +227,8 @@ export interface PluginListEntry {
   marketplaceName?: string;
   sourceDisplay: string;
   updatePolicy: PluginUpdatePolicy;
+  /** Effective value, including marketplace-level inheritance. */
+  autoApply: boolean;
   updateState: {
     outcome?: PluginUpdateCheckEntry["outcome"];
     availableVersion?: string;
@@ -589,6 +596,13 @@ export interface PluginService {
     id: string,
     policy: PluginUpdatePolicy,
   ): Promise<{ ok: true } | { ok: false; error: string }>;
+  setAutoApply(
+    id: string,
+    enabled: boolean,
+  ): Promise<{ ok: true; autoApply: boolean } | { ok: false; error: string }>;
+  listUpdateHistory(id: string, limit: number): PluginUpdateHistoryEvent[];
+  listUpdateAudit(limit: number): PluginUpdateAuditEvent[];
+  sweepAutomaticUpdates(now: number): Promise<void>;
   applyUpdate(
     id: string,
     options: { dryRun: boolean; latest: boolean },
@@ -794,6 +808,19 @@ export interface PluginService {
    * Rows whose plugin is not loaded are left unclaimed. No host required.
    */
   sweepDueSchedules(now: number): Promise<void>;
+}
+
+export interface PluginUpdateHistoryEvent {
+  kind: import("@bb/db").PluginUpdateEventKind;
+  fromVersion?: string;
+  toVersion?: string;
+  outcome: string;
+  detail?: string;
+  at: number;
+}
+
+export interface PluginUpdateAuditEvent extends PluginUpdateHistoryEvent {
+  pluginId: string;
 }
 
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
@@ -2330,6 +2357,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           sourceIntent: args.sourceIntent,
           exactResolution: args.exactResolution,
           updatePolicy: args.updatePolicy ?? "manual",
+          autoApply: existing?.autoApply ?? false,
           updateState: emptyPluginUpdateState(),
           activeArtifactId: args.activeArtifactId ?? null,
           rootDir: args.rootDir,
@@ -3238,6 +3266,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       sourceIntent: sourceIntentForRow(row),
       exactResolution: exactResolutionForRow(row),
       updatePolicy: row.updatePolicy,
+      autoApply: row.autoApply,
       updateState: {
         lastCheckAt: row.lastUpdateCheckAt,
         availableCompatibleVersion: row.availableCompatibleVersion,
@@ -3803,6 +3832,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     if (!setPluginStateSnapshotStatus(deps.db, snapshotId, "restored", now())) {
       throw new Error(`plugin rollback snapshot disappeared: ${snapshotId}`);
     }
+    recordUpdateEvent({
+      pluginId: snapshot.pluginId,
+      kind: "rollback",
+      fromVersion: previousRegistration.version,
+      toVersion: rollback.candidateVersion,
+      outcome: "restored",
+      detail: rollback.detail,
+    });
   }
 
   async function recoverIncompletePluginRollbacks(): Promise<void> {
@@ -3886,6 +3923,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           sourceIntent: args.sourceIntent,
           exactResolution: args.exactResolution,
           updatePolicy: args.updatePolicy,
+          autoApply: args.row.autoApply,
           updateState: emptyPluginUpdateState(),
           activeArtifactId: args.artifactId,
           rootDir: args.rootDir,
@@ -3980,6 +4018,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       retentionMs: artifactRetentionMs,
       warn: (message) => logger.warn(message),
     });
+    pruneExpiredPluginUpdateEvents(deps.db, { now: now(), limit: 500 });
   }
 
   async function applyNpmCandidate(args: {
@@ -4222,6 +4261,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           sourceIntent: { kind: "builtin", name: builtin.name },
           exactResolution: { kind: "builtin" },
           updatePolicy: "manual",
+          autoApply: existing?.autoApply ?? false,
           updateState: emptyPluginUpdateState(),
           activeArtifactId: null,
           rootDir: builtin.rootDir,
@@ -4367,6 +4407,52 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.hub.notifySystem(["plugins-changed"]);
   }
 
+  const UPDATE_EVENT_RETENTION_MS = 90 * 24 * 60 * 60_000;
+
+  function recordUpdateEvent(args: {
+    pluginId: string;
+    kind: import("@bb/db").PluginUpdateEventKind;
+    fromVersion?: string;
+    toVersion?: string;
+    outcome: string;
+    detail?: string;
+    at?: number;
+  }): void {
+    const createdAt = args.at ?? now();
+    createPluginUpdateEvent(deps.db, {
+      id: randomUUID(),
+      pluginId: args.pluginId,
+      kind: args.kind,
+      fromVersion: args.fromVersion ?? null,
+      toVersion: args.toVersion ?? null,
+      outcome: args.outcome,
+      detail: args.detail ?? null,
+      createdAt,
+      retainedUntil: createdAt + UPDATE_EVENT_RETENTION_MS,
+    });
+  }
+
+  function effectiveAutoApply(row: InstalledPluginRow): boolean {
+    if (row.autoApply) return true;
+    if (row.provenance !== "marketplace" || row.marketplaceId === null) {
+      return false;
+    }
+    return getMarketplace(deps.db, row.marketplaceId)?.autoApply ?? false;
+  }
+
+  function toHistoryEvent(
+    event: import("@bb/db").PluginUpdateEventRow,
+  ): PluginUpdateHistoryEvent {
+    return {
+      kind: event.kind,
+      ...(event.fromVersion === null ? {} : { fromVersion: event.fromVersion }),
+      ...(event.toVersion === null ? {} : { toVersion: event.toVersion }),
+      outcome: event.outcome,
+      ...(event.detail === null ? {} : { detail: event.detail }),
+      at: event.createdAt,
+    };
+  }
+
   function compactPath(path: string): string {
     const home = homedir();
     return path === home
@@ -4468,6 +4554,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               }),
           sourceDisplay: sourceDisplayForRow(row),
           updatePolicy: row.updatePolicy,
+          autoApply: effectiveAutoApply(row),
           updateState: updateStateForRow(row),
           enabled: row.enabled,
           description: exposedPlugin?.manifest.description ?? null,
@@ -4754,6 +4841,30 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               );
               const ignored = applyIgnoredVersion(current, checked);
               persistUpdateEntry(ignored.entry, ignored.ignoredVersion);
+              recordUpdateEvent({
+                pluginId: current.id,
+                kind: "resolve",
+                fromVersion: installed.version,
+                ...(checked.candidate === undefined
+                  ? {}
+                  : { toVersion: checked.candidate.version }),
+                outcome: checked.outcome,
+                ...(checked.detail === undefined
+                  ? {}
+                  : { detail: checked.detail }),
+              });
+              recordUpdateEvent({
+                pluginId: current.id,
+                kind: "check",
+                fromVersion: installed.version,
+                ...(ignored.entry.candidate === undefined
+                  ? {}
+                  : { toVersion: ignored.entry.candidate.version }),
+                outcome: ignored.entry.outcome,
+                ...(ignored.entry.detail === undefined
+                  ? {}
+                  : { detail: ignored.entry.detail }),
+              });
               return ignored.entry;
             }),
           ),
@@ -4924,6 +5035,143 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     },
 
+    setAutoApply(id, enabled) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        withLifecycleLock(id, async () => {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row === undefined) {
+            return { ok: false, error: `unknown plugin "${id}"` };
+          }
+          if (!setInstalledPluginAutoApply(deps.db, id, enabled)) {
+            return { ok: false, error: `plugin "${id}" disappeared` };
+          }
+          notifyPluginsChanged();
+          const updated = getInstalledPlugin(deps.db, id);
+          return {
+            ok: true,
+            autoApply:
+              updated === undefined ? enabled : effectiveAutoApply(updated),
+          };
+        }),
+      );
+    },
+
+    listUpdateHistory(id, limit) {
+      return listPluginUpdateEvents(deps.db, { pluginId: id, limit }).map(
+        toHistoryEvent,
+      );
+    },
+
+    listUpdateAudit(limit) {
+      return listPluginUpdateEvents(deps.db, { limit }).map((event) => ({
+        pluginId: event.pluginId,
+        ...toHistoryEvent(event),
+      }));
+    },
+
+    async sweepAutomaticUpdates(sweepNow) {
+      const trackedRows = listInstalledPlugins(deps.db).filter(
+        (row) =>
+          (row.sourceKind === "git" && row.sourceGitRefKind === "branch") ||
+          (row.sourceKind === "npm" && row.sourceNpmSpecKind !== "exact"),
+      );
+      const checks: PluginUpdateCheckEntry[] = [];
+      for (const row of trackedRows) {
+        checks.push(...(await this.checkForUpdates(row.id)));
+      }
+      const globallyDisabled = getAppSettings(deps.db).pluginAutoApplyDisabled;
+      for (const check of checks) {
+        const row = getInstalledPlugin(deps.db, check.id);
+        if (row === undefined) continue;
+        if (
+          check.outcome !== "update-available" ||
+          check.candidate === undefined
+        ) {
+          const skippedTarget =
+            check.blocked?.version ??
+            (check.detail?.includes("ignored") ? row.ignoredVersion : null) ??
+            (check.detail?.includes("quarantined")
+              ? row.quarantinedVersion
+              : null);
+          if (skippedTarget !== null && effectiveAutoApply(row)) {
+            recordUpdateEvent({
+              pluginId: row.id,
+              kind: "auto-apply-skipped",
+              fromVersion: check.installed.version,
+              toVersion: skippedTarget,
+              outcome: "skipped",
+              detail:
+                check.detail ?? "candidate is outside automatic update policy",
+              at: sweepNow,
+            });
+          }
+          continue;
+        }
+        let skipped: string | null = null;
+        if (globallyDisabled)
+          skipped = "organization policy disables automatic application";
+        else if (!effectiveAutoApply(row))
+          skipped = "automatic application is not enabled";
+        else if (row.updatePolicy === "manual")
+          skipped = "manual update policy";
+        else if (row.ignoredVersion === check.candidate.version)
+          skipped = "candidate version is ignored";
+        else if (quarantineMatches(row, check.candidate))
+          skipped = "candidate is quarantined";
+        else if (row.sourceKind === "npm") {
+          const installed = semver.coerce(check.installed.version);
+          const candidate = semver.coerce(check.candidate.version);
+          if (
+            installed !== null &&
+            candidate !== null &&
+            candidate.major > installed.major
+          ) {
+            skipped = "major updates are never automatically applied";
+          }
+        } else if (row.sourceKind === "git") {
+          const staged = await stageGitCandidate({
+            row,
+            commit: check.candidate.version,
+            promote: false,
+          });
+          if (staged.outcome !== "valid") {
+            skipped =
+              "candidate could not be validated for automatic application";
+          } else {
+            const installed = semver.coerce(row.version);
+            const candidate = semver.coerce(staged.manifest.version);
+            if (
+              installed !== null &&
+              candidate !== null &&
+              candidate.major > installed.major
+            ) {
+              skipped = "major updates are never automatically applied";
+            }
+          }
+        }
+        if (skipped !== null) {
+          recordUpdateEvent({
+            pluginId: row.id,
+            kind: "auto-apply-skipped",
+            fromVersion: check.installed.version,
+            toVersion: check.candidate.version,
+            outcome: "skipped",
+            detail: skipped,
+            at: sweepNow,
+          });
+          continue;
+        }
+        try {
+          await this.applyUpdate(row.id, { dryRun: false, latest: false });
+        } catch (error) {
+          logger.warn(
+            `automatic update failed for ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      pruneExpiredPluginUpdateEvents(deps.db, { now: sweepNow, limit: 500 });
+    },
+
     async applyUpdate(id, options) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
@@ -4969,6 +5217,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         });
         const checked = checkEntryFromResolution(id, from, resolution);
         persistUpdateEntry(checked, null);
+        recordUpdateEvent({
+          pluginId: id,
+          kind: "resolve",
+          fromVersion: from.version,
+          ...(checked.candidate === undefined
+            ? {}
+            : { toVersion: checked.candidate.version }),
+          outcome: checked.outcome,
+          ...(checked.detail === undefined ? {} : { detail: checked.detail }),
+        });
 
         if (resolution.outcome === "pinned") {
           return {
@@ -5021,6 +5279,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             },
           };
         }
+
+        recordUpdateEvent({
+          pluginId: id,
+          kind: "download",
+          fromVersion: from.version,
+          toVersion: to.version,
+          outcome: "started",
+        });
 
         try {
           if (
@@ -5129,6 +5395,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           }),
           null,
         );
+        recordUpdateEvent({
+          pluginId: id,
+          kind: "activate",
+          fromVersion: from.version,
+          toVersion: updatedVersion.version,
+          outcome: "updated",
+        });
         return {
           ok: true,
           result: {

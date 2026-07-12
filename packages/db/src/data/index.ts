@@ -181,6 +181,7 @@ export {
   setInstalledPluginUpdateState,
   setInstalledPluginIgnoredVersion,
   setInstalledPluginUpdatePolicy,
+  setInstalledPluginAutoApply,
   setInstalledPluginSourceClassification,
   setInstalledPluginQuarantine,
   upsertInstalledPlugin,
@@ -213,10 +214,18 @@ export {
   getMarketplace,
   listMarketplaces,
   updateMarketplaceRefreshFailure,
+  setMarketplaceAutoPolicy,
   upsertMarketplace,
   type MarketplaceRow,
   type UpsertMarketplaceInput,
 } from "./marketplaces.js";
+export {
+  createPluginUpdateEvent,
+  listPluginUpdateEvents,
+  pruneExpiredPluginUpdateEvents,
+  type PluginUpdateEventKind,
+  type PluginUpdateEventRow,
+} from "./plugin-update-events.js";
 export {
   deleteAllPluginSettings,
   deletePluginKvValue,
