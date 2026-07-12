@@ -58,7 +58,10 @@ added/updated/unchanged counts.
   bb plugin install <src>        Install from a local path, builtin:<name>,
                                  git:<url>@<ref>, or npm:<name>@<version>
                                  (npm: needs npm on PATH; installs prompt —
-                                 pass --yes to skip)
+                                 pass --yes to skip). Managed git:/npm:
+                                 installs refuse engines.bb / engines.bbPluginSdk
+                                 mismatches, manifest/artifact identity
+                                 mismatches, and ids reserved by builtins
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
@@ -77,8 +80,11 @@ added/updated/unchanged counts.
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json) and,
                                  when bb.app is declared, the frontend bundle
-                                 (app.js, app.css, app.meta.json); no server
-                                 required
+                                 (app.js, app.css, app.meta.json). Each
+                                 *.meta.json is stamped with SDK major/version,
+                                 artifactFormatVersion, pluginId, pluginVersion,
+                                 and builtWith (bb + plugin SDK versions); no
+                                 server required
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
                                  on every change rebuild its frontend bundle
                                  (if it declares bb.app) and reload the
@@ -155,8 +161,10 @@ for a frontend entry); `bb plugin install .` registers it; `bb plugin dev`
 watches and reloads on every save. The manifest is package.json: `bb.server`
 (backend entry, loaded as TypeScript — no build step), optional `bb.app`
 (frontend entry), optional `bb.skills` (skills directories auto-imported
-into agent threads; default `skills/`), and `engines.bb` (supported bb
-range). The plugin id is the package name minus `bb-plugin-`.
+into agent threads; default `skills/`), `engines.bb` (supported bb range),
+and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
+writes `"^1.0.0"` for SDK 1.0.0). The plugin id is the package name minus
+`bb-plugin-`.
 
 Plugins can contribute palettes with `bb.themes`: an array of
 `{ id, name, description?, css }`, where `css` is a plugin-relative `.css`

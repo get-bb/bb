@@ -30,7 +30,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^1.0.0" },
   "bb": { "server": "./server.ts", "app": "./app.tsx", "skills": ["skills"] }
 }
 ```
@@ -67,10 +67,22 @@ The manifest is `package.json`:
   named `icon` hint when a monochrome glyph should match the surrounding bb
   chrome. Reserve logo assets for intentionally branded artwork (and provide
   a dark variant when needed).
-- `engines.bb` — semver range checked against the bb version at load.
+- `engines.bb` — optional semver range checked against the bb app version.
+- `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
+  (currently `1.0.0`; the scaffold writes `"^1.0.0"`). Absent means a legacy
+  manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
+  the running SDK; path installs surface it as `incompatible` at load.
+- `bb plugin build` stamps authoritative metadata into both
+  `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
+  `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and
+  `builtWith: { bbVersion, pluginSdkVersion }`. Managed installs reject
+  artifacts whose `pluginId`/`pluginVersion` disagree with the package
+  manifest, or whose SDK major does not match the host.
 - The plugin id is the package name minus the `bb-plugin-` prefix
   (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
-  and CLI commands.
+  and CLI commands. Ids reserved by builtins (`automations`, `connect`,
+  `custom-instructions`, `inline-vis`, `memory`, `secrets`) cannot be
+  installed from a non-`builtin:` source — use `builtin:<name>` instead.
 
 The scaffold ships the full API as bundled type declarations in `types/`
 (`bb-plugin-sdk.d.ts`, plus `bb-plugin-sdk-app.d.ts` for `--app`); its

@@ -407,9 +407,14 @@ Plugin state lives under the data dir:
 installed with `--ignore-scripts`); `git:<url>@<ref>` requires `git`. Local
 path installs register the directory in place and never delete it. Builtin
 plugins use `builtin:<name>`, ship with bb, and remain available when the
-Plugins experiment is off unless removed. Plugins are
-full-trust code running inside the bb server process: they can read all local
-bb data, including other plugins' secrets.
+Plugins experiment is off unless removed. Managed (`git:`/`npm:`) installs
+refuse plugins whose optional `engines.bb` or `engines.bbPluginSdk` ranges
+do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
+does not match the package manifest; installing a non-builtin source whose
+derived id collides with a builtin name (automations, connect,
+custom-instructions, inline-vis, memory, secrets) is also refused. Plugins
+are full-trust code running inside the bb server process: they can read all
+local bb data, including other plugins' secrets.
 
 ## Startup Flags
 

@@ -278,6 +278,20 @@ people installing your plugin never need npm.
 
 A BB plugin.
 ${componentsSection}
+## Manifest
+
+\`package.json\` is the plugin manifest. Notable fields:
+
+- \`bb.server\` — backend entry (required); optional \`bb.app\` for a frontend.
+- \`engines.bb\` — supported bb app version range.
+- \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^1.0.0\`).
+
+Run \`bb plugin build\` before publishing git/npm installs. It writes
+\`dist/server.js\` + \`server.meta.json\` (and, with \`bb.app\`, \`app.js\` /
+\`app.css\` / \`app.meta.json\`). Each \`*.meta.json\` stamps SDK major/version,
+\`artifactFormatVersion\`, \`pluginId\`, \`pluginVersion\`, and
+\`builtWith\` so managed installs can verify the artifacts.
+
 ## Install
 
 From this directory:

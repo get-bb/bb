@@ -334,7 +334,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `npm:`). Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip.
     Plugins that declare a frontend (`bb.app`) are built at install time for
-    path/git sources; npm packages must publish a prebuilt `dist/`.
+    path/git sources; npm packages must publish a prebuilt `dist/`. Managed
+    git/npm installs refuse `engines.bb` / `engines.bbPluginSdk` mismatches,
+    manifest vs. artifact identity mismatches, and ids reserved by builtins.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
@@ -344,11 +346,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend
-    entry plus a typecheck-only `tsconfig.json`); `bb plugin build [path]` —
+    entry plus a typecheck-only `tsconfig.json`; scaffold sets
+    `engines.bbPluginSdk` to `^1.0.0`); `bb plugin build [path]` —
     compile the plugin into `dist/`: the backend bundle (`server.js` +
-    `server.meta.json`; preferred by git/npm installs over source) and, when
-    `bb.app` is declared, `app.js` + `app.css` + `app.meta.json`. Neither
-    needs the server.
+    `server.meta.json` stamped with SDK/identity metadata; preferred by
+    git/npm installs over source) and, when `bb.app` is declared, `app.js` +
+    `app.css` + `app.meta.json`. Neither needs the server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
     declared) and reloads the plugin; open app pages pick the new UI up live.
