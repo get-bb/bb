@@ -330,8 +330,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   experiment.
 - Commands:
   - `bb plugin install <src>` — local path, `builtin:<name>`,
-    `git:<url>@<ref>`, or `npm:<name>@<version>` (npm on PATH required for
-    `npm:`). Installs prompt for confirmation (plugins are full-trust code);
+    `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
+    required for `npm:`). Omit the npm spec to track compatible stable
+    releases; ranges and dist-tags track, while exact versions are pinned.
+    Git branches track; tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip.
     Plugins that declare a frontend (`bb.app`) are built at install time for
     path/git sources; npm packages must publish a prebuilt `dist/`. Managed
