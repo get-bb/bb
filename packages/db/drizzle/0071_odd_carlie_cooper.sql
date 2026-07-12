@@ -1,0 +1,1 @@
+ALTER TABLE `marketplaces` ADD `catalog_json` text;
