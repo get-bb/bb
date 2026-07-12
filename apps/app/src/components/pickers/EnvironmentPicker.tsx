@@ -581,7 +581,9 @@ function EnvironmentMenuItem({
         <Icon
           name={icon}
           className={cn(
-            "mt-0.5",
+            // Center the 14px icon on the label's 16px first line; on coarse
+            // pointers icon and line are both 20px, so no offset.
+            "mt-px max-md:pointer-coarse:mt-0",
             "text-muted-foreground",
             COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
           )}
@@ -598,7 +600,7 @@ function EnvironmentMenuItem({
         </span>
       </span>
       {hint ? (
-        <span className="mt-0.5 max-w-32 truncate text-xs text-muted-foreground">
+        <span className="max-w-32 truncate text-xs text-muted-foreground">
           {hint}
         </span>
       ) : null}

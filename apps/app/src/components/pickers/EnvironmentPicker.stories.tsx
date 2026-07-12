@@ -1,7 +1,11 @@
 import type { ProjectSource } from "@bb/domain";
 import { EnvironmentPickerUI } from "./EnvironmentPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { HOST_IDS, makeHost } from "../../../.ladle/story-fixtures";
+import {
+  HOST_IDS,
+  HOST_NAMES,
+  makeHost,
+} from "../../../.ladle/story-fixtures";
 
 const localHost = makeHost({ id: HOST_IDS.local });
 const remoteHost = makeHost({ id: HOST_IDS.local, name: "studio-mac-mini" });
@@ -144,6 +148,42 @@ export function Overview() {
           sources={localProjectSources}
           host={localHost}
           isLocal
+          defaultOpen
+          modal={false}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+const machineHosts = [
+  makeHost({ id: HOST_IDS.local }),
+  makeHost({ id: HOST_IDS.remote, name: HOST_NAMES.remote }),
+];
+
+const multiMachineSources: readonly ProjectSource[] = [
+  makeSource("src_local", HOST_IDS.local, "/Users/michael/Projects/bb"),
+  makeSource("src_remote", HOST_IDS.remote, "/home/michael/bb"),
+];
+
+export function MachineMenu() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="machine-grouped menu"
+        hint="two hosts viewed from another device (no local daemon) — checkout rows carry a path hint, 'Existing worktree' selected"
+      >
+        <EnvironmentPickerUI
+          value="reuse"
+          onChange={noop}
+          sources={multiMachineSources}
+          host={machineHosts[0] ?? null}
+          isLocal={false}
+          machines={{
+            hosts: machineHosts,
+            localDaemonHostId: null,
+            primaryHostId: HOST_IDS.local,
+          }}
           defaultOpen
           modal={false}
         />

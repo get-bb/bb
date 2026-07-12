@@ -447,7 +447,9 @@ function BranchPickerUnavailableRow({
       <Icon
         name={icon}
         className={cn(
-          "mt-0.5 text-muted-foreground",
+          // Center the 14px icon on the label's 16px first line; on coarse
+          // pointers icon and line are both 20px, so no offset.
+          "mt-px text-muted-foreground max-md:pointer-coarse:mt-0",
           COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
         )}
       />

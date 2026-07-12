@@ -256,8 +256,10 @@ export function OptionPicker<T extends string>({
                   option.tone === "warning" && "text-warning-text",
                 )}
               >
+                {/* 16px icon matches the label's 16px first line; coarse
+                    pointers keep size-4 while the line grows to 20px. */}
                 {OptionIcon ? (
-                  <OptionIcon className="mt-0.5 size-4 shrink-0" />
+                  <OptionIcon className="size-4 shrink-0 max-md:pointer-coarse:mt-0.5" />
                 ) : null}
                 <span className="min-w-0 flex-1">
                   <span
