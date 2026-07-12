@@ -1,6 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
@@ -27,6 +27,7 @@ async function createFixture(
     installFailure?: Error;
     now?: () => number;
     serverUrl?: string;
+    useDefaultInstaller?: boolean;
   } = {},
 ) {
   const dataDir = await mkdtemp(join(tmpdir(), "bb-self-update-test-"));
@@ -34,6 +35,7 @@ async function createFixture(
   const installTarball = vi.fn(async () => {
     if (args.installFailure) throw args.installFailure;
   });
+  const runProcess = vi.fn(async () => undefined);
   const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith("/install/version")) {
@@ -53,15 +55,16 @@ async function createFixture(
     dataDir,
     enabled: args.enabled ?? true,
     fetchFn,
-    installTarball,
+    ...(args.useDefaultInstaller ? { runProcess } : { installTarball }),
     logger: testLogger,
     now: args.now,
     serverUrl: args.serverUrl ?? "https://server.example.test",
   });
-  return { fetchFn, installTarball, logger: testLogger, updater };
+  return { fetchFn, installTarball, logger: testLogger, runProcess, updater };
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true })),
   );
@@ -75,6 +78,26 @@ describe("protocol self-update", () => {
     );
     expect(test.fetchFn).toHaveBeenCalledTimes(2);
     expect(test.installTarball).toHaveBeenCalledOnce();
+  });
+
+  it("finds npm beside the running Node executable when the service PATH omits it", async () => {
+    vi.stubEnv("PATH", "/usr/bin:/bin");
+    const test = await createFixture({ useDefaultInstaller: true });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+
+    expect(test.runProcess).toHaveBeenCalledOnce();
+    expect(test.runProcess).toHaveBeenCalledWith(
+      "npm",
+      ["install", "-g", expect.stringContaining("bb-app-update-")],
+      {
+        env: expect.objectContaining({
+          PATH: `${dirname(process.execPath)}${delimiter}/usr/bin:/bin`,
+        }),
+      },
+    );
   });
 
   it("does nothing when auto-update is disabled", async () => {

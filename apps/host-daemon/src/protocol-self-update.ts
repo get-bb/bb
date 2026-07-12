@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
@@ -26,6 +26,14 @@ export interface ProtocolSelfUpdateInstaller {
   (tarballPath: string): Promise<void>;
 }
 
+interface SelfUpdateProcessRunner {
+  (
+    command: string,
+    args: string[],
+    options: { env: NodeJS.ProcessEnv },
+  ): Promise<void>;
+}
+
 interface CreateProtocolSelfUpdaterOptions {
   dataDir: string;
   enabled: boolean;
@@ -33,6 +41,7 @@ interface CreateProtocolSelfUpdaterOptions {
   serverUrl: string;
   fetchFn?: FetchFn;
   installTarball?: ProtocolSelfUpdateInstaller;
+  runProcess?: SelfUpdateProcessRunner;
   now?: () => number;
 }
 
@@ -79,15 +88,39 @@ async function writeAttempt(path: string, attemptedAt: number): Promise<void> {
   await rename(temporary, path);
 }
 
-async function defaultInstallTarball(tarballPath: string): Promise<void> {
-  await execFileAsync("npm", ["install", "-g", tarballPath]);
+const defaultRunProcess: SelfUpdateProcessRunner = async (
+  command,
+  args,
+  options,
+) => {
+  await execFileAsync(command, args, options);
+};
+
+async function defaultInstallTarball(
+  tarballPath: string,
+  runProcess: SelfUpdateProcessRunner,
+): Promise<void> {
+  const executableDirectory = dirname(process.execPath);
+  const inheritedPath = process.env.PATH;
+  const path = inheritedPath
+    ? `${executableDirectory}${delimiter}${inheritedPath}`
+    : executableDirectory;
+  await runProcess("npm", ["install", "-g", tarballPath], {
+    env: { ...process.env, PATH: path },
+  });
 }
 
 export function createProtocolSelfUpdater(
   options: CreateProtocolSelfUpdaterOptions,
 ): ProtocolSelfUpdater {
   const fetchFn = options.fetchFn ?? fetch;
-  const installTarball = options.installTarball ?? defaultInstallTarball;
+  const installTarball =
+    options.installTarball ??
+    ((tarballPath) =>
+      defaultInstallTarball(
+        tarballPath,
+        options.runProcess ?? defaultRunProcess,
+      ));
   const now = options.now ?? Date.now;
   const attemptPath = join(options.dataDir, ATTEMPT_FILE_NAME);
 
