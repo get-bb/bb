@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createConnection,
   createPluginArtifact,
+  deletePluginArtifact,
   deleteMarketplace,
   getInstalledPluginRegistration,
   getMarketplace,
@@ -84,6 +85,10 @@ describe("normalized plugin persistence", () => {
       activeArtifactId: "artifact-1",
     });
     expect(listPluginArtifacts(db, "linear")).toHaveLength(1);
+    expect(deletePluginArtifact(db, "artifact-1")).toBe(true);
+    expect(getInstalledPluginRegistration(db, "linear")?.activeArtifactId).toBe(
+      null,
+    );
   });
 
   it("upserts and lists typed marketplace state", () => {
@@ -110,5 +115,24 @@ describe("normalized plugin persistence", () => {
     ]);
     expect(getMarketplace(db, "official")?.displayName).toBe("Official");
     expect(deleteMarketplace(db, "official")).toBe(true);
+  });
+
+  it("rejects an npm artifact without registry integrity at runtime", () => {
+    const invalidArtifact = {
+      id: "artifact-invalid",
+      pluginId: "missing",
+      sourceKind: "npm",
+      npmResolvedVersion: "1.2.3",
+      gitResolvedCommit: null,
+      path: "/cache/artifact-invalid.tgz",
+      integrity: null,
+      contentHash: null,
+      validationResult: "pending",
+      validationDetail: null,
+      validatedAt: null,
+    };
+    expect(() =>
+      Reflect.apply(createPluginArtifact, undefined, [db, invalidArtifact]),
+    ).toThrow(/resolution fields/);
   });
 });

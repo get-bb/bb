@@ -1767,9 +1767,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     prefix: string,
     packageName: string,
   ): Promise<string | null> {
-    const value: unknown = JSON.parse(
-      await readFile(join(prefix, "package-lock.json"), "utf8"),
-    );
+    let value: unknown;
+    try {
+      value = JSON.parse(
+        await readFile(join(prefix, "package-lock.json"), "utf8"),
+      );
+    } catch {
+      return null;
+    }
     if (typeof value !== "object" || value === null) return null;
     const lock = value as Record<string, unknown>;
     const packages = lock.packages;
@@ -1794,6 +1799,30 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return typeof dependency.integrity === "string"
       ? dependency.integrity
       : null;
+  }
+
+  async function resolveNpmRegistry(
+    prefix: string,
+    packageName: string,
+  ): Promise<string> {
+    const scope = packageName.startsWith("@")
+      ? packageName.slice(0, packageName.indexOf("/"))
+      : null;
+    const keys =
+      scope === null ? ["registry"] : [`${scope}:registry`, "registry"];
+    for (const key of keys) {
+      const value = await runInstallCommand("npm", [
+        "config",
+        "get",
+        key,
+        "--prefix",
+        prefix,
+      ]);
+      if (value.length > 0 && value !== "undefined" && value !== "null") {
+        return value;
+      }
+    }
+    throw new Error(`npm did not resolve a registry for ${packageName}`);
   }
 
   async function registerInstalled(args: {
@@ -1961,12 +1990,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // Materialize + validate in a staging sibling; swap only once good, so
     // a failed refresh keeps the previous (still-loadable) install intact.
     const stagingPrefix = `${prefix}.staging`;
-    const registry =
-      process.env.npm_config_registry ?? "https://registry.npmjs.org";
+    let registry: string;
     let integrity: string | null;
     await rm(stagingPrefix, { recursive: true, force: true });
     await mkdir(stagingPrefix, { recursive: true });
     try {
+      registry = await resolveNpmRegistry(stagingPrefix, parsed.name);
       await runInstallCommand(
         "npm",
         [
@@ -1977,6 +2006,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "--omit=optional",
           "--no-audit",
           "--no-fund",
+          "--registry",
+          registry,
           `${parsed.name}@${parsed.version}`,
         ],
         {
@@ -1996,6 +2027,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           `${parsed.name}@${parsed.version}`,
           "dist.integrity",
           "--json",
+          "--registry",
+          registry,
         ]);
         const registryIntegrity: unknown = JSON.parse(integrityOutput);
         integrity =

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "63cc2f9e-829d-4338-83fc-977ed97da26b",
+  "id": "34512a8b-64eb-4c88-9055-d268e132784c",
   "prevId": "e2bb6a62-e097-4335-9f27-0807b09b2481",
   "tables": {
     "app_settings": {
@@ -1232,7 +1232,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },

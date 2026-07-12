@@ -231,9 +231,11 @@ export const installedPlugins = sqliteTable("plugins", {
   newestIncompatibleVersion: text("newest_incompatible_version"),
   updateStatusDetail: text("update_status_detail"),
   ignoredVersion: text("ignored_version"),
+  // deletePluginArtifact clears this before deleting in the same transaction.
+  // NO ACTION is intentional: drizzle-kit cannot faithfully emit SET NULL
+  // when adding this circular FK to the pre-existing plugins table.
   activeArtifactId: text("active_artifact_id").references(
     (): AnySQLiteColumn => pluginArtifacts.id,
-    { onDelete: "set null" },
   ),
   /** 0 marks rows created before normalized persistence; startup upgrades to 1. */
   normalizationVersion: integer("normalization_version").notNull().default(0),
