@@ -215,9 +215,15 @@ export const installedPlugins = sqliteTable("plugins", {
   sourceNpmPackage: text("source_npm_package"),
   sourceNpmRegistry: text("source_npm_registry"),
   sourceNpmRequestedSpec: text("source_npm_requested_spec"),
+  sourceNpmSpecKind: text("source_npm_spec_kind", {
+    enum: ["default", "exact", "tag", "range"],
+  }),
   sourceGitUrl: text("source_git_url"),
   sourceGitSubdirectory: text("source_git_subdirectory"),
   sourceGitRequestedRef: text("source_git_requested_ref"),
+  sourceGitRefKind: text("source_git_ref_kind", {
+    enum: ["branch", "tag", "commit"],
+  }),
   npmResolvedVersion: text("npm_resolved_version"),
   npmIntegrity: text("npm_integrity"),
   gitResolvedCommit: text("git_resolved_commit"),

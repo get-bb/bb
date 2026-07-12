@@ -139,7 +139,7 @@ describe("plugin install sources", () => {
       url: "https://github.com/acme/bb-plugin-foo.git",
     });
     expect(() => parsePluginSource("git:github.com/acme/repo")).toThrowError(
-      /must pin a ref/,
+      /must specify a ref/,
     );
     // Shorthand/https specs are URL-normalized (".." collapses safely);
     // on-disk paths are not, so traversal there must be rejected.
@@ -154,26 +154,36 @@ describe("plugin install sources", () => {
     ).toThrowError(/invalid git ref/);
   });
 
-  it("parses npm specs and refuses ranges and tags", () => {
+  it("classifies omitted, exact, range, and dist-tag npm specs", () => {
     expect(parsePluginSource("npm:bb-plugin-linear@0.3.0")).toEqual({
       kind: "npm",
       name: "bb-plugin-linear",
-      version: "0.3.0",
+      spec: "0.3.0",
+      specKind: "exact",
     });
     expect(parsePluginSource("npm:@acme/bb-plugin-x@1.2.3")).toEqual({
       kind: "npm",
       name: "@acme/bb-plugin-x",
-      version: "1.2.3",
+      spec: "1.2.3",
+      specKind: "exact",
     });
-    expect(() => parsePluginSource("npm:bb-plugin-x@^1.0.0")).toThrowError(
-      /exact version/,
-    );
-    expect(() => parsePluginSource("npm:bb-plugin-x@latest")).toThrowError(
-      /exact version/,
-    );
-    expect(() => parsePluginSource("npm:bb-plugin-x")).toThrowError(
-      /exact version/,
-    );
+    expect(parsePluginSource("npm:bb-plugin-x@^1.0.0")).toMatchObject({
+      spec: "^1.0.0",
+      specKind: "range",
+    });
+    expect(parsePluginSource("npm:bb-plugin-x@next")).toMatchObject({
+      spec: "next",
+      specKind: "tag",
+    });
+    expect(parsePluginSource("npm:bb-plugin-x")).toMatchObject({
+      spec: "",
+      specKind: "default",
+    });
+    expect(parsePluginSource("npm:@acme/bb-plugin-x")).toMatchObject({
+      name: "@acme/bb-plugin-x",
+      spec: "",
+      specKind: "default",
+    });
   });
 
   it("treats bare strings and path: as local paths with no managed dir", () => {
@@ -561,12 +571,42 @@ describe("plugin install flows", () => {
             sourceNpmPackage: name,
             sourceNpmRegistry: `http://127.0.0.1:${port}`,
             sourceNpmRequestedSpec: version,
+            sourceNpmSpecKind: "exact",
             npmResolvedVersion: version,
             npmIntegrity: expect.stringMatching(/^sha512-/),
             updatePolicy: "manual",
           });
 
+          const widened = await service.applyUpdate("npmhero", {
+            dryRun: false,
+            latest: true,
+          });
+          expect(widened).toMatchObject({
+            ok: true,
+            result: {
+              applied: true,
+              from: { version },
+              to: { version },
+              detail: expect.stringContaining("widened"),
+            },
+          });
+          const trackingPrefix = join(
+            dataDir,
+            "plugins",
+            "npm",
+            `${name}@latest`,
+          );
+          expect(getInstalledPluginRegistration(db, "npmhero")).toMatchObject({
+            source: `npm:${name}`,
+            sourceNpmRequestedSpec: "",
+            sourceNpmSpecKind: "default",
+            updatePolicy: "compatible",
+            rootDir: join(trackingPrefix, "node_modules", name),
+          });
+          await expect(stat(prefix)).rejects.toThrowError();
+
           expect(await service.remove("npmhero")).toBe(true);
+          await expect(stat(trackingPrefix)).rejects.toThrowError();
           await expect(stat(prefix)).rejects.toThrowError();
         } finally {
           if (previousCache === undefined) {

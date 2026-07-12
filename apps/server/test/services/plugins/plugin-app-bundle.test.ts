@@ -42,6 +42,7 @@ function npmPersistence(packageName: string, version: string) {
       packageName,
       registry: "https://registry.npmjs.org",
       requestedSpec: version,
+      specKind: "exact" as const,
     },
     exactResolution: {
       kind: "npm" as const,
