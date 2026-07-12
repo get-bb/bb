@@ -260,9 +260,9 @@ export const pluginArtifacts = sqliteTable(
   "plugin_artifacts",
   {
     id: text("id").primaryKey(),
-    pluginId: text("plugin_id")
-      .notNull()
-      .references(() => installedPlugins.id, { onDelete: "cascade" }),
+    // Deliberately not an FK: removing a registration retains immutable
+    // artifact history for later retention/GC policy.
+    pluginId: text("plugin_id").notNull(),
     sourceKind: text("source_kind", { enum: ["npm", "git"] }).notNull(),
     npmResolvedVersion: text("npm_resolved_version"),
     gitResolvedCommit: text("git_resolved_commit"),

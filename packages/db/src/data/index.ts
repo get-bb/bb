@@ -195,8 +195,10 @@ export {
 export {
   createPluginArtifact,
   deletePluginArtifact,
+  getPluginArtifactByResolution,
   getPluginArtifact,
   listPluginArtifacts,
+  setPluginArtifactValidation,
   type CreatePluginArtifactInput,
   type PluginArtifactRow,
 } from "./plugin-artifacts.js";

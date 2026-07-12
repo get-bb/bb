@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
@@ -90,6 +90,63 @@ export function listPluginArtifacts(
     .where(eq(pluginArtifacts.pluginId, pluginId))
     .orderBy(asc(pluginArtifacts.createdAt), asc(pluginArtifacts.id))
     .all();
+}
+
+export function getPluginArtifactByResolution(
+  db: DbConnection,
+  resolution:
+    | {
+        sourceKind: "npm";
+        path: string;
+        version: string;
+        integrity: string;
+      }
+    | { sourceKind: "git"; path: string; commit: string },
+): PluginArtifactRow | undefined {
+  if (resolution.sourceKind === "npm") {
+    return db
+      .select()
+      .from(pluginArtifacts)
+      .where(
+        and(
+          eq(pluginArtifacts.sourceKind, "npm"),
+          eq(pluginArtifacts.path, resolution.path),
+          eq(pluginArtifacts.npmResolvedVersion, resolution.version),
+          eq(pluginArtifacts.integrity, resolution.integrity),
+        ),
+      )
+      .get();
+  }
+  return db
+    .select()
+    .from(pluginArtifacts)
+    .where(
+      and(
+        eq(pluginArtifacts.sourceKind, "git"),
+        eq(pluginArtifacts.path, resolution.path),
+        eq(pluginArtifacts.gitResolvedCommit, resolution.commit),
+      ),
+    )
+    .get();
+}
+
+export function setPluginArtifactValidation(
+  db: DbConnection,
+  id: string,
+  validation: {
+    contentHash: string;
+    validationResult: "valid" | "invalid";
+    validationDetail: string | null;
+    validatedAt: number;
+  },
+): boolean {
+  return (
+    db
+      .update(pluginArtifacts)
+      .set({ ...validation, updatedAt: Date.now() })
+      .where(eq(pluginArtifacts.id, id))
+      .run().changes > 0
+  );
 }
 
 export function deletePluginArtifact(db: DbConnection, id: string): boolean {

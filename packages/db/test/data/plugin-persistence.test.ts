@@ -3,8 +3,10 @@ import {
   createConnection,
   createPluginArtifact,
   deletePluginArtifact,
+  deleteInstalledPlugin,
   deleteMarketplace,
   getInstalledPluginRegistration,
+  getInstalledPlugin,
   getMarketplace,
   listPluginArtifacts,
   listMarketplaces,
@@ -75,6 +77,9 @@ describe("normalized plugin persistence", () => {
     expect(setInstalledPluginActiveArtifact(db, "linear", "artifact-1")).toBe(
       true,
     );
+    expect(getInstalledPlugin(db, "linear")?.rootDir).toBe(
+      "/cache/artifact-1.tgz",
+    );
 
     expect(getInstalledPluginRegistration(db, "linear")).toMatchObject({
       provenance: "marketplace",
@@ -136,5 +141,50 @@ describe("normalized plugin persistence", () => {
     expect(() =>
       Reflect.apply(createPluginArtifact, undefined, [db, invalidArtifact]),
     ).toThrow(/resolution fields/);
+  });
+
+  it("retains artifact records when a plugin registration is removed", () => {
+    upsertInstalledPlugin(db, {
+      id: "retained",
+      source: "git:/repo@main",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: "/repo",
+        subdirectory: null,
+        requestedRef: "main",
+        refKind: "branch",
+      },
+      exactResolution: { kind: "git", commit: "abcdef1234567" },
+      updatePolicy: "compatible",
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+        ignoredVersion: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/cache/repo/abcdef1234567",
+      version: "1.0.0",
+      enabled: true,
+    });
+    createPluginArtifact(db, {
+      id: "retained-artifact",
+      pluginId: "retained",
+      sourceKind: "git",
+      npmResolvedVersion: null,
+      gitResolvedCommit: "abcdef1234567",
+      path: "/cache/repo/abcdef1234567",
+      integrity: null,
+      contentHash: "sha256:retained",
+      validationResult: "valid",
+      validationDetail: null,
+      validatedAt: Date.now(),
+    });
+    expect(setInstalledPluginActiveArtifact(db, "retained", "retained-artifact")).toBe(true);
+
+    expect(deleteInstalledPlugin(db, "retained")).toBe(true);
+    expect(listPluginArtifacts(db, "retained")).toHaveLength(1);
   });
 });

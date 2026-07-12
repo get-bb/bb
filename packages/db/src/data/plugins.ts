@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
-import { installedPlugins } from "../schema.js";
+import { installedPlugins, pluginArtifacts } from "../schema.js";
 
 export type PluginProvenance =
   | { kind: "builtin" }
@@ -182,21 +182,44 @@ function normalizedColumns(
 
 export function listInstalledPlugins(db: DbConnection): InstalledPluginRow[] {
   return db
-    .select()
+    .select({ plugin: installedPlugins, artifactPath: pluginArtifacts.path })
     .from(installedPlugins)
+    .leftJoin(
+      pluginArtifacts,
+      eq(installedPlugins.activeArtifactId, pluginArtifacts.id),
+    )
     .where(isNull(installedPlugins.removedAt))
-    .all();
+    .all()
+    .map(({ plugin, artifactPath }) => ({
+      ...plugin,
+      rootDir:
+        plugin.activeArtifactId !== null && artifactPath !== null
+          ? artifactPath
+          : plugin.rootDir,
+    }));
 }
 
 export function getInstalledPlugin(
   db: DbConnection,
   id: string,
 ): InstalledPluginRow | undefined {
-  return db
-    .select()
+  const result = db
+    .select({ plugin: installedPlugins, artifactPath: pluginArtifacts.path })
     .from(installedPlugins)
+    .leftJoin(
+      pluginArtifacts,
+      eq(installedPlugins.activeArtifactId, pluginArtifacts.id),
+    )
     .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
     .get();
+  if (result === undefined) return undefined;
+  return {
+    ...result.plugin,
+    rootDir:
+      result.plugin.activeArtifactId !== null && result.artifactPath !== null
+        ? result.artifactPath
+        : result.plugin.rootDir,
+  };
 }
 
 export function getInstalledPluginRegistration(
