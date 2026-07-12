@@ -507,7 +507,8 @@ export interface PluginInstallPreview {
     devMode?: true;
     problems: string[];
   };
-  updatePolicy: string;
+  updatePolicy: PluginUpdatePolicy;
+  updatePolicyDisplay: string;
   skipped?: Array<{ version: string; reason: string }>;
   warnings?: string[];
 }
@@ -583,11 +584,11 @@ export interface PluginService {
   ignoreVersion(
     id: string,
     version: string,
-  ): { ok: true } | { ok: false; error: string };
+  ): Promise<{ ok: true } | { ok: false; error: string }>;
   setUpdatePolicy(
     id: string,
     policy: PluginUpdatePolicy,
-  ): { ok: true } | { ok: false; error: string };
+  ): Promise<{ ok: true } | { ok: false; error: string }>;
   applyUpdate(
     id: string,
     options: { dryRun: boolean; latest: boolean },
@@ -2509,7 +2510,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         plugin: metadata,
         resolved: { display: candidate.display, version: candidate.version },
         compatibility,
-        updatePolicy: policyPhrase(policy, parsed),
+        updatePolicy: policy,
+        updatePolicyDisplay: policyPhrase(policy, parsed),
         ...(selected.outcome === "selected" && selected.blocked !== undefined
           ? {
               skipped: [
@@ -2551,7 +2553,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           commit: resolution.commit,
         },
         compatibility: catalogCompatibility,
-        updatePolicy: policyPhrase(policy, parsed),
+        updatePolicy: policy,
+        updatePolicyDisplay: policyPhrase(policy, parsed),
         warnings: ["manifest not inspected until install"],
       };
     }
@@ -2588,7 +2591,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         sdk: manifest.bbPluginSdkRange,
         installation: context.installation,
       }),
-      updatePolicy: policyPhrase(policy, parsed),
+      updatePolicy: policy,
+      updatePolicyDisplay: policyPhrase(policy, parsed),
     };
   }
 
@@ -3980,18 +3984,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   async function applyNpmCandidate(args: {
     row: InstalledPluginRow;
-    intent: NpmSourceIntentForResolution;
+    selectionIntent: NpmSourceIntentForResolution;
+    sourceIntent: NpmSourceIntentForResolution;
+    updatePolicy: PluginUpdatePolicy;
     candidate: NpmResolvedCandidate;
   }): Promise<void> {
     const targetPrefix = npmArtifactCacheDir(
       deps.dataDir,
-      args.intent.packageName,
+      args.selectionIntent.packageName,
       args.candidate.version,
     );
     const targetRoot = join(
       targetPrefix,
       "node_modules",
-      ...args.intent.packageName.split("/"),
+      ...args.selectionIntent.packageName.split("/"),
     );
     return withArtifactLock(targetPrefix, async () => {
       const existingArtifact = getPluginArtifactByResolution(deps.db, {
@@ -4022,24 +4028,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: targetRoot,
           manifest,
           source:
-            args.intent.specKind === "default"
-              ? `npm:${args.intent.packageName}`
-              : `npm:${args.intent.packageName}@${args.intent.requestedSpec}`,
-          sourceIntent: { kind: "npm", ...args.intent },
+            args.sourceIntent.specKind === "default"
+              ? `npm:${args.sourceIntent.packageName}`
+              : `npm:${args.sourceIntent.packageName}@${args.sourceIntent.requestedSpec}`,
+          sourceIntent: { kind: "npm", ...args.sourceIntent },
           exactResolution: {
             kind: "npm",
             version: args.candidate.version,
             integrity: args.candidate.integrity,
           },
-          updatePolicy:
-            args.row.provenance === "marketplace"
-              ? narrowUpdatePolicy(
-                  args.row.updatePolicy,
-                  args.intent.specKind === "exact" ? "manual" : "compatible",
-                )
-              : args.intent.specKind === "exact"
-                ? "manual"
-                : "compatible",
+          updatePolicy: args.updatePolicy,
           artifactId: existingArtifact.id,
         });
         return;
@@ -4060,8 +4058,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             "--no-audit",
             "--no-fund",
             "--registry",
-            args.intent.registry,
-            `${args.intent.packageName}@${args.candidate.version}`,
+            args.selectionIntent.registry,
+            `${args.selectionIntent.packageName}@${args.candidate.version}`,
           ],
           {
             notFoundHint:
@@ -4071,7 +4069,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const stagedRoot = join(
           stagingPrefix,
           "node_modules",
-          ...args.intent.packageName.split("/"),
+          ...args.selectionIntent.packageName.split("/"),
         );
         const manifest = await validateInstallDir({
           rootDir: stagedRoot,
@@ -4085,7 +4083,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
         const installedIntegrity = await readNpmIntegrity(
           stagingPrefix,
-          args.intent.packageName,
+          args.selectionIntent.packageName,
         );
         if (
           installedIntegrity !== null &&
@@ -4116,24 +4114,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: targetRoot,
           manifest,
           source:
-            args.intent.specKind === "default"
-              ? `npm:${args.intent.packageName}`
-              : `npm:${args.intent.packageName}@${args.intent.requestedSpec}`,
-          sourceIntent: { kind: "npm", ...args.intent },
+            args.sourceIntent.specKind === "default"
+              ? `npm:${args.sourceIntent.packageName}`
+              : `npm:${args.sourceIntent.packageName}@${args.sourceIntent.requestedSpec}`,
+          sourceIntent: { kind: "npm", ...args.sourceIntent },
           exactResolution: {
             kind: "npm",
             version: args.candidate.version,
             integrity: args.candidate.integrity,
           },
-          updatePolicy:
-            args.row.provenance === "marketplace"
-              ? narrowUpdatePolicy(
-                  args.row.updatePolicy,
-                  args.intent.specKind === "exact" ? "manual" : "compatible",
-                )
-              : args.intent.specKind === "exact"
-                ? "manual"
-                : "compatible",
+          updatePolicy: args.updatePolicy,
           artifactId: artifact.id,
           beforePersist: async () => {
             await promoteImmutableDir({
@@ -4837,89 +4827,101 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     ignoreVersion(id, version) {
-      const row = getInstalledPlugin(deps.db, id);
-      if (row === undefined) {
-        return { ok: false, error: `unknown plugin "${id}"` };
-      }
-      const pinned =
-        row.sourceKind === "path" ||
-        row.sourceKind === "builtin" ||
-        (row.sourceKind === "git" && row.sourceGitRefKind !== "branch") ||
-        (row.sourceKind === "npm" && row.sourceNpmSpecKind === "exact");
-      if (pinned) {
-        return {
-          ok: false,
-          error: `plugin "${id}" is pinned and has no update version to ignore`,
-        };
-      }
-      const changed = setInstalledPluginIgnoredVersion(deps.db, id, version);
-      if (changed) notifyPluginsChanged();
-      return changed
-        ? { ok: true }
-        : { ok: false, error: `plugin "${id}" disappeared` };
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        withLifecycleLock(id, async () => {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row === undefined) {
+            return { ok: false, error: `unknown plugin "${id}"` };
+          }
+          const pinned =
+            row.sourceKind === "path" ||
+            row.sourceKind === "builtin" ||
+            (row.sourceKind === "git" && row.sourceGitRefKind !== "branch") ||
+            (row.sourceKind === "npm" && row.sourceNpmSpecKind === "exact");
+          if (pinned) {
+            return {
+              ok: false,
+              error: `plugin "${id}" is pinned and has no update version to ignore`,
+            };
+          }
+          const changed = setInstalledPluginIgnoredVersion(
+            deps.db,
+            id,
+            version,
+          );
+          if (changed) notifyPluginsChanged();
+          return changed
+            ? { ok: true }
+            : { ok: false, error: `plugin "${id}" disappeared` };
+        }),
+      );
     },
 
     setUpdatePolicy(id, policy) {
-      const row = getInstalledPlugin(deps.db, id);
-      if (row === undefined) {
-        return { ok: false, error: `unknown plugin "${id}"` };
-      }
-      if (
-        (row.sourceKind === "path" || row.sourceKind === "builtin") &&
-        policy !== "manual"
-      ) {
-        return {
-          ok: false,
-          error: `${row.sourceKind} plugins are pinned and only support the manual update policy`,
-        };
-      }
-      if (
-        row.sourceKind === "git" &&
-        (policy === "patch" || policy === "minor")
-      ) {
-        return {
-          ok: false,
-          error: `${policy} update policy is only supported for npm range sources`,
-        };
-      }
-      if (
-        row.sourceKind === "git" &&
-        row.sourceGitRefKind !== "branch" &&
-        policy !== "manual"
-      ) {
-        return {
-          ok: false,
-          error:
-            "git tags and commits are pinned and only support the manual update policy",
-        };
-      }
-      if (
-        row.sourceKind === "npm" &&
-        row.sourceNpmSpecKind !== "range" &&
-        row.sourceNpmSpecKind !== "default" &&
-        (policy === "patch" || policy === "minor")
-      ) {
-        return {
-          ok: false,
-          error: `${policy} update policy requires an npm range or omitted version`,
-        };
-      }
-      if (
-        row.sourceKind === "npm" &&
-        row.sourceNpmSpecKind === "exact" &&
-        policy !== "manual"
-      ) {
-        return {
-          ok: false,
-          error:
-            "exact npm versions are pinned and only support the manual update policy",
-        };
-      }
-      const changed = setInstalledPluginUpdatePolicy(deps.db, id, policy);
-      if (changed) notifyPluginsChanged();
-      return changed
-        ? { ok: true }
-        : { ok: false, error: `plugin "${id}" disappeared` };
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        withLifecycleLock(id, async () => {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row === undefined) {
+            return { ok: false, error: `unknown plugin "${id}"` };
+          }
+          if (
+            (row.sourceKind === "path" || row.sourceKind === "builtin") &&
+            policy !== "manual"
+          ) {
+            return {
+              ok: false,
+              error: `${row.sourceKind} plugins are pinned and only support the manual update policy`,
+            };
+          }
+          if (
+            row.sourceKind === "git" &&
+            (policy === "patch" || policy === "minor")
+          ) {
+            return {
+              ok: false,
+              error: `${policy} update policy is only supported for npm range sources`,
+            };
+          }
+          if (
+            row.sourceKind === "git" &&
+            row.sourceGitRefKind !== "branch" &&
+            policy !== "manual"
+          ) {
+            return {
+              ok: false,
+              error:
+                "git tags and commits are pinned and only support the manual update policy",
+            };
+          }
+          if (
+            row.sourceKind === "npm" &&
+            row.sourceNpmSpecKind !== "range" &&
+            row.sourceNpmSpecKind !== "default" &&
+            (policy === "patch" || policy === "minor")
+          ) {
+            return {
+              ok: false,
+              error: `${policy} update policy requires an npm range or omitted version`,
+            };
+          }
+          if (
+            row.sourceKind === "npm" &&
+            row.sourceNpmSpecKind === "exact" &&
+            policy !== "manual"
+          ) {
+            return {
+              ok: false,
+              error:
+                "exact npm versions are pinned and only support the manual update policy",
+            };
+          }
+          const changed = setInstalledPluginUpdatePolicy(deps.db, id, policy);
+          if (changed) notifyPluginsChanged();
+          return changed
+            ? { ok: true }
+            : { ok: false, error: `plugin "${id}" disappeared` };
+        }),
+      );
     },
 
     async applyUpdate(id, options) {
@@ -4939,7 +4941,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const npmRun = createNpmResolverRun();
         const originalNpmIntent =
           row.sourceKind === "npm" ? npmIntentForRow(row) : undefined;
-        const npmIntent =
+        const persistedNpmIntent =
           originalNpmIntent !== undefined && options.latest
             ? {
                 ...originalNpmIntent,
@@ -4947,16 +4949,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 specKind: "default" as const,
               }
             : originalNpmIntent;
+        const selectionNpmIntent =
+          row.sourceKind !== "npm"
+            ? undefined
+            : options.latest
+              ? persistedNpmIntent
+              : npmIntentForPolicy(row);
         const sourceIntentChanged =
           originalNpmIntent !== undefined &&
-          npmIntent !== undefined &&
-          originalNpmIntent.specKind !== npmIntent.specKind;
+          persistedNpmIntent !== undefined &&
+          originalNpmIntent.specKind !== persistedNpmIntent.specKind;
         const resolution = await resolveUpdateForRow({
           row,
           npmRun,
           includeQuarantined: true,
-          ...(sourceIntentChanged && npmIntent !== undefined
-            ? { npmIntentOverride: npmIntent }
+          ...(options.latest && selectionNpmIntent !== undefined
+            ? { npmIntentOverride: selectionNpmIntent }
             : {}),
         });
         const checked = checkEntryFromResolution(id, from, resolution);
@@ -5015,9 +5023,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
 
         try {
-          if (row.sourceKind === "npm" && npmIntent !== undefined) {
+          if (
+            row.sourceKind === "npm" &&
+            selectionNpmIntent !== undefined &&
+            persistedNpmIntent !== undefined
+          ) {
             const selected = await selectNpmCandidate({
-              intent: npmIntent,
+              intent: selectionNpmIntent,
               appVersion: deps.appVersion,
               run: npmRun,
             });
@@ -5026,13 +5038,28 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 `npm candidate changed during update: ${selected.outcome}`,
               );
             }
+            if (selected.candidate.version !== to.version) {
+              throw new Error(
+                `npm candidate changed during update: resolved ${to.version}, selected ${selected.candidate.version}`,
+              );
+            }
             const activationRow = getInstalledPlugin(deps.db, id);
             if (activationRow === undefined) {
               throw new Error(`plugin "${id}" disappeared before activation`);
             }
             await applyNpmCandidate({
               row: activationRow,
-              intent: npmIntent,
+              selectionIntent: selectionNpmIntent,
+              sourceIntent: persistedNpmIntent,
+              updatePolicy:
+                sourceIntentChanged && row.provenance !== "marketplace"
+                  ? "compatible"
+                  : narrowUpdatePolicy(
+                      row.updatePolicy,
+                      persistedNpmIntent.specKind === "exact"
+                        ? "manual"
+                        : "compatible",
+                    ),
               candidate: selected.candidate,
             });
           } else if (

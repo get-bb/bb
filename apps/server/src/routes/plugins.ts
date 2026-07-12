@@ -621,7 +621,7 @@ export function registerPluginRoutes(
         422,
       );
     }
-    const outcome = plugins.ignoreVersion(
+    const outcome = await plugins.ignoreVersion(
       context.req.param("id"),
       body.data.version,
     );
@@ -644,7 +644,7 @@ export function registerPluginRoutes(
         422,
       );
     }
-    const outcome = plugins.setUpdatePolicy(
+    const outcome = await plugins.setUpdatePolicy(
       context.req.param("id"),
       body.data.policy,
     );

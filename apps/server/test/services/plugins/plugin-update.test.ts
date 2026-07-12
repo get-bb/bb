@@ -1,13 +1,17 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import Database from "better-sqlite3";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -297,11 +301,275 @@ describe("plugin update service and routes", () => {
       ignoredVersion: null,
     });
 
-    service.setUpdatePolicy("policy-test", "minor");
+    await service.setUpdatePolicy("policy-test", "minor");
     await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
       [{ outcome: "update-available", candidate: { version: "1.1.0" } }],
     );
   });
+
+  it("serializes ignore-version and update-policy writes behind an in-flight check", async () => {
+    upsertInstalledPlugin(db, {
+      id: "race-test",
+      source: "npm:bb-plugin-race-test@^1.0.0",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-race-test",
+        registry: "https://race.test",
+        requestedSpec: "^1.0.0",
+        specKind: "range",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.0.0",
+        integrity: "sha512-current",
+      },
+      updatePolicy: "compatible",
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+        ignoredVersion: null,
+      },
+      activeArtifactId: null,
+      rootDir: join(workDir, "race-test"),
+      version: "1.0.0",
+      enabled: false,
+    });
+    let releaseFetch!: () => void;
+    const fetchHeld = new Promise<void>((resolvePromise) => {
+      releaseFetch = resolvePromise;
+    });
+    let announceFetch!: () => void;
+    const fetchStarted = new Promise<void>((resolvePromise) => {
+      announceFetch = resolvePromise;
+    });
+    vi.stubGlobal("fetch", async () => {
+      announceFetch();
+      await fetchHeld;
+      return new Response(
+        JSON.stringify({
+          versions: {
+            "1.0.0": {
+              version: "1.0.0",
+              dist: { integrity: "sha512-current" },
+            },
+            "1.0.1": {
+              version: "1.0.1",
+              dist: { integrity: "sha512-next" },
+            },
+          },
+          "dist-tags": { latest: "1.0.1" },
+        }),
+        { status: 200 },
+      );
+    });
+
+    const check = service.checkForUpdates("race-test");
+    await fetchStarted;
+    let ignoreSettled = false;
+    let policySettled = false;
+    const ignored = Promise.resolve(
+      app.request("/plugins/race-test/ignore-version", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ version: "1.0.1" }),
+      }),
+    ).then((response) => {
+      ignoreSettled = true;
+      return response;
+    });
+    const policy = Promise.resolve(
+      app.request("/plugins/race-test/update-policy", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ policy: "patch" }),
+      }),
+    ).then((response) => {
+      policySettled = true;
+      return response;
+    });
+    await new Promise<void>((resolvePromise) => setImmediate(resolvePromise));
+    expect({ ignoreSettled, policySettled }).toEqual({
+      ignoreSettled: false,
+      policySettled: false,
+    });
+
+    releaseFetch();
+    await expect(check).resolves.toMatchObject([
+      { outcome: "update-available", candidate: { version: "1.0.1" } },
+    ]);
+    expect((await ignored).status).toBe(200);
+    expect((await policy).status).toBe(200);
+    expect(getInstalledPluginRegistration(db, "race-test")).toMatchObject({
+      ignoredVersion: "1.0.1",
+      updatePolicy: "patch",
+    });
+  });
+
+  it(
+    "applies the same patch/minor candidate selected within the original intent range",
+    { timeout: 120_000 },
+    async () => {
+      const packageName = "bb-plugin-policy-apply";
+      const tarballs = new Map<string, Buffer>();
+      for (const version of ["1.6.5", "1.9.0"]) {
+        const fixture = join(workDir, `policy-apply-${version}`);
+        await mkdir(fixture, { recursive: true });
+        await writeFile(
+          join(fixture, "package.json"),
+          JSON.stringify({
+            name: packageName,
+            version,
+            bb: { server: "./server.js" },
+          }),
+        );
+        await writeFile(
+          join(fixture, "server.js"),
+          "export default function plugin() {}\n",
+        );
+        const packDir = join(workDir, `policy-pack-${version}`);
+        await mkdir(packDir, { recursive: true });
+        await run("npm", ["pack", "--pack-destination", packDir], {
+          cwd: fixture,
+        });
+        const [tarballName] = await readdir(packDir);
+        if (tarballName === undefined)
+          throw new Error("npm pack produced no tarball");
+        tarballs.set(version, await readFile(join(packDir, tarballName)));
+      }
+      const registry = await new Promise<Server>((resolvePromise) => {
+        const server = createServer((request, response) => {
+          const url = request.url ?? "";
+          const tarballMatch = /^\/(1\.6\.5|1\.9\.0)\.tgz$/u.exec(url);
+          if (tarballMatch !== null) {
+            const tarball = tarballs.get(tarballMatch[1] ?? "");
+            if (tarball === undefined) {
+              response.writeHead(404).end();
+              return;
+            }
+            response.writeHead(200, {
+              "content-type": "application/octet-stream",
+            });
+            response.end(tarball);
+            return;
+          }
+          if (decodeURIComponent(url) === `/${packageName}`) {
+            const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+            const versions = Object.fromEntries(
+              ["1.4.0", "1.6.0", "1.6.5", "1.9.0", "2.0.0"].map((version) => {
+                const tarball = tarballs.get(version);
+                return [
+                  version,
+                  {
+                    name: packageName,
+                    version,
+                    dist: {
+                      integrity:
+                        tarball === undefined
+                          ? `sha512-${version}`
+                          : `sha512-${createHash("sha512").update(tarball).digest("base64")}`,
+                      ...(tarball === undefined
+                        ? {}
+                        : { tarball: `${origin}/${version}.tgz` }),
+                    },
+                  },
+                ];
+              }),
+            );
+            response.writeHead(200, { "content-type": "application/json" });
+            response.end(
+              JSON.stringify({
+                name: packageName,
+                "dist-tags": { latest: "2.0.0" },
+                versions,
+              }),
+            );
+            return;
+          }
+          response.writeHead(404).end();
+        });
+        server.listen(0, "127.0.0.1", () => resolvePromise(server));
+      });
+      const registryUrl = `http://127.0.0.1:${(registry.address() as AddressInfo).port}`;
+      const previousCache = process.env.npm_config_cache;
+      const previousPackageLock = process.env.npm_config_package_lock;
+      process.env.npm_config_cache = join(workDir, "policy-npm-cache");
+      process.env.npm_config_package_lock = "false";
+      try {
+        for (const scenario of [
+          { policy: "patch" as const, current: "1.6.0", expected: "1.6.5" },
+          { policy: "minor" as const, current: "1.4.0", expected: "1.9.0" },
+        ]) {
+          upsertInstalledPlugin(db, {
+            id: "policy-apply",
+            source: `npm:${packageName}@^1.4.0`,
+            provenance: { kind: "direct" },
+            sourceIntent: {
+              kind: "npm",
+              packageName,
+              registry: registryUrl,
+              requestedSpec: "^1.4.0",
+              specKind: "range",
+            },
+            exactResolution: {
+              kind: "npm",
+              version: scenario.current,
+              integrity: `sha512-${scenario.current}`,
+            },
+            updatePolicy: scenario.policy,
+            updateState: {
+              lastCheckAt: null,
+              availableCompatibleVersion: null,
+              newestIncompatibleVersion: null,
+              statusDetail: null,
+              ignoredVersion: null,
+            },
+            activeArtifactId: null,
+            rootDir: join(workDir, `policy-current-${scenario.current}`),
+            version: scenario.current,
+            enabled: false,
+          });
+          await expect(
+            service.applyUpdate("policy-apply", {
+              dryRun: false,
+              latest: false,
+            }),
+          ).resolves.toMatchObject({
+            ok: true,
+            result: {
+              applied: true,
+              from: { version: scenario.current },
+              to: { version: scenario.expected },
+              outcome: "updated",
+            },
+          });
+          expect(
+            getInstalledPluginRegistration(db, "policy-apply"),
+          ).toMatchObject({
+            source: `npm:${packageName}@^1.4.0`,
+            sourceNpmRequestedSpec: "^1.4.0",
+            sourceNpmSpecKind: "range",
+            npmResolvedVersion: scenario.expected,
+            updatePolicy: scenario.policy,
+          });
+        }
+      } finally {
+        if (previousCache === undefined) delete process.env.npm_config_cache;
+        else process.env.npm_config_cache = previousCache;
+        if (previousPackageLock === undefined)
+          delete process.env.npm_config_package_lock;
+        else process.env.npm_config_package_lock = previousPackageLock;
+        await new Promise<void>((resolvePromise, reject) => {
+          registry.close((error) => {
+            if (error) reject(error);
+            else resolvePromise();
+          });
+        });
+      }
+    },
+  );
 
   it("checks, reads persisted state, and dry-runs through the exact HTTP contract", async () => {
     // Simulate a Phase 1 normalized row migrated before ref classification

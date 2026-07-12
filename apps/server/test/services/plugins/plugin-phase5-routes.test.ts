@@ -1,5 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  readlink,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -7,9 +16,10 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  createPluginArtifact,
   getInstalledPluginRegistration,
-  listInstalledPlugins,
   migrate,
+  upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
@@ -46,6 +56,44 @@ async function writePlugin(root: string): Promise<void> {
   );
 }
 
+async function snapshotFilesystem(root: string): Promise<unknown[]> {
+  const snapshot: unknown[] = [];
+  async function visit(directory: string, prefix: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      const relativePath =
+        prefix.length === 0 ? entry.name : `${prefix}/${entry.name}`;
+      const stats = await lstat(path);
+      if (entry.isDirectory()) {
+        snapshot.push({
+          path: relativePath,
+          type: "directory",
+          mode: stats.mode,
+        });
+        await visit(path, relativePath);
+      } else if (entry.isSymbolicLink()) {
+        snapshot.push({
+          path: relativePath,
+          type: "symlink",
+          mode: stats.mode,
+          target: await readlink(path),
+        });
+      } else {
+        snapshot.push({
+          path: relativePath,
+          type: "file",
+          mode: stats.mode,
+          content: (await readFile(path)).toString("base64"),
+        });
+      }
+    }
+  }
+  await visit(root, "");
+  return snapshot;
+}
+
 describe("Phase 5 plugin routes", () => {
   let db: DbConnection;
   let workDir: string;
@@ -53,6 +101,26 @@ describe("Phase 5 plugin routes", () => {
   let service: PluginService;
   let app: Hono;
   let materialize: ReturnType<typeof vi.fn<(args: { path: string }) => void>>;
+
+  async function requestPreviewWithoutMutation(
+    targetApp: Hono,
+    body: unknown,
+  ): Promise<Response> {
+    const before = {
+      database: db.$client.serialize().toString("base64"),
+      filesystem: await snapshotFilesystem(workDir),
+    };
+    const response = await targetApp.request("/plugins/install/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect({
+      database: db.$client.serialize().toString("base64"),
+      filesystem: await snapshotFilesystem(workDir),
+    }).toEqual(before);
+    return response;
+  }
 
   beforeEach(async () => {
     db = createConnection(":memory:");
@@ -74,6 +142,48 @@ describe("Phase 5 plugin routes", () => {
       isConnectEnabled: () => false,
       builtinPlugins: [],
       onArtifactMaterialize: materialize,
+    });
+    upsertInstalledPlugin(db, {
+      id: "preview-sentinel",
+      source: "npm:bb-plugin-preview-sentinel@^1.0.0",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-preview-sentinel",
+        registry: "https://sentinel.invalid",
+        requestedSpec: "^1.0.0",
+        specKind: "range",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.0.0",
+        integrity: "sha512-sentinel",
+      },
+      updatePolicy: "patch",
+      updateState: {
+        lastCheckAt: 123,
+        availableCompatibleVersion: "1.0.1",
+        newestIncompatibleVersion: "2.0.0",
+        statusDetail: "sentinel update state",
+        ignoredVersion: "1.0.1",
+      },
+      activeArtifactId: null,
+      rootDir: join(workDir, "sentinel"),
+      version: "1.0.0",
+      enabled: false,
+    });
+    createPluginArtifact(db, {
+      id: "preview-sentinel-artifact",
+      pluginId: "preview-sentinel",
+      sourceKind: "npm",
+      npmResolvedVersion: "1.0.0",
+      gitResolvedCommit: null,
+      path: join(workDir, "sentinel-artifact"),
+      integrity: "sha512-sentinel",
+      contentHash: "sha256-sentinel",
+      validationResult: "valid",
+      validationDetail: null,
+      validatedAt: 123,
     });
     app = new Hono();
     registerPluginRoutes(app, { config: { serverPort: 3334 } }, service);
@@ -113,17 +223,22 @@ describe("Phase 5 plugin routes", () => {
           { status: 200 },
         ),
     );
-    const before = listInstalledPlugins(db);
-    for (const [source, version] of [
-      ["npm:bb-plugin-linear@1.4.0", "1.4.0"],
-      ["npm:bb-plugin-linear@^1.4.0", "1.4.0"],
-      ["npm:bb-plugin-linear", "1.4.0"],
+    for (const [source, version, updatePolicy, updatePolicyDisplay] of [
+      ["npm:bb-plugin-linear@1.4.0", "1.4.0", "manual", "pinned"],
+      [
+        "npm:bb-plugin-linear@^1.4.0",
+        "1.4.0",
+        "compatible",
+        "tracks compatible releases in ^1.4.0",
+      ],
+      [
+        "npm:bb-plugin-linear",
+        "1.4.0",
+        "compatible",
+        "tracks compatible releases",
+      ],
     ] as const) {
-      const response = await app.request("/plugins/install/preview", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source }),
-      });
+      const response = await requestPreviewWithoutMutation(app, { source });
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
         plugin: {
@@ -133,12 +248,12 @@ describe("Phase 5 plugin routes", () => {
         },
         resolved: { display: `bb-plugin-linear@${version}`, version },
         compatibility: { outcome: "compatible", problems: [] },
+        updatePolicy,
+        updatePolicyDisplay,
       });
     }
-    const omitted = await app.request("/plugins/install/preview", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: "npm:bb-plugin-linear" }),
+    const omitted = await requestPreviewWithoutMutation(app, {
+      source: "npm:bb-plugin-linear",
     });
     expect(await omitted.json()).toMatchObject({
       skipped: [
@@ -148,7 +263,6 @@ describe("Phase 5 plugin routes", () => {
         },
       ],
     });
-    expect(listInstalledPlugins(db)).toEqual(before);
     expect(materialize).not.toHaveBeenCalled();
   });
 
@@ -165,30 +279,36 @@ describe("Phase 5 plugin routes", () => {
     await git(repo, ["commit", "-qm", "fixture"]);
     const commit = await git(repo, ["rev-parse", "HEAD"]);
 
-    const pathResponse = await app.request("/plugins/install/preview", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: `path:${pluginRoot}` }),
+    const pathResponse = await requestPreviewWithoutMutation(app, {
+      source: `path:${pluginRoot}`,
     });
     expect(await pathResponse.json()).toMatchObject({
       plugin: { id: "local-preview", displayName: "Local Preview" },
       resolved: { version: "1.2.3" },
       compatibility: { outcome: "compatible", problems: [] },
-      updatePolicy: "pinned",
+      updatePolicy: "manual",
+      updatePolicyDisplay: "pinned",
     });
 
-    const gitResponse = await app.request("/plugins/install/preview", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: `git:${repo}@main` }),
+    const gitResponse = await requestPreviewWithoutMutation(app, {
+      source: `git:${repo}@main`,
     });
     expect(await gitResponse.json()).toMatchObject({
       resolved: { commit },
       compatibility: { outcome: "compatible", problems: [] },
+      updatePolicy: "compatible",
+      updatePolicyDisplay: "tracks branch main",
       warnings: ["manifest not inspected until install"],
     });
+    const pinnedGitResponse = await requestPreviewWithoutMutation(app, {
+      source: `git:${repo}@${commit}`,
+    });
+    expect(await pinnedGitResponse.json()).toMatchObject({
+      resolved: { commit },
+      updatePolicy: "manual",
+      updatePolicyDisplay: "pinned",
+    });
     expect(materialize).not.toHaveBeenCalled();
-    expect(listInstalledPlugins(db)).toEqual([]);
 
     const marketplaceRoot = join(workDir, "marketplace");
     await mkdir(marketplaceRoot);
@@ -223,15 +343,10 @@ describe("Phase 5 plugin routes", () => {
       service,
       marketplaces,
     );
-    const filesBefore = await readdir(workDir, { recursive: true });
-    const marketplaceResponse = await marketplaceApp.request(
-      "/plugins/install/preview",
+    const marketplaceResponse = await requestPreviewWithoutMutation(
+      marketplaceApp,
       {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          marketplace: { marketplaceId: "phase5", entryId: "catalog-id" },
-        }),
+        marketplace: { marketplaceId: "phase5", entryId: "catalog-id" },
       },
     );
     expect(await marketplaceResponse.json()).toMatchObject({
@@ -241,16 +356,14 @@ describe("Phase 5 plugin routes", () => {
         description: "Catalog description",
       },
       resolved: { version: "1.2.3" },
+      updatePolicy: "manual",
+      updatePolicyDisplay: "pinned",
     });
-    expect(await readdir(workDir, { recursive: true })).toEqual(filesBefore);
-    expect(listInstalledPlugins(db)).toEqual([]);
   });
 
   it("returns actionable route shapes for unknown previews and mutations", async () => {
-    const preview = await app.request("/plugins/install/preview", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: "npm:not a package" }),
+    const preview = await requestPreviewWithoutMutation(app, {
+      source: "npm:not a package",
     });
     expect(preview.status).toBe(422);
     expect(await preview.json()).toMatchObject({
