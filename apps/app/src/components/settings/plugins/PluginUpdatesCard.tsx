@@ -492,7 +492,7 @@ function UpdateHistoryRow({ event }: { event: PluginUpdateHistoryEvent }) {
       ? `${event.fromVersion} → ${event.toVersion}`
       : (event.toVersion ?? event.fromVersion);
   const line = [
-    event.at !== null ? formatHistoryTimestamp(event.at) : null,
+    formatHistoryTimestamp(event.at),
     event.kind,
     versions,
     event.outcome,

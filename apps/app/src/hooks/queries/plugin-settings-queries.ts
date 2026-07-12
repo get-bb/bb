@@ -203,6 +203,14 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
   };
 }
 
+// Older servers omit both fields (absence means "no org restriction");
+// present-but-malformed values fail the parse and render the quiet empty
+// state instead of silently reading the org kill-switch as off.
+const pluginListEnvelopeSchema = z.object({
+  autoApplyDisabled: z.boolean().optional(),
+  plugins: z.array(z.unknown()).optional(),
+});
+
 export async function fetchPluginList(
   fetchImpl: FetchLike,
 ): Promise<PluginListResult> {
@@ -210,18 +218,15 @@ export async function fetchPluginList(
   // Nothing to list rather than an error: an older server or a disabled
   // experiment both mean "no plugins".
   if (!response.ok) return { autoApplyDisabled: false, plugins: [] };
-  const body = (await response.json().catch(() => null)) as {
-    autoApplyDisabled?: unknown;
-    plugins?: unknown;
-  } | null;
+  const parsed = pluginListEnvelopeSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!parsed.success) return { autoApplyDisabled: false, plugins: [] };
   return {
-    // Older servers omit the flag; absence means "no org restriction".
-    autoApplyDisabled: body?.autoApplyDisabled === true,
-    plugins: Array.isArray(body?.plugins)
-      ? body.plugins
-          .map(parsePluginListItem)
-          .filter((item): item is PluginListItem => item !== null)
-      : [],
+    autoApplyDisabled: parsed.data.autoApplyDisabled ?? false,
+    plugins: (parsed.data.plugins ?? [])
+      .map(parsePluginListItem)
+      .filter((item): item is PluginListItem => item !== null),
   };
 }
 

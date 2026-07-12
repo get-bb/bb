@@ -251,6 +251,8 @@ describe("fetchPluginUpdateHistory", () => {
             at: 1752300000000,
           },
           { kind: "check", outcome: "current" }, // no `at` → drops
+          // Drifted string timestamp (contract requires numeric) → drops.
+          { kind: "check", outcome: "current", at: "2026-07-12T10:00:00Z" },
         ],
       }),
       "linear",
@@ -267,12 +269,18 @@ describe("fetchPluginUpdateHistory", () => {
     ]);
   });
 
-  it("returns null (unavailable) on a non-2xx or unshaped response", async () => {
+  it("returns null (unavailable) on a non-2xx or malformed envelope", async () => {
     expect(
       await fetchPluginUpdateHistory(fetchReturning({}, 404), "linear"),
     ).toBeNull();
     expect(
       await fetchPluginUpdateHistory(fetchReturning({ ok: true }), "linear"),
+    ).toBeNull();
+    expect(
+      await fetchPluginUpdateHistory(
+        fetchReturning({ events: "corrupt" }),
+        "linear",
+      ),
     ).toBeNull();
   });
 });
@@ -316,6 +324,13 @@ describe("marketplace parsers (landed Phase 4 shapes)", () => {
         autoApply: false,
       },
     ]);
+  });
+
+  it("returns [] for a malformed marketplaces envelope", async () => {
+    expect(
+      await fetchMarketplaces(fetchReturning({ marketplaces: "corrupt" })),
+    ).toEqual([]);
+    expect(await fetchMarketplaces(fetchReturning(null))).toEqual([]);
   });
 
   it("drops rows missing required MarketplaceView fields instead of defaulting them", async () => {

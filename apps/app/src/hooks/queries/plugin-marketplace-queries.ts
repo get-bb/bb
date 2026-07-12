@@ -541,8 +541,8 @@ export interface PluginUpdateHistoryEvent {
   toVersion: string | null;
   outcome: string;
   detail: string | null;
-  /** Epoch ms; null when the server sent an unparsable time. */
-  at: number | null;
+  /** Epoch ms (the contract sends numeric createdAt). */
+  at: number;
 }
 
 const historyEventSchema = z.object({
@@ -551,8 +551,11 @@ const historyEventSchema = z.object({
   toVersion: z.string().optional(),
   outcome: z.string(),
   detail: z.string().optional(),
-  at: z.union([z.number(), z.string()]),
+  // The contract sends numeric epoch ms; a drifted string drops the row.
+  at: z.number(),
 });
+
+const historyEnvelopeSchema = z.object({ events: z.array(z.unknown()) });
 
 /** Null when the plugin is unknown or the server predates the route. */
 export async function fetchPluginUpdateHistory(
@@ -563,10 +566,10 @@ export async function fetchPluginUpdateHistory(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/history`,
   );
   if (!response.ok) return null;
-  const body = (await readBody(response)) as { events?: unknown } | null;
-  if (!Array.isArray(body?.events)) return null;
+  const envelope = historyEnvelopeSchema.safeParse(await readBody(response));
+  if (!envelope.success) return null;
   const events: PluginUpdateHistoryEvent[] = [];
-  for (const value of body.events) {
+  for (const value of envelope.data.events) {
     const parsed = historyEventSchema.safeParse(value);
     if (!parsed.success) continue;
     const data = parsed.data;
@@ -576,7 +579,7 @@ export async function fetchPluginUpdateHistory(
       toVersion: data.toVersion ?? null,
       outcome: data.outcome,
       detail: data.detail ?? null,
-      at: toEpochMs(data.at),
+      at: data.at,
     });
   }
   return events;
@@ -672,16 +675,22 @@ function toMarketplaceListItem(
   };
 }
 
+const marketplacesEnvelopeSchema = z.object({
+  marketplaces: z.array(z.unknown()),
+});
+
 export async function fetchMarketplaces(
   fetchImpl: FetchLike,
 ): Promise<MarketplaceListItem[]> {
   const response = await fetchImpl("/api/v1/marketplaces");
   // Nothing to list rather than an error: an older server has no catalogs.
   if (!response.ok) return [];
-  const body = (await readBody(response)) as { marketplaces?: unknown } | null;
-  if (!Array.isArray(body?.marketplaces)) return [];
+  const envelope = marketplacesEnvelopeSchema.safeParse(
+    await readBody(response),
+  );
+  if (!envelope.success) return [];
   const items: MarketplaceListItem[] = [];
-  for (const value of body.marketplaces) {
+  for (const value of envelope.data.marketplaces) {
     const parsed = marketplaceViewSchema.safeParse(value);
     if (parsed.success) items.push(toMarketplaceListItem(parsed.data));
   }
