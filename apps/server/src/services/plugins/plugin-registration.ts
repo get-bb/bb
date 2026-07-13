@@ -1,0 +1,623 @@
+import { resolve } from "node:path";
+import {
+  getInstalledPlugin,
+  getInstalledPluginRegistration,
+  listUnnormalizedPluginRegistrations,
+  normalizeInstalledPluginRegistration,
+  setInstalledPluginSourceClassification,
+  upsertInstalledPlugin,
+  type InstalledPluginRow,
+  type LegacyPluginExactResolution,
+  type PluginExactResolution,
+  type PluginProvenance,
+  type PluginSourceIntent,
+} from "@bb/db";
+import { marketplacePolicyWideningProblem } from "../marketplaces/catalog.js";
+import {
+  BUILTIN_PLUGIN_NAMES,
+  builtinPluginSource,
+  type BuiltinPluginRegistration,
+} from "./builtin-registry.js";
+import {
+  isCommitSha,
+  parsePluginSource,
+  runInstallCommand,
+} from "./install-sources.js";
+import { readPluginManifest, type PluginManifest } from "./manifest.js";
+import type {
+  InstallContext,
+  InstallRegistrationIdentity,
+  RegisterInstalledArgs,
+} from "./managed-plugin-artifacts.js";
+import type {
+  PluginListEntry,
+  PluginServiceDeps,
+} from "./plugin-service-internal.js";
+import {
+  evaluateCompatibility,
+  gitResolvedVersion,
+  resolveGitRef,
+  type GitRefKind,
+  type NpmSourceIntentForResolution,
+  type PluginResolvedUpdateVersion,
+} from "./update-resolver.js";
+
+export interface PluginRegistrationContext {
+  deps: PluginServiceDeps;
+  builtinPlugins: readonly BuiltinPluginRegistration[];
+  withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
+  disposeOne: (id: string) => Promise<void>;
+  loadOne: (row: InstalledPluginRow) => Promise<void>;
+  shouldLoadRow: (row: InstalledPluginRow) => boolean;
+  unloadOneForExperimentGate: (row: InstalledPluginRow) => Promise<void>;
+  validateInstallDir: (args: RegisterInstalledArgs) => Promise<PluginManifest>;
+  syncCliSkill: () => Promise<void>;
+  notifyPluginsChanged: () => void;
+  list: () => PluginListEntry[];
+}
+
+export function createPluginRegistration(context: PluginRegistrationContext) {
+  const {
+    deps,
+    builtinPlugins,
+    withLifecycleLock,
+    disposeOne,
+    loadOne,
+    shouldLoadRow,
+    unloadOneForExperimentGate,
+    validateInstallDir,
+    syncCliSkill,
+    notifyPluginsChanged,
+    list,
+  } = context;
+  const logger = deps.logger;
+
+  /**
+   * Shared install tail: validate the materialized files (unless the caller
+   * already validated them in a staging dir), upsert the row, and (re)load.
+   */
+  const builtinPluginIds = new Set<string>(BUILTIN_PLUGIN_NAMES);
+
+  function refuseBuiltinShadow(pluginId: string): void {
+    if (!builtinPluginIds.has(pluginId)) return;
+    throw new Error(
+      `install refused: plugin id "${pluginId}" is reserved by the builtin plugin of the same name; install "builtin:${pluginId}" instead`,
+    );
+  }
+
+  function emptyPluginUpdateState() {
+    return {
+      lastCheckAt: null,
+      availableCompatibleVersion: null,
+      newestIncompatibleVersion: null,
+      statusDetail: null,
+    } as const;
+  }
+
+  function rowMatchesInstallSource(
+    row: InstalledPluginRow,
+    provenance: PluginProvenance,
+    intent: PluginSourceIntent,
+  ): boolean {
+    if (row.provenance !== provenance.kind || row.sourceKind !== intent.kind) {
+      return false;
+    }
+    if (
+      provenance.kind === "marketplace" &&
+      (row.marketplaceId !== provenance.marketplaceId ||
+        row.marketplaceEntryId !== provenance.entryId)
+    ) {
+      return false;
+    }
+    if (intent.kind === "path") return row.sourcePath === intent.canonicalPath;
+    if (intent.kind === "builtin") {
+      return row.sourceBuiltinName === intent.name;
+    }
+    if (intent.kind === "npm") {
+      return (
+        row.sourceNpmPackage === intent.packageName &&
+        row.sourceNpmRegistry === intent.registry &&
+        row.sourceNpmRequestedSpec === intent.requestedSpec &&
+        row.sourceNpmSpecKind === intent.specKind
+      );
+    }
+    return (
+      row.sourceGitUrl === intent.url &&
+      row.sourceGitSubdirectory === intent.subdirectory &&
+      row.sourceGitRequestedRef === intent.requestedRef &&
+      row.sourceGitRefKind === intent.refKind
+    );
+  }
+
+  function registrationMatchesForActivation(
+    current: InstalledPluginRow,
+    expected: InstalledPluginRow,
+  ): boolean {
+    return (
+      current.source === expected.source &&
+      current.provenance === expected.provenance &&
+      current.marketplaceId === expected.marketplaceId &&
+      current.marketplaceEntryId === expected.marketplaceEntryId &&
+      current.sourceKind === expected.sourceKind &&
+      current.sourcePath === expected.sourcePath &&
+      current.sourceBuiltinName === expected.sourceBuiltinName &&
+      current.sourceNpmPackage === expected.sourceNpmPackage &&
+      current.sourceNpmRegistry === expected.sourceNpmRegistry &&
+      current.sourceNpmRequestedSpec === expected.sourceNpmRequestedSpec &&
+      current.sourceNpmSpecKind === expected.sourceNpmSpecKind &&
+      current.sourceGitUrl === expected.sourceGitUrl &&
+      current.sourceGitSubdirectory === expected.sourceGitSubdirectory &&
+      current.sourceGitRequestedRef === expected.sourceGitRequestedRef &&
+      current.sourceGitRefKind === expected.sourceGitRefKind &&
+      current.npmResolvedVersion === expected.npmResolvedVersion &&
+      current.npmIntegrity === expected.npmIntegrity &&
+      current.gitResolvedCommit === expected.gitResolvedCommit &&
+      current.activeArtifactId === expected.activeArtifactId &&
+      current.rootDir === expected.rootDir &&
+      current.version === expected.version &&
+      current.enabled === expected.enabled
+    );
+  }
+
+  function sourceFingerprint(row: InstalledPluginRow): string {
+    return JSON.stringify({
+      source: row.source,
+      provenance: row.provenance,
+      marketplaceId: row.marketplaceId,
+      marketplaceEntryId: row.marketplaceEntryId,
+      sourceKind: row.sourceKind,
+      sourcePath: row.sourcePath,
+      sourceBuiltinName: row.sourceBuiltinName,
+      sourceNpmPackage: row.sourceNpmPackage,
+      sourceNpmRegistry: row.sourceNpmRegistry,
+      sourceNpmRequestedSpec: row.sourceNpmRequestedSpec,
+      sourceNpmSpecKind: row.sourceNpmSpecKind,
+      sourceGitUrl: row.sourceGitUrl,
+      sourceGitSubdirectory: row.sourceGitSubdirectory,
+      sourceGitRequestedRef: row.sourceGitRequestedRef,
+      sourceGitRefKind: row.sourceGitRefKind,
+    });
+  }
+
+  function assertInstallRegistrationAvailable(
+    existing: InstalledPluginRow | undefined,
+    identity: InstallRegistrationIdentity,
+    pluginId: string,
+  ): void {
+    if (existing === undefined) return;
+    if (
+      !rowMatchesInstallSource(
+        existing,
+        identity.provenance,
+        identity.sourceIntent,
+      )
+    ) {
+      throw new Error(
+        `plugin id "${pluginId}" is already installed from ${existing.source}; remove it first`,
+      );
+    }
+    if (
+      identity.provenance.kind === "marketplace" ||
+      identity.sourceIntent.kind === "npm" ||
+      identity.sourceIntent.kind === "git"
+    ) {
+      throw new Error(
+        `plugin "${pluginId}" is already installed; use \`bb plugin update ${pluginId}\` or remove it before reinstalling`,
+      );
+    }
+  }
+
+  async function registerInstalled(
+    args: RegisterInstalledArgs,
+  ): Promise<PluginListEntry> {
+    const initialManifest =
+      args.preparedManifest ?? (await readPluginManifest(args.rootDir));
+    assertInstallRegistrationAvailable(
+      getInstalledPlugin(deps.db, initialManifest.id),
+      args,
+      initialManifest.id,
+    );
+    const catalogEngines = args.installation?.engines;
+    const wideningProblem = marketplacePolicyWideningProblem(
+      args.installation,
+      initialManifest,
+    );
+    if (wideningProblem !== null) {
+      throw new Error(`install refused: ${wideningProblem}`);
+    }
+    if (catalogEngines !== undefined) {
+      const catalogCompatibility = evaluateCompatibility({
+        bbRange: catalogEngines.bb,
+        sdkRange: catalogEngines.bbPluginSdk,
+        appVersion: deps.appVersion,
+      });
+      if (catalogCompatibility.effective.length > 0) {
+        throw new Error(
+          `install refused by marketplace compatibility policy: ${catalogCompatibility.effective.map((problem) => problem.message).join("; ")}`,
+        );
+      }
+    }
+    if (args.provenance.kind !== "builtin") {
+      refuseBuiltinShadow(initialManifest.id);
+    }
+    const manifest = args.validated
+      ? initialManifest
+      : await validateInstallDir(args);
+    await withLifecycleLock(manifest.id, async () => {
+      const existing = getInstalledPlugin(deps.db, manifest.id);
+      assertInstallRegistrationAvailable(existing, args, manifest.id);
+      await disposeOne(manifest.id);
+      try {
+        await args.beforePersist?.();
+        upsertInstalledPlugin(deps.db, {
+          id: manifest.id,
+          source: args.source,
+          provenance: args.provenance,
+          sourceIntent: args.sourceIntent,
+          exactResolution: args.exactResolution,
+          updateState: emptyPluginUpdateState(),
+          activeArtifactId: args.activeArtifactId ?? null,
+          rootDir: args.rootDir,
+          version: manifest.version,
+          enabled: existing?.enabled ?? true,
+        });
+        const row = getInstalledPlugin(deps.db, manifest.id);
+        if (row && shouldLoadRow(row)) {
+          await loadOne(row);
+        } else if (row) {
+          await unloadOneForExperimentGate(row);
+        }
+      } catch (error) {
+        const previous = getInstalledPlugin(deps.db, manifest.id);
+        if (previous && shouldLoadRow(previous)) {
+          await loadOne(previous);
+        } else if (previous) {
+          await unloadOneForExperimentGate(previous);
+        }
+        throw error;
+      }
+    });
+    await syncCliSkill();
+    notifyPluginsChanged();
+    const entry = list().find((p) => p.id === manifest.id);
+    if (!entry) throw new Error(`plugin ${manifest.id} missing after install`);
+    return entry;
+  }
+
+  const directInstallContext: InstallContext = {
+    provenance: { kind: "direct" },
+  };
+
+  async function installPathSource(
+    path: string,
+    context: InstallContext = directInstallContext,
+  ): Promise<PluginListEntry> {
+    const rootDir = resolve(path);
+    return registerInstalled({
+      rootDir,
+      source: `path:${rootDir}`,
+      provenance: context.provenance,
+      sourceIntent: { kind: "path", canonicalPath: rootDir },
+      exactResolution: { kind: "path" },
+      refuseEngineMismatch: false,
+      validated: false,
+      ...(context.installation === undefined
+        ? {}
+        : { installation: context.installation }),
+    });
+  }
+
+  function npmIntentForRow(
+    row: InstalledPluginRow,
+  ): NpmSourceIntentForResolution {
+    if (
+      row.sourceKind !== "npm" ||
+      row.sourceNpmPackage === null ||
+      row.sourceNpmRegistry === null ||
+      row.sourceNpmRequestedSpec === null
+    ) {
+      throw new Error(`plugin "${row.id}" has corrupt normalized npm state`);
+    }
+    let specKind = row.sourceNpmSpecKind;
+    if (specKind === null) {
+      const parsed = parsePluginSource(
+        row.sourceNpmRequestedSpec.length === 0
+          ? `npm:${row.sourceNpmPackage}`
+          : `npm:${row.sourceNpmPackage}@${row.sourceNpmRequestedSpec}`,
+      );
+      if (parsed.kind !== "npm") {
+        throw new Error(`plugin "${row.id}" has corrupt normalized npm state`);
+      }
+      specKind = parsed.specKind;
+      if (
+        !setInstalledPluginSourceClassification(deps.db, row.id, {
+          kind: "npm",
+          specKind,
+        })
+      ) {
+        throw new Error(`plugin "${row.id}" disappeared during normalization`);
+      }
+    }
+    return {
+      packageName: row.sourceNpmPackage,
+      registry: row.sourceNpmRegistry,
+      requestedSpec: row.sourceNpmRequestedSpec,
+      specKind,
+    };
+  }
+
+  function installedUpdateVersion(
+    row: InstalledPluginRow,
+  ): PluginResolvedUpdateVersion {
+    if (row.sourceKind === "npm") {
+      if (row.sourceNpmPackage === null || row.npmResolvedVersion === null) {
+        throw new Error(`plugin "${row.id}" has corrupt normalized npm state`);
+      }
+      return {
+        version: row.npmResolvedVersion,
+        display: `${row.sourceNpmPackage}@${row.npmResolvedVersion}`,
+      };
+    }
+    if (row.sourceKind === "git") {
+      if (
+        row.sourceGitUrl === null ||
+        row.sourceGitRequestedRef === null ||
+        row.gitResolvedCommit === null
+      ) {
+        throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
+      }
+      return gitResolvedVersion({
+        url: row.sourceGitUrl,
+        ref: row.sourceGitRequestedRef,
+        commit: row.gitResolvedCommit,
+      });
+    }
+    return { version: row.version, display: row.source };
+  }
+
+  function provenanceForRow(row: InstalledPluginRow): PluginProvenance {
+    if (row.provenance !== "marketplace") return { kind: row.provenance };
+    if (row.marketplaceId === null || row.marketplaceEntryId === null) {
+      throw new Error(`plugin "${row.id}" has corrupt marketplace provenance`);
+    }
+    return {
+      kind: "marketplace",
+      marketplaceId: row.marketplaceId,
+      entryId: row.marketplaceEntryId,
+    };
+  }
+
+  function sourceIntentForRow(row: InstalledPluginRow): PluginSourceIntent {
+    if (row.sourceKind === "path" && row.sourcePath !== null) {
+      return { kind: "path", canonicalPath: row.sourcePath };
+    }
+    if (row.sourceKind === "builtin" && row.sourceBuiltinName !== null) {
+      return { kind: "builtin", name: row.sourceBuiltinName };
+    }
+    if (row.sourceKind === "npm")
+      return { kind: "npm", ...npmIntentForRow(row) };
+    if (
+      row.sourceKind === "git" &&
+      row.sourceGitUrl !== null &&
+      row.sourceGitRequestedRef !== null &&
+      row.sourceGitRefKind !== null
+    ) {
+      return {
+        kind: "git",
+        url: row.sourceGitUrl,
+        subdirectory: row.sourceGitSubdirectory,
+        requestedRef: row.sourceGitRequestedRef,
+        refKind: row.sourceGitRefKind,
+      };
+    }
+    throw new Error(`plugin "${row.id}" has corrupt normalized source intent`);
+  }
+
+  function exactResolutionForRow(
+    row: InstalledPluginRow,
+  ): PluginExactResolution {
+    if (row.sourceKind === "path" || row.sourceKind === "builtin") {
+      return { kind: row.sourceKind };
+    }
+    if (
+      row.sourceKind === "npm" &&
+      row.npmResolvedVersion !== null &&
+      row.npmIntegrity !== null
+    ) {
+      return {
+        kind: "npm",
+        version: row.npmResolvedVersion,
+        integrity: row.npmIntegrity,
+      };
+    }
+    if (row.sourceKind === "git" && row.gitResolvedCommit !== null) {
+      return { kind: "git", commit: row.gitResolvedCommit };
+    }
+    throw new Error(`plugin "${row.id}" has corrupt exact resolution`);
+  }
+
+  function restoreRegistration(row: InstalledPluginRow): void {
+    upsertInstalledPlugin(deps.db, {
+      id: row.id,
+      source: row.source,
+      provenance: provenanceForRow(row),
+      sourceIntent: sourceIntentForRow(row),
+      exactResolution: exactResolutionForRow(row),
+      updateState: {
+        lastCheckAt: row.lastUpdateCheckAt,
+        availableCompatibleVersion: row.availableCompatibleVersion,
+        newestIncompatibleVersion: row.newestIncompatibleVersion,
+        statusDetail: row.updateStatusDetail,
+      },
+      activeArtifactId: row.activeArtifactId,
+      rootDir: row.rootDir,
+      version: row.version,
+      enabled: row.enabled,
+    });
+  }
+
+  function findBuiltinPlugin(
+    name: string,
+  ): BuiltinPluginRegistration | undefined {
+    return builtinPlugins.find((plugin) => plugin.name === name);
+  }
+
+  async function installBuiltinSource(
+    parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "builtin" }>,
+  ): Promise<PluginListEntry> {
+    const builtin = findBuiltinPlugin(parsed.name);
+    if (!builtin) {
+      throw new Error(`unknown builtin plugin "${parsed.name}"`);
+    }
+    return registerInstalled({
+      rootDir: builtin.rootDir,
+      source: builtinPluginSource(parsed.name),
+      provenance: { kind: "builtin" },
+      sourceIntent: { kind: "builtin", name: parsed.name },
+      exactResolution: { kind: "builtin" },
+      refuseEngineMismatch: false,
+      validated: false,
+    });
+  }
+
+  async function reconcileBuiltins(): Promise<void> {
+    for (const builtin of builtinPlugins) {
+      const source = builtinPluginSource(builtin.name);
+      let manifest: PluginManifest;
+      try {
+        manifest = await readPluginManifest(builtin.rootDir);
+      } catch (error) {
+        logger.warn(
+          `builtin plugin ${builtin.name} is unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        continue;
+      }
+      const existing = getInstalledPluginRegistration(deps.db, manifest.id);
+      if (existing?.removedAt !== null && existing?.removedAt !== undefined) {
+        continue;
+      }
+      if (
+        existing !== undefined &&
+        !rowMatchesInstallSource(
+          existing,
+          { kind: "builtin" },
+          { kind: "builtin", name: builtin.name },
+        )
+      ) {
+        logger.warn(
+          `builtin plugin ${builtin.name} resolved to id "${manifest.id}", but that id is already installed from ${existing.source}; skipping builtin reconciliation`,
+        );
+        continue;
+      }
+      if (
+        existing === undefined ||
+        existing.version !== manifest.version ||
+        existing.rootDir !== builtin.rootDir
+      ) {
+        upsertInstalledPlugin(deps.db, {
+          id: manifest.id,
+          source,
+          provenance: { kind: "builtin" },
+          sourceIntent: { kind: "builtin", name: builtin.name },
+          exactResolution: { kind: "builtin" },
+          updateState: emptyPluginUpdateState(),
+          activeArtifactId: null,
+          rootDir: builtin.rootDir,
+          version: manifest.version,
+          enabled: existing?.enabled ?? builtin.defaultEnabled,
+        });
+      }
+    }
+  }
+
+  async function backfillNormalizedPluginRegistrations(): Promise<void> {
+    for (const row of listUnnormalizedPluginRegistrations(deps.db)) {
+      const parsed = parsePluginSource(row.source);
+      let sourceIntent: PluginSourceIntent;
+      let exactResolution: LegacyPluginExactResolution;
+      let provenance: PluginProvenance = { kind: "direct" };
+      if (parsed.kind === "path") {
+        sourceIntent = { kind: "path", canonicalPath: resolve(parsed.path) };
+        exactResolution = { kind: "path" };
+      } else if (parsed.kind === "builtin") {
+        provenance = { kind: "builtin" };
+        sourceIntent = { kind: "builtin", name: parsed.name };
+        exactResolution = { kind: "builtin" };
+      } else if (parsed.kind === "npm") {
+        sourceIntent = {
+          kind: "npm",
+          packageName: parsed.name,
+          registry:
+            process.env.npm_config_registry ?? "https://registry.npmjs.org",
+          requestedSpec: parsed.spec,
+          specKind: parsed.specKind,
+        };
+        exactResolution = {
+          kind: "npm",
+          version: parsed.specKind === "exact" ? parsed.spec : row.version,
+          integrity: null,
+        };
+      } else {
+        let refKind: GitRefKind = isCommitSha(parsed.ref) ? "commit" : "branch";
+        try {
+          const remote = await resolveGitRef({
+            url: parsed.url,
+            ref: parsed.ref,
+          });
+          if (remote.outcome === "resolved") refKind = remote.refKind;
+        } catch {
+          // Preserve startup for an offline legacy install. Non-SHA legacy
+          // refs historically refreshed, so branch is the safe fallback.
+        }
+        sourceIntent = {
+          kind: "git",
+          url: parsed.url,
+          subdirectory: null,
+          requestedRef: parsed.ref,
+          refKind,
+        };
+        let commit: string | null = isCommitSha(parsed.ref) ? parsed.ref : null;
+        try {
+          commit = await runInstallCommand("git", [
+            "-C",
+            row.rootDir,
+            "rev-parse",
+            "HEAD",
+          ]);
+        } catch {
+          // A legacy registration may point at missing files. Preserve its
+          // load behavior and retain the requested pin when it is a SHA.
+        }
+        exactResolution = { kind: "git", commit };
+      }
+      normalizeInstalledPluginRegistration(deps.db, {
+        ...row,
+        provenance,
+        sourceIntent,
+        exactResolution,
+        updateState: emptyPluginUpdateState(),
+        activeArtifactId: null,
+      });
+    }
+  }
+
+  return {
+    assertInstallRegistrationAvailable,
+    backfillNormalizedPluginRegistrations,
+    emptyPluginUpdateState,
+    installBuiltinSource,
+    installPathSource,
+    installedUpdateVersion,
+    npmIntentForRow,
+    provenanceForRow,
+    reconcileBuiltins,
+    registerInstalled,
+    registrationMatchesForActivation,
+    refuseBuiltinShadow,
+    restoreRegistration,
+    rowMatchesInstallSource,
+    sourceFingerprint,
+  };
+}
