@@ -290,6 +290,12 @@ function dispatchThroughEditorTarget({
 }
 
 async function selectPromptAction(label: string) {
+  // The prompt schedules passive autofocus on its first animation frame. Let
+  // that settle before opening the portaled menu so the frame cannot move
+  // focus back to the editor while the menu item is being selected.
+  await waitFor(() =>
+    expect(document.activeElement).toBe(getPromptEditorElement()),
+  );
   const trigger = screen.getByRole("button", { name: "Prompt actions" });
   fireEvent.pointerDown(trigger, { button: 0 });
   const menu = await screen.findByRole("menu", { name: "Prompt actions" });
