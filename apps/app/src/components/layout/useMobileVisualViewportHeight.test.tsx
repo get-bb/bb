@@ -2,7 +2,7 @@
 
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { useRef } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
 
 class FakeVisualViewport extends EventTarget implements VisualViewport {
@@ -23,21 +23,50 @@ function VisualViewportShell({ enabled }: { enabled: boolean }) {
   return <div ref={shellRef} data-testid="shell" />;
 }
 
-afterEach(cleanup);
+function withFakeVisualViewport(
+  visualViewport: FakeVisualViewport,
+  run: () => Promise<void> | void,
+) {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    window,
+    "visualViewport",
+  );
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: visualViewport,
+  });
+  const restore = () => {
+    if (originalDescriptor) {
+      Object.defineProperty(window, "visualViewport", originalDescriptor);
+    } else {
+      Reflect.deleteProperty(window, "visualViewport");
+    }
+  };
+  try {
+    const result = run();
+    if (result instanceof Promise) {
+      return result.finally(restore);
+    }
+    restore();
+  } catch (error) {
+    restore();
+    throw error;
+  }
+}
+
+beforeEach(() => {
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("useMobileVisualViewportHeight", () => {
   it("keeps the app shell bottom aligned with visual viewport changes", async () => {
-    const originalDescriptor = Object.getOwnPropertyDescriptor(
-      window,
-      "visualViewport",
-    );
     const visualViewport = new FakeVisualViewport();
-    Object.defineProperty(window, "visualViewport", {
-      configurable: true,
-      value: visualViewport,
-    });
-
-    try {
+    await withFakeVisualViewport(visualViewport, async () => {
       const { rerender } = render(<VisualViewportShell enabled />);
       const shell = screen.getByTestId("shell");
       expect(shell.style.height).toBe("520px");
@@ -50,12 +79,38 @@ describe("useMobileVisualViewportHeight", () => {
 
       rerender(<VisualViewportShell enabled={false} />);
       expect(shell.style.height).toBe("");
-    } finally {
-      if (originalDescriptor) {
-        Object.defineProperty(window, "visualViewport", originalDescriptor);
-      } else {
-        Reflect.deleteProperty(window, "visualViewport");
-      }
-    }
+    });
+  });
+
+  it("undoes Safari's focus-reveal pan when the page is not pinch-zoomed", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      expect(window.scrollTo).not.toHaveBeenCalled();
+
+      act(() => {
+        visualViewport.offsetTop = 340;
+        visualViewport.dispatchEvent(new Event("scroll"));
+      });
+      await waitFor(() => expect(window.scrollTo).toHaveBeenCalledWith(0, 0));
+    });
+  });
+
+  it("leaves pinch-zoom pans alone", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const shell = screen.getByTestId("shell");
+
+      act(() => {
+        visualViewport.scale = 2;
+        visualViewport.offsetTop = 340;
+        visualViewport.dispatchEvent(new Event("scroll"));
+      });
+      await waitFor(() => expect(shell.style.height).toBe("840px"));
+      expect(window.scrollTo).not.toHaveBeenCalled();
+    });
   });
 });
