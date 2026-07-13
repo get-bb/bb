@@ -408,49 +408,29 @@ Plugin state lives under the data dir:
 
 Marketplace configuration (rows in the server DB, API under
 `/api/v1/marketplaces`) stores each catalog's source, last-known-good
-`marketplace.json` payload, content hash, optional resolved git commit,
-auto-check / auto-apply flags, scope, and timestamps. Defaults on add:
-`enabled: true`, marketplace-level `updatePolicy: "compatible"`, scope
-`user`, `autoCheck: false`, `autoApply: false` (fully manual). Official
-catalogs (scope `builtin` or `managed`) default to auto-check on and
-auto-apply off — scheduled checks without automatic application. Path
-marketplaces point at the directory on disk; git marketplaces materialize
-under `<dataDir>/marketplaces/cache/<id>/<commit>/`. `bb plugin marketplace
-update` re-fetches catalog metadata only — it does not upgrade installed
-plugins. On refresh failure the previous successful catalog is retained and
-`lastError` is set (list shows the failed state). Trust is enforced at the
-CLI for every remote/git `bb plugin marketplace add` (confirmation or
-`--yes`; non-TTY refuses without it); adding never installs plugins.
+`marketplace.json` payload, optional resolved git commit, refresh timestamps,
+and the last refresh error. Path marketplaces point at the directory on disk;
+git marketplaces materialize under
+`<dataDir>/marketplaces/cache/<id>/<commit>/`. `bb plugin marketplace update`
+re-fetches catalog metadata only — it does not upgrade installed plugins. On
+refresh failure the previous successful catalog is retained and `lastError`
+is set (list shows the failed state). Trust is enforced at the CLI for every
+remote/git `bb plugin marketplace add` (confirmation or `--yes`; non-TTY
+refuses without it); adding never installs plugins.
 Unmistakable local path forms (`path:`, `./…`, or absolute paths) skip the
 prompt; ambiguous bare sources are conservatively prompted. See
-`bb guide plugins` for search, install disambiguation, automatic updates,
-and removal dispositions.
+`bb guide plugins` for search, install disambiguation, manual updates, and
+marketplace removal behavior.
 
-### Plugin automatic updates
+### Plugin updates
 
-Automatic checking and application are **opt-in** and layered:
-
-| Layer | Control | Default |
-| ----- | ------- | ------- |
-| Marketplace | `autoCheck` / `autoApply` (`bb plugin marketplace auto <name> --check/--apply`) | Official (`builtin`/`managed`): check on, apply off. User/third-party: both off. |
-| Plugin | per-plugin `autoApply` (`bb plugin auto-apply <id> on\|off`) | off; effective auto-apply is on when either the plugin or its marketplace enables it |
-| Organization | `generalSettings.pluginAutoApplyDisabled` (app settings API) | `false`. When `true`, **all** automatic application is disabled (checks and manual updates still work). |
-
-Opted-in marketplaces with `autoCheck` refresh on a roughly hourly cadence:
-1 hour base delay plus a stable per-marketplace jitter (0–15 minutes). After
-refresh failures the exponential base delay is capped at 24 hours, plus up to
-15 minutes of stable jitter, then resumes the normal schedule when a refresh
-succeeds. Auto-apply only applies compatible, non-major, non-quarantined,
-non-ignored candidates that satisfy the plugin's update policy, using the same
-snapshot → activate → rollback/quarantine path as manual `bb plugin update`.
-A failed auto-apply restores the previous version and quarantines the
-candidate so it is not retried automatically.
-
-Every check, resolve, download, activate, auto-apply skip, and rollback is
-written to the plugin update audit history (`bb plugin history <id>` or
-`bb plugin history --all [--limit N]`; Settings → Plugins shows a per-plugin
-history disclosure). Events carry a 90-day retention window
-(`retainedUntil`) and are pruned after that.
+Plugin updates are manual. `bb plugin outdated` checks tracking sources and
+`bb plugin update <id>` / `bb plugin update --all` applies compatible
+candidates. There is no scheduled marketplace refresh, automatic application,
+or update audit feed. Before activation bb snapshots the plugin database,
+host-managed settings/storage/schedules, secrets, and registration. A failed
+activation restores that snapshot and records the latest failure on the plugin
+so it can be surfaced as needing attention.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
 (packages are installed with `--ignore-scripts`). An omitted npm spec tracks
@@ -468,11 +448,10 @@ custom-instructions, inline-vis, memory, secrets) is also refused.
 
 The same tracking intent drives updates: `bb plugin outdated` checks for
 compatible candidates (and reports blocked incompatible newer releases);
-`bb plugin update <id>` / `bb plugin update --all` applies them
-(`--dry-run` previews). `--latest` on a single plugin widens a pinned or
-range npm source to the newest compatible release after confirmation; it is
-refused for pinned git refs (install a branch source to track). Dev builds
-(bb `0.0.0`) do not enforce `engines.bb` and annotate that on check results.
+`bb plugin update <id>` / `bb plugin update --all` applies them. Pinned source
+intent is never widened by update; remove and reinstall to choose a different
+source intent. Dev builds (bb `0.0.0`) do not enforce `engines.bb` and annotate
+that on check results.
 Update confirmation matches install (full-trust code; `--yes` skips; non-TTY
 refuses without it). Plugins are full-trust code running inside the bb server
 process: they can read all local bb data, including other plugins' secrets.

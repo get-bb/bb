@@ -77,12 +77,11 @@ The manifest is `package.json`:
   candidates that satisfy these ranges; newer incompatible releases are
   reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip
   enforcing `engines.bb` and annotate that on check results.
-- **Automatic updates:** when a user or marketplace opts into auto-apply,
-  only compatible non-major candidates within policy are applied. A failed
-  activation **rolls back** to the previous snapshot and **quarantines**
-  the candidate so automatic application will not retry it (manual apply
-  can still force a retry). Keep `engines.*` honest and ship load-safe
-  factories so an auto-applied release does not strand opted-in users.
+- **Manual updates:** `bb plugin outdated` checks tracking sources and
+  `bb plugin update` applies compatible candidates. A failed activation
+  **rolls back** to the previous state snapshot and records the failure for
+  the user. Keep `engines.*` honest and ship load-safe factories so an update
+  never strands users.
 - `bb plugin build` stamps authoritative metadata into both
   `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
   `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and
@@ -127,7 +126,6 @@ A marketplace is a directory (local path or git repo) whose root has
       "displayName": "Notes",
       "description": "Local notes",
       "source": { "npm": { "package": "bb-plugin-notes", "range": "^1.0.0" } },
-      "updatePolicy": "compatible",
       "category": "productivity",
       "installation": { "engines": { "bb": ">=0.9", "bbPluginSdk": "^1.0.0" } }
     }
@@ -138,12 +136,9 @@ A marketplace is a directory (local path or git repo) whose root has
 - **source** — one of `npm` (`package`, optional `registry` / `range`), `git`
   (`url`, `ref`, optional `subdir`), or `path` (relative path **only** for
   local path marketplaces; remote/git catalogs cannot list path entries).
-- **updatePolicy** (optional on each entry) — `manual` | `patch` | `minor` |
-  `compatible`. The marketplace defaults to `compatible`; an entry policy may
-  only narrow the marketplace default (manual < patch < minor < compatible).
 - **category** (optional) — free-form string; `bb plugin search` matches it.
 - **installation.engines** (optional) — catalog-level `bb` / `bbPluginSdk`
-  ranges. Policy **can narrow but never widen** the plugin package manifest's
+  ranges. These **can narrow but never widen** the plugin package manifest's
   `engines.bb` / `engines.bbPluginSdk`: the catalog range must be a semver
   subset of the manifest range, or install is refused.
 

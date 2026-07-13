@@ -57,15 +57,10 @@ added/updated/unchanged counts.
 
   bb plugin marketplace add <source> [--name <n>] [--yes]
   bb plugin marketplace list [--json]
-                                 Columns include scope and auto-check /
-                                 auto-apply state
-  bb plugin marketplace auto <name> [--check on|off] [--apply on|off]
-                                 Set catalog auto-check/auto-apply policy;
-                                 official auto-apply remains compatible,
-                                 non-major only
   bb plugin marketplace update [name]
-  bb plugin marketplace remove <name> [--keep-all|--uninstall-all]
-                                 Add, inspect, refresh, or remove catalogs
+  bb plugin marketplace remove <name>
+                                 Remove a catalog; installed plugins remain
+                                 installed with direct provenance
   bb plugin search <query>       Search all configured marketplaces
   bb plugin install <entry>[@<marketplace>] [--version <range>]
                                  Install a unique marketplace entry (qualify
@@ -88,22 +83,11 @@ added/updated/unchanged counts.
                                  selected), status. Dev builds (bb 0.0.0)
                                  annotate that engines.bb is not enforced
   bb plugin update <id> | --all  Apply compatible updates for one plugin or
-                                 every plugin with an update. [--dry-run]
-                                 previews without changing plugins; [--latest]
-                                 widens a pinned/range npm source to the
-                                 newest compatible after confirmation (refused
-                                 for pinned git refs — install a branch to
-                                 track). Same full-trust confirmation as
+                                 every tracking plugin with an update. Same
+                                 full-trust confirmation as
                                  install (--yes skips; non-TTY refuses without
-                                 --yes). Only tracking sources move; pinned
-                                 installs stay put unless --latest applies
-  bb plugin auto-apply <id> <on|off>
-                                 Set per-plugin auto-apply (organization policy
-                                 can override the effective state)
-  bb plugin history <id> [--json]
-  bb plugin history --all [--limit N] [--json]
-                                 Show one plugin's update history or the
-                                 cross-plugin audit feed
+                                 --yes). Use outdated to preview; pinned
+                                 installs stay put
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
@@ -154,34 +138,14 @@ catalog and records the error (list shows "refresh failed" state).
 `bb plugin outdated` / `bb plugin update` move installed plugin artifacts for
 tracking sources.
 
-Automatic updates (opt-in): marketplaces and plugins each have an auto-check /
-auto-apply policy. Official catalogs (scope `builtin` or `managed`) default to
-auto-check on and auto-apply off — bb re-checks for updates but still requires
-approval to apply. Third-party / user-added catalogs and direct installs default
-to fully manual. Set catalog policy with `bb plugin marketplace auto <name>
---check on|off --apply on|off`; set a single plugin with `bb plugin auto-apply
-<id> <on|off>`. A plugin's effective auto-apply is on when either the plugin or
-its marketplace enables it. Marketplaces with auto-check on refresh on a ~hourly
-cadence (1h base + per-catalog jitter; after failures the exponential base delay
-is capped at 24 hours, plus up to 15 minutes of stable jitter). Auto-apply only
-installs compatible, non-major, non-quarantined, non-ignored candidates that fit
-the plugin's update policy, through the same snapshot / rollback / quarantine
-path as manual `bb plugin update`. A failed auto-apply rolls the plugin back and
-quarantines that candidate so it is not retried automatically. Organization
-policy `generalSettings.pluginAutoApplyDisabled` is a kill-switch that disables
-all automatic application while leaving checks and manual updates intact. Every
-check, resolve, download, activate, auto-apply skip, and rollback is recorded;
-inspect with `bb plugin history <id>` or `bb plugin history --all [--limit N]`
-(events retained for 90 days). Settings → Plugins mirrors this: each plugin
-detail has an Automatic-updates toggle and an update-history disclosure; the
-Marketplaces tab shows an Official badge for builtin/managed catalogs,
-auto-check/auto-apply controls, and a check-policy summary (e.g. "checks hourly
-· updates need approval").
+Updates are manual: `bb plugin outdated` checks tracking sources and
+`bb plugin update` applies compatible candidates. A failed activation restores
+the pre-update snapshot and leaves the latest failure visible as needing
+attention. Exact npm versions, git tags and commits, and path sources are pinned;
+npm ranges/omitted specs/dist-tags and git branches track compatible updates.
 
-Removal dispositions: when plugins were installed from a marketplace, remove
-asks keep-as-direct vs uninstall for each (`k` / `u` on a TTY). `--keep-all`
-converts them to direct installs; `--uninstall-all` removes them. Non-interactive
-remove without one of those flags fails when plugins are affected.
+Removing a marketplace always keeps its installed plugins and converts them to
+direct provenance while preserving each plugin's source intent.
 
 Search and install disambiguation: `bb plugin search <query>` matches id,
 display name, description, and category across configured marketplaces (status:

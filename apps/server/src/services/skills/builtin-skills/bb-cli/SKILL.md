@@ -336,16 +336,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     local path forms (`path:`, `./…`, or absolute paths) skip the prompt;
     ambiguous bare sources are conservatively prompted.
   - `bb plugin marketplace list [--json]` / `bb plugin marketplace update
-    [name]` — list catalogs (scope + auto-check/auto-apply columns) or re-fetch
-    one/all. Catalog refresh is not plugin update; a failed refresh keeps the
-    last-known-good catalog.
-  - `bb plugin marketplace auto <name> [--check on|off] [--apply on|off]` —
-    set catalog auto-check / auto-apply. Official (`builtin`/`managed`) catalogs
-    default to auto-check on, auto-apply off; third-party defaults are manual.
-  - `bb plugin marketplace remove <name> [--keep-all|--uninstall-all]` — remove
-    a catalog. Installed plugins from it need a keep-as-direct vs uninstall
-    disposition per plugin (TTY prompts); non-interactive must pass
-    `--keep-all` or `--uninstall-all`.
+[name]` — list catalogs or re-fetch one/all. Catalog refresh is not plugin
+    update; a failed refresh keeps the last-known-good catalog.
+  - `bb plugin marketplace remove <name>` — remove a catalog. Its installed
+    plugins remain installed and are converted to direct provenance while
+    preserving their source intent.
   - `bb plugin search <query>` — search configured catalogs (id, name,
     description, category); status shows installed / compatible / requires
     newer bb.
@@ -368,18 +363,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate
     that `engines.bb` is not enforced.
   - `bb plugin update <id>` / `bb plugin update --all` — apply compatible
-    updates for tracking sources. `--dry-run` previews; `--latest` (single
-    plugin only) widens a pinned/range npm source to newest compatible after
-    confirmation and is refused for pinned git refs. Same full-trust
-    confirmation as install (`--yes` skips; non-TTY refuses without it).
-  - `bb plugin auto-apply <id> <on|off>` — per-plugin automatic application.
-    Auto-apply only takes compatible, non-major, non-quarantined, non-ignored
-    candidates within policy (same snapshot/rollback/quarantine path as
-    manual update). Org kill-switch
-    `generalSettings.pluginAutoApplyDisabled` disables all auto-apply.
-  - `bb plugin history <id>` / `bb plugin history --all [--limit N]` — update
-    audit history (check, resolve, download, activate, auto-apply skip, and
-    rollback; 90-day retention).
+    updates for tracking sources. Same full-trust confirmation as install
+    (`--yes` skips; non-TTY refuses without it). Use `bb plugin outdated` to
+    preview available updates; changing a pinned source requires reinstalling
+    it after removal.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
