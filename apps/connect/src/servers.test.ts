@@ -485,4 +485,32 @@ describe("machine label assignment", () => {
     ).toBeNull();
     expect(db.select().from(labelClaim).all()).toEqual([]);
   });
+
+  it("releases the claim when assignment throws after the claim insert", async () => {
+    seedUser("acct-a");
+    db.insert(machine)
+      .values({
+        id: "machine-failure",
+        userId: "acct-a",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+
+    await expect(
+      assignMachineLabel(db, "machine-failure", "Failure Box", {
+        afterClaim: async () => {
+          throw new Error("injected post-claim failure");
+        },
+      }),
+    ).rejects.toThrow("injected post-claim failure");
+    expect(db.select().from(labelClaim).all()).toEqual([]);
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-failure")).get()
+        ?.subdomain,
+    ).toBeNull();
+    await expect(
+      assignMachineLabel(db, "machine-failure", "Failure Box"),
+    ).resolves.toBe("failure-box");
+  });
 });

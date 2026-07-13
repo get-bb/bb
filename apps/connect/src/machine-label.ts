@@ -104,19 +104,53 @@ export async function assignMachineLabel(
     });
     if (!claimed) continue;
 
-    await hooks.afterClaim?.(candidate);
-    const updateResult = await db
-      .update(machine)
-      .set({ subdomain: candidate })
-      .where(
-        and(
-          eq(machine.id, machineId),
-          isNull(machine.subdomain),
-          isNull(machine.revokedAt),
-        ),
-      )
-      .run();
-    if (affectedRows(updateResult) === 1) return candidate;
+    let updateResult: unknown;
+    try {
+      await hooks.afterClaim?.(candidate);
+      updateResult = await db
+        .update(machine)
+        .set({ subdomain: candidate })
+        .where(
+          and(
+            eq(machine.id, machineId),
+            isNull(machine.subdomain),
+            isNull(machine.revokedAt),
+          ),
+        )
+        .run();
+    } catch (error) {
+      try {
+        await releaseLabelClaim(db, {
+          label: candidate,
+          kind: "machine",
+          ownerId: machineId,
+          generation,
+        });
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          "machine label assignment and claim cleanup failed",
+        );
+      }
+      throw error;
+    }
+    const changes = affectedRows(updateResult);
+    if (changes === 1) return candidate;
+
+    const current = await db
+      .select({ subdomain: machine.subdomain, revokedAt: machine.revokedAt })
+      .from(machine)
+      .where(eq(machine.id, machineId))
+      .get();
+    // Some drivers do not report affected-row counts. The exact attached row
+    // is authoritative and must retain the claim in that case.
+    if (
+      changes === null &&
+      current?.revokedAt === null &&
+      current.subdomain === candidate
+    ) {
+      return candidate;
+    }
 
     await releaseLabelClaim(db, {
       label: candidate,
@@ -124,14 +158,9 @@ export async function assignMachineLabel(
       ownerId: machineId,
       generation,
     });
-    const current = await db
-      .select({ subdomain: machine.subdomain, revokedAt: machine.revokedAt })
-      .from(machine)
-      .where(eq(machine.id, machineId))
-      .get();
     if (!current || current.revokedAt !== null) return null;
     if (current.subdomain !== null) return current.subdomain;
-    if (affectedRows(updateResult) === null) {
+    if (changes === null) {
       throw new Error("machine label update did not report affected rows");
     }
   }

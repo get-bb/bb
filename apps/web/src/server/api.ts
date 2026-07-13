@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   CONNECT_CODE_TTL_MS,
@@ -7,6 +7,7 @@ import {
   SERVER_OFFLINE_AFTER_MS,
   checkLabelAvailability,
   connectCode,
+  findOrRepairLabelClaim,
   labelClaim,
   machine,
   profile,
@@ -155,6 +156,7 @@ export async function getAccountState(
   userId: string,
 ): Promise<AccountState> {
   const { db, baseDomain } = deps;
+  await retryPendingMachineRevocations(deps, userId);
   const prof = await db
     .select()
     .from(profile)
@@ -278,6 +280,27 @@ export async function revokeMachine(
     });
   }
   return { ok: true };
+}
+
+/** Retry closure/release for revocations left pending by a transient DO error. */
+export async function retryPendingMachineRevocations(
+  deps: Pick<Deps, "db" | "closeTunnel">,
+  userId: string,
+): Promise<void> {
+  const pending = await deps.db
+    .select({ id: machine.id })
+    .from(machine)
+    .where(
+      and(
+        eq(machine.userId, userId),
+        isNotNull(machine.revokedAt),
+        isNotNull(machine.subdomain),
+      ),
+    )
+    .all();
+  for (const row of pending) {
+    await revokeMachine(deps, userId, row.id);
+  }
 }
 
 /** Live label-availability check for the claim UIs (handle + "connect another"). */
@@ -646,7 +669,7 @@ export async function revokeMachineForServerCredential(
 
 /**
  * Revoke ONE server's credential and sever its live tunnel. Server-scoped: only
- * the target row is cleared and only its TunnelDO (keyed by subdomain) is closed,
+ * the target row is cleared and only its claim-generation TunnelDO is closed,
  * so disconnecting one bb never touches the account's other servers.
  */
 export async function disconnectServer(
@@ -667,8 +690,15 @@ export async function disconnectServer(
     .set({ credentialHash: null, revokedAt: new Date() })
     .where(eq(server.id, srv.id))
     .run();
+  const claim = await findOrRepairLabelClaim(db, srv.subdomain);
+  const routingKey =
+    claim &&
+    ((claim.kind === "server" && claim.ownerId === srv.id) ||
+      (claim.kind === "handle" && claim.ownerId === srv.userId))
+      ? routingKeyForLabelClaim(claim.label, claim.kind, claim.generation)
+      : srv.subdomain;
   try {
-    await deps.closeTunnel?.(srv.subdomain);
+    await deps.closeTunnel?.(routingKey);
   } catch {
     // best-effort; the credential is already revoked so reconnect is blocked
   }
@@ -687,6 +717,7 @@ export async function removeServer(
   deps: Deps,
   userId: string,
   serverId: string,
+  hooks: { afterDelete?: () => Promise<void> } = {},
 ): Promise<{ ok: true } | { error: string }> {
   const { db } = deps;
   const prof = await db
@@ -704,18 +735,13 @@ export async function removeServer(
   if (srv.credentialHash != null && srv.revokedAt == null)
     return { error: "connected" };
 
+  const candidateClaim = await findOrRepairLabelClaim(db, srv.subdomain);
+  const claim =
+    candidateClaim?.kind === "server" && candidateClaim.ownerId === srv.id
+      ? candidateClaim
+      : null;
   await db.delete(server).where(eq(server.id, srv.id)).run();
-  const claim = await db
-    .select()
-    .from(labelClaim)
-    .where(
-      and(
-        eq(labelClaim.label, srv.subdomain),
-        eq(labelClaim.kind, "server"),
-        eq(labelClaim.ownerId, srv.id),
-      ),
-    )
-    .get();
+  await hooks.afterDelete?.();
   if (claim) {
     await releaseLabelClaim(db, {
       label: claim.label,

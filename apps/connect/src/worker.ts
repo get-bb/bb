@@ -289,8 +289,9 @@ export default {
     );
     if (!resolved) return text(`bb connect: no server for "${label}"\n`, 404);
 
-    // One TunnelDO + edge-cache namespace per resolved routing key. Server keys
-    // stay label-compatible; reusable machine keys include their claim generation.
+    // One TunnelDO + edge-cache namespace per resolved routing key. Primary
+    // handles stay label-compatible; reusable server/machine labels include
+    // their claim generation.
     const stub = env.TUNNEL_DO.get(
       env.TUNNEL_DO.idFromName(resolved.routingKey),
     );

@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import {
   type ConnectDb,
-  labelClaim,
+  findOrRepairLabelClaim,
   machine,
   profile,
   routingKeyForLabelClaim,
@@ -93,11 +93,7 @@ export async function resolveLabel(
     if (cached !== undefined) return cached;
   }
 
-  const claim = await db
-    .select()
-    .from(labelClaim)
-    .where(eq(labelClaim.label, label))
-    .get();
+  const claim = await findOrRepairLabelClaim(db, label, now);
   if (!claim) {
     labelCache.set(label, { value: null, expires: now + LABEL_TTL_MS });
     return null;

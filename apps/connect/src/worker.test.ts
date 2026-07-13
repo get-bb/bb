@@ -775,6 +775,58 @@ describe("gate worker share hosts", () => {
     );
   });
 
+  it("isolates a reused secondary-server label and cache by ownership generation", async () => {
+    mockResolveLabel.mockResolvedValue(
+      resolvedServer({ routingKey: "shared-server:generation-a" }),
+    );
+    const oldEnv = makeEnv(() => new Response("owner-a"));
+    const oldResponse = await worker.fetch(
+      visitorRequest("shared-server--3000.getbb.app", "/asset.js"),
+      oldEnv.env as never,
+      oldEnv.ctx,
+    );
+    expect(oldResponse.status).toBe(200);
+    expect(oldEnv.routingKeys).toEqual(["shared-server:generation-a"]);
+    expect(mockServeWithCache).toHaveBeenLastCalledWith(
+      expect.any(Request),
+      "shared-server:generation-a--3000",
+      oldEnv.ctx,
+      expect.any(Function),
+    );
+
+    mockResolveLabel.mockResolvedValue(
+      resolvedServer({
+        routingKey: "shared-server:generation-b",
+        userId: OTHER,
+      }),
+    );
+    const blockedEnv = makeEnv(() => new Response("wrong-owner-content"));
+    const blockedResponse = await worker.fetch(
+      visitorRequest("shared-server--3000.getbb.app", "/asset.js"),
+      blockedEnv.env as never,
+      blockedEnv.ctx,
+    );
+    expect(blockedResponse.status).toBe(403);
+    expect(blockedEnv.routingKeys).toEqual(["shared-server:generation-b"]);
+    expect(blockedEnv.captured).toHaveLength(0);
+
+    mockVerifySession.mockResolvedValue(OTHER);
+    const newEnv = makeEnv(() => new Response("owner-b"));
+    const newResponse = await worker.fetch(
+      visitorRequest("shared-server--3000.getbb.app", "/asset.js"),
+      newEnv.env as never,
+      newEnv.ctx,
+    );
+    expect(newResponse.status).toBe(200);
+    expect(newEnv.routingKeys).toEqual(["shared-server:generation-b"]);
+    expect(mockServeWithCache).toHaveBeenLastCalledWith(
+      expect.any(Request),
+      "shared-server:generation-b--3000",
+      newEnv.ctx,
+      expect.any(Function),
+    );
+  });
+
   it("strips a smuggled target header on bare hosts", async () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     await worker.fetch(
@@ -814,7 +866,7 @@ describe("gate worker share hosts", () => {
     // `--3000` nests its port share. parseVisitorHost splits on the first `--`
     // only, so the base label stays `sawyer-desktop` and resolves per-bb.
     mockResolveLabel.mockResolvedValue(
-      resolvedServer({ routingKey: "sawyer-desktop" }),
+      resolvedServer({ routingKey: "sawyer-desktop:desktop-generation" }),
     );
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
@@ -831,7 +883,7 @@ describe("gate worker share hosts", () => {
     expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("3000");
     expect(mockServeWithCache).toHaveBeenCalledWith(
       expect.any(Request),
-      "sawyer-desktop--3000",
+      "sawyer-desktop:desktop-generation--3000",
       ctx,
       expect.any(Function),
     );

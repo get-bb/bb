@@ -10,6 +10,7 @@ import {
   labelClaim,
   machine,
   MAX_SERVERS_PER_ACCOUNT,
+  routingKeyForLabelClaim,
   schema,
   server,
   tryClaimLabel,
@@ -317,6 +318,12 @@ describe("disconnectServer (server-scoped)", () => {
     await claimHandle(deps, "u1", "sawyer");
     const desktop = await createServer(deps, "u1", "sawyer-desktop");
     if (!("ok" in desktop)) throw new Error("setup");
+    const desktopClaim = db
+      .select()
+      .from(labelClaim)
+      .where(eq(labelClaim.ownerId, desktop.server.id))
+      .get();
+    if (!desktopClaim) throw new Error("missing server claim");
 
     // Pair both servers (give each a credential).
     db.update(server).set({ credentialHash: "hash", revokedAt: null }).run();
@@ -324,7 +331,13 @@ describe("disconnectServer (server-scoped)", () => {
     const r = await disconnectServer(deps, "u1", desktop.server.id);
     expect(r).toEqual({ ok: true });
     expect(closeTunnel).toHaveBeenCalledTimes(1);
-    expect(closeTunnel).toHaveBeenCalledWith("sawyer-desktop");
+    expect(closeTunnel).toHaveBeenCalledWith(
+      routingKeyForLabelClaim(
+        desktopClaim.label,
+        desktopClaim.kind,
+        desktopClaim.generation,
+      ),
+    );
 
     const target = db
       .select()
@@ -358,6 +371,62 @@ describe("disconnectServer (server-scoped)", () => {
       error: "not-found",
     });
     expect(closeTunnel).not.toHaveBeenCalled();
+  });
+
+  it("generation-isolates reuse after close fails, disconnect succeeds, and removal frees the label", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    await claimHandle(deps, "u1", "owner-one");
+    await claimHandle(deps, "u2", "owner-two");
+    const first = await createServer(deps, "u1", "shared-server");
+    if (!("ok" in first)) throw new Error("first server setup failed");
+    db.update(server)
+      .set({ credentialHash: "hash", revokedAt: null })
+      .where(eq(server.id, first.server.id))
+      .run();
+    const firstClaim = db
+      .select()
+      .from(labelClaim)
+      .where(eq(labelClaim.ownerId, first.server.id))
+      .get();
+    if (!firstClaim) throw new Error("missing first claim");
+    closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
+
+    await expect(
+      disconnectServer(deps, "u1", first.server.id),
+    ).resolves.toEqual({ ok: true });
+    expect(closeTunnel).toHaveBeenCalledWith(
+      routingKeyForLabelClaim(
+        firstClaim.label,
+        firstClaim.kind,
+        firstClaim.generation,
+      ),
+    );
+    await expect(removeServer(deps, "u1", first.server.id)).resolves.toEqual({
+      ok: true,
+    });
+    const second = await createServer(deps, "u2", "shared-server");
+    if (!("ok" in second)) throw new Error("second server setup failed");
+    const secondClaim = db
+      .select()
+      .from(labelClaim)
+      .where(eq(labelClaim.ownerId, second.server.id))
+      .get();
+    if (!secondClaim) throw new Error("missing second claim");
+
+    expect(
+      routingKeyForLabelClaim(
+        firstClaim.label,
+        firstClaim.kind,
+        firstClaim.generation,
+      ),
+    ).not.toBe(
+      routingKeyForLabelClaim(
+        secondClaim.label,
+        secondClaim.kind,
+        secondClaim.generation,
+      ),
+    );
   });
 });
 
@@ -431,6 +500,50 @@ describe("removeServer (delete a never-paired row)", () => {
       .get();
     expect(await removeServer(deps, "u1", victim!.id)).toEqual({
       error: "not-found",
+    });
+  });
+
+  it("repairs an orphan claim after failure immediately after server deletion", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    await claimHandle(deps, "u1", "owner-one");
+    await claimHandle(deps, "u2", "owner-two");
+    const first = await createServer(deps, "u1", "repairable-server");
+    if (!("ok" in first)) throw new Error("first server setup failed");
+    db.update(labelClaim)
+      .set({ createdAt: new Date(0) })
+      .where(eq(labelClaim.ownerId, first.server.id))
+      .run();
+
+    await expect(
+      removeServer(deps, "u1", first.server.id, {
+        afterDelete: async () => {
+          throw new Error("injected after-delete failure");
+        },
+      }),
+    ).rejects.toThrow("injected after-delete failure");
+    expect(
+      db.select().from(server).where(eq(server.id, first.server.id)).get(),
+    ).toBeUndefined();
+    expect(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "repairable-server"))
+        .get(),
+    ).toBeDefined();
+
+    const second = await createServer(deps, "u2", "repairable-server");
+    if (!("ok" in second)) throw new Error("repair claim failed");
+    expect(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "repairable-server"))
+        .get(),
+    ).toMatchObject({
+      userId: "u2",
+      ownerId: second.server.id,
     });
   });
 });
@@ -651,6 +764,56 @@ describe("dashboard machine recovery", () => {
         createdAt: now,
       }),
     ).toBe(false);
+  });
+
+  it("retries a failed machine close during the reachable account-state sweep", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values({
+        id: "machine-retry",
+        userId: "u1",
+        subdomain: "retry-machine",
+        credentialHash: "hash-a",
+        createdAt: now,
+      })
+      .run();
+    db.insert(labelClaim)
+      .values({
+        label: "retry-machine",
+        kind: "machine",
+        ownerId: "machine-retry",
+        userId: "u1",
+        generation: "generation-a",
+        createdAt: now,
+      })
+      .run();
+    closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
+
+    await expect(revokeMachine(deps, "u1", "machine-retry")).resolves.toEqual({
+      error: "tunnel-close-failed",
+    });
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
+    await getAccountState(deps, "u1");
+    expect(closeTunnel).toHaveBeenCalledTimes(2);
+    expect(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "retry-machine"))
+        .get(),
+    ).toBeUndefined();
+    expect(
+      await tryClaimLabel(db, {
+        label: "retry-machine",
+        kind: "machine",
+        ownerId: "machine-new",
+        userId: "u2",
+        generation: "generation-b",
+        createdAt: now,
+      }),
+    ).toBe(true);
   });
 
   it("does not release a label until delayed close confirms, then gives the new owner a new generation", async () => {

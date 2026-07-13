@@ -15,7 +15,7 @@ SELECT `handle`, 'handle', `user_id`, `user_id`, lower(hex(randomblob(16))), `cr
 FROM `profile`;
 --> statement-breakpoint
 INSERT INTO `label_claim` (`label`, `kind`, `owner_id`, `user_id`, `generation`, `created_at`)
-SELECT s.`subdomain`, 'server', s.`id`, s.`user_id`, lower(hex(randomblob(16))), s.`created_at`
+SELECT s.`subdomain`, 'server', s.`id`, s.`user_id`, 'legacy', s.`created_at`
 FROM `server` s
 WHERE NOT EXISTS (
 	SELECT 1

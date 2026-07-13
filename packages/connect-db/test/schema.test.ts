@@ -622,6 +622,11 @@ describe("0004 global label claims", () => {
           owner_id: "s2",
         },
       ]);
+      expect(
+        staged
+          .prepare("SELECT generation FROM label_claim WHERE label = ?")
+          .get("sawyer-desktop"),
+      ).toEqual({ generation: "legacy" });
     } finally {
       staged.close();
     }
@@ -671,6 +676,71 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
     expect(await checkLabelAvailability(db, "sawyer-desktop")).toEqual({
       available: true,
       label: "sawyer-desktop",
+    });
+  });
+
+  it("self-heals handle and server rows written by the old web worker after 0004", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    // Pre-PR write shape: source rows are committed after migration, but the
+    // independently deployed old web worker knows nothing about label_claim.
+    db.insert(profile)
+      .values({ userId: "u1", handle: "legacy-handle", createdAt: now })
+      .run();
+    db.insert(server)
+      .values([
+        {
+          id: "legacy-primary",
+          userId: "u1",
+          name: "default",
+          subdomain: "legacy-handle",
+          createdAt: now,
+        },
+        {
+          id: "legacy-secondary",
+          userId: "u1",
+          name: "desktop",
+          subdomain: "legacy-server",
+          createdAt: now,
+        },
+      ])
+      .run();
+
+    await expect(checkLabelAvailability(db, "legacy-handle")).resolves.toEqual({
+      available: false,
+      reason: "taken",
+      namespace: "handle",
+    });
+    await expect(
+      tryClaimLabel(db, {
+        label: "legacy-server",
+        kind: "machine",
+        ownerId: "attacker-machine",
+        userId: "u2",
+        generation: "attacker-generation",
+        createdAt: now,
+      }),
+    ).resolves.toBe(false);
+    await expect(checkLabelAvailability(db, "legacy-server")).resolves.toEqual({
+      available: false,
+      reason: "taken",
+      namespace: "subdomain",
+    });
+    expect(
+      db
+        .select({
+          label: labelClaim.label,
+          kind: labelClaim.kind,
+          generation: labelClaim.generation,
+        })
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "legacy-server"))
+        .get(),
+    ).toEqual({
+      label: "legacy-server",
+      kind: "server",
+      generation: "legacy",
     });
   });
 

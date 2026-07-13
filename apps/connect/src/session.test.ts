@@ -71,6 +71,12 @@ function seedServer(over: {
   revokedAt?: Date | null;
   lastSeenAt?: Date | null;
 }): void {
+  const isPrimary =
+    db
+      .select({ handle: profile.handle })
+      .from(profile)
+      .where(eq(profile.userId, over.userId))
+      .get()?.handle === over.subdomain;
   db.insert(server)
     .values({
       id: over.id,
@@ -87,8 +93,8 @@ function seedServer(over: {
   db.insert(labelClaim)
     .values({
       label: over.subdomain,
-      kind: "server",
-      ownerId: over.id,
+      kind: isPrimary ? "handle" : "server",
+      ownerId: isPrimary ? over.userId : over.id,
       userId: over.userId,
       generation: `${over.id}-generation`,
       createdAt: now,
@@ -186,6 +192,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     }
     expect(primary.server.id).toBe("srv-primary");
     expect(desktop.server.id).toBe("srv-desktop");
+    expect(desktop.routingKey).toBe("sawyer-desktop:srv-desktop-generation");
     expect(primary?.userId).toBe("acct-a");
     expect(desktop?.userId).toBe("acct-a");
   });
@@ -228,6 +235,42 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       subdomain: "sawyer",
     });
     expect(await resolveLabel("nobody", db, { fresh: true })).toBeNull();
+  });
+
+  it("routes and repairs a server row written without a claim during rollout", async () => {
+    seedUser("acct-a");
+    db.insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
+      .run();
+    db.insert(server)
+      .values({
+        id: "legacy-server",
+        userId: "acct-a",
+        name: "desktop",
+        subdomain: "legacy-desktop",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+
+    await expect(
+      resolveLabel("legacy-desktop", db, { fresh: true }),
+    ).resolves.toMatchObject({
+      kind: "server",
+      routingKey: "legacy-desktop",
+      server: { id: "legacy-server" },
+    });
+    expect(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "legacy-desktop"))
+        .get(),
+    ).toMatchObject({
+      kind: "server",
+      ownerId: "legacy-server",
+      generation: "legacy",
+    });
   });
 
   it("fresh resolution sees an immediately assigned label after a cached negative", async () => {
