@@ -265,23 +265,19 @@ export function SplitThreadArea() {
 
   const firstPane = panes[0];
   if (panes.length === 1 && firstPane !== undefined) {
-    // Single pane: no focus ring, no pane chrome. A bare, full-bleed wrapper
-    // carries only the pane-id hit-test hook so a sidebar thread can be dropped
-    // onto it to create the first split; it adds no visual chrome vs. the page.
+    // Single pane: DOM-identical to the pre-split page surface — no wrapper, no
+    // focus ring, no pane chrome. Sidebar drops still create the first split by
+    // hit-testing the main content region (see useThreadRowSplitDrag's
+    // single-pane fallback), so no wrapper element is needed here.
     return (
-      <div
-        className="flex h-full min-h-0 w-full min-w-0"
-        data-split-pane-id={firstPane.paneId}
-      >
-        <ThreadPaneContent
-          content={firstPane.content}
-          paneId={firstPane.paneId}
-          isFocused
-          canShowSecondaryPanel
-          onRequestClose={null}
-          onNavigateInPane={navigateInPane}
-        />
-      </div>
+      <ThreadPaneContent
+        content={firstPane.content}
+        paneId={firstPane.paneId}
+        isFocused
+        canShowSecondaryPanel
+        onRequestClose={null}
+        onNavigateInPane={navigateInPane}
+      />
     );
   }
 

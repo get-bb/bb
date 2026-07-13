@@ -8,6 +8,18 @@ export interface SplitDropTarget {
   zone: SplitZone;
 }
 
+export interface SplitDragFallbackTarget {
+  /** Pane id to attribute a drop to when no marked pane is under the pointer. */
+  paneId: string;
+  /**
+   * Element whose rect stands in for the pane. Used by the single-pane surface,
+   * which renders no wrapper element (so it stays byte-identical to the page):
+   * the whole content container becomes the drop target for creating the first
+   * split.
+   */
+  container: HTMLElement | null;
+}
+
 export interface SplitDragConfig {
   /** Text shown in the cursor-following ghost. */
   ghostLabel: string;
@@ -27,6 +39,24 @@ export interface SplitDragConfig {
    * reorder or a plain click still works.
    */
   shouldEngage: (clientX: number, clientY: number) => boolean;
+  /**
+   * Hit-test fallback for when no {@link SPLIT_PANE_DATA_ATTR} element is under
+   * the pointer (the wrapper-less single-pane surface).
+   */
+  fallback?: SplitDragFallbackTarget;
+  /**
+   * When true, engaging the drag cancels any in-flight dnd-kit reorder so a
+   * sidebar tear-out can't both split and reorder the same row (Finding 1).
+   * The two gestures become mutually exclusive: a tear-out that crosses the
+   * sidebar edge owns the gesture; a drag that never engages leaves reorder
+   * untouched.
+   */
+  cancelSidebarReorderOnEngage?: boolean;
+}
+
+interface ResolvedTarget {
+  paneId: string;
+  rect: DOMRect;
 }
 
 /**
@@ -58,6 +88,17 @@ export function beginSplitDrag(
 
   const engage = (): void => {
     engaged = true;
+    if (config.cancelSidebarReorderOnEngage) {
+      // dnd-kit's pointer sensors cancel on an Escape keydown; dispatching one
+      // hands exclusive ownership of the gesture to the split drag.
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          bubbles: true,
+        }),
+      );
+    }
     ghostEl = createGhost(config.ghostLabel);
     overlayEl = createOverlay();
     document.body.append(ghostEl, overlayEl);
@@ -65,6 +106,27 @@ export function beginSplitDrag(
     if (config.sourceEl) {
       config.sourceEl.style.opacity = "0.45";
     }
+  };
+
+  const resolveTarget = (clientX: number, clientY: number): ResolvedTarget | null => {
+    const paneEl = paneElementAt(clientX, clientY);
+    const paneId = paneEl?.getAttribute(SPLIT_PANE_DATA_ATTR) ?? null;
+    if (paneEl && paneId !== null) {
+      return { paneId, rect: paneEl.getBoundingClientRect() };
+    }
+    const fallback = config.fallback;
+    if (fallback && fallback.container) {
+      const rect = fallback.container.getBoundingClientRect();
+      if (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
+        return { paneId: fallback.paneId, rect };
+      }
+    }
+    return null;
   };
 
   const handleMove = (event: PointerEvent): void => {
@@ -83,14 +145,13 @@ export function beginSplitDrag(
     }
 
     target = null;
-    const paneEl = paneElementAt(event.clientX, event.clientY);
-    const paneId = paneEl?.getAttribute(SPLIT_PANE_DATA_ATTR) ?? null;
-    if (paneEl && paneId !== null && overlayEl) {
-      const rect = paneEl.getBoundingClientRect();
-      const decision = config.decide(paneId, pickZone(rect, event.clientX, event.clientY));
+    const resolved = resolveTarget(event.clientX, event.clientY);
+    if (resolved && overlayEl) {
+      const zone = pickZone(resolved.rect, event.clientX, event.clientY);
+      const decision = config.decide(resolved.paneId, zone);
       if (decision) {
-        target = { paneId, zone: decision.zone };
-        positionOverlay(overlayEl, zoneBox(rect, decision.zone), decision.label);
+        target = { paneId: resolved.paneId, zone: decision.zone };
+        positionOverlay(overlayEl, zoneBox(resolved.rect, decision.zone), decision.label);
       } else {
         overlayEl.style.display = "none";
       }

@@ -461,11 +461,15 @@ function ThreadRowComponent({
   const visibleTitle = displayTitle ?? threadTitle;
   const labelTitle = accessibleTitle ?? threadTitle;
   const splitIndicator = useThreadSplitIndicator(projectId, thread.id);
-  const { onPointerDown: onSplitDragPointerDown } = useThreadRowSplitDrag({
-    projectId,
-    threadId: thread.id,
-    title: threadTitle,
-  });
+  const { onPointerDown: onSplitDragPointerDown, openInSplit } =
+    useThreadRowSplitDrag({
+      projectId,
+      threadId: thread.id,
+      title: threadTitle,
+    });
+  // Splits are disabled on compact viewports; the drag hook signals that by
+  // withholding its pointer handler, so gate the click/menu entry points on it.
+  const splitAvailable = onSplitDragPointerDown !== undefined;
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
   const isParentCollapsed = parentOptions?.isCollapsed ?? false;
@@ -550,10 +554,18 @@ function ThreadRowComponent({
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
         data-sidebar-thread-shortcut-target=""
         data-sidebar-thread-id={thread.id}
-        onClick={() => {
+        onClick={(event) => {
           // Selecting a thread/agent row restores its conversation without
           // disturbing any other thread's collapsed conversation state.
           setConversationCollapsed(false);
+          // Cmd/Ctrl-click is the split feature's second entry point: open the
+          // thread in the split instead of replacing the focused pane. Match the
+          // drag rules (right split / focus if open / replace at the cap).
+          if (splitAvailable && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            openInSplit();
+            return;
+          }
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
@@ -638,6 +650,7 @@ function ThreadRowComponent({
                   "text-subtle-foreground hover:bg-transparent hover:text-foreground",
                   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
                 )}
+                onOpenInSplit={splitAvailable ? openInSplit : undefined}
                 onOpenChange={setIsDropdownActionsOpen}
               />
             </div>
@@ -662,6 +675,7 @@ function ThreadRowComponent({
   return (
     <ThreadActionsContextMenu
       thread={thread}
+      onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
     >
       {row}

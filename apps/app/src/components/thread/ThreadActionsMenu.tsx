@@ -30,6 +30,12 @@ interface ThreadActionsMenuBaseProps {
    * to true.
    */
   canDelete?: boolean;
+  /**
+   * When provided, adds a leading "Open in split" entry (the split feature's
+   * second entry point, alongside cmd-click). Omitted where splits don't apply
+   * (e.g. compact viewports), so the item only appears when meaningful.
+   */
+  onOpenInSplit?: () => void;
 }
 
 interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
@@ -114,6 +120,7 @@ function ThreadActionMenuSeparator({
 function ThreadActionsMenuItems({
   thread,
   canDelete = true,
+  onOpenInSplit,
   surface,
 }: ThreadActionsMenuItemsProps) {
   const {
@@ -135,6 +142,22 @@ function ThreadActionsMenuItems({
 
   return (
     <>
+      {onOpenInSplit ? (
+        <>
+          <ThreadActionMenuItem
+            surface={surface}
+            icon="Columns2"
+            onSelect={() => {
+              onOpenInSplit();
+            }}
+          >
+            Open in split
+          </ThreadActionMenuItem>
+          {showSeparators ? (
+            <ThreadActionMenuSeparator surface={surface} />
+          ) : null}
+        </>
+      ) : null}
       {/* Quick status toggles. */}
       <ThreadActionMenuItem
         surface={surface}
@@ -214,6 +237,7 @@ function ThreadActionsMenuItems({
 export function ThreadActionsMenu({
   thread,
   canDelete = true,
+  onOpenInSplit,
   onOpenChange,
   triggerClassName,
   align = "end",
@@ -245,6 +269,7 @@ export function ThreadActionsMenu({
         <ThreadActionsMenuItems
           thread={thread}
           canDelete={canDelete}
+          onOpenInSplit={onOpenInSplit}
           surface="dropdown"
         />
       </DropdownMenuContent>
@@ -256,6 +281,7 @@ export function ThreadActionsContextMenu({
   children,
   thread,
   canDelete = true,
+  onOpenInSplit,
   onOpenChange,
 }: ThreadActionsContextMenuProps) {
   return (
@@ -265,6 +291,7 @@ export function ThreadActionsContextMenu({
         <ThreadActionsMenuItems
           thread={thread}
           canDelete={canDelete}
+          onOpenInSplit={onOpenInSplit}
           surface="context"
         />
       </ContextMenuContent>
