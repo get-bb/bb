@@ -47,7 +47,9 @@ message agents, or inspect projects, providers, and environments.
   `references/app-settings.md`.
 - Use `bb settings show`, `bb settings general`, `bb settings experiment`,
   `bb settings keyboard`, `bb settings usage`, and `bb settings version` to
-  inspect or change these server-backed values from agents.
+  inspect or change these server-backed values from agents. Pass
+  `bb settings usage --machine <id-or-name>` to read provider limits from a
+  specific connected machine instead of the primary machine.
 
 ## Agent Instructions
 

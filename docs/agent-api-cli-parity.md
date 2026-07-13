@@ -162,7 +162,7 @@ The SDK methods live under `bb.system`:
 | `bb.system.updateGeneralSettings(settings)`   | `bb settings general <key> <value>`                         |
 | `bb.system.updateExperiments(experiments)`    | `bb settings experiment <key> <value>`                      |
 | `bb.system.updateKeyboardSettings(overrides)` | `bb settings keyboard set <command> <shortcut-or-disabled>` |
-| `bb.system.usageLimits()`                     | `bb settings usage`                                         |
+| `bb.system.usageLimits({ hostId? })`          | `bb settings usage [--machine <id-or-name>]`                |
 | `bb.system.version({ force })`                | `bb settings version [--force]`                             |
 | `bb.system.reloadConfig()`                    | `bb settings reload`                                        |
 | `bb.system.executionOptions(...)`             | SDK                                                         |

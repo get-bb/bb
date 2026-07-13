@@ -53,9 +53,7 @@ function shouldRetrySystemExecutionOptions(
   }
 
   if (error instanceof api.HttpError) {
-    return (
-      error.status === 408 || error.status === 429 || error.status >= 500
-    );
+    return error.status === 408 || error.status === 429 || error.status >= 500;
   }
 
   return true;
@@ -130,11 +128,16 @@ export function useHostProviderCliStatus({
   });
 }
 
-export function useSystemUsageLimits(options?: QueryOptions) {
+export interface UseSystemUsageLimitsArgs extends QueryOptions {
+  hostId?: string;
+}
+
+export function useSystemUsageLimits(args: UseSystemUsageLimitsArgs = {}) {
+  const hostId = args.hostId ?? null;
   return useQuery<ProviderUsageResponse>({
-    queryKey: systemUsageLimitsQueryKey(),
-    queryFn: ({ signal }) => api.getSystemUsageLimits(signal),
-    enabled: options?.enabled ?? true,
+    queryKey: systemUsageLimitsQueryKey(hostId),
+    queryFn: ({ signal }) => api.getSystemUsageLimits(args.hostId, signal),
+    enabled: args.enabled ?? true,
     ...FOCUS_OWNED_LIVE_QUERY_POLICY,
   });
 }

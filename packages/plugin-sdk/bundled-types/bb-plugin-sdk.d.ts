@@ -236,8 +236,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
+            pending: "pending";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -857,8 +857,8 @@ declare const environmentDiffFileQuerySchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
 type EnvironmentDiffFileQuery = z$1.infer<typeof environmentDiffFileQuerySchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    squash: "squash";
     rebase: "rebase";
+    squash: "squash";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 /**
@@ -934,6 +934,11 @@ declare const systemExecutionOptionsQuerySchema: z$1.ZodObject<{
     environmentId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type SystemExecutionOptionsQuery = z$1.infer<typeof systemExecutionOptionsQuerySchema>;
+/** Omission preserves the existing behavior of reading the primary machine. */
+declare const systemUsageLimitsQuerySchema: z$1.ZodObject<{
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type SystemUsageLimitsQuery = z$1.infer<typeof systemUsageLimitsQuerySchema>;
 /**
  * Theme catalog: the on-disk custom-theme directory plus the discovered custom
  * themes and the active palette. Drives `bb theme list` / `bb theme dir`.
@@ -2242,7 +2247,7 @@ interface SystemArea {
     updateExperiments(args: Experiments): Promise<PublicApiOutput<"/settings/experiments", "$put">>;
     updateGeneralSettings(args: AppSettings): Promise<PublicApiOutput<"/settings/general", "$put">>;
     updateKeyboardSettings(args: AppKeybindingOverrides): Promise<PublicApiOutput<"/settings/keyboard", "$put">>;
-    usageLimits(): Promise<PublicApiOutput<"/system/usage-limits", "$get">>;
+    usageLimits(args?: SystemUsageLimitsQuery): Promise<PublicApiOutput<"/system/usage-limits", "$get">>;
     version(args?: SystemVersionArgs): Promise<PublicApiOutput<"/system/version", "$get">>;
 }
 declare function createSystemArea(args: CreateSdkAreaArgs): SystemArea;

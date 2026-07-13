@@ -5,6 +5,7 @@ import type {
 } from "@bb/domain";
 import type {
   SystemExecutionOptionsQuery,
+  SystemUsageLimitsQuery,
   SystemVersionQuery,
 } from "@bb/server-contract";
 import { systemVoiceTranscriptionResponseSchema } from "@bb/server-contract";
@@ -38,7 +39,9 @@ export interface SystemArea {
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
   ): Promise<PublicApiOutput<"/settings/keyboard", "$put">>;
-  usageLimits(): Promise<PublicApiOutput<"/system/usage-limits", "$get">>;
+  usageLimits(
+    args?: SystemUsageLimitsQuery,
+  ): Promise<PublicApiOutput<"/system/usage-limits", "$get">>;
   version(
     args?: SystemVersionArgs,
   ): Promise<PublicApiOutput<"/system/version", "$get">>;
@@ -97,8 +100,10 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.api.v1.settings.keyboard.$put({ json: input }),
       );
     },
-    async usageLimits() {
-      return transport.readJson(transport.api.v1.system["usage-limits"].$get());
+    async usageLimits(input = {}) {
+      return transport.readJson(
+        transport.api.v1.system["usage-limits"].$get({ query: input }),
+      );
     },
     async version(input) {
       return transport.readJson(

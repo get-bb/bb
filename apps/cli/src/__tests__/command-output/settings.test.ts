@@ -33,4 +33,35 @@ describe("bb settings commands", () => {
       json: { ...defaultAppSettings, codexSubagentsDisabled: true },
     });
   });
+
+  it("reads usage from a selected machine", async () => {
+    const getUsage = vi.fn(async () => ({
+      codex: { status: "unauthenticated" },
+      claudeCode: { status: "unauthenticated" },
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          lastRejectedProtocolVersion: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.system.usage-limits.$get": getUsage,
+    });
+
+    await runCommand(
+      ["settings", "usage", "--machine", "builder", "--json"],
+      register,
+    );
+
+    expect(getUsage).toHaveBeenCalledWith({
+      query: { hostId: "host-remote" },
+    });
+  });
 });

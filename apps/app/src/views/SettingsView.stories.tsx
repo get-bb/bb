@@ -4,6 +4,7 @@ import {
   defaultExperiments,
   type AppTheme,
   type Experiments,
+  type Host,
 } from "@bb/domain";
 import type {
   ProviderUsage,
@@ -124,6 +125,29 @@ const usageFixture: {
   },
 };
 
+const usageHosts: Host[] = [
+  {
+    id: "host-macbook",
+    name: "MacBook Pro",
+    type: "persistent",
+    status: "connected",
+    lastSeenAt: Date.now(),
+    lastRejectedProtocolVersion: null,
+    createdAt: 1,
+    updatedAt: 1,
+  },
+  {
+    id: "host-studio",
+    name: "Mac Studio",
+    type: "persistent",
+    status: "connected",
+    lastSeenAt: Date.now(),
+    lastRejectedProtocolVersion: null,
+    createdAt: 1,
+    updatedAt: 1,
+  },
+];
+
 function useSettingsStoryState() {
   const [themePreference, setThemePreference] =
     useState<ThemePreference>("system");
@@ -207,9 +231,7 @@ function GeneralSettingsStory({
       desktopBrowserAvailable={desktopBrowserAvailable}
       navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
       onCaffeinateChange={state.setCaffeinate}
-      onNavigateToThreadAfterCreateChange={
-        state.setNavigateToThreadAfterCreate
-      }
+      onNavigateToThreadAfterCreateChange={state.setNavigateToThreadAfterCreate}
       onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
       onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
       onRichTextEditingChange={state.setRichTextEditing}
@@ -327,6 +349,7 @@ function ExperimentsStory({
 
 function UsageLimitsStory() {
   const [isFetching, setIsFetching] = useState(false);
+  const [selectedHostId, setSelectedHostId] = useState("host-macbook");
 
   return (
     <UsageLimitsSettingsSectionContent
@@ -338,6 +361,9 @@ function UsageLimitsStory() {
         setIsFetching(true);
         window.setTimeout(() => setIsFetching(false), 500);
       }}
+      hosts={usageHosts}
+      selectedHostId={selectedHostId}
+      onSelectHost={setSelectedHostId}
     />
   );
 }

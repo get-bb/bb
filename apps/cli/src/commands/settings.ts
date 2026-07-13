@@ -11,9 +11,15 @@ import {
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { outputJson } from "./helpers.js";
+import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
 interface JsonOptions {
   json?: boolean;
+}
+
+interface UsageOptions extends JsonOptions {
+  host?: string;
+  machine?: string;
 }
 
 function parseBoolean(value: string): boolean {
@@ -211,10 +217,25 @@ export function registerSettingsCommands(
   settings
     .command("usage")
     .description("Show provider usage limits")
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose provider usage should be shown",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).system.usageLimits();
+      action(async (opts: UsageOptions) => {
+        const target = resolveMachineTargetOption(opts);
+        const hostId =
+          target === undefined
+            ? undefined
+            : await resolveMachineHostId({
+                serverUrl: getUrl(),
+                target,
+              });
+        const result = await createCliBbSdk(getUrl()).system.usageLimits(
+          hostId === undefined ? {} : { hostId },
+        );
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
       }),

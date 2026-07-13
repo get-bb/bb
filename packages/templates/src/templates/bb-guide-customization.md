@@ -40,7 +40,7 @@ daemon reports macOS.
   bb settings show
   bb settings general <key> <true|false>
   bb settings experiment <key> <value>
-  bb settings usage
+  bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
   bb settings reload
 

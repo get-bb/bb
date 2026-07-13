@@ -124,14 +124,19 @@ describe("useSystemUsageLimits", () => {
     );
     const { queryClient, wrapper } = createQueryClientTestHarness();
 
-    renderHook(() => useSystemUsageLimits(), { wrapper });
+    renderHook(() => useSystemUsageLimits({ hostId: "host-1" }), { wrapper });
 
     await waitFor(() => {
       expect(api.getSystemUsageLimits).toHaveBeenCalledTimes(1);
     });
 
+    expect(api.getSystemUsageLimits).toHaveBeenCalledWith(
+      "host-1",
+      expect.any(AbortSignal),
+    );
+
     const query = queryClient.getQueryCache().find({
-      queryKey: systemUsageLimitsQueryKey(),
+      queryKey: systemUsageLimitsQueryKey("host-1"),
     });
 
     expect(query?.options).toEqual(

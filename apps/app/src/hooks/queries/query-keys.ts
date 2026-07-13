@@ -440,6 +440,7 @@ export type HostProviderCliStatusQueryKey = readonly [
 ];
 export type SystemUsageLimitsQueryKey = readonly [
   typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
+  string | null,
 ];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
@@ -1050,8 +1051,10 @@ export function hostProviderCliStatusQueryKey(
   return [HOST_PROVIDER_CLI_STATUS_QUERY_KEY, hostId];
 }
 
-export function systemUsageLimitsQueryKey(): SystemUsageLimitsQueryKey {
-  return [SYSTEM_USAGE_LIMITS_QUERY_KEY];
+export function systemUsageLimitsQueryKey(
+  hostId: string | null,
+): SystemUsageLimitsQueryKey {
+  return [SYSTEM_USAGE_LIMITS_QUERY_KEY, hostId];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {

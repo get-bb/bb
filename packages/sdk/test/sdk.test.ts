@@ -83,6 +83,32 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("targets provider usage at an explicit machine", async () => {
+    const usage = {
+      codex: { status: "unauthenticated" as const },
+      claudeCode: { status: "unauthenticated" as const },
+    };
+    const queue = createFetchQueue([{ body: usage }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.system.usageLimits({ hostId: "host_remote" }),
+    ).resolves.toEqual(usage);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/usage-limits?hostId=host_remote",
+      },
+    ]);
+  });
+
   it("routes thread list calls through the HTTP transport", async () => {
     const queue = createFetchQueue([{ body: [] }]);
     const sdk = createBbSdk({

@@ -88,7 +88,8 @@ export function registerSystemRoutes(
     faviconColor: AppTheme["faviconColor"],
   ): Promise<AppTheme> {
     const pluginCss = await pluginService.readThemeCss(themeId);
-    if (pluginCss !== null) return { themeId, customCss: pluginCss, faviconColor };
+    if (pluginCss !== null)
+      return { themeId, customCss: pluginCss, faviconColor };
     return resolveAppTheme(themeRoot, themeId, faviconColor);
   }
 
@@ -263,8 +264,8 @@ export function registerSystemRoutes(
     });
   });
 
-  get(routes.usageLimits, async (context) =>
-    context.json(await getProviderUsageLimits(deps)),
+  get(routes.usageLimits, async (context, query) =>
+    context.json(await getProviderUsageLimits(deps, query)),
   );
 
   get(routes.executionOptions, async (context, query) =>

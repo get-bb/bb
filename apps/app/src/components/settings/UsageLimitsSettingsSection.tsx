@@ -1,3 +1,5 @@
+import { useState } from "react";
+import type { Host } from "@bb/domain";
 import type {
   ProviderUsage,
   ProviderUsageWindow,
@@ -5,12 +7,19 @@ import type {
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { SettingsSection } from "@/components/ui/settings-section";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
-import { useSystemUsageLimits } from "@/hooks/queries/system-queries";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import {
+  useSystemConfig,
+  useSystemUsageLimits,
+} from "@/hooks/queries/system-queries";
+import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
@@ -123,6 +132,61 @@ export interface UsageLimitsSettingsSectionContentProps {
   isError: boolean;
   isFetching: boolean;
   onRefresh: () => void;
+  hosts?: readonly Host[];
+  selectedHostId?: string | null;
+  onSelectHost?: (hostId: string) => void;
+}
+
+function UsageMachinePicker({
+  hosts,
+  selectedHostId,
+  onSelectHost,
+}: {
+  hosts: readonly Host[];
+  selectedHostId: string | null;
+  onSelectHost: (hostId: string) => void;
+}) {
+  const selectedHost =
+    hosts.find((host) => host.id === selectedHostId) ?? hosts[0];
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="max-w-48 gap-1.5"
+          aria-label="Usage limits machine"
+        >
+          <Icon name="Laptop" className="size-3.5 shrink-0" />
+          <span className="min-w-0 truncate">
+            {selectedHost?.name ?? "Machine"}
+          </span>
+          <Icon name="ChevronDown" className="size-3.5 shrink-0" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" mobileTitle="Usage limits machine">
+        {hosts.map((host) => {
+          const connected = host.status === "connected";
+          return (
+            <DropdownMenuItem
+              key={host.id}
+              disabled={!connected}
+              onSelect={() => onSelectHost(host.id)}
+              className="flex items-center gap-2"
+            >
+              <MachineStatusDot connected={connected} />
+              <span className="min-w-0 flex-1 truncate">{host.name}</span>
+              {host.id === selectedHost?.id ? (
+                <Icon name="Check" className="size-3.5 shrink-0" />
+              ) : null}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function ProviderUsageBlock({
@@ -160,7 +224,7 @@ function ProviderUsageBody({
   if (isError) {
     return (
       <p className="text-xs text-muted-foreground">
-        Couldn&apos;t load usage right now. Make sure bb&apos;s host is
+        Couldn&apos;t load usage right now. Make sure the selected machine is
         connected, then reload usage.
       </p>
     );
@@ -209,34 +273,45 @@ export function UsageLimitsSettingsSectionContent({
   isError,
   isFetching,
   onRefresh,
+  hosts = [],
+  selectedHostId = null,
+  onSelectHost,
 }: UsageLimitsSettingsSectionContentProps) {
+  const showMachinePicker = hosts.length > 1 && onSelectHost !== undefined;
   return (
     <SettingsSection
       title="Usage limits"
       description="Your Codex and Claude Code subscription usage."
       action={
-        <Tooltip delayDuration={300} disableHoverableContent>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground hover:text-foreground"
-              disabled={isFetching}
-              onClick={onRefresh}
-              aria-label={
-                isFetching
-                  ? "Reloading usage data"
-                  : "Reload usage data"
-              }
-            >
-              <Icon
-                name="RotateCcw"
-                className={cn("size-3.5", isFetching && "animate-spin")}
-              />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Reload usage data</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-1">
+          {showMachinePicker ? (
+            <UsageMachinePicker
+              hosts={hosts}
+              selectedHostId={selectedHostId}
+              onSelectHost={onSelectHost}
+            />
+          ) : null}
+          <Tooltip delayDuration={300} disableHoverableContent>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                disabled={isFetching}
+                onClick={onRefresh}
+                aria-label={
+                  isFetching ? "Reloading usage data" : "Reload usage data"
+                }
+              >
+                <Icon
+                  name="RotateCcw"
+                  className={cn("size-3.5", isFetching && "animate-spin")}
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Reload usage data</TooltipContent>
+          </Tooltip>
+        </div>
       }
     >
       <div className="divide-y divide-border">
@@ -256,7 +331,24 @@ export function UsageLimitsSettingsSectionContent({
 }
 
 export function UsageLimitsSettingsSection() {
-  const usageQuery = useSystemUsageLimits();
+  const systemConfigQuery = useSystemConfig();
+  const multiMachineEnabled =
+    systemConfigQuery.data?.experiments.multiMachine === true;
+  const hostsQuery = useHosts({ enabled: multiMachineEnabled });
+  const hosts = hostsQuery.data ?? [];
+  const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
+  const primaryHost = selectPrimaryHost(
+    hosts,
+    systemConfigQuery.data?.primaryHostId ?? null,
+  );
+  const selectedHost =
+    hosts.find((host) => host.id === selectedHostId) ?? primaryHost;
+  const usageHostId =
+    selectedHost?.id ?? systemConfigQuery.data?.primaryHostId ?? undefined;
+  const usageQuery = useSystemUsageLimits({
+    hostId: usageHostId,
+    enabled: systemConfigQuery.data !== undefined,
+  });
 
   return (
     <UsageLimitsSettingsSectionContent
@@ -267,6 +359,9 @@ export function UsageLimitsSettingsSection() {
       onRefresh={() => {
         void usageQuery.refetch();
       }}
+      hosts={multiMachineEnabled ? hosts : []}
+      selectedHostId={selectedHost?.id ?? null}
+      onSelectHost={setSelectedHostId}
     />
   );
 }

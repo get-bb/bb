@@ -1839,10 +1839,14 @@ export async function getSystemConfig(
 }
 
 export async function getSystemUsageLimits(
+  hostId?: string,
   signal?: AbortSignal,
 ): Promise<ProviderUsageResponse> {
   return request<ProviderUsageResponse>(
-    apiClient.system["usage-limits"].$get({}, requestOptions(signal)),
+    apiClient.system["usage-limits"].$get(
+      { query: hostId === undefined ? {} : { hostId } },
+      requestOptions(signal),
+    ),
   );
 }
 

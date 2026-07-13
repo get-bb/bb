@@ -62,6 +62,14 @@ export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
 
+/** Omission preserves the existing behavior of reading the primary machine. */
+export const systemUsageLimitsQuerySchema = z.object({
+  hostId: z.string().min(1).optional(),
+});
+export type SystemUsageLimitsQuery = z.infer<
+  typeof systemUsageLimitsQuerySchema
+>;
+
 export interface SystemVoiceTranscriptionForm {
   [key: string]: string | Blob;
 }

@@ -130,6 +130,7 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
@@ -237,6 +238,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
@@ -1209,7 +1211,9 @@ export const publicApiRoutes = {
     usageLimits: defineRoute({
       path: "/system/usage-limits",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, SystemUsageLimitsQuery>(
+        systemUsageLimitsQuerySchema,
+      ),
       response: jsonResponse<ProviderUsageResponse>(),
     }),
     voiceTranscription: defineRoute({
