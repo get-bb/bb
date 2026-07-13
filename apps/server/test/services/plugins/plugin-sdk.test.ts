@@ -57,6 +57,10 @@ describe("plugin bb.sdk bind gate", () => {
     declareSharedPorts: vi.fn(),
     clearDeclarationsForOwner: vi.fn(),
   };
+  const ensureSharedPortTunnel = vi.fn().mockResolvedValue({
+    label: "sawyer-air",
+    baseDomain: "getbb.app",
+  });
 
   beforeEach(async () => {
     db = createConnection(":memory:");
@@ -64,9 +68,11 @@ describe("plugin bb.sdk bind gate", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-test-"));
     sharedPorts.declareSharedPorts.mockClear();
     sharedPorts.clearDeclarationsForOwner.mockClear();
+    ensureSharedPortTunnel.mockClear();
     service = createPluginService({
       db,
       sharedPorts,
+      ensureSharedPortTunnel,
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginSignal: () => 0,
@@ -126,16 +132,28 @@ describe("plugin bb.sdk bind gate", () => {
     await service.installPath(rootDir);
     const api = requireApi(service, "shares");
 
-    api.hosts.declareSharedPorts("host-1", [8080, 3000], {
+    await expect(api.hosts.ensureSharedPortTunnel("host-1")).resolves.toEqual({
       label: "sawyer-air",
       baseDomain: "getbb.app",
     });
+    expect(() =>
+      (api.hosts.declareSharedPorts as unknown as (...args: unknown[]) => void)(
+        "host-1",
+        [3000],
+        {
+          label: "stolen",
+          baseDomain: "attacker.example",
+        },
+      ),
+    ).toThrow(/tunnel identity is daemon-owned/);
+    api.hosts.declareSharedPorts("host-1", [8080, 3000]);
+
+    expect(ensureSharedPortTunnel).toHaveBeenCalledWith("host-1");
 
     expect(sharedPorts.declareSharedPorts).toHaveBeenCalledWith({
       ownerId: "shares",
       hostId: "host-1",
       ports: [8080, 3000],
-      tunnel: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
 
     await service.stop();

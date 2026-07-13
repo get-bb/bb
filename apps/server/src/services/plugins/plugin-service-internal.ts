@@ -1,5 +1,6 @@
 import type { DbConnection } from "@bb/db";
 import type { DynamicTool, Thread } from "@bb/domain";
+import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
@@ -157,6 +158,9 @@ export interface PluginServiceDeps {
     HostSharedPortCoordinator,
     "declareSharedPorts" | "clearDeclarationsForOwner"
   >;
+  ensureSharedPortTunnel?: (
+    hostId: string,
+  ) => Promise<HostDaemonConnectTunnelIdentity>;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<

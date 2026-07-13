@@ -78,7 +78,6 @@ export type {
   PluginHttpAuthMode,
   PluginHttpHandler,
   PluginHosts,
-  PluginHostTunnel,
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
@@ -472,6 +471,7 @@ export function createPluginApi(options: {
     timeoutMs: number;
     signal?: AbortSignal;
   }) => Promise<PluginInteractionResult>;
+  ensureSharedPortTunnel: PluginHosts["ensureSharedPortTunnel"];
   declareSharedPorts: PluginHosts["declareSharedPorts"];
   clearDeclaredSharedPorts: () => void;
 }): PluginApiHandle {
@@ -487,6 +487,7 @@ export function createPluginApi(options: {
     isAgentToolNameTaken,
     reportAgentToolProblem,
     requestInteraction,
+    ensureSharedPortTunnel,
     declareSharedPorts,
     clearDeclaredSharedPorts,
   } = options;
@@ -1124,9 +1125,18 @@ export function createPluginApi(options: {
   };
 
   const hosts: PluginHosts = {
-    declareSharedPorts(hostId, ports, tunnel) {
+    ensureSharedPortTunnel(hostId) {
       assertLive();
-      declareSharedPorts(hostId, ports, tunnel);
+      return ensureSharedPortTunnel(hostId);
+    },
+    declareSharedPorts(hostId, ports) {
+      assertLive();
+      if (arguments.length !== 2) {
+        throw new Error(
+          "bb.hosts.declareSharedPorts accepts only hostId and ports; tunnel identity is daemon-owned",
+        );
+      }
+      declareSharedPorts(hostId, ports);
     },
   };
   // Host declarations are load-scoped like routes and services. A plugin

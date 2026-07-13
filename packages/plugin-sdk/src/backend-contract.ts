@@ -510,7 +510,7 @@ export interface PluginServerApi {
 // Host control plane.
 // ---------------------------------------------------------------------------
 
-export interface PluginHostTunnel {
+export interface PluginSharedPortTunnelIdentity {
   /** Gate routing label assigned to this machine. */
   label: string;
   /** Gate apex without a scheme, e.g. "getbb.app". */
@@ -519,16 +519,21 @@ export interface PluginHostTunnel {
 
 export interface PluginHosts {
   /**
+   * Ensure this enrolled host has a gate label and return its read-only public
+   * identity. The daemon chooses the trusted gate and desired label; plugins
+   * cannot influence either credential-bearing destination.
+   */
+  ensureSharedPortTunnel(
+    hostId: string,
+  ): Promise<PluginSharedPortTunnelIdentity>;
+
+  /**
    * Replace this plugin's desired shared-loopback ports for one host. The
    * server aggregates declarations, owns generations, and delivers the
-   * resulting set to that host's daemon. `tunnel` is null until the host has
-   * both a machine label and usable gate credential.
+   * resulting set to that host's daemon. Tunnel identity is deliberately not
+   * accepted here: it is owned by the daemon's trusted enrollment.
    */
-  declareSharedPorts(
-    hostId: string,
-    ports: readonly number[],
-    tunnel: PluginHostTunnel | null,
-  ): void;
+  declareSharedPorts(hostId: string, ports: readonly number[]): void;
 }
 
 // ---------------------------------------------------------------------------

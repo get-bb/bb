@@ -478,8 +478,17 @@ export async function createHostDaemonApp(
     },
   });
   const connectTunnel = new ConnectTunnelClient({
+    serverUrl: options.serverUrl,
+    hostName: options.hostName,
     machineCredential: options.machineCredential,
+    fetchFn: options.fetchFn,
     logger: options.logger,
+    onIdentity: (identity) => {
+      sendServerMessage({
+        type: "connect-tunnel.identity",
+        identity,
+      });
+    },
     onStatusChange: (status) => {
       options.logger.debug(
         { connectTunnelStatus: status },
@@ -745,6 +754,7 @@ export async function createHostDaemonApp(
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },
+    ensureConnectTunnelIdentity: () => connectTunnel.ensureTunnelIdentity(),
     caffeinateManager,
     threadStorageRootPath,
     logger: options.logger,
@@ -799,7 +809,6 @@ export async function createHostDaemonApp(
       connectTunnel.replaceShareSet({
         generation: message.generation,
         ports: message.ports,
-        tunnel: message.tunnel,
       });
     },
     onTerminalMessage: (message) => terminalManager.handleMessage(message),
@@ -809,9 +818,7 @@ export async function createHostDaemonApp(
       // declare shares after session/open and immediately push generation 1;
       // applying generation 0 synchronously prevents that newer websocket
       // replacement from being overwritten by the initial empty snapshot.
-      if (session.connectShares !== undefined) {
-        connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
-      }
+      connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
       if (session.retiredEnvironmentIds.length > 0) {
         await Promise.all(
           session.retiredEnvironmentIds.map((environmentId) =>

@@ -10,9 +10,10 @@ import {
   type ReconnectBackoffOptions,
   type StreamOriginResult,
 } from "@bb/tunnel-client";
-import type {
-  HostDaemonConnectShares,
-  HostDaemonConnectSharesTunnel,
+import {
+  hostDaemonConnectTunnelIdentitySchema,
+  type HostDaemonConnectShares,
+  type HostDaemonConnectTunnelIdentity,
 } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "../logger.js";
 
@@ -21,6 +22,7 @@ export type ConnectTunnelState = "connected" | "reconnecting" | "offline";
 export interface ConnectTunnelStatus {
   state: ConnectTunnelState;
   lastError: string | null;
+  credentialRejected: boolean;
   generation: number;
   ports: number[];
 }
@@ -30,43 +32,92 @@ export type CreateTunnelWebSocket = (
   options: { headers: Record<string, string> },
 ) => NodeWebSocket;
 
+export type ConnectTunnelFetch = (
+  input: string | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
 export interface ConnectTunnelClientOptions {
+  serverUrl: string;
+  hostName: string;
   machineCredential?: string;
   logger: HostDaemonLogger;
+  onIdentity?: (identity: HostDaemonConnectTunnelIdentity) => void;
   onStatusChange?: (status: ConnectTunnelStatus) => void;
   createWebSocket?: CreateTunnelWebSocket;
+  fetchFn?: ConnectTunnelFetch;
   reconnectBackoff?: ReconnectBackoffOptions;
 }
 
+interface TrustedConnectGate {
+  apiOrigin: string;
+  baseDomain: string;
+}
+
+export class ConnectTunnelCredentialRejectedError extends Error {
+  readonly code = "credential_rejected";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ConnectTunnelCredentialRejectedError";
+  }
+}
+
+export function resolveTrustedConnectGate(
+  serverUrl: string,
+): TrustedConnectGate {
+  const parsed = new URL(serverUrl);
+  if (parsed.protocol !== "https:") {
+    throw new Error(
+      `bb connect machine credentials require an HTTPS enrollment server, got ${parsed.origin}`,
+    );
+  }
+  const firstDot = parsed.hostname.indexOf(".");
+  if (firstDot <= 0 || firstDot === parsed.hostname.length - 1) {
+    throw new Error(
+      `cannot derive the bb connect gate base domain from enrollment server ${parsed.origin}`,
+    );
+  }
+  const baseHostname = parsed.hostname.slice(firstDot + 1);
+  return {
+    apiOrigin: parsed.origin,
+    baseDomain: `${baseHostname}${parsed.port ? `:${parsed.port}` : ""}`,
+  };
+}
+
 export function buildMachineTunnelUrl(
-  tunnel: HostDaemonConnectSharesTunnel,
+  identity: HostDaemonConnectTunnelIdentity,
 ): string {
-  const url = new URL(`wss://${tunnel.label}.${tunnel.baseDomain}/__tunnel`);
+  const url = new URL(
+    `wss://${identity.label}.${identity.baseDomain}/__tunnel`,
+  );
   url.searchParams.set(TUNNEL_PROTOCOL_QUERY_PARAM, String(PROTOCOL_VERSION));
   return url.toString();
 }
 
 /**
- * Host-local connect primitive. The server decides the desired ports and
- * tunnel identity; this client only maintains the socket and proxies allowed
- * targets to this daemon's loopback interface.
+ * Host-local connect primitive. The server supplies only desired ports. This
+ * daemon derives the credential-bearing gate destination from its own trusted
+ * enrollment URL and assigns its own label using its machine credential.
  */
 export class ConnectTunnelClient {
   private readonly createWebSocket: CreateTunnelWebSocket;
+  private readonly fetchFn: ConnectTunnelFetch;
   private readonly backoff: ReconnectBackoff;
   private readonly machineCredential: string | undefined;
-  private shares: HostDaemonConnectShares = {
-    generation: 0,
-    ports: [],
-    tunnel: null,
-  };
+  private shares: HostDaemonConnectShares = { generation: 0, ports: [] };
   private latestGeneration = -1;
   private ports = new Set<number>();
+  private identity: HostDaemonConnectTunnelIdentity | undefined;
+  private identityPromise: Promise<HostDaemonConnectTunnelIdentity> | undefined;
+  private connectAttempt: Promise<void> | undefined;
+  private connectionEpoch = 0;
   private socket: NodeWebSocket | undefined;
   private session: TunnelSession | undefined;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private state: ConnectTunnelState = "offline";
   private lastError: string | null = null;
+  private credentialRejected = false;
   private stopped = false;
 
   constructor(private readonly options: ConnectTunnelClientOptions) {
@@ -74,6 +125,7 @@ export class ConnectTunnelClient {
       options.createWebSocket ??
       ((url, websocketOptions) =>
         new NodeWebSocket(url, { headers: websocketOptions.headers }));
+    this.fetchFn = options.fetchFn ?? fetch;
     this.backoff = new ReconnectBackoff(options.reconnectBackoff);
     this.machineCredential =
       options.machineCredential?.trim().length === 0
@@ -85,6 +137,7 @@ export class ConnectTunnelClient {
     return {
       state: this.state,
       lastError: this.lastError,
+      credentialRejected: this.credentialRejected,
       generation: this.shares.generation,
       ports: [...this.ports].sort((a, b) => a - b),
     };
@@ -99,14 +152,89 @@ export class ConnectTunnelClient {
     return true;
   }
 
-  /**
-   * Session-open state is authoritative across server restarts, whose in-memory
-   * generations may restart below this daemon's last observed generation.
-   * If plugins load after the daemon session opens, this initial set can be
-   * empty; the later higher-generation websocket replacement converges it.
-   */
+  /** Session-open state resets the in-memory server generation epoch. */
   replaceAuthoritativeShareSet(shares: HostDaemonConnectShares): void {
     this.applyShareSet(shares);
+    this.reportCurrentIdentity();
+  }
+
+  /** Idempotent RPC seam used by the server to obtain read-only share URLs. */
+  ensureTunnelIdentity(): Promise<HostDaemonConnectTunnelIdentity> {
+    if (this.identity) {
+      return Promise.resolve(this.identity);
+    }
+    if (this.identityPromise) {
+      return this.identityPromise;
+    }
+    const credential = this.machineCredential;
+    if (!credential) {
+      return Promise.reject(
+        new Error(
+          "this host has no trusted bb connect machine enrollment; remove and re-add it from Settings > Machines",
+        ),
+      );
+    }
+    let gate: TrustedConnectGate;
+    try {
+      gate = resolveTrustedConnectGate(this.options.serverUrl);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    if (this.credentialRejected) {
+      return Promise.reject(
+        new ConnectTunnelCredentialRejectedError(
+          "the bb connect gate rejected this machine credential; re-add the machine from Settings > Machines",
+        ),
+      );
+    }
+
+    const assignmentUrl = new URL("/api/connect/machine-label", gate.apiOrigin);
+    let pending: Promise<HostDaemonConnectTunnelIdentity>;
+    pending = this.fetchFn(assignmentUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-bb-connect-machine": credential,
+      },
+      body: JSON.stringify({ desiredName: this.options.hostName }),
+    })
+      .then(async (response) => {
+        if (response.status === 401 || response.status === 403) {
+          const error = new ConnectTunnelCredentialRejectedError(
+            `machine label assignment rejected: HTTP ${response.status}`,
+          );
+          this.markCredentialRejected(error.message);
+          throw error;
+        }
+        if (!response.ok) {
+          throw new Error(
+            `machine label assignment failed: HTTP ${response.status}`,
+          );
+        }
+        const body: unknown = await response.json();
+        if (
+          typeof body !== "object" ||
+          body === null ||
+          !("label" in body) ||
+          typeof body.label !== "string"
+        ) {
+          throw new Error("machine label assignment returned an invalid body");
+        }
+        const identity = hostDaemonConnectTunnelIdentitySchema.parse({
+          label: body.label,
+          baseDomain: gate.baseDomain,
+        });
+        this.identity = identity;
+        this.options.onIdentity?.(identity);
+        return identity;
+      })
+      .finally(() => {
+        if (this.identityPromise === pending) {
+          this.identityPromise = undefined;
+        }
+      });
+    this.identityPromise = pending;
+    return pending;
   }
 
   shutdown(): void {
@@ -115,56 +243,93 @@ export class ConnectTunnelClient {
   }
 
   private applyShareSet(shares: HostDaemonConnectShares): void {
-    const previousTunnel = this.shares.tunnel;
+    const previousPorts = this.ports;
     this.latestGeneration = shares.generation;
     this.shares = {
       generation: shares.generation,
       ports: [...shares.ports],
-      tunnel: shares.tunnel === null ? null : { ...shares.tunnel },
     };
     this.ports = new Set(shares.ports);
 
-    const tunnelChanged =
-      previousTunnel?.label !== shares.tunnel?.label ||
-      previousTunnel?.baseDomain !== shares.tunnel?.baseDomain;
-    if (!this.shouldConnect()) {
+    if (!this.hasConnectIntent()) {
       this.goOffline();
       return;
     }
-    if (tunnelChanged) {
+
+    const removedPort = [...previousPorts].some(
+      (port) => !this.ports.has(port),
+    );
+    if (removedPort) {
+      // TunnelSession resolves only new opens dynamically. Restarting revokes
+      // already-live HTTP and WebSocket streams to every removed target.
       this.stopCurrentConnection();
     }
+    this.state = "reconnecting";
     this.ensureConnected();
     this.publish();
   }
 
-  private shouldConnect(): boolean {
+  private hasConnectIntent(): boolean {
     return (
       !this.stopped &&
       this.ports.size > 0 &&
-      this.shares.tunnel !== null &&
-      this.machineCredential !== undefined
+      this.machineCredential !== undefined &&
+      !this.credentialRejected
     );
   }
 
   private ensureConnected(): void {
-    if (!this.shouldConnect() || this.socket || this.reconnectTimer) {
+    if (
+      !this.hasConnectIntent() ||
+      this.socket ||
+      this.reconnectTimer ||
+      this.connectAttempt
+    ) {
       return;
     }
-    this.openTunnel();
+    const epoch = this.connectionEpoch;
+    let attempt: Promise<void>;
+    attempt = this.ensureTunnelIdentity()
+      .then((identity) => {
+        if (epoch !== this.connectionEpoch || !this.hasConnectIntent()) {
+          return;
+        }
+        this.openTunnel(identity);
+      })
+      .catch((error: unknown) => {
+        if (epoch !== this.connectionEpoch || !this.hasConnectIntent()) {
+          return;
+        }
+        if (error instanceof ConnectTunnelCredentialRejectedError) {
+          return;
+        }
+        this.lastError = error instanceof Error ? error.message : String(error);
+        this.state = "reconnecting";
+        this.options.logger.warn({ err: error }, this.lastError);
+        this.scheduleReconnect(0);
+        this.publish();
+      })
+      .finally(() => {
+        if (this.connectAttempt === attempt) {
+          this.connectAttempt = undefined;
+        }
+        if (this.hasConnectIntent() && !this.socket && !this.reconnectTimer) {
+          this.ensureConnected();
+        }
+      });
+    this.connectAttempt = attempt;
   }
 
-  private openTunnel(): void {
-    const tunnelIdentity = this.shares.tunnel;
+  private openTunnel(identity: HostDaemonConnectTunnelIdentity): void {
     const credential = this.machineCredential;
-    if (!this.shouldConnect() || tunnelIdentity === null || !credential) {
+    if (!this.hasConnectIntent() || !credential) {
       return;
     }
 
-    const tunnelUrl = buildMachineTunnelUrl(tunnelIdentity);
+    const tunnelUrl = buildMachineTunnelUrl(identity);
     this.state = "reconnecting";
     this.options.logger.info(
-      { label: tunnelIdentity.label, ports: [...this.ports], tunnelUrl },
+      { label: identity.label, ports: [...this.ports], tunnelUrl },
       "Machine tunnel connecting",
     );
 
@@ -186,8 +351,9 @@ export class ConnectTunnelClient {
     this.socket = socket;
     let connectedAt = 0;
     let socketSession: TunnelSession | undefined;
+    let rejectedStatus: number | undefined;
     socket.on("open", () => {
-      if (this.socket !== socket || !this.shouldConnect()) {
+      if (this.socket !== socket || !this.hasConnectIntent()) {
         socket.terminate();
         return;
       }
@@ -198,14 +364,14 @@ export class ConnectTunnelClient {
         tunnel: socket,
         log: {
           warn: (message) =>
-            this.options.logger.warn({ label: tunnelIdentity.label }, message),
+            this.options.logger.warn({ label: identity.label }, message),
         },
         resolveOrigin: (target) => this.resolveOrigin(target),
       });
       this.session = socketSession;
       socketSession.start();
       this.options.logger.info(
-        { label: tunnelIdentity.label, ports: [...this.ports] },
+        { label: identity.label, ports: [...this.ports] },
         "Machine tunnel connected",
       );
       this.publish();
@@ -214,20 +380,26 @@ export class ConnectTunnelClient {
       if (this.socket !== socket) {
         return;
       }
-      this.lastError = `machine tunnel rejected: HTTP ${response.statusCode ?? 0}`;
+      rejectedStatus = response.statusCode ?? 0;
+      this.lastError = `machine tunnel rejected: HTTP ${rejectedStatus}`;
       this.options.logger.warn(
-        { label: tunnelIdentity.label, statusCode: response.statusCode ?? 0 },
+        { label: identity.label, statusCode: rejectedStatus },
         this.lastError,
       );
+      if (rejectedStatus === 401 || rejectedStatus === 403) {
+        this.credentialRejected = true;
+      }
+      response.resume();
+      socket.terminate();
       this.publish();
     });
     socket.on("error", (error: Error) => {
-      if (this.socket !== socket) {
+      if (this.socket !== socket || rejectedStatus !== undefined) {
         return;
       }
       this.lastError = humanizeTransportError(
         error,
-        `${tunnelIdentity.label}.${tunnelIdentity.baseDomain}`,
+        `${identity.label}.${identity.baseDomain}`,
       );
       this.publish();
     });
@@ -240,8 +412,10 @@ export class ConnectTunnelClient {
         return;
       }
       this.socket = undefined;
-      if (!this.shouldConnect()) {
-        this.goOffline();
+      if (!this.hasConnectIntent()) {
+        this.state = "offline";
+        this.backoff.reset();
+        this.publish();
         return;
       }
       if (this.lastError === null) {
@@ -257,13 +431,13 @@ export class ConnectTunnelClient {
   }
 
   private scheduleReconnect(connectedForMs: number): void {
-    if (!this.shouldConnect() || this.reconnectTimer) {
+    if (!this.hasConnectIntent() || this.reconnectTimer) {
       return;
     }
     const delay = this.backoff.nextDelayAfterClose(connectedForMs);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
-      this.openTunnel();
+      this.ensureConnected();
     }, delay);
     this.reconnectTimer.unref?.();
   }
@@ -273,18 +447,33 @@ export class ConnectTunnelClient {
       return { kind: "unregistered" };
     }
     const port = Number(target);
-    const tunnel = this.shares.tunnel;
-    if (!Number.isInteger(port) || !this.ports.has(port) || tunnel === null) {
+    const identity = this.identity;
+    if (!Number.isInteger(port) || !this.ports.has(port) || !identity) {
       return { kind: "unregistered" };
     }
     return {
       kind: "ok",
       resolved: {
         origin: `http://127.0.0.1:${port}`,
-        publicOrigin: `https://${tunnel.label}--${port}.${tunnel.baseDomain}`,
+        publicOrigin: `https://${identity.label}--${port}.${identity.baseDomain}`,
         host: `127.0.0.1:${port}`,
       },
     };
+  }
+
+  private markCredentialRejected(message: string): void {
+    this.credentialRejected = true;
+    this.lastError = message;
+    this.state = "offline";
+    this.stopCurrentConnection();
+    this.backoff.reset();
+    this.publish();
+  }
+
+  private reportCurrentIdentity(): void {
+    if (this.identity) {
+      this.options.onIdentity?.(this.identity);
+    }
   }
 
   private goOffline(): void {
@@ -296,6 +485,7 @@ export class ConnectTunnelClient {
   }
 
   private stopCurrentConnection(): void {
+    this.connectionEpoch += 1;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;

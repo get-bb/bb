@@ -74,6 +74,7 @@ export function onDaemonSocketOpen(
     | "machineAuth"
     | "pendingInteractions"
     | "skillTreeRegistry"
+    | "sharedPorts"
     | "telemetry"
     | "terminalSessions"
   >,
@@ -84,6 +85,7 @@ export function onDaemonSocketOpen(
     "Daemon WebSocket opened",
   );
   deps.hub.registerDaemon(args.sessionId, args.hostId, args.socket);
+  deps.sharedPorts.pushCurrentSharedPortsForHost(args.hostId);
   deps.terminalSessions.expireDisconnectedHostTerminals({
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
@@ -94,7 +96,10 @@ export function onDaemonSocketOpen(
 }
 
 export function onDaemonSocketMessage(
-  deps: Pick<AppDeps, "config" | "db" | "hub" | "logger" | "terminalSessions">,
+  deps: Pick<
+    AppDeps,
+    "config" | "db" | "hub" | "logger" | "sharedPorts" | "terminalSessions"
+  >,
   args: DaemonSocketMessageArgs,
 ): void {
   let decoded: unknown;
@@ -154,6 +159,10 @@ export function onDaemonSocketMessage(
           "Ignoring stale host RPC response",
         );
       }
+      return;
+    }
+    if (result.data.type === "connect-tunnel.identity") {
+      deps.sharedPorts.recordTunnelIdentity(args.hostId, result.data.identity);
       return;
     }
     if (result.data.type !== "heartbeat") {

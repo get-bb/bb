@@ -1,8 +1,8 @@
 import { getNonDestroyedHost, type DbConnection } from "@bb/db";
 import {
-  hostDaemonConnectSharesTunnelSchema,
+  hostDaemonConnectTunnelIdentitySchema,
   type HostDaemonConnectShares,
-  type HostDaemonConnectSharesTunnel,
+  type HostDaemonConnectTunnelIdentity,
 } from "@bb/host-daemon-contract";
 import type { NotificationHub } from "./hub.js";
 
@@ -13,7 +13,6 @@ interface HostSharedPortCoordinatorDeps {
 
 interface SharedPortDeclaration {
   ports: number[];
-  tunnel: HostDaemonConnectSharesTunnel | null;
 }
 
 function normalizePorts(ports: readonly number[]): number[] {
@@ -30,17 +29,13 @@ function normalizePorts(ports: readonly number[]): number[] {
 }
 
 function fingerprint(shares: HostDaemonConnectShares): string {
-  return JSON.stringify({ ports: shares.ports, tunnel: shares.tunnel });
+  return JSON.stringify(shares.ports);
 }
 
 /**
- * Server-owned desired shared-port state. Plugins declare host policy here;
- * daemons only receive the resulting host-local primitive configuration.
- *
- * Phase 2 stores machine labels at the gate, not in the bb host row. Until a
- * later durable host-label contract exists, the declaring plugin supplies the
- * gate-returned label and base domain. This coordinator keeps that identity in
- * memory with the declaration and owns generation assignment and delivery.
+ * Server-owned desired shared-port policy. Plugins can replace only their port
+ * declarations. Tunnel identity is reported by the enrolled daemon after it
+ * assigns its own label at its trusted gate; it never flows toward the daemon.
  */
 export class HostSharedPortCoordinator {
   private readonly declarationsByHost = new Map<
@@ -49,6 +44,14 @@ export class HostSharedPortCoordinator {
   >();
   private readonly generationByHost = new Map<string, number>();
   private readonly fingerprintByHost = new Map<string, string>();
+  private readonly tunnelIdentityByHost = new Map<
+    string,
+    HostDaemonConnectTunnelIdentity
+  >();
+  private readonly tunnelIdentityPromiseByHost = new Map<
+    string,
+    Promise<HostDaemonConnectTunnelIdentity>
+  >();
 
   constructor(private readonly deps: HostSharedPortCoordinatorDeps) {}
 
@@ -56,33 +59,15 @@ export class HostSharedPortCoordinator {
     ownerId: string;
     hostId: string;
     ports: readonly number[];
-    tunnel: HostDaemonConnectSharesTunnel | null;
   }): HostDaemonConnectShares {
     if (args.ownerId.trim().length === 0) {
       throw new Error("shared-port declaration ownerId must be non-empty");
     }
-    if (args.hostId.trim().length === 0) {
-      throw new Error("shared-port declaration hostId must be non-empty");
-    }
-    if (!getNonDestroyedHost(this.deps.db, args.hostId)) {
-      throw new Error(
-        `cannot declare shared ports for unknown host ${args.hostId}`,
-      );
-    }
+    this.requireEnrolledHost(args.hostId);
 
-    const nextDeclaration: SharedPortDeclaration = {
-      ports: normalizePorts(args.ports),
-      tunnel:
-        args.tunnel === null
-          ? null
-          : hostDaemonConnectSharesTunnelSchema.parse(args.tunnel),
-    };
     const current = this.declarationsByHost.get(args.hostId);
     const candidate = new Map(current ?? []);
-    candidate.set(args.ownerId, nextDeclaration);
-    // Resolve before committing so a conflicting host identity cannot mutate
-    // the desired state and then fail halfway through the declaration.
-    this.resolveDeclarations(args.hostId, candidate, 0);
+    candidate.set(args.ownerId, { ports: normalizePorts(args.ports) });
     this.declarationsByHost.set(args.hostId, candidate);
     return this.publishIfChanged(args.hostId);
   }
@@ -99,26 +84,94 @@ export class HostSharedPortCoordinator {
     }
   }
 
+  recordTunnelIdentity(
+    hostId: string,
+    identity: HostDaemonConnectTunnelIdentity,
+  ): HostDaemonConnectTunnelIdentity {
+    this.requireEnrolledHost(hostId);
+    const parsed = hostDaemonConnectTunnelIdentitySchema.parse(identity);
+    this.tunnelIdentityByHost.set(hostId, parsed);
+    return parsed;
+  }
+
+  getTunnelIdentity(hostId: string): HostDaemonConnectTunnelIdentity | null {
+    this.requireEnrolledHost(hostId);
+    return this.tunnelIdentityByHost.get(hostId) ?? null;
+  }
+
+  ensureTunnelIdentity(
+    hostId: string,
+    ensure: () => Promise<HostDaemonConnectTunnelIdentity>,
+  ): Promise<HostDaemonConnectTunnelIdentity> {
+    const current = this.getTunnelIdentity(hostId);
+    if (current !== null) {
+      return Promise.resolve(current);
+    }
+    const existing = this.tunnelIdentityPromiseByHost.get(hostId);
+    if (existing) {
+      return existing;
+    }
+    let pending: Promise<HostDaemonConnectTunnelIdentity>;
+    pending = ensure()
+      .then((identity) => this.recordTunnelIdentity(hostId, identity))
+      .finally(() => {
+        if (this.tunnelIdentityPromiseByHost.get(hostId) === pending) {
+          this.tunnelIdentityPromiseByHost.delete(hostId);
+        }
+      });
+    this.tunnelIdentityPromiseByHost.set(hostId, pending);
+    return pending;
+  }
+
   reconcileSharedPortsForHost(hostId: string): HostDaemonConnectShares {
     return this.resolveDeclarations(
-      hostId,
       this.declarationsByHost.get(hostId) ?? new Map(),
       this.generationByHost.get(hostId) ?? 0,
     );
+  }
+
+  /** Reconcile after daemon socket registration to close the HTTP-open race. */
+  pushCurrentSharedPortsForHost(hostId: string): HostDaemonConnectShares {
+    const shares = this.reconcileSharedPortsForHost(hostId);
+    this.deps.hub.sendDaemonMessage(hostId, {
+      type: "connect-shares.replace",
+      ...shares,
+    });
+    return shares;
+  }
+
+  private requireShareCapableHost(hostId: string) {
+    if (hostId.trim().length === 0) {
+      throw new Error("shared-port declaration hostId must be non-empty");
+    }
+    const host = getNonDestroyedHost(this.deps.db, hostId);
+    if (!host) {
+      throw new Error(`cannot declare shared ports for unknown host ${hostId}`);
+    }
+    return host;
+  }
+
+  private requireEnrolledHost(hostId: string) {
+    const host = this.requireShareCapableHost(hostId);
+    if (host.connectMachineId === null) {
+      throw new Error(
+        `cannot share ports from host "${host.name}" (${host.id}) because it has no bb connect machine credential; remove and re-add the machine from Settings > Machines`,
+      );
+    }
+    return host;
   }
 
   private publishIfChanged(hostId: string): HostDaemonConnectShares {
     const currentGeneration = this.generationByHost.get(hostId) ?? 0;
     const nextGeneration = currentGeneration + 1;
     const shares = this.resolveDeclarations(
-      hostId,
       this.declarationsByHost.get(hostId) ?? new Map(),
       nextGeneration,
     );
     const nextFingerprint = fingerprint(shares);
     const previousFingerprint =
       this.fingerprintByHost.get(hostId) ??
-      fingerprint({ generation: currentGeneration, ports: [], tunnel: null });
+      fingerprint({ generation: currentGeneration, ports: [] });
     if (nextFingerprint === previousFingerprint) {
       return { ...shares, generation: currentGeneration };
     }
@@ -133,38 +186,18 @@ export class HostSharedPortCoordinator {
   }
 
   private resolveDeclarations(
-    hostId: string,
     declarations: ReadonlyMap<string, SharedPortDeclaration>,
     generation: number,
   ): HostDaemonConnectShares {
     const ports = new Set<number>();
-    let tunnel: HostDaemonConnectSharesTunnel | null = null;
-    let tunnelOwner: string | null = null;
-
-    for (const [ownerId, declaration] of declarations) {
+    for (const declaration of declarations.values()) {
       for (const port of declaration.ports) {
         ports.add(port);
       }
-      if (declaration.tunnel === null) {
-        continue;
-      }
-      if (
-        tunnel !== null &&
-        (tunnel.label !== declaration.tunnel.label ||
-          tunnel.baseDomain !== declaration.tunnel.baseDomain)
-      ) {
-        throw new Error(
-          `conflicting tunnel identities declared for host ${hostId} by ${tunnelOwner} and ${ownerId}`,
-        );
-      }
-      tunnel = declaration.tunnel;
-      tunnelOwner = ownerId;
     }
-
     return {
       generation,
       ports: [...ports].sort((a, b) => a - b),
-      tunnel,
     };
   }
 }

@@ -231,21 +231,25 @@ listening throws, so prefer reading it from handlers, services, and timers.
 ### bb.hosts
 
 Control-plane declarations for host-local daemon behavior. Use
-`bb.hosts.declareSharedPorts(hostId, ports, tunnel)` to replace this plugin's
+`bb.hosts.declareSharedPorts(hostId, ports)` to replace this plugin's
 desired loopback port set for one host. `ports` contains integers from 1–65535;
 the server deduplicates and sorts them, owns the generation, and delivers the
-resulting set to the daemon. `tunnel` is `{ label, baseDomain }` after the host
-has a gate machine label and credential, or `null` while either is unavailable.
+resulting set to the daemon. The call fails with an actionable error if the
+host has no bb connect machine enrollment.
+
+Call `await bb.hosts.ensureSharedPortTunnel(hostId)` to lazily assign and read
+the host's `{ label, baseDomain }` for constructing public URLs. The enrolled
+daemon derives both from its trusted gate; plugins cannot choose a domain or
+send tunnel identity toward a credential-bearing daemon connection.
 
 Declarations are load-scoped: reload, disable, or shutdown clears them after
 the plugin's own dispose hooks run. This is a control-plane API only; plugins
 do not receive daemon streaming or socket primitives.
 
 ```ts
-bb.hosts.declareSharedPorts(hostId, [3000, 4173], {
-  label: "sawyer-air",
-  baseDomain: "getbb.app",
-});
+const tunnel = await bb.hosts.ensureSharedPortTunnel(hostId);
+bb.hosts.declareSharedPorts(hostId, [3000, 4173]);
+const url = `https://${tunnel.label}--3000.${tunnel.baseDomain}`;
 ```
 
 ### bb.sdk

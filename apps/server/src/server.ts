@@ -67,6 +67,7 @@ import {
 } from "./services/install/bb-app-artifact.js";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { createMarketplaceService } from "./services/marketplaces/marketplace-service.js";
+import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -421,6 +422,14 @@ export function createApp(
     isEnabled: () => getExperiments(deps.db).plugins,
     isConnectEnabled: () => getExperiments(deps.db).bbConnect,
     sharedPorts: deps.sharedPorts,
+    ensureSharedPortTunnel: (hostId) =>
+      deps.sharedPorts.ensureTunnelIdentity(hostId, () =>
+        callHostRetryableOnlineRpc(deps, {
+          command: { type: "connect-tunnel.ensure-identity" },
+          hostId,
+          timeoutMs: 30_000,
+        }),
+      ),
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });

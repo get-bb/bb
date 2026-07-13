@@ -59,23 +59,38 @@ describe("interactions", () => {
 });
 
 describe("host control plane", () => {
-  it("records load-scoped shared-port declarations without streaming behavior", async () => {
-    const { bb, harness } = createFakePluginHost();
+  it("uses validated current-state replacements and read-only tunnel identity", async () => {
+    const { bb, harness } = createFakePluginHost({
+      sharedPortTunnelIdentities: {
+        "host-1": { label: "sawyer-air", baseDomain: "getbb.app" },
+      },
+    });
 
-    bb.hosts.declareSharedPorts("host-1", [3000, 8080], {
+    await expect(bb.hosts.ensureSharedPortTunnel("host-1")).resolves.toEqual({
       label: "sawyer-air",
       baseDomain: "getbb.app",
     });
-    bb.hosts.declareSharedPorts("host-2", [4173], null);
+    expect(() =>
+      (bb.hosts.declareSharedPorts as unknown as (...args: unknown[]) => void)(
+        "host-1",
+        [3000],
+        {
+          label: "stolen",
+          baseDomain: "attacker.example",
+        },
+      ),
+    ).toThrow(/tunnel identity is daemon-owned/);
+    bb.hosts.declareSharedPorts("host-1", [8080, 3000, 8080]);
+    bb.hosts.declareSharedPorts("host-2", [4173]);
+    bb.hosts.declareSharedPorts("host-1", [3000]);
 
     expect(harness.sharedPortDeclarations).toEqual([
-      {
-        hostId: "host-1",
-        ports: [3000, 8080],
-        tunnel: { label: "sawyer-air", baseDomain: "getbb.app" },
-      },
-      { hostId: "host-2", ports: [4173], tunnel: null },
+      { hostId: "host-1", ports: [3000] },
+      { hostId: "host-2", ports: [4173] },
     ]);
+    expect(() => bb.hosts.declareSharedPorts("host-3", [0])).toThrow(
+      /between 1 and 65535/,
+    );
 
     await harness.dispose();
     expect(harness.sharedPortDeclarations).toEqual([]);

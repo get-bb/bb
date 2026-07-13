@@ -68,6 +68,8 @@ function recoverableMessageKey(
   message: HostDaemonDaemonWsMessage,
 ): string | null {
   switch (message.type) {
+    case "connect-tunnel.identity":
+      return "connect-tunnel.identity";
     case "environment-change":
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
     default:

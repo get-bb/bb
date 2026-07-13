@@ -8,9 +8,11 @@ import {
 } from "@bb/tunnel-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
+import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "../logger.js";
 import {
   ConnectTunnelClient,
+  type ConnectTunnelFetch,
   type ConnectTunnelStatus,
   type CreateTunnelWebSocket,
 } from "./index.js";
@@ -43,9 +45,7 @@ function attachGate(server: Server): WebSocketServer {
 }
 
 function rawDataBuffer(data: RawData): Buffer {
-  if (Array.isArray(data)) {
-    return Buffer.concat(data);
-  }
+  if (Array.isArray(data)) return Buffer.concat(data);
   if (data instanceof ArrayBuffer) {
     return Buffer.from(new Uint8Array(data));
   }
@@ -80,15 +80,33 @@ function tunnelFactory(args: {
   };
 }
 
+interface LabelRequest {
+  body: unknown;
+  credential: string | null;
+  url: string;
+}
+
+function labelFetch(
+  requests: LabelRequest[] = [],
+  label = "sawyer-air",
+): ConnectTunnelFetch {
+  return async (input, init) => {
+    requests.push({
+      body: JSON.parse(String(init?.body ?? "null")),
+      credential: new Headers(init?.headers).get("x-bb-connect-machine"),
+      url: input.toString(),
+    });
+    return Response.json({ label });
+  };
+}
+
 function sendOpenHttp(socket: WebSocket, frame: OpenHttpFrame): void {
   socket.send(encodeFrame(frame));
 }
 
 afterEach(async () => {
   for (const websocketServer of openWebSocketServers.splice(0)) {
-    for (const client of websocketServer.clients) {
-      client.terminate();
-    }
+    for (const client of websocketServer.clients) client.terminate();
     await new Promise<void>((resolve) =>
       websocketServer.close(() => resolve()),
     );
@@ -99,75 +117,67 @@ afterEach(async () => {
 });
 
 describe("ConnectTunnelClient", () => {
-  it("dials on the first share, closes on the last removal, and ignores stale sets", async () => {
+  it("assigns its own label at the enrolled gate, dials on first share, and closes on the last", async () => {
     const gateServer = createServer();
     const gatePort = await listen(gateServer);
     const gate = attachGate(gateServer);
     const requestedUrls: string[] = [];
     const credentials: string[] = [];
     const sockets: WebSocket[] = [];
+    const labelRequests: LabelRequest[] = [];
+    const identities: HostDaemonConnectTunnelIdentity[] = [];
     gate.on("connection", (socket, request) => {
       sockets.push(socket);
       credentials.push(request.headers.authorization ?? "");
     });
 
-    const statuses: ConnectTunnelStatus[] = [];
     const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.getbb.app",
+      hostName: "Sawyer Air",
       machineCredential: "bbcm_machine-secret",
+      fetchFn: labelFetch(labelRequests),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls }),
       reconnectBackoff: { baseDelayMs: 5, maxDelayMs: 20 },
-      onStatusChange: (status) => statuses.push(status),
+      onIdentity: (identity) => identities.push(identity),
     });
 
-    expect(
-      client.replaceShareSet({
-        generation: 1,
-        ports: [4173],
-        tunnel: null,
-      }),
-    ).toBe(true);
-    expect(requestedUrls).toEqual([]);
-
-    client.replaceShareSet({
-      generation: 2,
-      ports: [4173],
-      tunnel: { label: "sawyer-air", baseDomain: "getbb.app" },
-    });
+    client.replaceShareSet({ generation: 1, ports: [4173] });
     await waitFor(() => sockets.length === 1, "first machine tunnel");
+    expect(labelRequests).toEqual([
+      {
+        body: { desiredName: "Sawyer Air" },
+        credential: "bbcm_machine-secret",
+        url: "https://owner.getbb.app/api/connect/machine-label",
+      },
+    ]);
+    expect(identities).toEqual([
+      { label: "sawyer-air", baseDomain: "getbb.app" },
+    ]);
+    // The share declaration supplied only a port. The credential destination
+    // is derived exclusively from the daemon's enrollment server.
     expect(requestedUrls).toEqual(["wss://sawyer-air.getbb.app/__tunnel?v=1"]);
     expect(credentials).toEqual(["Bearer bbcm_machine-secret"]);
-    await waitFor(
-      () => client.status().state === "connected",
-      "connected state",
-    );
+    await waitFor(() => client.status().state === "connected", "connected");
 
     let closed = false;
     sockets[0]!.on("close", () => {
       closed = true;
     });
-    client.replaceShareSet({
-      generation: 3,
-      ports: [],
-      tunnel: { label: "sawyer-air", baseDomain: "getbb.app" },
-    });
+    client.replaceShareSet({ generation: 2, ports: [] });
     await waitFor(() => closed, "last-share socket close");
     expect(client.status()).toMatchObject({
       state: "offline",
-      generation: 3,
+      credentialRejected: false,
+      generation: 2,
       ports: [],
       lastError: null,
     });
 
-    expect(
-      client.replaceShareSet({
-        generation: 2,
-        ports: [8080],
-        tunnel: { label: "sawyer-air", baseDomain: "getbb.app" },
-      }),
-    ).toBe(false);
+    expect(client.replaceShareSet({ generation: 1, ports: [8080] })).toBe(
+      false,
+    );
     expect(requestedUrls).toHaveLength(1);
-    expect(statuses.some((status) => status.state === "connected")).toBe(true);
     client.shutdown();
   });
 
@@ -191,22 +201,19 @@ describe("ConnectTunnelClient", () => {
     gate.on("connection", (socket) => {
       gateSocket = socket;
       socket.on("message", (data: RawData, isBinary: boolean) => {
-        if (isBinary) {
-          frames.push(decodeFrame(rawDataBuffer(data)));
-        }
+        if (isBinary) frames.push(decodeFrame(rawDataBuffer(data)));
       });
     });
 
     const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.getbb.app",
+      hostName: "Machine A",
       machineCredential: "bbcm_machine-secret",
+      fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
     });
-    client.replaceShareSet({
-      generation: 1,
-      ports: [originPort],
-      tunnel: { label: "machine-a", baseDomain: "getbb.app" },
-    });
+    client.replaceShareSet({ generation: 1, ports: [originPort] });
     await waitFor(() => gateSocket !== undefined, "gate socket");
 
     sendOpenHttp(gateSocket!, {
@@ -280,63 +287,175 @@ describe("ConnectTunnelClient", () => {
     client.shutdown();
   });
 
-  it("reconnects with backoff after a gate socket drop", async () => {
+  it("retries rejected 404 handshakes with backoff until the gate upgrades", async () => {
+    const gateServer = createServer();
+    const gatePort = await listen(gateServer);
+    const gate = new WebSocketServer({ noServer: true });
+    openWebSocketServers.push(gate);
+    let attempts = 0;
+    const sockets: WebSocket[] = [];
+    gate.on("connection", (socket) => sockets.push(socket));
+    gateServer.on("upgrade", (request, socket, head) => {
+      attempts += 1;
+      if (attempts <= 2) {
+        socket.end(
+          "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+        return;
+      }
+      gate.handleUpgrade(request, socket, head, (websocket) => {
+        gate.emit("connection", websocket, request);
+      });
+    });
+
+    const statuses: ConnectTunnelStatus[] = [];
+    const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.getbb.app",
+      hostName: "Machine A",
+      machineCredential: "bbcm_machine-secret",
+      fetchFn: labelFetch([], "machine-a"),
+      logger,
+      createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
+      reconnectBackoff: { baseDelayMs: 5, maxDelayMs: 20 },
+      onStatusChange: (status) => statuses.push(status),
+    });
+    client.replaceShareSet({ generation: 1, ports: [3000] });
+
+    await waitFor(() => sockets.length === 1, "successful third upgrade");
+    expect(attempts).toBe(3);
+    expect(client.status()).toMatchObject({
+      state: "connected",
+      credentialRejected: false,
+    });
+    expect(
+      statuses.filter((status) => status.lastError?.includes("HTTP 404")),
+    ).not.toHaveLength(0);
+    client.shutdown();
+  });
+
+  it("stops reconnecting when the gate rejects the machine credential", async () => {
+    const gateServer = createServer();
+    const gatePort = await listen(gateServer);
+    let attempts = 0;
+    gateServer.on("upgrade", (_request, socket) => {
+      attempts += 1;
+      socket.end(
+        "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+      );
+    });
+    const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.getbb.app",
+      hostName: "Machine A",
+      machineCredential: "bbcm_machine-secret",
+      fetchFn: labelFetch([], "machine-a"),
+      logger,
+      createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
+      reconnectBackoff: { baseDelayMs: 5, maxDelayMs: 10 },
+    });
+    client.replaceShareSet({ generation: 1, ports: [3000] });
+    await waitFor(
+      () => client.status().credentialRejected,
+      "credential rejection",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(attempts).toBe(1);
+    expect(client.status()).toMatchObject({
+      state: "offline",
+      credentialRejected: true,
+      lastError: "machine tunnel rejected: HTTP 403",
+    });
+    client.shutdown();
+  });
+
+  it("restarts the tunnel to revoke a live stream when one of several ports is removed", async () => {
+    let originStreamClosed = false;
+    const originA = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.write("still-open");
+      response.on("close", () => {
+        originStreamClosed = true;
+      });
+    });
+    const portA = await listen(originA);
+    const originB = createServer((_request, response) => response.end("b"));
+    const portB = await listen(originB);
+
     const gateServer = createServer();
     const gatePort = await listen(gateServer);
     const gate = attachGate(gateServer);
     const sockets: WebSocket[] = [];
-    gate.on("connection", (socket) => sockets.push(socket));
-    const statuses: ConnectTunnelStatus[] = [];
-
+    const frames: Frame[] = [];
+    gate.on("connection", (socket) => {
+      sockets.push(socket);
+      socket.on("message", (data: RawData, isBinary: boolean) => {
+        if (isBinary) frames.push(decodeFrame(rawDataBuffer(data)));
+      });
+    });
     const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.getbb.app",
+      hostName: "Machine A",
       machineCredential: "bbcm_machine-secret",
+      fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
-      reconnectBackoff: {
-        baseDelayMs: 5,
-        maxDelayMs: 20,
-        stableConnectionMs: 1_000,
-      },
-      onStatusChange: (status) => statuses.push(status),
     });
-    client.replaceShareSet({
-      generation: 1,
-      ports: [3000],
-      tunnel: { label: "machine-a", baseDomain: "getbb.app" },
+    client.replaceShareSet({ generation: 1, ports: [portA, portB] });
+    await waitFor(() => sockets.length === 1, "initial tunnel");
+    sendOpenHttp(sockets[0]!, {
+      type: "open-http",
+      streamId: 41,
+      method: "GET",
+      path: "/live",
+      headers: [],
+      hasBody: false,
+      target: String(portA),
     });
-    await waitFor(() => sockets.length === 1, "initial gate connection");
-    sockets[0]!.terminate();
-    await waitFor(() => sockets.length === 2, "backoff reconnect");
     await waitFor(
-      () => client.status().state === "connected",
-      "reconnected state",
+      () =>
+        frames.some(
+          (frame) => frame.type === "resp-head" && frame.streamId === 41,
+        ),
+      "live origin stream",
     );
 
-    expect(
-      statuses.some(
-        (status) =>
-          status.state === "reconnecting" && status.lastError !== null,
-      ),
-    ).toBe(true);
+    client.replaceShareSet({ generation: 2, ports: [portB] });
+    await waitFor(() => originStreamClosed, "removed-port stream close");
+    await waitFor(() => sockets.length === 2, "replacement tunnel");
+    expect(client.status().ports).toEqual([portB]);
     client.shutdown();
   });
 
-  it("never dials without a machine credential", () => {
-    let dialCount = 0;
+  it("accepts a new low generation after an authoritative session reopen", () => {
     const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.getbb.app",
+      hostName: "Machine A",
       logger,
+    });
+    expect(client.replaceShareSet({ generation: 9, ports: [] })).toBe(true);
+    client.replaceAuthoritativeShareSet({ generation: 0, ports: [] });
+    expect(client.replaceShareSet({ generation: 1, ports: [] })).toBe(true);
+    expect(client.status().generation).toBe(1);
+    client.shutdown();
+  });
+
+  it("never assigns a label or dials without a machine credential", () => {
+    let dialCount = 0;
+    let fetchCount = 0;
+    const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.getbb.app",
+      hostName: "Machine A",
+      logger,
+      fetchFn: async () => {
+        fetchCount += 1;
+        throw new Error("must not fetch");
+      },
       createWebSocket: () => {
         dialCount += 1;
         throw new Error("must not dial");
       },
     });
-
-    client.replaceShareSet({
-      generation: 1,
-      ports: [3000],
-      tunnel: { label: "machine-a", baseDomain: "getbb.app" },
-    });
-
+    client.replaceShareSet({ generation: 1, ports: [3000] });
+    expect(fetchCount).toBe(0);
     expect(dialCount).toBe(0);
     expect(client.status()).toMatchObject({ state: "offline", ports: [3000] });
     client.shutdown();

@@ -849,7 +849,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           pluginId: row.id,
         });
       },
-      declareSharedPorts: (hostId, ports, tunnel) => {
+      ensureSharedPortTunnel: (hostId) => {
+        if (!deps.ensureSharedPortTunnel) {
+          throw new Error("host shared-port control plane is unavailable");
+        }
+        return deps.ensureSharedPortTunnel(hostId);
+      },
+      declareSharedPorts: (hostId, ports) => {
         if (!deps.sharedPorts) {
           throw new Error("host shared-port control plane is unavailable");
         }
@@ -857,7 +863,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ownerId: row.id,
           hostId,
           ports,
-          tunnel,
         });
       },
       clearDeclaredSharedPorts: () => {

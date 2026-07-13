@@ -167,6 +167,10 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 };
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
+  "connect-tunnel.ensure-identity": {
+    label: "sawyer-air",
+    baseDomain: "getbb.app",
+  },
   "host.list_files": {
     files: [
       {
@@ -608,8 +612,6 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
-  "hostDaemonSessionOpenResponseSchema.connectShares":
-    "rolling session-open compatibility permits omission; current servers include the authoritative connect share set and later changes arrive as replacements.",
   "hostDaemonCommandSchema.acpLaunchSpec":
     "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonCommandSchema.acpLaunchSpec.cwd":
@@ -2583,10 +2585,6 @@ describe("host-daemon session schemas", () => {
         connectShares: {
           generation: 2,
           ports: [3000, 8080],
-          tunnel: {
-            label: "sawyer-air",
-            baseDomain: "getbb.app",
-          },
         },
       }),
     ).toMatchObject({
@@ -2594,10 +2592,6 @@ describe("host-daemon session schemas", () => {
       connectShares: {
         generation: 2,
         ports: [3000, 8080],
-        tunnel: {
-          label: "sawyer-air",
-          baseDomain: "getbb.app",
-        },
       },
       retiredEnvironmentIds: [],
       watchSet: {
@@ -2606,6 +2600,14 @@ describe("host-daemon session schemas", () => {
         threadStorageTargets: [],
       },
     });
+
+    expect(
+      hostDaemonSessionOpenResponseSchema.parse({
+        sessionId: "session_default_shares",
+        heartbeatIntervalMs: 5_000,
+        leaseTimeoutMs: 30_000,
+      }).connectShares,
+    ).toEqual({ generation: 0, ports: [] });
 
     expect(() =>
       hostDaemonSessionOpenResponseSchema.parse({
@@ -2947,53 +2949,34 @@ describe("host-daemon session schemas", () => {
         type: "connect-shares.replace",
         generation: 3,
         ports: [3000, 8080],
-        tunnel: {
-          label: "sawyer-air",
-          baseDomain: "getbb.app",
-        },
       }),
     ).toEqual({
       type: "connect-shares.replace",
       generation: 3,
       ports: [3000, 8080],
-      tunnel: {
-        label: "sawyer-air",
-        baseDomain: "getbb.app",
-      },
     });
 
     expect(
-      hostDaemonServerWsMessageSchema.parse({
+      hostDaemonServerWsMessageSchema.safeParse({
         type: "connect-shares.replace",
         generation: 4,
         ports: [3000],
-        tunnel: null,
-      }),
-    ).toEqual({
-      type: "connect-shares.replace",
-      generation: 4,
-      ports: [3000],
-      tunnel: null,
-    });
-    expect(
-      hostDaemonServerWsMessageSchema.safeParse({
-        type: "connect-shares.replace",
-        generation: 5,
-        ports: [3000],
-        tunnel: { label: "bad--label", baseDomain: "getbb.app" },
-      }).success,
-    ).toBe(false);
-    expect(
-      hostDaemonServerWsMessageSchema.safeParse({
-        type: "connect-shares.replace",
-        generation: 5,
-        ports: [3000],
         tunnel: {
           label: "sawyer-air",
-          baseDomain: "https://getbb.app/path",
+          baseDomain: "getbb.app",
         },
       }).success,
     ).toBe(false);
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "connect-tunnel.identity",
+        identity: { label: "sawyer-air", baseDomain: "getbb.app" },
+      }),
+    ).toEqual({
+      type: "connect-tunnel.identity",
+      identity: { label: "sawyer-air", baseDomain: "getbb.app" },
+    });
 
     expect(
       hostDaemonDaemonWsMessageSchema.parse({

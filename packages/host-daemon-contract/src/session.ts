@@ -19,6 +19,7 @@ import type {
   HostDaemonSettledCommandType,
 } from "./commands.js";
 import {
+  hostDaemonConnectTunnelIdentitySchema,
   hostDaemonOnlineRpcResultSchemaByType,
   hostDaemonCommandResultSchemaByType,
   hostDaemonSettledCommandTypeSchema,
@@ -29,22 +30,6 @@ import {
 import { hostPlatformSchema } from "./local.js";
 
 export const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
-
-function isConnectBaseDomain(value: string): boolean {
-  try {
-    const parsed = new URL(`https://${value}`);
-    return (
-      parsed.host === value &&
-      parsed.username === "" &&
-      parsed.password === "" &&
-      parsed.pathname === "/" &&
-      parsed.search === "" &&
-      parsed.hash === ""
-    );
-  } catch {
-    return false;
-  }
-}
 
 export const hostDaemonActiveThreadSchema = z.object({
   threadId: z.string().min(1),
@@ -89,26 +74,10 @@ export const hostDaemonWatchSetSchema = z
   .strict();
 export type HostDaemonWatchSet = z.infer<typeof hostDaemonWatchSetSchema>;
 
-export const hostDaemonConnectSharesTunnelSchema = z
-  .object({
-    label: z
-      .string()
-      .min(1)
-      .max(63)
-      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
-      .refine((label) => !label.includes("--")),
-    baseDomain: z.string().min(1).refine(isConnectBaseDomain),
-  })
-  .strict();
-export type HostDaemonConnectSharesTunnel = z.infer<
-  typeof hostDaemonConnectSharesTunnelSchema
->;
-
 export const hostDaemonConnectSharesSchema = z
   .object({
     generation: z.number().int().nonnegative(),
     ports: z.array(z.number().int().min(1).max(65535)),
-    tunnel: hostDaemonConnectSharesTunnelSchema.nullable(),
   })
   .strict();
 export type HostDaemonConnectShares = z.infer<
@@ -185,9 +154,10 @@ export const hostDaemonSessionOpenResponseSchema = z
       workspaceTargets: [],
       threadStorageTargets: [],
     }),
-    // Optional only for rolling compatibility with a server that has not yet
-    // populated the core share coordinator. Current servers include it.
-    connectShares: hostDaemonConnectSharesSchema.optional(),
+    connectShares: hostDaemonConnectSharesSchema.default({
+      generation: 0,
+      ports: [],
+    }),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
@@ -422,6 +392,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("project.clone_default_path"),
     onlineRpcResponseSuccessSchemaFor("host.pick_folder"),
     onlineRpcResponseSuccessSchemaFor("host.caffeinate"),
+    onlineRpcResponseSuccessSchemaFor("connect-tunnel.ensure-identity"),
     onlineRpcResponseSuccessSchemaFor("host.list_commands"),
     onlineRpcResponseSuccessSchemaFor("host.file_metadata"),
     onlineRpcResponseSuccessSchemaFor("host.list_branches"),
@@ -597,6 +568,16 @@ const hostDaemonEnvironmentChangeMessageSchema =
     })
     .strict();
 
+const hostDaemonConnectTunnelIdentityMessageSchema = z
+  .object({
+    type: z.literal("connect-tunnel.identity"),
+    identity: hostDaemonConnectTunnelIdentitySchema,
+  })
+  .strict();
+export type HostDaemonConnectTunnelIdentityMessage = z.infer<
+  typeof hostDaemonConnectTunnelIdentityMessageSchema
+>;
+
 const hostDaemonTerminalOpenedMessageSchema = z
   .object({
     type: z.literal("terminal.opened"),
@@ -650,6 +631,7 @@ const hostDaemonTerminalErrorMessageSchema = z
 export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
+  hostDaemonConnectTunnelIdentityMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,
