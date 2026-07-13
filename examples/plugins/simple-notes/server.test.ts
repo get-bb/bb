@@ -62,6 +62,17 @@ async function loadNotebook(notes: Record<string, string>) {
   return host;
 }
 
+async function waitForSignal(
+  predicate: () => boolean,
+  timeoutMs = 2_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for signal");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 describe("Docs mention provider", () => {
   it("searches note titles, previews, and filenames", async () => {
     const { harness } = await loadNotebook({
@@ -159,5 +170,61 @@ describe("Docs vault operations", () => {
         },
       ],
     ]);
+  });
+
+  it("opens and saves absolute host Markdown files for the file opener", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+    const rootPath = temporaryDirectories[0]!;
+    const filePath = path.join(rootPath, "plan.md");
+    const source = {
+      kind: "host",
+      threadId: "thread_1",
+      environmentId: null,
+      projectId: "project_1",
+    };
+
+    await expect(
+      harness.callRpc("openFile", { source, path: filePath }),
+    ).resolves.toMatchObject({
+      file: { content: "# Plan", sha256: "test-sha" },
+      previewPath: "plan.md",
+    });
+    await expect(
+      harness.callRpc("saveOpenedFile", {
+        source,
+        path: filePath,
+        content: "# Updated",
+        expectedSha256: "test-sha",
+      }),
+    ).resolves.toMatchObject({ outcome: "written", sha256: "written-sha" });
+    expect(harness.sdk.callsTo("files.write").at(-1)).toEqual([
+      {
+        path: filePath,
+        rootPath,
+        content: "# Updated",
+        expectedSha256: "test-sha",
+      },
+    ]);
+  });
+
+  it("publishes native filesystem changes without waiting for the poll", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+    const service = harness.runService("watch-vaults");
+    try {
+      await writeFile(
+        path.join(temporaryDirectories[0]!, "plan.md"),
+        "# Changed outside Docs",
+      );
+      await waitForSignal(() =>
+        harness.realtimeSignals.some(
+          (signal) =>
+            signal.channel === "vault-changed" &&
+            signal.payload.vaultId === "personal",
+        ),
+      );
+    } finally {
+      service.controller.abort();
+      await service.done;
+    }
   });
 });

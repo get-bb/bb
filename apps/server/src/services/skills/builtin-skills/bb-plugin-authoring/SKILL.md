@@ -822,9 +822,7 @@ patterns, settingsSection optional title, navPanel path, chrome,
 fileOpener extensions) and returns them typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
 `thread.idle` reply), `examples/plugins/simple-notes/app.test.tsx` (nav
-panel list over rpc + create/open navigation assertions), and
-`examples/plugins/markdown-editor/app.test.tsx` (nav tree, realtime refresh,
-and markdown creation assertions).
+panel list over rpc + create/open navigation assertions).
 
 ### Live loop against a running bb
 
@@ -847,18 +845,11 @@ Reference examples in `examples/plugins/` (a bb checkout):
   vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
   throughout, background sync service, rpc + realtime, project setting, a
   `bb github` CLI command, and agent-spawn buttons.
-- `simple-notes` — Apple Notes-style local markdown notebook: one configurable
-  `directory` (default `~/Notes`), `bb.sdk.files` read/CAS-write for note
-  contents, Tiptap markdown WYSIWYG bundled per-plugin, navPanel with
-  `chrome: "none"` + subPath deep links, autosave, conflict reload/overwrite,
-  delete, search, and backend title-based filename renames.
-- `markdown-editor` — full-surface markdown editor: mounted directories via
-  a setting, `bb.sdk.files` read/CAS-write, Milkdown Crepe WYSIWYG bundled
-  per-plugin (its theme CSS served from a `bb.http` route), navPanel with
-  `chrome: "none"` + subPath deep links, threadPanelAction, a markdown
-  `fileOpener`, `useComposer()` quote/mention buttons, an fs watcher
-  publishing realtime tree refreshes, and a mention provider resolving note
-  content at send.
+- `simple-notes` — multi-host Docs vaults over `bb.sdk.files`, with a Tiptap
+  markdown WYSIWYG, nested navigation, images and sandboxed HTML, CLI/HTTP
+  operations, autosave with CAS conflicts, native local-vault watching with
+  remote polling fallback, a markdown `fileOpener`, message directives, and
+  side-panel-only `useComposer()` quote/mention actions.
 - `slack-bot` — headless webhook bot: `auth: "none"` route with signature
   verification, kv thread mapping, `thread.idle` handler, spawn/send,
   needsConfiguration.

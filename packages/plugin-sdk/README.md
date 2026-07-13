@@ -15,7 +15,7 @@ without the bb host: `loadPluginApp()` captures typed slot registrations and
 `renderSlot()` mounts a slot with mock hook backends (vitest + jsdom +
 Testing Library). See the "Testing a plugin" section of the
 bb-plugin-authoring skill for patterns, and
-`examples/plugins/{slack-bot,simple-notes,markdown-editor}` for working tests.
+`examples/plugins/{slack-bot,simple-notes}` for working tests.
 
 Workspace/in-repo consumers only for V1: the testing subpaths are not part
 of the bundled `.d.ts` that `bb plugin new` ships into scaffolded plugins

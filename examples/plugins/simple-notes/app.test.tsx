@@ -61,6 +61,11 @@ describe("Docs nav panel", () => {
       id: "document",
       title: "Docs",
     });
+    expect(app.fileOpeners[0]).toMatchObject({
+      id: "docs",
+      title: "Docs",
+      extensions: ["md", "mdx", "markdown"],
+    });
   });
 
   it("keeps the right sidebar pinned while a note loads", async () => {
@@ -368,12 +373,51 @@ describe("Docs nav panel", () => {
     expect(slot.getByRole("textbox").getAttribute("contenteditable")).toBe(
       "true",
     );
+    fireEvent.click(slot.getByRole("button", { name: "Add to chat" }));
+    fireEvent.click(slot.getByRole("button", { name: "Mention in chat" }));
+    expect(slot.composer.quotes).toEqual(["# Release plan\n\nShip it."]);
+    expect(slot.composer.mentions).toEqual([
+      {
+        provider: "note",
+        id: "personal:plans/release.md",
+        label: "Release plan",
+      },
+    ]);
+    expect(slot.composer.focusCount).toBe(2);
     fireEvent.click(slot.getByRole("button", { name: "Open in Docs" }));
     expect(slot.navigateCalls).toContainEqual({
       method: "toPluginPanel",
       path: "docs",
       options: { subPath: "personal/plans/release.md" },
     });
+  });
+
+  it("opens arbitrary Markdown files without exposing composer actions", async () => {
+    const slot = renderSlot(
+      app.fileOpeners[0]!,
+      {
+        path: "notes/plan.mdx",
+        source: {
+          kind: "workspace",
+          threadId: "thr_1",
+          environmentId: "env_1",
+          projectId: "project_1",
+        },
+      },
+      {
+        rpc: {
+          openFile: () => ({
+            file: { content: "# Workspace plan", sha256: "sha" },
+            preview,
+            previewPath: "notes/plan.mdx",
+          }),
+        },
+      },
+    );
+
+    await slot.findByText("Workspace plan");
+    expect(slot.queryByRole("button", { name: "Add to chat" })).toBeNull();
+    expect(slot.queryByRole("button", { name: "Mention in chat" })).toBeNull();
   });
 
   it("opens a full HTML page through the same preview lease", async () => {

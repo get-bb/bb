@@ -21,8 +21,13 @@ all Docs.
   hidden until requested.
 - **Safe host-routed operations:** all list/read/write/mkdir/move/remove calls
   go through `bb.sdk.files` with an explicit vault root. Saves retain SHA-256
-  compare-and-swap conflict handling, and file watching refreshes the UI when
-  documents change outside the editor.
+  compare-and-swap conflict handling. Local vaults use native filesystem
+  watching for immediate UI refreshes; remote or unwatchable vaults fall back
+  to polling.
+- **Default Markdown editor:** Docs registers for `.md`, `.mdx`, and
+  `.markdown` files, so it can be selected under Settings → File openers or
+  chosen from a file link's Open with menu. Workspace and absolute host files
+  retain compare-and-swap saves even when they are outside a Docs vault.
 - **Images:** paste or drop PNG, JPEG, GIF, WebP, or SVG files into a document.
   Attachments are stored beside it under `_attachments/` and serialized as
   portable relative Markdown image links.
@@ -46,7 +51,10 @@ all Docs.
   and folders. A selected document resolves to its latest content at send time.
 - **Thread links:** agents can emit a Docs directive that renders as a document
   card. Clicking the card opens an editable, autosaving document in the thread
-  side panel; its secondary action opens the full Docs editor.
+  side panel; its secondary action opens the full Docs editor. The side-panel
+  editor can quote its selection (or full document) into the thread composer or
+  insert a live Docs mention. These composer actions are intentionally absent
+  from the full nav editor and generic file-opener tabs.
 
   ```md
   ::docs{vault="personal" path="plans/release-plan.md" title="Release plan"}
