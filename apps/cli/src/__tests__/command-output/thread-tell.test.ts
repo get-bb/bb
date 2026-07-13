@@ -84,6 +84,37 @@ describe("bb thread tell command output", () => {
     });
   });
 
+  it("bb thread tell forwards structured file and image attachments", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "tell",
+        "thread-attachments",
+        "review these",
+        "--file",
+        "/tmp/report.pdf",
+        "--image",
+        "/tmp/screenshot.png",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thread-attachments" },
+      json: {
+        input: [
+          { type: "text", text: "review these", mentions: [] },
+          { type: "localFile", path: "/tmp/report.pdf" },
+          { type: "localImage", path: "/tmp/screenshot.png" },
+        ],
+        mode: "queue-if-active",
+      },
+    });
+  });
+
   it("bb thread tell includes sender thread metadata when run inside another thread", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-sender");
     const post = vi.fn(async () => ({ ok: true }));

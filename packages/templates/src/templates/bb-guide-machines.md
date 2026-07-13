@@ -26,6 +26,13 @@ unless you pass `--auto-update` explicitly.
   bb machine list                         List machines with ID, connection
                                           status, and relative last-seen time
     --json                                Print the raw host list
+  bb machine show <id-or-name>            Show machine details
+  bb machine join-code                    Create a machine pairing code
+  bb machine rename <id-or-name> <name>   Rename a machine
+  bb machine remove <id-or-name> [--yes]  Revoke and remove a machine
+  bb machine provider-cli status <machine>
+  bb machine provider-cli install <machine> <claudeCode|codex|cursor>
+    --action <install|update>
 
 Machine selectors accept either an exact machine ID or an unambiguous machine
 name. `--host` is an alias for `--machine`.

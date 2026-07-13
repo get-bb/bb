@@ -25,6 +25,26 @@ interface ProjectShowCommandOptions {
   json?: boolean;
 }
 
+interface ProjectHistoryCommandOptions {
+  json?: boolean;
+  limit?: string;
+}
+
+interface ProjectReorderCommandOptions {
+  after?: string;
+  before?: string;
+  json?: boolean;
+}
+
+interface ProjectDiscoveryCommandOptions {
+  environment?: string;
+  host?: string;
+  json?: boolean;
+  limit?: string;
+  provider?: string;
+  query?: string;
+}
+
 interface ProjectUpdateCommandOptions {
   name?: string;
   json?: boolean;
@@ -182,6 +202,113 @@ export function registerProjectCommands(
           return;
         }
         printProjectTable(projects);
+      }),
+    );
+
+  project
+    .command("history <id>")
+    .description("List a project's prompt history")
+    .option("--limit <count>", "Maximum history entries")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectHistoryCommandOptions) => {
+        if (opts.limit !== undefined && !/^\d+$/u.test(opts.limit)) {
+          throw new Error("--limit must be a positive integer.");
+        }
+        const result = await createCliBbSdk(getUrl()).projects.promptHistory({
+          projectId: id,
+          ...(opts.limit ? { limit: opts.limit } : {}),
+        });
+        if (outputJson(opts, result)) return;
+        console.log(JSON.stringify(result, null, 2));
+      }),
+    );
+
+  project
+    .command("reorder <id>")
+    .description("Move a project between adjacent projects")
+    .option("--after <id>", "Previous project, or omit for the start")
+    .option("--before <id>", "Next project, or omit for the end")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectReorderCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).projects.reorder({
+          projectId: id,
+          previousProjectId: opts.after ?? null,
+          nextProjectId: opts.before ?? null,
+        });
+        if (outputJson(opts, result)) return;
+        console.log(`Project ${id} reordered`);
+      }),
+    );
+
+  project
+    .command("branches <id>")
+    .description("List branches available for a project source")
+    .requiredOption("--host <id>", "Source machine ID")
+    .option("--query <query>", "Branch-name filter")
+    .option("--limit <count>", "Maximum branches")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).projects.branches({
+          projectId: id,
+          hostId: opts.host ?? "",
+          ...(opts.query ? { query: opts.query } : {}),
+          ...(opts.limit ? { limit: opts.limit } : {}),
+        });
+        if (outputJson(opts, result)) return;
+        console.log(JSON.stringify(result, null, 2));
+      }),
+    );
+
+  project
+    .command("paths <id>")
+    .description("Search project workspace files and directories")
+    .option(
+      "--environment <id>",
+      "Environment workspace; omit for default source",
+    )
+    .option("--query <query>", "Fuzzy path query")
+    .option("--limit <count>", "Maximum paths")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).projects.paths({
+          projectId: id,
+          environmentId: opts.environment ?? null,
+          includeFiles: "true",
+          includeDirectories: "true",
+          ...(opts.query ? { query: opts.query } : {}),
+          ...(opts.limit ? { limit: opts.limit } : {}),
+        });
+        if (outputJson(opts, result)) return;
+        console.log(JSON.stringify(result, null, 2));
+      }),
+    );
+
+  project
+    .command("commands <id>")
+    .description("List provider commands and skills available to a project")
+    .requiredOption("--provider <id>", "Provider ID")
+    .option(
+      "--environment <id>",
+      "Environment workspace; omit for default source",
+    )
+    .option("--query <query>", "Command-name filter")
+    .option("--limit <count>", "Maximum commands")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).projects.commands({
+          projectId: id,
+          provider: opts.provider ?? "",
+          environmentId: opts.environment ?? null,
+          ...(opts.query ? { query: opts.query } : {}),
+          ...(opts.limit ? { limit: opts.limit } : {}),
+        });
+        if (outputJson(opts, result)) return;
+        console.log(JSON.stringify(result, null, 2));
       }),
     );
 

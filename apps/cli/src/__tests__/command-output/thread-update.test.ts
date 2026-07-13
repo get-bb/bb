@@ -113,6 +113,27 @@ describe("bb thread update command output", () => {
     );
   });
 
+  it("bb thread update moves a thread into a folder", async () => {
+    const thread = fixtures.makeThread({
+      id: "thread-folder",
+      projectId: "proj-1",
+      providerId: "codex",
+      folderId: "folder-review",
+    });
+    const patch = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.:id.$patch": patch });
+
+    await runCommand(
+      ["thread", "update", "thread-folder", "--folder", "folder-review"],
+      register,
+    );
+
+    expect(patch).toHaveBeenCalledWith({
+      param: { id: "thread-folder" },
+      json: { folderId: "folder-review" },
+    });
+  });
+
   it("bb thread update sets a sticky model and reasoning level override", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-update-3",

@@ -1,13 +1,19 @@
 import { environmentSchema } from "@bb/domain";
 import {
   commitActionResponseSchema,
+  pullRequestDraftActionResponseSchema,
+  pullRequestMergeActionResponseSchema,
+  pullRequestReadyActionResponseSchema,
   squashMergeActionResponseSchema,
   updateEnvironmentRequestSchema,
 } from "@bb/server-contract";
 import type {
   EnvironmentDiffBranchesQuery,
   EnvironmentDiffFileQuery,
+  EnvironmentDiffPatchRequest,
   EnvironmentDiffQuery,
+  EnvironmentPathsQuery,
+  PullRequestMergeMethod,
   EnvironmentStatusQuery,
   UpdateEnvironmentRequest,
 } from "@bb/server-contract";
@@ -70,6 +76,19 @@ export interface EnvironmentSquashMergeArgs {
   mergeBaseBranch: string;
 }
 
+export interface EnvironmentPullRequestMergeArgs {
+  environmentId: string;
+  method: PullRequestMergeMethod;
+}
+
+export type EnvironmentDiffPatchArgs = EnvironmentDiffPatchRequest & {
+  environmentId: string;
+};
+
+export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
+  environmentId: string;
+}
+
 type EnvironmentActionResult = PublicApiOutput<
   "/environments/:id/actions",
   "$post"
@@ -90,6 +109,22 @@ export type EnvironmentDiffFileResult = PublicApiOutput<
   "/environments/:id/diff/file",
   "$get"
 >;
+export type EnvironmentDiffFilesResult = PublicApiOutput<
+  "/environments/:id/diff/files",
+  "$get"
+>;
+export type EnvironmentDiffPatchResult = PublicApiOutput<
+  "/environments/:id/diff/patch",
+  "$post"
+>;
+export type EnvironmentPathsResult = PublicApiOutput<
+  "/environments/:id/paths",
+  "$get"
+>;
+export type EnvironmentArchiveThreadsResult = PublicApiOutput<
+  "/environments/:id/archive-threads",
+  "$post"
+>;
 export type EnvironmentGetResult = PublicApiOutput<"/environments/:id", "$get">;
 export type EnvironmentPullRequestResult = PublicApiOutput<
   "/environments/:id/pull-request",
@@ -109,16 +144,37 @@ export type EnvironmentUpdateResult = PublicApiOutput<
 >;
 
 export interface EnvironmentsArea {
+  archiveThreads(
+    args: EnvironmentGetArgs,
+  ): Promise<EnvironmentArchiveThreadsResult>;
   commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
   diff(args: EnvironmentDiffArgs): Promise<EnvironmentDiffResult>;
   diffBranches(
     args: EnvironmentDiffBranchesArgs,
   ): Promise<EnvironmentDiffBranchesResult>;
   diffFile(args: EnvironmentDiffFileArgs): Promise<EnvironmentDiffFileResult>;
+  diffFiles(args: EnvironmentDiffArgs): Promise<EnvironmentDiffFilesResult>;
+  diffPatch(
+    args: EnvironmentDiffPatchArgs,
+  ): Promise<EnvironmentDiffPatchResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
-  pullRequest(
+  pullRequest(args: EnvironmentGetArgs): Promise<EnvironmentPullRequestResult>;
+  markPullRequestDraft(
     args: EnvironmentGetArgs,
-  ): Promise<EnvironmentPullRequestResult>;
+  ): Promise<
+    Extract<EnvironmentActionResult, { action: "pull_request_draft" }>
+  >;
+  markPullRequestReady(
+    args: EnvironmentGetArgs,
+  ): Promise<
+    Extract<EnvironmentActionResult, { action: "pull_request_ready" }>
+  >;
+  mergePullRequest(
+    args: EnvironmentPullRequestMergeArgs,
+  ): Promise<
+    Extract<EnvironmentActionResult, { action: "pull_request_merge" }>
+  >;
+  paths(args: EnvironmentPathsArgs): Promise<EnvironmentPathsResult>;
   squashMerge(
     args: EnvironmentSquashMergeArgs,
   ): Promise<EnvironmentSquashMergeResult>;
@@ -201,6 +257,13 @@ export function createEnvironmentsArea(
 ): EnvironmentsArea {
   const { transport } = args;
   return {
+    async archiveThreads(input) {
+      return transport.readJson(
+        transport.api.v1.environments[":id"]["archive-threads"].$post({
+          param: { id: input.environmentId },
+        }),
+      );
+    },
     async commit(input) {
       const body = await transport.readJson(
         transport.api.v1.environments[":id"].actions.$post({
@@ -236,6 +299,23 @@ export function createEnvironmentsArea(
         }),
       );
     },
+    async diffFiles(input) {
+      return transport.readJson(
+        transport.api.v1.environments[":id"].diff.files.$get({
+          param: { id: input.environmentId },
+          query: environmentDiffQuery(input),
+        }),
+      );
+    },
+    async diffPatch(input) {
+      const { environmentId, ...json } = input;
+      return transport.readJson(
+        transport.api.v1.environments[":id"].diff.patch.$post({
+          param: { id: environmentId },
+          json,
+        }),
+      );
+    },
     async get(input) {
       const body = await transport.readJson(
         transport.api.v1.environments[":id"].$get({
@@ -248,6 +328,45 @@ export function createEnvironmentsArea(
       return transport.readJson(
         transport.api.v1.environments[":id"]["pull-request"].$get({
           param: { id: input.environmentId },
+        }),
+      );
+    },
+    async markPullRequestDraft(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments[":id"].actions.$post({
+          param: { id: input.environmentId },
+          json: { action: "pull_request_draft" },
+        }),
+      );
+      return pullRequestDraftActionResponseSchema.parse(body);
+    },
+    async markPullRequestReady(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments[":id"].actions.$post({
+          param: { id: input.environmentId },
+          json: { action: "pull_request_ready" },
+        }),
+      );
+      return pullRequestReadyActionResponseSchema.parse(body);
+    },
+    async mergePullRequest(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments[":id"].actions.$post({
+          param: { id: input.environmentId },
+          json: {
+            action: "pull_request_merge",
+            options: { method: input.method },
+          },
+        }),
+      );
+      return pullRequestMergeActionResponseSchema.parse(body);
+    },
+    async paths(input) {
+      const { environmentId, ...query } = input;
+      return transport.readJson(
+        transport.api.v1.environments[":id"].paths.$get({
+          param: { id: environmentId },
+          query,
         }),
       );
     },

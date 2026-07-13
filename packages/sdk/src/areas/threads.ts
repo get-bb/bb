@@ -5,13 +5,20 @@ import {
   type JsonValue,
   type ThreadStatus,
 } from "@bb/domain";
+import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
   CloseTerminalRequest,
+  CreateQueuedMessageRequest,
   CreateTerminalRequest,
   CreateThreadRequest,
   DeleteThreadRequest,
   PanelFileSource,
+  PromptHistoryQuery,
+  ReorderPinnedThreadRequest,
+  ReorderQueuedMessageRequest,
   SendMessageRequest,
+  SendQueuedMessageRequest,
+  SetQueuedMessageGroupBoundaryRequest,
   TerminalInputRequest,
   TerminalOutputQuery,
   TerminalResizeRequest,
@@ -19,7 +26,12 @@ import type {
   ThreadEventWaitQuery,
   ThreadGetQuery,
   ThreadListQuery,
+  ThreadSearchQuery,
+  ThreadStorageFilesQuery,
+  ThreadStoragePathsQuery,
   ThreadTimelineQuery,
+  TimelineTurnSummaryDetailsQuery,
+  UpdateThreadTabsRequest,
   UpdateTerminalRequest,
   UpdateThreadRequest,
 } from "@bb/server-contract";
@@ -30,10 +42,19 @@ export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 
 export interface ThreadListArgs {
   archived?: boolean;
+  excludeSideChats?: boolean;
+  folderId?: string;
   hasParent?: boolean;
+  limit?: number;
+  offset?: number;
+  originKind?: ThreadListQuery["originKind"];
   parentThreadId?: string;
   projectId?: string;
+  sourceThreadId?: string;
+  unfiled?: boolean;
 }
+
+export interface ThreadSearchArgs extends ThreadSearchQuery {}
 
 export interface ThreadGetArgs {
   include?: ThreadGetQuery["include"];
@@ -42,6 +63,7 @@ export interface ThreadGetArgs {
 
 export type ThreadGetResult = PublicApiOutput<"/threads/:id", "$get">;
 export type ThreadListResult = PublicApiOutput<"/threads", "$get">;
+export type ThreadSearchResult = PublicApiOutput<"/threads/search", "$get">;
 export type ThreadOutputResponse = PublicApiOutput<
   "/threads/:id/output",
   "$get"
@@ -114,6 +136,51 @@ export type ThreadUnarchiveResult = PublicApiOutput<
   "/threads/:id/unarchive",
   "$post"
 >;
+export type ThreadArchiveAllResult = PublicApiOutput<
+  "/threads/:id/archive-all",
+  "$post"
+>;
+export type ThreadReadStateResult = PublicApiOutput<
+  "/threads/:id/read",
+  "$post"
+>;
+export type ThreadPinOrderResult = PublicApiOutput<
+  "/threads/:id/pin-order",
+  "$patch"
+>;
+export type ThreadPromptHistoryResult = PublicApiOutput<
+  "/threads/:id/prompt-history",
+  "$get"
+>;
+export type ThreadQueuedMessagesResult = PublicApiOutput<
+  "/threads/:id/queued-messages",
+  "$get"
+>;
+export type ThreadTabsResult = PublicApiOutput<"/threads/:id/tabs", "$get">;
+export type ThreadStorageFilesResult = PublicApiOutput<
+  "/threads/:id/thread-storage/files",
+  "$get"
+>;
+export type ThreadStoragePathsResult = PublicApiOutput<
+  "/threads/:id/thread-storage/paths",
+  "$get"
+>;
+export type ThreadChildSummaryResult = PublicApiOutput<
+  "/threads/:id/child-summary",
+  "$get"
+>;
+export type ThreadDefaultExecutionOptionsResult = PublicApiOutput<
+  "/threads/:id/default-execution-options",
+  "$get"
+>;
+export type ThreadConversationOutlineResult = PublicApiOutput<
+  "/threads/:id/conversation-outline",
+  "$get"
+>;
+export type ThreadTimelineTurnSummaryDetailsResult = PublicApiOutput<
+  "/threads/:id/timeline/turn-summary-details",
+  "$get"
+>;
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
@@ -150,6 +217,53 @@ export interface ThreadSendArgs extends SendMessageRequest {
 }
 
 export interface ThreadStatusArgs {
+  threadId: string;
+}
+
+export interface ThreadPromptHistoryArgs extends PromptHistoryQuery {
+  threadId: string;
+}
+
+export interface ThreadPinOrderArgs extends ReorderPinnedThreadRequest {
+  threadId: string;
+}
+
+export interface ThreadQueuedMessageArgs {
+  threadId: string;
+}
+
+export interface ThreadQueuedMessageCreateArgs extends CreateQueuedMessageRequest {
+  threadId: string;
+}
+
+export interface ThreadQueuedMessageTargetArgs {
+  queuedMessageId: string;
+  threadId: string;
+}
+
+export interface ThreadQueuedMessageSendArgs
+  extends ThreadQueuedMessageTargetArgs, SendQueuedMessageRequest {}
+
+export interface ThreadQueuedMessageReorderArgs
+  extends ThreadQueuedMessageTargetArgs, ReorderQueuedMessageRequest {}
+
+export interface ThreadQueuedMessageGroupBoundaryArgs extends SetQueuedMessageGroupBoundaryRequest {
+  threadId: string;
+}
+
+export interface ThreadStorageFilesArgs extends ThreadStorageFilesQuery {
+  threadId: string;
+}
+
+export interface ThreadStoragePathsArgs extends ThreadStoragePathsQuery {
+  threadId: string;
+}
+
+export interface ThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsQuery {
+  threadId: string;
+}
+
+export interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
   threadId: string;
 }
 
@@ -316,21 +430,79 @@ export interface ThreadTerminalsArea {
   update(args: ThreadTerminalUpdateArgs): Promise<ThreadTerminalUpdateResult>;
 }
 
+export interface ThreadQueuedMessagesArea {
+  create(
+    args: ThreadQueuedMessageCreateArgs,
+  ): Promise<PublicApiOutput<"/threads/:id/queued-messages", "$post">>;
+  delete(args: ThreadQueuedMessageTargetArgs): Promise<{ ok: true }>;
+  list(args: ThreadQueuedMessageArgs): Promise<ThreadQueuedMessagesResult>;
+  reorder(
+    args: ThreadQueuedMessageReorderArgs,
+  ): Promise<
+    PublicApiOutput<
+      "/threads/:id/queued-messages/:queuedMessageId/order",
+      "$patch"
+    >
+  >;
+  send(
+    args: ThreadQueuedMessageSendArgs,
+  ): Promise<
+    PublicApiOutput<
+      "/threads/:id/queued-messages/:queuedMessageId/send",
+      "$post"
+    >
+  >;
+  setGroupBoundary(
+    args: ThreadQueuedMessageGroupBoundaryArgs,
+  ): Promise<
+    PublicApiOutput<"/threads/:id/queued-messages/group-boundary", "$patch">
+  >;
+}
+
+export interface ThreadTabsArea {
+  get(args: ThreadStatusArgs): Promise<ThreadTabsResult>;
+  update(
+    args: ThreadTabsUpdateArgs,
+  ): Promise<PublicApiOutput<"/threads/:id/tabs", "$put">>;
+}
+
 export interface ThreadsArea {
   archive(args: ThreadStatusArgs): Promise<ThreadArchiveResult>;
+  archiveAll(args: ThreadStatusArgs): Promise<ThreadArchiveAllResult>;
+  childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
+  conversationOutline(
+    args: ThreadStatusArgs,
+  ): Promise<ThreadConversationOutlineResult>;
+  defaultExecutionOptions(
+    args: ThreadStatusArgs,
+  ): Promise<ThreadDefaultExecutionOptionsResult>;
   delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
   events: ThreadEventsArea;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
+  markRead(args: ThreadStatusArgs): Promise<ThreadReadStateResult>;
+  markUnread(args: ThreadStatusArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
+  promptHistory(
+    args: ThreadPromptHistoryArgs,
+  ): Promise<ThreadPromptHistoryResult>;
+  queuedMessages: ThreadQueuedMessagesArea;
+  reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
+  search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
   stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
   terminals: ThreadTerminalsArea;
+  tabs: ThreadTabsArea;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
+  timelineTurnSummaryDetails(
+    args: ThreadTimelineTurnSummaryDetailsArgs,
+  ): Promise<ThreadTimelineTurnSummaryDetailsResult>;
+  storageFiles(args: ThreadStorageFilesArgs): Promise<ThreadStorageFilesResult>;
+  storagePaths(args: ThreadStoragePathsArgs): Promise<ThreadStoragePathsResult>;
   unarchive(args: ThreadStatusArgs): Promise<ThreadUnarchiveResult>;
   unpin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
   update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
@@ -341,7 +513,18 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
   return {
     ...(args?.projectId ? { projectId: args.projectId } : {}),
     ...(args?.parentThreadId ? { parentThreadId: args.parentThreadId } : {}),
+    ...(args?.sourceThreadId ? { sourceThreadId: args.sourceThreadId } : {}),
+    ...(args?.folderId ? { folderId: args.folderId } : {}),
+    ...(args?.originKind ? { originKind: args.originKind } : {}),
     ...(args?.archived ? { archived: "true" } : {}),
+    ...(args?.unfiled === undefined
+      ? {}
+      : { unfiled: args.unfiled ? "true" : "false" }),
+    ...(args?.excludeSideChats === undefined
+      ? {}
+      : { excludeSideChats: args.excludeSideChats ? "true" : "false" }),
+    ...(args?.limit === undefined ? {} : { limit: String(args.limit) }),
+    ...(args?.offset === undefined ? {} : { offset: String(args.offset) }),
     ...(args?.hasParent === undefined
       ? {}
       : { hasParent: args.hasParent ? "true" : "false" }),
@@ -351,6 +534,7 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
     title: args.title,
+    folderId: args.folderId,
     parentThreadId: args.parentThreadId,
     model: args.model,
     reasoningLevel: args.reasoningLevel,
@@ -656,12 +840,136 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
   };
+  const queuedMessages: ThreadQueuedMessagesArea = {
+    async create(input) {
+      const { threadId, ...json } = input;
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"].$post({
+          param: { id: threadId },
+          json,
+        }),
+      );
+    },
+    async delete(input) {
+      await transport.readVoid(
+        transport.api.v1.threads[":id"]["queued-messages"][
+          ":queuedMessageId"
+        ].$delete({
+          param: {
+            id: input.threadId,
+            queuedMessageId: input.queuedMessageId,
+          },
+        }),
+      );
+      return { ok: true };
+    },
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"].$get({
+          param: { id: input.threadId },
+        }),
+      );
+    },
+    async reorder(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"][
+          ":queuedMessageId"
+        ].order.$patch({
+          param: {
+            id: input.threadId,
+            queuedMessageId: input.queuedMessageId,
+          },
+          json: {
+            previousQueuedMessageId: input.previousQueuedMessageId,
+            nextQueuedMessageId: input.nextQueuedMessageId,
+            groupBoundaryQueuedMessageId: input.groupBoundaryQueuedMessageId,
+          },
+        }),
+      );
+    },
+    async send(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"][
+          ":queuedMessageId"
+        ].send.$post({
+          param: {
+            id: input.threadId,
+            queuedMessageId: input.queuedMessageId,
+          },
+          json: { mode: input.mode },
+        }),
+      );
+    },
+    async setGroupBoundary(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"][
+          "group-boundary"
+        ].$patch({
+          param: { id: input.threadId },
+          json: {
+            expectedGroupedPrefixQueuedMessageIds:
+              input.expectedGroupedPrefixQueuedMessageIds,
+            groupBoundaryQueuedMessageId: input.groupBoundaryQueuedMessageId,
+          },
+        }),
+      );
+    },
+  };
+  const tabs: ThreadTabsArea = {
+    async get(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].tabs.$get({
+          param: { id: input.threadId },
+        }),
+      );
+    },
+    async update(input) {
+      const body = await transport.readJson(
+        transport.api.v1.threads[":id"].tabs.$put({
+          param: { id: input.threadId },
+          json: {
+            expectedRevision: input.expectedRevision,
+            tabs: input.tabs,
+          },
+        }),
+      );
+      return threadTabsResponseSchema.parse(body);
+    },
+  };
   return {
     async archive(input) {
       // Match the UI: archiving a parent also archives assigned children and
       // source-derived side chats via the cascade archive-all route.
       return transport.readJson(
         transport.api.v1.threads[":id"]["archive-all"].$post({
+          param: { id: input.threadId },
+        }),
+      );
+    },
+    async archiveAll(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["archive-all"].$post({
+          param: { id: input.threadId },
+        }),
+      );
+    },
+    async childSummary(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["child-summary"].$get({
+          param: { id: input.threadId },
+        }),
+      );
+    },
+    async conversationOutline(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["conversation-outline"].$get({
+          param: { id: input.threadId },
+        }),
+      );
+    },
+    async defaultExecutionOptions(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["default-execution-options"].$get({
           param: { id: input.threadId },
         }),
       );
@@ -683,6 +991,20 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async list(input) {
       return transport.readJson(
         transport.api.v1.threads.$get({ query: listQuery(input) }),
+      );
+    },
+    async markRead(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].read.$post({
+          param: { id: input.threadId },
+        }),
+      );
+    },
+    async markUnread(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].unread.$post({
+          param: { id: input.threadId },
+        }),
       );
     },
     async output(input) {
@@ -711,6 +1033,31 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         }),
       );
     },
+    async promptHistory(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["prompt-history"].$get({
+          param: { id: input.threadId },
+          query: { limit: input.limit },
+        }),
+      );
+    },
+    queuedMessages,
+    async reorderPinned(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["pin-order"].$patch({
+          param: { id: input.threadId },
+          json: {
+            previousThreadId: input.previousThreadId,
+            nextThreadId: input.nextThreadId,
+          },
+        }),
+      );
+    },
+    async search(input) {
+      return transport.readJson(
+        transport.api.v1.threads.search.$get({ query: input }),
+      );
+    },
     async send(input) {
       await transport.readVoid(
         transport.api.v1.threads[":id"].send.$post({
@@ -736,11 +1083,45 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return { ok: true };
     },
     terminals,
+    tabs,
     async timeline(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].timeline.$get({
           param: { id: input.threadId },
           query: timelineQuery(input),
+        }),
+      );
+    },
+    async timelineTurnSummaryDetails(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].timeline["turn-summary-details"].$get({
+          param: { id: input.threadId },
+          query: {
+            turnId: input.turnId,
+            sourceSeqStart: input.sourceSeqStart,
+            sourceSeqEnd: input.sourceSeqEnd,
+          },
+        }),
+      );
+    },
+    async storageFiles(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["thread-storage"].files.$get({
+          param: { id: input.threadId },
+          query: { query: input.query, limit: input.limit },
+        }),
+      );
+    },
+    async storagePaths(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["thread-storage"].paths.$get({
+          param: { id: input.threadId },
+          query: {
+            query: input.query,
+            limit: input.limit,
+            includeFiles: input.includeFiles,
+            includeDirectories: input.includeDirectories,
+          },
         }),
       );
     },

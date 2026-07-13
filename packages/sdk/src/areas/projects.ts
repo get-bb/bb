@@ -1,7 +1,12 @@
 import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
+  ProjectBranchesQuery,
+  ProjectCommandsQuery,
   ProjectListQuery,
+  ProjectPathsQuery,
+  PromptHistoryQuery,
+  ReorderProjectRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
@@ -20,6 +25,30 @@ export interface ProjectUpdateArgs extends UpdateProjectRequest {
 }
 
 export interface ProjectDeleteArgs {
+  projectId: string;
+}
+
+export interface ProjectReorderArgs extends ReorderProjectRequest {
+  projectId: string;
+}
+
+export interface ProjectPromptHistoryArgs extends PromptHistoryQuery {
+  projectId: string;
+}
+
+export interface ProjectPathsArgs extends ProjectPathsQuery {
+  projectId: string;
+}
+
+export interface ProjectCommandsArgs extends ProjectCommandsQuery {
+  projectId: string;
+}
+
+export interface ProjectBranchesArgs extends ProjectBranchesQuery {
+  projectId: string;
+}
+
+export interface ProjectDefaultExecutionOptionsArgs {
   projectId: string;
 }
 
@@ -42,6 +71,27 @@ export type ProjectDeleteResult = PublicApiOutput<"/projects/:id", "$delete">;
 export type ProjectGetResult = PublicApiOutput<"/projects/:id", "$get">;
 export type ProjectListResult = PublicApiOutput<"/projects", "$get">;
 export type ProjectUpdateResult = PublicApiOutput<"/projects/:id", "$patch">;
+export type ProjectReorderResult = PublicApiOutput<
+  "/projects/:id/order",
+  "$patch"
+>;
+export type ProjectPromptHistoryResult = PublicApiOutput<
+  "/projects/:id/prompt-history",
+  "$get"
+>;
+export type ProjectPathsResult = PublicApiOutput<"/projects/:id/paths", "$get">;
+export type ProjectCommandsResult = PublicApiOutput<
+  "/projects/:id/commands",
+  "$get"
+>;
+export type ProjectBranchesResult = PublicApiOutput<
+  "/projects/:id/branches",
+  "$get"
+>;
+export type ProjectDefaultExecutionOptionsResult = PublicApiOutput<
+  "/projects/:id/default-execution-options",
+  "$get"
+>;
 export type ProjectSourceAddResult = PublicApiOutput<
   "/projects/:id/sources",
   "$post"
@@ -62,10 +112,20 @@ export interface ProjectSourcesArea {
 }
 
 export interface ProjectsArea {
+  branches(args: ProjectBranchesArgs): Promise<ProjectBranchesResult>;
+  commands(args: ProjectCommandsArgs): Promise<ProjectCommandsResult>;
   create(args: ProjectCreateArgs): Promise<ProjectCreateResult>;
+  defaultExecutionOptions(
+    args: ProjectDefaultExecutionOptionsArgs,
+  ): Promise<ProjectDefaultExecutionOptionsResult>;
   delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
   get(args: ProjectGetArgs): Promise<ProjectGetResult>;
   list(args?: ProjectListArgs): Promise<ProjectListResult>;
+  paths(args: ProjectPathsArgs): Promise<ProjectPathsResult>;
+  promptHistory(
+    args: ProjectPromptHistoryArgs,
+  ): Promise<ProjectPromptHistoryResult>;
+  reorder(args: ProjectReorderArgs): Promise<ProjectReorderResult>;
   sources: ProjectSourcesArea;
   update(args: ProjectUpdateArgs): Promise<ProjectUpdateResult>;
 }
@@ -130,6 +190,24 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
   };
 
   return {
+    async branches(input) {
+      const { projectId, ...query } = input;
+      return transport.readJson(
+        transport.api.v1.projects[":id"].branches.$get({
+          param: { id: projectId },
+          query,
+        }),
+      );
+    },
+    async commands(input) {
+      const { projectId, ...query } = input;
+      return transport.readJson(
+        transport.api.v1.projects[":id"].commands.$get({
+          param: { id: projectId },
+          query,
+        }),
+      );
+    },
     async create(input) {
       return transport.readJson(
         transport.api.v1.projects.$post({
@@ -145,6 +223,14 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       );
       return { ok: true };
     },
+    async defaultExecutionOptions(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"]["default-execution-options"].$get({
+          param: { id: input.projectId },
+          query: {},
+        }),
+      );
+    },
     async get(input) {
       return transport.readJson(
         transport.api.v1.projects[":id"].$get({
@@ -156,6 +242,34 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       return transport.readJson(
         transport.api.v1.projects.$get({
           query: input,
+        }),
+      );
+    },
+    async paths(input) {
+      const { projectId, ...query } = input;
+      return transport.readJson(
+        transport.api.v1.projects[":id"].paths.$get({
+          param: { id: projectId },
+          query,
+        }),
+      );
+    },
+    async promptHistory(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"]["prompt-history"].$get({
+          param: { id: input.projectId },
+          query: { limit: input.limit },
+        }),
+      );
+    },
+    async reorder(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].order.$patch({
+          param: { id: input.projectId },
+          json: {
+            previousProjectId: input.previousProjectId,
+            nextProjectId: input.nextProjectId,
+          },
         }),
       );
     },

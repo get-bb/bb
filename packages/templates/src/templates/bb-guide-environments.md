@@ -63,6 +63,13 @@ Making your repo work with bb:
   bb environment squash-merge <id>        Squash-merge into a target branch
     --merge-base-branch <branch>          Target branch (required)
 
+  bb environment archive-threads <id>     Archive all threads in an environment
+
+  bb environment pull-request ready <id>  Mark a pull request ready
+  bb environment pull-request draft <id>  Convert a pull request to draft
+  bb environment pull-request merge <id>  Merge a pull request
+    --method <method>                     merge, squash, or rebase
+
 Remote access (bb connect):
 
   Expose this bb server at <handle>.getbb.app so you can reach it from any

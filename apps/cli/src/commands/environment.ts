@@ -33,6 +33,11 @@ interface EnvironmentSquashMergeCommandOptions {
   json?: boolean;
 }
 
+interface EnvironmentPullRequestCommandOptions {
+  json?: boolean;
+  method?: "merge" | "squash" | "rebase";
+}
+
 interface BuildEnvironmentUpdateArgsInput {
   id: string;
   opts: EnvironmentUpdateCommandOptions;
@@ -221,4 +226,82 @@ export function registerEnvironmentCommands(
       }),
     );
 
+  environment
+    .command("archive-threads <id>")
+    .description("Archive every active thread in an environment")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentCommitCommandOptions) => {
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.archiveThreads({
+          environmentId: id,
+        });
+        if (outputJson(opts, result)) return;
+        console.log(
+          `Archived ${result.archivedThreadIds.length} thread(s) in environment ${id}`,
+        );
+      }),
+    );
+
+  const pullRequest = environment
+    .command("pull-request")
+    .description("Manage an environment's pull request");
+
+  pullRequest
+    .command("ready <id>")
+    .description("Mark a pull request ready for review")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentPullRequestCommandOptions) => {
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.markPullRequestReady({ environmentId: id });
+        if (outputJson(opts, result)) return;
+        console.log(result.message);
+      }),
+    );
+
+  pullRequest
+    .command("draft <id>")
+    .description("Convert a pull request to draft")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentPullRequestCommandOptions) => {
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.markPullRequestDraft({ environmentId: id });
+        if (outputJson(opts, result)) return;
+        console.log(result.message);
+      }),
+    );
+
+  pullRequest
+    .command("merge <id>")
+    .description("Merge a pull request")
+    .option(
+      "--method <method>",
+      "Merge method: merge, squash, or rebase",
+      "merge",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentPullRequestCommandOptions) => {
+        if (
+          opts.method !== "merge" &&
+          opts.method !== "squash" &&
+          opts.method !== "rebase"
+        ) {
+          throw new Error("--method must be merge, squash, or rebase.");
+        }
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.mergePullRequest({
+          environmentId: id,
+          method: opts.method,
+        });
+        if (outputJson(opts, result)) return;
+        console.log(result.message);
+      }),
+    );
 }

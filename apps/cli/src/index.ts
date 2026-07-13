@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { maybeReexecViaBbCli } from "./bb-cli-reexec.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
+import { registerFileCommands } from "./commands/file.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerManagerCommands } from "./commands/manager.js";
 import { registerMachineCommands } from "./commands/machine.js";
@@ -9,8 +10,10 @@ import { registerProjectCommands } from "./commands/project.js";
 import { registerPluginCommands } from "./commands/plugin.js";
 import { registerProviderCommands } from "./commands/provider.js";
 import { registerStatusCommand } from "./commands/status.js";
+import { registerSettingsCommands } from "./commands/settings.js";
 import { registerThemeCommands } from "./commands/theme.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
+import { registerVoiceCommands } from "./commands/voice.js";
 import {
   createCliRuntimeContext,
   resolveContextSnapshot,
@@ -77,15 +80,18 @@ function getContext() {
 
 // Register all command groups
 registerStatusCommand(program, getUrl, getContext);
+registerSettingsCommands(program, getUrl);
 registerProjectCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerMachineCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
+registerFileCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
 registerPluginCommands(program, getUrl);
 registerGuideCommand(program);
+registerVoiceCommands(program, getUrl);
 
 /**
  * Unknown top-level commands may be plugin-contributed `bb` subcommands

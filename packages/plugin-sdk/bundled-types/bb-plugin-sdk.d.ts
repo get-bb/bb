@@ -10,6 +10,71 @@ import { Context } from 'hono';
 import * as z from 'zod';
 import { z as z$1 } from 'zod';
 
+/**
+ * App-wide Settings → General preferences that affect server/daemon behavior.
+ * Client-local settings stay in the frontend localStorage helpers instead.
+ */
+declare const appSettingsSchema: z$1.ZodObject<{
+    caffeinate: z$1.ZodBoolean;
+    codexMemoryEnabled: z$1.ZodBoolean;
+    claudeCodeMemoryEnabled: z$1.ZodBoolean;
+    codexSubagentsDisabled: z$1.ZodBoolean;
+    claudeCodeSubagentsDisabled: z$1.ZodBoolean;
+    claudeCodeWorkflowsDisabled: z$1.ZodBoolean;
+}, z$1.core.$strict>;
+type AppSettings = z$1.infer<typeof appSettingsSchema>;
+
+declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
+    command: z$1.ZodEnum<{
+        "thread.jump.1": "thread.jump.1";
+        "thread.jump.2": "thread.jump.2";
+        "thread.jump.3": "thread.jump.3";
+        "thread.jump.4": "thread.jump.4";
+        "thread.jump.5": "thread.jump.5";
+        "thread.jump.6": "thread.jump.6";
+        "thread.jump.7": "thread.jump.7";
+        "thread.jump.8": "thread.jump.8";
+        "thread.jump.9": "thread.jump.9";
+        "question.select.1": "question.select.1";
+        "question.select.2": "question.select.2";
+        "question.select.3": "question.select.3";
+        "question.select.4": "question.select.4";
+        "question.select.5": "question.select.5";
+        "question.select.6": "question.select.6";
+        "question.select.7": "question.select.7";
+        "question.select.8": "question.select.8";
+        "question.select.9": "question.select.9";
+        "thread.new": "thread.new";
+        "thread.search": "thread.search";
+        "thread.previous": "thread.previous";
+        "thread.next": "thread.next";
+        "window.new": "window.new";
+        "settings.open": "settings.open";
+        "settings.openServers": "settings.openServers";
+        "sidebar.toggle": "sidebar.toggle";
+        "panel.newTab": "panel.newTab";
+        "panel.close": "panel.close";
+        "panel.toggle": "panel.toggle";
+        "file.quickOpen": "file.quickOpen";
+        "diff.toggle": "diff.toggle";
+        "terminal.open": "terminal.open";
+        "composer.focus": "composer.focus";
+        "modelPicker.toggle": "modelPicker.toggle";
+        "browser.focusLocation": "browser.focusLocation";
+        "browser.reload": "browser.reload";
+        "workspace.openPreferred": "workspace.openPreferred";
+    }>;
+    shortcut: z$1.ZodNullable<z$1.ZodObject<{
+        key: z$1.ZodString;
+        mod: z$1.ZodBoolean;
+        meta: z$1.ZodBoolean;
+        control: z$1.ZodBoolean;
+        alt: z$1.ZodBoolean;
+        shift: z$1.ZodBoolean;
+    }, z$1.core.$strict>>;
+}, z$1.core.$strict>>;
+type AppKeybindingOverrides = z$1.infer<typeof appKeybindingOverridesSchema>;
+
 declare const appThemeSchema: z$1.ZodObject<{
     themeId: z$1.ZodString;
     customCss: z$1.ZodNullable<z$1.ZodString>;
@@ -96,6 +161,24 @@ declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     }>>>;
 }, z$1.core.$strict>], "entity">;
 type ChangedMessage = z$1.infer<typeof changedMessageSchema>;
+
+/**
+ * User-opt-in experiments (the Settings → Experiments toggles). Distinct from
+ * `FeatureFlags`: flags are operator-set via env at server start, experiments
+ * are user-toggled at runtime and persisted server-side so server-owned
+ * policy (e.g. skill injection) can honor them.
+ *
+ * Every experiment defaults to off — opting in is the point.
+ */
+declare const experimentsSchema: z$1.ZodObject<{
+    claudeCodeMockCliTraffic: z$1.ZodBoolean;
+    bbConnect: z$1.ZodBoolean;
+    multiMachine: z$1.ZodBoolean;
+    popoutChat: z$1.ZodBoolean;
+    popoutChatHotkey: z$1.ZodString;
+    plugins: z$1.ZodBoolean;
+}, z$1.core.$strip>;
+type Experiments = z$1.infer<typeof experimentsSchema>;
 
 interface JsonObject {
     [key: string]: JsonValue;
@@ -606,10 +689,53 @@ declare const createProjectRequestSchema: z$1.ZodObject<{
     }, z$1.core.$strict>;
 }, z$1.core.$strip>;
 type CreateProjectRequest = z$1.infer<typeof createProjectRequestSchema>;
+declare const createThreadFolderRequestSchema: z$1.ZodObject<{
+    name: z$1.ZodString;
+}, z$1.core.$strict>;
+type CreateThreadFolderRequest = z$1.infer<typeof createThreadFolderRequestSchema>;
+declare const updateThreadFolderRequestSchema: z$1.ZodObject<{
+    id: z$1.ZodString;
+    name: z$1.ZodString;
+}, z$1.core.$strict>;
+type UpdateThreadFolderRequest = z$1.infer<typeof updateThreadFolderRequestSchema>;
+declare const deleteThreadFolderRequestSchema: z$1.ZodObject<{
+    id: z$1.ZodString;
+}, z$1.core.$strict>;
+type DeleteThreadFolderRequest = z$1.infer<typeof deleteThreadFolderRequestSchema>;
+declare const reorderProjectRequestSchema: z$1.ZodObject<{
+    previousProjectId: z$1.ZodNullable<z$1.ZodString>;
+    nextProjectId: z$1.ZodNullable<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ReorderProjectRequest = z$1.infer<typeof reorderProjectRequestSchema>;
 declare const projectListQuerySchema: z$1.ZodObject<{
     include: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type ProjectListQuery = z$1.infer<typeof projectListQuerySchema>;
+declare const projectPathsQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodOptional<z$1.ZodString>;
+    limit: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodNullable<z$1.ZodString>>;
+    includeFiles: z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>;
+    includeDirectories: z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>;
+}, z$1.core.$strip>;
+type ProjectPathsQuery = z$1.infer<typeof projectPathsQuerySchema>;
+declare const projectBranchesQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodOptional<z$1.ZodString>;
+    limit: z$1.ZodOptional<z$1.ZodString>;
+    hostId: z$1.ZodString;
+    selectedBranch: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ProjectBranchesQuery = z$1.infer<typeof projectBranchesQuerySchema>;
+declare const promptHistoryQuerySchema: z$1.ZodObject<{
+    limit: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type PromptHistoryQuery = z$1.infer<typeof promptHistoryQuerySchema>;
 declare const updateProjectRequestSchema: z$1.ZodObject<{
     name: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
@@ -620,12 +746,47 @@ declare const updateProjectSourceRequestSchema: z$1.ZodObject<{
     isDefault: z$1.ZodOptional<z$1.ZodLiteral<true>>;
 }, z$1.core.$strict>;
 type UpdateProjectSourceRequest = z$1.infer<typeof updateProjectSourceRequestSchema>;
+/**
+ * Command typeahead query. Extends the shared project file-search query
+ * (`query`/`limit`/`environmentId`, including the empty-string→null wire
+ * convention) with the `provider` whose skill/command surface to discover.
+ * `query` here is a case-insensitive substring filter on command name/description.
+ * Namespaced skills also match on their local name after `:` (for example,
+ * `review` matches `ottonomous:review`).
+ */
+declare const projectCommandsQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodOptional<z$1.ZodString>;
+    limit: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodNullable<z$1.ZodString>>;
+    provider: z$1.ZodString;
+    offset: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 
 declare const updateEnvironmentRequestSchema: z$1.ZodObject<{
     mergeBaseBranch: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     name: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
 }, z$1.core.$strip>;
 type UpdateEnvironmentRequest = z$1.infer<typeof updateEnvironmentRequestSchema>;
+/**
+ * Query for searching paths in an environment's workspace. Unlike the
+ * project-scoped variant this needs no `environmentId` — the environment is
+ * the route param — and is project-agnostic, so it works for projectless
+ * (personal) environments too.
+ */
+declare const environmentPathsQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodOptional<z$1.ZodString>;
+    limit: z$1.ZodOptional<z$1.ZodString>;
+    includeFiles: z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>;
+    includeDirectories: z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>;
+}, z$1.core.$strip>;
+type EnvironmentPathsQuery = z$1.infer<typeof environmentPathsQuerySchema>;
 declare const environmentDiffBranchesQuerySchema: z$1.ZodObject<{
     query: z$1.ZodOptional<z$1.ZodString>;
     limit: z$1.ZodOptional<z$1.ZodString>;
@@ -694,6 +855,78 @@ declare const environmentDiffFileQuerySchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
     }>;
 }, z$1.core.$strip>], "target">;
 type EnvironmentDiffFileQuery = z$1.infer<typeof environmentDiffFileQuerySchema>;
+declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
+    merge: "merge";
+    squash: "squash";
+    rebase: "rebase";
+}>;
+type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
+/**
+ * Body for `POST /diff/patch`: the diff target plus the list of new paths whose
+ * patches the client wants. A POST (not GET) because the repeated `paths` array
+ * cannot survive flat query parsing. The client supplies only new paths; the
+ * server re-derives each file's rename/copy pairing (`previousPath`) from its
+ * own TOC.
+ */
+declare const environmentDiffPatchRequestSchema: z$1.ZodObject<{
+    target: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        type: z$1.ZodLiteral<"uncommitted">;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"branch_committed">;
+        mergeBaseBranch: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"all">;
+        mergeBaseBranch: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"commit">;
+        sha: z$1.ZodString;
+    }, z$1.core.$strip>], "type">;
+    paths: z$1.ZodArray<z$1.ZodString>;
+}, z$1.core.$strict>;
+type EnvironmentDiffPatchRequest = z$1.infer<typeof environmentDiffPatchRequestSchema>;
+
+declare const pathsExistRequestSchema: z$1.ZodObject<{
+    paths: z$1.ZodPipe<z$1.ZodArray<z$1.ZodString>, z$1.ZodTransform<string[], string[]>>;
+}, z$1.core.$strip>;
+type PathsExistRequest = z$1.infer<typeof pathsExistRequestSchema>;
+declare const providerCliInstallRequestSchema: z$1.ZodObject<{
+    provider: z$1.ZodEnum<{
+        codex: "codex";
+        claudeCode: "claudeCode";
+        cursor: "cursor";
+    }>;
+    actionKind: z$1.ZodEnum<{
+        install: "install";
+        update: "update";
+    }>;
+}, z$1.core.$strip>;
+type ProviderCliInstallRequest = z$1.infer<typeof providerCliInstallRequestSchema>;
+
+/**
+ * Query for `GET /hosts/:id/directory`, the interactive path browser's
+ * single-level directory read. `path` is an absolute directory on the host;
+ * omitting it lists the host's home directory (the daemon resolves it, since a
+ * remote caller cannot know the host's home).
+ */
+declare const hostDirectoryQuerySchema: z$1.ZodObject<{
+    path: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type HostDirectoryQuery = z$1.infer<typeof hostDirectoryQuerySchema>;
+/** Project name is sent so the daemon can derive its host-local checkout path. */
+declare const hostCloneDefaultPathQuerySchema: z$1.ZodObject<{
+    projectId: z$1.ZodString;
+}, z$1.core.$strip>;
+type HostCloneDefaultPathQuery = z$1.infer<typeof hostCloneDefaultPathQuerySchema>;
+declare const updateHostRequestSchema: z$1.ZodObject<{
+    name: z$1.ZodString;
+}, z$1.core.$strict>;
+type UpdateHostRequest = z$1.infer<typeof updateHostRequestSchema>;
+type HostPathsExistRequest = PathsExistRequest;
+declare const hostPickFolderRequestSchema: z$1.ZodObject<{
+    clientHostId: z$1.ZodString;
+}, z$1.core.$strict>;
+type HostPickFolderRequest = z$1.infer<typeof hostPickFolderRequestSchema>;
+type HostProviderCliInstallRequest = ProviderCliInstallRequest;
 
 declare const systemExecutionOptionsQuerySchema: z$1.ZodObject<{
     providerId: z$1.ZodOptional<z$1.ZodString>;
@@ -1090,6 +1323,143 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
     senderThreadId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type SendMessageRequest = z$1.infer<typeof sendMessageRequestSchema>;
+declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
+    input: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"text">;
+        text: z$1.ZodString;
+        mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
+            start: z$1.ZodNumber;
+            end: z$1.ZodNumber;
+            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"thread">;
+                threadId: z$1.ZodString;
+                projectId: z$1.ZodOptional<z$1.ZodString>;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"project">;
+                projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"path">;
+                source: z$1.ZodEnum<{
+                    workspace: "workspace";
+                    "thread-storage": "thread-storage";
+                }>;
+                entryKind: z$1.ZodEnum<{
+                    file: "file";
+                    directory: "directory";
+                }>;
+                path: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"command">;
+                trigger: z$1.ZodEnum<{
+                    "/": "/";
+                }>;
+                name: z$1.ZodString;
+                source: z$1.ZodEnum<{
+                    command: "command";
+                    skill: "skill";
+                }>;
+                origin: z$1.ZodEnum<{
+                    user: "user";
+                    project: "project";
+                    builtin: "builtin";
+                }>;
+                label: z$1.ZodString;
+                argumentHint: z$1.ZodNullable<z$1.ZodString>;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"plugin">;
+                pluginId: z$1.ZodString;
+                icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
+                itemId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>], "kind">;
+        }, z$1.core.$strip>>>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"image">;
+        url: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"localImage">;
+        path: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"localFile">;
+        path: z$1.ZodString;
+        name: z$1.ZodOptional<z$1.ZodString>;
+        sizeBytes: z$1.ZodOptional<z$1.ZodNumber>;
+        mimeType: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strip>], "type">>;
+    model: z$1.ZodOptional<z$1.ZodString>;
+    serviceTier: z$1.ZodOptional<z$1.ZodEnum<{
+        default: "default";
+        fast: "fast";
+    }>>;
+    reasoningLevel: z$1.ZodOptional<z$1.ZodEnum<{
+        none: "none";
+        low: "low";
+        medium: "medium";
+        high: "high";
+        xhigh: "xhigh";
+        ultracode: "ultracode";
+        max: "max";
+        ultra: "ultra";
+    }>>;
+    permissionMode: z$1.ZodOptional<z$1.ZodEnum<{
+        readonly: "readonly";
+        full: "full";
+        "workspace-write": "workspace-write";
+    }>>;
+    executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
+        model: z$1.ZodOptional<z$1.ZodEnum<{
+            explicit: "explicit";
+            "client-preference": "client-preference";
+        }>>;
+        serviceTier: z$1.ZodOptional<z$1.ZodEnum<{
+            explicit: "explicit";
+            "client-preference": "client-preference";
+        }>>;
+        reasoningLevel: z$1.ZodOptional<z$1.ZodEnum<{
+            explicit: "explicit";
+            "client-preference": "client-preference";
+        }>>;
+        permissionMode: z$1.ZodOptional<z$1.ZodEnum<{
+            explicit: "explicit";
+            "client-preference": "client-preference";
+        }>>;
+    }, z$1.core.$strict>>;
+    senderThreadId: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type CreateQueuedMessageRequest = z$1.infer<typeof createQueuedMessageRequestSchema>;
+declare const sendQueuedMessageRequestSchema: z$1.ZodObject<{
+    mode: z$1.ZodEnum<{
+        steer: "steer";
+        auto: "auto";
+    }>;
+}, z$1.core.$strip>;
+type SendQueuedMessageRequest = z$1.infer<typeof sendQueuedMessageRequestSchema>;
+declare const reorderQueuedMessageRequestSchema: z$1.ZodObject<{
+    previousQueuedMessageId: z$1.ZodNullable<z$1.ZodString>;
+    nextQueuedMessageId: z$1.ZodNullable<z$1.ZodString>;
+    groupBoundaryQueuedMessageId: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ReorderQueuedMessageRequest = z$1.infer<typeof reorderQueuedMessageRequestSchema>;
+declare const setQueuedMessageGroupBoundaryRequestSchema: z$1.ZodObject<{
+    expectedGroupedPrefixQueuedMessageIds: z$1.ZodArray<z$1.ZodString>;
+    groupBoundaryQueuedMessageId: z$1.ZodString;
+}, z$1.core.$strip>;
+type SetQueuedMessageGroupBoundaryRequest = z$1.infer<typeof setQueuedMessageGroupBoundaryRequestSchema>;
 declare const threadResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     projectId: z$1.ZodString;
@@ -1164,12 +1534,55 @@ declare const updateThreadRequestSchema: z$1.ZodObject<{
     }>>>;
 }, z$1.core.$strip>;
 type UpdateThreadRequest = z$1.infer<typeof updateThreadRequestSchema>;
+declare const reorderPinnedThreadRequestSchema: z$1.ZodObject<{
+    previousThreadId: z$1.ZodNullable<z$1.ZodString>;
+    nextThreadId: z$1.ZodNullable<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ReorderPinnedThreadRequest = z$1.infer<typeof reorderPinnedThreadRequestSchema>;
 /** Which root a secondary-panel file path is relative to. */
 declare const panelFileSourceSchema: z$1.ZodEnum<{
     workspace: "workspace";
     "thread-storage": "thread-storage";
 }>;
 type PanelFileSource = z$1.infer<typeof panelFileSourceSchema>;
+declare const threadListQuerySchema: z$1.ZodObject<{
+    projectId: z$1.ZodOptional<z$1.ZodString>;
+    parentThreadId: z$1.ZodOptional<z$1.ZodString>;
+    sourceThreadId: z$1.ZodOptional<z$1.ZodString>;
+    archived: z$1.ZodOptional<z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>>;
+    folderId: z$1.ZodOptional<z$1.ZodString>;
+    unfiled: z$1.ZodOptional<z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>>;
+    hasParent: z$1.ZodOptional<z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>>;
+    originKind: z$1.ZodOptional<z$1.ZodEnum<{
+        "side-chat": "side-chat";
+        fork: "fork";
+    }>>;
+    excludeSideChats: z$1.ZodOptional<z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>>;
+    childOrigin: z$1.ZodOptional<z$1.ZodEnum<{
+        "side-chat": "side-chat";
+        fork: "fork";
+    }>>;
+    limit: z$1.ZodOptional<z$1.ZodString>;
+    offset: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ThreadListQuery = z$1.infer<typeof threadListQuerySchema>;
+declare const threadSearchQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodString;
+    limitPerGroup: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ThreadSearchQuery = z$1.infer<typeof threadSearchQuerySchema>;
 declare const threadTimelineQuerySchema: z$1.ZodObject<{
     includeNestedRows: z$1.ZodOptional<z$1.ZodEnum<{
         true: "true";
@@ -1185,6 +1598,109 @@ declare const threadTimelineQuerySchema: z$1.ZodObject<{
     afterSequence: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type ThreadTimelineQuery = z$1.infer<typeof threadTimelineQuerySchema>;
+declare const timelineTurnSummaryDetailsQuerySchema: z$1.ZodObject<{
+    turnId: z$1.ZodString;
+    sourceSeqStart: z$1.ZodString;
+    sourceSeqEnd: z$1.ZodString;
+}, z$1.core.$strip>;
+type TimelineTurnSummaryDetailsQuery = z$1.infer<typeof timelineTurnSummaryDetailsQuerySchema>;
+declare const threadStorageFilesQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodOptional<z$1.ZodString>;
+    limit: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ThreadStorageFilesQuery = z$1.infer<typeof threadStorageFilesQuerySchema>;
+declare const threadStoragePathsQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodOptional<z$1.ZodString>;
+    limit: z$1.ZodOptional<z$1.ZodString>;
+    includeFiles: z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>;
+    includeDirectories: z$1.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>;
+}, z$1.core.$strip>;
+type ThreadStoragePathsQuery = z$1.infer<typeof threadStoragePathsQuerySchema>;
+
+declare const updateThreadTabsRequestSchema: z$1.ZodObject<{
+    expectedRevision: z$1.ZodNumber;
+    tabs: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"thread-info">;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"git-diff">;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        actionId: z$1.ZodString;
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"plugin-panel">;
+        paramsJson: z$1.ZodNullable<z$1.ZodString>;
+        pluginId: z$1.ZodString;
+        title: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        environmentId: z$1.ZodNullable<z$1.ZodString>;
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"workspace-file-preview">;
+        lineRange: z$1.ZodNullable<z$1.ZodObject<{
+            endLineNumber: z$1.ZodNumber;
+            startLineNumber: z$1.ZodNumber;
+        }, z$1.core.$strict>>;
+        path: z$1.ZodString;
+        projectId: z$1.ZodNullable<z$1.ZodString>;
+        source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"working-tree">;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"head">;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"merge-base">;
+            ref: z$1.ZodString;
+        }, z$1.core.$strict>], "kind">;
+        statusLabel: z$1.ZodNullable<z$1.ZodLiteral<"deleted">>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        environmentId: z$1.ZodNullable<z$1.ZodString>;
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"host-file-preview">;
+        lineRange: z$1.ZodNullable<z$1.ZodObject<{
+            endLineNumber: z$1.ZodNumber;
+            startLineNumber: z$1.ZodNumber;
+        }, z$1.core.$strict>>;
+        path: z$1.ZodString;
+        threadId: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        environmentId: z$1.ZodNullable<z$1.ZodString>;
+        id: z$1.ZodString;
+        isPinned: z$1.ZodBoolean;
+        kind: z$1.ZodLiteral<"thread-storage-file-preview">;
+        lineRange: z$1.ZodNullable<z$1.ZodObject<{
+            endLineNumber: z$1.ZodNumber;
+            startLineNumber: z$1.ZodNumber;
+        }, z$1.core.$strict>>;
+        path: z$1.ZodString;
+        threadId: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        environmentId: z$1.ZodNullable<z$1.ZodString>;
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"browser">;
+        title: z$1.ZodNullable<z$1.ZodString>;
+        url: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"new-tab">;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"side-chat">;
+        sourceMessageText: z$1.ZodString;
+        sourceSeqEnd: z$1.ZodNullable<z$1.ZodNumber>;
+        threadId: z$1.ZodNullable<z$1.ZodString>;
+        title: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        id: z$1.ZodString;
+        kind: z$1.ZodLiteral<"terminal">;
+        terminalId: z$1.ZodString;
+    }, z$1.core.$strict>], "kind">>;
+}, z$1.core.$strict>;
+type UpdateThreadTabsRequest = z$1.infer<typeof updateThreadTabsRequestSchema>;
 
 type PublicApiSchema = unknown;
 type ApiClient = unknown;
@@ -1279,6 +1795,16 @@ interface EnvironmentSquashMergeArgs {
     environmentId: string;
     mergeBaseBranch: string;
 }
+interface EnvironmentPullRequestMergeArgs {
+    environmentId: string;
+    method: PullRequestMergeMethod;
+}
+type EnvironmentDiffPatchArgs = EnvironmentDiffPatchRequest & {
+    environmentId: string;
+};
+interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
+    environmentId: string;
+}
 type EnvironmentActionResult = PublicApiOutput<"/environments/:id/actions", "$post">;
 type EnvironmentCommitResult = Extract<EnvironmentActionResult, {
     action: "commit";
@@ -1286,6 +1812,10 @@ type EnvironmentCommitResult = Extract<EnvironmentActionResult, {
 type EnvironmentDiffResult = PublicApiOutput<"/environments/:id/diff", "$get">;
 type EnvironmentDiffBranchesResult = PublicApiOutput<"/environments/:id/diff/branches", "$get">;
 type EnvironmentDiffFileResult = PublicApiOutput<"/environments/:id/diff/file", "$get">;
+type EnvironmentDiffFilesResult = PublicApiOutput<"/environments/:id/diff/files", "$get">;
+type EnvironmentDiffPatchResult = PublicApiOutput<"/environments/:id/diff/patch", "$post">;
+type EnvironmentPathsResult = PublicApiOutput<"/environments/:id/paths", "$get">;
+type EnvironmentArchiveThreadsResult = PublicApiOutput<"/environments/:id/archive-threads", "$post">;
 type EnvironmentGetResult = PublicApiOutput<"/environments/:id", "$get">;
 type EnvironmentPullRequestResult = PublicApiOutput<"/environments/:id/pull-request", "$get">;
 type EnvironmentSquashMergeResult = Extract<EnvironmentActionResult, {
@@ -1294,12 +1824,25 @@ type EnvironmentSquashMergeResult = Extract<EnvironmentActionResult, {
 type EnvironmentStatusResult = PublicApiOutput<"/environments/:id/status", "$get">;
 type EnvironmentUpdateResult = PublicApiOutput<"/environments/:id", "$patch">;
 interface EnvironmentsArea {
+    archiveThreads(args: EnvironmentGetArgs): Promise<EnvironmentArchiveThreadsResult>;
     commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
     diff(args: EnvironmentDiffArgs): Promise<EnvironmentDiffResult>;
     diffBranches(args: EnvironmentDiffBranchesArgs): Promise<EnvironmentDiffBranchesResult>;
     diffFile(args: EnvironmentDiffFileArgs): Promise<EnvironmentDiffFileResult>;
+    diffFiles(args: EnvironmentDiffArgs): Promise<EnvironmentDiffFilesResult>;
+    diffPatch(args: EnvironmentDiffPatchArgs): Promise<EnvironmentDiffPatchResult>;
     get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
     pullRequest(args: EnvironmentGetArgs): Promise<EnvironmentPullRequestResult>;
+    markPullRequestDraft(args: EnvironmentGetArgs): Promise<Extract<EnvironmentActionResult, {
+        action: "pull_request_draft";
+    }>>;
+    markPullRequestReady(args: EnvironmentGetArgs): Promise<Extract<EnvironmentActionResult, {
+        action: "pull_request_ready";
+    }>>;
+    mergePullRequest(args: EnvironmentPullRequestMergeArgs): Promise<Extract<EnvironmentActionResult, {
+        action: "pull_request_merge";
+    }>>;
+    paths(args: EnvironmentPathsArgs): Promise<EnvironmentPathsResult>;
     squashMerge(args: EnvironmentSquashMergeArgs): Promise<EnvironmentSquashMergeResult>;
     status(args: EnvironmentStatusArgs): Promise<EnvironmentStatusResult>;
     update(args: EnvironmentUpdateArgs): Promise<EnvironmentUpdateResult>;
@@ -1402,11 +1945,40 @@ declare function createGuideArea(): GuideArea;
 interface HostGetArgs {
     hostId: string;
 }
+interface HostUpdateArgs extends UpdateHostRequest {
+    hostId: string;
+}
+interface HostDirectoryArgs extends HostDirectoryQuery {
+    hostId: string;
+}
+interface HostCloneDefaultPathArgs extends HostCloneDefaultPathQuery {
+    hostId: string;
+}
+interface HostPathsExistArgs extends HostPathsExistRequest {
+    hostId: string;
+}
+interface HostPickFolderArgs extends HostPickFolderRequest {
+    hostId: string;
+}
+interface HostProviderCliInstallArgs extends HostProviderCliInstallRequest {
+    hostId: string;
+}
 type HostGetResult = PublicApiOutput<"/hosts/:id", "$get">;
 type HostListResult = PublicApiOutput<"/hosts", "$get">;
 interface HostsArea {
+    createJoinCode(): Promise<PublicApiOutput<"/hosts/join-codes", "$post">>;
+    delete(args: HostGetArgs): Promise<{
+        ok: true;
+    }>;
+    directory(args: HostDirectoryArgs): Promise<PublicApiOutput<"/hosts/:id/directory", "$get">>;
     get(args: HostGetArgs): Promise<HostGetResult>;
+    cloneDefaultPath(args: HostCloneDefaultPathArgs): Promise<PublicApiOutput<"/hosts/:id/clone-default-path", "$get">>;
+    installProviderCli(args: HostProviderCliInstallArgs): Promise<PublicApiOutput<"/hosts/:id/provider-clis/install", "$post">[]>;
     list(): Promise<HostListResult>;
+    pathsExist(args: HostPathsExistArgs): Promise<PublicApiOutput<"/hosts/:id/paths/exist", "$post">>;
+    pickFolder(args: HostPickFolderArgs): Promise<PublicApiOutput<"/hosts/:id/pick-folder", "$post">>;
+    providerCliStatus(args: HostGetArgs): Promise<PublicApiOutput<"/hosts/:id/provider-clis/status", "$get">>;
+    update(args: HostUpdateArgs): Promise<PublicApiOutput<"/hosts/:id", "$patch">>;
 }
 declare function createHostsArea(args: CreateSdkAreaArgs): HostsArea;
 
@@ -1421,6 +1993,24 @@ interface ProjectUpdateArgs extends UpdateProjectRequest {
     projectId: string;
 }
 interface ProjectDeleteArgs {
+    projectId: string;
+}
+interface ProjectReorderArgs extends ReorderProjectRequest {
+    projectId: string;
+}
+interface ProjectPromptHistoryArgs extends PromptHistoryQuery {
+    projectId: string;
+}
+interface ProjectPathsArgs extends ProjectPathsQuery {
+    projectId: string;
+}
+interface ProjectCommandsArgs extends ProjectCommandsQuery {
+    projectId: string;
+}
+interface ProjectBranchesArgs extends ProjectBranchesQuery {
+    projectId: string;
+}
+interface ProjectDefaultExecutionOptionsArgs {
     projectId: string;
 }
 type ProjectSourceAddArgs = CreateProjectSourceRequest & {
@@ -1439,6 +2029,12 @@ type ProjectDeleteResult = PublicApiOutput<"/projects/:id", "$delete">;
 type ProjectGetResult = PublicApiOutput<"/projects/:id", "$get">;
 type ProjectListResult = PublicApiOutput<"/projects", "$get">;
 type ProjectUpdateResult = PublicApiOutput<"/projects/:id", "$patch">;
+type ProjectReorderResult = PublicApiOutput<"/projects/:id/order", "$patch">;
+type ProjectPromptHistoryResult = PublicApiOutput<"/projects/:id/prompt-history", "$get">;
+type ProjectPathsResult = PublicApiOutput<"/projects/:id/paths", "$get">;
+type ProjectCommandsResult = PublicApiOutput<"/projects/:id/commands", "$get">;
+type ProjectBranchesResult = PublicApiOutput<"/projects/:id/branches", "$get">;
+type ProjectDefaultExecutionOptionsResult = PublicApiOutput<"/projects/:id/default-execution-options", "$get">;
 type ProjectSourceAddResult = PublicApiOutput<"/projects/:id/sources", "$post">;
 type ProjectSourceUpdateResult = PublicApiOutput<"/projects/:id/sources/:sourceId", "$patch">;
 type ProjectSourceDeleteResult = PublicApiOutput<"/projects/:id/sources/:sourceId", "$delete">;
@@ -1448,10 +2044,16 @@ interface ProjectSourcesArea {
     update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
 interface ProjectsArea {
+    branches(args: ProjectBranchesArgs): Promise<ProjectBranchesResult>;
+    commands(args: ProjectCommandsArgs): Promise<ProjectCommandsResult>;
     create(args: ProjectCreateArgs): Promise<ProjectCreateResult>;
+    defaultExecutionOptions(args: ProjectDefaultExecutionOptionsArgs): Promise<ProjectDefaultExecutionOptionsResult>;
     delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
     get(args: ProjectGetArgs): Promise<ProjectGetResult>;
     list(args?: ProjectListArgs): Promise<ProjectListResult>;
+    paths(args: ProjectPathsArgs): Promise<ProjectPathsResult>;
+    promptHistory(args: ProjectPromptHistoryArgs): Promise<ProjectPromptHistoryResult>;
+    reorder(args: ProjectReorderArgs): Promise<ProjectReorderResult>;
     sources: ProjectSourcesArea;
     update(args: ProjectUpdateArgs): Promise<ProjectUpdateResult>;
 }
@@ -1466,6 +2068,40 @@ interface ProvidersArea {
     models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;
 }
 declare function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea;
+
+interface PluginIdArgs {
+    pluginId: string;
+}
+interface PluginInstallArgs {
+    source: string;
+}
+interface PluginReloadArgs {
+    pluginId?: string;
+}
+interface PluginSettingsUpdateArgs extends PluginIdArgs {
+    values: Record<string, JsonValue>;
+}
+interface PluginTokenArgs extends PluginIdArgs {
+    rotate?: boolean;
+}
+interface PluginRpcArgs<TOutput> extends PluginIdArgs {
+    input?: JsonValue;
+    method: string;
+    outputSchema: z$1.ZodType<TOutput>;
+}
+interface PluginsArea {
+    callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
+    disable(args: PluginIdArgs): Promise<JsonValue>;
+    enable(args: PluginIdArgs): Promise<JsonValue>;
+    getSettings(args: PluginIdArgs): Promise<JsonValue>;
+    install(args: PluginInstallArgs): Promise<JsonValue>;
+    list(): Promise<JsonValue>;
+    reload(args?: PluginReloadArgs): Promise<JsonValue>;
+    remove(args: PluginIdArgs): Promise<JsonValue>;
+    token(args: PluginTokenArgs): Promise<JsonValue>;
+    updateSettings(args: PluginSettingsUpdateArgs): Promise<JsonValue>;
+}
+declare function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea;
 
 type BbRealtimeUnsubscribe = () => void;
 type BbRealtimeEventName = "thread:changed" | "project:changed" | "environment:changed" | "host:changed" | "system:changed" | "system:config-changed" | "realtime:connection";
@@ -1590,11 +2226,41 @@ interface ThemeArea {
 }
 declare function createThemeArea(args: CreateSdkAreaArgs): ThemeArea;
 
+interface SystemVersionArgs {
+    force?: boolean;
+}
+interface SystemVoiceTranscriptionArgs {
+    file: Blob;
+    prompt?: string;
+}
+interface SystemArea {
+    attention(): Promise<PublicApiOutput<"/system/attention", "$get">>;
+    config(): Promise<PublicApiOutput<"/system/config", "$get">>;
+    executionOptions(args?: SystemExecutionOptionsQuery): Promise<PublicApiOutput<"/system/execution-options", "$get">>;
+    reloadConfig(): Promise<PublicApiOutput<"/system/config/reload", "$post">>;
+    transcribeVoice(args: SystemVoiceTranscriptionArgs): Promise<PublicApiOutput<"/system/voice-transcription", "$post">>;
+    updateExperiments(args: Experiments): Promise<PublicApiOutput<"/settings/experiments", "$put">>;
+    updateGeneralSettings(args: AppSettings): Promise<PublicApiOutput<"/settings/general", "$put">>;
+    updateKeyboardSettings(args: AppKeybindingOverrides): Promise<PublicApiOutput<"/settings/keyboard", "$put">>;
+    usageLimits(): Promise<PublicApiOutput<"/system/usage-limits", "$get">>;
+    version(args?: SystemVersionArgs): Promise<PublicApiOutput<"/system/version", "$get">>;
+}
+declare function createSystemArea(args: CreateSdkAreaArgs): SystemArea;
+
 interface ThreadListArgs {
     archived?: boolean;
+    excludeSideChats?: boolean;
+    folderId?: string;
     hasParent?: boolean;
+    limit?: number;
+    offset?: number;
+    originKind?: ThreadListQuery["originKind"];
     parentThreadId?: string;
     projectId?: string;
+    sourceThreadId?: string;
+    unfiled?: boolean;
+}
+interface ThreadSearchArgs extends ThreadSearchQuery {
 }
 interface ThreadGetArgs {
     include?: ThreadGetQuery["include"];
@@ -1602,6 +2268,7 @@ interface ThreadGetArgs {
 }
 type ThreadGetResult = PublicApiOutput<"/threads/:id", "$get">;
 type ThreadListResult = PublicApiOutput<"/threads", "$get">;
+type ThreadSearchResult = PublicApiOutput<"/threads/search", "$get">;
 type ThreadOutputResponse = PublicApiOutput<"/threads/:id/output", "$get">;
 type ThreadMutationResult = PublicApiOutput<"/threads/:id", "$patch">;
 type ThreadSpawnResult = PublicApiOutput<"/threads", "$post">;
@@ -1626,6 +2293,18 @@ type ThreadTerminalOutputResult = PublicApiOutput<"/terminals/:terminalId/output
 type ThreadTerminalResizeResult = PublicApiOutput<"/terminals/:terminalId/resize", "$post">;
 type ThreadTerminalUpdateResult = PublicApiOutput<"/terminals/:terminalId", "$patch">;
 type ThreadUnarchiveResult = PublicApiOutput<"/threads/:id/unarchive", "$post">;
+type ThreadArchiveAllResult = PublicApiOutput<"/threads/:id/archive-all", "$post">;
+type ThreadReadStateResult = PublicApiOutput<"/threads/:id/read", "$post">;
+type ThreadPinOrderResult = PublicApiOutput<"/threads/:id/pin-order", "$patch">;
+type ThreadPromptHistoryResult = PublicApiOutput<"/threads/:id/prompt-history", "$get">;
+type ThreadQueuedMessagesResult = PublicApiOutput<"/threads/:id/queued-messages", "$get">;
+type ThreadTabsResult = PublicApiOutput<"/threads/:id/tabs", "$get">;
+type ThreadStorageFilesResult = PublicApiOutput<"/threads/:id/thread-storage/files", "$get">;
+type ThreadStoragePathsResult = PublicApiOutput<"/threads/:id/thread-storage/paths", "$get">;
+type ThreadChildSummaryResult = PublicApiOutput<"/threads/:id/child-summary", "$get">;
+type ThreadDefaultExecutionOptionsResult = PublicApiOutput<"/threads/:id/default-execution-options", "$get">;
+type ThreadConversationOutlineResult = PublicApiOutput<"/threads/:id/conversation-outline", "$get">;
+type ThreadTimelineTurnSummaryDetailsResult = PublicApiOutput<"/threads/:id/timeline/turn-summary-details", "$get">;
 interface ThreadSpawnBaseArgs extends Omit<CreateThreadRequest, "childOrigin" | "input" | "origin" | "originKind" | "startedOnBehalfOf"> {
     childOrigin?: CreateThreadRequest["childOrigin"];
     origin?: CreateThreadRequest["origin"];
@@ -1649,6 +2328,41 @@ interface ThreadSendArgs extends SendMessageRequest {
     threadId: string;
 }
 interface ThreadStatusArgs {
+    threadId: string;
+}
+interface ThreadPromptHistoryArgs extends PromptHistoryQuery {
+    threadId: string;
+}
+interface ThreadPinOrderArgs extends ReorderPinnedThreadRequest {
+    threadId: string;
+}
+interface ThreadQueuedMessageArgs {
+    threadId: string;
+}
+interface ThreadQueuedMessageCreateArgs extends CreateQueuedMessageRequest {
+    threadId: string;
+}
+interface ThreadQueuedMessageTargetArgs {
+    queuedMessageId: string;
+    threadId: string;
+}
+interface ThreadQueuedMessageSendArgs extends ThreadQueuedMessageTargetArgs, SendQueuedMessageRequest {
+}
+interface ThreadQueuedMessageReorderArgs extends ThreadQueuedMessageTargetArgs, ReorderQueuedMessageRequest {
+}
+interface ThreadQueuedMessageGroupBoundaryArgs extends SetQueuedMessageGroupBoundaryRequest {
+    threadId: string;
+}
+interface ThreadStorageFilesArgs extends ThreadStorageFilesQuery {
+    threadId: string;
+}
+interface ThreadStoragePathsArgs extends ThreadStoragePathsQuery {
+    threadId: string;
+}
+interface ThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsQuery {
+    threadId: string;
+}
+interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
     threadId: string;
 }
 interface ThreadOpenArgs {
@@ -1755,21 +2469,49 @@ interface ThreadTerminalsArea {
     resize(args: ThreadTerminalResizeArgs): Promise<ThreadTerminalResizeResult>;
     update(args: ThreadTerminalUpdateArgs): Promise<ThreadTerminalUpdateResult>;
 }
+interface ThreadQueuedMessagesArea {
+    create(args: ThreadQueuedMessageCreateArgs): Promise<PublicApiOutput<"/threads/:id/queued-messages", "$post">>;
+    delete(args: ThreadQueuedMessageTargetArgs): Promise<{
+        ok: true;
+    }>;
+    list(args: ThreadQueuedMessageArgs): Promise<ThreadQueuedMessagesResult>;
+    reorder(args: ThreadQueuedMessageReorderArgs): Promise<PublicApiOutput<"/threads/:id/queued-messages/:queuedMessageId/order", "$patch">>;
+    send(args: ThreadQueuedMessageSendArgs): Promise<PublicApiOutput<"/threads/:id/queued-messages/:queuedMessageId/send", "$post">>;
+    setGroupBoundary(args: ThreadQueuedMessageGroupBoundaryArgs): Promise<PublicApiOutput<"/threads/:id/queued-messages/group-boundary", "$patch">>;
+}
+interface ThreadTabsArea {
+    get(args: ThreadStatusArgs): Promise<ThreadTabsResult>;
+    update(args: ThreadTabsUpdateArgs): Promise<PublicApiOutput<"/threads/:id/tabs", "$put">>;
+}
 interface ThreadsArea {
     archive(args: ThreadStatusArgs): Promise<ThreadArchiveResult>;
+    archiveAll(args: ThreadStatusArgs): Promise<ThreadArchiveAllResult>;
+    childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
+    conversationOutline(args: ThreadStatusArgs): Promise<ThreadConversationOutlineResult>;
+    defaultExecutionOptions(args: ThreadStatusArgs): Promise<ThreadDefaultExecutionOptionsResult>;
     delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
     events: ThreadEventsArea;
     get(args: ThreadGetArgs): Promise<ThreadGetResult>;
     interactions: ThreadInteractionsArea;
     list(args?: ThreadListArgs): Promise<ThreadListResult>;
+    markRead(args: ThreadStatusArgs): Promise<ThreadReadStateResult>;
+    markUnread(args: ThreadStatusArgs): Promise<ThreadReadStateResult>;
     open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
     output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
     pin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
+    promptHistory(args: ThreadPromptHistoryArgs): Promise<ThreadPromptHistoryResult>;
+    queuedMessages: ThreadQueuedMessagesArea;
+    reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
+    search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
     send(args: ThreadSendArgs): Promise<ThreadSendResult>;
     spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
     stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
     terminals: ThreadTerminalsArea;
+    tabs: ThreadTabsArea;
     timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
+    timelineTurnSummaryDetails(args: ThreadTimelineTurnSummaryDetailsArgs): Promise<ThreadTimelineTurnSummaryDetailsResult>;
+    storageFiles(args: ThreadStorageFilesArgs): Promise<ThreadStorageFilesResult>;
+    storagePaths(args: ThreadStoragePathsArgs): Promise<ThreadStoragePathsResult>;
     unarchive(args: ThreadStatusArgs): Promise<ThreadUnarchiveResult>;
     unpin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
     update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
@@ -1777,15 +2519,29 @@ interface ThreadsArea {
 }
 declare function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea;
 
+type ThreadFolderCreateResult = PublicApiOutput<"/thread-folders", "$post">;
+type ThreadFolderUpdateResult = PublicApiOutput<"/thread-folders", "$patch">;
+type ThreadFolderDeleteResult = PublicApiOutput<"/thread-folders", "$delete">;
+interface ThreadFoldersArea {
+    create(args: CreateThreadFolderRequest): Promise<ThreadFolderCreateResult>;
+    delete(args: DeleteThreadFolderRequest): Promise<ThreadFolderDeleteResult>;
+    list(): Promise<ThreadFolderCreateResult[]>;
+    update(args: UpdateThreadFolderRequest): Promise<ThreadFolderUpdateResult>;
+}
+declare function createThreadFoldersArea(args: CreateSdkAreaArgs): ThreadFoldersArea;
+
 interface BbSdk extends BbRealtime {
     environments: ReturnType<typeof createEnvironmentsArea>;
     files: ReturnType<typeof createFilesArea>;
     guide: ReturnType<typeof createGuideArea>;
     hosts: ReturnType<typeof createHostsArea>;
     projects: ReturnType<typeof createProjectsArea>;
+    plugins: ReturnType<typeof createPluginsArea>;
     providers: ReturnType<typeof createProvidersArea>;
     status: ReturnType<typeof createStatusArea>;
+    system: ReturnType<typeof createSystemArea>;
     theme: ReturnType<typeof createThemeArea>;
+    threadFolders: ReturnType<typeof createThreadFoldersArea>;
     threads: ReturnType<typeof createThreadsArea>;
 }
 

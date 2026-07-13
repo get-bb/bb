@@ -21,6 +21,8 @@ import {
   parsePermissionMode,
   parseServiceTier,
   PERMISSION_MODE_HELP,
+  buildPromptInputs,
+  collectOption,
 } from "./helpers.js";
 
 interface ThreadUpdateCommandOptions {
@@ -29,6 +31,8 @@ interface ThreadUpdateCommandOptions {
   title?: string;
   parentThread?: string;
   clearParentThread?: boolean;
+  folder?: string;
+  clearFolder?: boolean;
   model?: string;
   reasoningLevel?: string;
 }
@@ -61,6 +65,8 @@ interface ThreadTellCommandOptions {
   reasoningLevel?: string;
   serviceTier?: string;
   mode?: string;
+  file?: string[];
+  image?: string[];
 }
 
 interface ThreadStopCommandOptions {
@@ -80,6 +86,8 @@ interface PostThreadMessageArgs {
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
   senderThreadId?: string;
+  files?: readonly string[];
+  images?: readonly string[];
 }
 
 interface PostThreadMessageResult {
@@ -89,6 +97,7 @@ interface PostThreadMessageResult {
 
 interface ThreadUpdateBody {
   title?: string;
+  folderId?: string | null;
   parentThreadId?: string | null;
   model?: string;
   reasoningLevel?: ReasoningLevel;
@@ -106,6 +115,8 @@ export function registerActionsCommands(
     .option("--title <title>", "Set the thread title")
     .option("--parent-thread <id>", "Set the parent thread id")
     .option("--clear-parent-thread", "Clear the parent thread id")
+    .option("--folder <id>", "Move the thread into a folder")
+    .option("--clear-folder", "Remove the thread from its folder")
     .option(
       "--model <model>",
       "Set the sticky model applied on the thread's next turn",
@@ -122,16 +133,21 @@ export function registerActionsCommands(
               "Cannot combine --parent-thread with --clear-parent-thread.",
             );
           }
+          if (opts.folder && opts.clearFolder) {
+            throw new Error("Cannot combine --folder with --clear-folder.");
+          }
           const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
           if (
             !opts.parentThread &&
             !opts.clearParentThread &&
+            !opts.folder &&
+            !opts.clearFolder &&
             !opts.title &&
             !opts.model &&
             !reasoningLevel
           ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --model, or --reasoning-level.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --folder, --clear-folder, --model, or --reasoning-level.",
             );
           }
 
@@ -148,6 +164,14 @@ export function registerActionsCommands(
             body.parentThreadId = parentThreadId;
           } else if (opts.clearParentThread) {
             body.parentThreadId = null;
+          }
+          if (opts.folder) {
+            body.folderId = resolveExplicitIdFlag({
+              flagName: "--folder",
+              value: opts.folder,
+            });
+          } else if (opts.clearFolder) {
+            body.folderId = null;
           }
           if (opts.model) {
             body.model = opts.model;
@@ -168,6 +192,11 @@ export function registerActionsCommands(
               thread.parentThreadId
                 ? `Parent: ${thread.parentThreadId}`
                 : "No parent thread",
+            );
+          }
+          if (opts.folder || opts.clearFolder) {
+            console.log(
+              thread.folderId ? `Folder: ${thread.folderId}` : "No folder",
             );
           }
           if (opts.model) {
@@ -319,6 +348,18 @@ export function registerActionsCommands(
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--mode <mode>", "Message mode: queue, steer, or auto")
+    .option(
+      "--file <path>",
+      "Attach a local file (repeatable)",
+      collectOption,
+      [],
+    )
+    .option(
+      "--image <path>",
+      "Attach a local image (repeatable)",
+      collectOption,
+      [],
+    )
     .action(
       action(
         async (id: string, message: string, opts: ThreadTellCommandOptions) => {
@@ -332,6 +373,8 @@ export function registerActionsCommands(
             reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
             serviceTier: parseServiceTier(opts.serviceTier),
             senderThreadId: resolveSenderThreadId(id),
+            files: opts.file,
+            images: opts.image,
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(
@@ -365,7 +408,11 @@ async function postThreadMessage(
   const sdk = createCliBbSdk(args.getUrl());
   await sdk.threads.send({
     threadId: args.threadId,
-    input: [{ type: "text", text: args.message, mentions: [] }],
+    input: buildPromptInputs({
+      message: args.message,
+      files: args.files,
+      images: args.images,
+    }),
     mode:
       args.mode === "steer"
         ? "steer-if-active"

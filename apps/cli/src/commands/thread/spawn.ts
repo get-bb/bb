@@ -19,6 +19,8 @@ import {
 } from "../helpers.js";
 import {
   parsePermissionMode,
+  buildPromptInputs,
+  collectOption,
   PERMISSION_MODE_HELP,
   parseServiceTier,
 } from "./helpers.js";
@@ -40,6 +42,12 @@ interface ThreadSpawnCommandOptions {
   parentSelf?: boolean;
   machine?: string;
   host?: string;
+  file?: string[];
+  image?: string[];
+  folder?: string;
+  originKind?: string;
+  sourceThread?: string;
+  sourceSeqEnd?: string;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -189,6 +197,22 @@ export function registerSpawnCommand(
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
+    .option(
+      "--file <path>",
+      "Attach a local file (repeatable)",
+      collectOption,
+      [],
+    )
+    .option(
+      "--image <path>",
+      "Attach a local image (repeatable)",
+      collectOption,
+      [],
+    )
+    .option("--folder <id>", "Create the thread in a folder")
+    .option("--origin-kind <kind>", "Thread origin: fork or side-chat")
+    .option("--source-thread <id>", "Source thread for a fork or side chat")
+    .option("--source-seq-end <seq>", "Last source event sequence")
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
         const projectId = resolveExplicitIdFlag({
@@ -239,6 +263,23 @@ export function registerSpawnCommand(
           parentSelf: opts.parentSelf,
           parentThread: opts.parentThread,
         });
+        if (
+          opts.originKind !== undefined &&
+          opts.originKind !== "fork" &&
+          opts.originKind !== "side-chat"
+        ) {
+          throw new Error("--origin-kind must be fork or side-chat.");
+        }
+        const sourceSeqEnd =
+          opts.sourceSeqEnd === undefined
+            ? undefined
+            : Number(opts.sourceSeqEnd);
+        if (
+          sourceSeqEnd !== undefined &&
+          (!Number.isInteger(sourceSeqEnd) || sourceSeqEnd < 0)
+        ) {
+          throw new Error("--source-seq-end must be a non-negative integer.");
+        }
 
         let thread: Thread;
         try {
@@ -248,7 +289,11 @@ export function registerSpawnCommand(
             projectId,
             ...(opts.provider ? { providerId: opts.provider } : {}),
             ...(opts.model ? { model: opts.model } : {}),
-            input: [{ type: "text", text: opts.prompt, mentions: [] }],
+            input: buildPromptInputs({
+              message: opts.prompt,
+              files: opts.file,
+              images: opts.image,
+            }),
             ...(reasoningLevel ? { reasoningLevel } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(serviceTier ? { serviceTier } : {}),
@@ -262,9 +307,12 @@ export function registerSpawnCommand(
             // SDK arg type but the underlying $post still requires them, so the
             // null lives here.)
             startedOnBehalfOf: null,
-            originKind: null,
+            originKind: opts.originKind ?? null,
             childOrigin: null,
             ...(parentThreadId ? { parentThreadId } : {}),
+            ...(opts.folder ? { folderId: opts.folder } : {}),
+            ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
+            ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);

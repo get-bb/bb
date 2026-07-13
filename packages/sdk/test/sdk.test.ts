@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { Environment, JsonValue } from "@bb/domain";
 import { createBbSdk } from "../src/core.js";
 import { createHttpTransport } from "../src/transport-http.js";
@@ -262,6 +263,99 @@ describe("@bb/sdk", () => {
     expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}").origin).toBe("cli");
   });
 
+  it("preserves folder assignment in thread updates", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          id: "thr_folder",
+          projectId: "proj_123",
+          status: "idle",
+          title: null,
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.update({
+      threadId: "thr_folder",
+      folderId: "folder_123",
+    });
+
+    expect(queue.requests[0]).toEqual({
+      bodyText: JSON.stringify({ folderId: "folder_123" }),
+      method: "PATCH",
+      url: "http://bb.test/api/v1/threads/thr_folder",
+    });
+  });
+
+  it("exposes thread folder mutations", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          id: "folder_123",
+          name: "Review",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        status: 201,
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threadFolders.create({ name: "Review" }),
+    ).resolves.toMatchObject({ id: "folder_123", name: "Review" });
+    expect(queue.requests[0]).toEqual({
+      bodyText: JSON.stringify({ name: "Review" }),
+      method: "POST",
+      url: "http://bb.test/api/v1/thread-folders",
+    });
+  });
+
+  it("validates typed plugin RPC results", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          ok: true,
+          result: { instructions: "Run tests." },
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test/",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.plugins.callRpc({
+        pluginId: "custom-instructions",
+        method: "getInstructions",
+        input: null,
+        outputSchema: z.object({ instructions: z.string() }),
+      }),
+    ).resolves.toEqual({ instructions: "Run tests." });
+    expect(queue.requests[0]).toEqual({
+      bodyText: "null",
+      method: "POST",
+      url: "http://bb.test/api/v1/plugins/custom-instructions/rpc/getInstructions",
+    });
+  });
+
   it("rejects thread spawn requests with both prompt and input", async () => {
     const queue = createFetchQueue([]);
     const sdk = createBbSdk({
@@ -341,5 +435,4 @@ describe("@bb/sdk", () => {
       }),
     ).rejects.toBeInstanceOf(ThreadWaitTimeoutError);
   });
-
 });

@@ -45,6 +45,9 @@ message agents, or inspect projects, providers, and environments.
   actions apply in browser and desktop clients, and desktop menu accelerators
   use the same resolved bindings. For details, read
   `references/app-settings.md`.
+- Use `bb settings show`, `bb settings general`, `bb settings experiment`,
+  `bb settings keyboard`, `bb settings usage`, and `bb settings version` to
+  inspect or change these server-backed values from agents.
 
 ## Agent Instructions
 
@@ -66,6 +69,8 @@ message agents, or inspect projects, providers, and environments.
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
+- Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
+  attachments, and `--folder <id>` to file the new thread immediately.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
@@ -100,10 +105,16 @@ message agents, or inspect projects, providers, and environments.
   workspace, or combine it with `--new-environment worktree`. Do not combine a
   machine selector with an existing environment ID, which already owns its
   machine.
+- `bb machine show`, `join-code`, `rename`, and `remove` cover the Settings →
+  Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
+  or install provider CLIs on a selected machine.
 - Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
   to register a path on another machine. Use `--clone` instead of `--path` to
   clone the project's remote there; `--remote-url` and `--target-path` are
   optional clone overrides.
+- `bb project history|reorder` exposes project prompt recall and sidebar order.
+- `bb environment pull-request ready|draft|merge` manages pull-request state;
+  `bb environment archive-threads` bulk-archives an environment's threads.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or
@@ -155,6 +166,9 @@ or artifacts, validation performed, and blockers.
 
 ## Inspecting Results
 
+- Use `bb thread search`, `history`, `read|unread`, and `folder` for the same
+  organization and recall features as the sidebar. `bb thread queue` exposes
+  queued-message list/create/send/reorder/group/delete operations.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
@@ -175,6 +189,13 @@ For review or fix pipelines, get the environment ID from
   target thread workspace.
 - Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the
   current thread.
+
+## Files And Voice
+
+- Use `bb file read|write|list|paths|mkdir|move|remove` for SDK-equivalent host
+  file access. `--host` targets another machine; `--root` confines mutations.
+- Use `bb voice transcribe <file>` to invoke the configured voice transcription
+  service without the app composer.
 
 ## Long-Running Commands
 

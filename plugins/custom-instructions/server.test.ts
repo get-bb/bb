@@ -48,6 +48,27 @@ describe("custom instructions plugin", () => {
     ).toBe("Always run focused tests.");
   });
 
+  it("provides CLI parity for reading and updating instructions", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "custom-instructions",
+    });
+    await plugin(bb);
+
+    await expect(
+      harness.runCli(["set", "Prefer", "small", "commits.", "--json"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: JSON.stringify({ instructions: "Prefer small commits." }),
+    });
+    await expect(harness.runCli(["get"])).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "Prefer small commits.",
+    });
+    await expect(bb.storage.kv.get("customInstructions")).resolves.toBe(
+      "Prefer small commits.",
+    );
+  });
+
   it("contributes nothing for blank text and rejects malformed or oversized saves", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "custom-instructions",

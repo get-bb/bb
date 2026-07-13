@@ -1,6 +1,5 @@
 import { access } from "node:fs/promises";
 import { execFile } from "node:child_process";
-import { cp, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -30,47 +29,11 @@ async function copyBuildOutput({ from, label, to }) {
 }
 
 async function buildPublicSdkDeclarations() {
-  const typesDir = resolve(packageRoot, "dist-types");
-  await rm(typesDir, { force: true, recursive: true });
   await execFileAsync(
-    "tsc",
-    [
-      "--declaration",
-      "--emitDeclarationOnly",
-      "--declarationMap",
-      "false",
-      "--noEmit",
-      "false",
-      "--outDir",
-      typesDir,
-      "--rootDir",
-      "src",
-      "--module",
-      "NodeNext",
-      "--moduleResolution",
-      "NodeNext",
-      "--target",
-      "ES2022",
-      "--strict",
-      "true",
-      "--skipLibCheck",
-      "true",
-      "--esModuleInterop",
-      "true",
-      "--customConditions",
-      "source",
-      "--types",
-      "node",
-      "--ignoreConfig",
-      "src/public-sdk.ts",
-    ],
+    "node",
+    [resolve(scriptsDir, "build-public-sdk-dts.mjs")],
     { cwd: packageRoot },
   );
-  await cp(
-    resolve(typesDir, "public-sdk.d.ts"),
-    resolve(packageRoot, "dist", "index.d.ts"),
-  );
-  await rm(typesDir, { force: true, recursive: true });
 }
 
 const entrypoints = [
@@ -117,7 +80,13 @@ await execFileAsync(
   [
     "--import",
     "tsx",
-    resolve(workspaceRoot, "apps", "server", "scripts", "copy-builtin-plugins.ts"),
+    resolve(
+      workspaceRoot,
+      "apps",
+      "server",
+      "scripts",
+      "copy-builtin-plugins.ts",
+    ),
     "--target",
     resolve(packageRoot, "server", "dist", "builtin-plugins"),
   ],

@@ -1,6 +1,7 @@
 import {
   permissionModeSchema,
   type PermissionMode,
+  type PromptInput,
   serviceTierSchema,
   type ServiceTier,
 } from "@bb/domain";
@@ -23,6 +24,26 @@ export type { ThreadWaitTarget };
 const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
 export const PERMISSION_MODE_HELP =
   "Permission mode: full, workspace-write, or readonly";
+
+export function collectOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+export function buildPromptInputs(args: {
+  message: string;
+  files?: readonly string[];
+  images?: readonly string[];
+}): PromptInput[] {
+  return [
+    { type: "text", text: args.message, mentions: [] },
+    ...(args.files ?? []).map(
+      (path): PromptInput => ({ type: "localFile", path }),
+    ),
+    ...(args.images ?? []).map(
+      (path): PromptInput => ({ type: "localImage", path }),
+    ),
+  ];
+}
 
 export function parseThreadWaitTimeoutSeconds(
   value: string | undefined,

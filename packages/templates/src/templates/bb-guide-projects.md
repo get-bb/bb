@@ -10,6 +10,10 @@ Project commands
 A project maps to a code repository. All threads belong to a project.
 
   bb project list                         List all projects
+  bb project history <id>                 List prompt history
+  bb project reorder <id>                 Reorder in the sidebar
+    --after <id>                          Previous project, or omit for start
+    --before <id>                         Next project, or omit for end
   bb project create --name "..." [options]
     --root <path>                         Project root path
 
@@ -19,6 +23,13 @@ A project maps to a code repository. All threads belong to a project.
 
   bb project delete <id>                  Delete project and all threads
     --yes                                 Skip confirmation
+
+Discovery:
+
+  bb project branches <id> --host <id>   List branches for a machine source
+  bb project paths <id>                   Search workspace paths
+  bb project commands <id> --provider <id>
+                                          List commands and skills
 
 Sources:
 

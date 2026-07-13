@@ -27,6 +27,12 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
+    --folder <id>                  Create the thread in a folder
+    --file <path>                  Attach a local file (repeatable)
+    --image <path>                 Attach a local image (repeatable)
+    --origin-kind <kind>           Create a fork or side-chat thread
+    --source-thread <id>           Source thread for fork/side-chat
+    --source-seq-end <seq>         Last included source event sequence
 
   Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
   When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
@@ -43,6 +49,18 @@ Listing:
     --project <id>                         Filter by project
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
+    --folder <id>                          Filter by folder
+    --unfiled                              Show only threads outside folders
+
+  bb thread search <query>                 Search threads and messages
+  bb thread history <id>                   List prompt history
+
+Folders:
+
+  bb thread folder list
+  bb thread folder create <name>
+  bb thread folder rename <id> <name>
+  bb thread folder delete <id> [--yes]
 
 Inspecting:
 
@@ -144,6 +162,8 @@ Messaging:
     --mode <mode>                          Message mode: queue (default), steer, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
+    --file <path>                          Attach a local file (repeatable)
+    --image <path>                         Attach a local image (repeatable)
 
   By default, tell queues: if the agent is working, the message is delivered
   after the current turn finishes. Use --mode steer to send immediately into
@@ -160,6 +180,26 @@ Ownership:
     --title <title>                        Set title
     --parent-thread <id>                   Assign to a parent thread
     --clear-parent-thread                  Remove parent assignment
+    --folder <id>                          Move into a folder
+    --clear-folder                         Remove folder assignment
+
+  bb thread read [id]                      Mark read
+  bb thread unread [id]                    Mark unread
+  bb thread reorder-pinned <id> [--after <id>] [--before <id>]
+
+Queued messages:
+
+  bb thread queue list <thread-id>
+  bb thread queue create <thread-id> <message>
+  bb thread queue send <thread-id> <message-id> [--mode auto|steer]
+  bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
+  bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
+  bb thread queue delete <thread-id> <message-id>
+
+Persisted panel tabs:
+
+  bb thread tabs show <thread-id>
+  bb thread tabs set <thread-id> --expected-revision <n> --tabs-json '<json>'
 
 Lifecycle:
 

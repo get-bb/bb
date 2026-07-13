@@ -4,9 +4,29 @@ import { action, CliExitError } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
+import { confirmDestructiveAction } from "./helpers.js";
 
 interface MachineListCommandOptions {
   json?: boolean;
+}
+
+interface MachineMutationCommandOptions extends MachineListCommandOptions {
+  yes?: boolean;
+}
+
+interface MachineProviderInstallOptions extends MachineListCommandOptions {
+  action?: "install" | "update";
+}
+
+function parseProviderCliKey(value: string): "claudeCode" | "codex" | "cursor" {
+  switch (value) {
+    case "claudeCode":
+    case "codex":
+    case "cursor":
+      return value;
+    default:
+      throw new Error("provider must be claudeCode, codex, or cursor.");
+  }
 }
 
 function describeMachines(hosts: readonly Host[]): string {
@@ -113,6 +133,122 @@ export function registerMachineCommands(
         }
         printMachineTable(hosts);
       }),
+    );
+
+  machine
+    .command("show <id-or-name>")
+    .description("Show execution machine details")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        await assertMultiMachineEnabled(getUrl());
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const host = await sdk.hosts.get({ hostId });
+        if (outputJson(opts, host)) return;
+        console.log(JSON.stringify(host, null, 2));
+      }),
+    );
+
+  machine
+    .command("join-code")
+    .description("Create a short-lived machine pairing code")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: MachineListCommandOptions) => {
+        await assertMultiMachineEnabled(getUrl());
+        const result = await createCliBbSdk(getUrl()).hosts.createJoinCode();
+        if (outputJson(opts, result)) return;
+        console.log(result.joinCode);
+      }),
+    );
+
+  machine
+    .command("rename <id-or-name> <name>")
+    .description("Rename an execution machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          target: string,
+          name: string,
+          opts: MachineListCommandOptions,
+        ) => {
+          await assertMultiMachineEnabled(getUrl());
+          const sdk = createCliBbSdk(getUrl());
+          const hostId = resolveMachineId(await sdk.hosts.list(), target);
+          const host = await sdk.hosts.update({ hostId, name });
+          if (outputJson(opts, host)) return;
+          console.log(`Machine ${host.id} renamed to ${host.name}`);
+        },
+      ),
+    );
+
+  machine
+    .command("remove <id-or-name>")
+    .description("Revoke and remove an execution machine")
+    .option("--yes", "Skip the confirmation prompt")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineMutationCommandOptions) => {
+        await assertMultiMachineEnabled(getUrl());
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        if (
+          !opts.yes &&
+          !(await confirmDestructiveAction(`Remove machine ${hostId}?`))
+        )
+          return;
+        const result = await sdk.hosts.delete({ hostId });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} removed`);
+      }),
+    );
+
+  const providerCli = machine
+    .command("provider-cli")
+    .description("Inspect and install provider CLIs on a machine");
+  providerCli
+    .command("status <id-or-name>")
+    .description("Show provider CLI health")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        await assertMultiMachineEnabled(getUrl());
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const result = await sdk.hosts.providerCliStatus({ hostId });
+        if (outputJson(opts, result)) return;
+        console.log(JSON.stringify(result, null, 2));
+      }),
+    );
+  providerCli
+    .command("install <id-or-name> <provider>")
+    .description("Install or update a provider CLI")
+    .option("--action <action>", "Action: install or update", "install")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          target: string,
+          provider: string,
+          opts: MachineProviderInstallOptions,
+        ) => {
+          await assertMultiMachineEnabled(getUrl());
+          if (opts.action !== "install" && opts.action !== "update") {
+            throw new Error("--action must be install or update.");
+          }
+          const sdk = createCliBbSdk(getUrl());
+          const hostId = resolveMachineId(await sdk.hosts.list(), target);
+          const events = await sdk.hosts.installProviderCli({
+            hostId,
+            provider: parseProviderCliKey(provider),
+            actionKind: opts.action,
+          });
+          if (outputJson(opts, events)) return;
+          for (const event of events) console.log(JSON.stringify(event));
+        },
+      ),
     );
 }
 

@@ -37,6 +37,13 @@ only blocks idle sleep: closing a laptop lid or choosing Sleep manually still
 sleeps the Mac. This setting is only shown when the connected primary host
 daemon reports macOS.
 
+  bb settings show
+  bb settings general <key> <true|false>
+  bb settings experiment <key> <value>
+  bb settings usage
+  bb settings version [--force]
+  bb settings reload
+
 Server-backed keyboard shortcuts
 
 Settings → Keyboard records per-command shortcut overrides. They are persisted
@@ -47,6 +54,19 @@ Bindings for non-native actions apply in browser and desktop clients. Command
 contexts and native-only availability remain server-owned, and desktop menu
 accelerators for New Thread, New Window, New Tab, Close, and Settings use the
 same resolved bindings. The complete default table is in docs/configuration.md.
+
+  bb settings keyboard list
+  bb settings keyboard set <command> <shortcut|disabled>
+  bb settings keyboard reset [command]
+
+Host files and voice transcription
+
+  bb file read|write|list|paths|mkdir|move|remove ...
+  bb voice transcribe <audio-file> [--prompt <context>]
+
+`bb file` supports `--host` for remote machines and `--root` on mutating
+commands to confine access beneath an absolute directory. Use `--json` for
+metadata and machine-readable results.
 
 Client-local UI preferences
 

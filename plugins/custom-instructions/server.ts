@@ -54,4 +54,66 @@ export default async function plugin(bb: BbPluginApi) {
   bb.agents.contributeInstructions(() =>
     customInstructions.trim().length > 0 ? customInstructions : null,
   );
+
+  bb.cli.register({
+    name: "instructions",
+    summary: "Read and update the custom instructions injected into agents",
+    commands: [
+      {
+        name: "get",
+        summary: "Print the current custom instructions",
+        usage: "bb instructions get [--json]",
+      },
+      {
+        name: "set",
+        summary: "Replace the custom instructions",
+        usage: "bb instructions set <text...> [--json]",
+      },
+      {
+        name: "clear",
+        summary: "Clear the custom instructions",
+        usage: "bb instructions clear [--json]",
+      },
+    ],
+    async run(argv) {
+      const json = argv.includes("--json");
+      const positional = argv.filter((value) => value !== "--json");
+      const [command, ...rest] = positional;
+      if (command === "get") {
+        return {
+          exitCode: 0,
+          stdout: json
+            ? JSON.stringify({ instructions: customInstructions })
+            : customInstructions,
+        };
+      }
+      if (command === "set") {
+        const instructions = parseInstructionsInput({
+          instructions: rest.join(" "),
+        });
+        await bb.storage.kv.set(STORAGE_KEY, instructions);
+        customInstructions = instructions;
+        return {
+          exitCode: 0,
+          stdout: json
+            ? JSON.stringify({ instructions: customInstructions })
+            : "Custom instructions updated",
+        };
+      }
+      if (command === "clear") {
+        await bb.storage.kv.set(STORAGE_KEY, "");
+        customInstructions = "";
+        return {
+          exitCode: 0,
+          stdout: json
+            ? JSON.stringify({ instructions: "" })
+            : "Custom instructions cleared",
+        };
+      }
+      return {
+        exitCode: 1,
+        stderr: "Usage: bb instructions get|set <text...>|clear [--json]",
+      };
+    },
+  });
 }

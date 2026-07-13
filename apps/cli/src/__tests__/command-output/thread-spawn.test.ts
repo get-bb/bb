@@ -57,6 +57,42 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn forwards repeatable file and image attachments", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-attachments",
+      projectId: "proj-1",
+      providerId: "codex",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "review these",
+        "--file",
+        "/tmp/report.pdf",
+        "--image",
+        "/tmp/screenshot.png",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        input: [
+          { type: "text", text: "review these", mentions: [] },
+          { type: "localFile", path: "/tmp/report.pdf" },
+          { type: "localImage", path: "/tmp/screenshot.png" },
+        ],
+      }),
+    });
+  });
+
   it("bb thread spawn requires an explicit --project", async () => {
     vi.stubEnv("BB_PROJECT_ID", undefined);
     const post = vi.fn();
