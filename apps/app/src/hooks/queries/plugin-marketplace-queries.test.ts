@@ -3,14 +3,9 @@ import {
   applyPluginUpdate,
   checkPluginUpdates,
   fetchMarketplaces,
-  fetchPluginUpdateHistory,
-  fetchPluginUpdates,
-  ignorePluginVersion,
   installPlugin,
+  removeMarketplace,
   searchMarketplaces,
-  setMarketplaceAutoPolicy,
-  setPluginAutoApply,
-  setPluginUpdatePolicy,
 } from "./plugin-marketplace-queries";
 
 function fetchReturning(body: unknown, status = 200) {
@@ -19,6 +14,17 @@ function fetchReturning(body: unknown, status = 200) {
     status,
     json: () => Promise.resolve(body),
   });
+}
+
+/** fetchReturning plus a record of every (url, init) it was called with. */
+function recordingFetch(body: unknown, status = 200) {
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const impl = fetchReturning(body, status);
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    return impl();
+  };
+  return { fetchImpl, calls };
 }
 
 // Server-shaped PluginUpdateCheckEntry fixtures — one per outcome kind.
@@ -35,62 +41,27 @@ const UPDATES_RESULTS = [
     candidate: { version: "1.7.0", display: "1.7.0" },
   },
   {
-    id: "pinned-plugin",
-    outcome: "pinned",
-    installed: { version: "2.0.1", display: "2.0.1" },
-  },
-  {
     id: "blocked-plugin",
     outcome: "incompatible",
     devMode: true,
     installed: { version: "1.8.3", display: "1.8.3" },
     blocked: { version: "1.9.0", reasons: ["requires bb >= 0.15"] },
   },
-  {
-    id: "broken-plugin",
-    outcome: "unavailable",
-    installed: { version: "0.1.0", display: "0.1.0" },
-    detail: "registry unreachable",
-  },
 ];
 
-describe("fetchPluginUpdates", () => {
-  it("parses the { results } envelope across every outcome kind and derives view fields", async () => {
-    const entries = await fetchPluginUpdates(
-      fetchReturning({ results: UPDATES_RESULTS }),
-    );
-    expect(entries.map((entry) => entry.outcome)).toEqual([
-      "current",
-      "update-available",
-      "pinned",
-      "incompatible",
-      "unavailable",
-    ]);
-    const updatable = entries[1];
-    expect(updatable?.availableVersion).toBe("1.7.0");
-    expect(updatable?.blockedVersion).toBeNull();
-    const blocked = entries[3];
-    expect(blocked?.availableVersion).toBeNull();
-    expect(blocked?.blockedVersion).toBe("1.9.0");
-    expect(blocked?.devMode).toBe(true);
-    expect(blocked?.blocked?.reasons).toEqual(["requires bb >= 0.15"]);
-    expect(entries[4]?.detail).toBe("registry unreachable");
-  });
-
-  it("returns [] for the old { updates } envelope instead of misparsing", async () => {
-    expect(
-      await fetchPluginUpdates(fetchReturning({ updates: UPDATES_RESULTS })),
-    ).toEqual([]);
-  });
-});
-
 describe("checkPluginUpdates", () => {
-  it("returns the checked entries", async () => {
+  it("returns the checked entries across outcome kinds", async () => {
     const entries = await checkPluginUpdates(
       fetchReturning({ results: UPDATES_RESULTS }),
       { id: "updatable-plugin" },
     );
-    expect(entries).toHaveLength(5);
+    expect(entries.map((entry) => entry.outcome)).toEqual([
+      "current",
+      "update-available",
+      "incompatible",
+    ]);
+    expect(entries[1]?.candidate?.version).toBe("1.7.0");
+    expect(entries[2]?.blocked?.reasons).toEqual(["requires bb >= 0.15"]);
   });
 
   it("throws on a malformed 2xx body", async () => {
@@ -101,25 +72,22 @@ describe("checkPluginUpdates", () => {
 });
 
 describe("applyPluginUpdate", () => {
-  it("parses the exact apply result", async () => {
-    const result = await applyPluginUpdate(
-      fetchReturning({
-        applied: true,
-        dryRun: false,
-        from: { version: "1.6.2", display: "1.6.2" },
-        to: { version: "1.7.0", display: "1.7.0" },
-        outcome: "updated",
-      }),
-      "linear",
-    );
+  it("POSTs an empty body and parses the apply result", async () => {
+    const { fetchImpl, calls } = recordingFetch({
+      applied: true,
+      from: { version: "1.6.2", display: "1.6.2" },
+      to: { version: "1.7.0", display: "1.7.0" },
+      outcome: "updated",
+    });
+    const result = await applyPluginUpdate(fetchImpl, "linear");
     expect(result).toEqual({
       applied: true,
-      dryRun: false,
       outcome: "updated",
       from: { version: "1.6.2", display: "1.6.2" },
       to: { version: "1.7.0", display: "1.7.0" },
       detail: null,
     });
+    expect(calls[0]?.init?.body).toBe("{}");
   });
 
   it("throws on a malformed 2xx body instead of defaulting to success", async () => {
@@ -139,153 +107,31 @@ describe("installPlugin", () => {
   });
 });
 
-describe("ignorePluginVersion", () => {
-  it("resolves when the server echoes the ignored version", async () => {
-    await expect(
-      ignorePluginVersion(
-        fetchReturning({ ignoredVersion: "1.7.0" }),
-        "linear",
-        "1.7.0",
-      ),
-    ).resolves.toBeUndefined();
+describe("removeMarketplace", () => {
+  it("DELETEs without a body and returns the converted plugin ids", async () => {
+    const { fetchImpl, calls } = recordingFetch({
+      convertedPluginIds: ["datadog", "todoist"],
+    });
+    const result = await removeMarketplace(fetchImpl, "acme");
+    expect(result).toEqual({ convertedPluginIds: ["datadog", "todoist"] });
+    expect(calls[0]?.url).toBe("/api/v1/marketplaces/acme");
+    expect(calls[0]?.init).toEqual({ method: "DELETE" });
   });
 
-  it("throws on a malformed 2xx body", async () => {
+  it("throws the server message on a refused removal", async () => {
     await expect(
-      ignorePluginVersion(fetchReturning({ ok: true }), "linear", "1.7.0"),
-    ).rejects.toThrow(/unrecognized ignore-version result/);
+      removeMarketplace(fetchReturning({ error: "unknown marketplace" }, 422), "acme"),
+    ).rejects.toThrow("unknown marketplace");
   });
 
-  it("throws when the echoed version differs from the requested one", async () => {
+  it("throws on a malformed 2xx body instead of defaulting to removed", async () => {
     await expect(
-      ignorePluginVersion(
-        fetchReturning({ ignoredVersion: "1.6.0" }),
-        "linear",
-        "1.7.0",
-      ),
-    ).rejects.toThrow(/unrecognized ignore-version result/);
+      removeMarketplace(fetchReturning({ kept: [] }), "acme"),
+    ).rejects.toThrow(/unrecognized removal result/);
   });
 });
 
-describe("setPluginUpdatePolicy", () => {
-  it("resolves when the server echoes the requested policy", async () => {
-    await expect(
-      setPluginUpdatePolicy(
-        fetchReturning({ policy: "patch" }),
-        "linear",
-        "patch",
-      ),
-    ).resolves.toBeUndefined();
-  });
-
-  it("throws on a malformed 2xx body", async () => {
-    await expect(
-      setPluginUpdatePolicy(fetchReturning({ ok: true }), "linear", "manual"),
-    ).rejects.toThrow(/unrecognized update-policy result/);
-  });
-
-  it("throws when the echoed policy differs from the requested one", async () => {
-    await expect(
-      setPluginUpdatePolicy(
-        fetchReturning({ policy: "compatible" }),
-        "linear",
-        "manual",
-      ),
-    ).rejects.toThrow(/unrecognized update-policy result/);
-  });
-});
-
-describe("setPluginAutoApply", () => {
-  it("resolves when the server echoes the requested persisted value", async () => {
-    await expect(
-      setPluginAutoApply(fetchReturning({ autoApply: true }), "linear", true),
-    ).resolves.toBeUndefined();
-  });
-
-  it("throws when the echo differs from the request (persisted the opposite)", async () => {
-    await expect(
-      setPluginAutoApply(fetchReturning({ autoApply: false }), "linear", true),
-    ).rejects.toThrow(/unrecognized auto-apply result/);
-  });
-
-  it("throws on a malformed 2xx body", async () => {
-    await expect(
-      setPluginAutoApply(fetchReturning({ ok: true }), "linear", true),
-    ).rejects.toThrow(/unrecognized auto-apply result/);
-  });
-});
-
-describe("setMarketplaceAutoPolicy", () => {
-  it("resolves when the server echoes both requested flags", async () => {
-    await expect(
-      setMarketplaceAutoPolicy(
-        fetchReturning({ autoCheck: true, autoApply: false }),
-        "acme",
-        { autoCheck: true, autoApply: false },
-      ),
-    ).resolves.toBeUndefined();
-  });
-
-  it("throws when either echoed flag differs from the request", async () => {
-    await expect(
-      setMarketplaceAutoPolicy(
-        fetchReturning({ autoCheck: true, autoApply: true }),
-        "acme",
-        { autoCheck: true, autoApply: false },
-      ),
-    ).rejects.toThrow(/unrecognized auto-policy result/);
-  });
-});
-
-describe("fetchPluginUpdateHistory", () => {
-  it("parses events, dropping half-shaped rows instead of defaulting them", async () => {
-    const events = await fetchPluginUpdateHistory(
-      fetchReturning({
-        events: [
-          {
-            kind: "rollback",
-            fromVersion: "1.7.0",
-            toVersion: "1.6.2",
-            outcome: "rolled-back",
-            detail: "failed to start",
-            at: 1752300000000,
-          },
-          { kind: "check", outcome: "current" }, // no `at` → drops
-          // Drifted string timestamp (contract requires numeric) → drops.
-          { kind: "check", outcome: "current", at: "2026-07-12T10:00:00Z" },
-        ],
-      }),
-      "linear",
-    );
-    expect(events).toEqual([
-      {
-        kind: "rollback",
-        fromVersion: "1.7.0",
-        toVersion: "1.6.2",
-        outcome: "rolled-back",
-        detail: "failed to start",
-        at: 1752300000000,
-      },
-    ]);
-  });
-
-  it("returns null (unavailable) on a non-2xx or malformed envelope", async () => {
-    expect(
-      await fetchPluginUpdateHistory(fetchReturning({}, 404), "linear"),
-    ).toBeNull();
-    expect(
-      await fetchPluginUpdateHistory(fetchReturning({ ok: true }), "linear"),
-    ).toBeNull();
-    expect(
-      await fetchPluginUpdateHistory(
-        fetchReturning({ events: "corrupt" }),
-        "linear",
-      ),
-    ).toBeNull();
-  });
-});
-
-describe("marketplace parsers (landed Phase 4 shapes)", () => {
+describe("marketplace parsers", () => {
   it("maps MarketplaceView fields, keeping displayName distinct from the id", async () => {
     const items = await fetchMarketplaces(
       fetchReturning({
@@ -299,10 +145,6 @@ describe("marketplace parsers (landed Phase 4 shapes)", () => {
             pluginCount: 11,
             lastRefreshAt: 1752300000000,
             lastError: "fetch failed",
-            enabled: true,
-            scope: "user",
-            autoCheck: true,
-            autoApply: false,
           },
         ],
       }),
@@ -318,10 +160,6 @@ describe("marketplace parsers (landed Phase 4 shapes)", () => {
         lastRefreshAt: 1752300000000,
         lastAttemptAt: null,
         lastError: "fetch failed",
-        enabled: true,
-        scope: "user",
-        autoCheck: true,
-        autoApply: false,
       },
     ]);
   });
@@ -337,25 +175,6 @@ describe("marketplace parsers (landed Phase 4 shapes)", () => {
     const items = await fetchMarketplaces(
       fetchReturning({
         marketplaces: [{ id: "half", name: "half", displayName: "Half" }],
-      }),
-    );
-    expect(items).toEqual([]);
-  });
-
-  it("drops rows missing the Phase 6 policy fields instead of inventing a policy", async () => {
-    const items = await fetchMarketplaces(
-      fetchReturning({
-        marketplaces: [
-          {
-            id: "old",
-            name: "old",
-            displayName: "Old Server",
-            source: "/tmp/catalog",
-            pluginCount: 1,
-            enabled: true,
-            // no scope/autoCheck/autoApply
-          },
-        ],
       }),
     );
     expect(items).toEqual([]);

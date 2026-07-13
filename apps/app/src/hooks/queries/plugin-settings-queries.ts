@@ -18,15 +18,6 @@ type FetchLike = (
 
 export type PluginProvenance = "builtin" | "direct" | "marketplace";
 
-export type PluginUpdatePolicy = "manual" | "compatible" | "patch" | "minor";
-
-export const PLUGIN_UPDATE_POLICIES = [
-  "manual",
-  "compatible",
-  "patch",
-  "minor",
-] as const satisfies readonly PluginUpdatePolicy[];
-
 export interface PluginUpdateFailure {
   version: string;
   /** Epoch ms; null when the server omitted or sent an unparsable time. */
@@ -48,9 +39,6 @@ export interface PluginUpdateState {
   blockedReasons: string[];
   /** Epoch ms of the last update check; null when never checked. */
   lastCheckAt: number | null;
-  /** Version the user dismissed from the detail banner. */
-  ignoredVersion: string | null;
-  quarantined: boolean;
   /** Last failed update that rolled back; drives "Needs attention". */
   lastFailure: PluginUpdateFailure | null;
 }
@@ -77,22 +65,12 @@ export interface PluginListItem {
   provenance: PluginProvenance | null;
   /** Marketplace display name when provenance is "marketplace". */
   marketplaceName: string | null;
-  /** Human source line ("npm · @bb-plugins/linear · tracking ^1.4.0"). */
+  /** Human source line ("npm · @bb-plugins/linear · pinned"). */
   sourceDisplay: string | null;
-  /** null on older servers that predate update policies. */
-  updatePolicy: PluginUpdatePolicy | null;
-  /**
-   * Effective automatic-application state (per-plugin OR inherited from the
-   * marketplace); null on older servers, which hides the control. The org
-   * kill-switch is separate: `PluginListResult.autoApplyDisabled`.
-   */
-  autoApply: boolean | null;
   updateState: PluginUpdateState;
 }
 
 export interface PluginListResult {
-  /** Org policy kill-switch; overrides every effective `autoApply`. */
-  autoApplyDisabled: boolean;
   plugins: PluginListItem[];
 }
 
@@ -120,8 +98,6 @@ const updateStateSchema = z.object({
   blockedVersion: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),
   lastCheckAt: timestampSchema.optional(),
-  ignoredVersion: z.string().optional(),
-  quarantined: z.boolean().optional(),
   lastFailure: updateFailureSchema.optional(),
 });
 
@@ -131,8 +107,6 @@ export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
   blockedVersion: null,
   blockedReasons: [],
   lastCheckAt: null,
-  ignoredVersion: null,
-  quarantined: false,
   lastFailure: null,
 };
 
@@ -153,8 +127,6 @@ const pluginListItemSchema = z.object({
   provenance: z.enum(["builtin", "direct", "marketplace"]).optional(),
   marketplaceName: z.string().nullish(),
   sourceDisplay: z.string().nullish(),
-  updatePolicy: z.enum(PLUGIN_UPDATE_POLICIES).optional(),
-  autoApply: z.boolean().optional(),
   updateState: updateStateSchema.optional(),
 });
 
@@ -178,8 +150,6 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     provenance: item.provenance ?? null,
     marketplaceName: item.marketplaceName ?? null,
     sourceDisplay: item.sourceDisplay ?? null,
-    updatePolicy: item.updatePolicy ?? null,
-    autoApply: item.autoApply ?? null,
     updateState:
       state === undefined
         ? EMPTY_PLUGIN_UPDATE_STATE
@@ -189,8 +159,6 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
             blockedVersion: state.blockedVersion ?? null,
             blockedReasons: state.blockedReasons ?? [],
             lastCheckAt: toEpochMs(state.lastCheckAt),
-            ignoredVersion: state.ignoredVersion ?? null,
-            quarantined: state.quarantined === true,
             lastFailure:
               state.lastFailure === undefined
                 ? null
@@ -203,11 +171,9 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
   };
 }
 
-// Older servers omit both fields (absence means "no org restriction");
-// present-but-malformed values fail the parse and render the quiet empty
-// state instead of silently reading the org kill-switch as off.
+// The `{ enabled, plugins }` envelope; `enabled` (the experiment flag) is
+// already surfaced through the system config, so only the rows are read.
 const pluginListEnvelopeSchema = z.object({
-  autoApplyDisabled: z.boolean().optional(),
   plugins: z.array(z.unknown()).optional(),
 });
 
@@ -217,13 +183,12 @@ export async function fetchPluginList(
   const response = await fetchImpl("/api/v1/plugins");
   // Nothing to list rather than an error: an older server or a disabled
   // experiment both mean "no plugins".
-  if (!response.ok) return { autoApplyDisabled: false, plugins: [] };
+  if (!response.ok) return { plugins: [] };
   const parsed = pluginListEnvelopeSchema.safeParse(
     await response.json().catch(() => null),
   );
-  if (!parsed.success) return { autoApplyDisabled: false, plugins: [] };
+  if (!parsed.success) return { plugins: [] };
   return {
-    autoApplyDisabled: parsed.data.autoApplyDisabled ?? false,
     plugins: (parsed.data.plugins ?? [])
       .map(parsePluginListItem)
       .filter((item): item is PluginListItem => item !== null),

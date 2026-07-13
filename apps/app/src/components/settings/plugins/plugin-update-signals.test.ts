@@ -4,10 +4,7 @@ import {
   type PluginListItem,
   type PluginUpdateState,
 } from "@/hooks/queries/plugin-settings-queries";
-import {
-  pluginRowSignal,
-  pluginToastSignal,
-} from "./plugin-update-signals";
+import { pluginRowSignal } from "./plugin-update-signals";
 
 function plugin(
   updateState: Partial<PluginUpdateState> = {},
@@ -27,9 +24,7 @@ function plugin(
     hasSettings: false,
     provenance: "marketplace",
     marketplaceName: "bb-official",
-    sourceDisplay: "npm · @bb-plugins/linear · tracking ^1.4.0",
-    updatePolicy: "compatible",
-    autoApply: null,
+    sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
     ...overrides,
   };
@@ -41,22 +36,6 @@ describe("pluginRowSignal (the one-pill rule)", () => {
       kind: "update",
       version: "1.7.0",
     });
-  });
-
-  it("stays quiet when the available version was ignored", () => {
-    expect(
-      pluginRowSignal(
-        plugin({ availableVersion: "1.7.0", ignoredVersion: "1.7.0" }),
-      ),
-    ).toBeNull();
-  });
-
-  it("badges again when a newer version supersedes the ignored one", () => {
-    expect(
-      pluginRowSignal(
-        plugin({ availableVersion: "1.8.0", ignoredVersion: "1.7.0" }),
-      ),
-    ).toEqual({ kind: "update", version: "1.8.0" });
   });
 
   it("never badges a newer-but-incompatible release", () => {
@@ -89,51 +68,5 @@ describe("pluginRowSignal (the one-pill rule)", () => {
     expect(pluginRowSignal(plugin({}, { status: "error" }))).toEqual({
       kind: "attention",
     });
-  });
-});
-
-describe("pluginToastSignal (notification rules)", () => {
-  it("toasts a compatible update", () => {
-    const signal = pluginToastSignal(plugin({ availableVersion: "1.7.0" }));
-    expect(signal?.kind).toBe("update-available");
-    expect(signal?.version).toBe("1.7.0");
-  });
-
-  it("never toasts an incompatible newer release", () => {
-    expect(
-      pluginToastSignal(plugin({ blockedVersion: "1.9.0" })),
-    ).toBeNull();
-  });
-
-  it("never toasts an ignored version", () => {
-    expect(
-      pluginToastSignal(
-        plugin({ availableVersion: "1.7.0", ignoredVersion: "1.7.0" }),
-      ),
-    ).toBeNull();
-  });
-
-  it("toasts a rollback with its detail", () => {
-    const signal = pluginToastSignal(
-      plugin({
-        lastFailure: { version: "1.3.0", at: 5, detail: "failed to start" },
-      }),
-    );
-    expect(signal).toEqual({
-      kind: "rolled-back",
-      key: "linear:failure:1.3.0:5",
-      version: "1.3.0",
-      detail: "failed to start",
-    });
-  });
-
-  it("keys re-failure of the same version by timestamp so it re-notifies", () => {
-    const first = pluginToastSignal(
-      plugin({ lastFailure: { version: "1.3.0", at: 5, detail: null } }),
-    );
-    const second = pluginToastSignal(
-      plugin({ lastFailure: { version: "1.3.0", at: 9, detail: null } }),
-    );
-    expect(first?.key).not.toBe(second?.key);
   });
 });

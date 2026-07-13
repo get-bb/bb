@@ -15,34 +15,50 @@ const ROW = {
   enabled: true,
   status: "running",
   statusDetail: null,
-  autoApply: true,
+  provenance: "direct",
+  sourceDisplay: "npm · @bb-plugins/linear · pinned",
+  updateState: {
+    availableVersion: "1.7.0",
+    lastCheckAt: 1752300000000,
+    lastFailure: { version: "1.7.0", at: 1752300000000, detail: "boom" },
+  },
 };
 
 describe("fetchPluginList envelope", () => {
-  it("parses autoApplyDisabled and the per-row effective autoApply", async () => {
+  it("parses the { enabled, plugins } envelope and normalizes updateState", async () => {
     const result = await fetchPluginList(
-      fetchReturning({ autoApplyDisabled: true, plugins: [ROW] }),
+      fetchReturning({ enabled: true, plugins: [ROW] }),
     );
-    expect(result.autoApplyDisabled).toBe(true);
     expect(result.plugins).toHaveLength(1);
-    expect(result.plugins[0]?.autoApply).toBe(true);
+    const plugin = result.plugins[0];
+    expect(plugin?.provenance).toBe("direct");
+    expect(plugin?.updateState.availableVersion).toBe("1.7.0");
+    expect(plugin?.updateState.lastFailure).toEqual({
+      version: "1.7.0",
+      at: 1752300000000,
+      detail: "boom",
+    });
+    // Absent quiet fields normalize to the explicit quiet value.
+    expect(plugin?.updateState.blockedVersion).toBeNull();
+    expect(plugin?.updateState.blockedReasons).toEqual([]);
   });
 
-  it("tolerates older servers that omit the Phase 6 fields", async () => {
-    const { autoApply, ...oldRow } = ROW;
+  it("drops half-shaped rows instead of defaulting required fields", async () => {
     const result = await fetchPluginList(
-      fetchReturning({ plugins: [oldRow] }),
+      fetchReturning({
+        enabled: true,
+        plugins: [{ id: "half" }, ROW],
+      }),
     );
-    expect(result.autoApplyDisabled).toBe(false);
-    expect(result.plugins[0]?.autoApply).toBeNull();
+    expect(result.plugins.map((plugin) => plugin.id)).toEqual(["linear"]);
   });
 
-  it("renders the quiet empty state for a malformed org kill-switch instead of reading it as off", async () => {
-    // A drifted autoApplyDisabled:"true" must NOT surface auto-update
-    // controls as available (the org policy might really be ON).
-    const result = await fetchPluginList(
-      fetchReturning({ autoApplyDisabled: "true", plugins: [ROW] }),
-    );
-    expect(result).toEqual({ autoApplyDisabled: false, plugins: [] });
+  it("returns the quiet empty state on a malformed envelope or error", async () => {
+    expect(await fetchPluginList(fetchReturning(null))).toEqual({
+      plugins: [],
+    });
+    expect(await fetchPluginList(fetchReturning({}, 404))).toEqual({
+      plugins: [],
+    });
   });
 });

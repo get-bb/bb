@@ -1,16 +1,11 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { z } from "zod";
-import {
-  toEpochMs,
-  type PluginUpdatePolicy,
-  PLUGIN_UPDATE_POLICIES,
-} from "./plugin-settings-queries";
+import { toEpochMs } from "./plugin-settings-queries";
 
 /**
- * Typed fetchers for the plugin marketplace/update contract: per-plugin
- * source detail, install preview + install, update check/apply,
- * ignore-version, update-policy, and marketplace CRUD/refresh/search. The
- * marketplace and update shapes mirror the landed Phase 4 server contract
+ * Typed fetchers for the manual-updates plugin marketplace contract:
+ * per-plugin source detail, install, update check/apply, and marketplace
+ * CRUD/refresh/search. The shapes mirror the landed server contract
  * (apps/server marketplace-service MarketplaceView/MarketplaceSearchResult
  * and plugin-service PluginUpdateCheckEntry/applyUpdate) exactly; success
  * responses are validated at this boundary so a drifted server never
@@ -34,7 +29,7 @@ function errorMessage(body: unknown, fallback: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/plugins/:id/source (Phase 5 sibling endpoint)
+// GET /api/v1/plugins/:id/source
 // ---------------------------------------------------------------------------
 
 export interface PluginSourceDetail {
@@ -121,7 +116,7 @@ export function usePluginSource(
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/v1/plugins/install/preview and POST /api/v1/plugins/install
+// POST /api/v1/plugins/install
 // ---------------------------------------------------------------------------
 
 /** The two install body forms: direct source string or marketplace entry. */
@@ -131,95 +126,6 @@ export type PluginInstallRequest =
       marketplace: { marketplaceId: string; entryId: string };
       version?: string;
     };
-
-export interface PluginInstallPreview {
-  plugin: { id: string; displayName: string | null; description: string | null } | null;
-  resolved: { display: string; version: string | null; commit: string | null };
-  compatibility: {
-    outcome: "compatible" | "incompatible";
-    devMode: boolean;
-    problems: string[];
-  };
-  updatePolicy: PluginUpdatePolicy;
-  /** Server-phrased policy line ("tracks compatible releases in ^1.4.0"). */
-  updatePolicyDisplay: string | null;
-  skipped: { version: string; reason: string }[];
-  warnings: string[];
-}
-
-const installPreviewSchema = z.object({
-  plugin: z
-    .object({
-      id: z.string(),
-      displayName: z.string().nullish(),
-      description: z.string().nullish(),
-    })
-    .nullish(),
-  resolved: z.object({
-    display: z.string(),
-    version: z.string().nullish(),
-    commit: z.string().nullish(),
-  }),
-  compatibility: z.object({
-    outcome: z.enum(["compatible", "incompatible"]),
-    devMode: z.boolean().optional(),
-    problems: z.array(z.string()),
-  }),
-  updatePolicy: z.enum(PLUGIN_UPDATE_POLICIES),
-  // Tolerate absence while the server side lands the amendment.
-  updatePolicyDisplay: z.string().nullish(),
-  skipped: z
-    .array(z.object({ version: z.string(), reason: z.string() }))
-    .nullish(),
-  warnings: z.array(z.string()).nullish(),
-});
-
-/** Resolve + validate without activating. Throws the server's 422 message. */
-export async function previewPluginInstall(
-  fetchImpl: FetchLike,
-  request: PluginInstallRequest,
-): Promise<PluginInstallPreview> {
-  const response = await fetchImpl("/api/v1/plugins/install/preview", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  const body = await readBody(response);
-  if (!response.ok) {
-    throw new Error(
-      errorMessage(body, `previewing the install failed (HTTP ${response.status})`),
-    );
-  }
-  const parsed = installPreviewSchema.safeParse(body);
-  if (!parsed.success) {
-    throw new Error("the server returned an unrecognized install preview");
-  }
-  const data = parsed.data;
-  return {
-    plugin:
-      data.plugin == null
-        ? null
-        : {
-            id: data.plugin.id,
-            displayName: data.plugin.displayName ?? null,
-            description: data.plugin.description ?? null,
-          },
-    resolved: {
-      display: data.resolved.display,
-      version: data.resolved.version ?? null,
-      commit: data.resolved.commit ?? null,
-    },
-    compatibility: {
-      outcome: data.compatibility.outcome,
-      devMode: data.compatibility.devMode === true,
-      problems: data.compatibility.problems,
-    },
-    updatePolicy: data.updatePolicy,
-    updatePolicyDisplay: data.updatePolicyDisplay ?? null,
-    skipped: data.skipped ?? [],
-    warnings: data.warnings ?? [],
-  };
-}
 
 const installResultSchema = z.object({ ok: z.literal(true) });
 
@@ -244,8 +150,7 @@ export async function installPlugin(
 }
 
 // ---------------------------------------------------------------------------
-// Update operations (Phase 2 contract: plugin-service PluginUpdateCheckEntry
-// and applyUpdate result)
+// Update operations (plugin-service PluginUpdateCheckEntry and applyUpdate)
 // ---------------------------------------------------------------------------
 
 export interface PluginResolvedVersion {
@@ -266,7 +171,7 @@ export type PluginUpdatesOutcome =
   | "incompatible"
   | "unavailable";
 
-/** One row of GET/POST /api/v1/plugins/updates[/check] ({ results }). */
+/** One row of POST /api/v1/plugins/updates/check ({ results }). */
 export interface PluginUpdatesEntry {
   id: string;
   outcome: PluginUpdatesOutcome;
@@ -275,10 +180,6 @@ export interface PluginUpdatesEntry {
   candidate: PluginResolvedVersion | null;
   blocked: { version: string; reasons: string[] } | null;
   detail: string | null;
-  /** Derived: the applicable candidate version, else null. */
-  availableVersion: string | null;
-  /** Derived: the newer-but-incompatible version, else null. */
-  blockedVersion: string | null;
 }
 
 const updatesEntrySchema = z.object({
@@ -302,42 +203,20 @@ const updatesEntrySchema = z.object({
 function toUpdatesEntry(
   data: z.infer<typeof updatesEntrySchema>,
 ): PluginUpdatesEntry {
-  const candidate = data.candidate ?? null;
-  const blocked = data.blocked ?? null;
   return {
     id: data.id,
     outcome: data.outcome,
     devMode: data.devMode === true,
     installed: data.installed,
-    candidate,
-    blocked,
+    candidate: data.candidate ?? null,
+    blocked: data.blocked ?? null,
     detail: data.detail ?? null,
-    availableVersion:
-      data.outcome === "update-available" && candidate !== null
-        ? candidate.version
-        : null,
-    blockedVersion: blocked?.version ?? null,
   };
 }
 
 const updatesEnvelopeSchema = z.object({
   results: z.array(updatesEntrySchema),
 });
-
-/**
- * The bulk update report ({ results }). The Settings UI drives off the
- * richer per-plugin `updateState` on GET /plugins; this mirrors
- * `bb plugin outdated`.
- */
-export async function fetchPluginUpdates(
-  fetchImpl: FetchLike,
-): Promise<PluginUpdatesEntry[]> {
-  const response = await fetchImpl("/api/v1/plugins/updates");
-  if (!response.ok) return [];
-  const parsed = updatesEnvelopeSchema.safeParse(await readBody(response));
-  if (!parsed.success) return [];
-  return parsed.data.results.map(toUpdatesEntry);
-}
 
 /**
  * POST /api/v1/plugins/updates/check — refresh update state for one or all
@@ -366,16 +245,9 @@ export async function checkPluginUpdates(
   return parsed.data.results.map(toUpdatesEntry);
 }
 
-export type PluginUpdateApplyOutcome =
-  | "current"
-  | "update-available"
-  | "updated"
-  | "rolled-back";
-
 export interface PluginUpdateResult {
   applied: boolean;
-  dryRun: boolean;
-  outcome: PluginUpdateApplyOutcome;
+  outcome: string;
   from: PluginResolvedVersion;
   to: PluginResolvedVersion | null;
   detail: string | null;
@@ -383,15 +255,14 @@ export interface PluginUpdateResult {
 
 const applyResultSchema = z.object({
   applied: z.boolean(),
-  dryRun: z.boolean(),
-  outcome: z.enum(["current", "update-available", "updated", "rolled-back"]),
+  outcome: z.string(),
   from: resolvedVersionSchema,
   to: resolvedVersionSchema.optional(),
   detail: z.string().optional(),
 });
 
 /**
- * POST /api/v1/plugins/:id/update. Applies (or dry-runs) the selected
+ * POST /api/v1/plugins/:id/update (empty body). Applies the selected
  * update. A "rolled-back" outcome is a resolved value, not a thrown error —
  * the dialog renders it as the failure story. A 2xx body that doesn't match
  * the contract throws instead of defaulting to success.
@@ -399,14 +270,13 @@ const applyResultSchema = z.object({
 export async function applyPluginUpdate(
   fetchImpl: FetchLike,
   pluginId: string,
-  args: { dryRun?: boolean; latest?: boolean } = {},
 ): Promise<PluginUpdateResult> {
   const response = await fetchImpl(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/update`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(args),
+      body: JSON.stringify({}),
     },
   );
   const body = await readBody(response);
@@ -421,7 +291,6 @@ export async function applyPluginUpdate(
   }
   return {
     applied: parsed.data.applied,
-    dryRun: parsed.data.dryRun,
     outcome: parsed.data.outcome,
     from: parsed.data.from,
     to: parsed.data.to ?? null,
@@ -429,188 +298,9 @@ export async function applyPluginUpdate(
   };
 }
 
-const ignoreVersionResultSchema = z.object({ ignoredVersion: z.string() });
-
-export async function ignorePluginVersion(
-  fetchImpl: FetchLike,
-  pluginId: string,
-  version: string,
-): Promise<void> {
-  const response = await fetchImpl(
-    `/api/v1/plugins/${encodeURIComponent(pluginId)}/ignore-version`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ version }),
-    },
-  );
-  const body = await readBody(response);
-  if (!response.ok) {
-    throw new Error(
-      errorMessage(body, `ignoring the version failed (HTTP ${response.status})`),
-    );
-  }
-  const parsed = ignoreVersionResultSchema.safeParse(body);
-  // The echoed version must match what was asked; anything else means the
-  // server ignored a different release than the one on screen.
-  if (!parsed.success || parsed.data.ignoredVersion !== version) {
-    throw new Error("the server returned an unrecognized ignore-version result");
-  }
-}
-
-const updatePolicyResultSchema = z.object({
-  policy: z.enum(PLUGIN_UPDATE_POLICIES),
-});
-
-export async function setPluginUpdatePolicy(
-  fetchImpl: FetchLike,
-  pluginId: string,
-  policy: PluginUpdatePolicy,
-): Promise<void> {
-  const response = await fetchImpl(
-    `/api/v1/plugins/${encodeURIComponent(pluginId)}/update-policy`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ policy }),
-    },
-  );
-  const body = await readBody(response);
-  if (!response.ok) {
-    throw new Error(
-      errorMessage(
-        body,
-        `changing the update policy failed (HTTP ${response.status})`,
-      ),
-    );
-  }
-  const parsed = updatePolicyResultSchema.safeParse(body);
-  // The echoed policy must match the request; a mismatch means the server
-  // persisted something other than what the dropdown shows.
-  if (!parsed.success || parsed.data.policy !== policy) {
-    throw new Error("the server returned an unrecognized update-policy result");
-  }
-}
-
-const autoApplyResultSchema = z.object({ autoApply: z.boolean() });
-
-/**
- * POST /api/v1/plugins/:id/auto-apply. The response echoes the PERSISTED
- * per-plugin value (not the marketplace-inherited effective one), so it must
- * equal the request; a mismatch means the server persisted the opposite of
- * what the switch shows.
- */
-export async function setPluginAutoApply(
-  fetchImpl: FetchLike,
-  pluginId: string,
-  enabled: boolean,
-): Promise<void> {
-  const response = await fetchImpl(
-    `/api/v1/plugins/${encodeURIComponent(pluginId)}/auto-apply`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    },
-  );
-  const body = await readBody(response);
-  if (!response.ok) {
-    throw new Error(
-      errorMessage(
-        body,
-        `changing automatic updates failed (HTTP ${response.status})`,
-      ),
-    );
-  }
-  const parsed = autoApplyResultSchema.safeParse(body);
-  if (!parsed.success || parsed.data.autoApply !== enabled) {
-    throw new Error("the server returned an unrecognized auto-apply result");
-  }
-}
-
 // ---------------------------------------------------------------------------
-// GET /api/v1/plugins/:id/history (Phase 6 update audit trail)
+// Marketplaces (marketplace-service MarketplaceView)
 // ---------------------------------------------------------------------------
-
-/** One audit event; newest first, capped at 50 by the server. */
-export interface PluginUpdateHistoryEvent {
-  /** "check" | "resolve" | "download" | "activate" | "rollback" | …; kept
-   *  open so future kinds render instead of dropping the row. */
-  kind: string;
-  fromVersion: string | null;
-  toVersion: string | null;
-  outcome: string;
-  detail: string | null;
-  /** Epoch ms (the contract sends numeric createdAt). */
-  at: number;
-}
-
-const historyEventSchema = z.object({
-  kind: z.string(),
-  fromVersion: z.string().optional(),
-  toVersion: z.string().optional(),
-  outcome: z.string(),
-  detail: z.string().optional(),
-  // The contract sends numeric epoch ms; a drifted string drops the row.
-  at: z.number(),
-});
-
-const historyEnvelopeSchema = z.object({ events: z.array(z.unknown()) });
-
-/** Null when the plugin is unknown or the server predates the route. */
-export async function fetchPluginUpdateHistory(
-  fetchImpl: FetchLike,
-  pluginId: string,
-): Promise<PluginUpdateHistoryEvent[] | null> {
-  const response = await fetchImpl(
-    `/api/v1/plugins/${encodeURIComponent(pluginId)}/history`,
-  );
-  if (!response.ok) return null;
-  const envelope = historyEnvelopeSchema.safeParse(await readBody(response));
-  if (!envelope.success) return null;
-  const events: PluginUpdateHistoryEvent[] = [];
-  for (const value of envelope.data.events) {
-    const parsed = historyEventSchema.safeParse(value);
-    if (!parsed.success) continue;
-    const data = parsed.data;
-    events.push({
-      kind: data.kind,
-      fromVersion: data.fromVersion ?? null,
-      toVersion: data.toVersion ?? null,
-      outcome: data.outcome,
-      detail: data.detail ?? null,
-      at: data.at,
-    });
-  }
-  return events;
-}
-
-export function pluginUpdateHistoryQueryKey(pluginId: string): QueryKey {
-  return ["plugin-update-history", pluginId];
-}
-
-/** Prefix the realtime `plugins-changed` broadcast invalidates. */
-export function allPluginUpdateHistoryQueryKeyPrefix(): QueryKey {
-  return ["plugin-update-history"];
-}
-
-export function usePluginUpdateHistory(
-  pluginId: string,
-  options: { enabled: boolean },
-) {
-  return useQuery({
-    queryKey: pluginUpdateHistoryQueryKey(pluginId),
-    queryFn: () => fetchPluginUpdateHistory(fetch, pluginId),
-    enabled: options.enabled,
-    staleTime: 30_000,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Marketplaces (Phase 4 contract: marketplace-service MarketplaceView)
-// ---------------------------------------------------------------------------
-
-export type MarketplaceScope = "builtin" | "user" | "project" | "managed";
 
 export interface MarketplaceListItem {
   /** Stable ID; `name` mirrors it in the wire view. */
@@ -627,18 +317,8 @@ export interface MarketplaceListItem {
   lastAttemptAt: number | null;
   /** Set when the last refresh failed; the cached catalog stays in use. */
   lastError: string | null;
-  enabled: boolean;
-  /** Who owns the catalog; builtin/managed render the "official" badge. */
-  scope: MarketplaceScope;
-  /** Scheduled catalog refresh + update checks. */
-  autoCheck: boolean;
-  /** Marketplace-wide automatic application, inherited by its plugins. */
-  autoApply: boolean;
 }
 
-// scope/autoCheck/autoApply are required (Phase 6 servers always send
-// them): a half-shaped row drops rather than defaulting to a policy the
-// server never stated.
 const marketplaceViewSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -649,10 +329,6 @@ const marketplaceViewSchema = z.object({
   lastRefreshAt: z.number().optional(),
   lastAttemptAt: z.number().optional(),
   lastError: z.string().optional(),
-  enabled: z.boolean(),
-  scope: z.enum(["builtin", "user", "project", "managed"]),
-  autoCheck: z.boolean(),
-  autoApply: z.boolean(),
 });
 
 function toMarketplaceListItem(
@@ -668,10 +344,6 @@ function toMarketplaceListItem(
     lastRefreshAt: data.lastRefreshAt ?? null,
     lastAttemptAt: data.lastAttemptAt ?? null,
     lastError: data.lastError ?? null,
-    enabled: data.enabled,
-    scope: data.scope,
-    autoCheck: data.autoCheck,
-    autoApply: data.autoApply,
   };
 }
 
@@ -760,134 +432,46 @@ export async function refreshMarketplace(
   return toMarketplaceListItem(parsed.data.marketplace);
 }
 
-export interface MarketplaceAutoPolicy {
-  autoCheck: boolean;
-  autoApply: boolean;
-}
-
-const autoPolicyResultSchema = z.object({
-  autoCheck: z.boolean(),
-  autoApply: z.boolean(),
+const removeResultSchema = z.object({
+  convertedPluginIds: z.array(z.string()),
 });
 
+export interface MarketplaceRemoveResult {
+  /** Installed plugins the removal converted to direct installs. */
+  convertedPluginIds: string[];
+}
+
 /**
- * POST /api/v1/marketplaces/:id/auto-policy. The response echoes both
- * persisted flags, which must match the request; a mismatch means the server
- * persisted a policy other than the one on screen.
+ * DELETE /api/v1/marketplaces/:id (no body). Removal never uninstalls:
+ * installed plugins from the catalog become direct installs, echoed back as
+ * `convertedPluginIds`.
  */
-export async function setMarketplaceAutoPolicy(
+export async function removeMarketplace(
   fetchImpl: FetchLike,
   marketplaceId: string,
-  policy: MarketplaceAutoPolicy,
-): Promise<void> {
+): Promise<MarketplaceRemoveResult> {
   const response = await fetchImpl(
-    `/api/v1/marketplaces/${encodeURIComponent(marketplaceId)}/auto-policy`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(policy),
-    },
+    `/api/v1/marketplaces/${encodeURIComponent(marketplaceId)}`,
+    { method: "DELETE" },
   );
   const body = await readBody(response);
   if (!response.ok) {
     throw new Error(
       errorMessage(
         body,
-        `changing the update policy failed (HTTP ${response.status})`,
+        `removing the marketplace failed (HTTP ${response.status})`,
       ),
     );
   }
-  const parsed = autoPolicyResultSchema.safeParse(body);
-  if (
-    !parsed.success ||
-    parsed.data.autoCheck !== policy.autoCheck ||
-    parsed.data.autoApply !== policy.autoApply
-  ) {
-    throw new Error("the server returned an unrecognized auto-policy result");
+  const parsed = removeResultSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error("the server returned an unrecognized removal result");
   }
-}
-
-export interface MarketplaceAffectedPlugin {
-  id: string;
-  version: string;
-}
-
-export type MarketplacePluginDisposition = {
-  pluginId: string;
-  action: "keep" | "uninstall";
-};
-
-/**
- * DELETE with no dispositions is refused (422) while the marketplace still
- * has installed plugins; the error carries the list so the removal chooser
- * can ask per plugin.
- */
-export class MarketplaceRemovalBlockedError extends Error {
-  readonly affectedPlugins: MarketplaceAffectedPlugin[];
-
-  constructor(message: string, affectedPlugins: MarketplaceAffectedPlugin[]) {
-    super(message);
-    this.name = "MarketplaceRemovalBlockedError";
-    this.affectedPlugins = affectedPlugins;
-  }
-}
-
-const affectedPluginsSchema = z.array(
-  z.object({ id: z.string(), version: z.string() }),
-);
-
-const removeResultSchema = z.object({
-  kept: z.array(z.string()),
-  uninstalled: z.array(z.string()),
-});
-
-export interface MarketplaceRemoveResult {
-  kept: string[];
-  uninstalled: string[];
-}
-
-export async function removeMarketplace(
-  fetchImpl: FetchLike,
-  marketplaceId: string,
-  dispositions: MarketplacePluginDisposition[],
-): Promise<MarketplaceRemoveResult> {
-  const response = await fetchImpl(
-    `/api/v1/marketplaces/${encodeURIComponent(marketplaceId)}`,
-    {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ dispositions }),
-    },
-  );
-  const body = await readBody(response);
-  if (response.ok) {
-    const parsed = removeResultSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new Error("the server returned an unrecognized removal result");
-    }
-    return parsed.data;
-  }
-  if (response.status === 422) {
-    const affected = affectedPluginsSchema.safeParse(
-      (body as { affectedPlugins?: unknown } | null)?.affectedPlugins,
-    );
-    if (affected.success && affected.data.length > 0) {
-      throw new MarketplaceRemovalBlockedError(
-        errorMessage(body, "the marketplace still has installed plugins"),
-        affected.data,
-      );
-    }
-  }
-  throw new Error(
-    errorMessage(
-      body,
-      `removing the marketplace failed (HTTP ${response.status})`,
-    ),
-  );
+  return parsed.data;
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/marketplaces/search?q= (Phase 4 MarketplaceSearchResult)
+// GET /api/v1/marketplaces/search?q= (MarketplaceSearchResult)
 // ---------------------------------------------------------------------------
 
 export interface MarketplaceSearchEntry {

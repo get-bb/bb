@@ -11,18 +11,13 @@ import {
 } from "@bb/shared-ui/dialog";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { Pill } from "@bb/shared-ui/pill";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
-import { RadioGroup, RadioGroupItem } from "@bb/shared-ui/radio-group";
-import { Label } from "@bb/shared-ui/label";
 import { appToast } from "@/components/ui/app-toast.js";
 import {
   invalidateMarketplaces,
@@ -30,15 +25,10 @@ import {
 } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   addMarketplace,
-  MarketplaceRemovalBlockedError,
   refreshMarketplace,
   removeMarketplace,
-  setMarketplaceAutoPolicy,
   useMarketplaces,
-  type MarketplaceAffectedPlugin,
-  type MarketplaceAutoPolicy,
   type MarketplaceListItem,
-  type MarketplacePluginDisposition,
 } from "@/hooks/queries/plugin-marketplace-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
@@ -50,42 +40,15 @@ import {
 
 /**
  * The Marketplaces tab (sketch v1 E): catalog rows with refresh state and a
- * removal chooser. A failed refresh keeps last-known-good and says so;
- * removal never silently uninstalls — the 422 affectedPlugins flow asks per
- * plugin whether to keep it as a direct install or uninstall it.
+ * simple removal confirm. A failed refresh keeps last-known-good and says
+ * so; removal never uninstalls — installed plugins from the catalog become
+ * direct installs, and the confirmation toast names how many were kept.
  */
 export function MarketplacesTab() {
-  const queryClient = useQueryClient();
   const marketplacesQuery = useMarketplaces({ enabled: true });
   const marketplaces = marketplacesQuery.data ?? [];
   const [addOpen, setAddOpen] = useState(false);
-  const [removal, setRemoval] = useState<{
-    marketplace: MarketplaceListItem;
-    affectedPlugins: MarketplaceAffectedPlugin[];
-  } | null>(null);
-
-  const invalidate = () => {
-    invalidateMarketplaces({ queryClient });
-    invalidatePluginList({ queryClient });
-  };
-
-  const remove = useMutation({
-    mutationFn: (marketplace: MarketplaceListItem) =>
-      removeMarketplace(fetch, marketplace.id, []),
-    onSuccess: (_result, marketplace) => {
-      invalidate();
-      appToast.success(`Removed ${marketplace.displayName}`);
-    },
-    onError: (error, marketplace) => {
-      if (error instanceof MarketplaceRemovalBlockedError) {
-        setRemoval({ marketplace, affectedPlugins: error.affectedPlugins });
-        return;
-      }
-      appToast.error(`Removing ${marketplace.displayName} failed`, {
-        description: error instanceof Error ? error.message : String(error),
-      });
-    },
-  });
+  const [removal, setRemoval] = useState<MarketplaceListItem | null>(null);
 
   return (
     <div className="space-y-3">
@@ -116,7 +79,7 @@ export function MarketplacesTab() {
               <MarketplaceRow
                 key={marketplace.id}
                 marketplace={marketplace}
-                onRemove={() => remove.mutate(marketplace)}
+                onRemove={() => setRemoval(marketplace)}
               />
             ))}
           </div>
@@ -126,51 +89,17 @@ export function MarketplacesTab() {
         Adding a marketplace installs nothing; refreshing a catalog never runs
         plugin code.
       </p>
-      <AddMarketplaceDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        onAdded={invalidate}
-      />
+      <AddMarketplaceDialog open={addOpen} onOpenChange={setAddOpen} />
       {removal !== null ? (
         <RemoveMarketplaceDialog
-          marketplace={removal.marketplace}
-          affectedPlugins={removal.affectedPlugins}
+          marketplace={removal}
           onOpenChange={(open) => {
             if (!open) setRemoval(null);
           }}
-          onRemoved={invalidate}
         />
       ) : null}
     </div>
   );
-}
-
-/**
- * Official badge (sketch v1 E): builtin and managed catalogs are
- * organization- or bb-vouched; user/project catalogs are whatever the user
- * added and never earn the badge.
- */
-export function marketplaceIsOfficial(scope: MarketplaceListItem["scope"]): boolean {
-  return scope === "builtin" || scope === "managed";
-}
-
-/**
- * The check-policy summary line (sketch v1 E "checks daily, updates need
- * approval" slot). The scheduled sweep re-checks roughly hourly (1h base
- * delay + jitter), so the copy says hourly, not the sketch's "daily".
- */
-export function marketplaceCheckPolicySummary(policy: {
-  autoCheck: boolean;
-  autoApply: boolean;
-}): string {
-  if (policy.autoCheck) {
-    return policy.autoApply
-      ? "checks hourly · automatic updates"
-      : "checks hourly · updates need approval";
-  }
-  return policy.autoApply
-    ? "manual checks · automatic updates"
-    : "manual checks";
 }
 
 function MarketplaceRow({
@@ -193,29 +122,8 @@ function MarketplaceRow({
     },
   });
 
-  // No optimistic flip: the checkbox state only changes once the server
-  // echoes the persisted policy (a mismatch rejects and toasts instead).
-  const setPolicy = useMutation({
-    mutationFn: (policy: MarketplaceAutoPolicy) =>
-      setMarketplaceAutoPolicy(fetch, marketplace.id, policy),
-    onSuccess: () => {
-      invalidateMarketplaces({ queryClient });
-      // Marketplace autoApply feeds each plugin's effective autoApply.
-      invalidatePluginList({ queryClient });
-    },
-    onError: (error) => {
-      appToast.error(
-        `Changing the ${marketplace.displayName} update policy failed`,
-        {
-          description: error instanceof Error ? error.message : String(error),
-        },
-      );
-    },
-  });
-
   const failed = marketplace.lastError !== null;
   const countLabel = `${marketplace.pluginCount} plugin${marketplace.pluginCount === 1 ? "" : "s"}`;
-  const policyLabel = marketplaceCheckPolicySummary(marketplace);
   const refreshLabel = failed
     ? marketplace.lastRefreshAt !== null
       ? // Last-known-good stays in use on refresh failure (locked design).
@@ -236,11 +144,6 @@ function MarketplaceRow({
           <span className="text-sm font-medium text-foreground">
             {marketplace.displayName}
           </span>
-          {marketplaceIsOfficial(marketplace.scope) ? (
-            <Pill variant="secondary" size="sm">
-              official
-            </Pill>
-          ) : null}
           {failed ? (
             <span
               className="inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium"
@@ -251,7 +154,7 @@ function MarketplaceRow({
           ) : null}
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {countLabel} · {refreshLabel} · {policyLabel}
+          {countLabel} · {refreshLabel}
         </p>
         {failed ? (
           <p className="mt-0.5 text-xs text-warning-text">
@@ -293,33 +196,6 @@ function MarketplaceRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuCheckboxItem
-              checked={marketplace.autoCheck}
-              disabled={setPolicy.isPending}
-              onSelect={(event) => event.preventDefault()}
-              onCheckedChange={(checked) =>
-                setPolicy.mutate({
-                  autoCheck: checked === true,
-                  autoApply: marketplace.autoApply,
-                })
-              }
-            >
-              Check for updates automatically
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={marketplace.autoApply}
-              disabled={setPolicy.isPending}
-              onSelect={(event) => event.preventDefault()}
-              onCheckedChange={(checked) =>
-                setPolicy.mutate({
-                  autoCheck: marketplace.autoCheck,
-                  autoApply: checked === true,
-                })
-              }
-            >
-              Apply compatible updates automatically
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive-text"
               onSelect={onRemove}
@@ -336,12 +212,11 @@ function MarketplaceRow({
 function AddMarketplaceDialog({
   open,
   onOpenChange,
-  onAdded,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdded: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [source, setSource] = useState("");
   const [name, setName] = useState("");
 
@@ -352,7 +227,7 @@ function AddMarketplaceDialog({
         ...(name.trim().length > 0 ? { name: name.trim() } : {}),
       }),
     onSuccess: () => {
-      onAdded();
+      invalidateMarketplaces({ queryClient });
       appToast.success("Marketplace added", {
         description: "No plugins were installed.",
       });
@@ -440,37 +315,26 @@ function AddMarketplaceDialog({
   );
 }
 
-/** Exported for tests (per-plugin keep/uninstall dispositions). */
+/** Exported for tests (simplified removal confirm). */
 export function RemoveMarketplaceDialog({
   marketplace,
-  affectedPlugins,
   onOpenChange,
-  onRemoved,
 }: {
   marketplace: MarketplaceListItem;
-  affectedPlugins: MarketplaceAffectedPlugin[];
   onOpenChange: (open: boolean) => void;
-  onRemoved: () => void;
 }) {
-  // Keep-as-direct is the safe default: the plugin retains its source
-  // intent and update policy, only provenance changes.
-  const [actions, setActions] = useState<Record<string, "keep" | "uninstall">>(
-    () => Object.fromEntries(affectedPlugins.map((plugin) => [plugin.id, "keep"])),
-  );
-
+  const queryClient = useQueryClient();
   const remove = useMutation({
-    mutationFn: () => {
-      const dispositions: MarketplacePluginDisposition[] = affectedPlugins.map(
-        (plugin) => ({
-          pluginId: plugin.id,
-          action: actions[plugin.id] ?? "keep",
-        }),
-      );
-      return removeMarketplace(fetch, marketplace.id, dispositions);
-    },
-    onSuccess: () => {
-      onRemoved();
-      appToast.success(`Removed ${marketplace.displayName}`);
+    mutationFn: () => removeMarketplace(fetch, marketplace.id),
+    onSuccess: (result) => {
+      invalidateMarketplaces({ queryClient });
+      invalidatePluginList({ queryClient });
+      appToast.success(`Removed ${marketplace.displayName}`, {
+        description:
+          result.convertedPluginIds.length > 0
+            ? `Kept as direct installs: ${result.convertedPluginIds.join(", ")}.`
+            : undefined,
+      });
       onOpenChange(false);
     },
     onError: (error) => {
@@ -486,72 +350,11 @@ export function RemoveMarketplaceDialog({
         <DialogHeader>
           <DialogTitle>Remove {marketplace.displayName}?</DialogTitle>
           <DialogDescription>
-            {affectedPlugins.length} installed plugin
-            {affectedPlugins.length === 1 ? " came" : "s came"} from this
-            marketplace. Choose what happens to each.
+            Removing a marketplace uninstalls nothing: plugins installed from
+            it stay and become &ldquo;direct&rdquo; installs, keeping their
+            current source.
           </DialogDescription>
         </DialogHeader>
-        <div className="overflow-hidden rounded-lg border border-border">
-          {affectedPlugins.map((plugin, index) => (
-            <div
-              key={plugin.id}
-              className={
-                index > 0
-                  ? "border-t border-border-seam px-3 py-2.5"
-                  : "px-3 py-2.5"
-              }
-            >
-              <div className="flex items-center gap-2">
-                <LetterBadge label={plugin.id} className="size-5 text-2xs" />
-                <span className="text-sm font-medium text-foreground">
-                  {plugin.id}
-                </span>
-                <span className="font-mono text-2xs text-subtle-foreground">
-                  v{plugin.version}
-                </span>
-              </div>
-              <RadioGroup
-                className="mt-2 flex gap-4"
-                value={actions[plugin.id] ?? "keep"}
-                onValueChange={(value) =>
-                  setActions((current) => ({
-                    ...current,
-                    [plugin.id]: value === "uninstall" ? "uninstall" : "keep",
-                  }))
-                }
-              >
-                <div className="flex items-center gap-1.5">
-                  <RadioGroupItem
-                    value="keep"
-                    id={`dispose-${plugin.id}-keep`}
-                  />
-                  <Label
-                    htmlFor={`dispose-${plugin.id}-keep`}
-                    className="text-xs font-normal text-muted-foreground"
-                  >
-                    Keep as direct install
-                  </Label>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <RadioGroupItem
-                    value="uninstall"
-                    id={`dispose-${plugin.id}-uninstall`}
-                  />
-                  <Label
-                    htmlFor={`dispose-${plugin.id}-uninstall`}
-                    className="text-xs font-normal text-muted-foreground"
-                  >
-                    Uninstall
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-          ))}
-        </div>
-        <p className="text-2xs text-subtle-foreground">
-          Kept plugins keep their current source and update policy; they&rsquo;ll
-          appear as &ldquo;direct&rdquo; installs.
-        </p>
         <DialogFooter>
           <Button
             type="button"

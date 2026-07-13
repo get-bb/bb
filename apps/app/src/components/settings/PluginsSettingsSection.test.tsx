@@ -178,8 +178,6 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     provenance: null,
     marketplaceName: null,
     sourceDisplay: null,
-    updatePolicy: null,
-    autoApply: null,
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };
 }
@@ -191,13 +189,9 @@ describe("PluginSettingsDetail settings gating", () => {
       vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
     );
     const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginSettingsDetail
-        plugin={rowPlugin("needs-configuration")}
-        autoApplyDisabled={false}
-      />,
-      { wrapper },
-    );
+    render(<PluginSettingsDetail plugin={rowPlugin("needs-configuration")} />, {
+      wrapper,
+    });
     expect(await screen.findByLabelText("Greeting")).toBeTruthy();
   });
 
@@ -205,13 +199,7 @@ describe("PluginSettingsDetail settings gating", () => {
     const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
     vi.stubGlobal("fetch", fetchSpy);
     const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginSettingsDetail
-        plugin={rowPlugin("error")}
-        autoApplyDisabled={false}
-      />,
-      { wrapper },
-    );
+    render(<PluginSettingsDetail plugin={rowPlugin("error")} />, { wrapper });
     expect(screen.queryByLabelText("Greeting")).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
