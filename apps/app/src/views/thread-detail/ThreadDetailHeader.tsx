@@ -67,7 +67,11 @@ export function ThreadDetailHeader({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // The title doubles as the pane-reorder drag handle when the layout is split;
   // beginPaneDrag is undefined on the single-pane, page, and popout surfaces.
-  const { beginPaneDrag } = usePaneContext();
+  const { beginPaneDrag, isBoundedPane, isFocused } = usePaneContext();
+  // In a split, unfocused panes dim their header slightly — the only focus
+  // indicator in the split area (pane chrome would fight the hairline
+  // dividers). Hover restores full strength so the controls read as usable.
+  const isDimmed = isBoundedPane && !isFocused;
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (!beginPaneDrag || event.button !== 0) {
       return;
@@ -197,7 +201,10 @@ export function ThreadDetailHeader({
       center={center}
       actions={actions}
       bordered={false}
-      className="border-b border-border-seam-vertical/60"
+      className={cn(
+        "border-b border-border-seam-vertical/60",
+        isDimmed && "opacity-60 transition-opacity hover:opacity-100",
+      )}
     />
   );
 }
