@@ -346,18 +346,20 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     newer bb.
 - Commands:
   - `bb plugin install <src>` — marketplace entry (bare name when unique;
-    `<entry>@<marketplace>` when ambiguous; `--version <range>` marketplace-only),
-    local path, `builtin:<name>`, `git:<url>@<ref>`, or
-    `npm:<package>[@<version|tag|range>]` (npm on PATH required for `npm:`).
-    Prefixes `path:` / `npm:` / `git:` / `builtin:` skip marketplace resolution.
-    Omit the npm spec to track compatible stable
-    releases; ranges and dist-tags track, while exact versions are pinned.
-    Git branches track; tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
-    pass `--yes` to skip.
-    Plugins that declare a frontend (`bb.app`) are built at install time for
-    path/git sources; npm packages must publish a prebuilt `dist/`. Managed
-    git/npm installs refuse `engines.bb` / `engines.bbPluginSdk` mismatches,
-    manifest vs. artifact identity mismatches, and ids reserved by builtins.
+    `<entry>@<marketplace>` when ambiguous), local path, `builtin:<name>`,
+    `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
+    required for `npm:`). Prefixes `path:` / `npm:` / `git:` / `builtin:` skip
+    marketplace resolution. To pin or range an npm package, install with
+    `npm:<package>@…` (marketplace installs use the catalog entry's source).
+    Omit the npm spec to track compatible stable releases; ranges and dist-tags
+    track, while exact versions are pinned. Git branches track; tags and commits
+    are pinned. Installs prompt for confirmation (plugins are full-trust code);
+    pass `--yes` to skip. Reinstalling an already-installed managed plugin is
+    refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
+    are built at install time for path/git sources; npm packages must publish a
+    prebuilt `dist/`. Managed git/npm installs refuse `engines.bb` /
+    `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
+    and ids reserved by builtins.
   - `bb plugin outdated` — check installed plugins for compatible updates
     (table; `--json` for raw results). Shows latest compatible candidate and
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate

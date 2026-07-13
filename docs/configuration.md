@@ -427,10 +427,11 @@ marketplace removal behavior.
 Plugin updates are manual. `bb plugin outdated` checks tracking sources and
 `bb plugin update <id>` / `bb plugin update --all` applies compatible
 candidates. There is no scheduled marketplace refresh, automatic application,
-or update audit feed. Before activation bb snapshots the plugin database,
-host-managed settings/storage/schedules, secrets, and registration. A failed
-activation restores that snapshot and records the latest failure on the plugin
-so it can be surfaced as needing attention.
+or update audit feed. Reinstalling an already-installed managed plugin is
+refused — use `bb plugin update`. Before activation bb snapshots the plugin
+database, host-managed settings/storage/schedules, secrets, and registration.
+A failed activation restores that snapshot and records the latest failure on
+the plugin so it can be surfaced as needing attention.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
 (packages are installed with `--ignore-scripts`). An omitted npm spec tracks

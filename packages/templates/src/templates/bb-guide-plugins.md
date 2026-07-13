@@ -139,10 +139,12 @@ catalog and records the error (list shows "refresh failed" state).
 tracking sources.
 
 Updates are manual: `bb plugin outdated` checks tracking sources and
-`bb plugin update` applies compatible candidates. A failed activation restores
-the pre-update snapshot and leaves the latest failure visible as needing
-attention. Exact npm versions, git tags and commits, and path sources are pinned;
-npm ranges/omitted specs/dist-tags and git branches track compatible updates.
+`bb plugin update` applies compatible candidates. Reinstalling an
+already-installed managed plugin is refused — use `bb plugin update`. A failed
+activation restores the pre-update snapshot and leaves the latest failure
+visible as needing attention. Exact npm versions, git tags and commits, and path
+sources are pinned; npm ranges/omitted specs/dist-tags and git branches track
+compatible updates.
 
 Removing a marketplace always keeps its installed plugins and converts them to
 direct provenance while preserving each plugin's source intent.

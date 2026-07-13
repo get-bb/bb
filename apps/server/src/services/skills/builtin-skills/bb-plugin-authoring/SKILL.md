@@ -78,10 +78,11 @@ The manifest is `package.json`:
   reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip
   enforcing `engines.bb` and annotate that on check results.
 - **Manual updates:** `bb plugin outdated` checks tracking sources and
-  `bb plugin update` applies compatible candidates. A failed activation
-  **rolls back** to the previous state snapshot and records the failure for
-  the user. Keep `engines.*` honest and ship load-safe factories so an update
-  never strands users.
+  `bb plugin update` applies compatible candidates (reinstall of an already
+  installed managed plugin is refused). A failed activation **rolls back** to
+  the previous state snapshot and records the failure for the user. Keep
+  `engines.*` honest and ship load-safe factories so an update never strands
+  users.
 - `bb plugin build` stamps authoritative metadata into both
   `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
   `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and
