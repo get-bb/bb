@@ -33,7 +33,7 @@ export function getFollowUpPromptPlaceholder(
 }
 
 /** Short copy that remains fully visible in the one-line mobile composer. */
-export function getMinimizedFollowUpPromptPlaceholder(
+export function getCompactFollowUpPromptPlaceholder(
   displayStatus: ThreadRuntimeDisplayStatus,
 ): string {
   switch (displayStatus) {

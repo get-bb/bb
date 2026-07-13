@@ -763,7 +763,7 @@ export function SideChatTabContent({
     : isSideChatProvisioning
       ? "Provisioning side chat..."
       : "Reply in the side chat…";
-  const minimizedComposerPlaceholder = isSideChatStopRequested
+  const compactComposerPlaceholder = isSideChatStopRequested
     ? "Stopping side chat..."
     : isSideChatProvisioning
       ? "Setting up side chat..."
@@ -1123,7 +1123,7 @@ export function SideChatTabContent({
       onChangeMessage: handleChangeMessage,
       onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSubmit,
-      minimizedPromptPlaceholder: minimizedComposerPlaceholder,
+      compactPromptPlaceholder: compactComposerPlaceholder,
       promptPlaceholder: composerPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       submitMode: sideChatSubmitMode,
@@ -1136,7 +1136,7 @@ export function SideChatTabContent({
       handleModifierSubmit,
       handleSubmit,
       isSideChatTurnSubmitting,
-      minimizedComposerPlaceholder,
+      compactComposerPlaceholder,
       promptDraft.attachments,
       promptDraft.mentions,
       promptDraft.text,

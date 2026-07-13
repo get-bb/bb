@@ -122,31 +122,25 @@
   }
 
   /*
-   * The minimized mobile composer is a single-line preview of a rich editor,
+   * The compact mobile composer is a single-line preview of a rich editor,
    * not a separate plain-text field. Flatten every Markdown block and hard
-   * break into one horizontally scrollable line: the idle edge truncates, but
-   * moving the caret can reveal the entire value instead of landing inside
-   * invisible blocks. Mention pills remain inline-flex so their own labels can
-   * truncate without breaking the line.
+   * break into one clipped line. The editor expands before it can be edited, so
+   * the compact state only needs to preserve the real document and present its
+   * leading text. Mention pills remain inline-flex so their own labels can
+   * truncate without breaking the line. `!important` beats ProseMirror's
+   * unlayered `white-space: break-spaces` rule.
    */
-  [data-promptbox-minimized-content] .ProseMirror[contenteditable] {
-    min-height: 0;
+  [data-promptbox-compact-content] .ProseMirror[contenteditable] {
+    width: 100%;
+    min-height: 0 !important;
     max-height: 1.7em;
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
+    overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: nowrap !important;
   }
 
-  [data-promptbox-minimized-content]
-    .ProseMirror[contenteditable]::-webkit-scrollbar {
-    display: none;
-  }
-
-  [data-promptbox-minimized-content] .ProseMirror[contenteditable] > *,
-  [data-promptbox-minimized-content]
+  [data-promptbox-compact-content] .ProseMirror[contenteditable] > *,
+  [data-promptbox-compact-content]
     .ProseMirror[contenteditable]
     :where(blockquote, h1, h2, h3, h4, h5, h6, li, ol, p, ul) {
     display: inline;
@@ -161,16 +155,16 @@
     white-space: inherit;
   }
 
-  [data-promptbox-minimized-content]
+  [data-promptbox-compact-content]
     .ProseMirror[contenteditable]
     > *
     + *::before,
-  [data-promptbox-minimized-content]
+  [data-promptbox-compact-content]
     .ProseMirror[contenteditable]
     :where(blockquote, li)
     > *
     + *::before,
-  [data-promptbox-minimized-content]
+  [data-promptbox-compact-content]
     .ProseMirror[contenteditable]
     :where(ol, ul)
     > li
@@ -178,16 +172,16 @@
     content: " ";
   }
 
-  [data-promptbox-minimized-content] .ProseMirror[contenteditable] br {
+  [data-promptbox-compact-content] .ProseMirror[contenteditable] br {
     display: inline;
     content: " ";
   }
 
-  [data-promptbox-minimized-content] .ProseMirror[contenteditable] br::after {
+  [data-promptbox-compact-content] .ProseMirror[contenteditable] br::after {
     content: " ";
   }
 
-  [data-promptbox-minimized-content] .prompt-mention-pill > span:last-child {
+  [data-promptbox-compact-content] .prompt-mention-pill > span:last-child {
     min-width: 0;
   }
 

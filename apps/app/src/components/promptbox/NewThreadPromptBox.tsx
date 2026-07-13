@@ -223,6 +223,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   useImperativeHandle(
     externalPromptBoxRef,
     () => ({
+      captureHeightForLayoutChange: () => {
+        promptBoxRef.current?.captureHeightForLayoutChange();
+      },
       focusEnd: () => {
         promptBoxRef.current?.focusEnd();
       },

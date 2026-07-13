@@ -63,7 +63,6 @@ import {
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
 import { normalizePromptBlockquoteBoundaries } from "@/components/ui/markdown-prompt-blockquote-boundaries";
-import { useMobilePromptBoxMinimizedState } from "@/components/promptbox/mobile-promptbox-minimized-context";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
@@ -391,8 +390,7 @@ function trimQueuedMessagePreviewTextRange({
   text: string;
 }): QueuedMessagePreviewText | null {
   const rawText = text.slice(rangeStart, rangeEnd);
-  const leadingWhitespaceLength =
-    rawText.length - rawText.trimStart().length;
+  const leadingWhitespaceLength = rawText.length - rawText.trimStart().length;
   const trimmedRelativeEnd = rawText.trimEnd().length;
   if (trimmedRelativeEnd <= leadingWhitespaceLength) {
     return null;
@@ -691,19 +689,7 @@ export function QueuedMessagesList({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const shouldCollapseForMobilePrompt = useMobilePromptBoxMinimizedState();
-  const [isExpanded, setIsExpanded] = useState(
-    !shouldCollapseForMobilePrompt,
-  );
-  const [lastPromptMinimizedState, setLastPromptMinimizedState] = useState(
-    shouldCollapseForMobilePrompt,
-  );
-  if (shouldCollapseForMobilePrompt !== lastPromptMinimizedState) {
-    setLastPromptMinimizedState(shouldCollapseForMobilePrompt);
-    if (shouldCollapseForMobilePrompt && isExpanded) {
-      setIsExpanded(false);
-    }
-  }
+  const [isExpanded, setIsExpanded] = useState(true);
   const {
     aboveOverflow,
     belowOverflow,

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -12,18 +18,15 @@ const mocks = vi.hoisted(() => {
   const values = {
     executionControls: vi.fn(),
     isCompactViewport: false,
-    scrollElement: null as HTMLElement | null,
+    isPointerCoarse: false,
     scrollToBottom: vi.fn(),
     permissionModePicker: vi.fn(),
   };
-  return Object.assign(values, {
-    getScrollElement: () => values.scrollElement,
-  });
+  return Object.assign(values, {});
 });
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
   useBottomAnchoredScroll: () => ({
-    getScrollElement: mocks.getScrollElement,
     isAtBottom: false,
     scrollToBottom: mocks.scrollToBottom,
     scrollElementIntoView: vi.fn(),
@@ -36,18 +39,21 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => mocks.isCompactViewport,
 }));
 
+vi.mock("@bb/shared-ui/hooks/use-pointer-coarse", () => ({
+  usePointerCoarse: () => mocks.isPointerCoarse,
+}));
+
 vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
   PromptBoxInternal: ({
     footerStart,
-    minimized,
+    compact,
     onSubmit,
     submission,
     zenMode,
   }: {
     footerStart?: ReactNode;
-    minimized?: {
-      isMinimized: boolean;
-      onToggle: () => void;
+    compact?: {
+      isCompact: boolean;
       placeholder?: string;
     };
     onSubmit: () => void;
@@ -56,18 +62,12 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
   }) => (
     <div
       data-testid="prompt-box"
-      data-minimized={minimized?.isMinimized}
+      data-compact={compact?.isCompact}
       data-zen-reset-key={zenMode?.resetKey}
     >
       {footerStart}
-      {minimized?.isMinimized ? <span>{minimized.placeholder}</span> : null}
-      {minimized ? (
-        <button type="button" onClick={minimized.onToggle}>
-          {minimized.isMinimized
-            ? "Make prompt box larger"
-            : "Make prompt box smaller"}
-        </button>
-      ) : null}
+      <input aria-label="Follow-up prompt" />
+      {compact?.isCompact ? <span>{compact.placeholder}</span> : null}
       <button type="button" onClick={onSubmit}>
         Submit
       </button>
@@ -139,7 +139,7 @@ function createFollowUpPromptBoxProps(
       onChangeMessage: vi.fn(),
       onModifierSubmit: vi.fn(),
       onSubmit: vi.fn(),
-      minimizedPromptPlaceholder: "Ask a follow-up",
+      compactPromptPlaceholder: "Ask a follow-up",
       promptPlaceholder: "Ask for a follow-up",
       canModifierSubmit: true,
       submitMode,
@@ -202,7 +202,7 @@ afterEach(() => {
 
 beforeEach(() => {
   mocks.isCompactViewport = false;
-  mocks.scrollElement = document.createElement("div");
+  mocks.isPointerCoarse = false;
 });
 
 describe("FollowUpPromptBox", () => {
@@ -271,131 +271,201 @@ describe("FollowUpPromptBox", () => {
     );
   });
 
-  it("offers manual minimize and expand controls on mobile", () => {
+  it("starts as a single compact row on mobile without size controls", () => {
     mocks.isCompactViewport = true;
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     props.environmentSummary = <span>Local environment</span>;
     render(<FollowUpPromptBox {...props} />);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "true",
     );
-
-    expect(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    ).toBeTruthy();
     expect(screen.getByText("Ask a follow-up")).toBeTruthy();
     expect(screen.queryByText("Local environment")).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    );
-
     expect(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    ).toBeTruthy();
-    expect(screen.getByText("Local environment")).toBeTruthy();
-  });
-
-  it("automatically minimizes after the mobile timeline scrolls up", () => {
-    mocks.isCompactViewport = true;
-    if (!mocks.scrollElement) throw new Error("Missing scroll element");
-    mocks.scrollElement.scrollTop = 200;
-    render(
-      <FollowUpPromptBox
-        {...createFollowUpPromptBoxProps({ kind: "ready" })}
-      />,
-    );
-
-    mocks.scrollElement.scrollTop = 190;
-    fireEvent.wheel(mocks.scrollElement, { deltaY: -10 });
-    fireEvent.scroll(mocks.scrollElement);
-
-    expect(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    ).toBeTruthy();
-  });
-
-  it("expands a minimized mobile composer when add-to-chat updates its draft", () => {
-    mocks.isCompactViewport = true;
-    const props = createFollowUpPromptBoxProps({ kind: "ready" });
-    const view = render(<FollowUpPromptBox {...props} focusEndKey={0} />);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    );
-    expect(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    ).toBeTruthy();
-
-    view.rerender(<FollowUpPromptBox {...props} focusEndKey={1} />);
-
-    expect(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    ).toBeTruthy();
-  });
-
-  it("does not undo a manual expansion during the same upward scroll", () => {
-    mocks.isCompactViewport = true;
-    if (!mocks.scrollElement) throw new Error("Missing scroll element");
-    mocks.scrollElement.scrollTop = 200;
-    render(
-      <FollowUpPromptBox
-        {...createFollowUpPromptBoxProps({ kind: "ready" })}
-      />,
-    );
-
-    mocks.scrollElement.scrollTop = 190;
-    fireEvent.wheel(mocks.scrollElement, { deltaY: -10 });
-    fireEvent.scroll(mocks.scrollElement);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    );
-
-    mocks.scrollElement.scrollTop = 175;
-    fireEvent.scroll(mocks.scrollElement);
-    expect(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    ).toBeTruthy();
-
-    mocks.scrollElement.scrollTop = 185;
-    fireEvent.scroll(mocks.scrollElement);
-    mocks.scrollElement.scrollTop = 170;
-    fireEvent.wheel(mocks.scrollElement, { deltaY: -10 });
-    fireEvent.scroll(mocks.scrollElement);
-    expect(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    ).toBeTruthy();
-  });
-
-  it("does not expose minimize controls on desktop", () => {
-    render(
-      <FollowUpPromptBox
-        {...createFollowUpPromptBoxProps({ kind: "ready" })}
-      />,
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "Make prompt box smaller" }),
+      screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
   });
 
-  it("does not minimize for a programmatic upward scroll", () => {
+  it("expands while focus is within the mobile composer", () => {
     mocks.isCompactViewport = true;
-    if (!mocks.scrollElement) throw new Error("Missing scroll element");
-    mocks.scrollElement.scrollTop = 200;
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    props.environmentSummary = <span>Local environment</span>;
+    render(<FollowUpPromptBox {...props} />);
+
+    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+    const submit = screen.getByRole("button", { name: "Submit" });
+    fireEvent.focus(input);
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "false",
+    );
+    expect(screen.getByText("Local environment")).toBeTruthy();
+
+    fireEvent.blur(input, { relatedTarget: submit });
+    fireEvent.focus(submit);
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "false",
+    );
+  });
+
+  it("does not move the mobile input before the first tap can focus it", () => {
+    mocks.isCompactViewport = true;
     render(
       <FollowUpPromptBox
         {...createFollowUpPromptBoxProps({ kind: "ready" })}
       />,
     );
+    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
 
-    mocks.scrollElement.scrollTop = 180;
-    fireEvent.scroll(mocks.scrollElement);
+    fireEvent.pointerDown(input);
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "true",
+    );
 
-    expect(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    ).toBeTruthy();
+    fireEvent.focus(input);
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "false",
+    );
+  });
+
+  it("coordinates coarse-pointer expansion with a visual viewport change", async () => {
+    mocks.isCompactViewport = true;
+    mocks.isPointerCoarse = true;
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "visualViewport",
+    );
+    const visualViewport = Object.assign(new EventTarget(), { height: 500 });
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
+
+    try {
+      render(
+        <FollowUpPromptBox
+          {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        />,
+      );
+      const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+
+      fireEvent.focus(input);
+      expect(
+        screen.getByTestId("prompt-box").getAttribute("data-compact"),
+      ).toBe("true");
+
+      act(() => {
+        visualViewport.height = 460;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      expect(
+        screen.getByTestId("prompt-box").getAttribute("data-compact"),
+      ).toBe("true");
+
+      act(() => {
+        visualViewport.height = 300;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await vi.waitFor(() =>
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("false"),
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(window, "visualViewport", originalDescriptor);
+      } else {
+        Reflect.deleteProperty(window, "visualViewport");
+      }
+    }
+  });
+
+  it("collapses on an interaction outside the mobile composer", () => {
+    mocks.isCompactViewport = true;
+    render(
+      <>
+        <FollowUpPromptBox
+          {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        />
+        <button type="button">Outside composer</button>
+      </>,
+    );
+    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+    const outside = screen.getByRole("button", { name: "Outside composer" });
+
+    fireEvent.focus(input);
+    fireEvent.pointerDown(outside);
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "true",
+    );
+  });
+
+  it("stays expanded while a composer-owned overlay is open", () => {
+    mocks.isCompactViewport = true;
+    render(
+      <>
+        <FollowUpPromptBox
+          {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        />
+        <button type="button">Portaled picker content</button>
+      </>,
+    );
+    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+    const trigger = screen.getByRole("button", { name: "Submit" });
+    const portaledContent = screen.getByRole("button", {
+      name: "Portaled picker content",
+    });
+    trigger.setAttribute("aria-haspopup", "menu");
+    trigger.setAttribute("aria-expanded", "true");
+    fireEvent.focus(input);
+
+    fireEvent.pointerDown(portaledContent);
+    fireEvent.focusIn(portaledContent);
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "false",
+    );
+
+    trigger.setAttribute("aria-expanded", "false");
+    fireEvent.pointerDown(portaledContent);
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "true",
+    );
+  });
+
+  it("stays expanded after pressing a non-focusable composer control", () => {
+    mocks.isCompactViewport = true;
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    props.environmentSummary = (
+      <button type="button" disabled>
+        Read only mode
+      </button>
+    );
+    render(<FollowUpPromptBox {...props} />);
+    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+    fireEvent.focus(input);
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Read only mode" }),
+    );
+    fireEvent.blur(input);
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "false",
+    );
+  });
+
+  it("keeps the full composer visible on desktop", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    props.environmentSummary = <span>Local environment</span>;
+    render(<FollowUpPromptBox {...props} />);
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      null,
+    );
+    expect(screen.getByText("Local environment")).toBeTruthy();
   });
 
   it("keeps the composer mounted across compact breakpoint changes", () => {
@@ -412,20 +482,16 @@ describe("FollowUpPromptBox", () => {
     );
   });
 
-  it("uses the caller-specific minimized placeholder", () => {
+  it("uses the caller-specific compact placeholder", () => {
     mocks.isCompactViewport = true;
     const props = createFollowUpPromptBoxProps({
       kind: "blocked",
       reason: "stopping",
     });
     if (props.composer === null) throw new Error("Missing composer");
-    props.composer.minimizedPromptPlaceholder = "Stopping side chat...";
+    props.composer.compactPromptPlaceholder = "Stopping side chat...";
     props.composer.promptPlaceholder = "Stopping side chat...";
     render(<FollowUpPromptBox {...props} />);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    );
 
     expect(screen.getByText("Stopping side chat...")).toBeTruthy();
   });

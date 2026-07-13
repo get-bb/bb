@@ -4,7 +4,7 @@ import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   getFollowUpPromptPlaceholder,
-  getMinimizedFollowUpPromptPlaceholder,
+  getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -460,9 +460,9 @@ export function ThreadDetailPromptArea({
   const promptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getFollowUpPromptPlaceholder(runtimeDisplayStatus);
-  const minimizedPromptPlaceholder = isStopRequested
+  const compactPromptPlaceholder = isStopRequested
     ? "Stopping thread..."
-    : getMinimizedFollowUpPromptPlaceholder(runtimeDisplayStatus);
+    : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
   const currentPromptDraft = useMemo(
     () => ({
       text: promptDraft.text,
@@ -901,7 +901,7 @@ export function ThreadDetailPromptArea({
       onChangeMessage: promptDraft.setTextAndMentions,
       onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSend,
-      minimizedPromptPlaceholder,
+      compactPromptPlaceholder,
       promptPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       submitMode,
@@ -918,7 +918,7 @@ export function ThreadDetailPromptArea({
       promptDraft.mentions,
       promptDraft.text,
       promptHistoryDrafts,
-      minimizedPromptPlaceholder,
+      compactPromptPlaceholder,
       promptPlaceholder,
       runtimeDisplayStatus,
       submitMode,

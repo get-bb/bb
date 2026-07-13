@@ -213,22 +213,6 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
   );
 }
 
-function PromptBoxSizeHarness({ storageKey }: { storageKey: string }) {
-  const [isMinimized, setIsMinimized] = useState(false);
-  return (
-    <PromptBoxInternal
-      {...createPromptBoxProps({
-        minimized: {
-          isMinimized,
-          onToggle: () => setIsMinimized((previous) => !previous),
-          placeholder: "Ask a follow-up",
-        },
-        zenMode: { storageKey },
-      })}
-    />
-  );
-}
-
 function renderPromptBox(
   initialValue: string,
   options: {
@@ -688,9 +672,41 @@ describe("PromptBoxInternal zen mode layout", () => {
   });
 });
 
-describe("PromptBoxInternal minimized layout", () => {
-  it("keeps only the one-line editor, expand control, and primary action", () => {
-    const onToggle = vi.fn();
+describe("PromptBoxInternal compact layout", () => {
+  it("animates between compact and full layouts", async () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const baseProps = createPromptBoxProps({ promptBoxRef });
+    const view = render(
+      <PromptBoxInternal
+        {...baseProps}
+        compact={{ isCompact: true, placeholder: "Ask a follow-up" }}
+      />,
+    );
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+    vi.spyOn(form, "getBoundingClientRect")
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 48))
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 144))
+      .mockReturnValue(new DOMRect(0, 0, 320, 144));
+
+    act(() => promptBoxRef.current?.captureHeightForLayoutChange());
+    view.rerender(
+      <PromptBoxInternal
+        {...baseProps}
+        compact={{ isCompact: false, placeholder: "Ask a follow-up" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(form.style.transition).toContain("height 240ms");
+      expect(form.style.height).toBe("144px");
+    });
+    fireEvent.transitionEnd(form, { propertyName: "height" });
+  });
+
+  it("keeps only the one-line editor and primary action", () => {
     const voice: PromptVoiceConfig = {
       state: "idle",
       isSupported: true,
@@ -707,9 +723,8 @@ describe("PromptBoxInternal minimized layout", () => {
             "A compact follow-up that is much wider than the available mobile space\nA hidden second line",
           attachments: { onAttachFiles: vi.fn() },
           footerStart: <button type="button">Model selector</button>,
-          minimized: {
-            isMinimized: true,
-            onToggle,
+          compact: {
+            isCompact: true,
             placeholder: "Ask a follow-up",
           },
           promptActions,
@@ -719,17 +734,11 @@ describe("PromptBoxInternal minimized layout", () => {
     );
 
     const form = document.querySelector("[data-promptbox]");
-    expect(form?.getAttribute("data-promptbox-minimized")).toBe("");
-    const expandButton = screen.getByRole("button", {
-      name: "Make prompt box larger",
-    });
+    expect(form?.getAttribute("data-promptbox-compact")).toBe("");
     const submitButton = screen.getByRole("button", {
       name: "Submit (Enter)",
     });
-    expect(expandButton).toBeTruthy();
-    expect(expandButton.classList.contains("size-8")).toBe(true);
     expect(submitButton.classList.contains("size-8")).toBe(true);
-    expect(expandButton.classList.contains("p-0")).toBe(true);
     expect(submitButton.classList.contains("p-0")).toBe(true);
     expect(submitButton.classList.contains("ml-1")).toBe(false);
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
@@ -739,20 +748,21 @@ describe("PromptBoxInternal minimized layout", () => {
       screen.queryByRole("button", { name: "Start voice input" }),
     ).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Make prompt box smaller" }),
+      screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
     expect(getPromptEditorElement().getAttribute("data-placeholder")).toBe(
       "Ask a follow-up",
     );
-    const minimizedContent = document.querySelector(
-      "[data-promptbox-minimized-content]",
+    const compactContent = document.querySelector(
+      "[data-promptbox-compact-content]",
     );
-    expect(minimizedContent).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    );
-    expect(onToggle).toHaveBeenCalledOnce();
+    expect(compactContent).toBeTruthy();
+    expect(compactContent?.classList.contains("items-center")).toBe(true);
+    expect(
+      document
+        .querySelector("[data-promptbox-editor-scroll]")
+        ?.classList.contains("pt-0"),
+    ).toBe(true);
   });
 
   it("keeps all Markdown and mention text in the navigable preview", async () => {
@@ -782,20 +792,19 @@ describe("PromptBoxInternal minimized layout", () => {
               },
             },
           ],
-          minimized: {
-            isMinimized: true,
-            onToggle: vi.fn(),
+          compact: {
+            isCompact: true,
             placeholder: "Ask a follow-up",
           },
         })}
       />,
     );
 
-    const minimizedContent = document.querySelector(
-      "[data-promptbox-minimized-content]",
+    const compactContent = document.querySelector(
+      "[data-promptbox-compact-content]",
     );
     const editor = getPromptEditorElement();
-    expect(minimizedContent?.contains(editor)).toBe(true);
+    expect(compactContent?.contains(editor)).toBe(true);
     expect(editor.firstElementChild?.tagName).toBe("BLOCKQUOTE");
     await waitFor(() =>
       expect(editor.querySelector(".prompt-mention-pill")).toBeTruthy(),
@@ -805,82 +814,21 @@ describe("PromptBoxInternal minimized layout", () => {
     expect(editor.textContent).toContain("A hidden paragraph after the quote");
   });
 
-  it("shows only the smaller control in the normal mobile layout", () => {
+  it("does not expose zen controls in the full mobile layout", () => {
     render(
       <PromptBoxInternal
         {...createPromptBoxProps({
           attachments: { onAttachFiles: vi.fn() },
-          minimized: { isMinimized: false, onToggle: vi.fn() },
+          compact: { isCompact: false },
           promptActions,
         })}
       />,
     );
 
     expect(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Make prompt box larger" }),
+      screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
-  });
-
-  it("uses one contextual size control for compact and normal on mobile", () => {
-    const storageKey = "bb.test.promptbox.size-system";
-    window.localStorage.removeItem(storageKey);
-    render(<PromptBoxSizeHarness storageKey={storageKey} />);
-
-    expect(
-      screen.queryByRole("button", { name: "Make prompt box larger" }),
-    ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    );
-    expect(document.querySelector("[data-promptbox-minimized]")).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Make prompt box smaller" }),
-    ).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    );
-    expect(document.querySelector("[data-promptbox-minimized]")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Make prompt box smaller" }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Make prompt box larger" }),
-    ).toBeNull();
-    window.localStorage.removeItem(storageKey);
-  });
-
-  it("does not focus the editor when expanding on coarse pointers", () => {
-    const restoreMatchMedia = mockPointerCoarse(true);
-    const requestAnimationFrame = vi
-      .spyOn(window, "requestAnimationFrame")
-      .mockImplementation((callback) => {
-        callback(0);
-        return 0;
-      });
-    try {
-      render(
-        <PromptBoxInternal
-          {...createPromptBoxProps({
-            minimized: { isMinimized: true, onToggle: vi.fn() },
-          })}
-        />,
-      );
-
-      const focus = vi.spyOn(getPromptEditorElement(), "focus");
-      fireEvent.click(
-        screen.getByRole("button", { name: "Make prompt box larger" }),
-      );
-
-      expect(focus).not.toHaveBeenCalled();
-    } finally {
-      requestAnimationFrame.mockRestore();
-      restoreMatchMedia();
-    }
   });
 });
 

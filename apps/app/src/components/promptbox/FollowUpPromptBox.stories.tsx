@@ -21,7 +21,7 @@ import {
 } from "@/components/promptbox/FollowUpPromptBox";
 import {
   getFollowUpPromptPlaceholder,
-  getMinimizedFollowUpPromptPlaceholder,
+  getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import {
@@ -639,9 +639,9 @@ function Row({
   const resolvedPlaceholder =
     promptPlaceholder ??
     getFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
-  const resolvedMinimizedPlaceholder =
+  const resolvedCompactPlaceholder =
     promptPlaceholder ??
-    getMinimizedFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
+    getCompactFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
   return (
     <PromptStage>
       <FollowUpPromptBox
@@ -666,7 +666,7 @@ function Row({
                 onChangeMessage: handleChangeMessage,
                 onModifierSubmit: noop,
                 onSubmit: noop,
-                minimizedPromptPlaceholder: resolvedMinimizedPlaceholder,
+                compactPromptPlaceholder: resolvedCompactPlaceholder,
                 promptPlaceholder: resolvedPlaceholder,
                 canModifierSubmit: submitMode.kind === "queue",
                 submitMode,

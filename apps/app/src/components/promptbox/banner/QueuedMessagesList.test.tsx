@@ -9,7 +9,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import { MobilePromptBoxMinimizedProvider } from "@/components/promptbox/mobile-promptbox-minimized-context";
 import {
   QueuedMessagesList,
   clampQueuedMessageDragTransform,
@@ -84,37 +83,9 @@ function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
   );
 }
 
-function QueuedMessagesWithPromptState({
-  isPromptMinimized,
-  queuedMessages,
-}: {
-  isPromptMinimized: boolean;
-  queuedMessages: readonly ThreadQueuedMessage[];
-}) {
-  return (
-    <MobilePromptBoxMinimizedProvider isMinimized={isPromptMinimized}>
-      <QueuedMessagesList
-        queuedMessages={queuedMessages}
-        sendDisabled={false}
-        actionDisabled={false}
-        processingMessageId={null}
-        processingAction={null}
-        onSendImmediately={noop}
-        onReorder={noop}
-        onSetGroupBoundary={noop}
-        onEdit={noop}
-        onDelete={noop}
-      />
-    </MobilePromptBoxMinimizedProvider>
-  );
-}
-
 function renderQueuedMessagesWithOptions(
   queuedMessages: readonly ThreadQueuedMessage[],
-  options: Pick<
-    Parameters<typeof QueuedMessagesList>[0],
-    "resolveMentionLink"
-  >,
+  options: Pick<Parameters<typeof QueuedMessagesList>[0], "resolveMentionLink">,
 ) {
   return render(
     <QueuedMessagesList
@@ -139,48 +110,6 @@ afterEach(() => {
 });
 
 describe("QueuedMessagesList", () => {
-  it("collapses when the mobile prompt minimizes and stays collapsed afterward", () => {
-    const queuedMessages = [
-      makeQueuedMessage("q_mobile", "Queued while reading older messages"),
-    ];
-    const view = render(
-      <QueuedMessagesWithPromptState
-        isPromptMinimized={false}
-        queuedMessages={queuedMessages}
-      />,
-    );
-    const getToggle = () =>
-      view.container.querySelector<HTMLButtonElement>(
-        "button[aria-expanded]",
-      );
-
-    expect(getToggle()?.getAttribute("aria-expanded")).toBe("true");
-    expect(
-      view.container.querySelector("[data-queued-message-row]"),
-    ).not.toBeNull();
-
-    view.rerender(
-      <QueuedMessagesWithPromptState
-        isPromptMinimized
-        queuedMessages={queuedMessages}
-      />,
-    );
-
-    expect(getToggle()?.getAttribute("aria-expanded")).toBe("false");
-    expect(
-      view.container.querySelector("[data-queued-message-row]"),
-    ).toBeNull();
-
-    view.rerender(
-      <QueuedMessagesWithPromptState
-        isPromptMinimized={false}
-        queuedMessages={queuedMessages}
-      />,
-    );
-
-    expect(getToggle()?.getAttribute("aria-expanded")).toBe("false");
-  });
-
   it("renders queued blockquote markdown as a compact quote preview", () => {
     const { container } = renderQueuedMessages([
       makeQueuedMessage(
@@ -199,7 +128,10 @@ describe("QueuedMessagesList", () => {
 
   it("renders queued markdown formatting instead of raw delimiters", () => {
     const { container } = renderQueuedMessages([
-      makeQueuedMessage("q_markdown", "## Heading\nReview **bold** and `code`."),
+      makeQueuedMessage(
+        "q_markdown",
+        "## Heading\nReview **bold** and `code`.",
+      ),
     ]);
 
     expect(container.querySelector("h2")).toBeNull();

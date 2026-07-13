@@ -93,7 +93,7 @@ import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-cl
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
-const MINIMIZED_PROMPT_ACTION_BUTTON_CLASS =
+const COMPACT_PROMPT_ACTION_BUTTON_CLASS =
   "size-8 p-0 transition-all [&_svg]:size-4";
 const RICH_PASTE_BLOCK_TAGS = new Set([
   "ADDRESS",
@@ -270,9 +270,8 @@ export interface PromptBoxZenModeConfig {
   resetOnSubmit?: boolean;
 }
 
-export interface PromptBoxMinimizedConfig {
-  isMinimized: boolean;
-  onToggle: () => void;
+export interface PromptBoxCompactConfig {
+  isCompact: boolean;
   placeholder?: string;
 }
 
@@ -297,6 +296,8 @@ export interface PromptVoiceConfig {
 export interface PromptBoxHandle {
   /** Focus the editor and move the caret to the end. */
   focusEnd: () => void;
+  /** Capture the current card height before a controlled layout change. */
+  captureHeightForLayoutChange: () => void;
   /** Insert text at the editor's current cursor position, with smart spacing. */
   insertTextAtCursor: (text: string) => void;
   /** Return the trimmed text before the cursor, used as voice transcript context. */
@@ -339,11 +340,8 @@ export interface PromptBoxInternalProps {
   attachments?: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
   zenMode?: PromptBoxZenModeConfig;
-  /**
-   * Optional one-line presentation for follow-up composers. The host owns the
-   * state so it can minimize in response to timeline scrolling.
-   */
-  minimized?: PromptBoxMinimizedConfig;
+  /** Optional one-line presentation for unfocused mobile follow-up composers. */
+  compact?: PromptBoxCompactConfig;
   history?: HistoryConfig;
   /** When omitted, the mic button is hidden. Wrappers wire this via usePromptVoice. */
   voice?: PromptVoiceConfig;
@@ -1025,7 +1023,7 @@ export function PromptBoxInternal({
   attachments: attachmentConfig = {},
   promptActions,
   zenMode = {},
-  minimized,
+  compact,
   history,
   voice,
   promptBoxRef,
@@ -1076,6 +1074,11 @@ export function PromptBoxInternal({
   const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
   const formRef = useRef<HTMLFormElement>(null);
   const heightAnimationFromRef = useRef<number | null>(null);
+  const capturePromptBoxHeight = useCallback(() => {
+    const formElement = formRef.current;
+    heightAnimationFromRef.current =
+      formElement?.getBoundingClientRect().height ?? null;
+  }, []);
   const editorRef = useRef<Editor | null>(null);
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
   const revealSelectionFrameRef = useRef<number | null>(null);
@@ -1138,10 +1141,10 @@ export function PromptBoxInternal({
   // Zen styling is suppressed while the voice bar shows, since the box
   // collapses to the pill instead.
   const showZenLayout = isZenMode && !showVoiceActionGroup;
-  const showMinimizedLayout =
-    minimized?.isMinimized === true && !showVoiceActionGroup && !isZenMode;
-  const effectivePlaceholder = showMinimizedLayout
-    ? (minimized.placeholder ?? placeholder)
+  const showCompactLayout =
+    compact?.isCompact === true && !showVoiceActionGroup && !isZenMode;
+  const effectivePlaceholder = showCompactLayout
+    ? (compact.placeholder ?? placeholder)
     : placeholder;
   const focusScopeKey = history?.resetKey;
   const onChangeRef = useRef(onChange);
@@ -1618,6 +1621,7 @@ export function PromptBoxInternal({
     const formElement = formRef.current;
     if (fromHeight === null || !formElement) return;
     heightAnimationFromRef.current = null;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const previousTransition = formElement.style.transition;
     const previousWillChange = formElement.style.willChange;
@@ -1650,7 +1654,7 @@ export function PromptBoxInternal({
     formElement.addEventListener("transitionend", handleTransitionEnd);
 
     return cleanup;
-  }, [isZenMode, showMinimizedLayout, zenModeLayout]);
+  }, [isZenMode, showCompactLayout, zenModeLayout]);
 
   const trimmedValue = value.trim();
   const hasAttachments = attachments.length > 0;
@@ -2094,11 +2098,12 @@ export function PromptBoxInternal({
   useImperativeHandle(
     promptBoxRef,
     () => ({
+      captureHeightForLayoutChange: capturePromptBoxHeight,
       focusEnd,
       insertTextAtCursor,
       getTextBeforeCursor,
     }),
-    [focusEnd, insertTextAtCursor, getTextBeforeCursor],
+    [capturePromptBoxHeight, focusEnd, insertTextAtCursor, getTextBeforeCursor],
   );
 
   const canSubmit =
@@ -2183,12 +2188,6 @@ export function PromptBoxInternal({
     [history, scheduleRevealEditorSelection, syncTriggerState],
   );
 
-  const capturePromptBoxHeight = useCallback(() => {
-    const formElement = formRef.current;
-    heightAnimationFromRef.current =
-      formElement?.getBoundingClientRect().height ?? null;
-  }, []);
-
   const focusEditorAfterSizeChange = useCallback(() => {
     // Size changes on mobile web are presentation-only. Keeping focus where it
     // is prevents the soft keyboard from covering the thread after a tap.
@@ -2202,37 +2201,22 @@ export function PromptBoxInternal({
     });
   }, [isPointerCoarse, scheduleRevealEditorSelection]);
 
-  const makePromptBoxSmaller = useCallback(() => {
+  const exitZenMode = useCallback(() => {
     capturePromptBoxHeight();
-    if (isZenMode) {
-      if (minimized?.isMinimized) {
-        minimized.onToggle();
-      }
-      setIsZenMode(false);
-      focusEditorAfterSizeChange();
-      return;
-    }
-    if (!minimized || minimized.isMinimized) return;
-    minimized.onToggle();
+    if (!isZenMode) return;
+    setIsZenMode(false);
     focusEditorAfterSizeChange();
   }, [
     capturePromptBoxHeight,
     focusEditorAfterSizeChange,
     isZenMode,
-    minimized,
     setIsZenMode,
   ]);
 
-  const makePromptBoxLarger = useCallback(() => {
+  const enterZenMode = useCallback(() => {
     capturePromptBoxHeight();
-    if (showMinimizedLayout && minimized) {
-      minimized.onToggle();
-      focusEditorAfterSizeChange();
-      return;
-    }
-    // A mobile follow-up composer has only compact and normal states. Its
-    // normal state intentionally has no "larger" action or zen mode.
-    if (minimized) return;
+    // Mobile follow-up composers expand by focus, not a manual size control.
+    if (compact) return;
     if (isZenMode) return;
     setIsZenMode(true);
     focusEditorAfterSizeChange();
@@ -2240,9 +2224,8 @@ export function PromptBoxInternal({
     capturePromptBoxHeight,
     focusEditorAfterSizeChange,
     isZenMode,
-    minimized,
+    compact,
     setIsZenMode,
-    showMinimizedLayout,
   ]);
 
   const handleAttachmentInputChange = useCallback(
@@ -2540,7 +2523,7 @@ export function PromptBoxInternal({
     <form
       ref={formRef}
       data-promptbox=""
-      data-promptbox-minimized={showMinimizedLayout ? "" : undefined}
+      data-promptbox-compact={showCompactLayout ? "" : undefined}
       onSubmit={handleSubmit}
       onMouseDown={handlePromptBoxMouseDown}
       onDragOver={(event) => {
@@ -2558,7 +2541,7 @@ export function PromptBoxInternal({
         "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
         "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
         showVoiceActionGroup && "rounded-3xl",
-        showMinimizedLayout && "overflow-hidden",
+        showCompactLayout && "overflow-hidden",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
         // `flex flex-col` lets the editor's `flex-1` fill the dvh height.
@@ -2582,17 +2565,17 @@ export function PromptBoxInternal({
           className={cn(
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
             isZenMode && "flex flex-col",
-            showMinimizedLayout && "relative h-12",
+            showCompactLayout && "relative h-12",
             showVoiceActionGroup && "opacity-0",
           )}
         >
-          {header && !showMinimizedLayout ? (
+          {header && !showCompactLayout ? (
             // Left padding matches the editor's so the header content aligns
             // with the placeholder column in both normal and zen modes (editor
             // shifts from px-4 to px-6 when entering zen). Right padding leaves
             // room for the zen-mode toggle button in the top-right corner. Zen
             // mode also gets more top room since the card fills the viewport.
-            <div className={cn("pl-4 pr-14 pt-3", minimized && "pr-20")}>
+            <div className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}>
               {header}
             </div>
           ) : null}
@@ -2602,14 +2585,14 @@ export function PromptBoxInternal({
               isZenMode && "min-h-0 flex flex-1 flex-col",
             )}
           >
-            {!showMinimizedLayout ? (
+            {!showCompactLayout ? (
               <>
                 <AppCommandShortcutHint
                   shortcut={focusComposerShortcut}
                   className="absolute right-10 top-2 z-20 group-focus-within/promptbox:hidden"
                 />
                 <div className="absolute right-2 top-2 z-20 flex items-center gap-0.5">
-                  {isZenMode || (minimized && !minimized.isMinimized) ? (
+                  {isZenMode ? (
                     <Button
                       type="button"
                       size="icon"
@@ -2617,7 +2600,7 @@ export function PromptBoxInternal({
                       onMouseDown={(event) => {
                         event.preventDefault();
                       }}
-                      onClick={makePromptBoxSmaller}
+                      onClick={exitZenMode}
                       aria-label="Make prompt box smaller"
                       className={cn(
                         "text-subtle-foreground hover:text-muted-foreground",
@@ -2627,7 +2610,7 @@ export function PromptBoxInternal({
                       <Icon name="Minimize2" className="size-3" />
                     </Button>
                   ) : null}
-                  {!isZenMode && !minimized ? (
+                  {!isZenMode && !compact ? (
                     <Button
                       type="button"
                       size="icon"
@@ -2635,7 +2618,7 @@ export function PromptBoxInternal({
                       onMouseDown={(event) => {
                         event.preventDefault();
                       }}
-                      onClick={makePromptBoxLarger}
+                      onClick={enterZenMode}
                       aria-label="Make prompt box larger"
                       className={cn(
                         "text-subtle-foreground hover:text-muted-foreground",
@@ -2663,23 +2646,23 @@ export function PromptBoxInternal({
                 // is identical between modes — toggling shouldn't shift the
                 // placeholder position.
                 isZenMode && "min-h-0 flex-1",
-                minimized && !isZenMode && "pr-20",
-                showMinimizedLayout && "h-12 overflow-hidden pb-0 pr-20 pt-2.5",
+                compact && !isZenMode && "pr-14",
+                showCompactLayout && "h-12 overflow-hidden pb-0 pr-14 pt-0",
               )}
               style={{
                 minHeight: isZenMode
                   ? "0px"
-                  : showMinimizedLayout
+                  : showCompactLayout
                     ? "48px"
                     : `${minHeight}px`,
                 height: isZenMode
                   ? "100%"
-                  : showMinimizedLayout
+                  : showCompactLayout
                     ? "48px"
                     : undefined,
                 maxHeight: isZenMode
                   ? "none"
-                  : showMinimizedLayout
+                  : showCompactLayout
                     ? "48px"
                     : PROMPTBOX_MAX_HEIGHT_BY_LAYOUT[zenModeLayout],
               }}
@@ -2689,11 +2672,12 @@ export function PromptBoxInternal({
               >
                 <EditorContent
                   editor={editor}
-                  data-promptbox-minimized-content={
-                    showMinimizedLayout ? "" : undefined
+                  data-promptbox-compact-content={
+                    showCompactLayout ? "" : undefined
                   }
                   className={cn(
                     "h-full min-h-full",
+                    showCompactLayout && "flex items-center",
                     "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
                     "[&_.ProseMirror_p]:m-0",
                     "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
@@ -2749,7 +2733,7 @@ export function PromptBoxInternal({
             </div>
           ) : null}
 
-          {!showMinimizedLayout ? (
+          {!showCompactLayout ? (
             <>
               <AttachmentPreview
                 attachments={attachments}
@@ -2770,10 +2754,10 @@ export function PromptBoxInternal({
           <div
             className={cn(
               "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
-              showMinimizedLayout && "absolute inset-y-0 right-2 gap-0 p-0",
+              showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
             )}
           >
-            {!showMinimizedLayout ? (
+            {!showCompactLayout ? (
               <div
                 className="flex min-w-0 flex-1 flex-row items-center gap-1"
                 aria-live="polite"
@@ -2793,22 +2777,7 @@ export function PromptBoxInternal({
               </div>
             ) : null}
             <div className="flex shrink-0 flex-row items-center gap-1">
-              {showMinimizedLayout && minimized ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  aria-label="Make prompt box larger"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={makePromptBoxLarger}
-                  className={MINIMIZED_PROMPT_ACTION_BUTTON_CLASS}
-                >
-                  <Icon name="Maximize2" className="size-4" />
-                </Button>
-              ) : null}
-              {!showMinimizedLayout ? (
+              {!showCompactLayout ? (
                 <>
                   {voice && !showVoiceActionGroup ? (
                     <Button
@@ -2837,8 +2806,8 @@ export function PromptBoxInternal({
                   aria-label="Stop run"
                   onClick={onStop}
                   className={
-                    showMinimizedLayout
-                      ? MINIMIZED_PROMPT_ACTION_BUTTON_CLASS
+                    showCompactLayout
+                      ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
                       : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
                   }
                 >
@@ -2850,13 +2819,13 @@ export function PromptBoxInternal({
               ) : (
                 <Button
                   type="submit"
-                  size={showMinimizedLayout ? "icon" : "sm"}
+                  size={showCompactLayout ? "icon" : "sm"}
                   variant="default"
                   aria-label={effectiveSubmitTitle}
                   disabled={!canSubmit}
                   className={cn(
-                    showMinimizedLayout
-                      ? MINIMIZED_PROMPT_ACTION_BUTTON_CLASS
+                    showCompactLayout
+                      ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
                       : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
                   )}
                 >

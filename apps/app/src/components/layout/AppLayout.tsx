@@ -73,6 +73,8 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -377,43 +379,43 @@ function AppHeader({
   ) : usesProjectChromeStyle &&
     projectId &&
     !isProjectlessProjectId(projectId) ? (
-      <>
-        <Link
-          to={getProjectSettingsRoutePath(projectId)}
-          className={cn(
-            HEADER_ICON_BUTTON_CLASS,
-            "inline-flex items-center justify-center transition-colors",
-            isSettingsView
-              ? "bg-state-active text-foreground"
-              : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-          )}
-          aria-label="Project settings"
-          aria-current={isSettingsView ? "page" : undefined}
-        >
-          <Icon name="Settings" />
-        </Link>
-        <Link
-          to={getProjectArchivedRoutePath(projectId)}
-          className={cn(
-            HEADER_ICON_BUTTON_CLASS,
-            "inline-flex items-center justify-center transition-colors",
-            isArchivedView
-              ? "bg-state-active text-foreground"
-              : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-          )}
-          aria-label="Archived threads"
-          aria-current={isArchivedView ? "page" : undefined}
-        >
-          <Icon name="Archive" />
-        </Link>
-        {project ? (
-          <ProjectActionsMenu
-            project={project}
-            triggerClassName={HEADER_ICON_BUTTON_CLASS}
-          />
-        ) : null}
-      </>
-    ) : null;
+    <>
+      <Link
+        to={getProjectSettingsRoutePath(projectId)}
+        className={cn(
+          HEADER_ICON_BUTTON_CLASS,
+          "inline-flex items-center justify-center transition-colors",
+          isSettingsView
+            ? "bg-state-active text-foreground"
+            : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+        )}
+        aria-label="Project settings"
+        aria-current={isSettingsView ? "page" : undefined}
+      >
+        <Icon name="Settings" />
+      </Link>
+      <Link
+        to={getProjectArchivedRoutePath(projectId)}
+        className={cn(
+          HEADER_ICON_BUTTON_CLASS,
+          "inline-flex items-center justify-center transition-colors",
+          isArchivedView
+            ? "bg-state-active text-foreground"
+            : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+        )}
+        aria-label="Archived threads"
+        aria-current={isArchivedView ? "page" : undefined}
+      >
+        <Icon name="Archive" />
+      </Link>
+      {project ? (
+        <ProjectActionsMenu
+          project={project}
+          triggerClassName={HEADER_ICON_BUTTON_CLASS}
+        />
+      ) : null}
+    </>
+  ) : null;
 
   return (
     <AppPageHeader
@@ -430,6 +432,9 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const quickCreateProject = useQuickCreateProjectController();
+  const isCompactViewport = useIsCompactViewport();
+  const contentShellRef = useRef<HTMLDivElement>(null);
+  useMobileVisualViewportHeight(contentShellRef, isCompactViewport);
   const location = useLocation();
   const navigate = useNavigate();
   useAppCommandHandler("thread.new", () => {
@@ -464,7 +469,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Global settings routes swap the app sidebar for the settings sidebar.
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
-  const pluginPanelMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);
+  const pluginPanelMatch = matchPath(
+    PLUGIN_PANEL_ROUTE_PATH,
+    location.pathname,
+  );
   const pluginPanel = pluginPanelMatch
     ? navPanels.find(
         (candidate) =>
@@ -539,27 +547,27 @@ export function AppLayout({ children }: AppLayoutProps) {
         subtitle: undefined,
       }
     : isArchivedView && projectId
-        ? isProjectlessProjectId(projectId)
-          ? {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                { label: "Threads", to: getRootComposeRoutePath() },
-                ...(archivedFolderName ? [{ label: archivedFolderName }] : []),
-                { label: "Archived" },
-              ],
-            }
-          : {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Archived" },
-              ],
-            }
+      ? isProjectlessProjectId(projectId)
+        ? {
+            title: "",
+            subtitle: undefined,
+            breadcrumbs: [
+              { label: "Threads", to: getRootComposeRoutePath() },
+              ...(archivedFolderName ? [{ label: archivedFolderName }] : []),
+              { label: "Archived" },
+            ],
+          }
+        : {
+            title: "",
+            subtitle: undefined,
+            breadcrumbs: [
+              {
+                label: projectLabel ?? projectId,
+                to: getLegacyProjectComposeRoutePath(projectId),
+              },
+              { label: "Archived" },
+            ],
+          }
       : isSettingsView && projectId
         ? {
             title: "",
@@ -729,6 +737,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           )}
           <SidebarInset>
             <div
+              ref={contentShellRef}
               data-testid="app-layout-content-shell"
               className="relative flex h-[100dvh] min-w-0 w-full flex-col"
             >
