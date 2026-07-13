@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchPluginList } from "./plugin-settings-queries";
+import { fetchPluginList, removePlugin } from "./plugin-settings-queries";
 
 function fetchReturning(body: unknown, status = 200) {
   return async () => ({
@@ -85,5 +85,29 @@ describe("fetchPluginList envelope", () => {
     expect(await fetchPluginList(fetchReturning({}, 404))).toEqual({
       plugins: [],
     });
+  });
+});
+
+describe("removePlugin", () => {
+  it("DELETEs the plugin by encoded id and resolves on ok", async () => {
+    const calls: Array<{ url: string; init?: { method?: string } }> = [];
+    const fetchImpl = (async (url: string, init?: { method?: string }) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    }) as unknown as typeof fetch;
+    await removePlugin(fetchImpl, "demo/widget");
+    expect(calls[0]?.url).toBe("/api/v1/plugins/demo%2Fwidget");
+    expect(calls[0]?.init).toEqual({ method: "DELETE" });
+  });
+
+  it("throws the server's error message on failure", async () => {
+    const fetchImpl = (async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: "unknown plugin" }),
+    })) as unknown as typeof fetch;
+    await expect(removePlugin(fetchImpl, "gone")).rejects.toThrow(
+      "unknown plugin",
+    );
   });
 });

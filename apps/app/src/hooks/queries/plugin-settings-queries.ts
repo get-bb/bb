@@ -320,6 +320,30 @@ export async function setPluginEnabled(
   );
 }
 
+/**
+ * DELETE /api/v1/plugins/:id. Uninstalls the plugin: git:/npm: managed files
+ * are deleted; a local path source is left in place. Throws with the server's
+ * message on rejection.
+ */
+export async function removePlugin(
+  fetchImpl: FetchLike,
+  pluginId: string,
+): Promise<void> {
+  const response = await fetchImpl(
+    `/api/v1/plugins/${encodeURIComponent(pluginId)}`,
+    { method: "DELETE" },
+  );
+  if (response.ok) return;
+  const body = (await response.json().catch(() => null)) as {
+    error?: unknown;
+  } | null;
+  throw new Error(
+    typeof body?.error === "string"
+      ? body.error
+      : `removing the plugin failed (HTTP ${response.status})`,
+  );
+}
+
 export function pluginListQueryKey(enabled: boolean): QueryKey {
   return ["plugin-list", enabled];
 }

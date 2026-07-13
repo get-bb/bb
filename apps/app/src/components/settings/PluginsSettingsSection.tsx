@@ -6,6 +6,14 @@ import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@bb/shared-ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -18,8 +26,12 @@ import { Pill, type PillVariant } from "@bb/shared-ui/pill";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { Switch } from "@bb/shared-ui/switch";
-import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
+  applyPluginSettingsView,
+  invalidatePluginList,
+} from "@/hooks/cache-owners/plugin-cache-owner";
+import {
+  removePlugin,
   updatePluginSettings,
   usePluginList,
   usePluginSettingsView,
@@ -30,7 +42,10 @@ import { useMarketplaces } from "@/hooks/queries/plugin-marketplace-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import {
+  getRootComposeRoutePath,
+  getSettingsRoutePath,
+} from "@/lib/route-paths";
 import {
   AddPluginDialog,
   type AddPluginInitial,
@@ -481,6 +496,89 @@ export function PluginsSettingsSection() {
   );
 }
 
+/**
+ * Uninstall control on a plugin's detail page. Builtins can't be uninstalled
+ * (they're managed by bb — disable them instead), so this only renders for
+ * direct/marketplace installs. A path source keeps its local files; managed
+ * (git/npm) sources have their downloaded files deleted.
+ */
+function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const isPathSource = plugin.sourceDisplay.toLowerCase().startsWith("path");
+  const name = plugin.displayName ?? plugin.id;
+  const remove = useMutation({
+    mutationFn: () => removePlugin(fetch, plugin.id),
+    onSuccess: () => {
+      invalidatePluginList({ queryClient });
+      appToast.success(`Removed ${name}`);
+      navigate(getSettingsRoutePath("plugins"));
+    },
+    onError: (error) => {
+      appToast.error(`Removing ${name} failed`, {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">Remove plugin</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {isPathSource
+            ? "Uninstalls the plugin. Its local source files are left in place."
+            : "Uninstalls the plugin and deletes its downloaded files."}
+        </p>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 shrink-0 px-2.5 text-xs text-destructive-text"
+        onClick={() => setConfirmOpen(true)}
+      >
+        Remove…
+      </Button>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove {name}?</DialogTitle>
+            <DialogDescription>
+              {isPathSource
+                ? "This uninstalls the plugin and removes its stored settings. Its local source files stay on disk, so you can reinstall it."
+                : "This uninstalls the plugin, deletes its downloaded files, and removes its stored settings."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={remove.isPending}
+              onClick={() => setConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={remove.isPending}
+              aria-busy={remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              {remove.isPending ? (
+                <Icon name="Spinner" className="animate-spin" />
+              ) : null}
+              Remove plugin
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 /** Exported for tests (status gating of the settings form). */
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const { settingsSections } = usePluginSlots();
@@ -578,6 +676,9 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
       )}
       {settingsAvailable ? (
         <PluginSettingsSections pluginId={plugin.id} />
+      ) : null}
+      {plugin.provenance !== "builtin" ? (
+        <RemovePluginSection plugin={plugin} />
       ) : null}
     </div>
   );

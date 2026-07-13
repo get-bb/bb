@@ -186,26 +186,19 @@ export function KeyValueGrid({
   );
 }
 
-/** The full-trust warning — never collapsed (locked design rule). */
+/** The full-trust reminder — a quiet inline note, not a loud callout. */
 export function FullTrustWarning() {
   return (
-    <div
-      className="flex gap-2.5 rounded-lg border px-3 py-2.5 text-xs text-foreground"
-      style={WARNING_NOTE_STYLE}
+    <p
+      className="flex items-start gap-1.5 text-2xs leading-snug text-subtle-foreground"
       data-testid="full-trust-warning"
     >
-      <span
-        className="mt-0.5 shrink-0"
-        style={{ color: "var(--warning-text)" }}
-      >
-        <Icon name="AlertTriangle" className="size-3.5" />
-      </span>
+      <Icon name="Lock" className="mt-0.5 size-3 shrink-0" />
       <span>
-        <span className="font-medium">Plugins are full-trust code</span> running
-        inside the BB server. They can read all local BB data, including other
-        plugins&rsquo; secrets. Only install sources you trust.
+        Plugins run as full-trust code with access to all local bb data. Only
+        install sources you trust.
       </span>
-    </div>
+    </p>
   );
 }
 

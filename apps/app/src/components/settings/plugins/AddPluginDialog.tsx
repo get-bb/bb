@@ -20,7 +20,7 @@ import {
   installPlugin,
   type PluginInstallRequest,
 } from "@/hooks/queries/plugin-marketplace-queries";
-import { FullTrustWarning, KeyValueGrid, PlaceholderBadge } from "./plugin-ui";
+import { FullTrustWarning, PlaceholderBadge } from "./plugin-ui";
 
 /**
  * Pre-fill for Browse-tab installs: the dialog shows the marketplace entry
@@ -149,27 +149,6 @@ function AddPluginDialogContent({
         )}
 
         <FullTrustWarning />
-        <KeyValueGrid
-          entries={[
-            {
-              key: "Source",
-              value:
-                initial !== null
-                  ? `${initial.entryId}@${initial.marketplaceName}`
-                  : sourceText.trim().length > 0
-                    ? sourceText.trim()
-                    : "—",
-            },
-            {
-              key: "Provenance",
-              value:
-                initial !== null
-                  ? `From the ${initial.marketplaceName} marketplace`
-                  : "Direct install — no marketplace",
-              mono: false,
-            },
-          ]}
-        />
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
