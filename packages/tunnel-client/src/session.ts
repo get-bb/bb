@@ -1,0 +1,370 @@
+// Transport-generic tunnel client session: proxies relayed HTTP/WS streams
+// from one live tunnel socket to per-stream loopback origins.
+import { WebSocket as NodeWebSocket } from "ws";
+import {
+  HEARTBEAT_REQUEST,
+  HEARTBEAT_RESPONSE,
+  chunkBody,
+  decodeFrame,
+  encodeFrame,
+  type Frame,
+  type HeaderPair,
+  type OpenHttpFrame,
+  type OpenWsFrame,
+} from "@bb/tunnel-contract";
+import { headersForLoopbackRequest } from "./headers.js";
+import type { TunnelClientLogger } from "./logger.js";
+
+const HEARTBEAT_INTERVAL_MS = 20_000;
+const HEARTBEAT_DEADLINE_MS = 60_000;
+
+const UNREGISTERED_PORT_BODY = "this port is not shared";
+const textEncoder = new TextEncoder();
+
+/** True when this open-ws is the bb app's realtime socket via the bare handle. */
+export function isBareBbRealtimeWs(
+  path: string,
+  target: string | undefined,
+): boolean {
+  if (target !== undefined) return false;
+  // Spec: path starts with `/ws` and has no target.
+  return path === "/ws" || path.startsWith("/ws?") || path.startsWith("/ws/");
+}
+
+interface HttpStream {
+  meta: OpenHttpFrame;
+  chunks: Buffer[];
+  abort: AbortController;
+}
+interface WsStream {
+  socket: NodeWebSocket;
+  buffered: Frame[];
+  open: boolean;
+  /** Counted toward remoteClients (bare-handle /ws). */
+  countsAsRemoteClient: boolean;
+}
+
+export interface ResolvedStreamOrigin {
+  /** Fetch/WS base, e.g. `http://127.0.0.1:38886` or a share port. */
+  origin: string;
+  publicOrigin: string;
+  /** Injected Host for share streams; omitted for bare-handle. */
+  host?: string;
+}
+
+export type StreamOriginResult =
+  | { kind: "ok"; resolved: ResolvedStreamOrigin }
+  | { kind: "unregistered" };
+
+export interface TunnelSessionOptions {
+  tunnel: NodeWebSocket;
+  log: TunnelClientLogger;
+  /**
+   * Resolve a frame's optional `target` (decimal port string) to a local
+   * origin. Called for every open-http / open-ws.
+   */
+  resolveOrigin: (target: string | undefined) => StreamOriginResult;
+  /** Fired when remoteClients transitions 0↔nonzero. */
+  onRemoteClientsChange?: (remoteClients: number) => void;
+  /** Fired on every relayed frame (any type). */
+  onActivity?: (at: number) => void;
+}
+
+/** Proxies one live tunnel socket's frames to per-stream loopback origins. */
+export class TunnelSession {
+  private readonly httpStreams = new Map<number, HttpStream>();
+  private readonly wsStreams = new Map<number, WsStream>();
+  private lastAck = Date.now();
+  private heartbeat: ReturnType<typeof setInterval> | undefined;
+  private remoteClientCount = 0;
+  lastRemoteActivityAt: number | null = null;
+
+  constructor(private readonly options: TunnelSessionOptions) {}
+
+  get remoteClients(): number {
+    return this.remoteClientCount;
+  }
+
+  start(): void {
+    const { tunnel } = this.options;
+    this.heartbeat = setInterval(() => {
+      if (Date.now() - this.lastAck > HEARTBEAT_DEADLINE_MS) {
+        this.options.log.warn("tunnel heartbeat missed; reconnecting");
+        tunnel.terminate();
+        return;
+      }
+      tunnel.send(HEARTBEAT_REQUEST);
+    }, HEARTBEAT_INTERVAL_MS);
+
+    tunnel.on("message", (data: Buffer, isBinary: boolean) => {
+      if (!isBinary) {
+        if (data.toString() === HEARTBEAT_RESPONSE) this.lastAck = Date.now();
+        return;
+      }
+      try {
+        this.onFrame(decodeFrame(data));
+      } catch (e) {
+        this.options.log.warn(`tunnel bad frame: ${String(e)}`);
+      }
+    });
+    tunnel.on("close", () => this.dispose());
+  }
+
+  dispose(): void {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    for (const s of this.httpStreams.values()) s.abort.abort();
+    for (const s of this.wsStreams.values())
+      s.socket.close(1001, "tunnel closed");
+    this.httpStreams.clear();
+    this.wsStreams.clear();
+    this.setRemoteClients(0);
+  }
+
+  private noteActivity(): void {
+    const at = Date.now();
+    this.lastRemoteActivityAt = at;
+    this.options.onActivity?.(at);
+  }
+
+  private setRemoteClients(next: number): void {
+    const prev = this.remoteClientCount;
+    this.remoteClientCount = next;
+    if ((prev === 0) !== (next === 0)) {
+      this.options.onRemoteClientsChange?.(next);
+    }
+  }
+
+  private adjustRemoteClients(delta: number): void {
+    this.setRemoteClients(Math.max(0, this.remoteClientCount + delta));
+  }
+
+  private send(frame: Frame): void {
+    if (this.options.tunnel.readyState === NodeWebSocket.OPEN) {
+      this.options.tunnel.send(encodeFrame(frame));
+    }
+  }
+
+  private onFrame(frame: Frame): void {
+    this.noteActivity();
+    switch (frame.type) {
+      case "open-http": {
+        const stream: HttpStream = {
+          meta: frame,
+          chunks: [],
+          abort: new AbortController(),
+        };
+        this.httpStreams.set(frame.streamId, stream);
+        if (!frame.hasBody) void this.executeHttp(frame.streamId, stream);
+        return;
+      }
+      case "body-chunk":
+        this.httpStreams
+          .get(frame.streamId)
+          ?.chunks.push(Buffer.from(frame.data));
+        return;
+      case "body-end": {
+        const s = this.httpStreams.get(frame.streamId);
+        if (s) void this.executeHttp(frame.streamId, s);
+        return;
+      }
+      case "open-ws":
+        this.openOriginWs(frame);
+        return;
+      case "ws-data": {
+        const s = this.wsStreams.get(frame.streamId);
+        if (!s) return;
+        if (!s.open) {
+          s.buffered.push(frame);
+          return;
+        }
+        s.socket.send(
+          frame.isBinary ? frame.data : Buffer.from(frame.data).toString(),
+        );
+        return;
+      }
+      case "close-stream": {
+        const h = this.httpStreams.get(frame.streamId);
+        if (h) {
+          h.abort.abort();
+          this.httpStreams.delete(frame.streamId);
+          return;
+        }
+        const w = this.wsStreams.get(frame.streamId);
+        if (w) {
+          w.socket.close(frame.code, frame.reason);
+          this.forgetWsStream(frame.streamId, w);
+        }
+        return;
+      }
+      case "resp-head":
+      case "ws-open-ack":
+        return;
+    }
+  }
+
+  private forgetWsStream(streamId: number, stream: WsStream): void {
+    if (!this.wsStreams.delete(streamId)) return;
+    if (stream.countsAsRemoteClient) this.adjustRemoteClients(-1);
+  }
+
+  private rejectUnregisteredHttp(streamId: number): void {
+    const body = textEncoder.encode(UNREGISTERED_PORT_BODY);
+    this.send({
+      type: "resp-head",
+      streamId,
+      status: 404,
+      headers: [["content-type", "text/plain; charset=utf-8"]],
+    });
+    for (const c of chunkBody(streamId, body)) this.send(c);
+    this.send({ type: "body-end", streamId });
+  }
+
+  private async executeHttp(
+    streamId: number,
+    stream: HttpStream,
+  ): Promise<void> {
+    const { meta } = stream;
+    const originResult = this.options.resolveOrigin(meta.target);
+    if (originResult.kind === "unregistered") {
+      this.rejectUnregisteredHttp(streamId);
+      this.httpStreams.delete(streamId);
+      return;
+    }
+    const { resolved } = originResult;
+    const headers = headersForLoopbackRequest(meta.headers, {
+      publicOrigin: resolved.publicOrigin,
+      loopbackOrigin: new URL(resolved.origin).origin,
+      ...(resolved.host !== undefined ? { host: resolved.host } : {}),
+    });
+    try {
+      const body = meta.hasBody ? Buffer.concat(stream.chunks) : undefined;
+      const res = await fetch(`${resolved.origin}${meta.path}`, {
+        method: meta.method,
+        headers,
+        body,
+        redirect: "manual",
+        signal: stream.abort.signal,
+      });
+      const respHeaders: HeaderPair[] = [];
+      // fetch transparently decompresses a compressed origin body, so when
+      // content-encoding is present the origin's content-length describes
+      // compressed bytes we are not forwarding — relaying it would corrupt
+      // the response framing at the relay. Drop both.
+      const decompressed = res.headers.get("content-encoding") !== null;
+      res.headers.forEach((v, n) => {
+        const lower = n.toLowerCase();
+        if (lower === "content-encoding") return;
+        if (decompressed && lower === "content-length") return;
+        respHeaders.push([n, v]);
+      });
+      this.send({
+        type: "resp-head",
+        streamId,
+        status: res.status,
+        headers: respHeaders,
+      });
+      if (res.body) {
+        const reader = res.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          for (const c of chunkBody(streamId, value)) this.send(c);
+        }
+      }
+      this.send({ type: "body-end", streamId });
+    } catch (e) {
+      // Unreachable share ports and other fetch failures: clean close-stream,
+      // not a crash. Aborted streams are silent.
+      if (!stream.abort.signal.aborted) {
+        this.send({
+          type: "close-stream",
+          streamId,
+          code: 1011,
+          reason: String(e),
+        });
+      }
+    } finally {
+      this.httpStreams.delete(streamId);
+    }
+  }
+
+  private openOriginWs(frame: OpenWsFrame): void {
+    const originResult = this.options.resolveOrigin(frame.target);
+    if (originResult.kind === "unregistered") {
+      this.send({
+        type: "close-stream",
+        streamId: frame.streamId,
+        code: 1008,
+        reason: UNREGISTERED_PORT_BODY,
+      });
+      return;
+    }
+    const { resolved } = originResult;
+    const wsOrigin = resolved.origin.replace(/^http/, "ws");
+    const headers = headersForLoopbackRequest(frame.headers, {
+      publicOrigin: resolved.publicOrigin,
+      loopbackOrigin: new URL(resolved.origin).origin,
+      ...(resolved.host !== undefined ? { host: resolved.host } : {}),
+    });
+    const countsAsRemoteClient = isBareBbRealtimeWs(frame.path, frame.target);
+    let socket: NodeWebSocket;
+    try {
+      socket = new NodeWebSocket(`${wsOrigin}${frame.path}`, frame.protocols, {
+        headers,
+      });
+    } catch (e) {
+      this.send({
+        type: "close-stream",
+        streamId: frame.streamId,
+        code: 1011,
+        reason: String(e),
+      });
+      return;
+    }
+    const stream: WsStream = {
+      socket,
+      buffered: [],
+      open: false,
+      countsAsRemoteClient,
+    };
+    this.wsStreams.set(frame.streamId, stream);
+    if (countsAsRemoteClient) this.adjustRemoteClients(1);
+
+    socket.on("open", () => {
+      stream.open = true;
+      this.send({
+        type: "ws-open-ack",
+        streamId: frame.streamId,
+        protocol: socket.protocol || null,
+      });
+      for (const b of stream.buffered) this.onFrame(b);
+      stream.buffered = [];
+    });
+    socket.on("message", (data: Buffer, isBinary: boolean) => {
+      this.send({
+        type: "ws-data",
+        streamId: frame.streamId,
+        isBinary,
+        data: isBinary
+          ? new Uint8Array(data)
+          : new Uint8Array(Buffer.from(data.toString())),
+      });
+    });
+    socket.on("close", (code: number, reason: Buffer) => {
+      if (this.wsStreams.has(frame.streamId)) {
+        this.forgetWsStream(frame.streamId, stream);
+        this.send({
+          type: "close-stream",
+          streamId: frame.streamId,
+          code: code === 1000 || (code >= 3000 && code <= 4999) ? code : 1000,
+          reason: reason.toString(),
+        });
+      }
+    });
+    socket.on("error", (e: Error) => {
+      // Dead share ports surface as socket errors; the subsequent 'close'
+      // sends close-stream. Log only — do not throw.
+      this.options.log.warn(`origin ws error on ${frame.path}: ${e.message}`);
+    });
+  }
+}

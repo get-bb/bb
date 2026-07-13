@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
+    "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
     "@radix-ui/react-slot": "^1.3.0",
     "qrcode": "^1.5.4",

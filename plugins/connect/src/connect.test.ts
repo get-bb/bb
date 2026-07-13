@@ -7,12 +7,12 @@ import {
   type FakePluginHost,
 } from "@bb/plugin-sdk/testing";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
-import { deriveConnectBaseUrl, serverUrlForHandle } from "./redeem.js";
 import {
   headersForLoopbackRequest,
   isBareBbRealtimeWs,
   TunnelSession,
-} from "./tunnel.js";
+} from "@bb/tunnel-client";
+import { deriveConnectBaseUrl, serverUrlForHandle } from "./redeem.js";
 import {
   parseSharePort,
   SharePortError,
