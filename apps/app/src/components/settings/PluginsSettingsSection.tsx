@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
@@ -29,6 +30,7 @@ import { useMarketplaces } from "@/hooks/queries/plugin-marketplace-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import {
   AddPluginDialog,
   type AddPluginInitial,
@@ -65,6 +67,14 @@ const DROPDOWN_CONTENT_CLASS =
 
 const PLUGINS_EXPERIMENT_OFF_MESSAGE =
   "Plugins are off. Turn on the Plugins experiment in Settings → Experiments.";
+
+/**
+ * Seed prompt for the "Create a plugin" entry point: opens the composer
+ * pre-filled so the agent reaches for the bb-plugin-authoring skill and
+ * scaffolds a new plugin. The user reviews and sends.
+ */
+const CREATE_PLUGIN_PROMPT =
+  "I want to build a new bb plugin. Use the bb-plugin-authoring skill to scaffold a starter plugin and walk me through customizing it.";
 
 function statusPillVariant(status: string): PillVariant {
   if (status === "running") return "secondary";
@@ -358,6 +368,7 @@ function PluginsTabButton({
 
 /** The "Plugins" bucket: Installed / Browse / Marketplaces (Layer 1). */
 export function PluginsSettingsSection() {
+  const navigate = useNavigate();
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
   const listQuery = usePluginList({ enabled: pluginsEnabled });
@@ -368,15 +379,21 @@ export function PluginsSettingsSection() {
     open: boolean;
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
+  const [marketplaceAddOpen, setMarketplaceAddOpen] = useState(false);
 
   if (systemConfig.data === undefined) return null;
+
+  const startCreatePlugin = () =>
+    navigate(getRootComposeRoutePath(), {
+      state: { initialPrompt: CREATE_PLUGIN_PROMPT, focusPrompt: true },
+    });
 
   return (
     <section className="space-y-3">
       <div>
         <h2 className="text-sm font-semibold text-foreground">Plugins</h2>
         <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-          Full-trust extensions running inside the BB server.
+          Customize bb to your liking with plugins.
         </p>
       </div>
       {!pluginsEnabled ? (
@@ -405,15 +422,39 @@ export function PluginsSettingsSection() {
                 onClick={() => setTab("marketplaces")}
               />
             </div>
-            <Button
-              type="button"
-              size="sm"
-              className="h-7 px-2.5 text-xs"
-              onClick={() => setAddDialog({ open: true, initial: null })}
-            >
-              <Icon name="Plus" className="size-3.5" />
-              Add plugin
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2.5 text-xs text-muted-foreground"
+                onClick={startCreatePlugin}
+              >
+                <Icon name="Code" className="size-3.5" />
+                Create a plugin
+              </Button>
+              {tab === "marketplaces" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setMarketplaceAddOpen(true)}
+                >
+                  <Icon name="Plus" className="size-3.5" />
+                  Add marketplace
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setAddDialog({ open: true, initial: null })}
+                >
+                  <Icon name="Plus" className="size-3.5" />
+                  Add plugin
+                </Button>
+              )}
+            </div>
           </div>
           {tab === "installed" ? (
             <InstalledPluginsTab plugins={plugins} />
@@ -422,7 +463,10 @@ export function PluginsSettingsSection() {
               onInstall={(initial) => setAddDialog({ open: true, initial })}
             />
           ) : (
-            <MarketplacesTab />
+            <MarketplacesTab
+              addOpen={marketplaceAddOpen}
+              onAddOpenChange={setMarketplaceAddOpen}
+            />
           )}
           <AddPluginDialog
             open={addDialog.open}

@@ -33,7 +33,7 @@ import {
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
   ATTENTION_TINT_STYLE,
-  LetterBadge,
+  PlaceholderBadge,
   WARNING_NOTE_STYLE,
   formatAbsoluteDate,
 } from "./plugin-ui";
@@ -44,26 +44,19 @@ import {
  * so; removal never uninstalls — installed plugins from the catalog become
  * direct installs, and the confirmation toast names how many were kept.
  */
-export function MarketplacesTab() {
+export function MarketplacesTab({
+  addOpen,
+  onAddOpenChange,
+}: {
+  addOpen: boolean;
+  onAddOpenChange: (open: boolean) => void;
+}) {
   const marketplacesQuery = useMarketplaces({ enabled: true });
   const marketplaces = marketplacesQuery.data ?? [];
-  const [addOpen, setAddOpen] = useState(false);
   const [removal, setRemoval] = useState<MarketplaceListItem | null>(null);
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          onClick={() => setAddOpen(true)}
-        >
-          <Icon name="Plus" className="size-3.5" />
-          Add marketplace
-        </Button>
-      </div>
       {marketplaces.length === 0 ? (
         <EmptyState
           message={
@@ -89,7 +82,7 @@ export function MarketplacesTab() {
         Adding a marketplace installs nothing; refreshing a catalog never runs
         plugin code.
       </p>
-      <AddMarketplaceDialog open={addOpen} onOpenChange={setAddOpen} />
+      <AddMarketplaceDialog open={addOpen} onOpenChange={onAddOpenChange} />
       {removal !== null ? (
         <RemoveMarketplaceDialog
           marketplace={removal}
@@ -138,7 +131,7 @@ function MarketplaceRow({
       className="flex items-start gap-3 py-3"
       data-testid={`marketplace-row-${marketplace.id}`}
     >
-      <LetterBadge label={marketplace.displayName} className="size-6" />
+      <PlaceholderBadge iconName="GridView" className="size-6" />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-foreground">

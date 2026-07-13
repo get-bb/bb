@@ -58,7 +58,9 @@ describe("MarketplacesTab removal", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<MarketplacesTab />, { wrapper });
+    render(<MarketplacesTab addOpen={false} onAddOpenChange={() => {}} />, {
+      wrapper,
+    });
 
     await screen.findByTestId("marketplace-row-acme");
     // The row shows the human display name, not the stable id.
@@ -112,7 +114,9 @@ describe("MarketplacesTab removal", () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
     // Converted plugins change provenance/sourceDisplay on the list rows.
     queryClient.setQueryData(pluginListQueryKey(true), { plugins: [] });
-    render(<MarketplacesTab />, { wrapper });
+    render(<MarketplacesTab addOpen={false} onAddOpenChange={() => {}} />, {
+      wrapper,
+    });
 
     await screen.findByTestId("marketplace-row-acme");
     fireEvent.pointerDown(
@@ -147,7 +151,9 @@ describe("MarketplacesTab removal", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<MarketplacesTab />, { wrapper });
+    render(<MarketplacesTab addOpen={false} onAddOpenChange={() => {}} />, {
+      wrapper,
+    });
 
     await screen.findByText("refresh failed");
     expect(screen.getByText(/using cached catalog from/)).toBeTruthy();
@@ -173,7 +179,9 @@ describe("MarketplacesTab removal", () => {
     // A Browse-tab search result already in the cache must refetch after a
     // catalog refresh, or removed entries keep rendering.
     queryClient.setQueryData(marketplaceSearchQueryKey(""), []);
-    render(<MarketplacesTab />, { wrapper });
+    render(<MarketplacesTab addOpen={false} onAddOpenChange={() => {}} />, {
+      wrapper,
+    });
 
     await screen.findByTestId("marketplace-row-acme");
     fireEvent.click(screen.getByRole("button", { name: /Refresh/ }));

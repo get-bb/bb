@@ -12,7 +12,7 @@ import {
 } from "@/hooks/queries/plugin-marketplace-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import {
-  LetterBadge,
+  PlaceholderBadge,
   SUCCESS_TEXT_STYLE,
   UPDATE_TINT_STYLE,
 } from "./plugin-ui";
@@ -172,7 +172,7 @@ function BrowseCard({
       className="flex items-start gap-3 rounded-lg border border-border bg-card p-3.5"
       data-testid={`browse-card-${entry.entryId}`}
     >
-      <LetterBadge label={entry.displayName} className="size-6" />
+      <PlaceholderBadge className="size-6" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">
           {entry.displayName}

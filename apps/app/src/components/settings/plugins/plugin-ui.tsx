@@ -1,44 +1,51 @@
 import { useState, type ReactNode } from "react";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
 /**
  * Shared pieces of the Settings → Plugins surfaces. Tinted styles derive
- * from the theme anchors per the repo palette rules: opaque steps mix in
- * oklch; only transparent-pole mixes use oklab.
+ * from the theme anchors per the repo palette rules. These mix a *chromatic*
+ * token (--success/--warning-text/--destructive-text) against the near-zero
+ * chroma --canvas/--ink anchors, so they mix `in oklab`, not `in oklch`:
+ * oklch would interpolate the hue from the anchor's 0° through to the token's
+ * hue, dragging a low-percentage green mix through orange/pink. oklab
+ * interpolates on the a/b axes, so the hue survives at every step. (The
+ * general "opaque steps mix in oklch" rule is for neutral --ink/--canvas
+ * derivations, where both poles are achromatic and there is no hue to lose.)
  */
 
 /** Green "Update X.Y.Z" tint (sketch v2 `.pill.update`). */
 export const UPDATE_TINT_STYLE = {
-  background: "color-mix(in oklch, var(--success) 14%, var(--canvas))",
-  borderColor: "color-mix(in oklch, var(--success) 35%, var(--canvas))",
-  color: "color-mix(in oklch, var(--success) 80%, var(--ink))",
+  background: "color-mix(in oklab, var(--success) 14%, var(--canvas))",
+  borderColor: "color-mix(in oklab, var(--success) 35%, var(--canvas))",
+  color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
 
 /** Destructive "Needs attention" tint (sketch v2 `.pill.bad`). */
 export const ATTENTION_TINT_STYLE = {
-  background: "color-mix(in oklch, var(--destructive-text) 9%, var(--canvas))",
+  background: "color-mix(in oklab, var(--destructive-text) 9%, var(--canvas))",
   borderColor:
-    "color-mix(in oklch, var(--destructive-text) 28%, var(--canvas))",
+    "color-mix(in oklab, var(--destructive-text) 28%, var(--canvas))",
   color: "var(--destructive-text)",
 } as const;
 
 /** Success verdict banner tint (sketch v2 `.banner`). */
 export const SUCCESS_BANNER_STYLE = {
-  background: "color-mix(in oklch, var(--success) 9%, var(--canvas))",
-  borderColor: "color-mix(in oklch, var(--success) 35%, var(--canvas))",
+  background: "color-mix(in oklab, var(--success) 9%, var(--canvas))",
+  borderColor: "color-mix(in oklab, var(--success) 35%, var(--canvas))",
 } as const;
 
 /** Warning note tint (sketch `.notebox.warn`, full-trust warning). */
 export const WARNING_NOTE_STYLE = {
-  background: "color-mix(in oklch, var(--warning-text) 6%, var(--canvas))",
-  borderColor: "color-mix(in oklch, var(--warning-text) 35%, var(--canvas))",
+  background: "color-mix(in oklab, var(--warning-text) 6%, var(--canvas))",
+  borderColor: "color-mix(in oklab, var(--warning-text) 35%, var(--canvas))",
 } as const;
 
 export const SUCCESS_TEXT_STYLE = {
-  color: "color-mix(in oklch, var(--success) 80%, var(--ink))",
+  color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
 
 export function PluginLogo({
@@ -54,7 +61,14 @@ export function PluginLogo({
       ? plugin.logoDarkUrl
       : plugin.logoUrl;
   if (logoUrl === null) {
-    return <LetterBadge label={plugin.displayName ?? plugin.id} className={className} />;
+    // No shipped image: use the manifest icon hint, falling back to the
+    // generic plugin glyph (never a letter avatar).
+    return (
+      <PlaceholderBadge
+        className={className}
+        iconName={pluginIconName(plugin.icon)}
+      />
+    );
   }
   return (
     <img
@@ -67,23 +81,27 @@ export function PluginLogo({
   );
 }
 
-/** Letter avatar for entries without a shipped logo (browse cards, rows). */
-export function LetterBadge({
-  label,
+/**
+ * Neutral avatar for entries without a shipped logo (installed rows, browse
+ * cards, marketplace rows). Renders a generic glyph in a muted tile — a
+ * placeholder, not the entry's initial.
+ */
+export function PlaceholderBadge({
   className,
+  iconName = "Zap",
 }: {
-  label: string;
   className?: string;
+  iconName?: IconName;
 }) {
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "grid shrink-0 place-items-center rounded-md bg-muted text-xs font-semibold text-muted-foreground",
+        "grid shrink-0 place-items-center rounded-md bg-muted text-muted-foreground",
         className,
       )}
     >
-      {label.slice(0, 1).toUpperCase()}
+      <Icon name={iconName} className="size-3.5" />
     </span>
   );
 }

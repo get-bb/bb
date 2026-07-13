@@ -20,7 +20,7 @@ import {
   installPlugin,
   type PluginInstallRequest,
 } from "@/hooks/queries/plugin-marketplace-queries";
-import { FullTrustWarning, KeyValueGrid, LetterBadge } from "./plugin-ui";
+import { FullTrustWarning, KeyValueGrid, PlaceholderBadge } from "./plugin-ui";
 
 /**
  * Pre-fill for Browse-tab installs: the dialog shows the marketplace entry
@@ -124,7 +124,7 @@ function AddPluginDialogContent({
       <div className="space-y-3">
         {initial !== null ? (
           <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/30 px-3 py-2">
-            <LetterBadge label={initial.displayName} className="size-6" />
+            <PlaceholderBadge className="size-6" />
             <span className="text-sm font-medium text-foreground">
               {initial.displayName}
             </span>
