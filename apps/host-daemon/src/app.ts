@@ -716,6 +716,11 @@ export async function createHostDaemonApp(
         source: "fetchProjectAttachment",
         request: () => serverClient.fetchProjectAttachment(args),
       }),
+    fetchSkillTree: (treeHash) =>
+      runSessionRequest({
+        source: "fetchSkillTree",
+        request: () => serverClient.fetchSkillTree(treeHash),
+      }),
     runtimeManager,
     terminalManager,
     listModels: async (args) => {

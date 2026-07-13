@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import { discoverProviderCommands } from "./command-discovery.js";
 import {
+  listHostCommands,
   resolveCommandScanRoots,
   resolveProviderCommandScanRoots,
 } from "./command-handlers/list-commands.js";
@@ -1117,6 +1118,44 @@ describe("discoverProviderCommands (codex)", () => {
 });
 
 describe("resolveCommandScanRoots", () => {
+  it("discovers synchronized skills staged outside the daemon's normal roots", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const sourceRootPath = path.join(tempRoot, "server-skill", "synced-skill");
+    const skillFilePath = path.join(sourceRootPath, "SKILL.md");
+    await writeFileEnsuringDir(
+      skillFilePath,
+      "---\nname: synced-skill\ndescription: Synced from the primary machine\n---\n",
+    );
+
+    const result = await listHostCommands(
+      {
+        type: "host.list_commands",
+        providerId: "pi",
+        cwd: null,
+        builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+        injectedSkillSources: [
+          {
+            kind: "workspace-path",
+            sourceType: "project",
+            name: "synced-skill",
+            description: "Synced from the primary machine",
+            sourceRootPath,
+            skillFilePath,
+          },
+        ],
+      },
+      { dataDir: fixture.dataDir },
+    );
+
+    expect(byName(result.commands, "synced-skill")).toEqual({
+      name: "synced-skill",
+      source: "skill",
+      origin: "project",
+      description: "Synced from the primary machine",
+      argumentHint: null,
+    });
+  });
+
   it("scans shared bb skill roots for pi", async () => {
     const fixture = await makeWorkspaceFixture();
     const roots = resolveCommandScanRoots({

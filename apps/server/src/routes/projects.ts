@@ -78,9 +78,11 @@ import {
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
+import { resolveSkillCatalogSources } from "../services/skills/skill-catalog.js";
 import {
   assertUsableHostId,
   requirePrimaryHostId,
+  resolvePrimaryHostId,
 } from "../services/hosts/primary-host.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
@@ -720,6 +722,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       environmentId: query.environmentId,
       projectId,
     });
+    const primaryHostId = resolvePrimaryHostId(deps);
+    const isRemoteHost =
+      primaryHostId !== null && workspace.hostId !== primaryHostId;
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: workspace.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -731,6 +736,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         ...(deps.config.inheritedSkillsRootPaths.length > 0
           ? { additionalSkillsRootPaths: deps.config.inheritedSkillsRootPaths }
           : {}),
+        // These absolute roots live on the primary machine. Remote daemons
+        // receive the same content-addressed catalog used for runtime injection.
+        injectedSkillSources: isRemoteHost
+          ? resolveSkillCatalogSources(deps)
+          : [],
       },
     });
     return context.json(

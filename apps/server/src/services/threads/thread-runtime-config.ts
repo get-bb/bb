@@ -23,12 +23,10 @@ import {
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
 import {
-  getPluginSkillsRootPaths,
   listPluginAgentTools,
   listPluginInstructionContributions,
 } from "../plugins/plugin-agent-contributions.js";
-import { generatedSkillsRootPath } from "../plugins/plugin-commands-skill.js";
-import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
+import { resolveSkillCatalogSources } from "../skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
 import { isSideChatThread } from "./side-chat-thread.js";
@@ -181,22 +179,8 @@ export async function resolveThreadRuntimeCommandConfig(
       workspacePath,
     }),
   ]);
-  const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
-    // The server-generated skills root (plugin-commands) rides the data-dir
-    // tier; the plugin service only materializes it while the plugins
-    // experiment is on and a plugin registers a CLI command, and a missing
-    // root resolves to no skills.
-    additionalSkillsRootPaths: [
-      ...deps.config.inheritedSkillsRootPaths,
-      generatedSkillsRootPath(deps.config.dataDir),
-    ],
-    builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
-    dataDir: deps.config.dataDir,
-    // Skills roots of running plugins — resolved live each turn, so a
-    // reloaded plugin's skills apply on the next turn without a restart.
-    pluginSkillsRootPaths: getPluginSkillsRootPaths(),
+  const injectedSkillSources = resolveSkillCatalogSources(deps, {
     projectSkillSources,
-    skillTreeRegistry: deps.skillTreeRegistry,
   });
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,

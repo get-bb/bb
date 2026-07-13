@@ -104,6 +104,7 @@ type CommandRouterTask = Promise<HostDaemonCommandResultForCommand>;
 export interface CommandRouterOptions {
   dataDir: CommandDispatchOptions["dataDir"];
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
+  fetchSkillTree?: CommandDispatchOptions["fetchSkillTree"];
   runtimeManager: RuntimeManager;
   terminalManager?: CommandDispatchOptions["terminalManager"];
   eventSink: CommandDispatchOptions["eventSink"];
@@ -294,6 +295,7 @@ export class CommandRouter {
   private createDispatchOptions(): CommandDispatchOptions {
     return {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
+      fetchSkillTree: this.options.fetchSkillTree,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
       dataDir: this.options.dataDir,

@@ -13,6 +13,8 @@ import {
   discoverProviderCommands,
   type CommandScanRoot,
 } from "../command-discovery.js";
+import { stageInjectedSkillSources } from "../injected-skills.js";
+import type { FetchSkillTree } from "../skill-trees.js";
 
 export interface CommandRootResolution {
   /** Resolved workspace path, or null for an unprovisioned thread. */
@@ -1252,7 +1254,7 @@ export function resolveCommandScanRoots(
 
 export async function listHostCommands(
   command: CommandOf<"host.list_commands">,
-  options: { dataDir: string },
+  options: { dataDir: string; fetchSkillTree?: FetchSkillTree },
 ): Promise<HostDaemonOnlineRpcResult<"host.list_commands">> {
   if (command.cwd !== null && !path.isAbsolute(command.cwd)) {
     throw new CommandDispatchError("invalid_path", "cwd must be absolute");
@@ -1273,6 +1275,28 @@ export async function listHostCommands(
     codexHome: resolveCodexHome(homeDir),
     providerId: command.providerId,
   });
+  const staged = await stageInjectedSkillSources({
+    dataDir: options.dataDir,
+    injectedSkillSources: command.injectedSkillSources,
+    ...(options.fetchSkillTree !== undefined
+      ? { fetchSkillTree: options.fetchSkillTree }
+      : {}),
+  });
+  const stagedSkillsRootPath = staged.skillRoots.find(
+    (root): root is typeof root & { skillDirectoryRootPath: string } =>
+      "skillDirectoryRootPath" in root,
+  )?.skillDirectoryRootPath;
+  if (stagedSkillsRootPath !== undefined) {
+    for (const source of command.injectedSkillSources) {
+      roots.push({
+        rootPath: path.join(stagedSkillsRootPath, source.name),
+        shape: "skill-directory",
+        namePrefix: "",
+        source: "skill",
+        origin: source.sourceType === "project" ? "project" : "user",
+      });
+    }
+  }
   const commands = await discoverProviderCommands({ roots });
   return { commands };
 }

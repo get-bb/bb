@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 52 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 53 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -621,8 +621,10 @@ export type HostProviderCommand = z.infer<typeof hostProviderCommandSchema>;
  * List the provider's discoverable skills / legacy slash commands. The daemon
  * resolves the user-home roots itself and scans the project roots under `cwd`
  * when provided; `cwd: null` (unprovisioned thread) skips the project roots and
- * returns only user-origin entries. Returns the full raw set — the server owns
- * de-dup/sort/limit, so there is no `truncated` field here.
+ * returns only user-origin entries. Synchronized skills are supplied as the
+ * same content-addressed sources used by thread runtime injection. Returns the
+ * full raw set — the server owns de-dup/sort/limit, so there is no `truncated`
+ * field here.
  */
 const hostListCommandsCommandSchema = z.object({
   type: z.literal("host.list_commands"),
@@ -630,6 +632,7 @@ const hostListCommandsCommandSchema = z.object({
   cwd: z.string().min(1).nullable(),
   builtinSkillsRootPath: z.string().min(1),
   additionalSkillsRootPaths: z.array(z.string().min(1)).optional(),
+  injectedSkillSources: z.array(hostDaemonInjectedSkillSourceSchema),
 });
 
 /**

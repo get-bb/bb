@@ -1227,12 +1227,14 @@ describe("host-daemon command schemas", () => {
         providerId: "claude-code",
         cwd: "/tmp/workspace",
         builtinSkillsRootPath: "/tmp/builtin-skills",
+        injectedSkillSources: [],
       }),
     ).toMatchObject({
       type: "host.list_commands",
       providerId: "claude-code",
       cwd: "/tmp/workspace",
       builtinSkillsRootPath: "/tmp/builtin-skills",
+      injectedSkillSources: [],
     });
 
     expect(

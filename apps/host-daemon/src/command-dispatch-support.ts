@@ -19,6 +19,7 @@ import type { InteractiveResolveCommandInput } from "./interactive-request-regis
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
+import type { FetchSkillTree } from "./skill-trees.js";
 import type { CaffeinateManager } from "./command-handlers/caffeinate.js";
 
 type DispatchCommand = HostDaemonCommand | HostDaemonOnlineRpcCommand;
@@ -41,6 +42,7 @@ export const noopEventSink: EventSink = {
 export interface CommandDispatchOptions {
   dataDir: string;
   fetchProjectAttachment: FetchProjectAttachment;
+  fetchSkillTree?: FetchSkillTree;
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
   eventSink: EventSink;

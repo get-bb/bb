@@ -1,4 +1,6 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type {
   HostProviderCommand,
   HostDaemonOnlineRpcRequestMessage,
@@ -83,6 +85,63 @@ function legacyCommand(
 }
 
 describe("public project command typeahead route", () => {
+  it("sends the synchronized skill catalog when discovery targets another machine", async () => {
+    await withTestHarness(async (harness) => {
+      const primaryHost = seedHost(harness.deps, {
+        id: "host-commands-primary",
+      });
+      seedPrimaryHost(harness.deps, primaryHost.id);
+      const { host: remoteHost, session } = seedHostSession(harness.deps, {
+        id: "host-commands-remote",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: primaryHost.id,
+        path: "/tmp/remote-commands-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: remoteHost.id,
+        projectId: project.id,
+        path: "/tmp/remote-commands-env",
+      });
+      const skillRoot = path.join(
+        harness.deps.config.dataDir,
+        "skills",
+        "synced-remote",
+      );
+      await mkdir(skillRoot, { recursive: true });
+      await writeFile(
+        path.join(skillRoot, "SKILL.md"),
+        "---\nname: synced-remote\ndescription: Synced remote skill\n---\n",
+        "utf8",
+      );
+      const stub = registerCommandRpc(harness, {
+        hostId: remoteHost.id,
+        sessionId: session.id,
+        commands: [skill("synced-remote", "user")],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=${environment.id}`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(stub.requests[0]?.command).toEqual(
+        expect.objectContaining({
+          type: "host.list_commands",
+          providerId: "codex",
+          cwd: "/tmp/remote-commands-env",
+          injectedSkillSources: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "tree",
+              sourceType: "data-dir",
+              name: "synced-remote",
+            }),
+          ]),
+        }),
+      );
+    });
+  });
+
   it("filters, sorts, and de-dupes claude-code commands with project winning over user", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -160,6 +219,7 @@ describe("public project command typeahead route", () => {
           providerId: "claude-code",
           cwd: "/tmp/claude-commands-env",
           builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+          injectedSkillSources: [],
         },
       ]);
     });
@@ -205,6 +265,7 @@ describe("public project command typeahead route", () => {
         providerId: "codex",
         cwd: "/tmp/codex-commands-env",
         builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+        injectedSkillSources: [],
       });
     });
   });
@@ -248,6 +309,7 @@ describe("public project command typeahead route", () => {
           cwd: "/tmp/inherited-skills-project",
           builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
           additionalSkillsRootPaths: ["/tmp/bb-parent-skills"],
+          injectedSkillSources: [],
         });
       },
     );
@@ -356,6 +418,7 @@ describe("public project command typeahead route", () => {
         providerId: "pi",
         cwd: "/tmp/pi-commands-env",
         builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+        injectedSkillSources: [],
       });
     });
   });
@@ -395,6 +458,7 @@ describe("public project command typeahead route", () => {
         providerId: "claude-code",
         cwd: "/tmp/no-env-project",
         builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+        injectedSkillSources: [],
       });
     });
   });
@@ -440,6 +504,7 @@ describe("public project command typeahead route", () => {
         providerId: "claude-code",
         cwd: "/tmp/provisioning-project",
         builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+        injectedSkillSources: [],
       });
     });
   });
@@ -478,6 +543,7 @@ describe("public project command typeahead route", () => {
         providerId: "claude-code",
         cwd: null,
         builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+        injectedSkillSources: [],
       });
     });
   });
@@ -509,6 +575,7 @@ describe("public project command typeahead route", () => {
         providerId: "codex",
         cwd: null,
         builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+        injectedSkillSources: [],
       });
     });
   });
