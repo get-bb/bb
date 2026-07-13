@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { marketplaceSearchQueryKey } from "@/hooks/queries/plugin-marketplace-queries";
+import { appToast } from "@/components/ui/app-toast.js";
 import { AddPluginDialog } from "./AddPluginDialog";
 
 interface RecordedRequest {
@@ -19,39 +20,23 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as Response;
 }
 
-const COMPATIBLE_PREVIEW = {
-  plugin: {
-    id: "linear",
-    displayName: "Linear",
-    description: "Browse and manage Linear issues",
-  },
-  resolved: { display: "1.6.2 · sha512-9f2c…e1", version: "1.6.2" },
-  compatibility: { outcome: "compatible", devMode: false, problems: [] },
-  updatePolicy: "compatible",
-  updatePolicyDisplay: "tracks compatible releases in ^1.4.0",
-  skipped: [],
-  warnings: [],
-};
-
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function stubFetch(
-  previewBody: unknown,
-  previewStatus = 200,
+  installBody: unknown = { ok: true },
+  installStatus = 200,
 ): RecordedRequest[] {
   const requests: RecordedRequest[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       requests.push({ url, init });
-      if (url === "/api/v1/plugins/install/preview") {
-        return jsonResponse(previewBody, previewStatus);
-      }
       if (url === "/api/v1/plugins/install") {
-        return jsonResponse({ ok: true });
+        return jsonResponse(installBody, installStatus);
       }
       return jsonResponse({ error: "not found" }, 404);
     }),
@@ -68,159 +53,82 @@ function renderDialog(initial?: Parameters<typeof AddPluginDialog>[0]["initial"]
 }
 
 describe("AddPluginDialog", () => {
-  it("previews a typed source, shows the compatible verdict with details collapsed, and installs after the trust step", async () => {
-    const requests = stubFetch(COMPATIBLE_PREVIEW);
+  it("installs a typed source in one step behind the full-trust warning", async () => {
+    const requests = stubFetch();
     renderDialog();
+
+    // The commit button is disabled until a source is entered; the trust
+    // warning is always visible.
+    expect(screen.getByTestId("full-trust-warning")).toBeTruthy();
+    const install = screen.getByRole("button", {
+      name: /install plugin/i,
+    }) as HTMLButtonElement;
+    expect(install.disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Plugin source"), {
       target: { value: "npm:@bb-plugins/linear" },
     });
-
-    // Debounced server-side preview renders the verdict banner.
-    const verdict = await screen.findByTestId(
-      "install-preview-verdict",
-      undefined,
-      { timeout: 3000 },
-    );
-    expect(verdict.textContent).toContain("✓ compatible");
-    // The server's human policy phrasing renders verbatim in the preview.
-    expect(verdict.textContent).toContain(
-      "tracks compatible releases in ^1.4.0",
-    );
-    const preview = requests.find(
-      (request) => request.url === "/api/v1/plugins/install/preview",
-    );
-    expect(JSON.parse(String(preview?.init?.body))).toEqual({
-      source: "npm:@bb-plugins/linear",
-    });
-
-    // All checks passed → the evidence stays collapsed.
-    expect(
-      screen
-        .getByRole("button", { name: /details — version/i })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
-
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    // Step 2: the full-trust warning is always visible; Install commits.
-    expect(screen.getByTestId("full-trust-warning")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+    expect(install.disabled).toBe(false);
+    fireEvent.click(install);
 
     await vi.waitFor(() => {
-      const install = requests.find(
+      const post = requests.find(
         (request) => request.url === "/api/v1/plugins/install",
       );
-      expect(install).toBeDefined();
-      expect(JSON.parse(String(install?.init?.body))).toEqual({
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
         source: "npm:@bb-plugins/linear",
       });
     });
   });
 
-  it("pre-expands details and disables Continue for an incompatible source", async () => {
-    stubFetch({
-      ...COMPATIBLE_PREVIEW,
-      compatibility: {
-        outcome: "incompatible",
-        devMode: false,
-        problems: ["requires bb >= 0.15 — you have 0.14.1"],
-      },
-    });
-    renderDialog();
-
-    fireEvent.change(screen.getByLabelText("Plugin source"), {
-      target: { value: "npm:@bb-plugins/linear@2.0.0" },
+  it("installs marketplace entries with the marketplace body form", async () => {
+    const requests = stubFetch();
+    renderDialog({
+      marketplaceId: "mkt_1",
+      marketplaceName: "bb-official",
+      entryId: "linear",
+      displayName: "Linear",
     });
 
-    await screen.findByTestId("install-preview-verdict", undefined, {
-      timeout: 3000,
+    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+
+    await vi.waitFor(() => {
+      const post = requests.find(
+        (request) => request.url === "/api/v1/plugins/install",
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        marketplace: { marketplaceId: "mkt_1", entryId: "linear" },
+      });
     });
-    // The details ARE the story: pre-expanded, with the failing check shown.
-    expect(
-      screen
-        .getByRole("button", { name: /details — version/i })
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(
-      screen.getByText("requires bb >= 0.15 — you have 0.14.1"),
-    ).toBeTruthy();
-    expect(
-      (screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
   });
 
-  it("keeps Continue disabled when devMode is set but the outcome is incompatible (dev mode annotates, never overrides)", async () => {
-    stubFetch({
-      ...COMPATIBLE_PREVIEW,
-      compatibility: {
-        outcome: "incompatible",
-        devMode: true,
-        problems: ["plugin SDK ^3.0 — you have 1.0.0"],
-      },
-    });
-    renderDialog();
-
-    fireEvent.change(screen.getByLabelText("Plugin source"), {
-      target: { value: "npm:@bb-plugins/linear@2.0.0" },
-    });
-
-    await screen.findByTestId("install-preview-verdict", undefined, {
-      timeout: 3000,
-    });
-    expect(
-      (screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-  });
-
-  it("pre-expands details when a newer release was skipped", async () => {
-    stubFetch({
-      ...COMPATIBLE_PREVIEW,
-      skipped: [{ version: "1.7.0-beta.1", reason: "prerelease excluded" }],
-    });
-    renderDialog();
-
-    fireEvent.change(screen.getByLabelText("Plugin source"), {
-      target: { value: "npm:@bb-plugins/linear" },
-    });
-
-    await screen.findByTestId("install-preview-verdict", undefined, {
-      timeout: 3000,
-    });
-    expect(
-      screen
-        .getByRole("button", { name: /details — version/i })
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(
-      screen.getByText(/Skipped 1\.7\.0-beta\.1 — prerelease excluded/),
-    ).toBeTruthy();
-  });
-
-  it("shows the server's 422 message for an unparsable source", async () => {
+  it("surfaces the server's install error (e.g. incompatible source) as a toast", async () => {
+    const errorToast = vi.spyOn(appToast, "error").mockReturnValue("toast");
     stubFetch(
-      { error: "not a path, npm:, or git: source — tried both" },
+      { ok: false, error: "requires bb >= 0.15 — you have 0.14.1" },
       422,
     );
     renderDialog();
 
     fireEvent.change(screen.getByLabelText("Plugin source"), {
-      target: { value: "linear@nowhere" },
+      target: { value: "npm:@bb-plugins/linear@2.0.0" },
     });
+    fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
 
-    expect(
-      await screen.findByText(
-        "not a path, npm:, or git: source — tried both",
-        undefined,
-        { timeout: 3000 },
-      ),
-    ).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(errorToast).toHaveBeenCalledWith(
+        "Installing the plugin failed",
+        expect.objectContaining({
+          description: "requires bb >= 0.15 — you have 0.14.1",
+        }),
+      );
+    });
   });
 
   it("invalidates marketplace-search queries after a successful install", async () => {
-    stubFetch(COMPATIBLE_PREVIEW);
+    stubFetch();
     const { wrapper, queryClient } = createQueryClientTestHarness();
     // A cached Browse search must refetch so the card flips to Installed ✓.
     queryClient.setQueryData(marketplaceSearchQueryKey(""), []);
@@ -229,36 +137,12 @@ describe("AddPluginDialog", () => {
     fireEvent.change(screen.getByLabelText("Plugin source"), {
       target: { value: "npm:@bb-plugins/linear" },
     });
-    await screen.findByTestId("install-preview-verdict", undefined, {
-      timeout: 3000,
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+    fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
 
     await vi.waitFor(() => {
       expect(
         queryClient.getQueryState(marketplaceSearchQueryKey(""))?.isInvalidated,
       ).toBe(true);
-    });
-  });
-
-  it("previews marketplace installs with the marketplace body form", async () => {
-    const requests = stubFetch(COMPATIBLE_PREVIEW);
-    renderDialog({
-      marketplaceId: "mkt_1",
-      marketplaceName: "bb-official",
-      entryId: "linear",
-      displayName: "Linear",
-    });
-
-    await screen.findByTestId("install-preview-verdict", undefined, {
-      timeout: 3000,
-    });
-    const preview = requests.find(
-      (request) => request.url === "/api/v1/plugins/install/preview",
-    );
-    expect(JSON.parse(String(preview?.init?.body))).toEqual({
-      marketplace: { marketplaceId: "mkt_1", entryId: "linear" },
     });
   });
 });

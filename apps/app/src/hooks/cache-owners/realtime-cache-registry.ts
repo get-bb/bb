@@ -93,7 +93,6 @@ import {
 import {
   allMarketplaceSearchQueryKeyPrefix,
   allPluginSourceQueryKeyPrefix,
-  allPluginUpdateHistoryQueryKeyPrefix,
   marketplacesQueryKey,
 } from "../queries/plugin-marketplace-queries";
 import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
@@ -887,7 +886,6 @@ function dirtyPluginManagementQueries(): QueryKey[] {
     // Update/install/marketplace operations change source detail, catalogs,
     // and search results (installed/compatible flags) alongside the list.
     allPluginSourceQueryKeyPrefix(),
-    allPluginUpdateHistoryQueryKeyPrefix(),
     marketplacesQueryKey(),
     allMarketplaceSearchQueryKeyPrefix(),
   ];

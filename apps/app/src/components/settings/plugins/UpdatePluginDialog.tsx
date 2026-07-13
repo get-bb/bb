@@ -22,7 +22,6 @@ import {
   KeyValueGrid,
   RollbackNote,
   SUCCESS_TEXT_STYLE,
-  UPDATE_POLICY_LABELS,
 } from "./plugin-ui";
 
 export interface UpdatePluginDialogProps {
@@ -150,23 +149,12 @@ function UpdatePluginDialogContent({
             </span>
             <span>Compatible with your bb and plugin SDK</span>
           </div>
-          <DetailsDisclosure summary="Details — source, versions, policy">
+          <DetailsDisclosure summary="Details — source, versions">
             <KeyValueGrid
               entries={[
-                ...(plugin.sourceDisplay !== null
-                  ? [{ key: "Source", value: plugin.sourceDisplay }]
-                  : []),
+                { key: "Source", value: plugin.sourceDisplay },
                 { key: "Current", value: plugin.version },
                 { key: "Candidate", value: candidate },
-                ...(plugin.updatePolicy !== null
-                  ? [
-                      {
-                        key: "Update policy",
-                        value: UPDATE_POLICY_LABELS[plugin.updatePolicy],
-                        mono: false,
-                      },
-                    ]
-                  : []),
               ]}
             />
           </DetailsDisclosure>
@@ -235,8 +223,7 @@ function UpdatePluginDialogContent({
             </div>
           </DetailsDisclosure>
           <p className="text-xs text-subtle-foreground">
-            {blocked} will install automatically once this bb meets its
-            requirements.
+            You can update to {blocked} once this bb meets its requirements.
           </p>
         </div>
         <DialogFooter>

@@ -39,27 +39,11 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     hasSettings: false,
     provenance: "direct",
     marketplaceName: null,
-    sourceDisplay: "npm · @bb-plugins/linear · tracking ^1.4.0",
-    updatePolicy: "compatible",
-    autoApply: false,
+    sourceDisplay: "npm · @bb-plugins/linear · pinned",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
     ...overrides,
   };
 }
-
-// Full server-shaped MarketplaceView; autoApply=true forces every plugin
-// installed from it.
-const FORCING_MARKETPLACE = {
-  id: "bb-official",
-  name: "bb-official",
-  displayName: "bb-official",
-  source: "github.com/bb-plugins/official@stable",
-  pluginCount: 3,
-  enabled: true,
-  scope: "builtin",
-  autoCheck: true,
-  autoApply: true,
-};
 
 afterEach(() => {
   cleanup();
@@ -67,181 +51,79 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("PluginUpdatesSourceCard auto-apply", () => {
-  it("POSTs the toggle and refetches the list on a matching echo", async () => {
+describe("PluginUpdatesSourceCard check now", () => {
+  it("POSTs the per-plugin update check and refetches the list", async () => {
     const requests: RecordedRequest[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         requests.push({ url, init });
-        if (url === "/api/v1/plugins/linear/auto-apply") {
-          return jsonResponse({ autoApply: true });
+        if (url === "/api/v1/plugins/updates/check") {
+          return jsonResponse({
+            results: [
+              {
+                id: "linear",
+                outcome: "current",
+                installed: { version: "1.6.2", display: "1.6.2" },
+              },
+            ],
+          });
         }
         return jsonResponse({ error: "not found" }, 404);
       }),
     );
 
     const { wrapper, queryClient } = createQueryClientTestHarness();
-    queryClient.setQueryData(
-      pluginListQueryKey(true),
-      { autoApplyDisabled: false, plugins: [] },
-    );
-    render(
-      <PluginUpdatesSourceCard plugin={plugin()} autoApplyDisabled={false} />,
-      { wrapper },
-    );
+    queryClient.setQueryData(pluginListQueryKey(true), { plugins: [] });
+    render(<PluginUpdatesSourceCard plugin={plugin()} />, { wrapper });
 
-    fireEvent.click(screen.getByRole("switch", { name: "Automatic updates" }));
+    fireEvent.click(screen.getByRole("button", { name: /Check now/ }));
 
     await vi.waitFor(() => {
       const post = requests.find((request) =>
-        request.url.endsWith("/auto-apply"),
+        request.url.endsWith("/updates/check"),
       );
       expect(post).toBeDefined();
-      expect(JSON.parse(String(post?.init?.body))).toEqual({ enabled: true });
+      expect(JSON.parse(String(post?.init?.body))).toEqual({ id: "linear" });
       expect(
-        queryClient.getQueryState(pluginListQueryKey(true))
-          ?.isInvalidated,
+        queryClient.getQueryState(pluginListQueryKey(true))?.isInvalidated,
       ).toBe(true);
     });
   });
 
-  it("rejects an echo mismatch with an error toast and no refetch", async () => {
+  it("toasts the server message when the check fails", async () => {
     const errorToast = vi.spyOn(appToast, "error").mockReturnValue("toast");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string) => {
-        if (url === "/api/v1/plugins/linear/auto-apply") {
-          // The server persisted the opposite of what was asked.
-          return jsonResponse({ autoApply: false });
-        }
-        return jsonResponse({ error: "not found" }, 404);
-      }),
+      vi.fn(async () =>
+        jsonResponse({ error: "registry unreachable" }, 422),
+      ),
     );
 
-    const { wrapper, queryClient } = createQueryClientTestHarness();
-    queryClient.setQueryData(
-      pluginListQueryKey(true),
-      { autoApplyDisabled: false, plugins: [] },
-    );
-    render(
-      <PluginUpdatesSourceCard plugin={plugin()} autoApplyDisabled={false} />,
-      { wrapper },
-    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginUpdatesSourceCard plugin={plugin()} />, { wrapper });
 
-    fireEvent.click(screen.getByRole("switch", { name: "Automatic updates" }));
+    fireEvent.click(screen.getByRole("button", { name: /Check now/ }));
 
     await vi.waitFor(() => {
       expect(errorToast).toHaveBeenCalledWith(
-        "Changing automatic updates failed",
-        expect.objectContaining({
-          description: expect.stringMatching(/unrecognized auto-apply/),
-        }),
+        "The update check failed",
+        expect.objectContaining({ description: "registry unreachable" }),
       );
     });
-    expect(
-      queryClient.getQueryState(pluginListQueryKey(true))
-        ?.isInvalidated,
-    ).toBe(false);
-  });
-
-  it("shows the org note with the switch off and disabled, even when effective autoApply is on", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginUpdatesSourceCard
-        plugin={plugin({ autoApply: true })}
-        autoApplyDisabled
-      />,
-      { wrapper },
-    );
-
-    expect(
-      screen.getByText("Automatic updates are disabled by your organization."),
-    ).toBeTruthy();
-    const toggle = screen.getByRole("switch", {
-      name: "Automatic updates",
-    }) as HTMLButtonElement;
-    // Never imply active while the org kill-switch overrides.
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
-    expect(toggle.disabled).toBe(true);
-  });
-
-  it("shows the marketplace-forced note with the switch on and disabled", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        if (url === "/api/v1/marketplaces") {
-          return jsonResponse({ marketplaces: [FORCING_MARKETPLACE] });
-        }
-        return jsonResponse({ error: "not found" }, 404);
-      }),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginUpdatesSourceCard
-        plugin={plugin({
-          provenance: "marketplace",
-          marketplaceName: "bb-official",
-          autoApply: true,
-        })}
-        autoApplyDisabled={false}
-      />,
-      { wrapper },
-    );
-
-    expect(
-      await screen.findByText("Enabled via the bb-official marketplace."),
-    ).toBeTruthy();
-    const toggle = screen.getByRole("switch", {
-      name: "Automatic updates",
-    }) as HTMLButtonElement;
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-    expect(toggle.disabled).toBe(true);
-  });
-
-  it("hides the row on older servers that predate the effective autoApply field", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginUpdatesSourceCard
-        plugin={plugin({ autoApply: null })}
-        autoApplyDisabled={false}
-      />,
-      { wrapper },
-    );
-    expect(screen.queryByTestId("plugin-auto-apply-row")).toBeNull();
   });
 });
 
-describe("PluginUpdatesSourceCard update history", () => {
-  it("lazily fetches on expand and renders events newest first, including rollbacks", async () => {
+describe("PluginUpdatesSourceCard source details", () => {
+  it("lazily fetches /source on expand and renders the resolved detail", async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      if (url === "/api/v1/plugins/linear/history") {
+      if (url === "/api/v1/plugins/linear/source") {
         return jsonResponse({
-          events: [
-            {
-              kind: "rollback",
-              fromVersion: "1.7.0",
-              toVersion: "1.6.2",
-              outcome: "rolled-back",
-              detail: "failed to start",
-              at: 1752300000000,
-            },
-            {
-              kind: "activate",
-              fromVersion: "1.6.2",
-              toVersion: "1.7.0",
-              outcome: "ok",
-              at: 1752200000000,
-            },
-          ],
+          requested: "npm:@bb-plugins/linear@^1.4.0",
+          resolved: "1.6.2",
+          integrity: "sha512-9f2c",
+          engines: { bb: ">=0.14" },
+          history: [{ version: "1.6.2", activatedAt: 1752200000000 }],
         });
       }
       return jsonResponse({ error: "not found" }, 404);
@@ -249,43 +131,56 @@ describe("PluginUpdatesSourceCard update history", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginUpdatesSourceCard plugin={plugin()} autoApplyDisabled={false} />,
-      { wrapper },
-    );
+    render(<PluginUpdatesSourceCard plugin={plugin()} />, { wrapper });
 
     // Collapsed: no fetch yet (lazy).
     expect(
-      fetchMock.mock.calls.some(([url]) => String(url).endsWith("/history")),
+      fetchMock.mock.calls.some(([url]) => String(url).endsWith("/source")),
     ).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
     expect(
-      await screen.findByText(/rollback · 1\.7\.0 → 1\.6\.2 · rolled-back/),
+      await screen.findByText("npm:@bb-plugins/linear@^1.4.0"),
     ).toBeTruthy();
-    expect(screen.getByText("failed to start")).toBeTruthy();
-    expect(screen.getByText(/activate · 1\.6\.2 → 1\.7\.0 · ok/)).toBeTruthy();
+    expect(screen.getByText(/1\.6\.2 · sha512-9f2c/)).toBeTruthy();
   });
 
-  it("shows the empty state when the plugin has no update activity", async () => {
+  it("surfaces a newer-but-incompatible release on the card, not the list", () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string) => {
-        if (url === "/api/v1/plugins/linear/history") {
-          return jsonResponse({ events: [] });
-        }
-        return jsonResponse({ error: "not found" }, 404);
-      }),
+      vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
     );
-
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <PluginUpdatesSourceCard plugin={plugin()} autoApplyDisabled={false} />,
+      <PluginUpdatesSourceCard
+        plugin={plugin({
+          updateState: {
+            ...EMPTY_PLUGIN_UPDATE_STATE,
+            blockedVersion: "1.9.0",
+            blockedReasons: ["requires bb >= 0.15"],
+          },
+        })}
+      />,
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "History" }));
-    expect(await screen.findByText("No update activity yet.")).toBeTruthy();
+    expect(
+      screen.getByText("1.9.0 isn't compatible with this bb"),
+    ).toBeTruthy();
+    expect(screen.getByText("requires bb >= 0.15")).toBeTruthy();
+  });
+
+  it("renders nothing for builtins (their update channel is the bb release)", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { container } = render(
+      <PluginUpdatesSourceCard plugin={plugin({ provenance: "builtin" })} />,
+      { wrapper },
+    );
+    expect(container.textContent).toBe("");
   });
 });

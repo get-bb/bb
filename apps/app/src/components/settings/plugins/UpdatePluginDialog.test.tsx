@@ -25,9 +25,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     hasSettings: false,
     provenance: "marketplace",
     marketplaceName: "bb-official",
-    sourceDisplay: "npm · @bb-plugins/linear · tracking ^1.4.0",
-    updatePolicy: "compatible",
-    autoApply: null,
+    sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
   };
 }
@@ -103,7 +101,6 @@ describe("UpdatePluginDialog", () => {
         // The exact applyUpdate result shape from plugin-service.
         jsonResponse({
           applied: false,
-          dryRun: false,
           from: { version: "1.6.2", display: "1.6.2" },
           to: { version: "1.7.0", display: "1.7.0" },
           outcome: "rolled-back",

@@ -2,25 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePreferredTheme } from "@/hooks/useTheme";
-import type {
-  PluginListItem,
-  PluginUpdatePolicy,
-} from "@/hooks/queries/plugin-settings-queries";
-
-export const UPDATE_POLICY_LABELS: Record<PluginUpdatePolicy, string> = {
-  manual: "Manual",
-  compatible: "Compatible releases",
-  patch: "Patch releases only",
-  minor: "Minor releases only",
-};
-
-/** One-line consequence of a derived update policy (add-dialog verdict sub). */
-export const UPDATE_POLICY_CONSEQUENCE: Record<PluginUpdatePolicy, string> = {
-  manual: "Updates are applied only when you ask",
-  compatible: "Will track new compatible releases automatically",
-  patch: "Will track new patch releases automatically",
-  minor: "Will track new minor releases automatically",
-};
+import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
 /**
  * Shared pieces of the Settings → Plugins surfaces. Tinted styles derive

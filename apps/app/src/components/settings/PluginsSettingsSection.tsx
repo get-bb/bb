@@ -438,14 +438,7 @@ export function PluginsSettingsSection() {
 }
 
 /** Exported for tests (status gating of the settings form). */
-export function PluginSettingsDetail({
-  plugin,
-  autoApplyDisabled,
-}: {
-  plugin: PluginListItem;
-  /** Org kill-switch from the plugin-list envelope. */
-  autoApplyDisabled: boolean;
-}) {
+export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const { settingsSections } = usePluginSlots();
   const hasSettingsSections = settingsSections.some(
     (section) => section.pluginId === plugin.id,
@@ -517,10 +510,7 @@ export function PluginSettingsDetail({
             ) : null}
           </div>
           <PluginUpdateBanner plugin={plugin} />
-          <PluginUpdatesSourceCard
-            plugin={plugin}
-            autoApplyDisabled={autoApplyDisabled}
-          />
+          <PluginUpdatesSourceCard plugin={plugin} />
           {showDeclarativeSettingsCard ? (
             <div className="rounded-lg border border-border bg-card px-4 py-3.5">
               {settingsAvailable ? (
@@ -574,10 +564,5 @@ export function PluginSettingsDetailSection({
       <EmptyState message={`Plugin "${pluginId}" is not installed.`} />
     );
   }
-  return (
-    <PluginSettingsDetail
-      plugin={plugin}
-      autoApplyDisabled={listQuery.data?.autoApplyDisabled === true}
-    />
-  );
+  return <PluginSettingsDetail plugin={plugin} />;
 }

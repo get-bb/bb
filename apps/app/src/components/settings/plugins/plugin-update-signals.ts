@@ -6,9 +6,6 @@ import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
  * rolled back outranks an available update — the user should know a rollback
  * happened before applying anything else. Newer-but-incompatible releases
  * and pinned sources never badge the list; they surface on the detail page.
- *
- * Toasts follow the same shape: compatible updates and rollbacks notify,
- * incompatible-newer never does, and an ignored version stays quiet.
  */
 
 export type PluginRowSignal =
@@ -26,46 +23,8 @@ export function pluginRowSignal(plugin: PluginListItem): PluginRowSignal | null 
   ) {
     return { kind: "attention" };
   }
-  if (
-    state.availableVersion !== null &&
-    state.availableVersion !== state.ignoredVersion
-  ) {
+  if (state.availableVersion !== null) {
     return { kind: "update", version: state.availableVersion };
-  }
-  return null;
-}
-
-export type PluginToastSignal =
-  | { kind: "update-available"; key: string; version: string }
-  | {
-      kind: "rolled-back";
-      key: string;
-      version: string;
-      detail: string | null;
-    };
-
-export function pluginToastSignal(
-  plugin: PluginListItem,
-): PluginToastSignal | null {
-  const state = plugin.updateState;
-  if (state.lastFailure !== null) {
-    return {
-      kind: "rolled-back",
-      // `at` keys re-notification when the same version fails again later.
-      key: `${plugin.id}:failure:${state.lastFailure.version}:${state.lastFailure.at ?? "unknown"}`,
-      version: state.lastFailure.version,
-      detail: state.lastFailure.detail,
-    };
-  }
-  if (
-    state.availableVersion !== null &&
-    state.availableVersion !== state.ignoredVersion
-  ) {
-    return {
-      kind: "update-available",
-      key: `${plugin.id}:update:${state.availableVersion}`,
-      version: state.availableVersion,
-    };
   }
   return null;
 }
