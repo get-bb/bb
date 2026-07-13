@@ -2,6 +2,7 @@ import ReconnectingWebSocket from "partysocket/ws";
 import {
   type HostDaemonActiveThread,
   type HostDaemonLoadedEnvironment,
+  type HostDaemonConnectSharesReplaceMessage,
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonServerWsMessage,
   type HostDaemonSessionCloseReason,
@@ -45,6 +46,7 @@ export type HostDaemonServerTerminalMessage = Exclude<
   | { type: "session-close" }
   | HostDaemonOnlineRpcRequestMessage
   | HostDaemonWatchSetReplaceMessage
+  | HostDaemonConnectSharesReplaceMessage
 >;
 
 export interface ServerConnectionOptions {
@@ -76,6 +78,9 @@ export interface ServerConnectionOptions {
   ) => void | Promise<void>;
   onWatchSetReplace?: (
     message: HostDaemonWatchSetReplaceMessage,
+  ) => void | Promise<void>;
+  onConnectSharesReplace?: (
+    message: HostDaemonConnectSharesReplaceMessage,
   ) => void | Promise<void>;
   onSessionClose?: (
     reason: HostDaemonSessionCloseReason,

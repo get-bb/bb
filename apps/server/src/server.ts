@@ -420,6 +420,7 @@ export function createApp(
     appVersion: deps.config.appVersion,
     isEnabled: () => getExperiments(deps.db).plugins,
     isConnectEnabled: () => getExperiments(deps.db).bbConnect,
+    sharedPorts: deps.sharedPorts,
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });

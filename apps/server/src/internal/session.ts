@@ -116,6 +116,9 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
           leaseTimeoutMs: LEASE_TIMEOUT_MS,
           watchSet: deps.watchInterests.reconcileWatchSetForHost(daemon.hostId),
+          connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
+            daemon.hostId,
+          ),
           retiredEnvironmentIds,
         },
         201,

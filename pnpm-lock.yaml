@@ -609,6 +609,12 @@ importers:
       '@bb/templates':
         specifier: workspace:*
         version: link:../../packages/templates
+      '@bb/tunnel-client':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-client
+      '@bb/tunnel-contract':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-contract
       '@hono/node-server':
         specifier: ^1.19.11
         version: 1.19.14(hono@4.11.9)

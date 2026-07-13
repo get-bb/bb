@@ -849,6 +849,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           pluginId: row.id,
         });
       },
+      declareSharedPorts: (hostId, ports, tunnel) => {
+        if (!deps.sharedPorts) {
+          throw new Error("host shared-port control plane is unavailable");
+        }
+        deps.sharedPorts.declareSharedPorts({
+          ownerId: row.id,
+          hostId,
+          ports,
+          tunnel,
+        });
+      },
+      clearDeclaredSharedPorts: () => {
+        deps.sharedPorts?.clearDeclarationsForOwner(row.id);
+      },
     });
     // Fresh load: a plugin that was waiting on configuration gets to prove
     // itself again (its factory/services re-report if still unconfigured).
@@ -875,6 +889,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         handle.api,
       );
     } catch (error) {
+      deps.sharedPorts?.clearDeclarationsForOwner(row.id);
       for (const database of handle.sqliteHandles.splice(0)) {
         try {
           database.close();

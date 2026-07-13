@@ -18,6 +18,8 @@ import type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginHosts,
+  PluginHostTunnel,
   PluginInteractions,
   PluginInteractionRequest,
   PluginInteractionResult,
@@ -290,6 +292,11 @@ export interface FakePluginHarness {
   /** Recorded `bb.sdk` calls + stub control. */
   readonly sdk: FakeSdkHarness;
   readonly registrations: FakePluginRegistrations;
+  readonly sharedPortDeclarations: Array<{
+    hostId: string;
+    ports: number[];
+    tunnel: PluginHostTunnel | null;
+  }>;
   readonly pendingInteractions: readonly (PluginInteractionRequest & {
     id: string;
   })[];
@@ -1174,6 +1181,22 @@ export function createFakePluginHost(
     },
   };
 
+  const sharedPortDeclarations: FakePluginHarness["sharedPortDeclarations"] =
+    [];
+  const hosts: PluginHosts = {
+    declareSharedPorts(hostId, ports, tunnel) {
+      assertLive();
+      sharedPortDeclarations.push({
+        hostId,
+        ports: [...ports],
+        tunnel: tunnel === null ? null : { ...tunnel },
+      });
+    },
+  };
+  disposeHooks.push(() => {
+    sharedPortDeclarations.length = 0;
+  });
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1189,6 +1212,7 @@ export function createFakePluginHost(
     ui,
     status,
     server,
+    hosts,
     get sdk() {
       assertLive();
       return sdk;
@@ -1216,6 +1240,7 @@ export function createFakePluginHost(
     logEntries,
     realtimeSignals,
     needsConfigurationMessages,
+    sharedPortDeclarations,
     sdk: sdkHarness,
     registrations: {
       settingsDescriptors,

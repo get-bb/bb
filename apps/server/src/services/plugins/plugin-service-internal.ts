@@ -12,6 +12,7 @@ import type {
   PluginThreadActionToast,
 } from "./plugin-api.js";
 import type { PluginAppState } from "./app-bundle.js";
+import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { PluginResolvedUpdateVersion } from "./update-resolver.js";
 
 /**
@@ -151,6 +152,11 @@ export interface LoadedPlugin {
 
 export interface PluginServiceDeps {
   db: DbConnection;
+  /** Omitted only by isolated plugin-runtime tests without a daemon plane. */
+  sharedPorts?: Pick<
+    HostSharedPortCoordinator,
+    "declareSharedPorts" | "clearDeclarationsForOwner"
+  >;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<

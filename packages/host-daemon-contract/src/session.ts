@@ -30,6 +30,22 @@ import { hostPlatformSchema } from "./local.js";
 
 export const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
 
+function isConnectBaseDomain(value: string): boolean {
+  try {
+    const parsed = new URL(`https://${value}`);
+    return (
+      parsed.host === value &&
+      parsed.username === "" &&
+      parsed.password === "" &&
+      parsed.pathname === "/" &&
+      parsed.search === "" &&
+      parsed.hash === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const hostDaemonActiveThreadSchema = z.object({
   threadId: z.string().min(1),
 });
@@ -72,6 +88,32 @@ export const hostDaemonWatchSetSchema = z
   })
   .strict();
 export type HostDaemonWatchSet = z.infer<typeof hostDaemonWatchSetSchema>;
+
+export const hostDaemonConnectSharesTunnelSchema = z
+  .object({
+    label: z
+      .string()
+      .min(1)
+      .max(63)
+      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
+      .refine((label) => !label.includes("--")),
+    baseDomain: z.string().min(1).refine(isConnectBaseDomain),
+  })
+  .strict();
+export type HostDaemonConnectSharesTunnel = z.infer<
+  typeof hostDaemonConnectSharesTunnelSchema
+>;
+
+export const hostDaemonConnectSharesSchema = z
+  .object({
+    generation: z.number().int().nonnegative(),
+    ports: z.array(z.number().int().min(1).max(65535)),
+    tunnel: hostDaemonConnectSharesTunnelSchema.nullable(),
+  })
+  .strict();
+export type HostDaemonConnectShares = z.infer<
+  typeof hostDaemonConnectSharesSchema
+>;
 
 export const hostDaemonSessionOpenRequestSchema = z.object({
   hostId: z.string().min(1),
@@ -143,6 +185,9 @@ export const hostDaemonSessionOpenResponseSchema = z
       workspaceTargets: [],
       threadStorageTargets: [],
     }),
+    // Optional only for rolling compatibility with a server that has not yet
+    // populated the core share coordinator. Current servers include it.
+    connectShares: hostDaemonConnectSharesSchema.optional(),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
@@ -322,6 +367,16 @@ const hostDaemonWatchSetReplaceMessageSchema = hostDaemonWatchSetSchema
   .strict();
 export type HostDaemonWatchSetReplaceMessage = z.infer<
   typeof hostDaemonWatchSetReplaceMessageSchema
+>;
+
+const hostDaemonConnectSharesReplaceMessageSchema =
+  hostDaemonConnectSharesSchema
+    .extend({
+      type: z.literal("connect-shares.replace"),
+    })
+    .strict();
+export type HostDaemonConnectSharesReplaceMessage = z.infer<
+  typeof hostDaemonConnectSharesReplaceMessageSchema
 >;
 
 const hostDaemonOnlineRpcResponseSuccessBaseSchema = z
@@ -518,6 +573,7 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
     .strict(),
   hostDaemonOnlineRpcRequestMessageSchema,
   hostDaemonWatchSetReplaceMessageSchema,
+  hostDaemonConnectSharesReplaceMessageSchema,
   hostDaemonTerminalOpenMessageSchema,
   hostDaemonTerminalAttachMessageSchema,
   hostDaemonTerminalInputMessageSchema,

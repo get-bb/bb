@@ -54,6 +54,7 @@ const BB_PLUGIN_API_KEYS = [
   "ui",
   "status",
   "server",
+  "hosts",
   "sdk",
   "on",
   "onDispose",

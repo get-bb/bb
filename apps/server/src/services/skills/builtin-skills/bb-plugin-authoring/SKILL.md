@@ -228,6 +228,26 @@ the server itself (the builtin connect plugin's tunnel is the canonical
 user). **Bind-gated** like `bb.sdk`: reading it before the server is
 listening throws, so prefer reading it from handlers, services, and timers.
 
+### bb.hosts
+
+Control-plane declarations for host-local daemon behavior. Use
+`bb.hosts.declareSharedPorts(hostId, ports, tunnel)` to replace this plugin's
+desired loopback port set for one host. `ports` contains integers from 1–65535;
+the server deduplicates and sorts them, owns the generation, and delivers the
+resulting set to the daemon. `tunnel` is `{ label, baseDomain }` after the host
+has a gate machine label and credential, or `null` while either is unavailable.
+
+Declarations are load-scoped: reload, disable, or shutdown clears them after
+the plugin's own dispose hooks run. This is a control-plane API only; plugins
+do not receive daemon streaming or socket primitives.
+
+```ts
+bb.hosts.declareSharedPorts(hostId, [3000, 4173], {
+  label: "sawyer-air",
+  baseDomain: "getbb.app",
+});
+```
+
 ### bb.sdk
 
 The full bb SDK bound to this server over loopback — threads, projects,

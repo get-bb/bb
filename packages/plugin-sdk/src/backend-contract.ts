@@ -507,6 +507,31 @@ export interface PluginServerApi {
 }
 
 // ---------------------------------------------------------------------------
+// Host control plane.
+// ---------------------------------------------------------------------------
+
+export interface PluginHostTunnel {
+  /** Gate routing label assigned to this machine. */
+  label: string;
+  /** Gate apex without a scheme, e.g. "getbb.app". */
+  baseDomain: string;
+}
+
+export interface PluginHosts {
+  /**
+   * Replace this plugin's desired shared-loopback ports for one host. The
+   * server aggregates declarations, owns generations, and delivers the
+   * resulting set to that host's daemon. `tunnel` is null until the host has
+   * both a machine label and usable gate credential.
+   */
+  declareSharedPorts(
+    hostId: string,
+    ports: readonly number[],
+    tunnel: PluginHostTunnel | null,
+  ): void;
+}
+
+// ---------------------------------------------------------------------------
 // Status + the API root.
 // ---------------------------------------------------------------------------
 
@@ -555,6 +580,8 @@ export interface BbPluginApi {
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */
   readonly server: PluginServerApi;
+  /** Server-to-daemon host control-plane declarations. */
+  readonly hosts: PluginHosts;
   /**
    * The full BB SDK, bound to this server over loopback (design §4.1).
    * Bind-gated: reading this before the host binds the SDK throws. The real

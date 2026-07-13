@@ -58,6 +58,30 @@ describe("interactions", () => {
   });
 });
 
+describe("host control plane", () => {
+  it("records load-scoped shared-port declarations without streaming behavior", async () => {
+    const { bb, harness } = createFakePluginHost();
+
+    bb.hosts.declareSharedPorts("host-1", [3000, 8080], {
+      label: "sawyer-air",
+      baseDomain: "getbb.app",
+    });
+    bb.hosts.declareSharedPorts("host-2", [4173], null);
+
+    expect(harness.sharedPortDeclarations).toEqual([
+      {
+        hostId: "host-1",
+        ports: [3000, 8080],
+        tunnel: { label: "sawyer-air", baseDomain: "getbb.app" },
+      },
+      { hostId: "host-2", ports: [4173], tunnel: null },
+    ]);
+
+    await harness.dispose();
+    expect(harness.sharedPortDeclarations).toEqual([]);
+  });
+});
+
 describe("storage", () => {
   it("kv round-trips JSON, lists by prefix sorted, and enforces the 256KB cap", async () => {
     const { bb } = createFakePluginHost();

@@ -15,6 +15,7 @@ import type { TerminalSessionLifecycle } from "./services/terminals/terminal-ses
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { NotificationHub } from "./ws/hub.js";
 import type { WatchInterestCoordinator } from "./ws/watch-interests.js";
+import type { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
 import type { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
@@ -51,6 +52,7 @@ export interface AppDeps {
   telemetry: TelemetryService;
   terminalSessions: TerminalSessionLifecycle;
   watchInterests: WatchInterestCoordinator;
+  sharedPorts: HostSharedPortCoordinator;
 }
 
 export interface ServerAppDeps extends AppDeps {
