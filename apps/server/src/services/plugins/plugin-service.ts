@@ -97,7 +97,6 @@ import type {
   PluginWireLookup,
 } from "./plugin-service-internal.js";
 export type {
-  LoadedPlugin,
   PluginAgentToolContribution,
   PluginApplyUpdateOutcome,
   PluginApplyUpdateResult,
@@ -119,7 +118,6 @@ export type {
   PluginThreadEventEmitter,
   PluginUpdateCheckEntry,
   PluginWireLookup,
-  ServiceRuntime,
 } from "./plugin-service-internal.js";
 
 export interface PluginService {
