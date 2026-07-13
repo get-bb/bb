@@ -467,50 +467,8 @@
     {
       "idx": 66,
       "version": "6",
-      "when": 1783881499409,
-      "tag": "0066_faithful_karnak",
-      "breakpoints": true
-    },
-    {
-      "idx": 67,
-      "version": "6",
-      "when": 1783882382385,
-      "tag": "0067_milky_the_order",
-      "breakpoints": true
-    },
-    {
-      "idx": 68,
-      "version": "6",
-      "when": 1783884911815,
-      "tag": "0068_yielding_colossus",
-      "breakpoints": true
-    },
-    {
-      "idx": 69,
-      "version": "6",
-      "when": 1783887508543,
-      "tag": "0069_silky_senator_kelly",
-      "breakpoints": true
-    },
-    {
-      "idx": 70,
-      "version": "6",
-      "when": 1783888685250,
-      "tag": "0070_huge_dragon_lord",
-      "breakpoints": true
-    },
-    {
-      "idx": 71,
-      "version": "6",
-      "when": 1783889374978,
-      "tag": "0071_odd_carlie_cooper",
-      "breakpoints": true
-    },
-    {
-      "idx": 72,
-      "version": "6",
-      "when": 1783896611688,
-      "tag": "0072_rainy_edwin_jarvis",
+      "when": 1783915101805,
+      "tag": "0066_odd_spirit",
       "breakpoints": true
     }
   ]

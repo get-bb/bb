@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "34512a8b-64eb-4c88-9055-d268e132784c",
+  "id": "eaf8856d-a008-4c4c-ae44-5a9bfe03bd44",
   "prevId": "e2bb6a62-e097-4335-9f27-0807b09b2481",
   "tables": {
     "app_settings": {
@@ -56,6 +56,14 @@
         },
         "claude_code_workflows_disabled": {
           "name": "claude_code_workflows_disabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "plugin_auto_apply_disabled": {
+          "name": "plugin_auto_apply_disabled",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -1076,6 +1084,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "source_npm_spec_kind": {
+          "name": "source_npm_spec_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "source_git_url": {
           "name": "source_git_url",
           "type": "text",
@@ -1092,6 +1107,13 @@
         },
         "source_git_requested_ref": {
           "name": "source_git_requested_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_git_ref_kind": {
+          "name": "source_git_ref_kind",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1126,6 +1148,14 @@
           "autoincrement": false,
           "default": "'manual'"
         },
+        "auto_apply": {
+          "name": "auto_apply",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "last_update_check_at": {
           "name": "last_update_check_at",
           "type": "integer",
@@ -1156,6 +1186,48 @@
         },
         "ignored_version": {
           "name": "ignored_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "quarantined_version": {
+          "name": "quarantined_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "quarantine_source_fingerprint": {
+          "name": "quarantine_source_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "quarantine_bb_version": {
+          "name": "quarantine_bb_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "quarantine_sdk_version": {
+          "name": "quarantine_sdk_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "quarantined_at": {
+          "name": "quarantined_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "quarantine_detail": {
+          "name": "quarantine_detail",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1378,6 +1450,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "catalog_json": {
+          "name": "catalog_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "enabled": {
           "name": "enabled",
           "type": "integer",
@@ -1398,6 +1477,22 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "auto_check": {
+          "name": "auto_check",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "auto_apply": {
+          "name": "auto_apply",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "last_successful_refresh_at": {
           "name": "last_successful_refresh_at",
@@ -1740,21 +1835,7 @@
           "isUnique": false
         }
       },
-      "foreignKeys": {
-        "plugin_artifacts_plugin_id_plugins_id_fk": {
-          "name": "plugin_artifacts_plugin_id_plugins_id_fk",
-          "tableFrom": "plugin_artifacts",
-          "tableTo": "plugins",
-          "columnsFrom": [
-            "plugin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -1922,6 +2003,246 @@
           "name": "plugin_settings_plugin_id_key_pk"
         }
       },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "plugin_state_snapshots": {
+      "name": "plugin_state_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "plugin_id": {
+          "name": "plugin_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "from_artifact_id": {
+          "name": "from_artifact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "to_artifact_id": {
+          "name": "to_artifact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "snapshot_path": {
+          "name": "snapshot_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "database_path": {
+          "name": "database_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state_path": {
+          "name": "state_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "secrets_path": {
+          "name": "secrets_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "registration_path": {
+          "name": "registration_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rollback_candidate_version": {
+          "name": "rollback_candidate_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rollback_source_fingerprint": {
+          "name": "rollback_source_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rollback_bb_version": {
+          "name": "rollback_bb_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rollback_sdk_version": {
+          "name": "rollback_sdk_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rollback_detail": {
+          "name": "rollback_detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "retained_until": {
+          "name": "retained_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "plugin_state_snapshots_plugin_idx": {
+          "name": "plugin_state_snapshots_plugin_idx",
+          "columns": [
+            "plugin_id"
+          ],
+          "isUnique": false
+        },
+        "plugin_state_snapshots_retention_idx": {
+          "name": "plugin_state_snapshots_retention_idx",
+          "columns": [
+            "retained_until"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "plugin_update_events": {
+      "name": "plugin_update_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "plugin_id": {
+          "name": "plugin_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "from_version": {
+          "name": "from_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "to_version": {
+          "name": "to_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "retained_until": {
+          "name": "retained_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "plugin_update_events_plugin_idx": {
+          "name": "plugin_update_events_plugin_idx",
+          "columns": [
+            "plugin_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "plugin_update_events_retention_idx": {
+          "name": "plugin_update_events_retention_idx",
+          "columns": [
+            "retained_until"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
