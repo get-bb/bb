@@ -1,10 +1,15 @@
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
+import type { ThreadOpenSplit } from "@bb/server-contract";
 import {
+  countPanes,
   findPane,
   findPaneByThread,
+  MAX_PANES,
   replacePaneContent,
   setFocus,
+  splitPane,
 } from "@/lib/split-layout";
+import { decideThreadDrop, type SplitZone } from "@/lib/split-drag";
 import type { PaneContent, SplitLayout } from "@/lib/split-layout";
 
 const FIRST_PANE_ID = "pane-1";
@@ -72,6 +77,44 @@ export function reconcileLayoutForRoute(
     layout.focusedPaneId,
     threadPaneContent(thread),
   );
+}
+
+function threadOpenSplitZone(split: ThreadOpenSplit): SplitZone {
+  return split === "replace" ? "center" : split === "down" ? "bottom" : split;
+}
+
+/**
+ * Applies a CLI/SDK thread-open intent to the current layout. This deliberately
+ * routes through the same drop decision as sidebar dragging so already-open
+ * threads focus, and edge splits at the pane cap coerce to replacement.
+ */
+export function applyThreadOpenToLayout(
+  layout: SplitLayout | null,
+  thread: ThreadRoutePathArgs,
+  split: ThreadOpenSplit,
+): SplitLayout {
+  if (layout === null) {
+    return createSinglePaneLayout(thread);
+  }
+  const existing = findPaneByThread(
+    layout.root,
+    thread.projectId,
+    thread.threadId,
+  );
+  const decision = decideThreadDrop({
+    zone: threadOpenSplitZone(split),
+    threadAlreadyOpen: existing !== null,
+    atMaxPanes: countPanes(layout.root) >= MAX_PANES,
+  });
+  if (existing !== null) {
+    return layout.focusedPaneId === existing.paneId
+      ? layout
+      : setFocus(layout, existing.paneId);
+  }
+  const content = threadPaneContent(thread);
+  return decision.zone === "center"
+    ? replacePaneContent(layout, layout.focusedPaneId, content)
+    : splitPane(layout, layout.focusedPaneId, decision.zone, content);
 }
 
 /**

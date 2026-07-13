@@ -122,6 +122,9 @@ before bb receives them.
 | Threads   | Search threads                | `Mod+K`                           | All clients              |
 | Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
 | Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`                 | All clients              |
+| Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
+| Layout    | Focus chat pane 1–4           | `Mod+1` … `Mod+4`                 | While split              |
+| Layout    | Close focused chat pane       | `Mod+Shift+X`                     | While split              |
 | Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
 | Window    | Settings                      | `Mod+,`                           | All clients              |
 | Layout    | Toggle sidebar                | `Mod+\`                           | All clients              |

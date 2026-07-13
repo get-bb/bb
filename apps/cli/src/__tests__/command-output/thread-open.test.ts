@@ -63,13 +63,17 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-current" },
       json: {
-        source: "workspace",
-        path: "reports/status.md",
-        lineNumber: null,
+        split: "replace",
+        file: {
+          source: "workspace",
+          path: "reports/status.md",
+          lineNumber: null,
+        },
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "Thread: thread-current",
+      "Split: replace",
       "Source: workspace",
       "Path: reports/status.md",
       "Delivered: 2",
@@ -89,13 +93,17 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-explicit" },
       json: {
-        source: "workspace",
-        path: "reports/status.md",
-        lineNumber: null,
+        split: "replace",
+        file: {
+          source: "workspace",
+          path: "reports/status.md",
+          lineNumber: null,
+        },
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "Thread: thread-explicit",
+      "Split: replace",
       "Source: workspace",
       "Path: reports/status.md",
       "Delivered: 1",
@@ -142,13 +150,17 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-workspace" },
       json: {
-        source: "workspace",
-        path: "reports/status.md",
-        lineNumber: 7,
+        split: "replace",
+        file: {
+          source: "workspace",
+          path: "reports/status.md",
+          lineNumber: 7,
+        },
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "Thread: thread-workspace",
+      "Split: replace",
       "Source: workspace",
       "Path: reports/status.md",
       "Line: 7",
@@ -177,13 +189,17 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-storage" },
       json: {
-        source: "thread-storage",
-        path: "reports/preview.html",
-        lineNumber: null,
+        split: "replace",
+        file: {
+          source: "thread-storage",
+          path: "reports/preview.html",
+          lineNumber: null,
+        },
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "Thread: thread-storage",
+      "Split: replace",
       "Source: thread-storage",
       "Path: reports/preview.html",
       "Delivered: 1",
@@ -194,7 +210,7 @@ describe("bb thread open command output", () => {
     stubThreadOpenApi({});
 
     await expect(
-      runCommand(["thread", "open", "reports/status.md"], register),
+      runCommand(["thread", "open"], register),
     ).rejects.toThrow("process.exit:1");
   });
 
@@ -223,13 +239,17 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-explicit" },
       json: {
-        source: "workspace",
-        path: "reports/status.md",
-        lineNumber: null,
+        split: "replace",
+        file: {
+          source: "workspace",
+          path: "reports/status.md",
+          lineNumber: null,
+        },
       },
     });
     const payloads = collectLogPayloads(vi.mocked(console.log));
     expect(payloads.join("\n")).toContain('"threadId": "thread-explicit"');
+    expect(payloads.join("\n")).toContain('"split": "replace"');
     expect(payloads.join("\n")).toContain('"source": "workspace"');
     expect(payloads.join("\n")).toContain('"path": "reports/status.md"');
     expect(payloads.join("\n")).toContain('"delivered": 3');
@@ -239,11 +259,90 @@ describe("bb thread open command output", () => {
     const help = await getHelpOutput(["thread", "open"], register);
 
     expect(help).toContain("Usage:");
-    expect(help).toContain("[id] <path>");
-    expect(help).toContain("Open a file in a BB thread panel");
+    expect(help).toContain("[id] [path]");
+    expect(help).toContain("Open a BB thread, optionally with a file in its panel");
     expect(help).toContain("--line");
+    expect(help).toContain("--split <placement>");
+    expect(help).toContain("right, down, left, top, or replace");
     expect(help).not.toContain("--preview");
     expect(help).not.toContain("--source");
     expect(help).not.toContain("--self");
+  });
+
+  it("opens a thread in a split without requiring a file path", async () => {
+    const { openThread } = stubThreadOpenApi({
+      open: async () => ({ delivered: 2 }),
+    });
+
+    await runCommand(
+      ["thread", "open", "thread-split", "--split", "right"],
+      register,
+    );
+
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-split" },
+      json: { split: "right", file: null },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Thread: thread-split",
+      "Split: right",
+      "Delivered: 2",
+    ]);
+  });
+
+  it("treats an explicit --split target as a thread id inside a BB thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-current");
+    const { openThread } = stubThreadOpenApi({});
+
+    await runCommand(
+      ["thread", "open", "thread-other", "--split", "left"],
+      register,
+    );
+
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-other" },
+      json: { split: "left", file: null },
+    });
+  });
+
+  it("opens a file for an explicit split target inside a BB thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-current");
+    const { openThread } = stubThreadOpenApi({});
+
+    await runCommand(
+      [
+        "thread",
+        "open",
+        "thread-other",
+        "reports/status.md",
+        "--split",
+        "down",
+      ],
+      register,
+    );
+
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-other" },
+      json: {
+        split: "down",
+        file: {
+          source: "workspace",
+          path: "reports/status.md",
+          lineNumber: null,
+        },
+      },
+    });
+  });
+
+  it("rejects an invalid split placement before calling the server", async () => {
+    const { openThread } = stubThreadOpenApi({});
+
+    await expect(
+      runCommand(
+        ["thread", "open", "thread-split", "--split", "diagonal"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(openThread).not.toHaveBeenCalled();
   });
 });

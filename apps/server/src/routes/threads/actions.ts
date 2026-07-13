@@ -376,12 +376,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.open, (context, payload) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
-    parseSafeRelativeRoutePath(payload.path);
-    const delivered = deps.hub.notifyThreadOpenFile(publicThread.id, {
-      source: payload.source,
-      path: payload.path,
-      lineNumber: payload.lineNumber,
-    });
+    if (payload.file !== null) {
+      parseSafeRelativeRoutePath(payload.file.path);
+    }
+    const delivered = deps.hub.notifyThreadOpen(
+      { projectId: publicThread.projectId, threadId: publicThread.id },
+      payload,
+    );
     return context.json({ delivered });
   });
 

@@ -70,7 +70,7 @@ describe("shouldShowFaviconAttentionDot", () => {
     ).toBe(false);
   });
 
-  it("shows the dot when a background thread is waiting on user input, even when read and out of view", () => {
+  it("ignores background attention while a focused thread owns the favicon", () => {
     expect(
       shouldShowFaviconAttentionDot({
         ...BASE_ARGS,
@@ -78,6 +78,21 @@ describe("shouldShowFaviconAttentionDot", () => {
         isThreadView: true,
         thread: { lastReadAt: 30, latestAttentionAt: 20 },
         // ...while a read background thread is blocked on the user.
+        sidebarThreads: [
+          makeSidebarThread({
+            lastReadAt: 30,
+            latestAttentionAt: 20,
+            hasPendingInteraction: true,
+          }),
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("shows background pending attention when no thread is focused", () => {
+    expect(
+      shouldShowFaviconAttentionDot({
+        ...BASE_ARGS,
         sidebarThreads: [
           makeSidebarThread({
             lastReadAt: 30,

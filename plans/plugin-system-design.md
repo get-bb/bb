@@ -421,7 +421,7 @@ bb.realtime.publish<Channels>("issues-updated", { count: 42 });
 This is a **contract addition**, not a ride-along: change kinds are closed enums with
 strict validation and no payload field (`packages/domain/src/change-kinds.ts`,
 `hub.ts:712`). V1 adds a new ephemeral WS message type (`plugin-signal`, precedent:
-`threadOpenFileSignalSchema` / `notifyThreadOpenFile`) plus a plugin subscription target
+`threadOpenSignalSchema` / `notifyThreadOpen`) plus a plugin subscription target
 in `@bb/domain` + `@bb/server-contract`. `plugin-reloaded` similarly joins
 `SYSTEM_CHANGE_KINDS`; plugin dev iterations reconcile frontend bundles in place instead
 of hard-reloading the page.

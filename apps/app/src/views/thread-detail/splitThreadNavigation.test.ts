@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { findPaneByThread, listPanes, splitPane } from "@/lib/split-layout";
 import type { SplitLayout } from "@/lib/split-layout";
 import {
+  applyThreadOpenToLayout,
   createSinglePaneLayout,
   focusedThreadRoute,
   reconcileLayoutForRoute,
@@ -95,5 +96,62 @@ describe("focusedThreadRoute", () => {
       projectId: "p1",
       threadId: "thread-1",
     });
+  });
+});
+
+describe("applyThreadOpenToLayout", () => {
+  it("splits from the focused pane and focuses the opened thread", () => {
+    const before = twoPaneLayout();
+    const after = applyThreadOpenToLayout(
+      before,
+      { projectId: "p2", threadId: "thread-3" },
+      "down",
+    );
+
+    expect(listPanes(after.root)).toHaveLength(3);
+    expect(focusedThreadRoute(after)).toEqual({
+      projectId: "p2",
+      threadId: "thread-3",
+    });
+  });
+
+  it("focuses an already-open thread instead of duplicating it", () => {
+    const before = twoPaneLayout();
+    const after = applyThreadOpenToLayout(
+      before,
+      { projectId: "p1", threadId: "thread-1" },
+      "right",
+    );
+
+    expect(listPanes(after.root)).toHaveLength(2);
+    expect(after.focusedPaneId).toBe("pane-1");
+  });
+
+  it("coerces an edge split to focused-pane replacement at the pane cap", () => {
+    const two = twoPaneLayout();
+    const three = splitPane(two, two.focusedPaneId, "right", {
+      kind: "thread",
+      projectId: "p1",
+      threadId: "thread-3",
+    });
+    const four = splitPane(three, three.focusedPaneId, "right", {
+      kind: "thread",
+      projectId: "p1",
+      threadId: "thread-4",
+    });
+    const focusedPaneId = four.focusedPaneId;
+
+    const after = applyThreadOpenToLayout(
+      four,
+      { projectId: "p2", threadId: "thread-5" },
+      "left",
+    );
+
+    expect(listPanes(after.root)).toHaveLength(4);
+    expect(after.focusedPaneId).toBe(focusedPaneId);
+    expect(findPaneByThread(after.root, "p2", "thread-5")?.paneId).toBe(
+      focusedPaneId,
+    );
+    expect(findPaneByThread(after.root, "p1", "thread-4")).toBeNull();
   });
 });

@@ -3,19 +3,20 @@ import {
   changedMessageLenientSchema,
   pluginSignalLenientSchema,
   realtimeSubscriptionTargetKey,
-  threadOpenFileSignalLenientSchema,
+  threadOpenSignalLenientSchema,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
   ChangedMessage,
   PluginSignal,
   RealtimeSubscriptionTarget,
-  ThreadOpenFileSignal,
+  ThreadOpenFile,
+  ThreadOpenSignal,
 } from "@bb/server-contract";
 import { buildDevWebSocketUrl } from "./dev-websocket-url";
 
 type ChangeCallback = (message: ChangedMessage) => void;
-type OpenFileCallback = (signal: ThreadOpenFileSignal) => void;
+type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
 type ConnectedCallback = (event: { reconnected: boolean }) => void;
 type ConnectionStateCallback = () => void;
@@ -33,12 +34,12 @@ export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
   private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
-  private openFileCallbacks = new Set<OpenFileCallback>();
+  private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
   // Ephemeral "open this file in the secondary panel" intents, keyed by thread.
   // Held in memory only (cleared on reload) so a thread that is not currently
   // viewed opens the file when it is next viewed. Last write wins per thread.
-  private pendingOpenByThreadId = new Map<string, ThreadOpenFileSignal>();
+  private pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
   private hasConnected = false;
@@ -100,14 +101,19 @@ export class WebSocketManager {
       return;
     }
 
-    // Ephemeral "open this file in the secondary panel" broadcast. Buffer it
-    // per thread so the panel can open it now (if the thread is in view) or
-    // when the thread is next viewed; also notify live listeners.
-    const openFile = threadOpenFileSignalLenientSchema.safeParse(parsed);
-    if (openFile.success) {
-      this.pendingOpenByThreadId.set(openFile.data.threadId, openFile.data);
-      for (const cb of this.openFileCallbacks) {
-        cb(openFile.data);
+    // Ephemeral thread-open broadcast. Notify layout listeners immediately;
+    // when it includes a file, buffer that file per thread until the target
+    // pane's secondary panel is ready to consume it.
+    const threadOpen = threadOpenSignalLenientSchema.safeParse(parsed);
+    if (threadOpen.success) {
+      if (threadOpen.data.file !== null) {
+        this.pendingOpenFileByThreadId.set(
+          threadOpen.data.threadId,
+          threadOpen.data.file,
+        );
+      }
+      for (const cb of this.threadOpenCallbacks) {
+        cb(threadOpen.data);
       }
       return;
     }
@@ -181,10 +187,10 @@ export class WebSocketManager {
     };
   }
 
-  onThreadOpenFile(callback: OpenFileCallback): () => void {
-    this.openFileCallbacks.add(callback);
+  onThreadOpen(callback: ThreadOpenCallback): () => void {
+    this.threadOpenCallbacks.add(callback);
     return () => {
-      this.openFileCallbacks.delete(callback);
+      this.threadOpenCallbacks.delete(callback);
     };
   }
 
@@ -200,12 +206,12 @@ export class WebSocketManager {
    * secondary panel calls this when the thread becomes visible so the file
    * opens exactly once and is not re-opened on a later visit.
    */
-  consumePendingOpen(threadId: string): ThreadOpenFileSignal | null {
-    const pending = this.pendingOpenByThreadId.get(threadId);
+  consumePendingOpenFile(threadId: string): ThreadOpenFile | null {
+    const pending = this.pendingOpenFileByThreadId.get(threadId);
     if (!pending) {
       return null;
     }
-    this.pendingOpenByThreadId.delete(threadId);
+    this.pendingOpenFileByThreadId.delete(threadId);
     return pending;
   }
 

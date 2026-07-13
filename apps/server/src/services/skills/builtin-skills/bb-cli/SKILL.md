@@ -182,11 +182,16 @@ For review or fix pipelines, get the environment ID from
 `bb thread show <thread-id> --json`, then spawn the follow-up with
 `--environment <environment-id>` so it sees the same files.
 
-## Opening Files In The Thread Panel
+## Opening Threads And Files In The App
 
 - Use `bb thread open <path>` inside a BB thread to open a Markdown, HTML, or
   other workspace file for the user in the BB IDE's thread panel.
-- Outside a BB thread, use `bb thread open <thread-id> <path>`.
+- Use `bb thread open <thread-id> --split right|down|left|top|replace` to open
+  or focus a thread in the current app split layout. `replace` is the default;
+  an already-open thread is focused, and an edge split at the four-pane cap
+  replaces the focused pane.
+- A file path is optional when a thread ID is explicit:
+  `bb thread open <thread-id> [path] [--split <placement>]`.
 - Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace.
 - Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the

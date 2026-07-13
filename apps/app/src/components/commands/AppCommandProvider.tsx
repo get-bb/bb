@@ -72,6 +72,7 @@ const EMPTY_CONTEXT: AppCommandContext = {
   modelPickerOpen: false,
   questionOpen: false,
   promptAvailable: false,
+  splitActive: false,
 };
 
 function browserPlatform(): string {

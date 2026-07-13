@@ -78,6 +78,46 @@ describe("app keybindings", () => {
       });
       expect(
         config.defaultKeybindings
+          .filter((binding) => binding.command.startsWith("pane."))
+          .map((binding) => ({
+            command: binding.command,
+            key: binding.shortcut.key,
+            mod: binding.shortcut.mod,
+            shift: binding.shortcut.shift,
+            when: binding.when,
+          })),
+      ).toEqual([
+        {
+          command: "pane.focus.previous",
+          key: "[",
+          mod: true,
+          shift: true,
+          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
+        },
+        {
+          command: "pane.focus.next",
+          key: "]",
+          mod: true,
+          shift: true,
+          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
+        },
+        ...[1, 2, 3, 4].map((index) => ({
+          command: `pane.focus.${index}`,
+          key: String(index),
+          mod: true,
+          shift: false,
+          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
+        })),
+        {
+          command: "pane.close",
+          key: "x",
+          mod: true,
+          shift: true,
+          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
+        },
+      ]);
+      expect(
+        config.defaultKeybindings
           .filter((binding) => binding.desktopOnly)
           .map((binding) => binding.command),
       ).toEqual([

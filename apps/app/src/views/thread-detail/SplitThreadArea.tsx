@@ -1,5 +1,6 @@
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { PANE_FOCUS_APP_COMMAND_IDS } from "@bb/domain";
 import { useAtom, useStore } from "jotai";
 import {
   Fragment,
@@ -34,8 +35,17 @@ import {
   decidePaneDrop,
   SPLIT_PANE_DATA_ATTR,
 } from "@/lib/split-drag";
+import {
+  useAppCommandContext,
+  useAppCommandHandler,
+  useIndexedAppCommandHandlers,
+} from "@/components/commands/AppCommandProvider";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadDetailView } from "./ThreadDetailView";
+import {
+  getAdjacentPaneId,
+  getPaneIdAtReadingIndex,
+} from "./splitPaneCommands";
 import {
   createSinglePaneLayout,
   focusedThreadRoute,
@@ -88,6 +98,8 @@ export function SplitThreadArea() {
   // Effective layout for render/handlers before the effect seeds the atom.
   const layout: SplitLayout | null =
     storedLayout ?? (routeThread ? createSinglePaneLayout(routeThread) : null);
+  const panes = layout === null ? [] : listPanes(layout.root);
+  const isSplitActive = !isCompact && panes.length > 1;
 
   // Content navigation inside a pane pushes history like the page surface does
   // today. replacePaneContent focuses the pane, so the pushed URL matches it.
@@ -205,6 +217,45 @@ export function SplitThreadArea() {
     [navigate, store],
   );
 
+  useAppCommandContext("splitActive", isSplitActive);
+  useAppCommandHandler("pane.focus.previous", () => {
+    if (!isSplitActive || layout === null) {
+      return false;
+    }
+    const paneId = getAdjacentPaneId(panes, layout.focusedPaneId, -1);
+    if (paneId !== null) {
+      focusPane(paneId);
+    }
+    return true;
+  });
+  useAppCommandHandler("pane.focus.next", () => {
+    if (!isSplitActive || layout === null) {
+      return false;
+    }
+    const paneId = getAdjacentPaneId(panes, layout.focusedPaneId, 1);
+    if (paneId !== null) {
+      focusPane(paneId);
+    }
+    return true;
+  });
+  useIndexedAppCommandHandlers(PANE_FOCUS_APP_COMMAND_IDS, (index) => {
+    if (!isSplitActive) {
+      return false;
+    }
+    const paneId = getPaneIdAtReadingIndex(panes, index);
+    if (paneId !== null) {
+      focusPane(paneId);
+    }
+    return true;
+  });
+  useAppCommandHandler("pane.close", () => {
+    if (!isSplitActive || layout === null) {
+      return false;
+    }
+    closePane(layout.focusedPaneId);
+    return true;
+  });
+
   // Compact viewport disables splits entirely — render the route thread as the
   // single page surface (byte-identical to the pre-split page). The layout atom
   // is preserved so the arrangement returns when the viewport widens again.
@@ -212,7 +263,6 @@ export function SplitThreadArea() {
     return <ThreadDetailView surface="page" />;
   }
 
-  const panes = listPanes(layout.root);
   const firstPane = panes[0];
   if (panes.length === 1 && firstPane !== undefined) {
     // Single pane: no focus ring, no pane chrome. A bare, full-bleed wrapper

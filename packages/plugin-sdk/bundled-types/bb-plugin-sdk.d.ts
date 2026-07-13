@@ -44,10 +44,17 @@ declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
         "question.select.7": "question.select.7";
         "question.select.8": "question.select.8";
         "question.select.9": "question.select.9";
+        "pane.focus.1": "pane.focus.1";
+        "pane.focus.2": "pane.focus.2";
+        "pane.focus.3": "pane.focus.3";
+        "pane.focus.4": "pane.focus.4";
         "thread.new": "thread.new";
         "thread.search": "thread.search";
         "thread.previous": "thread.previous";
         "thread.next": "thread.next";
+        "pane.focus.previous": "pane.focus.previous";
+        "pane.focus.next": "pane.focus.next";
+        "pane.close": "pane.close";
         "window.new": "window.new";
         "settings.open": "settings.open";
         "settings.openServers": "settings.openServers";
@@ -1544,12 +1551,25 @@ declare const reorderPinnedThreadRequestSchema: z$1.ZodObject<{
     nextThreadId: z$1.ZodNullable<z$1.ZodString>;
 }, z$1.core.$strip>;
 type ReorderPinnedThreadRequest = z$1.infer<typeof reorderPinnedThreadRequestSchema>;
-/** Which root a secondary-panel file path is relative to. */
-declare const panelFileSourceSchema: z$1.ZodEnum<{
-    workspace: "workspace";
-    "thread-storage": "thread-storage";
+/** Requested placement for a thread opened in the app's split layout. */
+declare const threadOpenSplitSchema: z$1.ZodEnum<{
+    right: "right";
+    down: "down";
+    left: "left";
+    top: "top";
+    replace: "replace";
 }>;
-type PanelFileSource = z$1.infer<typeof panelFileSourceSchema>;
+type ThreadOpenSplit = z$1.infer<typeof threadOpenSplitSchema>;
+/** Optional secondary-panel file to open with a thread. */
+declare const threadOpenFileSchema: z$1.ZodObject<{
+    source: z$1.ZodEnum<{
+        workspace: "workspace";
+        "thread-storage": "thread-storage";
+    }>;
+    path: z$1.ZodString;
+    lineNumber: z$1.ZodNullable<z$1.ZodNumber>;
+}, z$1.core.$strict>;
+type ThreadOpenFile = z$1.infer<typeof threadOpenFileSchema>;
 declare const threadListQuerySchema: z$1.ZodObject<{
     projectId: z$1.ZodOptional<z$1.ZodString>;
     parentThreadId: z$1.ZodOptional<z$1.ZodString>;
@@ -2372,9 +2392,8 @@ interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
 }
 interface ThreadOpenArgs {
     threadId: string;
-    source: PanelFileSource;
-    path: string;
-    lineNumber: number | null;
+    split: ThreadOpenSplit;
+    file: ThreadOpenFile | null;
 }
 interface ThreadEventsListArgs {
     afterSeq?: string;

@@ -12,7 +12,8 @@ import type {
   CreateTerminalRequest,
   CreateThreadRequest,
   DeleteThreadRequest,
-  PanelFileSource,
+  ThreadOpenFile,
+  ThreadOpenSplit,
   PromptHistoryQuery,
   ReorderPinnedThreadRequest,
   ReorderQueuedMessageRequest,
@@ -269,9 +270,8 @@ export interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
 
 export interface ThreadOpenArgs {
   threadId: string;
-  source: PanelFileSource;
-  path: string;
-  lineNumber: number | null;
+  split: ThreadOpenSplit;
+  file: ThreadOpenFile | null;
 }
 
 export interface ThreadEventsListArgs {
@@ -1019,9 +1019,8 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].open.$post({
           param: { id: input.threadId },
           json: {
-            source: input.source,
-            path: input.path,
-            lineNumber: input.lineNumber,
+            split: input.split,
+            file: input.file,
           },
         }),
       );

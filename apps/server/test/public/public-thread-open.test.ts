@@ -10,16 +10,10 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
-interface OpenRequestBody {
-  source: "workspace" | "thread-storage";
-  path: string;
-  lineNumber: number | null;
-}
-
 async function postOpen(
   harness: TestAppHarness,
   threadId: string,
-  body: OpenRequestBody,
+  body: unknown,
 ): Promise<Response> {
   return harness.app.request(`/api/v1/threads/${threadId}/open`, {
     method: "POST",
@@ -46,9 +40,11 @@ describe("public thread open", () => {
       const before = getThread(harness.db, thread.id);
 
       const response = await postOpen(harness, thread.id, {
-        source: "workspace",
-        path: "src/index.ts",
-        lineNumber: 42,
+        file: {
+          source: "workspace",
+          path: "src/index.ts",
+          lineNumber: 42,
+        },
       });
 
       expect(response.status).toBe(200);
@@ -57,11 +53,15 @@ describe("public thread open", () => {
 
       expect(socket.messages).toHaveLength(1);
       expect(JSON.parse(socket.messages[0])).toEqual({
-        type: "thread-open-file",
+        type: "thread-open",
+        projectId: project.id,
         threadId: thread.id,
-        source: "workspace",
-        path: "src/index.ts",
-        lineNumber: 42,
+        split: "replace",
+        file: {
+          source: "workspace",
+          path: "src/index.ts",
+          lineNumber: 42,
+        },
       });
 
       // Ephemeral: the thread row is untouched.
@@ -84,9 +84,12 @@ describe("public thread open", () => {
       harness.deps.hub.registerClient(socket);
 
       const response = await postOpen(harness, thread.id, {
-        source: "workspace",
-        path: "../escape.ts",
-        lineNumber: null,
+        split: "replace",
+        file: {
+          source: "workspace",
+          path: "../escape.ts",
+          lineNumber: null,
+        },
       });
 
       expect(response.status).toBe(400);
@@ -97,12 +100,50 @@ describe("public thread open", () => {
   it("returns 404 for an unknown thread", async () => {
     await withTestHarness(async (harness) => {
       const response = await postOpen(harness, "thr_missing", {
-        source: "workspace",
-        path: "src/index.ts",
-        lineNumber: null,
+        split: "replace",
+        file: {
+          source: "workspace",
+          path: "src/index.ts",
+          lineNumber: null,
+        },
       });
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  it("opens a thread without a file and validates split placement", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-thread-open-split",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-open-split-source",
+      });
+      const thread = seedThread(harness.deps, { projectId: project.id });
+      const socket = createMockHubSocket();
+      harness.deps.hub.registerClient(socket);
+
+      const response = await postOpen(harness, thread.id, {
+        split: "right",
+        file: null,
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(socket.messages[0]!)).toEqual({
+        type: "thread-open",
+        projectId: project.id,
+        threadId: thread.id,
+        split: "right",
+        file: null,
+      });
+
+      const invalid = await postOpen(harness, thread.id, {
+        split: "diagonal",
+        file: null,
+      });
+      expect(invalid.status).toBe(400);
+      expect(socket.messages).toHaveLength(1);
     });
   });
 });
