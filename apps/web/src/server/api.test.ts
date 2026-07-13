@@ -557,6 +557,7 @@ describe("dashboard machine recovery", () => {
           id: "machine-owner",
           userId: "u1",
           name: "lost laptop",
+          subdomain: "lost-laptop",
           credentialHash: "hash-owner",
           lastSeenAt: now,
           createdAt: now,
@@ -584,7 +585,12 @@ describe("dashboard machine recovery", () => {
     await expect(revokeMachine(deps, "u1", "machine-owner")).resolves.toEqual({
       ok: true,
     });
+    expect(closeTunnel).toHaveBeenCalledWith("lost-laptop");
     expect((await getAccountState(deps, "u1")).machines).toEqual([]);
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-owner")).get()
+        ?.subdomain,
+    ).toBeNull();
     expect(
       db.select().from(machine).where(eq(machine.id, "machine-other")).get()
         ?.revokedAt,

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
+import { machine } from "@bb/connect-db";
 
 import { cacheKey } from "./cache";
 import { parseClientProtocolVersion } from "./tunnel-do";
@@ -117,6 +118,10 @@ vi.mock("./servers.js", () => ({
   verifyDesktopSessionCookie: vi.fn(),
 }));
 
+vi.mock("./machine-label.js", () => ({
+  handleAssignMachineLabel: vi.fn(),
+}));
+
 vi.mock("./cache.js", async () => {
   const actual =
     await vi.importActual<typeof import("./cache.js")>("./cache.js");
@@ -137,6 +142,8 @@ vi.mock("drizzle-orm/d1", () => ({
   drizzle: vi.fn(() => ({})),
 }));
 
+import { drizzle } from "drizzle-orm/d1";
+
 import {
   markMachineSeen,
   parseCookie,
@@ -150,6 +157,7 @@ import {
   handleListAccountServers,
   verifyDesktopSessionCookie,
 } from "./servers.js";
+import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
 import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
@@ -163,17 +171,40 @@ const mockServeWithCache = vi.mocked(serveWithCache);
 const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
 const mockHandleCreateDesktopSession = vi.mocked(handleCreateDesktopSession);
 const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
+const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 
 /** A resolved server row; overrides let a test tweak one field. */
 function resolvedServer(
   over: Partial<{ lastSeenAt: Date | null; userId: string }> = {},
 ) {
   return {
+    kind: "server" as const,
     userId: over.userId ?? OWNER,
     server: {
       id: "srv1",
       credentialHash: "abc",
       revokedAt: null,
+      lastSeenAt: over.lastSeenAt ?? null,
+    },
+  };
+}
+
+function resolvedMachine(
+  over: Partial<{
+    credentialHash: string;
+    lastSeenAt: Date | null;
+    revokedAt: Date | null;
+    userId: string;
+  }> = {},
+) {
+  return {
+    kind: "machine" as const,
+    userId: over.userId ?? OWNER,
+    accountHandle: "sawyer",
+    machine: {
+      id: "machine-air",
+      credentialHash: over.credentialHash ?? "abc",
+      revokedAt: over.revokedAt ?? null,
       lastSeenAt: over.lastSeenAt ?? null,
     },
   };
@@ -283,6 +314,113 @@ describe("POST /api/connect/desktop-session", () => {
     expect(response.status).toBe(200);
     expect(mockHandleCreateDesktopSession).toHaveBeenCalledTimes(1);
     expect(captured).toHaveLength(0);
+  });
+});
+
+describe("POST /api/connect/machine-label", () => {
+  it("intercepts machine-authenticated assignment before label routing", async () => {
+    mockHandleAssignMachineLabel.mockResolvedValue(
+      Response.json({ label: "sawyer-air" }),
+    );
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const request = visitorRequest(
+      "unknown.getbb.app",
+      "/api/connect/machine-label",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bb-connect-machine": "bbcm_machine",
+        },
+        body: JSON.stringify({ desiredName: "Sawyer Air" }),
+      },
+    );
+    const response = await worker.fetch(request, env as never, ctx);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ label: "sawyer-air" });
+    expect(mockHandleAssignMachineLabel).toHaveBeenCalledWith(request, env);
+    expect(mockResolveLabel).not.toHaveBeenCalled();
+    expect(captured).toHaveLength(0);
+  });
+});
+
+describe("gate tunnel authentication", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("authenticates a machine label and passes machineId to its TunnelDO", async () => {
+    const credential = "bbcm_machine_secret";
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(credential),
+    );
+    const hash = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    mockResolveLabel.mockResolvedValue(
+      resolvedMachine({ credentialHash: hash }),
+    );
+    const { env, ctx, captured } = makeEnv(() => new Response("upgraded"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer-air.getbb.app", "/__tunnel?v=1", {
+        headers: { authorization: `Bearer ${credential}` },
+      }),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockResolveLabel).toHaveBeenNthCalledWith(
+      2,
+      "sawyer-air",
+      expect.anything(),
+      { fresh: true },
+    );
+    expect(new URL(captured[0].url).searchParams.get("machineId")).toBe(
+      "machine-air",
+    );
+    expect(new URL(captured[0].url).searchParams.get("serverId")).toBeNull();
+  });
+
+  it("refuses revoked machines and a stale credential after the fresh resolve", async () => {
+    const credential = "bbcm_stale";
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(credential),
+    );
+    const hash = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    mockResolveLabel
+      .mockResolvedValueOnce(resolvedMachine({ credentialHash: hash }))
+      .mockResolvedValueOnce(null);
+    const firstEnv = makeEnv(() => new Response("origin"));
+    const stale = await worker.fetch(
+      visitorRequest("sawyer-air.getbb.app", "/__tunnel", {
+        headers: { authorization: `Bearer ${credential}` },
+      }),
+      firstEnv.env as never,
+      firstEnv.ctx,
+    );
+    expect(stale.status).toBe(403);
+    expect(firstEnv.captured).toHaveLength(0);
+
+    mockResolveLabel.mockReset();
+    mockResolveLabel.mockResolvedValue(
+      resolvedMachine({ credentialHash: hash, revokedAt: new Date() }),
+    );
+    const secondEnv = makeEnv(() => new Response("origin"));
+    const revoked = await worker.fetch(
+      visitorRequest("sawyer-air.getbb.app", "/__tunnel", {
+        headers: { authorization: `Bearer ${credential}` },
+      }),
+      secondEnv.env as never,
+      secondEnv.ctx,
+    );
+    expect(revoked.status).toBe(403);
+    expect(secondEnv.captured).toHaveLength(0);
   });
 });
 
@@ -457,6 +595,47 @@ describe("gate worker share hosts", () => {
       ctx,
       expect.any(Function),
     );
+  });
+
+  it("renders a bare machine-label page without proxying to the DO", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedMachine());
+    mockParseCookie.mockReturnValue(null);
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer-air.getbb.app", "/"),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("sawyer-air</code> is a machine");
+    expect(html).toContain("sawyer-air--&lt;port&gt;.getbb.app");
+    expect(html).toContain("sawyer.getbb.app");
+    expect(captured).toHaveLength(0);
+    expect(mockVerifySession).not.toHaveBeenCalled();
+  });
+
+  it("applies the same owner-session check to machine share hosts", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedMachine());
+    const ownerEnv = makeEnv(() => new Response("machine-origin"));
+    const ownerResponse = await worker.fetch(
+      visitorRequest("sawyer-air--3000.getbb.app", "/"),
+      ownerEnv.env as never,
+      ownerEnv.ctx,
+    );
+    expect(ownerResponse.status).toBe(200);
+    expect(ownerEnv.captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("3000");
+
+    mockVerifySession.mockResolvedValue(OTHER);
+    const otherEnv = makeEnv(() => new Response("machine-origin"));
+    const otherResponse = await worker.fetch(
+      visitorRequest("sawyer-air--3000.getbb.app", "/"),
+      otherEnv.env as never,
+      otherEnv.ctx,
+    );
+    expect(otherResponse.status).toBe(403);
+    expect(otherEnv.captured).toHaveLength(0);
   });
 
   it("strips a smuggled target header on bare hosts", async () => {
@@ -878,6 +1057,26 @@ function fakeTunnelSocket(
     deserializeAttachment: () => null,
   } as unknown as WebSocket;
 }
+
+describe("TunnelDO machine presence", () => {
+  it("bumps machine.lastSeenAt when a machine-label tunnel is connected", async () => {
+    const run = vi.fn(async () => {});
+    const where = vi.fn(() => ({ run }));
+    const set = vi.fn(() => ({ where }));
+    const update = vi.fn(() => ({ set }));
+    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    const state = mockDoState({ machineId: "machine-air", protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+
+    await dob.alarm();
+
+    expect(update).toHaveBeenCalledWith(machine);
+    expect(set).toHaveBeenCalledWith({ lastSeenAt: expect.any(Date) });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("TunnelDO targeted request with old client", () => {
   it("returns 502 when client protocol version is < 1", async () => {

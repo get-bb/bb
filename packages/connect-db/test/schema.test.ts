@@ -9,6 +9,7 @@ import {
   CONNECT_CODE_TTL_MS,
   checkLabelAvailability,
   connectCode,
+  machine,
   parseVisitorHost,
   profile,
   schema,
@@ -86,6 +87,18 @@ describe("migration matches the drizzle schema", () => {
     expect(rows[0].lastSeenAt).toBeNull();
     expect(rows[0].revokedAt).toBeNull();
 
+    db.insert(machine)
+      .values({
+        id: "m1",
+        userId: "u1",
+        name: "laptop",
+        subdomain: "sawyer-air",
+        credentialHash: "machine-hash",
+        createdAt: now,
+      })
+      .run();
+    expect(db.select().from(machine).get()?.subdomain).toBe("sawyer-air");
+
     const p = db
       .select()
       .from(profile)
@@ -124,6 +137,41 @@ describe("constraints", () => {
         .values({ userId: "u2", handle: "taken", createdAt: now })
         .run(),
     ).toThrow(/UNIQUE/i);
+  });
+
+  it("allows nullable machine labels and enforces uniqueness when assigned", () => {
+    seedUser("u1");
+    const now = new Date();
+    db.insert(machine)
+      .values([
+        {
+          id: "m1",
+          userId: "u1",
+          subdomain: "sawyer-air",
+          credentialHash: "h1",
+          createdAt: now,
+        },
+        {
+          id: "m2",
+          userId: "u1",
+          subdomain: null,
+          credentialHash: "h2",
+          createdAt: now,
+        },
+      ])
+      .run();
+    expect(() =>
+      db
+        .insert(machine)
+        .values({
+          id: "m3",
+          userId: "u1",
+          subdomain: "sawyer-air",
+          credentialHash: "h3",
+          createdAt: now,
+        })
+        .run(),
+    ).toThrow(/UNIQUE/iu);
   });
 
   it("enforces one server name per user but allows the same name across users", () => {
@@ -447,13 +495,20 @@ describe("0003 backfill (staged application on real prior data)", () => {
       const subdomainCol = cols.find((c) => c.name === "subdomain");
       expect(subdomainCol).toBeDefined();
       expect(subdomainCol?.notnull).toBe(1);
+      const machineCols = fresh.prepare("PRAGMA table_info(machine)").all() as {
+        name: string;
+        notnull: number;
+      }[];
+      const machineSubdomain = machineCols.find((c) => c.name === "subdomain");
+      expect(machineSubdomain).toBeDefined();
+      expect(machineSubdomain?.notnull).toBe(0);
     } finally {
       fresh.close();
     }
   });
 });
 
-describe("checkLabelAvailability (both namespaces)", () => {
+describe("checkLabelAvailability (all routing namespaces)", () => {
   it("reports a free, well-formed label available", async () => {
     seedUser();
     expect(await checkLabelAvailability(db, "sawyer-desktop")).toEqual({
@@ -517,6 +572,25 @@ describe("checkLabelAvailability (both namespaces)", () => {
       available: false,
       reason: "taken",
       namespace: "subdomain",
+    });
+  });
+
+  it("reports a label taken by an existing machine subdomain", async () => {
+    seedUser("u1");
+    const now = new Date();
+    db.insert(machine)
+      .values({
+        id: "m1",
+        userId: "u1",
+        subdomain: "sawyer-air",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+    expect(await checkLabelAvailability(db, "sawyer-air")).toEqual({
+      available: false,
+      reason: "taken",
+      namespace: "machine",
     });
   });
 });

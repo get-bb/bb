@@ -1,5 +1,11 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { type ConnectDb, machine, server, session } from "@bb/connect-db";
+import {
+  type ConnectDb,
+  machine,
+  profile,
+  server,
+  session,
+} from "@bb/connect-db";
 
 // Per-isolate caches. The gate authenticates every request (including each
 // static asset), so a single page load fires dozens of requests through the
@@ -15,7 +21,7 @@ interface CacheEntry<T> {
   value: T;
   expires: number;
 }
-const labelCache = new Map<string, CacheEntry<ResolvedServer | null>>();
+const labelCache = new Map<string, CacheEntry<ResolvedLabel | null>>();
 const sessionCache = new Map<string, CacheEntry<string | null>>();
 
 function cacheGet<T>(
@@ -30,6 +36,7 @@ function cacheGet<T>(
 }
 
 export interface ResolvedServer {
+  kind: "server";
   /**
    * The account that owns this server (`server.userId`). Session and machine
    * auth scope to this: only this account may visit the server, and only this
@@ -46,13 +53,26 @@ export interface ResolvedServer {
   };
 }
 
+export interface ResolvedMachine {
+  kind: "machine";
+  userId: string;
+  accountHandle: string;
+  machine: {
+    id: string;
+    credentialHash: string;
+    revokedAt: Date | null;
+    /** Last tunnel heartbeat; null = never connected. */
+    lastSeenAt: Date | null;
+  };
+}
+
+export type ResolvedLabel = ResolvedServer | ResolvedMachine;
+
 /**
- * Resolve a routing label to its server row in a single exact lookup on
- * `server.subdomain`, cached per-isolate. `null` means no server owns that
- * label. Each label (the account handle for the primary bb, or a claimed
- * subdomain for additional bbs) maps to exactly one server, so this replaces
- * the old label → profile → the account's single server indirection: the base
- * label may now be ANY server's subdomain, not just a profile handle.
+ * Resolve a routing label to its server row first, then fall through to a
+ * machine row. Server-first preserves the established routing precedence even
+ * if legacy/corrupt data contains a cross-table collision. `null` means no
+ * server or machine owns the label.
  *
  * Pass `{ fresh: true }` to bypass the read cache for credential-sensitive
  * paths (tunnel (re)connect): the ~15s cache TTL would otherwise let a
@@ -63,7 +83,7 @@ export async function resolveLabel(
   label: string,
   db: ConnectDb,
   options?: { fresh?: boolean },
-): Promise<ResolvedServer | null> {
+): Promise<ResolvedLabel | null> {
   const now = Date.now();
   if (!options?.fresh) {
     const cached = cacheGet(labelCache, label, now);
@@ -82,14 +102,50 @@ export async function resolveLabel(
     .where(eq(server.subdomain, label))
     .get();
 
-  const resolved: ResolvedServer | null = row
+  const resolvedServer: ResolvedServer | null = row
     ? {
+        kind: "server",
         userId: row.userId,
         server: {
           id: row.serverId,
           credentialHash: row.credentialHash,
           revokedAt: row.revokedAt,
           lastSeenAt: row.lastSeenAt,
+        },
+      }
+    : null;
+  if (resolvedServer) {
+    labelCache.set(label, {
+      value: resolvedServer,
+      expires: now + LABEL_TTL_MS,
+    });
+    return resolvedServer;
+  }
+
+  const machineRow = await db
+    .select({
+      userId: machine.userId,
+      accountHandle: profile.handle,
+      machineId: machine.id,
+      credentialHash: machine.credentialHash,
+      revokedAt: machine.revokedAt,
+      lastSeenAt: machine.lastSeenAt,
+    })
+    .from(machine)
+    .innerJoin(profile, eq(profile.userId, machine.userId))
+    .where(eq(machine.subdomain, label))
+    .get();
+
+  const resolved: ResolvedMachine | null = machineRow
+    ? {
+        kind: "machine",
+        userId: machineRow.userId,
+        accountHandle: machineRow.accountHandle,
+        machine: {
+          id: machineRow.machineId,
+          credentialHash: machineRow.credentialHash,
+          revokedAt: machineRow.revokedAt,
+          lastSeenAt: machineRow.lastSeenAt,
         },
       }
     : null;

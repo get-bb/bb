@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { server } from "@bb/connect-db";
+import { machine, server } from "@bb/connect-db";
 import {
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
@@ -84,7 +84,7 @@ interface PendingHttp {
 }
 
 /**
- * One TunnelDO instance per handle. The tunnel client (the user's machine)
+ * One TunnelDO instance per routing label. The tunnel client
  * holds one WebSocket tagged `tunnel`; each visitor WebSocket is tagged
  * `visitor:<streamId>` with the id also in its attachment so the mapping
  * survives hibernation. In-flight HTTP requests live in instance memory only —
@@ -105,8 +105,11 @@ export class TunnelDO {
     // hibernation so ids are never reused while a socket still holds one.
     let maxSeen = 0;
     for (const ws of this.state.getWebSockets()) {
-      const attachment = ws.deserializeAttachment() as { streamId?: number } | null;
-      if (attachment?.streamId && attachment.streamId > maxSeen) maxSeen = attachment.streamId;
+      const attachment = ws.deserializeAttachment() as {
+        streamId?: number;
+      } | null;
+      if (attachment?.streamId && attachment.streamId > maxSeen)
+        maxSeen = attachment.streamId;
     }
     this.nextStreamId = maxSeen + 1;
     this.state.setWebSocketAutoResponse(
@@ -115,7 +118,11 @@ export class TunnelDO {
     // Restore protocol version after hibernation (in-memory is wiped).
     this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.get<number>("protocolVersion");
-      if (typeof stored === "number" && Number.isFinite(stored) && stored >= 0) {
+      if (
+        typeof stored === "number" &&
+        Number.isFinite(stored) &&
+        stored >= 0
+      ) {
         this.clientProtocolVersion = stored;
       }
     });
@@ -127,15 +134,20 @@ export class TunnelDO {
       return this.acceptTunnel(
         request,
         url.searchParams.get("serverId"),
-        parseClientProtocolVersion(url.searchParams.get(TUNNEL_PROTOCOL_QUERY_PARAM)),
+        url.searchParams.get("machineId"),
+        parseClientProtocolVersion(
+          url.searchParams.get(TUNNEL_PROTOCOL_QUERY_PARAM),
+        ),
       );
     }
     // Internal control channel — only reachable via the cross-script DO binding
     // (the gate rejects external /__ paths). Used to sever a live tunnel the
     // instant the owner revokes, without waiting for a reconnect.
     if (url.pathname === "/__control/close") {
-      for (const ws of this.state.getWebSockets(TUNNEL_TAG)) ws.close(1000, "revoked by owner");
+      for (const ws of this.state.getWebSockets(TUNNEL_TAG))
+        ws.close(1000, "revoked by owner");
       void this.state.storage.delete("serverId");
+      void this.state.storage.delete("machineId");
       void this.state.storage.delete("protocolVersion");
       this.clientProtocolVersion = 0;
       return new Response(null, { status: 204 });
@@ -143,13 +155,16 @@ export class TunnelDO {
 
     const tunnel = this.tunnelSocket();
     if (!tunnel) {
-      return new Response("bb connect: this server is offline (no tunnel connected)\n", {
-        status: 503,
-        headers: {
-          "content-type": "text/plain; charset=utf-8",
-          [TUNNEL_OFFLINE_HEADER]: "1",
+      return new Response(
+        "bb connect: this server is offline (no tunnel connected)\n",
+        {
+          status: 503,
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            [TUNNEL_OFFLINE_HEADER]: "1",
+          },
         },
-      });
+      );
     }
 
     const target = readTunnelTarget(request.headers);
@@ -170,16 +185,26 @@ export class TunnelDO {
     return this.state.getWebSockets(TUNNEL_TAG)[0] ?? null;
   }
 
-  /** Bump the server's last_seen_at in D1 (presence for the dashboard). */
+  /** Bump the connected server or machine's last_seen_at. */
   private async markPresence(): Promise<void> {
     const serverId = await this.state.storage.get<string>("serverId");
-    if (!serverId) return;
+    const machineId = await this.state.storage.get<string>("machineId");
+    if (!serverId && !machineId) return;
     try {
-      await drizzle(this.env.DB)
-        .update(server)
-        .set({ lastSeenAt: new Date() })
-        .where(eq(server.id, serverId))
-        .run();
+      const db = drizzle(this.env.DB);
+      if (machineId) {
+        await db
+          .update(machine)
+          .set({ lastSeenAt: new Date() })
+          .where(and(eq(machine.id, machineId), isNull(machine.revokedAt)))
+          .run();
+      } else if (serverId) {
+        await db
+          .update(server)
+          .set({ lastSeenAt: new Date() })
+          .where(eq(server.id, serverId))
+          .run();
+      }
     } catch {
       // presence is best-effort; never break the tunnel over it
     }
@@ -189,6 +214,7 @@ export class TunnelDO {
   async alarm(): Promise<void> {
     if (!this.tunnelSocket()) {
       await this.state.storage.delete("serverId");
+      await this.state.storage.delete("machineId");
       await this.state.storage.delete("protocolVersion");
       this.clientProtocolVersion = 0;
       return;
@@ -200,12 +226,13 @@ export class TunnelDO {
   private acceptTunnel(
     request: Request,
     serverId: string | null,
+    machineId: string | null,
     protocolVersion: number,
   ): Response {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("expected websocket", { status: 426 });
     }
-    // Single tunnel per handle: a reconnect replaces the previous socket.
+    // Single tunnel per label: a reconnect replaces the previous socket.
     for (const existing of this.state.getWebSockets(TUNNEL_TAG)) {
       existing.close(1000, "replaced by a new tunnel connection");
     }
@@ -218,6 +245,12 @@ export class TunnelDO {
     void this.state.storage.put("protocolVersion", protocolVersion);
     if (serverId) {
       void this.state.storage.put("serverId", serverId);
+      void this.state.storage.delete("machineId");
+      void this.markPresence();
+      void this.state.storage.setAlarm(Date.now() + PRESENCE_INTERVAL_MS);
+    } else if (machineId) {
+      void this.state.storage.put("machineId", machineId);
+      void this.state.storage.delete("serverId");
       void this.markPresence();
       void this.state.storage.setAlarm(Date.now() + PRESENCE_INTERVAL_MS);
     }
@@ -262,7 +295,11 @@ export class TunnelDO {
       // offer, which is correct for every current bb client (they offer one).
       responseHeaders.set("sec-websocket-protocol", protocols[0]);
     }
-    return new Response(null, { status: 101, webSocket: pair[0], headers: responseHeaders });
+    return new Response(null, {
+      status: 101,
+      webSocket: pair[0],
+      headers: responseHeaders,
+    });
   }
 
   private async proxyHttp(
@@ -276,7 +313,11 @@ export class TunnelDO {
 
     const responsePromise = new Promise<Response>((resolve) => {
       const timeout = setTimeout(() => {
-        this.failHttpStream(streamId, 504, "timed out waiting for the tunnel client");
+        this.failHttpStream(
+          streamId,
+          504,
+          "timed out waiting for the tunnel client",
+        );
       }, RESP_HEAD_TIMEOUT_MS);
       this.pendingHttp.set(streamId, {
         resolve,
@@ -329,7 +370,12 @@ export class TunnelDO {
       tunnel.send(encodeFrame({ type: "body-end", streamId }));
     } catch {
       tunnel.send(
-        encodeFrame({ type: "close-stream", streamId, code: 1011, reason: "request body error" }),
+        encodeFrame({
+          type: "close-stream",
+          streamId,
+          code: 1011,
+          reason: "request body error",
+        }),
       );
     }
   }
@@ -346,13 +392,19 @@ export class TunnelDO {
     }
   }
 
-  private failHttpStream(streamId: number, status: number, message: string): void {
+  private failHttpStream(
+    streamId: number,
+    status: number,
+    message: string,
+  ): void {
     const entry = this.pendingHttp.get(streamId);
     if (!entry) return;
     this.pendingHttp.delete(streamId);
     clearTimeout(entry.timeout);
     if (entry.writer) {
-      void entry.writeChain.then(() => entry.writer?.abort(message)).catch(() => {});
+      void entry.writeChain
+        .then(() => entry.writer?.abort(message))
+        .catch(() => {});
     } else {
       entry.resolve(
         new Response(`bb connect: ${message}\n`, {
@@ -383,7 +435,9 @@ export class TunnelDO {
         type: "ws-data",
         streamId: attachment.streamId,
         isBinary,
-        data: isBinary ? new Uint8Array(message) : new TextEncoder().encode(message),
+        data: isBinary
+          ? new Uint8Array(message)
+          : new TextEncoder().encode(message),
       }),
     );
   }
@@ -394,18 +448,27 @@ export class TunnelDO {
         const entry = this.pendingHttp.get(frame.streamId);
         if (!entry) return;
         clearTimeout(entry.timeout);
-        const headers = frame.headers.filter(([name]) => !HOP_HEADERS.has(name.toLowerCase()));
+        const headers = frame.headers.filter(
+          ([name]) => !HOP_HEADERS.has(name.toLowerCase()),
+        );
         // Null-body statuses must resolve bodiless: Response throws on a
         // stream body for 204/205/304, and a throw here would strand the
         // visitor's request unresolved forever (its timeout is already
         // cleared). Dev servers answer 304 to every ETag revalidation, so
         // this is the common path on a reload, not an edge case. The entry
         // stays until the client's trailing body-end frame clears it.
-        if (frame.status === 204 || frame.status === 205 || frame.status === 304) {
+        if (
+          frame.status === 204 ||
+          frame.status === 205 ||
+          frame.status === 304
+        ) {
           entry.resolve(new Response(null, { status: frame.status, headers }));
           return;
         }
-        const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+        const { readable, writable } = new TransformStream<
+          Uint8Array,
+          Uint8Array
+        >();
         let response: Response;
         try {
           response = new Response(readable, { status: frame.status, headers });
@@ -414,10 +477,13 @@ export class TunnelDO {
           // answer 502 rather than leaving the request pending.
           this.pendingHttp.delete(frame.streamId);
           entry.resolve(
-            new Response(`bb connect: unrelayable origin response (status ${frame.status})\n`, {
-              status: 502,
-              headers: { "content-type": "text/plain; charset=utf-8" },
-            }),
+            new Response(
+              `bb connect: unrelayable origin response (status ${frame.status})\n`,
+              {
+                status: 502,
+                headers: { "content-type": "text/plain; charset=utf-8" },
+              },
+            ),
           );
           return;
         }
@@ -439,21 +505,32 @@ export class TunnelDO {
         const entry = this.pendingHttp.get(frame.streamId);
         if (!entry) return;
         this.pendingHttp.delete(frame.streamId);
-        entry.writeChain = entry.writeChain.then(() => entry.writer?.close()).catch(() => {});
+        entry.writeChain = entry.writeChain
+          .then(() => entry.writer?.close())
+          .catch(() => {});
         return;
       }
       case "close-stream": {
         if (this.pendingHttp.has(frame.streamId)) {
-          this.failHttpStream(frame.streamId, 502, `tunnel client aborted: ${frame.reason}`);
+          this.failHttpStream(
+            frame.streamId,
+            502,
+            `tunnel client aborted: ${frame.reason}`,
+          );
         } else {
-          this.visitorSocket(frame.streamId)?.close(safeCloseCode(frame.code), frame.reason);
+          this.visitorSocket(frame.streamId)?.close(
+            safeCloseCode(frame.code),
+            frame.reason,
+          );
         }
         return;
       }
       case "ws-data": {
         const visitor = this.visitorSocket(frame.streamId);
         if (!visitor) return;
-        visitor.send(frame.isBinary ? frame.data : new TextDecoder().decode(frame.data));
+        visitor.send(
+          frame.isBinary ? frame.data : new TextDecoder().decode(frame.data),
+        );
         return;
       }
       case "ws-open-ack":
@@ -477,7 +554,10 @@ export class TunnelDO {
       // socket closing must not tear down the new tunnel's visitors —
       // acceptTunnel already abandoned the old socket's streams).
       if (this.tunnelSocket() !== null) return;
-      this.abandonStreams("tunnel disconnected mid-request", "tunnel disconnected");
+      this.abandonStreams(
+        "tunnel disconnected mid-request",
+        "tunnel disconnected",
+      );
       return;
     }
     const attachment = ws.deserializeAttachment() as { streamId: number };

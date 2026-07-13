@@ -210,12 +210,12 @@ export async function getAccountState(
 }
 
 export async function revokeMachine(
-  deps: Pick<Deps, "db">,
+  deps: Pick<Deps, "db" | "closeTunnel">,
   userId: string,
   machineId: string,
 ): Promise<{ ok: true } | { error: "not-found" }> {
   const existing = await deps.db
-    .select({ id: machine.id })
+    .select({ id: machine.id, subdomain: machine.subdomain })
     .from(machine)
     .where(
       and(
@@ -228,9 +228,17 @@ export async function revokeMachine(
   if (!existing) return { error: "not-found" };
   await deps.db
     .update(machine)
-    .set({ revokedAt: new Date() })
+    .set({ revokedAt: new Date(), subdomain: null })
     .where(and(eq(machine.id, machineId), eq(machine.userId, userId)))
     .run();
+  if (existing.subdomain !== null) {
+    try {
+      await deps.closeTunnel?.(existing.subdomain);
+    } catch {
+      // Best-effort: the credential is revoked and the routing label is freed,
+      // so a failed close cannot authorize a reconnect.
+    }
+  }
   return { ok: true };
 }
 
@@ -516,7 +524,7 @@ export async function createMachineCodeForServerCredential(
 }
 
 export async function revokeMachineForServerCredential(
-  deps: Pick<Deps, "db">,
+  deps: Pick<Deps, "db" | "closeTunnel">,
   credential: string,
   machineId: string,
 ): Promise<{ ok: true } | { error: string; status: number }> {

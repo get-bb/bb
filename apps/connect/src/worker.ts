@@ -16,6 +16,7 @@ import {
 } from "./servers.js";
 import { serveWithCache } from "./cache.js";
 import { BB_ICON_DATA_URI } from "./bb-icon.js";
+import { handleAssignMachineLabel } from "./machine-label.js";
 
 export { TunnelDO };
 
@@ -178,6 +179,21 @@ export function offlinePage(lastSeenAt: Date | null): Response {
   );
 }
 
+/** A machine label has no bb app of its own; only nested port shares proxy. */
+export function machinePage(
+  label: string,
+  accountHandle: string,
+  baseDomain: string,
+): Response {
+  const appHost = `${accountHandle}.${baseDomain}`;
+  return gatePage(
+    `<h1><code>${escapeHtml(label)}</code> is a machine</h1>
+     <p>This machine is on <code>${escapeHtml(accountHandle)}</code>'s account. Its shares appear at <code>${escapeHtml(label)}--&lt;port&gt;.${escapeHtml(baseDomain)}</code>.</p>
+     <a class="btn primary" href="https://${escapeHtml(appHost)}">Open the bb app at ${escapeHtml(appHost)}</a>`,
+    200,
+  );
+}
+
 /**
  * Build the request forwarded to the TunnelDO. Always strips a visitor-supplied
  * target header; sets it only when the host label is a share (`handle--port`).
@@ -235,6 +251,9 @@ export default {
     if (url.pathname === "/api/connect/desktop-session") {
       return handleCreateDesktopSession(request, env);
     }
+    if (url.pathname === "/api/connect/machine-label") {
+      return handleAssignMachineLabel(request, env);
+    }
 
     const host = request.headers.get("host") ?? url.host;
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
@@ -272,21 +291,49 @@ export default {
       // otherwise honor a just-revoked credential for up to the cache TTL,
       // letting a leaked credential re-establish a tunnel after disconnect.
       const freshResolved = await resolveLabel(label, db, { fresh: true });
-      const srv = freshResolved?.server;
-      if (!srv || srv.revokedAt != null || srv.credentialHash == null) {
-        return text("bb connect: server not paired\n", 403);
+      // A fresh discriminated resolve also prevents a stale cached machine
+      // label or credential from reconnecting after machine revocation.
+      if (!freshResolved) {
+        return text(
+          resolved.kind === "server"
+            ? "bb connect: server not paired\n"
+            : "bb connect: machine not paired\n",
+          403,
+        );
       }
-      if ((await sha256Hex(credential)) !== srv.credentialHash) {
+      const owner =
+        freshResolved.kind === "server"
+          ? freshResolved.server
+          : freshResolved.machine;
+      if (owner.revokedAt != null || owner.credentialHash == null) {
+        return text(
+          freshResolved.kind === "server"
+            ? "bb connect: server not paired\n"
+            : "bb connect: machine not paired\n",
+          403,
+        );
+      }
+      if ((await sha256Hex(credential)) !== owner.credentialHash) {
         return text("bb connect: invalid credential\n", 401);
       }
       const forward = new URL(request.url);
-      forward.searchParams.set("serverId", srv.id);
+      if (freshResolved.kind === "server") {
+        forward.searchParams.set("serverId", owner.id);
+      } else {
+        forward.searchParams.set("machineId", owner.id);
+      }
       return stub.fetch(new Request(forward, request));
     }
 
     // Reserve the /__ namespace: never proxy internal paths from outside.
     if (url.pathname.startsWith("/__"))
       return text("bb connect: not found\n", 404);
+
+    // Machine labels route only explicit `<label>--<port>` shares. The bare
+    // label is an informational gate page and never reaches the machine DO.
+    if (resolved.kind === "machine" && target === null) {
+      return machinePage(label, resolved.accountHandle, env.BASE_DOMAIN);
+    }
 
     // The bootstrap script and its server-matched package must be reachable
     // before the new machine has a browser session or credential.
@@ -342,7 +389,7 @@ export default {
       return text("bb connect: machine not authorized\n", 403);
     }
 
-    // Visitor request — require a session owned by this server's account.
+    // Visitor request — require a session owned by this label's account.
     // Identical auth for bare-label and share hosts. Because this check passed,
     // only the owner ever reaches the DO below (and thus its offline 503).
     const cookieHeader = request.headers.get("cookie");
@@ -390,7 +437,11 @@ export default {
       response.headers.get(TUNNEL_OFFLINE_HEADER) === "1" &&
       wantsHtml(request)
     ) {
-      return offlinePage(resolved.server.lastSeenAt);
+      return offlinePage(
+        resolved.kind === "server"
+          ? resolved.server.lastSeenAt
+          : resolved.machine.lastSeenAt,
+      );
     }
     return response;
   },

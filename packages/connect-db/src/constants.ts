@@ -97,9 +97,9 @@ export function validateHandle(handle: string): HandleValidationError | null {
 }
 
 /**
- * Account handles and server subdomains live in ONE public namespace and share
- * the exact same grammar, so both claim paths validate through a single
- * function. `validateLabel` is the intent-neutral canonical name;
+ * Account handles, server subdomains, and machine subdomains live in ONE public
+ * namespace and share the exact same grammar, so every claim path validates
+ * through a single function. `validateLabel` is the intent-neutral canonical name;
  * `validateHandle` / `validateSubdomain` are the same function under
  * domain-specific names so the two claim paths cannot drift apart.
  */

@@ -3,10 +3,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SERVER_OFFLINE_AFTER_MS,
   machine,
+  profile,
   schema,
   server,
   session,
@@ -20,6 +22,11 @@ import {
   verifyDesktopSessionCookie,
   verifyServerCredential,
 } from "./servers.js";
+import {
+  assignMachineLabel,
+  assignMachineLabelForCredential,
+  sanitizeMachineLabelBase,
+} from "./machine-label.js";
 import { verifyMachineCredential } from "./session.js";
 
 // Real in-memory SQLite (never mock the DB). Same harness as session.test.ts.
@@ -296,5 +303,90 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
       },
     });
     expect(await resolveAccountUserId(req, secret, db)).toBe("acct-a");
+  });
+});
+
+describe("machine label assignment", () => {
+  it("sanitizes a host name, suffixes across every namespace, and is idempotent", async () => {
+    seedUser("acct-a");
+    db.insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer-air", createdAt: now })
+      .run();
+    seedServer({
+      id: "s2",
+      userId: "acct-a",
+      name: "second",
+      subdomain: "sawyer-air-2",
+    });
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-existing",
+          userId: "acct-a",
+          subdomain: "sawyer-air-3",
+          credentialHash: "existing-hash",
+          createdAt: now,
+        },
+        {
+          id: "machine-new",
+          userId: "acct-a",
+          credentialHash: "new-hash",
+          createdAt: now,
+        },
+      ])
+      .run();
+
+    expect(sanitizeMachineLabelBase("  Sawyer Air!!!  ", "machine-new")).toBe(
+      "sawyer-air",
+    );
+    await expect(
+      assignMachineLabel(db, "machine-new", "  Sawyer Air!!!  "),
+    ).resolves.toBe("sawyer-air-4");
+    await expect(
+      assignMachineLabel(db, "machine-new", "a totally different name"),
+    ).resolves.toBe("sawyer-air-4");
+  });
+
+  it("uses machine-<id-prefix> when the desired name is empty or invalid", async () => {
+    seedUser("acct-a");
+    db.insert(machine)
+      .values({
+        id: "ABC-12345-rest",
+        userId: "acct-a",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+
+    expect(sanitizeMachineLabelBase("", "ABC-12345-rest")).toBe(
+      "machine-abc12345",
+    );
+    await expect(
+      assignMachineLabel(db, "ABC-12345-rest", "admin"),
+    ).resolves.toBe("machine-abc12345");
+  });
+
+  it("authenticates the assigning machine and refuses revoked credentials", async () => {
+    seedUser("acct-a");
+    const credential = "bbcm_assigning_machine";
+    db.insert(machine)
+      .values({
+        id: "machine-auth",
+        userId: "acct-a",
+        credentialHash: await sha256Hex(credential),
+        createdAt: now,
+      })
+      .run();
+
+    await expect(
+      assignMachineLabelForCredential(db, credential, "Sawyer Air"),
+    ).resolves.toBe("sawyer-air");
+    db.update(machine)
+      .set({ revokedAt: now, subdomain: null })
+      .where(eq(machine.id, "machine-auth"))
+      .run();
+    await expect(
+      assignMachineLabelForCredential(db, credential, "Sawyer Air"),
+    ).resolves.toBeNull();
   });
 });
