@@ -83,8 +83,9 @@ export function PluginLogo({
 
 /**
  * Neutral avatar for entries without a shipped logo (installed rows, browse
- * cards, marketplace rows). Renders a generic glyph in a muted tile — a
- * placeholder, not the entry's initial.
+ * cards, marketplace rows). Renders a bare generic glyph — a placeholder, not
+ * the entry's initial and not a tile. The `className` sizes the footprint so
+ * it aligns with sibling logo images.
  */
 export function PlaceholderBadge({
   className,
@@ -97,11 +98,11 @@ export function PlaceholderBadge({
     <span
       aria-hidden="true"
       className={cn(
-        "grid shrink-0 place-items-center rounded-md bg-muted text-muted-foreground",
+        "grid shrink-0 place-items-center text-muted-foreground",
         className,
       )}
     >
-      <Icon name={iconName} className="size-3.5" />
+      <Icon name={iconName} className="size-5" />
     </span>
   );
 }
