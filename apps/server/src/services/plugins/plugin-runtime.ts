@@ -145,6 +145,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   // via logoUrl/logoDarkUrl) while the plugin is in `loaded` — same honest
   // gate as getAppAsset.
   const logos = new Map<string, PluginLogoSet>();
+  // Static identity — parsed manifest + logo snapshots — for EVERY installed
+  // plugin, loaded or not. Unlike `logos`/`appBundles`, which are gated on the
+  // live runtime, this survives the load lifecycle so the inventory and the
+  // logo asset route can show a disabled (or incompatible) plugin's real name,
+  // icon, and logo. Refreshed on every load attempt; pruned only on remove.
+  const identities = new Map<
+    string,
+    { manifest: PluginManifest; logos: PluginLogoSet }
+  >();
   // Services that ignored their abort past the stop bound. While a plugin
   // has entries here it is not re-loaded (that would double-start the
   // service); the marker clears when the hung start() finally settles.
@@ -731,7 +740,26 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return null;
   }
 
+  // Best-effort static identity for the inventory + logo asset route,
+  // independent of whether the plugin loads. A plugin whose manifest can't be
+  // read (missing/corrupt) simply has no identity to show — it falls back to
+  // its id and the generic glyph.
+  async function populateIdentity(row: InstalledPluginRow): Promise<void> {
+    try {
+      const manifest = await readPluginManifest(row.rootDir);
+      identities.set(row.id, {
+        manifest,
+        logos: await loadPluginLogos(row.id, row.rootDir, manifest),
+      });
+    } catch {
+      identities.delete(row.id);
+    }
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<void> {
+    // Refresh identity first so even a disabled/incompatible/errored plugin
+    // keeps its name, icon, and logo in the list.
+    await populateIdentity(row);
     if (!row.enabled) {
       setStatus(row.id, "disabled");
       return;
@@ -989,6 +1017,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): Promise<void> {
     await disposeOne(row.id);
     clearRuntimeState(row.id);
+    // clearRuntimeState drops the runtime logo entry; keep the plugin's static
+    // identity so a gated/disabled row still shows its name, icon, and logo.
+    await populateIdentity(row);
     if (row.enabled) {
       setStatus(row.id, "disabled", experimentGateDisabledDetail(row));
     } else {
@@ -1069,6 +1100,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     hungServices,
     invokeWrapped,
     isBuiltinPluginId,
+    identities,
     isPackagedBuiltinAppEntry,
     loadAll,
     loaded,

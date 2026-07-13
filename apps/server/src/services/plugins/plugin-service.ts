@@ -583,6 +583,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     exposedLoadedEntries,
     handlerStats,
     hungServices,
+    identities,
     invokeWrapped,
     isBuiltinPluginId,
     isPackagedBuiltinAppEntry,
@@ -839,6 +840,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             ? loadedPlugin
             : undefined;
         const cliRegistration = exposedPlugin?.handle.cli.registration;
+        // A non-exposed (disabled/incompatible/errored) plugin keeps its
+        // identity via the static-manifest cache, so it still shows its real
+        // name, icon, and logo instead of falling back to the raw id + glyph.
+        const identity =
+          exposedPlugin === undefined ? identities.get(row.id) : undefined;
         return {
           id: row.id,
           source: row.source,
@@ -855,9 +861,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           sourceDisplay: sourceDisplayForRow(row),
           updateState: updateStateForRow(row),
           enabled: row.enabled,
-          description: exposedPlugin?.manifest.description ?? null,
-          displayName: exposedPlugin?.manifest.displayName ?? null,
-          icon: exposedPlugin?.manifest.icon ?? null,
+          description:
+            exposedPlugin?.manifest.description ??
+            identity?.manifest.description ??
+            null,
+          displayName:
+            exposedPlugin?.manifest.displayName ??
+            identity?.manifest.displayName ??
+            null,
+          icon: exposedPlugin?.manifest.icon ?? identity?.manifest.icon ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -890,16 +902,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             exposedPlugin !== undefined &&
             Object.keys(exposedPlugin.handle.settings.descriptors).length > 0,
           app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
-          // Only advertise URLs the asset route will actually serve (it
-          // gates on the live runtime, like the bundle assets).
+          // Logos come from the live runtime for an exposed plugin, else from
+          // the static-identity cache — both are served by the (now
+          // identity-backed) logo asset route.
           logoUrl:
-            exposedPlugin !== undefined
-              ? (logos.get(row.id)?.logo?.url ?? null)
-              : null,
+            (exposedPlugin !== undefined
+              ? logos.get(row.id)?.logo?.url
+              : identity?.logos.logo?.url) ?? null,
           logoDarkUrl:
-            exposedPlugin !== undefined
-              ? (logos.get(row.id)?.logoDark?.url ?? null)
-              : null,
+            (exposedPlugin !== undefined
+              ? logos.get(row.id)?.logoDark?.url
+              : identity?.logos.logoDark?.url) ?? null,
         };
       });
   }
@@ -1095,6 +1108,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         agentToolProblems.delete(id);
         appBundles.delete(id);
         logos.delete(id);
+        identities.delete(id);
         const removed = row
           ? row.sourceKind === "builtin"
             ? markInstalledPluginRemoved(deps.db, id)
@@ -1196,11 +1210,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getLogoAsset(id, variant) {
-      // Same honest gate as getAppAsset: bytes only while the runtime is
-      // live (matches the inventory's logoUrl/logoDarkUrl gating).
+      // Logos are identity, not runtime: serve them for a disabled/incompatible
+      // plugin too (from the static-identity cache), matching the inventory's
+      // logoUrl/logoDarkUrl. Still gated by shouldExposePluginId (experiment /
+      // not-removed). Unlike getAppAsset, no live-runtime requirement.
       if (!shouldExposePluginId(id)) return undefined;
-      if (!loaded.has(id)) return undefined;
-      const set = logos.get(id);
+      const set = loaded.has(id) ? logos.get(id) : identities.get(id)?.logos;
       const logo = variant === "logo-dark" ? set?.logoDark : set?.logo;
       if (!logo) return undefined;
       return {

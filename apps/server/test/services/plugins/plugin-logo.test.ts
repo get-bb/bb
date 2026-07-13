@@ -25,6 +25,8 @@ async function writeLogoPluginFixture(
     files?: Record<string, string | Buffer>;
     bbLogo?: string;
     bbLogoDark?: string;
+    bbDisplayName?: string;
+    bbIcon?: string;
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
@@ -35,6 +37,10 @@ async function writeLogoPluginFixture(
       version: "0.1.0",
       bb: {
         server: "./server.ts",
+        ...(options.bbDisplayName !== undefined
+          ? { displayName: options.bbDisplayName }
+          : {}),
+        ...(options.bbIcon !== undefined ? { icon: options.bbIcon } : {}),
         ...(options.bbLogo !== undefined ? { logo: options.bbLogo } : {}),
         ...(options.bbLogoDark !== undefined
           ? { logoDark: options.bbLogoDark }
@@ -158,7 +164,7 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     expect(logo.status).toBe(404);
   });
 
-  it("stops advertising and serving both logos when the plugin is disabled", async () => {
+  it("keeps advertising and serving both logos when the plugin is disabled", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logog");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-logog",
@@ -170,18 +176,59 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     expect(logoUrl).not.toBeNull();
     expect(logoDarkUrl).not.toBeNull();
 
+    // A logo is identity, not runtime: disabling keeps it advertised and
+    // served (from the static-identity cache), so the list still recognizes
+    // the plugin.
     const disabled = await harness.pluginService.setEnabled("logog", false);
-    expect(disabled?.logoUrl).toBeNull();
-    expect(disabled?.logoDarkUrl).toBeNull();
+    expect(disabled?.enabled).toBe(false);
+    expect(disabled?.logoUrl).toBe(logoUrl);
+    expect(disabled?.logoDarkUrl).toBe(logoDarkUrl);
     const logo = await harness.app.request(`${BASE}${logoUrl}`);
-    expect(logo.status).toBe(404);
+    expect(logo.status).toBe(200);
+    expect(await logo.text()).toBe(SVG_LOGO);
     const dark = await harness.app.request(`${BASE}${logoDarkUrl}`);
-    expect(dark.status).toBe(404);
+    expect(dark.status).toBe(200);
+    expect(await dark.text()).toBe(DARK_SVG_LOGO);
 
-    // Re-enabling brings both back.
+    // Re-enabling keeps the same hash-stable URLs.
     const enabled = await harness.pluginService.setEnabled("logog", true);
     expect(enabled?.logoUrl).toBe(logoUrl);
     expect(enabled?.logoDarkUrl).toBe(logoDarkUrl);
+  });
+
+  it("keeps a disabled plugin's manifest name and icon in the inventory", async () => {
+    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-ident");
+    await writeLogoPluginFixture(rootDir, {
+      name: "bb-plugin-ident",
+      bbDisplayName: "Identity Demo",
+      bbIcon: "Brain",
+      files: { "logo.svg": SVG_LOGO },
+    });
+    const entry = await harness.pluginService.installPath(rootDir);
+    expect(entry.displayName).toBe("Identity Demo");
+    expect(entry.icon).toBe("Brain");
+
+    const disabled = await harness.pluginService.setEnabled("ident", false);
+    expect(disabled?.enabled).toBe(false);
+    // Identity survives the runtime going away.
+    expect(disabled?.displayName).toBe("Identity Demo");
+    expect(disabled?.icon).toBe("Brain");
+    expect(disabled?.logoUrl).toBe(entry.logoUrl);
+  });
+
+  it("drops a removed plugin's identity (logo 404s after uninstall)", async () => {
+    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-gone");
+    await writeLogoPluginFixture(rootDir, {
+      name: "bb-plugin-gone",
+      files: { "logo.svg": SVG_LOGO },
+    });
+    const entry = await harness.pluginService.installPath(rootDir);
+    const logoUrl = entry.logoUrl;
+    expect(logoUrl).not.toBeNull();
+
+    await harness.pluginService.remove("gone");
+    const logo = await harness.app.request(`${BASE}${logoUrl}`);
+    expect(logo.status).toBe(404);
   });
 
   it("refreshes the logo hash on reload after the file changes", async () => {
