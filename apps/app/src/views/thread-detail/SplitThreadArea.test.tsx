@@ -9,11 +9,7 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { useContext } from "react";
-import {
-  MemoryRouter,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,7 +61,11 @@ vi.mock("./ThreadDetailView", () => ({
     threadId: string;
   }) => {
     const pane = useContext(PaneContext);
-    const draft = usePromptDraftStorage({ kind: "thread", projectId, threadId });
+    const draft = usePromptDraftStorage({
+      kind: "thread",
+      projectId,
+      threadId,
+    });
     return (
       <div
         data-testid={`pane-${threadId}`}
@@ -74,9 +74,7 @@ vi.mock("./ThreadDetailView", () => ({
         <textarea
           data-testid={`draft-${threadId}`}
           value={draft.text}
-          onChange={(event) =>
-            draft.setTextAndMentions(event.target.value, [])
-          }
+          onChange={(event) => draft.setTextAndMentions(event.target.value, [])}
         />
         {pane?.onRequestClose ? (
           <button
@@ -130,7 +128,11 @@ function LocationProbe() {
 function ExternalNav({ to }: { to: string }) {
   const navigate = useNavigate();
   return (
-    <button type="button" data-testid="external-nav" onClick={() => navigate(to)}>
+    <button
+      type="button"
+      data-testid="external-nav"
+      onClick={() => navigate(to)}
+    >
       go
     </button>
   );
@@ -174,7 +176,10 @@ afterEach(() => {
 
 describe("SplitThreadArea", () => {
   it("mounts both panes with independent, threadId-keyed drafts", async () => {
-    renderSplitArea({ path: threadPath("thr-b"), layout: twoPaneLayout("pane-2") });
+    renderSplitArea({
+      path: threadPath("thr-b"),
+      layout: twoPaneLayout("pane-2"),
+    });
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
@@ -184,12 +189,12 @@ describe("SplitThreadArea", () => {
     });
 
     // The typed draft stays in pane A's storage key; pane B is untouched.
-    expect((screen.getByTestId("draft-thr-a") as HTMLTextAreaElement).value).toBe(
-      "note for A",
-    );
-    expect((screen.getByTestId("draft-thr-b") as HTMLTextAreaElement).value).toBe(
-      "",
-    );
+    expect(
+      (screen.getByTestId("draft-thr-a") as HTMLTextAreaElement).value,
+    ).toBe("note for A");
+    expect(
+      (screen.getByTestId("draft-thr-b") as HTMLTextAreaElement).value,
+    ).toBe("");
   });
 
   it("replaces the focused pane's content on external navigation without dismantling the layout", async () => {
@@ -227,7 +232,10 @@ describe("SplitThreadArea", () => {
   });
 
   it("restores a persisted layout on load", async () => {
-    renderSplitArea({ path: threadPath("thr-a"), layout: twoPaneLayout("pane-1") });
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
@@ -244,13 +252,18 @@ describe("SplitThreadArea", () => {
   });
 
   it("moves the URL to the surviving pane when the focused pane is closed", async () => {
-    renderSplitArea({ path: threadPath("thr-b"), layout: twoPaneLayout("pane-2") });
+    renderSplitArea({
+      path: threadPath("thr-b"),
+      layout: twoPaneLayout("pane-2"),
+    });
     await screen.findByTestId("pane-thr-b");
 
     fireEvent.click(screen.getByTestId("close-thr-b"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("location").textContent).toBe(threadPath("thr-a"));
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-a"),
+      );
     });
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.queryByTestId("pane-thr-b")).toBeNull();
@@ -258,26 +271,36 @@ describe("SplitThreadArea", () => {
 
   it("prunes a stale (archived) pane from a restored split", async () => {
     threadStore.set("thr-b", { archivedAt: 123, deletedAt: null });
-    renderSplitArea({ path: threadPath("thr-a"), layout: twoPaneLayout("pane-1") });
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
 
     // thr-b is archived, so its pane is pruned; the valid focused pane remains.
     await waitFor(() => {
       expect(screen.queryByTestId("pane-thr-b")).toBeNull();
     });
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
-    expect(screen.getByTestId("location").textContent).toBe(threadPath("thr-a"));
+    expect(screen.getByTestId("location").textContent).toBe(
+      threadPath("thr-a"),
+    );
   });
 
   it("prunes a stale focused pane and moves focus + URL to the survivor", async () => {
     threadStore.set("thr-b", { archivedAt: null, deletedAt: 456 });
-    renderSplitArea({ path: threadPath("thr-b"), layout: twoPaneLayout("pane-2") });
+    renderSplitArea({
+      path: threadPath("thr-b"),
+      layout: twoPaneLayout("pane-2"),
+    });
 
     await waitFor(() => {
       expect(screen.queryByTestId("pane-thr-b")).toBeNull();
     });
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
     await waitFor(() => {
-      expect(screen.getByTestId("location").textContent).toBe(threadPath("thr-a"));
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-a"),
+      );
     });
   });
 });

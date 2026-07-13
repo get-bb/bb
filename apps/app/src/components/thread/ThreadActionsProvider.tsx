@@ -97,7 +97,9 @@ export function ThreadActionsProvider({
   // delete/archive click and its onSuccess. A captured value would then think
   // it's still viewing the removed thread and wrongly navigate the window away.
   const viewedThreadIdRef = useRef(viewedThreadId);
-  viewedThreadIdRef.current = viewedThreadId;
+  useEffect(() => {
+    viewedThreadIdRef.current = viewedThreadId;
+  }, [viewedThreadId]);
   const closePanesForThreads = useSetAtom(closePanesForThreadsAtom);
   const archiveThreadAndChildrenMutation = useArchiveThreadAndChildren();
   const unarchiveThreadMutation = useUnarchiveThread();

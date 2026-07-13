@@ -12,7 +12,11 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRouteState } from "@/hooks/useRouteState";
-import { getThreadRoutePath, type ThreadRoutePathArgs } from "@/lib/route-paths";
+import {
+  getThreadRoutePath,
+  type ThreadRoutePathArgs,
+} from "@/lib/route-paths";
+import { useIsMutating } from "@tanstack/react-query";
 import { HttpError } from "@/lib/api";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -336,7 +340,11 @@ interface SplitTreeProps {
   paneCount: number;
   onFocusPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
-  onResize: (splitPath: SplitPath, childIndex: number, fraction: number) => void;
+  onResize: (
+    splitPath: SplitPath,
+    childIndex: number,
+    fraction: number,
+  ) => void;
   onNavigateInPane: NavigateInPane;
   onBeginPaneDrag: BeginPaneDrag;
   onPruneStalePane: (paneId: string) => void;
@@ -481,7 +489,10 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
       const divider = event.currentTarget;
       const previous = divider.previousElementSibling;
       const next = divider.nextElementSibling;
-      if (!(previous instanceof HTMLElement) || !(next instanceof HTMLElement)) {
+      if (
+        !(previous instanceof HTMLElement) ||
+        !(next instanceof HTMLElement)
+      ) {
         return;
       }
       divider.setPointerCapture(event.pointerId);
@@ -526,7 +537,9 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
         className={cn(
           "pointer-events-none absolute rounded-full bg-transparent transition-colors",
           "group-hover:bg-border group-data-[dragging]:bg-border",
-          horizontal ? "inset-x-[3px] inset-y-[20%]" : "inset-x-[20%] inset-y-[3px]",
+          horizontal
+            ? "inset-x-[3px] inset-y-[20%]"
+            : "inset-x-[20%] inset-y-[3px]",
         )}
       />
     </div>
@@ -546,18 +559,33 @@ interface PaneStaleWatcherProps {
  */
 function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
   const { data: thread, isSuccess, isError, error } = useThread(threadId);
+  // Archive optimistically stamps `archivedAt` before the server confirms, and a
+  // failed archive rolls it back — but the rollback can't restore a pane already
+  // pruned from the layout. So only treat "archived" as stale when no archive
+  // mutation is in flight (i.e. the archived state is server-settled). Delete,
+  // by contrast, drops the query and refetches, so its 404 / `deletedAt` are
+  // already server-confirmed and need no gate.
+  const archivesInFlight = useIsMutating({
+    predicate: (mutation) =>
+      mutation.options.meta?.lifecycleOperation === "archive_thread",
+  });
   const isGone = isError && error instanceof HttpError && error.status === 404;
-  const isArchivedOrDeleted =
+  const isDeleted =
+    isSuccess && thread !== undefined && thread.deletedAt !== null;
+  const isConfirmedArchived =
     isSuccess &&
     thread !== undefined &&
-    (thread.archivedAt !== null || thread.deletedAt !== null);
-  const isStale = isGone || isArchivedOrDeleted;
+    thread.archivedAt !== null &&
+    archivesInFlight === 0;
+  const isStale = isGone || isDeleted || isConfirmedArchived;
 
-  // Keep the latest callback without re-arming the effect: it fires once when
-  // staleness is first observed. Pruning unmounts this watcher (or is a no-op on
-  // the last pane), so a single fire is enough.
+  // Keep the latest callback without re-arming the fire effect: it fires once
+  // when staleness is first observed. Pruning unmounts this watcher (or is a
+  // no-op on the last pane), so a single fire is enough.
   const onStaleRef = useRef(onStale);
-  onStaleRef.current = onStale;
+  useEffect(() => {
+    onStaleRef.current = onStale;
+  }, [onStale]);
   useEffect(() => {
     if (isStale) {
       onStaleRef.current();

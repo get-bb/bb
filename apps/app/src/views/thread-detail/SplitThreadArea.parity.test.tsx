@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { SplitThreadArea } from "./SplitThreadArea";
@@ -24,7 +25,8 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 }));
 
 // Split panes mount a PaneStaleWatcher that reads the thread query; keep it in a
-// benign "still loading" state so DOM parity is observed without pruning.
+// benign "still loading" state so DOM parity is observed without pruning. Its
+// archive-in-flight gate reads useIsMutating, so a QueryClient is still needed.
 vi.mock("@/hooks/queries/thread-queries", () => ({
   useThread: () => ({
     data: undefined,
@@ -53,11 +55,16 @@ function pane(paneId: string, threadId: string): LayoutNode {
 function renderArea(layout: SplitLayout) {
   const store = createStore();
   store.set(splitLayoutAtom, layout);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
     <Provider store={store}>
-      <MemoryRouter initialEntries={["/projects/p1/threads/t1"]}>
-        <SplitThreadArea />
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/projects/p1/threads/t1"]}>
+          <SplitThreadArea />
+        </MemoryRouter>
+      </QueryClientProvider>
     </Provider>,
   );
 }
