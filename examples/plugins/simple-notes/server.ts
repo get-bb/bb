@@ -1,4 +1,5 @@
 // Docs — filesystem-first, multi-host Markdown and HTML vaults.
+import { watch, type FSWatcher } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
@@ -27,6 +28,19 @@ interface NoteSummary {
   modifiedAtMs: number;
 }
 
+interface OpenerSource {
+  kind: "workspace" | "host" | "thread-storage";
+  threadId: string | null;
+  environmentId: string | null;
+  projectId: string | null;
+}
+
+interface ResolvedOpenerFile {
+  path: string;
+  rootPath: string;
+  hostId: string | null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -45,6 +59,24 @@ function requireString(value: unknown, field: string): string {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function parseOpenerSource(value: unknown): OpenerSource {
+  const source = requireRecord(value);
+  if (
+    source.kind !== "workspace" &&
+    source.kind !== "host" &&
+    source.kind !== "thread-storage"
+  ) {
+    throw new Error('"source.kind" must be workspace, host, or thread-storage');
+  }
+  return {
+    kind: source.kind,
+    threadId: typeof source.threadId === "string" ? source.threadId : null,
+    environmentId:
+      typeof source.environmentId === "string" ? source.environmentId : null,
+    projectId: typeof source.projectId === "string" ? source.projectId : null,
+  };
 }
 
 function expandHome(rawPath: string): string {
@@ -392,6 +424,42 @@ export default async function plugin(bb: BbPluginApi) {
     return result;
   }
 
+  async function resolveOpenerFile(
+    sourceValue: unknown,
+    pathValue: unknown,
+  ): Promise<ResolvedOpenerFile> {
+    const source = parseOpenerSource(sourceValue);
+    const filePath = requireString(pathValue, "path");
+    if (source.kind === "host") {
+      if (!isAbsoluteHostPath(filePath)) {
+        throw new Error("Host file paths must be absolute");
+      }
+      const normalized = normalizeHostRoot(filePath);
+      const pathApi = path.win32.isAbsolute(normalized)
+        ? path.win32
+        : path.posix;
+      return {
+        path: normalized,
+        rootPath: pathApi.dirname(normalized),
+        hostId: null,
+      };
+    }
+    if (source.kind === "workspace" && source.environmentId) {
+      const environment = await bb.sdk.environments.get({
+        environmentId: source.environmentId,
+      });
+      if (!environment.path) {
+        throw new Error("This environment has no workspace path");
+      }
+      return {
+        path: path.join(environment.path, filePath),
+        rootPath: environment.path,
+        hostId: environment.hostId,
+      };
+    }
+    throw new Error("Docs can open workspace and host files only");
+  }
+
   async function createNote(
     vaultId: string | undefined,
     input: Record<string, unknown>,
@@ -602,6 +670,49 @@ export default async function plugin(bb: BbPluginApi) {
       return bb.sdk.files.createPreview({
         ...hostArgs(vault),
         rootPath: vault.rootPath,
+      });
+    },
+    async openFile(input: unknown) {
+      const record = requireRecord(input);
+      const target = await resolveOpenerFile(record.source, record.path);
+      const args = {
+        ...(target.hostId ? { hostId: target.hostId } : {}),
+        path: target.path,
+        rootPath: target.rootPath,
+      };
+      const [file, preview] = await Promise.all([
+        bb.sdk.files.read(args),
+        bb.sdk.files.createPreview({
+          ...(target.hostId ? { hostId: target.hostId } : {}),
+          rootPath: target.rootPath,
+        }),
+      ]);
+      const pathApi = path.win32.isAbsolute(target.rootPath)
+        ? path.win32
+        : path.posix;
+      return {
+        file,
+        preview,
+        previewPath: pathApi
+          .relative(target.rootPath, target.path)
+          .replace(/\\/g, "/"),
+      };
+    },
+    async saveOpenedFile(input: unknown) {
+      const record = requireRecord(input);
+      const target = await resolveOpenerFile(record.source, record.path);
+      if (typeof record.content !== "string") {
+        throw new Error('"content" must be a string');
+      }
+      return bb.sdk.files.write({
+        ...(target.hostId ? { hostId: target.hostId } : {}),
+        path: target.path,
+        rootPath: target.rootPath,
+        content: record.content,
+        ...(record.expectedSha256 === null ||
+        typeof record.expectedSha256 === "string"
+          ? { expectedSha256: record.expectedSha256 }
+          : {}),
       });
     },
   };
@@ -815,30 +926,81 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.background.service("watch-vaults", {
     async start(signal) {
+      const watchers = new Map<string, FSWatcher>();
+      const retryNative = new Set<string>();
+      let debounce: NodeJS.Timeout | null = null;
       let previous = "";
-      while (!signal.aborted) {
-        const snapshots: string[] = [];
-        for (const vault of listVaults()) {
-          try {
-            const { entries } = await listEntries(vault);
-            const notes = await listNoteSummaries(vault, entries);
-            snapshots.push(
-              JSON.stringify({
-                id: vault.id,
-                entries: entries.map((entry) => `${entry.kind}:${entry.path}`),
-                notes: notes.map((note) => `${note.path}:${note.modifiedAtMs}`),
-              }),
-            );
-          } catch {
-            snapshots.push(`${vault.id}:offline`);
+      try {
+        while (!signal.aborted) {
+          const vaults = listVaults();
+          const localIds = new Set(
+            vaults.filter((vault) => !vault.hostId).map((vault) => vault.id),
+          );
+          for (const [vaultId, watcher] of watchers) {
+            if (!localIds.has(vaultId)) {
+              watcher.close();
+              watchers.delete(vaultId);
+            }
           }
+          for (const vault of vaults) {
+            if (vault.hostId || watchers.has(vault.id)) continue;
+            try {
+              const watcher = watch(vault.rootPath, { recursive: true }, () => {
+                if (debounce) clearTimeout(debounce);
+                debounce = setTimeout(() => {
+                  bb.realtime.publish("vault-changed", {
+                    vaultId: vault.id,
+                  });
+                }, 250);
+              });
+              watcher.on("error", () => {
+                watcher.close();
+                watchers.delete(vault.id);
+                retryNative.add(vault.id);
+              });
+              watchers.set(vault.id, watcher);
+              retryNative.delete(vault.id);
+            } catch (error) {
+              if (!retryNative.has(vault.id)) {
+                bb.log.warn(
+                  `cannot watch ${vault.rootPath}; using polling: ${error instanceof Error ? error.message : String(error)}`,
+                );
+              }
+              retryNative.add(vault.id);
+            }
+          }
+
+          const snapshots: string[] = [];
+          for (const vault of vaults) {
+            if (watchers.has(vault.id)) continue;
+            try {
+              const { entries } = await listEntries(vault);
+              const notes = await listNoteSummaries(vault, entries);
+              snapshots.push(
+                JSON.stringify({
+                  id: vault.id,
+                  entries: entries.map(
+                    (entry) => `${entry.kind}:${entry.path}`,
+                  ),
+                  notes: notes.map(
+                    (note) => `${note.path}:${note.modifiedAtMs}`,
+                  ),
+                }),
+              );
+            } catch {
+              snapshots.push(`${vault.id}:offline`);
+            }
+          }
+          const next = snapshots.join("\n");
+          if (previous && previous !== next) {
+            bb.realtime.publish("vault-changed", {});
+          }
+          previous = next;
+          await waitForDelay(10_000, signal);
         }
-        const next = snapshots.join("\n");
-        if (previous && previous !== next) {
-          bb.realtime.publish("vault-changed", {});
-        }
-        previous = next;
-        await waitForDelay(10_000, signal);
+      } finally {
+        if (debounce) clearTimeout(debounce);
+        for (const watcher of watchers.values()) watcher.close();
       }
     },
   });

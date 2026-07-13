@@ -9,8 +9,10 @@ import {
 import {
   definePluginApp,
   useBbNavigate,
+  useComposer,
   useRpc,
   useRealtime,
+  type PluginFileOpenerProps,
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
   type PluginThreadPanelProps,
@@ -152,6 +154,40 @@ function parsePreviewLease(value: unknown): PreviewLease {
     throw new Error("Docs returned an invalid preview lease");
   }
   return { baseUrl: value.baseUrl, expiresAtMs: value.expiresAtMs };
+}
+
+function parseSaveResult(value: unknown): SaveResult {
+  if (
+    !isRecord(value) ||
+    (value.outcome !== "written" && value.outcome !== "conflict")
+  ) {
+    throw new Error("Docs returned an invalid save response");
+  }
+  if (value.outcome === "written" && typeof value.sha256 === "string") {
+    return { outcome: "written", sha256: value.sha256 };
+  }
+  if (
+    value.outcome === "conflict" &&
+    (typeof value.currentSha256 === "string" || value.currentSha256 === null)
+  ) {
+    return { outcome: "conflict", currentSha256: value.currentSha256 };
+  }
+  throw new Error("Docs returned an invalid save response");
+}
+
+function parseOpenedFile(value: unknown): {
+  file: NoteContent;
+  preview: PreviewLease;
+  previewPath: string;
+} {
+  if (!isRecord(value) || typeof value.previewPath !== "string") {
+    throw new Error("Docs returned an invalid opened file");
+  }
+  return {
+    file: parseNoteContent(value.file),
+    preview: parsePreviewLease(value.preview),
+    previewPath: value.previewPath,
+  };
 }
 
 function encodePath(value: string): string {
@@ -745,8 +781,48 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
           onChanged={() => undefined}
           onRenamed={() => undefined}
           renameToTitle={false}
+          composerDocument={document}
         />
       )}
+    </div>
+  );
+}
+
+function DocumentComposerActions({
+  document,
+  getMarkdown,
+}: {
+  document: DocumentRef;
+  getMarkdown(): string;
+}) {
+  const composer = useComposer();
+  return (
+    <div className="flex shrink-0 items-center justify-end gap-2 border-b border-border px-3 py-1.5">
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          const selection = window.getSelection()?.toString().trim();
+          composer.addQuote(selection || getMarkdown());
+          composer.focus();
+        }}
+      >
+        Add to chat
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          composer.insertMention({
+            provider: "note",
+            id: `${document.vaultId}:${document.path}`,
+            label: document.title,
+          });
+          composer.focus();
+        }}
+      >
+        Mention in chat
+      </Button>
     </div>
   );
 }
@@ -757,12 +833,14 @@ function NotePane({
   onChanged,
   onRenamed,
   renameToTitle = true,
+  composerDocument,
 }: {
   vaultId: string;
   notePath: string;
   onChanged(): void;
   onRenamed(path: string): void;
   renameToTitle?: boolean;
+  composerDocument?: DocumentRef;
 }) {
   const rpc = useRpc();
   const [state, setState] = useState<
@@ -828,7 +906,7 @@ function NotePane({
             ? { expectedSha256: shaRef.current }
             : {}),
         });
-        const result = value as SaveResult;
+        const result = parseSaveResult(value);
         if (result.outcome === "conflict") {
           setConflict(true);
           return;
@@ -883,6 +961,12 @@ function NotePane({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {composerDocument ? (
+        <DocumentComposerActions
+          document={composerDocument}
+          getMarkdown={() => markdownRef.current}
+        />
+      ) : null}
       {conflict ? (
         <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
           Changed on disk.
@@ -914,6 +998,161 @@ function NotePane({
           if (!isRecord(value) || typeof value.markdownPath !== "string")
             throw new Error("Upload returned an invalid path");
           return { markdownPath: value.markdownPath };
+        }}
+        onFirstRender={(markdown) => {
+          markdownRef.current = markdown;
+          savedRef.current = markdown;
+        }}
+        onMarkdownChange={(markdown) => {
+          markdownRef.current = markdown;
+          scheduleSave();
+        }}
+      />
+    </div>
+  );
+}
+
+function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
+  const rpc = useRpc();
+  const openerSource = useMemo(
+    () => ({
+      kind: source.kind,
+      threadId: source.threadId,
+      environmentId: source.environmentId,
+      projectId: source.projectId,
+    }),
+    [source.environmentId, source.kind, source.projectId, source.threadId],
+  );
+  const [state, setState] = useState<
+    | { content: string; lease: PreviewLease; previewPath: string }
+    | { error: string }
+    | null
+  >(null);
+  const [conflict, setConflict] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const markdownRef = useRef("");
+  const savedRef = useRef("");
+  const shaRef = useRef<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    setState(null);
+    setConflict(false);
+    setSaveError(null);
+    void rpc
+      .call("openFile", { source: openerSource, path: filePath })
+      .then(parseOpenedFile)
+      .then(({ file, preview, previewPath }) => {
+        if (!active) return;
+        markdownRef.current = file.content;
+        savedRef.current = file.content;
+        shaRef.current = file.sha256;
+        setState({ content: file.content, lease: preview, previewPath });
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setState({
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [filePath, openerSource, reloadNonce, rpc]);
+
+  const save = useCallback(
+    async (force = false) => {
+      if (
+        savingRef.current ||
+        (!force && markdownRef.current === savedRef.current)
+      )
+        return;
+      savingRef.current = true;
+      setSaveError(null);
+      const content = markdownRef.current;
+      try {
+        const result = parseSaveResult(
+          await rpc.call("saveOpenedFile", {
+            source: openerSource,
+            path: filePath,
+            content,
+            ...(!force && shaRef.current
+              ? { expectedSha256: shaRef.current }
+              : {}),
+          }),
+        );
+        if (result.outcome === "conflict") {
+          setConflict(true);
+          return;
+        }
+        savedRef.current = content;
+        shaRef.current = result.sha256;
+        setConflict(false);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : String(error));
+      } finally {
+        savingRef.current = false;
+      }
+    },
+    [filePath, openerSource, rpc],
+  );
+
+  const scheduleSave = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => void save(), 700);
+  }, [save]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      void save();
+    },
+    [save],
+  );
+
+  if (!state) return <DocumentSkeleton />;
+  if ("error" in state) {
+    return (
+      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
+        {state.error} — use the tab&apos;s Open with menu to choose another
+        viewer.
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {conflict ? (
+        <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
+          Changed on disk.
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setReloadNonce((value) => value + 1)}
+          >
+            Reload
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => void save(true)}>
+            Overwrite
+          </Button>
+        </div>
+      ) : null}
+      {saveError ? (
+        <div className="border-b border-border px-4 py-2 text-xs text-destructive">
+          {saveError}
+        </div>
+      ) : null}
+      <TiptapEditor
+        initialValue={state.content}
+        previewBaseUrl={state.lease.baseUrl}
+        notePath={state.previewPath}
+        onUpload={async () => {
+          throw new Error(
+            "Add this file to a Docs vault before uploading images",
+          );
         }}
         onFirstRender={(markdown) => {
           markdownRef.current = markdown;
@@ -1588,6 +1827,12 @@ export default definePluginApp((app) => {
     title: "Docs",
     icon: "FileText",
     component: DocumentPanel,
+  });
+  app.slots.fileOpener({
+    id: "docs",
+    title: "Docs",
+    extensions: ["md", "mdx", "markdown"],
+    component: DocsFileOpener,
   });
   app.slots.messageDirective({ id: "docs", component: DocsDirectiveCard });
 });

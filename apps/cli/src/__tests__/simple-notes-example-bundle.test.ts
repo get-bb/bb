@@ -41,7 +41,7 @@ describe("Docs example frontend bundle", () => {
     delete (globalThis as { document?: unknown }).document;
   });
 
-  it("registers the Docs nav, directive, and thread-panel surfaces", async () => {
+  it("registers the Docs nav, directive, thread-panel, and file-opener surfaces", async () => {
     const pluginDir = join(root, "simple-notes");
     await cp(SIMPLE_NOTES_DIR, pluginDir, {
       recursive: true,
@@ -142,6 +142,11 @@ describe("Docs example frontend bundle", () => {
     expect(typeof registered.messageDirective[0]?.component).toBe("function");
     expect(registered.composerAccessory).toHaveLength(0);
     expect(registered.sidebarFooterAction).toHaveLength(0);
-    expect(registered.fileOpener).toHaveLength(0);
+    expect(registered.fileOpener[0]).toMatchObject({
+      id: "docs",
+      title: "Docs",
+      extensions: ["md", "mdx", "markdown"],
+    });
+    expect(typeof registered.fileOpener[0]?.component).toBe("function");
   });
 });
