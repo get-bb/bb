@@ -1,0 +1,234 @@
+import { pickZone, zoneBox, type SplitZone, type ZoneDecision } from "./zones";
+
+/** Marks a pane's root element so the drag layer can hit-test it. */
+export const SPLIT_PANE_DATA_ATTR = "data-split-pane-id";
+
+export interface SplitDropTarget {
+  paneId: string;
+  zone: SplitZone;
+}
+
+export interface SplitDragConfig {
+  /** Text shown in the cursor-following ghost. */
+  ghostLabel: string;
+  /** Element dimmed while dragging (the source row or pane); restored on end. */
+  sourceEl?: HTMLElement | null;
+  /**
+   * Resolves the hovered pane + raw zone into a highlighted target, or null
+   * when the pane is not a valid target (the overlay hides). The layout ops
+   * still enforce legality on drop; this only picks and labels the region.
+   */
+  decide: (paneId: string, zone: SplitZone) => ZoneDecision | null;
+  /** Runs on release when a valid target is under the pointer. */
+  onDrop: (target: SplitDropTarget) => void;
+  /**
+   * Gate that flips the drag from "pending" to "engaged". Until it returns
+   * true nothing is shown and no default is prevented, so an in-sidebar
+   * reorder or a plain click still works.
+   */
+  shouldEngage: (clientX: number, clientY: number) => boolean;
+}
+
+/**
+ * Shared pointer-driven drag session for the split area, used by sidebar thread
+ * rows and pane headers alike. It intentionally does NOT nest a second dnd-kit
+ * context (plan §3): it renders a cursor ghost + a drop-zone overlay directly,
+ * hit-tests panes by their {@link SPLIT_PANE_DATA_ATTR}, and calls back with the
+ * chosen target. Colors come from theme tokens (never hardcoded), per AGENTS.md.
+ *
+ * Call from a `pointerdown` handler with the event's start coordinates.
+ */
+export function beginSplitDrag(
+  startX: number,
+  startY: number,
+  config: SplitDragConfig,
+): void {
+  let engaged = false;
+  let target: SplitDropTarget | null = null;
+  let ghostEl: HTMLElement | null = null;
+  let overlayEl: HTMLElement | null = null;
+
+  // Sidebar rows carry a native-draggable `<a>` overlay; without this a
+  // mousedown+move starts a native anchor drag that swallows the pointermove
+  // stream the session depends on. Suppress it for the whole gesture.
+  const preventNativeDrag = (event: DragEvent): void => {
+    event.preventDefault();
+  };
+  window.addEventListener("dragstart", preventNativeDrag);
+
+  const engage = (): void => {
+    engaged = true;
+    ghostEl = createGhost(config.ghostLabel);
+    overlayEl = createOverlay();
+    document.body.append(ghostEl, overlayEl);
+    document.body.style.cursor = "grabbing";
+    if (config.sourceEl) {
+      config.sourceEl.style.opacity = "0.45";
+    }
+  };
+
+  const handleMove = (event: PointerEvent): void => {
+    if (!engaged) {
+      if (!config.shouldEngage(event.clientX, event.clientY)) {
+        return;
+      }
+      engage();
+    }
+    // Only suppress the default (text selection / native drag) once we own the
+    // gesture, so pending in-sidebar interactions stay untouched.
+    event.preventDefault();
+    if (ghostEl) {
+      ghostEl.style.left = `${event.clientX + 12}px`;
+      ghostEl.style.top = `${event.clientY + 8}px`;
+    }
+
+    target = null;
+    const paneEl = paneElementAt(event.clientX, event.clientY);
+    const paneId = paneEl?.getAttribute(SPLIT_PANE_DATA_ATTR) ?? null;
+    if (paneEl && paneId !== null && overlayEl) {
+      const rect = paneEl.getBoundingClientRect();
+      const decision = config.decide(paneId, pickZone(rect, event.clientX, event.clientY));
+      if (decision) {
+        target = { paneId, zone: decision.zone };
+        positionOverlay(overlayEl, zoneBox(rect, decision.zone), decision.label);
+      } else {
+        overlayEl.style.display = "none";
+      }
+    } else if (overlayEl) {
+      overlayEl.style.display = "none";
+    }
+  };
+
+  const teardown = (): void => {
+    window.removeEventListener("pointermove", handleMove);
+    window.removeEventListener("pointerup", handleUp);
+    window.removeEventListener("pointercancel", handleCancel);
+    window.removeEventListener("dragstart", preventNativeDrag);
+    ghostEl?.remove();
+    overlayEl?.remove();
+    document.body.style.cursor = "";
+    if (config.sourceEl) {
+      config.sourceEl.style.opacity = "";
+    }
+  };
+
+  function handleUp(): void {
+    const wasEngaged = engaged;
+    const dropTarget = engaged ? target : null;
+    teardown();
+    if (wasEngaged) {
+      // Swallow the click the browser synthesizes after a drag release so a
+      // dragged-out sidebar row's NavLink (or a header's focus click) doesn't
+      // fire on top of the drop.
+      swallowNextClick();
+    }
+    if (dropTarget) {
+      config.onDrop(dropTarget);
+    }
+  }
+
+  function handleCancel(): void {
+    const wasEngaged = engaged;
+    teardown();
+    if (wasEngaged) {
+      swallowNextClick();
+    }
+  }
+
+  window.addEventListener("pointermove", handleMove);
+  window.addEventListener("pointerup", handleUp);
+  window.addEventListener("pointercancel", handleCancel);
+}
+
+function swallowNextClick(): void {
+  const swallow = (event: MouseEvent): void => {
+    event.stopPropagation();
+    event.preventDefault();
+    window.removeEventListener("click", swallow, true);
+  };
+  window.addEventListener("click", swallow, true);
+  // If no click follows (some pointer paths don't synthesize one), drop the
+  // listener shortly so it can't swallow a later, unrelated click.
+  window.setTimeout(() => window.removeEventListener("click", swallow, true), 300);
+}
+
+function paneElementAt(clientX: number, clientY: number): HTMLElement | null {
+  for (const element of document.elementsFromPoint(clientX, clientY)) {
+    const pane =
+      element instanceof HTMLElement
+        ? element.closest<HTMLElement>(`[${SPLIT_PANE_DATA_ATTR}]`)
+        : null;
+    if (pane) {
+      return pane;
+    }
+  }
+  return null;
+}
+
+function createGhost(label: string): HTMLElement {
+  const ghost = document.createElement("div");
+  ghost.textContent = label;
+  Object.assign(ghost.style, {
+    position: "fixed",
+    zIndex: "100",
+    pointerEvents: "none",
+    left: "-9999px",
+    top: "-9999px",
+    maxWidth: "260px",
+    padding: "6px 12px",
+    borderRadius: "10px",
+    fontSize: "12.5px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    background: "var(--popover)",
+    color: "var(--popover-foreground)",
+    border: "1px solid var(--border)",
+    boxShadow: "0 6px 20px color-mix(in oklab, var(--ink) 22%, transparent)",
+  } satisfies Partial<CSSStyleDeclaration>);
+  return ghost;
+}
+
+function createOverlay(): HTMLElement {
+  const overlay = document.createElement("div");
+  const label = document.createElement("div");
+  Object.assign(label.style, {
+    position: "absolute",
+    inset: "0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "var(--primary)",
+  } satisfies Partial<CSSStyleDeclaration>);
+  label.dataset.splitDragLabel = "";
+  overlay.append(label);
+  Object.assign(overlay.style, {
+    position: "fixed",
+    zIndex: "90",
+    display: "none",
+    pointerEvents: "none",
+    borderRadius: "12px",
+    background: "color-mix(in oklab, var(--primary) 12%, transparent)",
+    border: "2px solid color-mix(in oklab, var(--primary) 55%, transparent)",
+    transition: "left 0.09s ease-out, top 0.09s ease-out, width 0.09s ease-out, height 0.09s ease-out",
+  } satisfies Partial<CSSStyleDeclaration>);
+  return overlay;
+}
+
+function positionOverlay(
+  overlay: HTMLElement,
+  box: { left: number; top: number; width: number; height: number },
+  label: string,
+): void {
+  overlay.style.display = "block";
+  overlay.style.left = `${box.left}px`;
+  overlay.style.top = `${box.top}px`;
+  overlay.style.width = `${box.width}px`;
+  overlay.style.height = `${box.height}px`;
+  const labelEl = overlay.querySelector<HTMLElement>("[data-split-drag-label]");
+  if (labelEl) {
+    labelEl.textContent = label;
+  }
+}

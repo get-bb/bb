@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -27,6 +28,13 @@ export interface PaneContextValue {
    */
   onRequestClose: (() => void) | null;
   navigateInPane: (thread: ThreadRoutePathArgs) => void;
+  /**
+   * Starts a pane-reorder drag from the pane header via the shared split-drag
+   * layer (move to an edge / swap on center). Only provided when the layout is
+   * split (>1 pane); undefined on the single-pane, page, and popout surfaces,
+   * where there is nothing to reorder.
+   */
+  beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
 }
 
 export const PaneContext = createContext<PaneContextValue | null>(null);

@@ -1,6 +1,6 @@
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useAtom } from "jotai";
+import { useAtom, useStore } from "jotai";
 import {
   Fragment,
   useCallback,
@@ -13,12 +13,15 @@ import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadRoutePath, type ThreadRoutePathArgs } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
+  countPanes,
   findPane,
   listPanes,
+  movePane,
   removePane,
   replacePaneContent,
   resizeSplit,
   setFocus,
+  swapPanes,
 } from "@/lib/split-layout";
 import type {
   LayoutNode,
@@ -26,6 +29,11 @@ import type {
   SplitLayout,
   SplitPath,
 } from "@/lib/split-layout";
+import {
+  beginSplitDrag,
+  decidePaneDrop,
+  SPLIT_PANE_DATA_ATTR,
+} from "@/lib/split-drag";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadDetailView } from "./ThreadDetailView";
 import {
@@ -34,6 +42,15 @@ import {
   reconcileLayoutForRoute,
   threadPaneContent,
 } from "./splitThreadNavigation";
+
+// A `pointerdown`-relative move threshold before a pane-header drag engages.
+const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
+
+type BeginPaneDrag = (
+  paneId: string,
+  event: ReactPointerEvent,
+  label: string,
+) => void;
 
 const EMPTY_PATH: SplitPath = [];
 
@@ -50,6 +67,7 @@ export function SplitThreadArea() {
   const { projectId, threadId } = useRouteState();
   const isCompact = useIsCompactViewport();
   const navigate = useNavigate();
+  const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
 
   const routeThread = useMemo<ThreadRoutePathArgs | null>(
@@ -138,6 +156,55 @@ export function SplitThreadArea() {
     [setLayout],
   );
 
+  // Pane reorder: dragging a pane header through the shared split-drag layer.
+  // Edge drop = movePane (allowed at the cap — moves never add a pane), center
+  // drop = swapPanes. Both ops set the layout's focus, and the URL follows it.
+  // Read the layout imperatively from the store so a drop always acts on the
+  // latest arrangement, not the value captured when the drag began.
+  const beginPaneDrag = useCallback<BeginPaneDrag>(
+    (paneId, event, label) => {
+      const startLayout = store.get(splitLayoutAtom);
+      if (startLayout === null || countPanes(startLayout.root) < 2) {
+        return;
+      }
+      const sourceEl =
+        event.currentTarget instanceof Element
+          ? event.currentTarget.closest<HTMLElement>(
+              `[${SPLIT_PANE_DATA_ATTR}]`,
+            )
+          : null;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      beginSplitDrag(startX, startY, {
+        ghostLabel: label,
+        sourceEl,
+        shouldEngage: (x, y) =>
+          Math.hypot(x - startX, y - startY) > PANE_DRAG_ENGAGE_DISTANCE_PX,
+        decide: (targetPaneId, zone) =>
+          decidePaneDrop({ zone, isSelf: targetPaneId === paneId }),
+        onDrop: (target) => {
+          const current = store.get(splitLayoutAtom);
+          if (current === null) {
+            return;
+          }
+          const next =
+            target.zone === "center"
+              ? swapPanes(current, paneId, target.paneId)
+              : movePane(current, paneId, target.paneId, target.zone);
+          if (next === current) {
+            return;
+          }
+          store.set(splitLayoutAtom, next);
+          const route = focusedThreadRoute(next);
+          if (route !== null) {
+            navigate(getThreadRoutePath(route), { replace: true });
+          }
+        },
+      });
+    },
+    [navigate, store],
+  );
+
   // Compact viewport disables splits entirely — render the route thread as the
   // single page surface (byte-identical to the pre-split page). The layout atom
   // is preserved so the arrangement returns when the viewport widens again.
@@ -148,16 +215,23 @@ export function SplitThreadArea() {
   const panes = listPanes(layout.root);
   const firstPane = panes[0];
   if (panes.length === 1 && firstPane !== undefined) {
-    // Single pane: no wrapper chrome, no focus ring — DOM-identical to page.
+    // Single pane: no focus ring, no pane chrome. A bare, full-bleed wrapper
+    // carries only the pane-id hit-test hook so a sidebar thread can be dropped
+    // onto it to create the first split; it adds no visual chrome vs. the page.
     return (
-      <ThreadPaneContent
-        content={firstPane.content}
-        paneId={firstPane.paneId}
-        isFocused
-        canShowSecondaryPanel
-        onRequestClose={null}
-        onNavigateInPane={navigateInPane}
-      />
+      <div
+        className="flex h-full min-h-0 w-full min-w-0"
+        data-split-pane-id={firstPane.paneId}
+      >
+        <ThreadPaneContent
+          content={firstPane.content}
+          paneId={firstPane.paneId}
+          isFocused
+          canShowSecondaryPanel
+          onRequestClose={null}
+          onNavigateInPane={navigateInPane}
+        />
+      </div>
     );
   }
 
@@ -172,6 +246,7 @@ export function SplitThreadArea() {
         onClosePane={closePane}
         onResize={resize}
         onNavigateInPane={navigateInPane}
+        onBeginPaneDrag={beginPaneDrag}
       />
     </div>
   );
@@ -186,6 +261,7 @@ interface SplitTreeProps {
   onClosePane: (paneId: string) => void;
   onResize: (splitPath: SplitPath, childIndex: number, fraction: number) => void;
   onNavigateInPane: NavigateInPane;
+  onBeginPaneDrag: BeginPaneDrag;
 }
 
 function SplitTree(props: SplitTreeProps) {
@@ -200,6 +276,7 @@ function SplitTree(props: SplitTreeProps) {
           "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
           isFocused && "ring-1 ring-inset ring-ring",
         )}
+        data-split-pane-id={node.paneId}
       >
         <ThreadPaneContent
           content={node.content}
@@ -210,6 +287,7 @@ function SplitTree(props: SplitTreeProps) {
           canShowSecondaryPanel={paneCount < 3 || isFocused}
           onRequestClose={() => props.onClosePane(node.paneId)}
           onNavigateInPane={props.onNavigateInPane}
+          onBeginPaneDrag={props.onBeginPaneDrag}
         />
       </div>
     );
@@ -249,6 +327,8 @@ interface ThreadPaneContentProps {
   canShowSecondaryPanel: boolean;
   onRequestClose: (() => void) | null;
   onNavigateInPane: NavigateInPane;
+  // Absent for the single-pane surface — a lone pane has nothing to reorder.
+  onBeginPaneDrag?: BeginPaneDrag;
 }
 
 function ThreadPaneContent({
@@ -258,10 +338,19 @@ function ThreadPaneContent({
   canShowSecondaryPanel,
   onRequestClose,
   onNavigateInPane,
+  onBeginPaneDrag,
 }: ThreadPaneContentProps) {
   const navigateInPane = useCallback(
     (thread: ThreadRoutePathArgs) => onNavigateInPane(paneId, thread),
     [onNavigateInPane, paneId],
+  );
+  const beginPaneDrag = useMemo(
+    () =>
+      onBeginPaneDrag
+        ? (event: ReactPointerEvent, label: string) =>
+            onBeginPaneDrag(paneId, event, label)
+        : undefined,
+    [onBeginPaneDrag, paneId],
   );
   const value = useMemo<PaneContextValue>(
     () => ({
@@ -270,8 +359,16 @@ function ThreadPaneContent({
       canShowSecondaryPanel,
       onRequestClose,
       navigateInPane,
+      beginPaneDrag,
     }),
-    [canShowSecondaryPanel, isFocused, navigateInPane, onRequestClose, paneId],
+    [
+      beginPaneDrag,
+      canShowSecondaryPanel,
+      isFocused,
+      navigateInPane,
+      onRequestClose,
+      paneId,
+    ],
   );
 
   return (
