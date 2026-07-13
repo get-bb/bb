@@ -62,10 +62,10 @@ added/updated/unchanged counts.
                                  Remove a catalog; installed plugins remain
                                  installed with direct provenance
   bb plugin search <query>       Search all configured marketplaces
-  bb plugin install <entry>[@<marketplace>] [--version <range>]
+  bb plugin install <entry>[@<marketplace>]
                                  Install a unique marketplace entry (qualify
-                                 with @marketplace when ambiguous; --version
-                                 is marketplace-only), a local path, builtin:<name>,
+                                 with @marketplace when ambiguous), a local
+                                 path, builtin:<name>,
                                  git:<url>@<ref>, or
                                  npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —
@@ -151,9 +151,10 @@ Search and install disambiguation: `bb plugin search <query>` matches id,
 display name, description, and category across configured marketplaces (status:
 installed / compatible / requires newer bb). Install a bare marketplace entry
 name only when it is unique across catalogs; qualify as
-`<entry>@<marketplace>` when ambiguous. `--version <range>` applies only to
-marketplace installs (npm entries). Escape hatches that skip marketplace
-resolution: `path:`, `npm:`, `git:`, `builtin:` prefixes (and path-like syntax).
+`<entry>@<marketplace>` when ambiguous. To select an npm version, tag, or range,
+use a direct `npm:<package>@<version|tag|range>` install. Escape hatches that
+skip marketplace resolution: `path:`, `npm:`, `git:`, `builtin:` prefixes (and
+path-like syntax).
 
 Frontend builds are automatic once installed: path and git installs compile
 dist/ at install time (a build failure fails the install), and the server
