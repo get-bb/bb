@@ -233,7 +233,7 @@ watches and reloads on every save. The manifest is package.json: `bb.server`
 (frontend entry), optional `bb.skills` (skills directories auto-imported
 into agent threads; default `skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^1.0.0"` for SDK 1.0.0). The plugin id is the package name minus
+writes `"^0.2.0"` for SDK 0.2.0). The plugin id is the package name minus
 `bb-plugin-`.
 
 Plugins can contribute palettes with `bb.themes`: an array of

@@ -29,9 +29,9 @@ describe("plugin manifest SDK range", () => {
   }
 
   it("accepts a valid engines.bbPluginSdk range", async () => {
-    await writeManifest("^1.0.0 || >=2.0.0");
+    await writeManifest("^0.2.0 || >=2.0.0");
     expect((await readPluginManifest(rootDir)).bbPluginSdkRange).toBe(
-      "^1.0.0 || >=2.0.0",
+      "^0.2.0 || >=2.0.0",
     );
   });
 

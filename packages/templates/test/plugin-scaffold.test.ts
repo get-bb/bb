@@ -50,7 +50,7 @@ describe("scaffoldPlugin bundled types", () => {
     );
     expect(pkg.engines).toEqual({
       bb: ">=0.9",
-      bbPluginSdk: "^1.0.0",
+      bbPluginSdk: "^0.2.0",
     });
     expect(pkg.devDependencies["@bb/plugin-sdk"]).toBeUndefined();
     expect(pkg.devDependencies.zod).toBeDefined();

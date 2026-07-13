@@ -63,7 +63,7 @@ async function writePlugin(
     JSON.stringify({
       name,
       version: "1.0.0",
-      engines: { bb: ">=0.0.0", bbPluginSdk: ">=1.0.0" },
+      engines: { bb: ">=0.0.0", bbPluginSdk: ">=0.2.0" },
       bb: { server: "./server.js" },
     }),
   );
@@ -268,7 +268,7 @@ describe("marketplace HTTP routes", () => {
       JSON.stringify({
         name: "bb-plugin-marketplace-frontend",
         version: "1.0.0",
-        engines: { bb: ">=0.0.0", bbPluginSdk: ">=1.0.0" },
+        engines: { bb: ">=0.0.0", bbPluginSdk: ">=0.2.0" },
         bb: { server: "./server.js", app: "./app.tsx" },
       }),
     );

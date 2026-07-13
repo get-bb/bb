@@ -284,7 +284,7 @@ ${componentsSection}
 
 - \`bb.server\` — backend entry (required); optional \`bb.app\` for a frontend.
 - \`engines.bb\` — supported bb app version range.
-- \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^1.0.0\`).
+- \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^0.2.0\`).
 
 Run \`bb plugin build\` before publishing git/npm installs. It writes
 \`dist/server.js\` + \`server.meta.json\` (and, with \`bb.app\`, \`app.js\` /
@@ -349,7 +349,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         type: "module",
         engines: {
           bb: enginesRange(bbVersion),
-          bbPluginSdk: "^1.0.0",
+          bbPluginSdk: "^0.2.0",
         },
         bb: app
           ? { server: "./server.ts", app: "./app.tsx" }
