@@ -60,6 +60,7 @@ async function writePluginFixture(
     version?: string;
     engines?: string;
     pluginSdkRange?: string;
+    appSource?: string;
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
@@ -78,13 +79,19 @@ async function writePluginFixture(
             },
           }
         : {}),
-      bb: { server: "./server.ts" },
+      bb: {
+        server: "./server.ts",
+        ...(options.appSource === undefined ? {} : { app: "./app.tsx" }),
+      },
     }),
   );
   await writeFile(
     join(rootDir, "server.ts"),
     `export default function plugin(bb: any) { bb.log.info("loaded"); }`,
   );
+  if (options.appSource !== undefined) {
+    await writeFile(join(rootDir, "app.tsx"), options.appSource);
+  }
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -409,6 +416,50 @@ describe("plugin install flows", () => {
       ).toMatchObject({ version: "0.1.0", status: "running" });
     });
 
+    it("refuses a managed frontend reinstall before validating a broken new tip or creating an artifact", async () => {
+      const repoDir = join(workDir, "repo-managed-frontend");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-managed-frontend",
+        appSource:
+          'export default function App() { return <div className="line-clamp-2">working</div>; }\n',
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "working frontend");
+      const source = `git:${repoDir}@main`;
+      const first = await service.install(source);
+      expect(first).toMatchObject({
+        id: "managed-frontend",
+        version: "0.1.0",
+        status: "running",
+      });
+      const registrationBefore = getInstalledPluginRegistration(
+        db,
+        "managed-frontend",
+      );
+      const artifactsBefore = listPluginArtifacts(db, "managed-frontend");
+      expect(artifactsBefore).toHaveLength(1);
+
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-managed-frontend",
+        version: "0.2.0",
+        appSource: "export default function App( {\n",
+      });
+      await commitAll(repoDir, "broken frontend");
+
+      await expect(service.install(source)).rejects.toThrow(
+        "bb plugin update managed-frontend",
+      );
+      expect(getInstalledPluginRegistration(db, "managed-frontend")).toEqual(
+        registrationBefore,
+      );
+      expect(listPluginArtifacts(db, "managed-frontend")).toEqual(
+        artifactsBefore,
+      );
+      expect(
+        service.list().find((plugin) => plugin.id === "managed-frontend"),
+      ).toMatchObject({ version: "0.1.0", status: "running" });
+    }, 120_000);
+
     it("keeps the previous install intact when a reinstall fails validation", async () => {
       const repoDir = join(workDir, "repo-sturdy");
       await writePluginFixture(repoDir, { name: "bb-plugin-sturdy" });
@@ -432,50 +483,52 @@ describe("plugin install flows", () => {
       expect(entry?.version).toBe("0.1.0");
     });
 
-    it("rejects an authoritative artifact identity mismatch and preserves the previous install", async () => {
-      const repoDir = join(workDir, "repo-artifact-identity");
-      await writePluginFixture(repoDir, {
+    it("rejects authoritative artifact identity and format errors on initial installs", async () => {
+      const identityRepo = join(workDir, "repo-artifact-identity");
+      await writePluginFixture(identityRepo, {
         name: "bb-plugin-artifact-identity",
       });
-      await initGitRepo(repoDir);
-      await commitAll(repoDir, "valid initial install");
-      const source = `git:${repoDir}@main`;
-      const first = await service.install(source);
-      expect(first.status).toBe("running");
-
-      await mkdir(join(repoDir, "dist"), { recursive: true });
+      await mkdir(join(identityRepo, "dist"), { recursive: true });
       await writeFile(
-        join(repoDir, "dist", "server.meta.json"),
+        join(identityRepo, "dist", "server.meta.json"),
         artifactMeta({ pluginId: "wrong-plugin-id" }),
       );
-      await commitAll(repoDir, "mismatched artifact identity");
+      await initGitRepo(identityRepo);
+      await commitAll(identityRepo, "mismatched artifact identity");
 
-      await expect(service.install(source)).rejects.toThrowError(
+      await expect(
+        service.install(`git:${identityRepo}@main`),
+      ).rejects.toThrowError(
         /server artifact pluginId "wrong-plugin-id" does not match manifest pluginId "artifact-identity"/,
       );
-      await expect(stat(`${first.rootDir}.staging`)).rejects.toThrowError();
-      await expect(
-        stat(join(first.rootDir, "dist", "server.meta.json")),
-      ).rejects.toThrowError();
-      expect(service.list()).toMatchObject([
-        { id: "artifact-identity", version: "0.1.0", status: "running" },
-      ]);
+      expect(
+        getInstalledPluginRegistration(db, "artifact-identity"),
+      ).toBeUndefined();
+      expect(listPluginArtifacts(db, "artifact-identity")).toHaveLength(0);
 
+      const formatRepo = join(workDir, "repo-artifact-format");
+      await writePluginFixture(formatRepo, {
+        name: "bb-plugin-artifact-format",
+      });
+      await mkdir(join(formatRepo, "dist"), { recursive: true });
       await writeFile(
-        join(repoDir, "dist", "server.meta.json"),
+        join(formatRepo, "dist", "server.meta.json"),
         artifactMeta({
           artifactFormatVersion: 2,
-          pluginId: "artifact-identity",
+          pluginId: "artifact-format",
         }),
       );
-      await commitAll(repoDir, "unknown artifact format");
-      await expect(service.install(source)).rejects.toThrowError(
+      await initGitRepo(formatRepo);
+      await commitAll(formatRepo, "unknown artifact format");
+      await expect(
+        service.install(`git:${formatRepo}@main`),
+      ).rejects.toThrowError(
         /server artifact.*unknown artifactFormatVersion 2.*supported value is 1/,
       );
-      await expect(stat(`${first.rootDir}.staging`)).rejects.toThrowError();
-      expect(service.list()).toMatchObject([
-        { id: "artifact-identity", version: "0.1.0", status: "running" },
-      ]);
+      expect(
+        getInstalledPluginRegistration(db, "artifact-format"),
+      ).toBeUndefined();
+      expect(listPluginArtifacts(db, "artifact-format")).toHaveLength(0);
     });
 
     it("hard-fails install on an engines.bb mismatch and cleans up the clone", async () => {

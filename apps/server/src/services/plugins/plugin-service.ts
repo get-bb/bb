@@ -2206,11 +2206,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     throw new Error(`npm did not resolve a registry for ${packageName}`);
   }
 
-  interface RegisterInstalledArgs {
-    rootDir: string;
-    source: string;
+  interface InstallRegistrationIdentity {
     provenance: PluginProvenance;
     sourceIntent: PluginSourceIntent;
+  }
+
+  interface RegisterInstalledArgs extends InstallRegistrationIdentity {
+    rootDir: string;
+    source: string;
     exactResolution: PluginExactResolution;
     installation?: { engines: { bb?: string; bbPluginSdk?: string } };
     refuseEngineMismatch: boolean;
@@ -2224,21 +2227,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function assertInstallRegistrationAvailable(
     existing: InstalledPluginRow | undefined,
-    args: RegisterInstalledArgs,
+    identity: InstallRegistrationIdentity,
     pluginId: string,
   ): void {
     if (existing === undefined) return;
     if (
-      !rowMatchesInstallSource(existing, args.provenance, args.sourceIntent)
+      !rowMatchesInstallSource(
+        existing,
+        identity.provenance,
+        identity.sourceIntent,
+      )
     ) {
       throw new Error(
         `plugin id "${pluginId}" is already installed from ${existing.source}; remove it first`,
       );
     }
     if (
-      args.provenance.kind === "marketplace" ||
-      args.sourceIntent.kind === "npm" ||
-      args.sourceIntent.kind === "git"
+      identity.provenance.kind === "marketplace" ||
+      identity.sourceIntent.kind === "npm" ||
+      identity.sourceIntent.kind === "git"
     ) {
       throw new Error(
         `plugin "${pluginId}" is already installed; use \`bb plugin update ${pluginId}\` or remove it before reinstalling`,
@@ -2366,6 +2373,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       throw new Error(`install failed: ${resolution.detail}`);
     }
     const resolvedCommit = resolution.commit;
+    const registrationIdentity: InstallRegistrationIdentity = {
+      provenance: context.provenance,
+      sourceIntent: {
+        kind: "git",
+        url: parsed.url,
+        subdirectory: context.gitSubdirectory ?? null,
+        requestedRef: parsed.ref,
+        refKind: resolution.refKind,
+      },
+    };
     const targetDir = gitArtifactCacheDir(
       deps.dataDir,
       parsed.cachePath,
@@ -2389,6 +2406,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         cachedRealRoot === null
           ? null
           : await readPluginManifest(cachedRealRoot).catch(() => null);
+      if (cachedManifest !== null) {
+        assertInstallRegistrationAvailable(
+          getInstalledPlugin(deps.db, cachedManifest.id),
+          registrationIdentity,
+          cachedManifest.id,
+        );
+      }
       const existingArtifact =
         cachedManifest === null
           ? undefined
@@ -2415,14 +2439,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           return registerInstalled({
             rootDir: targetRoot,
             source,
-            provenance: context.provenance,
-            sourceIntent: {
-              kind: "git",
-              url: parsed.url,
-              subdirectory: context.gitSubdirectory ?? null,
-              requestedRef: parsed.ref,
-              refKind: resolution.refKind,
-            },
+            ...registrationIdentity,
             exactResolution: { kind: "git", commit: resolvedCommit },
             ...(context.installation === undefined
               ? {}
@@ -2466,6 +2483,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "git plugin subdirectory",
         );
         const stagedManifest = await readPluginManifest(stagedRealRoot);
+        assertInstallRegistrationAvailable(
+          getInstalledPlugin(deps.db, stagedManifest.id),
+          registrationIdentity,
+          stagedManifest.id,
+        );
         refuseBuiltinShadow(stagedManifest.id);
         const checkedOutCommit = await runInstallCommand("git", [
           "-C",
@@ -2516,14 +2538,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         return registerInstalled({
           rootDir: targetRoot,
           source,
-          provenance: context.provenance,
-          sourceIntent: {
-            kind: "git",
-            url: parsed.url,
-            subdirectory: context.gitSubdirectory ?? null,
-            requestedRef: parsed.ref,
-            refKind: resolution.refKind,
-          },
+          ...registrationIdentity,
           exactResolution: { kind: "git", commit: resolvedCommit },
           ...(context.installation === undefined
             ? {}
@@ -2574,6 +2589,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       requestedSpec: parsed.spec,
       specKind: parsed.specKind,
     };
+    const registrationIdentity: InstallRegistrationIdentity = {
+      provenance: context.provenance,
+      sourceIntent: { kind: "npm", ...intent },
+    };
+    const pluginId = derivePluginId(parsed.name);
+    assertInstallRegistrationAvailable(
+      getInstalledPlugin(deps.db, pluginId),
+      registrationIdentity,
+      pluginId,
+    );
     const selected = await selectNpmCandidate({
       intent,
       appVersion: deps.appVersion,
@@ -2629,14 +2654,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           return registerInstalled({
             rootDir,
             source,
-            provenance: context.provenance,
-            sourceIntent: {
-              kind: "npm",
-              packageName: parsed.name,
-              registry,
-              requestedSpec: parsed.spec,
-              specKind: parsed.specKind,
-            },
+            ...registrationIdentity,
             exactResolution: {
               kind: "npm",
               version: candidate.version,
@@ -2734,14 +2752,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         return registerInstalled({
           rootDir,
           source,
-          provenance: context.provenance,
-          sourceIntent: {
-            kind: "npm",
-            packageName: parsed.name,
-            registry,
-            requestedSpec: parsed.spec,
-            specKind: parsed.specKind,
-          },
+          ...registrationIdentity,
           exactResolution: {
             kind: "npm",
             version: candidate.version,
