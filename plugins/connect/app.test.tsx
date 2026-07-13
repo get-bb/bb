@@ -243,7 +243,7 @@ describe("connect settings section", () => {
     );
 
     await slot.findByText("Connected");
-    fireEvent.click(slot.getByRole("button", { name: "Disconnect…" }));
+    fireEvent.click(slot.getByRole("button", { name: "Disconnect" }));
 
     // The dialog names the concrete URL that will die.
     await slot.findByText("Disconnect remote access?");

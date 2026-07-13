@@ -827,7 +827,7 @@ function ConnectedContent({
           className="text-muted-foreground"
           onClick={() => setRepairOpen((open) => !open)}
         >
-          Re-pair…
+          Re-pair
         </Button>
       </div>
 
@@ -878,7 +878,7 @@ function ConnectedContent({
           className={DANGER_QUIET_CLASS}
           onClick={() => setConfirmOpen(true)}
         >
-          Disconnect…
+          Disconnect
         </Button>
       </div>
       {disconnectError !== null ? (
@@ -970,7 +970,7 @@ function ReconnectingContent({
           className={DANGER_QUIET_CLASS}
           onClick={() => setConfirmOpen(true)}
         >
-          Disconnect…
+          Disconnect
         </Button>
       </div>
       {disconnectError !== null ? (
