@@ -1032,8 +1032,9 @@ describe("PromptBoxInternal prompt actions", () => {
     if (!(attachmentInput instanceof HTMLInputElement)) {
       throw new Error("Attachment input was not rendered");
     }
-    const clickFileInput = vi.fn();
-    attachmentInput.addEventListener("click", clickFileInput);
+    const clickFileInput = vi
+      .spyOn(attachmentInput, "click")
+      .mockImplementation(() => {});
 
     await selectPromptAction("Attach files");
 
