@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
   rm,
   stat,
@@ -27,13 +28,7 @@ import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
-import {
-  createMarketplaceService,
-  marketplaceRefreshDelayMs,
-  marketplaceRefreshJitterMs,
-  MARKETPLACE_REFRESH_MAX_DELAY_MS,
-  MarketplaceDispositionError,
-} from "../../../src/services/marketplaces/marketplace-service.js";
+import { createMarketplaceService } from "../../../src/services/marketplaces/marketplace-service.js";
 
 const run = promisify(execFile);
 
@@ -134,7 +129,6 @@ describe("marketplace HTTP routes", () => {
             description: "Searchable notes",
             category: "productivity",
             source: { path: "notes" },
-            updatePolicy: "manual",
             installation: { engines: { bb: ">=1.0.0 <2.0.0" } },
           },
           {
@@ -171,22 +165,7 @@ describe("marketplace HTTP routes", () => {
       marketplace: {
         id: "local-test",
         pluginCount: 3,
-        scope: "user",
-        autoCheck: false,
-        autoApply: false,
       },
-    });
-    const autoPolicy = await harness.app.request(
-      "/api/v1/marketplaces/local-test/auto-policy",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ autoCheck: true, autoApply: true }),
-      },
-    );
-    expect(await json(autoPolicy)).toEqual({
-      autoCheck: true,
-      autoApply: true,
     });
     await expect(
       import("node:fs/promises").then(({ stat }) => stat(marker)),
@@ -250,7 +229,6 @@ describe("marketplace HTTP routes", () => {
       provenance: "marketplace",
       marketplaceId: "local-test",
       marketplaceEntryId: "notes",
-      updatePolicy: "manual",
     });
     expect(
       await json(
@@ -258,7 +236,7 @@ describe("marketplace HTTP routes", () => {
       ),
     ).toMatchObject({ results: [{ entryId: "notes", installed: true }] });
 
-    const missing = await harness.app.request(
+    const removed = await harness.app.request(
       "/api/v1/marketplaces/local-test",
       {
         method: "DELETE",
@@ -266,60 +244,121 @@ describe("marketplace HTTP routes", () => {
         body: "{}",
       },
     );
-    expect(missing.status).toBe(422);
-    expect(await json(missing)).toMatchObject({
-      affectedPlugins: [
-        { id: "notes", version: "1.0.0" },
-        { id: "tasks", version: "1.0.0" },
-      ],
-    });
-
-    const incomplete = await harness.app.request(
-      "/api/v1/marketplaces/local-test",
-      {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          dispositions: [{ pluginId: "notes", action: "keep" }],
-        }),
-      },
-    );
-    expect(incomplete.status).toBe(422);
-    expect(await json(incomplete)).toMatchObject({
-      affectedPlugins: [
-        { id: "notes", version: "1.0.0" },
-        { id: "tasks", version: "1.0.0" },
-      ],
-    });
-
-    const removed = await harness.app.request(
-      "/api/v1/marketplaces/local-test",
-      {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          dispositions: [
-            { pluginId: "notes", action: "keep" },
-            { pluginId: "tasks", action: "uninstall" },
-          ],
-        }),
-      },
-    );
     expect(await json(removed)).toEqual({
-      kept: ["notes"],
-      uninstalled: ["tasks"],
+      convertedPluginIds: ["notes", "tasks"],
     });
     expect(getInstalledPlugin(harness.db, "notes")).toMatchObject({
       provenance: "direct",
       marketplaceId: null,
       marketplaceEntryId: null,
-      updatePolicy: "manual",
       sourcePath: await realpath(join(marketplaceRoot, "notes")),
     });
-    expect(getInstalledPlugin(harness.db, "tasks")).toBeUndefined();
+    expect(getInstalledPlugin(harness.db, "tasks")).toMatchObject({
+      provenance: "direct",
+      marketplaceId: null,
+      marketplaceEntryId: null,
+    });
   });
 
-  it("refreshes a remote git catalog and reuses its validated artifact for a direct install", async () => {
+  it("refuses a marketplace-path frontend reinstall before touching its registration or built files", async () => {
+    const pluginRoot = join(marketplaceRoot, "frontend");
+    await writePlugin(pluginRoot, "bb-plugin-marketplace-frontend", marker);
+    await writeFile(
+      join(pluginRoot, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-marketplace-frontend",
+        version: "1.0.0",
+        engines: { bb: ">=0.0.0", bbPluginSdk: ">=1.0.0" },
+        bb: { server: "./server.js", app: "./app.tsx" },
+      }),
+    );
+    await writeFile(
+      join(pluginRoot, "app.tsx"),
+      'export default function App() { return <div className="line-clamp-2">before</div>; }\n',
+    );
+    await writeFile(
+      join(marketplaceRoot, "marketplace.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "frontend-test",
+        displayName: "Frontend Test",
+        plugins: [
+          {
+            id: "marketplace-frontend",
+            displayName: "Marketplace Frontend",
+            description: "Frontend reinstall safety fixture",
+            source: { path: "frontend" },
+          },
+        ],
+      }),
+    );
+
+    const added = await harness.app.request("/api/v1/marketplaces", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: marketplaceRoot }),
+    });
+    expect(added.status).toBe(201);
+
+    const installBody = JSON.stringify({
+      marketplace: {
+        marketplaceId: "frontend-test",
+        entryId: "marketplace-frontend",
+      },
+    });
+    const installed = await harness.app.request("/api/v1/plugins/install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: installBody,
+    });
+    expect(installed.status).toBe(200);
+
+    const registrationBefore = getInstalledPlugin(
+      harness.db,
+      "marketplace-frontend",
+    );
+    expect(registrationBefore).toBeDefined();
+    const bundleBefore = harness.pluginService
+      .list()
+      .find((plugin) => plugin.id === "marketplace-frontend")?.app.bundle;
+    expect(bundleBefore).not.toBeNull();
+    const builtPaths = [
+      join(pluginRoot, "dist", "app.js"),
+      join(pluginRoot, "dist", "app.css"),
+      join(pluginRoot, "dist", "app.meta.json"),
+    ];
+    const builtBytesBefore = await Promise.all(
+      builtPaths.map((path) => readFile(path)),
+    );
+
+    await writeFile(
+      join(pluginRoot, "app.tsx"),
+      'export default function App() { return <div className="line-clamp-3">after</div>; }\n',
+    );
+    const refused = await harness.app.request("/api/v1/plugins/install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: installBody,
+    });
+    expect(refused.status).toBe(422);
+    expect(await json(refused)).toMatchObject({
+      error: expect.stringContaining("bb plugin update marketplace-frontend"),
+    });
+
+    expect(getInstalledPlugin(harness.db, "marketplace-frontend")).toEqual(
+      registrationBefore,
+    );
+    expect(
+      harness.pluginService
+        .list()
+        .find((plugin) => plugin.id === "marketplace-frontend")?.app.bundle,
+    ).toEqual(bundleBefore);
+    await expect(
+      Promise.all(builtPaths.map((path) => readFile(path))),
+    ).resolves.toEqual(builtBytesBefore);
+  }, 120_000);
+
+  it("refreshes a remote git catalog and preserves its artifact when removal converts provenance", async () => {
     const pluginRepo = await mkdtemp(
       join(tmpdir(), "bb-marketplace-plugin-git-"),
     );
@@ -397,7 +436,6 @@ describe("marketplace HTTP routes", () => {
           provenance: "marketplace",
           marketplaceName: "Remote Test Updated",
           sourceDisplay: expect.stringContaining("git ·"),
-          updatePolicy: "compatible",
           updateState: {},
         },
       });
@@ -410,9 +448,7 @@ describe("marketplace HTTP routes", () => {
       await harness.app.request("/api/v1/marketplaces/remote-test", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          dispositions: [{ pluginId: "git-notes", action: "uninstall" }],
-        }),
+        body: "{}",
       });
       const directInstall = await harness.app.request(
         "/api/v1/plugins/install",
@@ -422,7 +458,10 @@ describe("marketplace HTTP routes", () => {
           body: JSON.stringify({ source: `git:${pluginRepo}@main` }),
         },
       );
-      expect(directInstall.status).toBe(200);
+      expect(directInstall.status).toBe(422);
+      expect(await json(directInstall)).toMatchObject({
+        error: expect.stringContaining("bb plugin update git-notes"),
+      });
       expect(getInstalledPlugin(harness.db, "git-notes")).toMatchObject({
         provenance: "direct",
         activeArtifactId: artifact?.id,
@@ -626,58 +665,6 @@ describe("marketplace HTTP routes", () => {
     expect(materializations).toBe(2);
   });
 
-  it("backs off repeated automatic refresh failures and resets after success", async () => {
-    let attempts = 0;
-    let fail = false;
-    const service = createMarketplaceService({
-      db: harness.db,
-      dataDir: harness.config.dataDir,
-      appVersion: harness.config.appVersion,
-      plugins: harness.pluginService,
-      beforeMaterialize: async () => {
-        attempts += 1;
-        if (fail) throw new Error("synthetic refresh failure");
-      },
-    });
-    await service.add(marketplaceRoot, "backoff-test");
-    await service.setAutoPolicy("backoff-test", {
-      autoCheck: true,
-      autoApply: false,
-    });
-    const baseline = 1_000_000_000;
-    await service.refresh("backoff-test", baseline);
-    expect(attempts).toBe(2);
-
-    fail = true;
-    const firstDelay = marketplaceRefreshDelayMs("backoff-test", 0);
-    await service.sweepAutomaticChecks(baseline + firstDelay - 1);
-    expect(attempts).toBe(2);
-    const firstFailureAt = baseline + firstDelay;
-    await service.sweepAutomaticChecks(firstFailureAt);
-    expect(attempts).toBe(3);
-    expect(getMarketplace(harness.db, "backoff-test")).toMatchObject({
-      lastAttemptedRefreshAt: firstFailureAt,
-      lastError: "synthetic refresh failure",
-    });
-
-    const retryDelay = marketplaceRefreshDelayMs("backoff-test", 1);
-    await service.sweepAutomaticChecks(firstFailureAt + retryDelay - 1);
-    expect(attempts).toBe(3);
-
-    fail = false;
-    const successAt = firstFailureAt + retryDelay;
-    await service.sweepAutomaticChecks(successAt);
-    expect(attempts).toBe(4);
-    await service.sweepAutomaticChecks(successAt + firstDelay - 1);
-    expect(attempts).toBe(4);
-    await service.sweepAutomaticChecks(successAt + firstDelay);
-    expect(attempts).toBe(5);
-    expect(marketplaceRefreshDelayMs("backoff-test", 99)).toBe(
-      MARKETPLACE_REFRESH_MAX_DELAY_MS +
-        marketplaceRefreshJitterMs("backoff-test"),
-    );
-  });
-
   it("orders install before removal and never leaves orphaned provenance", async () => {
     let releaseInstall = (): void => {};
     let markInstallEntered = (): void => {};
@@ -706,7 +693,7 @@ describe("marketplace HTTP routes", () => {
     await service.add(marketplaceRoot, "install-remove-test");
     const install = service.install("install-remove-test", "notes");
     await installEntered;
-    const removal = service.remove("install-remove-test", []);
+    const removal = service.remove("install-remove-test");
     let removalSettled = false;
     void removal.then(
       () => {
@@ -720,11 +707,11 @@ describe("marketplace HTTP routes", () => {
     expect(removalSettled).toBe(false);
     releaseInstall();
     await install;
-    await expect(removal).rejects.toBeInstanceOf(MarketplaceDispositionError);
-    expect(getMarketplace(harness.db, "install-remove-test")).toBeDefined();
+    await expect(removal).resolves.toEqual({ convertedPluginIds: ["notes"] });
+    expect(getMarketplace(harness.db, "install-remove-test")).toBeUndefined();
     expect(getInstalledPlugin(harness.db, "notes")).toMatchObject({
-      provenance: "marketplace",
-      marketplaceId: "install-remove-test",
+      provenance: "direct",
+      marketplaceId: null,
     });
   });
 });

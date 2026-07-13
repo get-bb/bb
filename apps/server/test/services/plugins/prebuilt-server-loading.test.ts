@@ -29,14 +29,11 @@ function gitPersistence(url: string, requestedRef: string) {
       refKind: "branch" as const,
     },
     exactResolution: { kind: "git" as const, commit: "test-commit" },
-    updatePolicy: "manual" as const,
-    autoApply: false,
     updateState: {
       lastCheckAt: null,
       availableCompatibleVersion: null,
       newestIncompatibleVersion: null,
       statusDetail: null,
-      ignoredVersion: null,
     },
     activeArtifactId: null,
   };

@@ -300,7 +300,6 @@ describe("plugin install flows", () => {
         sourceGitUrl: repoDir,
         sourceGitRequestedRef: "v1",
         gitResolvedCommit: expect.stringMatching(/^[0-9a-f]{40}$/),
-        updatePolicy: "manual",
         activeArtifactId: expect.any(String),
       });
     });
@@ -332,77 +331,6 @@ describe("plugin install flows", () => {
       const entry = await service.install(`git:${repoDir}@${sha}`);
       expect(entry.status).toBe("running");
       expect(entry.version).toBe("0.1.0");
-    });
-
-    it("recovers a crash after promotion without changing the live registration or downloading again", async () => {
-      const repoDir = join(workDir, "repo-retry");
-      await writePluginFixture(repoDir, { name: "bb-plugin-retry" });
-      await initGitRepo(repoDir);
-      await commitAll(repoDir, "init");
-      const source = `git:${repoDir}@main`;
-      await service.install(source);
-      const previous = getInstalledPluginRegistration(db, "retry");
-      if (previous === undefined) throw new Error("missing retry registration");
-      await writePluginFixture(repoDir, {
-        name: "bb-plugin-retry",
-        version: "0.2.0",
-      });
-      await commitAll(repoDir, "next");
-      afterArtifactPromoted = async () => {
-        throw new Error("simulated crash after promotion");
-      };
-
-      await expect(service.install(source)).rejects.toThrow(
-        /simulated crash after promotion/,
-      );
-      expect(getInstalledPluginRegistration(db, "retry")).toEqual(previous);
-      expect(service.list()).toMatchObject([
-        {
-          id: "retry",
-          rootDir: previous.rootDir,
-          version: "0.1.0",
-          status: "running",
-        },
-      ]);
-      const promoted = listPluginArtifacts(db, "retry").find(
-        (artifact) => artifact.id !== previous.activeArtifactId,
-      );
-      expect(promoted).toMatchObject({ validationResult: "pending" });
-      if (promoted === undefined) throw new Error("missing promoted artifact");
-      await stat(promoted.path);
-      const downloadsAfterCrash = materializationCount;
-
-      afterArtifactPromoted = undefined;
-      const retried = await service.install(source);
-      expect(retried).toMatchObject({
-        rootDir: promoted.path,
-        version: "0.2.0",
-        status: "running",
-      });
-      expect(materializationCount).toBe(downloadsAfterCrash);
-      expect(
-        getInstalledPluginRegistration(db, "retry")?.activeArtifactId,
-      ).toBe(promoted.id);
-    });
-
-    it("repairs a hash mismatch under the lifecycle lock", async () => {
-      const repoDir = join(workDir, "repo-repair");
-      await writePluginFixture(repoDir, { name: "bb-plugin-repair" });
-      await initGitRepo(repoDir);
-      await commitAll(repoDir, "init");
-      await git(repoDir, ["tag", "v1"]);
-      const source = `git:${repoDir}@v1`;
-      const first = await service.install(source);
-      await writeFile(join(first.rootDir, "server.ts"), "corrupt");
-
-      await service.install(source);
-      expect(
-        await readFile(join(first.rootDir, "server.ts"), "utf8"),
-      ).toContain("bb.log.info");
-      expect(service.list()).toMatchObject([
-        { id: "repair", status: "running" },
-      ]);
-      expect(listPluginArtifacts(db, "repair")).toHaveLength(1);
     });
 
     it("never reuses an exact-resolution artifact owned by another plugin", async () => {
@@ -440,16 +368,26 @@ describe("plugin install flows", () => {
       await git(repoDir, ["tag", "v1"]);
       const source = `git:${repoDir}@v1`;
 
-      const [first, second] = await Promise.all([
+      const results = await Promise.allSettled([
         service.install(source),
         service.install(source),
       ]);
-      expect(first.rootDir).toBe(second.rootDir);
+      expect(results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ status: "fulfilled" }),
+          expect.objectContaining({
+            status: "rejected",
+            reason: expect.objectContaining({
+              message: expect.stringContaining("bb plugin update concurrent"),
+            }),
+          }),
+        ]),
+      );
       expect(materializationCount).toBe(1);
       expect(listPluginArtifacts(db, "concurrent")).toHaveLength(1);
     });
 
-    it("re-installing the same spec refreshes the clone", async () => {
+    it("refuses a managed reinstall and points to the update command", async () => {
       const repoDir = join(workDir, "repo-refresh");
       await writePluginFixture(repoDir, { name: "bb-plugin-fresh" });
       await initGitRepo(repoDir);
@@ -463,9 +401,12 @@ describe("plugin install flows", () => {
         version: "0.2.0",
       });
       await commitAll(repoDir, "v0.2.0");
-      const second = await service.install(source);
-      expect(second.version).toBe("0.2.0");
-      expect(second.status).toBe("running");
+      await expect(service.install(source)).rejects.toThrow(
+        "bb plugin update fresh",
+      );
+      expect(
+        service.list().find((plugin) => plugin.id === "fresh"),
+      ).toMatchObject({ version: "0.1.0", status: "running" });
     });
 
     it("keeps the previous install intact when a reinstall fails validation", async () => {
@@ -741,30 +682,18 @@ describe("plugin install flows", () => {
             sourceNpmSpecKind: "exact",
             npmResolvedVersion: version,
             npmIntegrity: expect.stringMatching(/^sha512-/),
-            updatePolicy: "manual",
             activeArtifactId: expect.any(String),
           });
 
-          const widened = await service.applyUpdate("npmhero", {
-            mode: "manual",
-            dryRun: false,
-            latest: true,
-          });
-          expect(widened).toMatchObject({
-            ok: true,
-            result: {
-              applied: true,
-              from: { version },
-              to: { version },
-              detail: expect.stringContaining("widened"),
-            },
+          await expect(service.applyUpdate("npmhero")).resolves.toMatchObject({
+            ok: false,
+            error: expect.stringContaining("pinned by its source intent"),
           });
           expect(tarballRequests).toBe(1);
           expect(getInstalledPluginRegistration(db, "npmhero")).toMatchObject({
-            source: `npm:${name}`,
-            sourceNpmRequestedSpec: "",
-            sourceNpmSpecKind: "default",
-            updatePolicy: "compatible",
+            source,
+            sourceNpmRequestedSpec: version,
+            sourceNpmSpecKind: "exact",
             rootDir: join(prefix, "node_modules", name),
           });
           await stat(prefix);

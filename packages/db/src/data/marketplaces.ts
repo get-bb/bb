@@ -1,7 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { marketplaces } from "../schema.js";
-import type { PluginUpdatePolicy } from "./plugins.js";
 
 export interface MarketplaceRow {
   id: string;
@@ -11,17 +10,10 @@ export interface MarketplaceRow {
   requestedGitRef: string | null;
   resolvedGitCommit: string | null;
   cachePath: string | null;
-  contentHash: string | null;
   catalogJson: string | null;
-  enabled: boolean;
-  trusted: boolean;
-  updatePolicy: PluginUpdatePolicy;
-  autoCheck: boolean;
-  autoApply: boolean;
   lastSuccessfulRefreshAt: number | null;
   lastAttemptedRefreshAt: number | null;
   lastError: string | null;
-  scope: "builtin" | "user" | "project" | "managed";
   createdAt: number;
   updatedAt: number;
 }
@@ -82,18 +74,6 @@ export function updateMarketplaceRefreshFailure(
       lastError: error,
       updatedAt: attemptedAt,
     })
-    .where(eq(marketplaces.id, id))
-    .run();
-  return getMarketplace(db, id);
-}
-
-export function setMarketplaceAutoPolicy(
-  db: DbConnection,
-  id: string,
-  policy: { autoCheck: boolean; autoApply: boolean },
-): MarketplaceRow | undefined {
-  db.update(marketplaces)
-    .set({ ...policy, updatedAt: Date.now() })
     .where(eq(marketplaces.id, id))
     .run();
   return getMarketplace(db, id);

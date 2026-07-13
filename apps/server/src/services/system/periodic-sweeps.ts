@@ -59,18 +59,8 @@ export interface PluginScheduleSweeper {
   sweepDueSchedules(now: number): Promise<void>;
 }
 
-export interface PluginUpdateSweeper {
-  sweepAutomaticUpdates(now: number): Promise<void>;
-}
-
-export interface MarketplaceUpdateSweeper {
-  sweepAutomaticChecks(now: number): Promise<void>;
-}
-
 export type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
   pluginSchedules: PluginScheduleSweeper;
-  pluginService: PluginUpdateSweeper;
-  marketplaceService: MarketplaceUpdateSweeper;
 };
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
@@ -590,15 +580,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     // No primary-host gate: plugin schedules run even with no hosts enrolled
     // (design §4.8) — they are not automations.
     run: (deps, now) => deps.pluginSchedules.sweepDueSchedules(now),
-  },
-  {
-    cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
-    category: "scheduler",
-    name: "plugin-update",
-    async run(deps, now) {
-      await deps.marketplaceService.sweepAutomaticChecks(now);
-      await deps.pluginService.sweepAutomaticUpdates(now);
-    },
   },
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,

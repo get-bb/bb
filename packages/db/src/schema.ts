@@ -187,11 +187,6 @@ export const appSettings = sqliteTable("app_settings", {
   })
     .notNull()
     .default(false),
-  pluginAutoApplyDisabled: integer("plugin_auto_apply_disabled", {
-    mode: "boolean",
-  })
-    .notNull()
-    .default(false),
   keybindingOverrides: text("keybinding_overrides").notNull().default("[]"),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -232,25 +227,13 @@ export const installedPlugins = sqliteTable("plugins", {
   npmResolvedVersion: text("npm_resolved_version"),
   npmIntegrity: text("npm_integrity"),
   gitResolvedCommit: text("git_resolved_commit"),
-  updatePolicy: text("update_policy", {
-    enum: ["manual", "compatible", "patch", "minor"],
-  })
-    .notNull()
-    .default("manual"),
-  autoApply: integer("auto_apply", { mode: "boolean" })
-    .notNull()
-    .default(false),
   lastUpdateCheckAt: integer("last_update_check_at"),
   availableCompatibleVersion: text("available_compatible_version"),
   newestIncompatibleVersion: text("newest_incompatible_version"),
   updateStatusDetail: text("update_status_detail"),
-  ignoredVersion: text("ignored_version"),
-  quarantinedVersion: text("quarantined_version"),
-  quarantineSourceFingerprint: text("quarantine_source_fingerprint"),
-  quarantineBbVersion: text("quarantine_bb_version"),
-  quarantineSdkVersion: text("quarantine_sdk_version"),
-  quarantinedAt: integer("quarantined_at"),
-  quarantineDetail: text("quarantine_detail"),
+  lastFailureVersion: text("last_failure_version"),
+  lastFailureAt: integer("last_failure_at"),
+  lastFailureDetail: text("last_failure_detail"),
   // deletePluginArtifact clears this before deleting in the same transaction.
   // NO ACTION is intentional: drizzle-kit cannot faithfully emit SET NULL
   // when adding this circular FK to the pre-existing plugins table.
@@ -284,9 +267,8 @@ export const pluginArtifacts = sqliteTable(
     integrity: text("integrity"),
     contentHash: text("content_hash"),
     validationResult: text("validation_result", {
-      enum: ["pending", "valid", "invalid"],
+      enum: ["pending", "valid"],
     }).notNull(),
-    validationDetail: text("validation_detail"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
     validatedAt: integer("validated_at"),
@@ -332,38 +314,6 @@ export const pluginStateSnapshots = sqliteTable(
   ],
 );
 
-export const pluginUpdateEvents = sqliteTable(
-  "plugin_update_events",
-  {
-    id: text("id").primaryKey(),
-    // Deliberately not an FK: update history survives plugin removal.
-    pluginId: text("plugin_id").notNull(),
-    kind: text("kind", {
-      enum: [
-        "check",
-        "resolve",
-        "download",
-        "activate",
-        "rollback",
-        "auto-apply-skipped",
-      ],
-    }).notNull(),
-    fromVersion: text("from_version"),
-    toVersion: text("to_version"),
-    outcome: text("outcome").notNull(),
-    detail: text("detail"),
-    createdAt: integer("created_at").notNull(),
-    retainedUntil: integer("retained_until").notNull(),
-  },
-  (table) => [
-    index("plugin_update_events_plugin_idx").on(
-      table.pluginId,
-      table.createdAt,
-    ),
-    index("plugin_update_events_retention_idx").on(table.retainedUntil),
-  ],
-);
-
 export const marketplaces = sqliteTable("marketplaces", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -374,27 +324,12 @@ export const marketplaces = sqliteTable("marketplaces", {
   requestedGitRef: text("requested_git_ref"),
   resolvedGitCommit: text("resolved_git_commit"),
   cachePath: text("cache_path"),
-  contentHash: text("content_hash"),
   // The validated last-known-good catalog. Keeping this beside refresh state
   // makes searches network-free and lets a failed refresh retain old data.
   catalogJson: text("catalog_json"),
-  enabled: integer("enabled", { mode: "boolean" }).notNull(),
-  trusted: integer("trusted", { mode: "boolean" }).notNull(),
-  updatePolicy: text("update_policy", {
-    enum: ["manual", "compatible", "patch", "minor"],
-  }).notNull(),
-  autoCheck: integer("auto_check", { mode: "boolean" })
-    .notNull()
-    .default(false),
-  autoApply: integer("auto_apply", { mode: "boolean" })
-    .notNull()
-    .default(false),
   lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
   lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
   lastError: text("last_error"),
-  scope: text("scope", {
-    enum: ["builtin", "user", "project", "managed"],
-  }).notNull(),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

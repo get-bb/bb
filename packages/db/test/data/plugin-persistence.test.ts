@@ -48,14 +48,11 @@ describe("normalized plugin persistence", () => {
         version: "1.2.3",
         integrity: "sha512-example",
       },
-      updatePolicy: "compatible",
-      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
         newestIncompatibleVersion: "2.0.0",
         statusDetail: null,
-        ignoredVersion: null,
       },
       activeArtifactId: null,
       rootDir: "/plugins/linear",
@@ -72,7 +69,6 @@ describe("normalized plugin persistence", () => {
       integrity: "sha512-example",
       contentHash: "sha256-example",
       validationResult: "valid",
-      validationDetail: null,
       validatedAt: 100,
     });
     expect(setInstalledPluginActiveArtifact(db, "linear", "artifact-1")).toBe(
@@ -108,21 +104,14 @@ describe("normalized plugin persistence", () => {
       requestedGitRef: "main",
       resolvedGitCommit: null,
       cachePath: null,
-      contentHash: null,
       catalogJson: null,
-      enabled: true,
-      trusted: true,
-      updatePolicy: "compatible",
-      autoCheck: true,
-      autoApply: false,
       lastSuccessfulRefreshAt: null,
       lastAttemptedRefreshAt: null,
       lastError: null,
-      scope: "builtin",
     });
 
     expect(listMarketplaces(db)).toMatchObject([
-      { id: "official", sourceKind: "git", scope: "builtin", trusted: true },
+      { id: "official", sourceKind: "git" },
     ]);
     expect(getMarketplace(db, "official")?.displayName).toBe("Official");
     expect(deleteMarketplace(db, "official")).toBe(true);
@@ -139,7 +128,6 @@ describe("normalized plugin persistence", () => {
       integrity: null,
       contentHash: null,
       validationResult: "pending",
-      validationDetail: null,
       validatedAt: null,
     };
     expect(() =>
@@ -160,14 +148,11 @@ describe("normalized plugin persistence", () => {
         refKind: "branch",
       },
       exactResolution: { kind: "git", commit: "abcdef1234567" },
-      updatePolicy: "compatible",
-      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
         newestIncompatibleVersion: null,
         statusDetail: null,
-        ignoredVersion: null,
       },
       activeArtifactId: null,
       rootDir: "/cache/repo/abcdef1234567",
@@ -184,7 +169,6 @@ describe("normalized plugin persistence", () => {
       integrity: null,
       contentHash: "sha256:retained",
       validationResult: "valid",
-      validationDetail: null,
       validatedAt: Date.now(),
     });
     expect(setInstalledPluginActiveArtifact(db, "retained", "retained-artifact")).toBe(true);

@@ -68,9 +68,6 @@ const catalogSchema = z
               gitSourceSchema,
               pathSourceSchema,
             ]),
-            updatePolicy: z
-              .enum(["manual", "compatible", "patch", "minor"])
-              .optional(),
             installation: installationSchema.optional(),
             category: z.string().min(1).optional(),
           })

@@ -11,8 +11,7 @@ export interface PluginArtifactRow {
   path: string;
   integrity: string | null;
   contentHash: string | null;
-  validationResult: "pending" | "valid" | "invalid";
-  validationDetail: string | null;
+  validationResult: "pending" | "valid";
   createdAt: number;
   updatedAt: number;
   validatedAt: number | null;
@@ -23,8 +22,7 @@ interface PluginArtifactInputBase {
   pluginId: string;
   path: string;
   contentHash: string | null;
-  validationResult: "pending" | "valid" | "invalid";
-  validationDetail: string | null;
+  validationResult: "pending" | "valid";
   validatedAt: number | null;
 }
 
@@ -159,13 +157,11 @@ export function setPluginArtifactValidation(
     | {
         contentHash: string;
         validationResult: "pending";
-        validationDetail: null;
         validatedAt: null;
       }
     | {
         contentHash: string;
-        validationResult: "valid" | "invalid";
-        validationDetail: string | null;
+        validationResult: "valid";
         validatedAt: number;
       },
 ): boolean {

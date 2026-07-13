@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
@@ -7,20 +7,15 @@ import {
   getMarketplace,
   listInstalledPluginsFromMarketplace,
   listMarketplaces,
-  setMarketplaceAutoPolicy,
   setInstalledPluginDirectProvenance,
   updateMarketplaceRefreshFailure,
   upsertMarketplace,
   type DbConnection,
   type MarketplaceRow,
-  type PluginUpdatePolicy,
 } from "@bb/db";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import semver from "semver";
-import type {
-  PluginInstallPreview,
-  PluginService,
-} from "../plugins/plugin-service.js";
+import type { PluginService } from "../plugins/plugin-service.js";
 import {
   realPathInside,
   runInstallCommand,
@@ -41,32 +36,6 @@ interface MarketplaceSource {
   display: string;
 }
 
-export const MARKETPLACE_REFRESH_BASE_DELAY_MS = 60 * 60_000;
-export const MARKETPLACE_REFRESH_MAX_DELAY_MS =
-  24 * MARKETPLACE_REFRESH_BASE_DELAY_MS;
-
-export function marketplaceRefreshJitterMs(id: string): number {
-  return (
-    Number.parseInt(
-      createHash("sha256").update(id).digest("hex").slice(0, 8),
-      16,
-    ) %
-    (15 * 60_000)
-  );
-}
-
-export function marketplaceRefreshDelayMs(
-  id: string,
-  failureCount: number,
-): number {
-  return (
-    Math.min(
-      MARKETPLACE_REFRESH_MAX_DELAY_MS,
-      MARKETPLACE_REFRESH_BASE_DELAY_MS * 2 ** failureCount,
-    ) + marketplaceRefreshJitterMs(id)
-  );
-}
-
 export interface MarketplaceView {
   id: string;
   name: string;
@@ -77,10 +46,6 @@ export interface MarketplaceView {
   lastRefreshAt?: number;
   lastAttemptAt?: number;
   lastError?: string;
-  enabled: boolean;
-  scope: "builtin" | "user" | "project" | "managed";
-  autoCheck: boolean;
-  autoApply: boolean;
 }
 
 export interface MarketplaceSearchResult {
@@ -95,15 +60,6 @@ export interface MarketplaceSearchResult {
   incompatibleReason?: string;
 }
 
-export class MarketplaceDispositionError extends Error {
-  constructor(
-    message: string,
-    readonly affectedPlugins: Array<{ id: string; version: string }>,
-  ) {
-    super(message);
-  }
-}
-
 export interface MarketplaceService {
   add(source: string, name?: string): Promise<MarketplaceView>;
   list(): MarketplaceView[];
@@ -114,20 +70,7 @@ export interface MarketplaceService {
     entryId: string,
     version?: string,
   ): Promise<unknown>;
-  preview(
-    marketplaceId: string,
-    entryId: string,
-    version?: string,
-  ): Promise<PluginInstallPreview>;
-  remove(
-    id: string,
-    dispositions: Array<{ pluginId: string; action: "keep" | "uninstall" }>,
-  ): Promise<{ kept: string[]; uninstalled: string[] }>;
-  setAutoPolicy(
-    id: string,
-    policy: { autoCheck: boolean; autoApply: boolean },
-  ): Promise<MarketplaceView | undefined>;
-  sweepAutomaticChecks(now: number): Promise<void>;
+  remove(id: string): Promise<{ convertedPluginIds: string[] }>;
 }
 
 function catalogFromRow(row: MarketplaceRow): MarketplaceCatalog | null {
@@ -163,10 +106,6 @@ function view(row: MarketplaceRow): MarketplaceView {
       ? {}
       : { lastAttemptAt: row.lastAttemptedRefreshAt }),
     ...(row.lastError === null ? {} : { lastError: row.lastError }),
-    enabled: row.enabled,
-    scope: row.scope,
-    autoCheck: row.autoCheck,
-    autoApply: row.autoApply,
   };
 }
 
@@ -225,20 +164,6 @@ async function parseSource(source: string): Promise<MarketplaceSource> {
   );
 }
 
-function effectivePolicy(
-  marketplace: PluginUpdatePolicy,
-  entry: PluginUpdatePolicy | undefined,
-): PluginUpdatePolicy {
-  const rank: Record<PluginUpdatePolicy, number> = {
-    manual: 0,
-    patch: 1,
-    minor: 2,
-    compatible: 3,
-  };
-  if (entry === undefined) return marketplace;
-  return rank[entry] < rank[marketplace] ? entry : marketplace;
-}
-
 function compatibility(
   entry: MarketplaceCatalogEntry,
   appVersion: string,
@@ -273,7 +198,6 @@ export function createMarketplaceService(deps: {
   }) => Promise<void>;
 }): MarketplaceService {
   const marketplaceChains = new Map<string, Promise<void>>();
-  const refreshFailureCounts = new Map<string, number>();
   const addLockKey = "\0marketplace-add";
   const cacheRoot = resolve(deps.dataDir, "marketplaces", "cache");
 
@@ -321,7 +245,6 @@ export function createMarketplaceService(deps: {
     root: string;
     commit: string | null;
     catalog: MarketplaceCatalog;
-    hash: string;
   }> {
     await deps.beforeMaterialize?.({ idHint, sourceKind: source.kind });
     if (source.kind === "path") {
@@ -342,7 +265,6 @@ export function createMarketplaceService(deps: {
         root: source.location,
         commit: null,
         catalog,
-        hash: createHash("sha256").update(raw).digest("hex"),
       };
     }
     const staging = join(deps.dataDir, "marketplaces", "staging", randomUUID());
@@ -394,7 +316,6 @@ export function createMarketplaceService(deps: {
       const raw = await readFile(catalogPath, "utf8");
       const json: unknown = JSON.parse(raw);
       const catalog = parseMarketplaceCatalog(json, "git", staging);
-      const hash = createHash("sha256").update(raw).digest("hex");
       await rm(join(staging, ".git"), { recursive: true, force: true });
       const target = marketplaceCacheTarget(idHint, commit);
       await mkdir(dirname(target), { recursive: true });
@@ -403,7 +324,7 @@ export function createMarketplaceService(deps: {
         .catch(() => false);
       if (exists) await rm(staging, { recursive: true, force: true });
       else await rename(staging, target);
-      return { root: target, commit, catalog, hash };
+      return { root: target, commit, catalog };
     } catch (error) {
       await rm(staging, { recursive: true, force: true });
       throw error;
@@ -455,17 +376,10 @@ export function createMarketplaceService(deps: {
             requestedGitRef: source.requestedRef,
             resolvedGitCommit: materialized.commit,
             cachePath: root,
-            contentHash: materialized.hash,
             catalogJson: JSON.stringify(materialized.catalog),
-            enabled: true,
-            trusted: false,
-            updatePolicy: "compatible",
-            autoCheck: false,
-            autoApply: false,
             lastSuccessfulRefreshAt: now,
             lastAttemptedRefreshAt: now,
             lastError: null,
-            scope: "user",
           }),
         );
       });
@@ -496,26 +410,17 @@ export function createMarketplaceService(deps: {
               requestedGitRef: row.requestedGitRef,
               resolvedGitCommit: materialized.commit,
               cachePath: materialized.root,
-              contentHash: materialized.hash,
               catalogJson: JSON.stringify(materialized.catalog),
-              enabled: row.enabled,
-              trusted: row.trusted,
-              updatePolicy: row.updatePolicy,
-              autoCheck: row.autoCheck,
-              autoApply: row.autoApply,
               lastSuccessfulRefreshAt: attemptedAt,
               lastAttemptedRefreshAt: attemptedAt,
               lastError: null,
-              scope: row.scope,
             }),
           );
-          refreshFailureCounts.delete(id);
           return refreshed;
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
           updateMarketplaceRefreshFailure(deps.db, id, attemptedAt, message);
-          refreshFailureCounts.set(id, (refreshFailureCounts.get(id) ?? 0) + 1);
           throw new Error(message);
         }
       });
@@ -525,7 +430,6 @@ export function createMarketplaceService(deps: {
       const query = rawQuery.trim().toLowerCase();
       const results: MarketplaceSearchResult[] = [];
       for (const row of listMarketplaces(deps.db)) {
-        if (!row.enabled) continue;
         const catalog = catalogFromRow(row);
         if (catalog === null) continue;
         const installedEntries = new Set(
@@ -571,8 +475,8 @@ export function createMarketplaceService(deps: {
     async install(marketplaceId, entryId, version) {
       return withMarketplaceLock(marketplaceId, async () => {
         const row = getMarketplace(deps.db, marketplaceId);
-        if (row === undefined || !row.enabled)
-          throw new Error(`unknown or disabled marketplace "${marketplaceId}"`);
+        if (row === undefined)
+          throw new Error(`unknown marketplace "${marketplaceId}"`);
         const catalog = catalogFromRow(row);
         const entry = catalog?.plugins.find(
           (candidate) => candidate.id === entryId,
@@ -601,7 +505,6 @@ export function createMarketplaceService(deps: {
           source,
           marketplaceId,
           entryId,
-          updatePolicy: effectivePolicy(row.updatePolicy, entry.updatePolicy),
           installation: entry.installation,
           ...("npm" in entry.source && entry.source.npm.registry !== undefined
             ? { npmRegistry: entry.source.npm.registry }
@@ -613,132 +516,22 @@ export function createMarketplaceService(deps: {
       });
     },
 
-    async preview(marketplaceId, entryId, version) {
-      const row = getMarketplace(deps.db, marketplaceId);
-      if (row === undefined || !row.enabled)
-        throw new Error(`unknown or disabled marketplace "${marketplaceId}"`);
-      const catalog = catalogFromRow(row);
-      const entry = catalog?.plugins.find(
-        (candidate) => candidate.id === entryId,
-      );
-      if (entry === undefined || row.cachePath === null) {
-        throw new Error(
-          `unknown marketplace entry "${entryId}" in "${marketplaceId}"`,
-        );
-      }
-      if (version !== undefined && !("npm" in entry.source)) {
-        throw new Error(
-          "version is only supported for npm marketplace entries",
-        );
-      }
-      const resolved = resolvedCatalogEntrySource(entry, row.cachePath);
-      if ("path" in entry.source) {
-        resolved.source = `path:${await realPathInside(
-          row.cachePath,
-          resolve(row.cachePath, entry.source.path),
-          `marketplace entry "${entry.id}" path`,
-        )}`;
-      }
-      let source = resolved.source;
-      if (version !== undefined && "npm" in entry.source) {
-        source = `npm:${entry.source.npm.package}@${version}`;
-      }
-      return deps.plugins.previewInstallFromMarketplace({
-        source,
-        updatePolicy: effectivePolicy(row.updatePolicy, entry.updatePolicy),
-        plugin: {
-          id: entry.id,
-          displayName: entry.displayName,
-          description: entry.description,
-        },
-        ...(entry.installation === undefined
-          ? {}
-          : { installation: entry.installation }),
-        ...("npm" in entry.source && entry.source.npm.registry !== undefined
-          ? { npmRegistry: entry.source.npm.registry }
-          : {}),
-        ...(resolved.gitSubdirectory === undefined
-          ? {}
-          : { gitSubdirectory: resolved.gitSubdirectory }),
-      });
-    },
-
-    async remove(id, dispositions) {
+    async remove(id) {
       return withMarketplaceLock(id, async () => {
         const row = getMarketplace(deps.db, id);
         if (row === undefined) throw new Error(`unknown marketplace "${id}"`);
         const affected = listInstalledPluginsFromMarketplace(deps.db, id);
-        const dispositionById = new Map(
-          dispositions.map((item) => [item.pluginId, item.action]),
-        );
-        const missing = affected.filter(
-          (plugin) => !dispositionById.has(plugin.id),
-        );
-        const unknown = dispositions.filter(
-          (item) => !affected.some((plugin) => plugin.id === item.pluginId),
-        );
-        if (
-          missing.length > 0 ||
-          unknown.length > 0 ||
-          dispositionById.size !== dispositions.length
-        ) {
-          throw new MarketplaceDispositionError(
-            missing.length > 0
-              ? "explicit dispositions are required for every installed plugin from this marketplace"
-              : "dispositions must name each affected plugin exactly once",
-            affected.map(({ id: pluginId, version }) => ({
-              id: pluginId,
-              version,
-            })),
-          );
-        }
-        const kept: string[] = [];
-        const uninstalled: string[] = [];
+        const convertedPluginIds: string[] = [];
         for (const plugin of affected) {
-          if (dispositionById.get(plugin.id) === "keep") {
-            if (!setInstalledPluginDirectProvenance(deps.db, plugin.id))
-              throw new Error(
-                `plugin "${plugin.id}" disappeared during marketplace removal`,
-              );
-            kept.push(plugin.id);
-          } else {
-            if (!(await deps.plugins.remove(plugin.id)))
-              throw new Error(
-                `plugin "${plugin.id}" disappeared during marketplace removal`,
-              );
-            uninstalled.push(plugin.id);
-          }
+          if (!setInstalledPluginDirectProvenance(deps.db, plugin.id))
+            throw new Error(
+              `plugin "${plugin.id}" disappeared during marketplace removal`,
+            );
+          convertedPluginIds.push(plugin.id);
         }
         deleteMarketplace(deps.db, id);
-        return { kept, uninstalled };
+        return { convertedPluginIds };
       });
-    },
-
-    setAutoPolicy(id, policy) {
-      return withMarketplaceLock(id, async () => {
-        const row = setMarketplaceAutoPolicy(deps.db, id, policy);
-        return row === undefined ? undefined : view(row);
-      });
-    },
-
-    async sweepAutomaticChecks(sweepNow) {
-      for (const row of listMarketplaces(deps.db)) {
-        if (!row.enabled || !row.autoCheck) continue;
-        const failures =
-          row.lastError === null ? 0 : (refreshFailureCounts.get(row.id) ?? 1);
-        const lastAttempt = row.lastAttemptedRefreshAt ?? 0;
-        if (
-          sweepNow - lastAttempt <
-          marketplaceRefreshDelayMs(row.id, failures)
-        )
-          continue;
-        try {
-          await this.refresh(row.id, sweepNow);
-          refreshFailureCounts.delete(row.id);
-        } catch {
-          // refresh persists its ordinary failure state; keep checking others.
-        }
-      }
     },
   };
 }

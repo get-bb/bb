@@ -35,14 +35,11 @@ export type LegacyPluginExactResolution =
   | { kind: "npm"; version: string; integrity: string | null }
   | { kind: "git"; commit: string | null };
 
-export type PluginUpdatePolicy = "manual" | "compatible" | "patch" | "minor";
-
 export interface PluginUpdateState {
   lastCheckAt: number | null;
   availableCompatibleVersion: string | null;
   newestIncompatibleVersion: string | null;
   statusDetail: string | null;
-  ignoredVersion: string | null;
 }
 
 export interface InstalledPluginRow {
@@ -65,19 +62,13 @@ export interface InstalledPluginRow {
   npmResolvedVersion: string | null;
   npmIntegrity: string | null;
   gitResolvedCommit: string | null;
-  updatePolicy: PluginUpdatePolicy;
-  autoApply: boolean;
   lastUpdateCheckAt: number | null;
   availableCompatibleVersion: string | null;
   newestIncompatibleVersion: string | null;
   updateStatusDetail: string | null;
-  ignoredVersion: string | null;
-  quarantinedVersion: string | null;
-  quarantineSourceFingerprint: string | null;
-  quarantineBbVersion: string | null;
-  quarantineSdkVersion: string | null;
-  quarantinedAt: number | null;
-  quarantineDetail: string | null;
+  lastFailureVersion: string | null;
+  lastFailureAt: number | null;
+  lastFailureDetail: string | null;
   activeArtifactId: string | null;
   normalizationVersion: number;
   rootDir: string;
@@ -94,8 +85,6 @@ export interface UpsertInstalledPluginInput {
   provenance: PluginProvenance;
   sourceIntent: PluginSourceIntent;
   exactResolution: PluginExactResolution;
-  updatePolicy: PluginUpdatePolicy;
-  autoApply: boolean;
   updateState: PluginUpdateState;
   activeArtifactId: string | null;
   rootDir: string;
@@ -113,7 +102,7 @@ export interface LegacyInstalledPluginRegistration {
 
 export type NormalizeLegacyInstalledPluginInput = Omit<
   UpsertInstalledPluginInput,
-  "exactResolution" | "autoApply"
+  "exactResolution"
 > & { exactResolution: LegacyPluginExactResolution };
 
 function normalizedColumns(
@@ -177,19 +166,13 @@ function normalizedColumns(
       plugin.exactResolution.kind === "git"
         ? plugin.exactResolution.commit
         : null,
-    updatePolicy: plugin.updatePolicy,
-    autoApply: "autoApply" in plugin ? plugin.autoApply : false,
     lastUpdateCheckAt: plugin.updateState.lastCheckAt,
     availableCompatibleVersion: plugin.updateState.availableCompatibleVersion,
     newestIncompatibleVersion: plugin.updateState.newestIncompatibleVersion,
     updateStatusDetail: plugin.updateState.statusDetail,
-    ignoredVersion: plugin.updateState.ignoredVersion,
-    quarantinedVersion: null,
-    quarantineSourceFingerprint: null,
-    quarantineBbVersion: null,
-    quarantineSdkVersion: null,
-    quarantinedAt: null,
-    quarantineDetail: null,
+    lastFailureVersion: null,
+    lastFailureAt: null,
+    lastFailureDetail: null,
     activeArtifactId: plugin.activeArtifactId,
     normalizationVersion: 1,
   } as const;
@@ -338,7 +321,6 @@ export function setInstalledPluginUpdateState(
       availableCompatibleVersion: state.availableCompatibleVersion,
       newestIncompatibleVersion: state.newestIncompatibleVersion,
       updateStatusDetail: state.statusDetail,
-      ignoredVersion: state.ignoredVersion,
       updatedAt: Date.now(),
     })
     .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
@@ -346,68 +328,22 @@ export function setInstalledPluginUpdateState(
   return result.changes > 0;
 }
 
-export function setInstalledPluginIgnoredVersion(
+export function setInstalledPluginLastFailure(
   db: DbConnection,
   id: string,
-  ignoredVersion: string | null,
-): boolean {
-  const result = db
-    .update(installedPlugins)
-    .set({ ignoredVersion, updatedAt: Date.now() })
-    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
-    .run();
-  return result.changes > 0;
-}
-
-export function setInstalledPluginUpdatePolicy(
-  db: DbConnection,
-  id: string,
-  updatePolicy: PluginUpdatePolicy,
-): boolean {
-  const result = db
-    .update(installedPlugins)
-    .set({ updatePolicy, updatedAt: Date.now() })
-    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
-    .run();
-  return result.changes > 0;
-}
-
-export function setInstalledPluginAutoApply(
-  db: DbConnection,
-  id: string,
-  autoApply: boolean,
-): boolean {
-  return (
-    db
-      .update(installedPlugins)
-      .set({ autoApply, updatedAt: Date.now() })
-      .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
-      .run().changes > 0
-  );
-}
-
-export function setInstalledPluginQuarantine(
-  db: DbConnection,
-  id: string,
-  quarantine: {
+  failure: {
     version: string;
-    sourceFingerprint: string;
-    bbVersion: string;
-    sdkVersion: string;
     detail: string;
-    quarantinedAt: number;
+    at: number;
   },
 ): boolean {
   const result = db
     .update(installedPlugins)
     .set({
-      quarantinedVersion: quarantine.version,
-      quarantineSourceFingerprint: quarantine.sourceFingerprint,
-      quarantineBbVersion: quarantine.bbVersion,
-      quarantineSdkVersion: quarantine.sdkVersion,
-      quarantinedAt: quarantine.quarantinedAt,
-      quarantineDetail: quarantine.detail,
-      updatedAt: quarantine.quarantinedAt,
+      lastFailureVersion: failure.version,
+      lastFailureAt: failure.at,
+      lastFailureDetail: failure.detail,
+      updatedAt: failure.at,
     })
     .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
     .run();

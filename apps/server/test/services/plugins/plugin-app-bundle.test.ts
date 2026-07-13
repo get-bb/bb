@@ -49,14 +49,11 @@ function npmPersistence(packageName: string, version: string) {
       version,
       integrity: "test-integrity",
     },
-    updatePolicy: "manual" as const,
-    autoApply: false,
     updateState: {
       lastCheckAt: null,
       availableCompatibleVersion: null,
       newestIncompatibleVersion: null,
       statusDetail: null,
-      ignoredVersion: null,
     },
     activeArtifactId: null,
   };

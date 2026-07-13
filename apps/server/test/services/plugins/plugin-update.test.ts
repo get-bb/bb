@@ -1,17 +1,13 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { createServer, type Server } from "node:http";
 import {
   mkdtemp,
   mkdir,
   readFile,
-  readdir,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import Database from "better-sqlite3";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -26,13 +22,11 @@ import {
   listPluginArtifacts,
   listPluginStateSnapshots,
   migrate,
-  setAppSettings,
   setPluginSettingsValues,
   upsertPluginSchedule,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
-import { defaultAppSettings } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
 import {
@@ -87,7 +81,6 @@ describe("plugin update service and routes", () => {
         path: string;
       }) => Promise<void>)
     | undefined;
-  let beforeAutomaticApply: ((pluginId: string) => Promise<void>) | undefined;
 
   beforeEach(async () => {
     db = createConnection(":memory:");
@@ -100,7 +93,6 @@ describe("plugin update service and routes", () => {
     await git(repo, ["config", "user.name", "Test"]);
     await commitPlugin(repo, "1.0.0");
     afterArtifactPromoted = undefined;
-    beforeAutomaticApply = undefined;
     service = createPluginService({
       db,
       hub: {
@@ -116,8 +108,6 @@ describe("plugin update service and routes", () => {
       loadTimeoutMs: 2000,
       stabilizationWindowMs: 0,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
-      beforeAutomaticApply: async (pluginId) =>
-        beforeAutomaticApply?.(pluginId),
     });
     await service.install(`git:${repo}@main`);
     app = new Hono();
@@ -131,32 +121,12 @@ describe("plugin update service and routes", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  function pauseBeforeAutomaticApply(): {
-    entered: Promise<void>;
-    release(): void;
-  } {
-    let markEntered = (): void => {};
-    let release = (): void => {};
-    const entered = new Promise<void>((resolvePromise) => {
-      markEntered = resolvePromise;
-    });
-    const gate = new Promise<void>((resolvePromise) => {
-      release = resolvePromise;
-    });
-    beforeAutomaticApply = async () => {
-      markEntered();
-      await gate;
-    };
-    return { entered, release };
-  }
-
   it("keeps a multi-plugin check usable when one npm registry is offline", async () => {
     const updateState = {
       lastCheckAt: null,
       availableCompatibleVersion: null,
       newestIncompatibleVersion: null,
       statusDetail: null,
-      ignoredVersion: null,
     };
     for (const packageName of [
       "bb-plugin-offline-registry",
@@ -179,8 +149,6 @@ describe("plugin update service and routes", () => {
           version: "1.0.0",
           integrity: "sha512-current",
         },
-        updatePolicy: "compatible",
-        autoApply: false,
         updateState,
         activeArtifactId: null,
         rootDir: join(workDir, id),
@@ -246,663 +214,7 @@ describe("plugin update service and routes", () => {
     );
   });
 
-  it("automatically applies an opted-in compatible update through activation", async () => {
-    await service.setUpdatePolicy("updater", "compatible");
-    await service.setAutoApply("updater", true);
-    const candidateCommit = await commitPlugin(repo, "1.1.0");
-
-    await service.sweepAutomaticUpdates(Date.now());
-
-    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
-      gitResolvedCommit: candidateCommit,
-      version: "1.1.0",
-    });
-    expect(service.list()).toMatchObject([
-      { id: "updater", version: "1.1.0", status: "running", autoApply: true },
-    ]);
-    expect(service.listUpdateHistory("updater", 20)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "check", outcome: "update-available" }),
-        expect.objectContaining({ kind: "download", outcome: "started" }),
-        expect.objectContaining({ kind: "activate", outcome: "updated" }),
-      ]),
-    );
-  });
-
-  it("audits a discovered candidate when automatic application is off", async () => {
-    await service.setUpdatePolicy("updater", "compatible");
-    const installedCommit = getInstalledPluginRegistration(
-      db,
-      "updater",
-    )?.gitResolvedCommit;
-    await commitPlugin(repo, "1.1.0");
-
-    await service.sweepAutomaticUpdates(Date.now());
-
-    expect(
-      getInstalledPluginRegistration(db, "updater")?.gitResolvedCommit,
-    ).toBe(installedCommit);
-    expect(service.listUpdateHistory("updater", 10)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          outcome: "skipped",
-          detail: "automatic application is not enabled",
-        }),
-      ]),
-    );
-  });
-
-  it("never automatically applies a major git plugin version", async () => {
-    await service.setUpdatePolicy("updater", "compatible");
-    await service.setAutoApply("updater", true);
-    const installedCommit = getInstalledPluginRegistration(
-      db,
-      "updater",
-    )?.gitResolvedCommit;
-    await commitPlugin(repo, "2.0.0");
-
-    await service.sweepAutomaticUpdates(Date.now());
-
-    expect(
-      getInstalledPluginRegistration(db, "updater")?.gitResolvedCommit,
-    ).toBe(installedCommit);
-    expect(service.listUpdateHistory("updater", 10)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          detail: "major updates are never automatically applied",
-        }),
-      ]),
-    );
-  });
-
-  it("never automatically applies an npm major admitted by a broad range", async () => {
-    upsertInstalledPlugin(db, {
-      id: "npm-major",
-      source: "npm:bb-plugin-npm-major@>=1.0.0",
-      provenance: { kind: "direct" },
-      sourceIntent: {
-        kind: "npm",
-        packageName: "bb-plugin-npm-major",
-        registry: "https://npm-major.test",
-        requestedSpec: ">=1.0.0",
-        specKind: "range",
-      },
-      exactResolution: {
-        kind: "npm",
-        version: "1.0.0",
-        integrity: "sha512-current",
-      },
-      updatePolicy: "compatible",
-      autoApply: true,
-      updateState: {
-        lastCheckAt: null,
-        availableCompatibleVersion: null,
-        newestIncompatibleVersion: null,
-        statusDetail: null,
-        ignoredVersion: null,
-      },
-      activeArtifactId: null,
-      rootDir: join(workDir, "npm-major-current"),
-      version: "1.0.0",
-      enabled: false,
-    });
-    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
-      if (!String(input).startsWith("https://npm-major.test/")) {
-        return new Response("not found", { status: 404 });
-      }
-      return new Response(
-        JSON.stringify({
-          name: "bb-plugin-npm-major",
-          "dist-tags": { latest: "2.0.0" },
-          versions: {
-            "1.0.0": {
-              name: "bb-plugin-npm-major",
-              version: "1.0.0",
-              dist: { integrity: "sha512-current" },
-            },
-            "2.0.0": {
-              name: "bb-plugin-npm-major",
-              version: "2.0.0",
-              dist: { integrity: "sha512-major" },
-            },
-          },
-        }),
-      );
-    });
-
-    await service.sweepAutomaticUpdates(Date.now());
-
-    expect(getInstalledPluginRegistration(db, "npm-major")).toMatchObject({
-      version: "1.0.0",
-      npmResolvedVersion: "1.0.0",
-    });
-    expect(service.listUpdateHistory("npm-major", 5)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          detail: "major updates are never automatically applied",
-        }),
-      ]),
-    );
-  });
-
-  it("fails closed when a git automatic-update version is not strict semver", async () => {
-    await service.setUpdatePolicy("updater", "compatible");
-    await service.setAutoApply("updater", true);
-    db.$client
-      .prepare("UPDATE plugins SET version = ? WHERE id = ?")
-      .run("development", "updater");
-    const installedCommit = getInstalledPluginRegistration(
-      db,
-      "updater",
-    )?.gitResolvedCommit;
-    await commitPlugin(repo, "2.0.0");
-
-    await service.sweepAutomaticUpdates(Date.now());
-
-    expect(
-      getInstalledPluginRegistration(db, "updater")?.gitResolvedCommit,
-    ).toBe(installedCommit);
-    expect(service.listUpdateHistory("updater", 5)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          detail: expect.stringContaining("strict semantic versions"),
-        }),
-      ]),
-    );
-  });
-
-  it("respects ignored candidates and the organization disable toggle", async () => {
-    await service.setUpdatePolicy("updater", "compatible");
-    await service.setAutoApply("updater", true);
-    const ignoredCommit = await commitPlugin(repo, "1.1.0");
-    await service.ignoreVersion("updater", ignoredCommit);
-    await service.sweepAutomaticUpdates(Date.now());
-    expect(getInstalledPluginRegistration(db, "updater")?.version).toBe(
-      "1.0.0",
-    );
-    expect(service.listUpdateHistory("updater", 10)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          detail: expect.stringContaining("ignored"),
-        }),
-      ]),
-    );
-
-    await service.ignoreVersion("updater", "older-candidate");
-    await commitPlugin(repo, "1.2.0");
-    setAppSettings(db, {
-      ...defaultAppSettings,
-      pluginAutoApplyDisabled: true,
-    });
-    await service.sweepAutomaticUpdates(Date.now());
-    expect(getInstalledPluginRegistration(db, "updater")?.version).toBe(
-      "1.0.0",
-    );
-    expect(service.listUpdateHistory("updater", 10)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          detail: "organization policy disables automatic application",
-        }),
-      ]),
-    );
-  });
-
-  it("rechecks an ignore that wins the operation lock after discovery", async () => {
-    await service.setUpdatePolicy("updater", "compatible");
-    await service.setAutoApply("updater", true);
-    const candidateCommit = await commitPlugin(repo, "1.1.0");
-    const pause = pauseBeforeAutomaticApply();
-    const sweep = service.sweepAutomaticUpdates(Date.now());
-    await pause.entered;
-
-    await service.ignoreVersion("updater", candidateCommit);
-    pause.release();
-    await sweep;
-
-    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
-      version: "1.0.0",
-      ignoredVersion: candidateCommit,
-    });
-    expect(service.listUpdateHistory("updater", 5)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          detail: "candidate version is ignored",
-        }),
-      ]),
-    );
-  });
-
-  it("rechecks auto-apply opt-out that wins the lock after discovery", async () => {
-    await service.setUpdatePolicy("updater", "compatible");
-    await service.setAutoApply("updater", true);
-    await commitPlugin(repo, "1.1.0");
-    const pause = pauseBeforeAutomaticApply();
-    const sweep = service.sweepAutomaticUpdates(Date.now());
-    await pause.entered;
-
-    await service.setAutoApply("updater", false);
-    pause.release();
-    await sweep;
-
-    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
-      version: "1.0.0",
-      autoApply: false,
-    });
-    expect(service.listUpdateHistory("updater", 5)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          detail: "automatic application is not enabled",
-        }),
-      ]),
-    );
-  });
-
-  it("does not retry a quarantine created after automatic discovery", async () => {
-    vi.stubGlobal("__bbRaceCandidateFactoryRuns", 0);
-    await service.setUpdatePolicy("updater", "compatible");
-    await service.setAutoApply("updater", true);
-    const candidateCommit = await commitPlugin(
-      repo,
-      "1.1.0",
-      undefined,
-      `export default function plugin() {
-        (globalThis as any).__bbRaceCandidateFactoryRuns += 1;
-        throw new Error("race candidate failed");
-      }`,
-    );
-    const pause = pauseBeforeAutomaticApply();
-    const sweep = service.sweepAutomaticUpdates(Date.now());
-    await pause.entered;
-
-    await expect(
-      service.applyUpdate("updater", {
-        mode: "manual",
-        dryRun: false,
-        latest: false,
-      }),
-    ).resolves.toMatchObject({
-      ok: true,
-      result: { outcome: "rolled-back" },
-    });
-    expect(
-      (globalThis as Record<string, unknown>).__bbRaceCandidateFactoryRuns,
-    ).toBe(1);
-    pause.release();
-    await sweep;
-
-    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
-      version: "1.0.0",
-      quarantinedVersion: candidateCommit,
-    });
-    expect(
-      (globalThis as Record<string, unknown>).__bbRaceCandidateFactoryRuns,
-    ).toBe(1);
-  });
-
-  it("persists patch/minor policy and skips an ignored version until a newer release appears", async () => {
-    upsertInstalledPlugin(db, {
-      id: "policy-test",
-      source: "npm:bb-plugin-policy-test@^1.0.0",
-      provenance: { kind: "direct" },
-      sourceIntent: {
-        kind: "npm",
-        packageName: "bb-plugin-policy-test",
-        registry: "https://policy.test",
-        requestedSpec: "^1.0.0",
-        specKind: "range",
-      },
-      exactResolution: {
-        kind: "npm",
-        version: "1.0.0",
-        integrity: "sha512-current",
-      },
-      updatePolicy: "compatible",
-      autoApply: false,
-      updateState: {
-        lastCheckAt: null,
-        availableCompatibleVersion: null,
-        newestIncompatibleVersion: null,
-        statusDetail: null,
-        ignoredVersion: null,
-      },
-      activeArtifactId: null,
-      rootDir: join(workDir, "policy-test"),
-      version: "1.0.0",
-      enabled: false,
-    });
-    let versions = ["1.0.0", "1.0.9", "1.1.0", "2.0.0"];
-    vi.stubGlobal(
-      "fetch",
-      async () =>
-        new Response(
-          JSON.stringify({
-            versions: Object.fromEntries(
-              versions.map((version) => [
-                version,
-                { version, dist: { integrity: `sha512-${version}` } },
-              ]),
-            ),
-            "dist-tags": { latest: versions.at(-1) },
-          }),
-          { status: 200 },
-        ),
-    );
-
-    const patchPolicy = await app.request(
-      "/plugins/policy-test/update-policy",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ policy: "patch" }),
-      },
-    );
-    expect(patchPolicy.status).toBe(200);
-    expect(await patchPolicy.json()).toEqual({ policy: "patch" });
-    await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
-      [{ outcome: "update-available", candidate: { version: "1.0.9" } }],
-    );
-
-    const ignored = await app.request("/plugins/policy-test/ignore-version", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ version: "1.0.9" }),
-    });
-    expect(ignored.status).toBe(200);
-    expect(await ignored.json()).toEqual({ ignoredVersion: "1.0.9" });
-    await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
-      [{ outcome: "current", detail: "version 1.0.9 is ignored" }],
-    );
-
-    versions = ["1.0.0", "1.0.9", "1.0.10", "1.1.0", "2.0.0"];
-    await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
-      [{ outcome: "update-available", candidate: { version: "1.0.10" } }],
-    );
-    expect(getInstalledPluginRegistration(db, "policy-test")).toMatchObject({
-      ignoredVersion: null,
-    });
-
-    await service.setUpdatePolicy("policy-test", "minor");
-    await expect(service.checkForUpdates("policy-test")).resolves.toMatchObject(
-      [{ outcome: "update-available", candidate: { version: "1.1.0" } }],
-    );
-  });
-
-  it("serializes ignore-version and update-policy writes behind an in-flight check", async () => {
-    upsertInstalledPlugin(db, {
-      id: "race-test",
-      source: "npm:bb-plugin-race-test@^1.0.0",
-      provenance: { kind: "direct" },
-      sourceIntent: {
-        kind: "npm",
-        packageName: "bb-plugin-race-test",
-        registry: "https://race.test",
-        requestedSpec: "^1.0.0",
-        specKind: "range",
-      },
-      exactResolution: {
-        kind: "npm",
-        version: "1.0.0",
-        integrity: "sha512-current",
-      },
-      updatePolicy: "compatible",
-      autoApply: false,
-      updateState: {
-        lastCheckAt: null,
-        availableCompatibleVersion: null,
-        newestIncompatibleVersion: null,
-        statusDetail: null,
-        ignoredVersion: null,
-      },
-      activeArtifactId: null,
-      rootDir: join(workDir, "race-test"),
-      version: "1.0.0",
-      enabled: false,
-    });
-    let releaseFetch!: () => void;
-    const fetchHeld = new Promise<void>((resolvePromise) => {
-      releaseFetch = resolvePromise;
-    });
-    let announceFetch!: () => void;
-    const fetchStarted = new Promise<void>((resolvePromise) => {
-      announceFetch = resolvePromise;
-    });
-    vi.stubGlobal("fetch", async () => {
-      announceFetch();
-      await fetchHeld;
-      return new Response(
-        JSON.stringify({
-          versions: {
-            "1.0.0": {
-              version: "1.0.0",
-              dist: { integrity: "sha512-current" },
-            },
-            "1.0.1": {
-              version: "1.0.1",
-              dist: { integrity: "sha512-next" },
-            },
-          },
-          "dist-tags": { latest: "1.0.1" },
-        }),
-        { status: 200 },
-      );
-    });
-
-    const check = service.checkForUpdates("race-test");
-    await fetchStarted;
-    let ignoreSettled = false;
-    let policySettled = false;
-    const ignored = Promise.resolve(
-      app.request("/plugins/race-test/ignore-version", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ version: "1.0.1" }),
-      }),
-    ).then((response) => {
-      ignoreSettled = true;
-      return response;
-    });
-    const policy = Promise.resolve(
-      app.request("/plugins/race-test/update-policy", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ policy: "patch" }),
-      }),
-    ).then((response) => {
-      policySettled = true;
-      return response;
-    });
-    await new Promise<void>((resolvePromise) => setImmediate(resolvePromise));
-    expect({ ignoreSettled, policySettled }).toEqual({
-      ignoreSettled: false,
-      policySettled: false,
-    });
-
-    releaseFetch();
-    await expect(check).resolves.toMatchObject([
-      { outcome: "update-available", candidate: { version: "1.0.1" } },
-    ]);
-    expect((await ignored).status).toBe(200);
-    expect((await policy).status).toBe(200);
-    expect(getInstalledPluginRegistration(db, "race-test")).toMatchObject({
-      ignoredVersion: "1.0.1",
-      updatePolicy: "patch",
-    });
-  });
-
-  it(
-    "applies the same patch/minor candidate selected within the original intent range",
-    { timeout: 120_000 },
-    async () => {
-      const packageName = "bb-plugin-policy-apply";
-      const tarballs = new Map<string, Buffer>();
-      for (const version of ["1.6.5", "1.9.0"]) {
-        const fixture = join(workDir, `policy-apply-${version}`);
-        await mkdir(fixture, { recursive: true });
-        await writeFile(
-          join(fixture, "package.json"),
-          JSON.stringify({
-            name: packageName,
-            version,
-            bb: { server: "./server.js" },
-          }),
-        );
-        await writeFile(
-          join(fixture, "server.js"),
-          "export default function plugin() {}\n",
-        );
-        const packDir = join(workDir, `policy-pack-${version}`);
-        await mkdir(packDir, { recursive: true });
-        await run("npm", ["pack", "--pack-destination", packDir], {
-          cwd: fixture,
-        });
-        const [tarballName] = await readdir(packDir);
-        if (tarballName === undefined)
-          throw new Error("npm pack produced no tarball");
-        tarballs.set(version, await readFile(join(packDir, tarballName)));
-      }
-      const registry = await new Promise<Server>((resolvePromise) => {
-        const server = createServer((request, response) => {
-          const url = request.url ?? "";
-          const tarballMatch = /^\/(1\.6\.5|1\.9\.0)\.tgz$/u.exec(url);
-          if (tarballMatch !== null) {
-            const tarball = tarballs.get(tarballMatch[1] ?? "");
-            if (tarball === undefined) {
-              response.writeHead(404).end();
-              return;
-            }
-            response.writeHead(200, {
-              "content-type": "application/octet-stream",
-            });
-            response.end(tarball);
-            return;
-          }
-          if (decodeURIComponent(url) === `/${packageName}`) {
-            const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-            const versions = Object.fromEntries(
-              ["1.4.0", "1.6.0", "1.6.5", "1.9.0", "2.0.0"].map((version) => {
-                const tarball = tarballs.get(version);
-                return [
-                  version,
-                  {
-                    name: packageName,
-                    version,
-                    dist: {
-                      integrity:
-                        tarball === undefined
-                          ? `sha512-${version}`
-                          : `sha512-${createHash("sha512").update(tarball).digest("base64")}`,
-                      ...(tarball === undefined
-                        ? {}
-                        : { tarball: `${origin}/${version}.tgz` }),
-                    },
-                  },
-                ];
-              }),
-            );
-            response.writeHead(200, { "content-type": "application/json" });
-            response.end(
-              JSON.stringify({
-                name: packageName,
-                "dist-tags": { latest: "2.0.0" },
-                versions,
-              }),
-            );
-            return;
-          }
-          response.writeHead(404).end();
-        });
-        server.listen(0, "127.0.0.1", () => resolvePromise(server));
-      });
-      const registryUrl = `http://127.0.0.1:${(registry.address() as AddressInfo).port}`;
-      const previousCache = process.env.npm_config_cache;
-      const previousPackageLock = process.env.npm_config_package_lock;
-      process.env.npm_config_cache = join(workDir, "policy-npm-cache");
-      process.env.npm_config_package_lock = "false";
-      try {
-        for (const scenario of [
-          { policy: "patch" as const, current: "1.6.0", expected: "1.6.5" },
-          { policy: "minor" as const, current: "1.4.0", expected: "1.9.0" },
-        ]) {
-          upsertInstalledPlugin(db, {
-            id: "policy-apply",
-            source: `npm:${packageName}@^1.4.0`,
-            provenance: { kind: "direct" },
-            sourceIntent: {
-              kind: "npm",
-              packageName,
-              registry: registryUrl,
-              requestedSpec: "^1.4.0",
-              specKind: "range",
-            },
-            exactResolution: {
-              kind: "npm",
-              version: scenario.current,
-              integrity: `sha512-${scenario.current}`,
-            },
-            updatePolicy: scenario.policy,
-            autoApply: false,
-            updateState: {
-              lastCheckAt: null,
-              availableCompatibleVersion: null,
-              newestIncompatibleVersion: null,
-              statusDetail: null,
-              ignoredVersion: null,
-            },
-            activeArtifactId: null,
-            rootDir: join(workDir, `policy-current-${scenario.current}`),
-            version: scenario.current,
-            enabled: false,
-          });
-          await expect(
-            service.applyUpdate("policy-apply", {
-              mode: "manual",
-              dryRun: false,
-              latest: false,
-            }),
-          ).resolves.toMatchObject({
-            ok: true,
-            result: {
-              applied: true,
-              from: { version: scenario.current },
-              to: { version: scenario.expected },
-              outcome: "updated",
-            },
-          });
-          expect(
-            getInstalledPluginRegistration(db, "policy-apply"),
-          ).toMatchObject({
-            source: `npm:${packageName}@^1.4.0`,
-            sourceNpmRequestedSpec: "^1.4.0",
-            sourceNpmSpecKind: "range",
-            npmResolvedVersion: scenario.expected,
-            updatePolicy: scenario.policy,
-          });
-        }
-      } finally {
-        if (previousCache === undefined) delete process.env.npm_config_cache;
-        else process.env.npm_config_cache = previousCache;
-        if (previousPackageLock === undefined)
-          delete process.env.npm_config_package_lock;
-        else process.env.npm_config_package_lock = previousPackageLock;
-        await new Promise<void>((resolvePromise, reject) => {
-          registry.close((error) => {
-            if (error) reject(error);
-            else resolvePromise();
-          });
-        });
-      }
-    },
-  );
-
-  it("checks, reads persisted state, and dry-runs through the exact HTTP contract", async () => {
+  it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
     // Simulate a Phase 1 normalized row migrated before ref classification
     // existed. The first network resolution classifies and persists it.
     db.$client
@@ -934,17 +246,16 @@ describe("plugin update service and routes", () => {
     expect(persistedResponse.status).toBe(200);
     expect(await persistedResponse.json()).toEqual(checked);
 
-    const dryRunResponse = await app.request("/plugins/updater/update", {
+    const updateResponse = await app.request("/plugins/updater/update", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ dryRun: true }),
+      body: "{}",
     });
-    expect(dryRunResponse.status).toBe(200);
-    expect(await dryRunResponse.json()).toMatchObject({
-      applied: false,
-      dryRun: true,
+    expect(updateResponse.status).toBe(200);
+    expect(await updateResponse.json()).toMatchObject({
+      applied: true,
       to: { version: nextCommit },
-      outcome: "update-available",
+      outcome: "updated",
     });
   });
 
@@ -998,16 +309,8 @@ describe("plugin update service and routes", () => {
     const oldPackage = await readFile(join(oldRoot, "package.json"), "utf8");
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const results = await Promise.all([
-      service.applyUpdate("updater", {
-        mode: "manual",
-        dryRun: false,
-        latest: false,
-      }),
-      service.applyUpdate("updater", {
-        mode: "manual",
-        dryRun: false,
-        latest: false,
-      }),
+      service.applyUpdate("updater"),
+      service.applyUpdate("updater"),
     ]);
 
     expect(results).toEqual(
@@ -1045,156 +348,6 @@ describe("plugin update service and routes", () => {
       oldPackage,
     );
     expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
-  });
-
-  it("rolls back and quarantines an automatic failure without retrying it next sweep", async () => {
-    const infoLog = vi.spyOn(testLogger, "info");
-    const warningLog = vi.spyOn(testLogger, "warn");
-    vi.stubGlobal("__bbAutomaticFailureFactoryRuns", 0);
-    const pluginDir = join(workDir, "data", "plugins", "updater");
-    const databasePath = join(pluginDir, "data.db");
-    const secretPath = join(pluginDir, "secrets", "token");
-    const failureMarker = join(workDir, "fail-activation");
-    const api = service.getApi("updater");
-    if (api === undefined) throw new Error("updater did not load");
-    const pluginDb = api.storage.sqlite();
-    pluginDb.exec("CREATE TABLE state (value TEXT NOT NULL)");
-    pluginDb.prepare("INSERT INTO state (value) VALUES (?)").run("old-db");
-    await api.storage.kv.set("cursor", "old-kv");
-    setPluginSettingsValues(db, "updater", {
-      mode: JSON.stringify("old-setting"),
-    });
-    upsertPluginSchedule(db, {
-      pluginId: "updater",
-      name: "sync",
-      cron: "0 * * * *",
-      nextRunAt: 1234,
-    });
-    await mkdir(join(pluginDir, "secrets"), { recursive: true });
-    await writeFile(secretPath, "super-secret-value", { mode: 0o600 });
-    await writeFile(failureMarker, "fail");
-
-    const candidateCommit = await commitPlugin(
-      repo,
-      "1.1.0",
-      undefined,
-      `
-        import { existsSync, writeFileSync } from "node:fs";
-        export default async function plugin(bb: any) {
-          (globalThis as any).__bbAutomaticFailureFactoryRuns += 1;
-          const database = bb.storage.sqlite();
-          database.prepare("UPDATE state SET value = ?").run("new-db");
-          await bb.storage.kv.set("cursor", "new-kv");
-          writeFileSync(${JSON.stringify(secretPath)}, "changed-secret");
-          if (existsSync(${JSON.stringify(failureMarker)})) throw new Error("candidate factory exploded");
-        }
-      `,
-    );
-    await service.setUpdatePolicy("updater", "compatible");
-    await service.setAutoApply("updater", true);
-    await service.sweepAutomaticUpdates(Date.now());
-    expect(
-      (globalThis as Record<string, unknown>).__bbAutomaticFailureFactoryRuns,
-    ).toBe(1);
-    expect(
-      service.list().find((entry) => entry.id === "updater"),
-    ).toMatchObject({ id: "updater", version: "1.0.0", status: "running" });
-    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
-      quarantinedVersion: candidateCommit,
-      quarantineDetail: expect.stringContaining("candidate factory exploded"),
-    });
-    expect(
-      service.list().find((entry) => entry.id === "updater"),
-    ).toMatchObject({
-      provenance: "direct",
-      sourceDisplay: expect.stringContaining("git ·"),
-      updatePolicy: "compatible",
-      autoApply: true,
-      updateState: {
-        quarantined: true,
-        lastFailure: {
-          version: candidateCommit,
-          at: expect.any(Number),
-          detail: expect.stringContaining("candidate factory exploded"),
-        },
-      },
-    });
-    const sourceResponse = await app.request("/plugins/updater/source");
-    expect(sourceResponse.status).toBe(200);
-    expect(await sourceResponse.json()).toMatchObject({
-      requested: `git:${repo}@main`,
-      resolved: expect.stringContaining(repo),
-      engines: {},
-      installedAt: expect.any(Number),
-      history: expect.arrayContaining([
-        {
-          version: expect.stringMatching(/^[0-9a-f]{40}$/),
-          activatedAt: expect.any(Number),
-        },
-      ]),
-    });
-    const restored = new Database(databasePath, { readonly: true });
-    expect(restored.prepare("SELECT value FROM state").pluck().get()).toBe(
-      "old-db",
-    );
-    restored.close();
-    expect(getPluginKvValue(db, "updater", "cursor")).toBe(
-      JSON.stringify("old-kv"),
-    );
-    expect(getPluginSettingsValues(db, "updater")).toEqual({
-      mode: JSON.stringify("old-setting"),
-    });
-    expect(listPluginSchedules(db, "updater")).toMatchObject([
-      { name: "sync", cron: "0 * * * *" },
-    ]);
-    expect(await readFile(secretPath, "utf8")).toBe("super-secret-value");
-    const snapshots = listPluginStateSnapshots(db, "updater");
-    expect(snapshots).toMatchObject([{ status: "restored" }]);
-    expect(JSON.stringify(snapshots)).not.toContain("super-secret-value");
-    expect(await readFile(snapshots[0]!.statePath, "utf8")).not.toContain(
-      "super-secret-value",
-    );
-    expect(
-      JSON.stringify([infoLog.mock.calls, warningLog.mock.calls]),
-    ).not.toContain("super-secret-value");
-
-    await expect(service.checkForUpdates("updater")).resolves.toMatchObject([
-      {
-        outcome: "unavailable",
-        detail: expect.stringContaining("quarantined"),
-      },
-    ]);
-    await service.sweepAutomaticUpdates(Date.now());
-    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
-      version: "1.0.0",
-      quarantinedVersion: candidateCommit,
-    });
-    expect(service.listUpdateHistory("updater", 10)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "auto-apply-skipped",
-          detail: expect.stringContaining("quarantined"),
-        }),
-        expect.objectContaining({ kind: "rollback", outcome: "restored" }),
-      ]),
-    );
-    expect(
-      (globalThis as Record<string, unknown>).__bbAutomaticFailureFactoryRuns,
-    ).toBe(1);
-    await rm(failureMarker);
-    await expect(
-      service.applyUpdate("updater", {
-        mode: "manual",
-        dryRun: false,
-        latest: false,
-      }),
-    ).resolves.toMatchObject({
-      ok: true,
-      result: { applied: true, outcome: "updated" },
-    });
-    expect(service.list()).toMatchObject([
-      { id: "updater", version: "1.1.0", status: "running" },
-    ]);
   });
 
   it("rolls back when a background service crashes during stabilization", async () => {
@@ -1242,13 +395,7 @@ describe("plugin update service and routes", () => {
         }});
       }`,
     );
-    await expect(
-      service.applyUpdate("updater", {
-        mode: "manual",
-        dryRun: false,
-        latest: false,
-      }),
-    ).resolves.toMatchObject({
+    await expect(service.applyUpdate("updater")).resolves.toMatchObject({
       ok: true,
       result: {
         applied: false,
@@ -1258,7 +405,18 @@ describe("plugin update service and routes", () => {
     });
     expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
       gitResolvedCommit: installedCommit,
-      quarantinedVersion: candidateCommit,
+      lastFailureVersion: candidateCommit,
+    });
+    expect(
+      service.list().find((entry) => entry.id === "updater"),
+    ).toMatchObject({
+      updateState: {
+        lastFailure: {
+          version: candidateCommit,
+          at: expect.any(Number),
+          detail: expect.stringContaining("service unstable crashed"),
+        },
+      },
     });
     expect(
       service.list().find((entry) => entry.id === "updater"),
@@ -1332,13 +490,9 @@ describe("plugin update service and routes", () => {
       cron: "0 * * * *",
       nextRunAt: 4321,
     });
-    await expect(
-      service.applyUpdate("updater", {
-        mode: "manual",
-        dryRun: false,
-        latest: false,
-      }),
-    ).rejects.toThrow("simulated process exit during rollback");
+    await expect(service.applyUpdate("updater")).rejects.toThrow(
+      "simulated process exit during rollback",
+    );
     expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
       version: "1.1.0",
       activeArtifactId: expect.not.stringMatching(
@@ -1369,7 +523,7 @@ describe("plugin update service and routes", () => {
     expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
       version: oldRegistration.version,
       activeArtifactId: oldRegistration.activeArtifactId,
-      quarantinedVersion: expect.any(String),
+      lastFailureVersion: expect.any(String),
     });
     expect(
       service.list().find((entry) => entry.id === "updater"),
@@ -1424,13 +578,10 @@ describe("plugin update service and routes", () => {
     );
     if (oldArtifact === undefined) throw new Error("missing old artifact");
     await commitPlugin(repo, "1.1.0");
-    await expect(
-      service.applyUpdate("updater", {
-        mode: "manual",
-        dryRun: false,
-        latest: false,
-      }),
-    ).resolves.toMatchObject({ ok: true, result: { applied: true } });
+    await expect(service.applyUpdate("updater")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: true },
+    });
     expect(listPluginStateSnapshots(db, "updater")).toHaveLength(1);
     expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
     await stat(oldArtifact.path);
@@ -1466,11 +617,7 @@ describe("plugin update service and routes", () => {
       await holdPromotion;
     };
 
-    const update = service.applyUpdate("updater", {
-      mode: "manual",
-      dryRun: false,
-      latest: false,
-    });
+    const update = service.applyUpdate("updater");
     await promotionReached;
     const removal = service.remove("updater");
     releasePromotion?.();
@@ -1498,11 +645,7 @@ describe("plugin update service and routes", () => {
       await holdPromotion;
     };
 
-    const update = service.applyUpdate("updater", {
-      mode: "manual",
-      dryRun: false,
-      latest: false,
-    });
+    const update = service.applyUpdate("updater");
     await promotionReached;
     const disable = service.setEnabled("updater", false);
     releasePromotion?.();
@@ -1522,11 +665,7 @@ describe("plugin update service and routes", () => {
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const [checked, applied] = await Promise.all([
       service.checkForUpdates("updater"),
-      service.applyUpdate("updater", {
-        mode: "manual",
-        dryRun: false,
-        latest: false,
-      }),
+      service.applyUpdate("updater"),
     ]);
 
     expect(checked).toHaveLength(1);
@@ -1549,7 +688,7 @@ describe("plugin update service and routes", () => {
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({
       error:
-        'plugin "updater" is pinned to a git ref; install a branch source to track updates',
+        'plugin "updater" is pinned by its source intent; remove and reinstall it with an npm range or git branch to track updates',
     });
   });
 
@@ -1576,14 +715,11 @@ describe("plugin update service and routes", () => {
         refKind: "branch",
       },
       exactResolution: { kind: "git", commit: currentCommit },
-      updatePolicy: "compatible",
-      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
         newestIncompatibleVersion: null,
         statusDetail: null,
-        ignoredVersion: null,
       },
       activeArtifactId: null,
       rootDir: legacyRoot,
@@ -1596,11 +732,7 @@ describe("plugin update service and routes", () => {
     ]);
 
     const nextCommit = await commitPlugin(repo, "1.1.0");
-    const applied = await service.applyUpdate("updater", {
-      mode: "manual",
-      dryRun: false,
-      latest: false,
-    });
+    const applied = await service.applyUpdate("updater");
     expect(applied).toMatchObject({ ok: true, result: { applied: true } });
     const migrated = getInstalledPluginRegistration(db, "updater");
     expect(migrated).toMatchObject({

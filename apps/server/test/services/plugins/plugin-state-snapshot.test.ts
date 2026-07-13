@@ -62,14 +62,11 @@ describe("plugin activation snapshots and garbage collection", () => {
       provenance: { kind: "direct" },
       sourceIntent: { kind: "path", canonicalPath: pluginDir },
       exactResolution: { kind: "path" },
-      updatePolicy: "manual",
-      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
         newestIncompatibleVersion: null,
         statusDetail: null,
-        ignoredVersion: null,
       },
       activeArtifactId: null,
       rootDir: pluginDir,
@@ -152,7 +149,6 @@ describe("plugin activation snapshots and garbage collection", () => {
         integrity: null,
         contentHash: "hash",
         validationResult: "valid",
-        validationDetail: null,
         validatedAt: 1,
       });
     makeArtifact("active", activePath, "active");
@@ -170,14 +166,11 @@ describe("plugin activation snapshots and garbage collection", () => {
         refKind: "branch",
       },
       exactResolution: { kind: "git", commit: "active" },
-      updatePolicy: "compatible",
-      autoApply: false,
       updateState: {
         lastCheckAt: null,
         availableCompatibleVersion: null,
         newestIncompatibleVersion: null,
         statusDetail: null,
-        ignoredVersion: null,
       },
       activeArtifactId: "active",
       rootDir: activePath,

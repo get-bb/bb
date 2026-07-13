@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "eaf8856d-a008-4c4c-ae44-5a9bfe03bd44",
+  "id": "5e36c130-c468-4900-b9f1-0b2cc844560a",
   "prevId": "e2bb6a62-e097-4335-9f27-0807b09b2481",
   "tables": {
     "app_settings": {
@@ -56,14 +56,6 @@
         },
         "claude_code_workflows_disabled": {
           "name": "claude_code_workflows_disabled",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "plugin_auto_apply_disabled": {
-          "name": "plugin_auto_apply_disabled",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -1140,22 +1132,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "update_policy": {
-          "name": "update_policy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'manual'"
-        },
-        "auto_apply": {
-          "name": "auto_apply",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
         "last_update_check_at": {
           "name": "last_update_check_at",
           "type": "integer",
@@ -1184,50 +1160,22 @@
           "notNull": false,
           "autoincrement": false
         },
-        "ignored_version": {
-          "name": "ignored_version",
+        "last_failure_version": {
+          "name": "last_failure_version",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "quarantined_version": {
-          "name": "quarantined_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "quarantine_source_fingerprint": {
-          "name": "quarantine_source_fingerprint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "quarantine_bb_version": {
-          "name": "quarantine_bb_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "quarantine_sdk_version": {
-          "name": "quarantine_sdk_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "quarantined_at": {
-          "name": "quarantined_at",
+        "last_failure_at": {
+          "name": "last_failure_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "quarantine_detail": {
-          "name": "quarantine_detail",
+        "last_failure_detail": {
+          "name": "last_failure_detail",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1443,56 +1391,12 @@
           "notNull": false,
           "autoincrement": false
         },
-        "content_hash": {
-          "name": "content_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "catalog_json": {
           "name": "catalog_json",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "trusted": {
-          "name": "trusted",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "update_policy": {
-          "name": "update_policy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "auto_check": {
-          "name": "auto_check",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "auto_apply": {
-          "name": "auto_apply",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
         },
         "last_successful_refresh_at": {
           "name": "last_successful_refresh_at",
@@ -1513,13 +1417,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
-        },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false
         },
         "created_at": {
@@ -1795,13 +1692,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "validation_detail": {
-          "name": "validation_detail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "created_at": {
@@ -2146,95 +2036,6 @@
         },
         "plugin_state_snapshots_retention_idx": {
           "name": "plugin_state_snapshots_retention_idx",
-          "columns": [
-            "retained_until"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "plugin_update_events": {
-      "name": "plugin_update_events",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "plugin_id": {
-          "name": "plugin_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "from_version": {
-          "name": "from_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "to_version": {
-          "name": "to_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "detail": {
-          "name": "detail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "retained_until": {
-          "name": "retained_until",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "plugin_update_events_plugin_idx": {
-          "name": "plugin_update_events_plugin_idx",
-          "columns": [
-            "plugin_id",
-            "created_at"
-          ],
-          "isUnique": false
-        },
-        "plugin_update_events_retention_idx": {
-          "name": "plugin_update_events_retention_idx",
           "columns": [
             "retained_until"
           ],

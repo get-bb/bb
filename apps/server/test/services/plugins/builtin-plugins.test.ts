@@ -203,7 +203,6 @@ describe("builtin plugin reconciliation", () => {
         version: "0.1.0",
         provenance: "builtin",
         sourceDisplay: "builtin · builtin-fixture",
-        updatePolicy: "manual",
         updateState: {},
         icon: "EditFile",
         enabled: true,
@@ -216,7 +215,6 @@ describe("builtin plugin reconciliation", () => {
         provenance: "builtin",
         sourceKind: "builtin",
         sourceBuiltinName: "fixture",
-        updatePolicy: "manual",
         normalizationVersion: 1,
       },
     );
@@ -265,7 +263,6 @@ describe("builtin plugin reconciliation", () => {
       sourceNpmPackage: "bb-plugin-legacy",
       sourceNpmRequestedSpec: "1.2.3",
       npmResolvedVersion: "1.2.3",
-      updatePolicy: "manual",
     });
     expect(getInstalledPluginRegistration(db, "legacy-git")).toMatchObject({
       enabled: false,

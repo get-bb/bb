@@ -15,7 +15,6 @@ import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import { z } from "zod";
 import type { MarketplaceService } from "../services/marketplaces/marketplace-service.js";
-import { getAppSettings } from "@bb/db";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
 export interface PluginRoutesDeps {
@@ -209,30 +208,7 @@ export function registerPluginRoutes(
   app.get("/plugins", (context) =>
     context.json({
       enabled: plugins.isEnabled(),
-      autoApplyDisabled: getAppSettings(deps.db).pluginAutoApplyDisabled,
       plugins: plugins.list(),
-    }),
-  );
-
-  app.get("/plugins/updates/audit", (context) => {
-    const parsed = z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(200)
-      .safeParse(context.req.query("limit") ?? "50");
-    if (!parsed.success) {
-      return context.json(
-        { error: "limit must be an integer from 1 to 200" },
-        422,
-      );
-    }
-    return context.json({ events: plugins.listUpdateAudit(parsed.data) });
-  });
-
-  app.get("/plugins/:id/history", (context) =>
-    context.json({
-      events: plugins.listUpdateHistory(context.req.param("id"), 50),
     }),
   );
 
@@ -472,12 +448,7 @@ export function registerPluginRoutes(
   const updateCheckBodySchema = z
     .object({ id: z.string().min(1).optional() })
     .strict();
-  const applyUpdateBodySchema = z
-    .object({
-      dryRun: z.boolean().optional(),
-      latest: z.boolean().optional(),
-    })
-    .strict();
+  const applyUpdateBodySchema = z.object({}).strict();
 
   app.post("/plugins/updates/check", async (context) => {
     if (!plugins.isEnabled()) {
@@ -520,17 +491,10 @@ export function registerPluginRoutes(
     const json: unknown = await context.req.json().catch(() => null);
     const body = applyUpdateBodySchema.safeParse(json);
     if (!body.success) {
-      return context.json(
-        { error: 'expected { "dryRun"?: boolean, "latest"?: boolean }' },
-        400,
-      );
+      return context.json({ error: "expected an empty JSON object" }, 400);
     }
     try {
-      const outcome = await plugins.applyUpdate(context.req.param("id"), {
-        mode: "manual",
-        dryRun: body.data.dryRun ?? false,
-        latest: body.data.latest ?? false,
-      });
+      const outcome = await plugins.applyUpdate(context.req.param("id"));
       if (!outcome.ok) return context.json({ error: outcome.error }, 422);
       return context.json(outcome.result);
     } catch (error) {
@@ -555,37 +519,6 @@ export function registerPluginRoutes(
       })
       .strict(),
   ]);
-
-  app.post("/plugins/install/preview", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const parsed = installBodySchema.safeParse(json);
-    if (!parsed.success) {
-      return context.json(
-        { error: "exactly one of source or marketplace is required" },
-        422,
-      );
-    }
-    try {
-      const preview =
-        "source" in parsed.data
-          ? await plugins.previewInstall(parsed.data.source)
-          : marketplaces === undefined
-            ? (() => {
-                throw new Error("marketplace service is unavailable");
-              })()
-            : await marketplaces.preview(
-                parsed.data.marketplace.marketplaceId,
-                parsed.data.marketplace.entryId,
-                parsed.data.version,
-              );
-      return context.json(preview);
-    } catch (error) {
-      return context.json(
-        { error: error instanceof Error ? error.message : String(error) },
-        422,
-      );
-    }
-  });
 
   app.post("/plugins/install", async (context) => {
     const json: unknown = await context.req.json().catch(() => null);
@@ -636,64 +569,6 @@ export function registerPluginRoutes(
       return context.json({ error: "unknown plugin" }, 404);
     }
     return context.json(source);
-  });
-
-  const ignoreVersionBodySchema = z
-    .object({ version: z.string().trim().min(1) })
-    .strict();
-  app.post("/plugins/:id/ignore-version", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = ignoreVersionBodySchema.safeParse(json);
-    if (!body.success) {
-      return context.json(
-        { error: 'expected { "version": non-empty string }' },
-        422,
-      );
-    }
-    const outcome = await plugins.ignoreVersion(
-      context.req.param("id"),
-      body.data.version,
-    );
-    if (!outcome.ok) return context.json({ error: outcome.error }, 422);
-    return context.json({ ignoredVersion: body.data.version });
-  });
-
-  const updatePolicyBodySchema = z
-    .object({ policy: z.enum(["manual", "compatible", "patch", "minor"]) })
-    .strict();
-  app.post("/plugins/:id/update-policy", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = updatePolicyBodySchema.safeParse(json);
-    if (!body.success) {
-      return context.json(
-        {
-          error:
-            'expected { "policy": "manual" | "compatible" | "patch" | "minor" }',
-        },
-        422,
-      );
-    }
-    const outcome = await plugins.setUpdatePolicy(
-      context.req.param("id"),
-      body.data.policy,
-    );
-    if (!outcome.ok) return context.json({ error: outcome.error }, 422);
-    return context.json({ policy: body.data.policy });
-  });
-
-  const autoApplyBodySchema = z.object({ enabled: z.boolean() }).strict();
-  app.post("/plugins/:id/auto-apply", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = autoApplyBodySchema.safeParse(json);
-    if (!body.success) {
-      return context.json({ error: 'expected { "enabled": boolean }' }, 422);
-    }
-    const outcome = await plugins.setAutoApply(
-      context.req.param("id"),
-      body.data.enabled,
-    );
-    if (!outcome.ok) return context.json({ error: outcome.error }, 404);
-    return context.json({ autoApply: outcome.autoApply });
   });
 
   app.post("/plugins/reload", async (context) => {
