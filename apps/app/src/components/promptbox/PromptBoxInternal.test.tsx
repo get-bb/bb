@@ -656,6 +656,7 @@ describe("PromptBoxInternal zen mode layout", () => {
             { length: 40 },
             (_, index) => `Line ${index + 1}`,
           ).join("\n"),
+          promptActions,
           zenMode: { storageKey },
         })}
       />,
@@ -679,7 +680,7 @@ describe("PromptBoxInternal zen mode layout", () => {
       );
     });
 
-    const footerRow = screen.getByRole("button", { name: "Attach files" })
+    const footerRow = screen.getByRole("button", { name: "Prompt actions" })
       .parentElement?.parentElement;
     expect(footerRow?.classList.contains("shrink-0")).toBe(true);
 
@@ -808,7 +809,9 @@ describe("PromptBoxInternal minimized layout", () => {
     render(
       <PromptBoxInternal
         {...createPromptBoxProps({
+          attachments: { onAttachFiles: vi.fn() },
           minimized: { isMinimized: false, onToggle: vi.fn() },
+          promptActions,
         })}
       />,
     );
@@ -819,7 +822,7 @@ describe("PromptBoxInternal minimized layout", () => {
     expect(
       screen.queryByRole("button", { name: "Make prompt box larger" }),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "Attach files" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
   });
 
   it("uses one contextual size control for compact and normal on mobile", () => {
@@ -1014,18 +1017,30 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
   });
 
-  it("places prompt actions before the right-side action cluster", () => {
-    renderPromptBox("");
+  it("opens the file picker from the prompt actions menu", async () => {
+    const onAttachFiles = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          attachments: { onAttachFiles },
+          promptActions,
+        })}
+      />,
+    );
 
-    const promptActionsButton = screen.getByRole("button", {
-      name: "Prompt actions",
-    });
-    const attachButton = screen.getByRole("button", { name: "Attach files" });
+    const attachmentInput = document.querySelector('input[type="file"]');
+    if (!(attachmentInput instanceof HTMLInputElement)) {
+      throw new Error("Attachment input was not rendered");
+    }
+    const clickFileInput = vi.fn();
+    attachmentInput.addEventListener("click", clickFileInput);
 
-    expect(
-      promptActionsButton.compareDocumentPosition(attachButton) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
+    await selectPromptAction("Attach files");
+
+    expect(clickFileInput).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(screen.queryByRole("menu", { name: "Prompt actions" })).toBeNull(),
+    );
   });
 
   it("inserts the skills trigger with no trailing space", async () => {

@@ -2780,6 +2780,12 @@ export function PromptBoxInternal({
               >
                 <PromptBoxActionsMenu
                   actions={promptActions}
+                  isAttaching={isAttaching}
+                  onAttach={
+                    onAttachFiles
+                      ? () => attachmentInputRef.current?.click()
+                      : undefined
+                  }
                   onAction={applyPromptAction}
                 />
                 {footerStart}
@@ -2804,21 +2810,6 @@ export function PromptBoxInternal({
               ) : null}
               {!showMinimizedLayout ? (
                 <>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label="Attach files"
-                    disabled={!onAttachFiles || isAttaching}
-                    onClick={() => attachmentInputRef.current?.click()}
-                    className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
-                  >
-                    {isAttaching ? (
-                      <Icon name="Spinner" className="size-4 animate-spin" />
-                    ) : (
-                      <Icon name="Paperclip" className="size-4" />
-                    )}
-                  </Button>
                   {voice && !showVoiceActionGroup ? (
                     <Button
                       type="button"

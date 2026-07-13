@@ -5,6 +5,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -23,6 +24,8 @@ export interface PromptBoxAction {
 
 interface PromptBoxActionsMenuProps {
   actions?: readonly PromptBoxAction[];
+  isAttaching?: boolean;
+  onAttach?: () => void;
   onAction: (action: PromptBoxAction) => void;
 }
 
@@ -81,15 +84,17 @@ function orderedPromptActions(
 
 export function PromptBoxActionsMenu({
   actions = [],
+  isAttaching = false,
+  onAttach,
   onAction,
 }: PromptBoxActionsMenuProps) {
-  const selectedActionRef = useRef(false);
+  const selectedItemRef = useRef(false);
   const visibleActions = orderedPromptActions(actions).filter(
     (action) => action.text.length > 0,
   );
   const clearSelectedActionAfterClose = useCallback(() => {
     const clear = () => {
-      selectedActionRef.current = false;
+      selectedItemRef.current = false;
     };
     if (typeof requestAnimationFrame === "function") {
       requestAnimationFrame(clear);
@@ -98,7 +103,7 @@ export function PromptBoxActionsMenu({
     setTimeout(clear, 0);
   }, []);
 
-  if (visibleActions.length === 0) {
+  if (visibleActions.length === 0 && !onAttach) {
     return null;
   }
 
@@ -124,7 +129,10 @@ export function PromptBoxActionsMenu({
             "-ml-1.5",
           )}
         >
-          <Icon name="Plus" className="size-4" />
+          <Icon
+            name={isAttaching ? "Spinner" : "Plus"}
+            className={cn("size-4", isAttaching && "animate-spin")}
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -135,11 +143,33 @@ export function PromptBoxActionsMenu({
         className="w-36"
         mobileTitle="Prompt actions"
         onCloseAutoFocus={(event) => {
-          if (selectedActionRef.current) {
+          if (selectedItemRef.current) {
             event.preventDefault();
           }
         }}
       >
+        {onAttach ? (
+          <>
+            <DropdownMenuItem
+              disabled={isAttaching}
+              onSelect={() => {
+                selectedItemRef.current = true;
+                onAttach();
+              }}
+            >
+              <Icon
+                name={isAttaching ? "Spinner" : "Paperclip"}
+                className={cn(
+                  "size-4 text-muted-foreground",
+                  isAttaching && "animate-spin",
+                )}
+                aria-hidden
+              />
+              Attach files
+            </DropdownMenuItem>
+            {visibleActions.length > 0 ? <DropdownMenuSeparator /> : null}
+          </>
+        ) : null}
         {visibleActions.map((action) => {
           const presentation = PROMPT_ACTION_PRESENTATION[action.kind];
           return (
@@ -147,7 +177,7 @@ export function PromptBoxActionsMenu({
               key={action.kind}
               disabled={action.disabled}
               onSelect={() => {
-                selectedActionRef.current = true;
+                selectedItemRef.current = true;
                 onAction(action);
               }}
             >
