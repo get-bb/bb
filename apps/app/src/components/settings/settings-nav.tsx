@@ -1,15 +1,13 @@
 import { matchPath, useLocation } from "react-router-dom";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import type { IconName } from "@bb/shared-ui/icon";
 import {
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { usePreferredTheme } from "@/hooks/useTheme";
-import { usePluginLogoUrl } from "@/lib/plugin-logos";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PROVIDER_ROUTE_PATH,
@@ -150,26 +148,5 @@ export function useSettingsNavState(): SettingsNavState {
 }
 
 export function PluginNavIcon({ plugin }: { plugin: PluginListItem }) {
-  const theme = usePreferredTheme();
-  const storedLogoUrl = usePluginLogoUrl(plugin.id);
-  const logoUrl =
-    theme === "dark" && plugin.logoDarkUrl !== null
-      ? plugin.logoDarkUrl
-      : (plugin.logoUrl ?? storedLogoUrl);
-  if (logoUrl === null) {
-    return (
-      <Icon
-        name={pluginIconName(plugin.icon ?? "Layers")}
-        className="size-4 shrink-0"
-      />
-    );
-  }
-  return (
-    <img
-      src={logoUrl}
-      alt=""
-      aria-hidden="true"
-      className="size-4 shrink-0 rounded-sm object-contain"
-    />
-  );
+  return <PluginIcon pluginId={plugin.id} icon={plugin.icon ?? "Layers"} />;
 }

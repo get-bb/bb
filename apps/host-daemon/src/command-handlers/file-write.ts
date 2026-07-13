@@ -11,14 +11,17 @@ import { isFsErrorWithCode } from "../fs-errors.js";
 import { NON_IMAGE_FILE_SIZE_LIMIT_BYTES, sha256Hex } from "./file-read.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
-interface ResolvedWriteTarget {
+export interface ResolvedWriteTarget {
   /** Real (symlink-resolved) path to write, existing or not. */
   writePath: string;
   /** True when the write target's direct parent directory is missing. */
   parentMissing: boolean;
 }
 
-function isPathWithinRoot(candidatePath: string, rootPath: string): boolean {
+export function isPathWithinRoot(
+  candidatePath: string,
+  rootPath: string,
+): boolean {
   const relativePath = path.relative(rootPath, candidatePath);
   return (
     relativePath === "" ||
@@ -42,7 +45,7 @@ function createMissingTargetError(
  * path, so a symlinked directory inside the root cannot smuggle a write
  * outside it.
  */
-async function resolveWriteTarget(
+export async function resolveWriteTarget(
   resolvedPath: string,
   resultPath: string,
 ): Promise<ResolvedWriteTarget> {

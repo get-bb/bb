@@ -358,6 +358,9 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
   [
     onlineRpcResponseSuccessSchemaFor("host.list_files"),
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
+    onlineRpcResponseSuccessSchemaFor("host.mkdir"),
+    onlineRpcResponseSuccessSchemaFor("host.move_path"),
+    onlineRpcResponseSuccessSchemaFor("host.remove_path"),
     onlineRpcResponseSuccessSchemaFor("host.browse_directory"),
     onlineRpcResponseSuccessSchemaFor("host.paths_exist"),
     onlineRpcResponseSuccessSchemaFor("project.inspect"),

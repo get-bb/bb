@@ -1,4 +1,5 @@
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import mimeTypes from "mime-types";
 import {
@@ -32,10 +33,33 @@ const HTML_PREVIEW_CSP = "sandbox allow-scripts";
 const NO_STORE_CACHE_CONTROL = "no-store";
 const NOSNIFF_CONTENT_TYPE_OPTIONS = "nosniff";
 const HTML_MIME_TYPE = "text/html";
+const FILE_PREVIEW_TTL_MS = 10 * 60 * 1000;
+
+interface FilePreviewLease {
+  hostId: string;
+  rootPath: string;
+  expiresAtMs: number;
+}
 
 function normalizeMimeType(value: string | null | undefined): string | null {
   const normalizedValue = value?.split(";")[0]?.trim().toLowerCase();
   return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null;
+}
+
+function isAbsoluteHostPath(value: string): boolean {
+  return path.posix.isAbsolute(value) || path.win32.isAbsolute(value);
+}
+
+function normalizeHostPath(value: string): string {
+  return path.win32.isAbsolute(value) && !path.posix.isAbsolute(value)
+    ? path.win32.normalize(value)
+    : path.posix.normalize(value);
+}
+
+function joinHostPath(rootPath: string, segments: string[]): string {
+  return path.win32.isAbsolute(rootPath) && !path.posix.isAbsolute(rootPath)
+    ? path.win32.join(rootPath, ...segments)
+    : path.posix.join(rootPath, ...segments);
 }
 
 function isHtmlMimeType(value: string | null | undefined): boolean {
@@ -136,6 +160,8 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   // connected host. Omitted hostId resolves to the primary (local) host here,
   // once, at the product boundary — daemon commands always get explicit values.
   const fileRoutes = publicApiRoutes.files;
+  const previewRoutes = publicApiRoutes.filePreviews;
+  const previewLeases = new Map<string, FilePreviewLease>();
 
   const resolveHostId = (hostId: string | undefined): string => {
     const resolved = hostId ?? requirePrimaryHostId(deps);
@@ -204,6 +230,159 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return context.json(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
+
+  post(fileRoutes.listPaths, async (context, payload) => {
+    const hostId = resolveHostId(payload.hostId);
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_paths",
+          path: payload.path,
+          limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
+          includeFiles: payload.includeFiles,
+          includeDirectories: payload.includeDirectories,
+          ...(payload.query !== undefined ? { query: payload.query } : {}),
+        },
+      });
+      return context.json(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
+
+  post(fileRoutes.mkdir, async (context, payload) => {
+    const hostId = resolveHostId(payload.hostId);
+    try {
+      const result = await callHostOnlineRpc(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.mkdir",
+          path: payload.path,
+          recursive: payload.recursive ?? false,
+          ...(payload.rootPath !== undefined
+            ? { rootPath: payload.rootPath }
+            : {}),
+        },
+      });
+      return context.json(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
+
+  post(fileRoutes.move, async (context, payload) => {
+    const hostId = resolveHostId(payload.hostId);
+    try {
+      const result = await callHostOnlineRpc(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.move_path",
+          sourcePath: payload.sourcePath,
+          destinationPath: payload.destinationPath,
+          ...(payload.rootPath !== undefined
+            ? { rootPath: payload.rootPath }
+            : {}),
+        },
+      });
+      return context.json(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
+
+  post(fileRoutes.remove, async (context, payload) => {
+    const hostId = resolveHostId(payload.hostId);
+    try {
+      const result = await callHostOnlineRpc(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.remove_path",
+          path: payload.path,
+          recursive: payload.recursive ?? false,
+          ...(payload.rootPath !== undefined
+            ? { rootPath: payload.rootPath }
+            : {}),
+        },
+      });
+      return context.json(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
+
+  post(fileRoutes.createPreview, (context, payload) => {
+    const hostId = resolveHostId(payload.hostId);
+    if (!isAbsoluteHostPath(payload.rootPath)) {
+      throw new ApiError(
+        400,
+        "invalid_path",
+        "rootPath must be absolute",
+        false,
+      );
+    }
+    const now = Date.now();
+    for (const [id, lease] of previewLeases) {
+      if (lease.expiresAtMs <= now) previewLeases.delete(id);
+    }
+    const id = randomUUID();
+    const expiresAtMs = now + (payload.ttlMs ?? FILE_PREVIEW_TTL_MS);
+    previewLeases.set(id, {
+      hostId,
+      rootPath: normalizeHostPath(payload.rootPath),
+      expiresAtMs,
+    });
+    return context.json({
+      baseUrl: `/api/v1/file-previews/${encodeURIComponent(id)}`,
+      expiresAtMs,
+    });
+  });
+
+  get(previewRoutes.content, async (context) => {
+    const id = context.req.param("id");
+    const lease = previewLeases.get(id);
+    if (!lease || lease.expiresAtMs <= Date.now()) {
+      previewLeases.delete(id);
+      throw new ApiError(404, "not_found", "File preview expired", false);
+    }
+    const rawPath = context.req.param("filePath").replace(/\\/g, "/");
+    const segments = rawPath.split("/");
+    if (
+      rawPath.startsWith("/") ||
+      segments.some(
+        (segment) => segment === "" || segment === "." || segment === "..",
+      )
+    ) {
+      throw new ApiError(400, "invalid_path", "Invalid preview path", false);
+    }
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: lease.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: joinHostPath(lease.rootPath, segments),
+          rootPath: lease.rootPath,
+        },
+      });
+      const headers = new Headers({
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+      });
+      if (isHtmlMimeType(result.mimeType)) {
+        assertRawFilesystemHtmlPreviewResult(result);
+        headers.set("content-security-policy", HTML_PREVIEW_CSP);
+        headers.set("content-type", HTML_PREVIEW_CONTENT_TYPE);
+      }
+      return createDaemonFileContentResponse(result, { headers });
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }

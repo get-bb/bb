@@ -59,6 +59,7 @@ import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
+  onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
@@ -195,6 +196,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onSelectProse?: (selection: MessageProseSelection | null) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
+  onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
   projectId?: string;
   showActions: boolean;
   mobileActionDisplay: "inline" | "overflow";
@@ -491,6 +493,7 @@ function AssistantConversationMessage({
   onSelectProse,
   onOpenLink,
   onOpenLocalFileLink,
+  onOpenPluginPanel,
   projectId,
   showActions,
   mobileActionDisplay,
@@ -569,6 +572,7 @@ function AssistantConversationMessage({
         projectId: projectId ?? null,
       },
       openWorkspaceFile: openDirectiveWorkspaceFile,
+      openThreadPanel: onOpenPluginPanel ?? null,
     };
   }, [
     messageDirectiveRegistry,
@@ -577,6 +581,7 @@ function AssistantConversationMessage({
     turnId,
     projectId,
     openDirectiveWorkspaceFile,
+    onOpenPluginPanel,
   ]);
 
   return (
@@ -607,9 +612,7 @@ function AssistantConversationMessage({
           fork on. `disabled` greys both fork and side chat together when the
           thread is at the spawn-depth cap (both spawn a child thread, one guard).
         */
-        <div
-          className="relative h-5 max-md:pointer-coarse:h-7"
-        >
+        <div className="relative h-5 max-md:pointer-coarse:h-7">
           <div
             className={cn(
               "absolute left-0 top-1",
@@ -638,6 +641,7 @@ export function ConversationMessageContent(
   const {
     attachments,
     onOpenLocalFileLink,
+    onOpenPluginPanel,
     projectId,
     resolveUserAttachmentImageSrc,
     text,
@@ -694,6 +698,7 @@ export function ConversationMessageContent(
       onSelectProse={props.onSelectProse}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
+      onOpenPluginPanel={onOpenPluginPanel}
       projectId={projectId}
       showActions={props.showActions}
       mobileActionDisplay={props.mobileActionDisplay}

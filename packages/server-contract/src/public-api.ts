@@ -38,6 +38,7 @@ import type {
   EmptyInput,
   PathId,
   PathProjectId,
+  PathPreviewAndFilePath,
   PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
   PathTerminal,
@@ -82,6 +83,16 @@ import type {
   HostFileReadResponse,
   HostFileWriteRequest,
   HostFileWriteResponse,
+  HostMkdirRequest,
+  HostMkdirResponse,
+  HostMovePathRequest,
+  HostMovePathResponse,
+  HostPathListRequest,
+  HostPathListResponse,
+  HostRemovePathRequest,
+  HostRemovePathResponse,
+  CreateFilePreviewRequest,
+  CreateFilePreviewResponse,
   HostPickFolderRequest,
   HostPickFolderResponse,
   HostPathsExistRequest,
@@ -179,6 +190,7 @@ import type {
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
 import {
   closeTerminalRequestSchema,
+  createFilePreviewRequestSchema,
   createThreadFolderRequestSchema,
   deleteThreadFolderRequestSchema,
   createTerminalRequestSchema,
@@ -200,6 +212,10 @@ import {
   hostFileListRequestSchema,
   hostFileReadRequestSchema,
   hostFileWriteRequestSchema,
+  hostMkdirRequestSchema,
+  hostMovePathRequestSchema,
+  hostPathListRequestSchema,
+  hostRemovePathRequestSchema,
   hostPickFolderRequestSchema,
   hostPathsExistRequestSchema,
   hostProviderCliInstallRequestSchema,
@@ -426,6 +442,55 @@ export const publicApiRoutes = {
         hostFileListRequestSchema,
       ),
       response: jsonResponse<HostFileListResponse>(),
+    }),
+    listPaths: defineRoute({
+      path: "/files/paths",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostPathListRequest>(
+        hostPathListRequestSchema,
+      ),
+      response: jsonResponse<HostPathListResponse>(),
+    }),
+    mkdir: defineRoute({
+      path: "/files/mkdir",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostMkdirRequest>(
+        hostMkdirRequestSchema,
+      ),
+      response: jsonResponse<HostMkdirResponse>(),
+    }),
+    move: defineRoute({
+      path: "/files/move",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostMovePathRequest>(
+        hostMovePathRequestSchema,
+      ),
+      response: jsonResponse<HostMovePathResponse>(),
+    }),
+    remove: defineRoute({
+      path: "/files/remove",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostRemovePathRequest>(
+        hostRemovePathRequestSchema,
+      ),
+      response: jsonResponse<HostRemovePathResponse>(),
+    }),
+    createPreview: defineRoute({
+      path: "/files/previews",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateFilePreviewRequest>(
+        createFilePreviewRequestSchema,
+      ),
+      response: jsonResponse<CreateFilePreviewResponse>(),
+    }),
+  },
+
+  filePreviews: {
+    content: defineRoute({
+      path: "/file-previews/:id/:filePath{.+}",
+      method: "get",
+      request: noRequest<PathPreviewAndFilePath>(),
+      response: binaryResponse<Uint8Array>(),
     }),
   },
 

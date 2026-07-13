@@ -72,6 +72,26 @@ function WorkspaceFileVis(props: PluginMessageDirectiveProps) {
   );
 }
 
+function ThreadPanelVis(props: PluginMessageDirectiveProps) {
+  if (props.openThreadPanel == null) {
+    return <span>thread panel unavailable</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        props.openThreadPanel?.({
+          actionId: "document",
+          title: "Plan",
+          params: { path: "plan.md" },
+        })
+      }
+    >
+      Open thread panel
+    </button>
+  );
+}
+
 function slot(
   overrides: Partial<PluginMessageDirectiveSlot> &
     Pick<PluginMessageDirectiveSlot, "id" | "pluginId" | "component">,
@@ -396,6 +416,47 @@ describe("ConversationMessageContent assistant directives", () => {
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
       lineRange: null,
       path: "/workspace/project/charts/demo.html",
+    });
+  });
+
+  it("scopes directive thread-panel actions to the registering plugin", () => {
+    const onOpenPluginPanel = vi.fn(() => true);
+    const registry = buildMessageDirectiveRegistry([
+      slot({
+        id: "inline-vis",
+        pluginId: "demo",
+        component: ThreadPanelVis,
+      }),
+    ]);
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <MessageDirectiveRegistryProvider registry={registry}>
+            <ConversationMessageContent
+              role="assistant"
+              attachments={null}
+              id="msg_a"
+              threadId="thr_a"
+              turnId="turn_a"
+              sourceSeqStart={1}
+              sourceSeqEnd={1}
+              showActions={false}
+              text={'::inline-vis{file="plan.md"}'}
+              turnRequest={null}
+              projectId="proj_a"
+              onOpenPluginPanel={onOpenPluginPanel}
+            />
+          </MessageDirectiveRegistryProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open thread panel" }));
+    expect(onOpenPluginPanel).toHaveBeenCalledWith({
+      pluginId: "demo",
+      actionId: "document",
+      title: "Plan",
+      params: { path: "plan.md" },
     });
   });
 

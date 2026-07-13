@@ -153,8 +153,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -262,6 +262,14 @@ interface PluginMessageDirectiveMessage {
  * viewer declined it.
  */
 type PluginMessageDirectiveOpenWorkspaceFile = (path: string) => boolean;
+interface PluginMessageDirectiveThreadPanelOptions {
+    /** A `threadPanelAction` id registered by this same plugin. */
+    actionId: string;
+    title?: string;
+    params?: JsonValue;
+}
+/** Open this plugin's registered action in the current thread side panel. */
+type PluginMessageDirectiveOpenThreadPanel = (options: PluginMessageDirectiveThreadPanelOptions) => boolean;
 /**
  * Props passed to a `messageDirective` component. Attributes are untrusted
  * strings parsed from the directive; the plugin validates its own fields.
@@ -277,6 +285,12 @@ interface PluginMessageDirectiveProps {
      * when the message surface has no workspace viewer available.
      */
     openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
+    /**
+     * Opens one of this plugin's own `threadPanelAction` components in the
+     * current thread side panel. Omitted by older hosts; null on message
+     * surfaces without a thread panel.
+     */
+    openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
 }
 /**
  * Slot/panel ids and nav-panel paths must match this pattern (letters,
@@ -830,6 +844,7 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"plugin">;
                 pluginId: z$1.ZodString;
+                icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>], "kind">;
@@ -1000,6 +1015,7 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"plugin">;
                 pluginId: z$1.ZodString;
+                icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>], "kind">;
@@ -1324,13 +1340,50 @@ interface FileListArgs {
     query?: string;
     limit?: number;
 }
+interface PathListArgs extends FileListArgs {
+    includeFiles: boolean;
+    includeDirectories: boolean;
+}
+interface FileMkdirArgs {
+    hostId?: string;
+    path: string;
+    rootPath?: string;
+    recursive?: boolean;
+}
+interface FileMoveArgs {
+    hostId?: string;
+    sourcePath: string;
+    destinationPath: string;
+    rootPath?: string;
+}
+interface FileRemoveArgs {
+    hostId?: string;
+    path: string;
+    rootPath?: string;
+    recursive?: boolean;
+}
+interface FilePreviewArgs {
+    hostId?: string;
+    rootPath: string;
+    ttlMs?: number;
+}
 type FileReadResult = PublicApiOutput<"/files/read", "$post">;
 type FileWriteResult = PublicApiOutput<"/files/write", "$post">;
 type FileListResult = PublicApiOutput<"/files/list", "$post">;
+type PathListResult = PublicApiOutput<"/files/paths", "$post">;
+type FileMkdirResult = PublicApiOutput<"/files/mkdir", "$post">;
+type FileMoveResult = PublicApiOutput<"/files/move", "$post">;
+type FileRemoveResult = PublicApiOutput<"/files/remove", "$post">;
+type FilePreviewResult = PublicApiOutput<"/files/previews", "$post">;
 interface FilesArea {
     read(args: FileReadArgs): Promise<FileReadResult>;
     write(args: FileWriteArgs): Promise<FileWriteResult>;
     list(args: FileListArgs): Promise<FileListResult>;
+    listPaths(args: PathListArgs): Promise<PathListResult>;
+    mkdir(args: FileMkdirArgs): Promise<FileMkdirResult>;
+    move(args: FileMoveArgs): Promise<FileMoveResult>;
+    remove(args: FileRemoveArgs): Promise<FileRemoveResult>;
+    createPreview(args: FilePreviewArgs): Promise<FilePreviewResult>;
 }
 declare function createFilesArea(args: CreateSdkAreaArgs): FilesArea;
 
@@ -2210,4 +2263,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN, PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN };
-export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginInteractions, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
+export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginInteractions, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };

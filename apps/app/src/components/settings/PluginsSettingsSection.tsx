@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -476,10 +477,7 @@ export function PluginSettingsDetail({
         <div className="space-y-3">
           <div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <PluginLogo
-                plugin={plugin}
-                className="size-4 shrink-0 rounded-sm object-contain"
-              />
+              <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
               <h2 className="text-sm font-semibold text-foreground">
                 {displayName}
               </h2>

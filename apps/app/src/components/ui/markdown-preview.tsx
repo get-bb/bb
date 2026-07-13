@@ -158,6 +158,7 @@ interface ResolvedMessageDirectiveRender {
   mounts: readonly MountedMessageDirective[];
   message: MarkdownMessageDirectives["message"];
   openWorkspaceFile: MarkdownMessageDirectives["openWorkspaceFile"];
+  openThreadPanel: MarkdownMessageDirectives["openThreadPanel"];
 }
 
 /**
@@ -378,6 +379,7 @@ function areMarkdownMessageDirectivesEqual({
   return (
     previous.registry === next.registry &&
     previous.openWorkspaceFile === next.openWorkspaceFile &&
+    previous.openThreadPanel === next.openThreadPanel &&
     previous.message.id === next.message.id &&
     previous.message.threadId === next.message.threadId &&
     previous.message.turnId === next.message.turnId &&
@@ -1007,6 +1009,7 @@ function buildMarkdownComponents({
       mounts: messageDirectives.mounts,
       message: messageDirectives.message,
       openWorkspaceFile: messageDirectives.openWorkspaceFile,
+      openThreadPanel: messageDirectives.openThreadPanel,
     });
   }
 
@@ -1192,6 +1195,7 @@ function MarkdownPreviewComponent({
       mounts,
       message: messageDirectives.message,
       openWorkspaceFile: messageDirectives.openWorkspaceFile,
+      openThreadPanel: messageDirectives.openThreadPanel,
       registry: messageDirectives.registry,
     };
   }, [messageDirectives]);
@@ -1211,6 +1215,7 @@ function MarkdownPreviewComponent({
                 mounts: messageDirectiveMounts.mounts,
                 message: messageDirectiveMounts.message,
                 openWorkspaceFile: messageDirectiveMounts.openWorkspaceFile,
+                openThreadPanel: messageDirectiveMounts.openThreadPanel,
               },
       }),
     [

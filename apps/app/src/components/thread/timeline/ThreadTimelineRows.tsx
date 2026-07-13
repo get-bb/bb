@@ -63,6 +63,7 @@ import type {
   ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
+  ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineImageViewSrcResolver,
   ThreadTimelineTheme,
   ThreadTimelineUnreadDividerPlacement,
@@ -160,6 +161,7 @@ export interface ThreadTimelineRowsProps {
   onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
+  onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
@@ -209,6 +211,7 @@ interface TimelineRendererStaticContextValue {
   threadChildOrigin: ThreadChildOrigin | null;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler | undefined;
+  onOpenPluginPanel: ThreadTimelineOpenPluginPanelHandler | undefined;
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
@@ -929,6 +932,7 @@ function ConversationRow({
     threadChildOrigin,
     onOpenLink,
     onOpenLocalFileLink,
+    onOpenPluginPanel,
     onTitleAction,
     projectId,
     resolveMentionLink,
@@ -1018,6 +1022,7 @@ function ConversationRow({
       onSelectProse={onSelectProse}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
+      onOpenPluginPanel={onOpenPluginPanel}
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
       role="assistant"
@@ -1994,6 +1999,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       threadChildOrigin: props.threadChildOrigin ?? null,
       onOpenLink: props.onOpenLink,
       onOpenLocalFileLink: props.onOpenLocalFileLink,
+      onOpenPluginPanel: props.onOpenPluginPanel,
       onTitleAction: props.onTitleAction,
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
@@ -2016,6 +2022,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.threadChildOrigin,
       props.onOpenLink,
       props.onOpenLocalFileLink,
+      props.onOpenPluginPanel,
       props.onTitleAction,
       projectId,
       props.resolveImageViewSrc,
@@ -2061,7 +2068,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                   showAssistantMessageActions={true}
                   compactActivityIntents={false}
                   spacing="top-level"
-                  unreadDividerAutoScroll={props.unreadDividerAutoScroll ?? true}
+                  unreadDividerAutoScroll={
+                    props.unreadDividerAutoScroll ?? true
+                  }
                   unreadDividerPlacement={props.unreadDividerPlacement ?? null}
                 />
               </AutoHeightContainer>

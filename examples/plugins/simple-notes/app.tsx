@@ -1,31 +1,88 @@
-// bb-plugin-simple-notes frontend — a minimal Simple Notes surface.
-//
-// A single navPanel (chrome "none", so we own the whole body): the notes list
-// on the left, a headless Tiptap WYSIWYG editor on the right, styled from host
-// theme tokens. The selected note lives in the panel's subPath, so browser
-// back/forward and deep links work. Edits autosave (debounced) and on
-// Cmd/Ctrl+S; task-list checkboxes in the rich editor cover todos.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   definePluginApp,
   useBbNavigate,
   useRpc,
+  useRealtime,
+  type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
+  type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
-import { Editor, Extension, InputRule } from "@tiptap/core";
+import {
+  Editor,
+  Extension,
+  InputRule,
+  Node,
+  mergeAttributes,
+} from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
+import Image from "@tiptap/extension-image";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
+import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  AlertCircleIcon,
+  ArrowUpRight01Icon,
+  Cancel01Icon,
+  File01Icon,
+  FileAddIcon,
+  Folder01Icon,
+  Folder02Icon,
+  FolderAddIcon,
+  HtmlFile01Icon,
+  PlusSignIcon,
+  Search01Icon,
+  SidebarRightIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PencilEdit02Icon, SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-// --- rpc result shapes (rpc is untyped in V1 — narrow at the boundary) ------
+interface Vault {
+  id: string;
+  name: string;
+  hostId: string | null;
+  rootPath: string;
+}
+
+interface Host {
+  id: string;
+  name: string;
+  status: "connected" | "disconnected";
+}
+
+interface VaultEntry {
+  kind: "file" | "directory";
+  path: string;
+}
 
 interface NoteSummary {
   path: string;
@@ -35,8 +92,12 @@ interface NoteSummary {
 }
 
 interface NotesData {
-  root: string;
+  vaults: Vault[];
+  vault: Vault;
+  hosts: Host[];
+  entries: VaultEntry[];
   notes: NoteSummary[];
+  truncated: boolean;
   error: string | null;
 }
 
@@ -45,30 +106,237 @@ interface NoteContent {
   sha256: string;
 }
 
+interface PreviewLease {
+  baseUrl: string;
+  expiresAtMs: number;
+}
+
 type SaveResult =
   | { outcome: "written"; sha256: string }
   | { outcome: "conflict"; currentSha256: string | null };
 
-// --- editor styling ---------------------------------------------------------
-// Tiptap is headless, so this stylesheet IS the editor's look. Everything is
-// derived from host theme tokens (var(--foreground), --muted, --primary, …) so
-// it tracks the app palette in light and dark. Injected once per session.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseNotesData(value: unknown): NotesData {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.vaults) ||
+    !isRecord(value.vault)
+  ) {
+    throw new Error("Docs returned an invalid notebook response");
+  }
+  // RPC is the untyped boundary. The backend owns and validates this exact
+  // JSON contract; keep the cast here rather than spreading unknown values.
+  return value as unknown as NotesData;
+}
+
+function parseNoteContent(value: unknown): NoteContent {
+  if (
+    !isRecord(value) ||
+    typeof value.content !== "string" ||
+    typeof value.sha256 !== "string"
+  ) {
+    throw new Error("Docs returned invalid file content");
+  }
+  return { content: value.content, sha256: value.sha256 };
+}
+
+function parsePreviewLease(value: unknown): PreviewLease {
+  if (
+    !isRecord(value) ||
+    typeof value.baseUrl !== "string" ||
+    typeof value.expiresAtMs !== "number"
+  ) {
+    throw new Error("Docs returned an invalid preview lease");
+  }
+  return { baseUrl: value.baseUrl, expiresAtMs: value.expiresAtMs };
+}
+
+function encodePath(value: string): string {
+  return value.split("/").map(encodeURIComponent).join("/");
+}
+
+function dirname(value: string): string {
+  const index = value.lastIndexOf("/");
+  return index < 0 ? "" : value.slice(0, index);
+}
+
+function normalizeRelative(base: string, relative: string): string {
+  if (!relative.startsWith(".")) return relative.replace(/^\//, "");
+  const stack = base ? base.split("/") : [];
+  for (const part of relative.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") stack.pop();
+    else stack.push(part);
+  }
+  return stack.join("/");
+}
+
+function relativeFrom(base: string, target: string): string {
+  const from = base ? base.split("/") : [];
+  const to = target.split("/");
+  while (from[0] && from[0] === to[0]) {
+    from.shift();
+    to.shift();
+  }
+  return (
+    `${from.map(() => "..").join("/")}${from.length && to.length ? "/" : ""}${to.join("/")}` ||
+    "."
+  );
+}
+
+function previewUrl(baseUrl: string, notePath: string, source: string): string {
+  if (/^(https?:|data:|blob:|#)/i.test(source)) return source;
+  return `${baseUrl}/${encodePath(normalizeRelative(dirname(notePath), source))}`;
+}
+
+function displayMarkdown(
+  content: string,
+  baseUrl: string,
+  notePath: string,
+): string {
+  const withImages = content.replace(
+    /(!\[[^\]]*\]\()([^\s)]+)([^)]*\))/g,
+    (_match, start: string, source: string, end: string) =>
+      `${start}${previewUrl(baseUrl, notePath, source)}${end}`,
+  );
+  return withImages.replace(
+    /^::html\{src="([^"]+)"(?: height="(\d+)")?\}\s*$/gm,
+    (_match, source: string, height: string | undefined) =>
+      `<div data-simple-html-embed="true" data-src="${encodeURIComponent(source)}" data-height="${height ?? "360"}"></div>`,
+  );
+}
+
+function storedMarkdown(
+  content: string,
+  baseUrl: string,
+  notePath: string,
+): string {
+  const prefix = `${baseUrl}/`;
+  return content.replace(
+    /(!\[[^\]]*\]\()([^\s)]+)([^)]*\))/g,
+    (_match, start: string, source: string, end: string) => {
+      if (!source.startsWith(prefix)) return `${start}${source}${end}`;
+      const target = source
+        .slice(prefix.length)
+        .split("/")
+        .map(decodeURIComponent)
+        .join("/");
+      const relative = relativeFrom(dirname(notePath), target);
+      return `${start}${relative.startsWith(".") ? relative : `./${relative}`}${end}`;
+    },
+  );
+}
+
+interface HtmlEmbedOptions {
+  baseUrl: string;
+  notePath: string;
+}
+
+const HtmlEmbed = Node.create<HtmlEmbedOptions>({
+  name: "simpleHtmlEmbed",
+  group: "block",
+  atom: true,
+  isolating: true,
+  addOptions() {
+    return { baseUrl: "", notePath: "" };
+  },
+  addAttributes() {
+    return {
+      src: {
+        default: "",
+        parseHTML: (element) =>
+          decodeURIComponent(element.getAttribute("data-src") ?? ""),
+        renderHTML: (attributes) => ({
+          "data-src": encodeURIComponent(String(attributes.src)),
+        }),
+      },
+      height: {
+        default: 360,
+        parseHTML: (element) =>
+          Number(element.getAttribute("data-height") ?? 360),
+        renderHTML: (attributes) => ({
+          "data-height": String(attributes.height),
+        }),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-simple-html-embed="true"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "div",
+      mergeAttributes(HTMLAttributes, { "data-simple-html-embed": "true" }),
+    ];
+  },
+  addNodeView() {
+    return ({ node }) => {
+      const dom = document.createElement("section");
+      dom.className = "simple-html-embed";
+      dom.contentEditable = "false";
+      const header = document.createElement("div");
+      header.className = "simple-html-embed-header";
+      header.textContent = `◇ ${String(node.attrs.src)} · sandboxed`;
+      const iframe = document.createElement("iframe");
+      iframe.title = `Embedded HTML: ${String(node.attrs.src)}`;
+      iframe.setAttribute("sandbox", "allow-scripts");
+      iframe.style.height = `${Math.min(1200, Math.max(120, Number(node.attrs.height) || 360))}px`;
+      iframe.src = previewUrl(
+        this.options.baseUrl,
+        this.options.notePath,
+        String(node.attrs.src),
+      );
+      dom.append(header, iframe);
+      return { dom };
+    };
+  },
+  addStorage() {
+    return {
+      markdown: {
+        serialize(
+          state: {
+            write(value: string): void;
+            closeBlock(node: unknown): void;
+          },
+          node: { attrs: { src: string; height: number } },
+        ) {
+          state.write(
+            `::html{src="${node.attrs.src}" height="${node.attrs.height}"}`,
+          );
+          state.closeBlock(node);
+        },
+      },
+    };
+  },
+});
+
+const MarkdownTaskInput = Extension.create({
+  name: "markdownTaskInput",
+  priority: 200,
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /^\s*\[([ xX]?)\]\s$/,
+        handler: ({ range, match, chain }) => {
+          const commands = chain().deleteRange(range).toggleTaskList();
+          if (/[xX]/.test(match[1] ?? ""))
+            commands.updateAttributes("taskItem", { checked: true });
+          commands.run();
+        },
+      }),
+    ];
+  },
+});
 
 const STYLE_MARKER = "data-bb-simple-notes-styles";
-
 const EDITOR_CSS = `
 .bb-simple-notes-editor .tiptap {
-  outline: none;
-  width: 100%;
-  max-width: 48em;
-  margin: 0 auto;
-  padding: 3rem 1.5rem 40vh;
-  font-size: 15px;
-  line-height: 1.75;
-  color: var(--foreground);
-  caret-color: var(--foreground);
-  overflow-wrap: break-word;
-  -webkit-font-smoothing: antialiased;
+  outline: none; width: 100%; max-width: 48em; margin: 0 auto; padding: 3rem 1.5rem 40vh;
+  font-size: 15px; line-height: 1.75; color: var(--foreground); caret-color: var(--foreground);
+  overflow-wrap: break-word; -webkit-font-smoothing: antialiased;
 }
 .bb-simple-notes-editor .tiptap > :first-child,
 .bb-simple-notes-editor .tiptap li > :first-child,
@@ -97,45 +365,28 @@ const EDITOR_CSS = `
 .bb-simple-notes-editor .tiptap a:hover { text-decoration-color: currentColor; }
 .bb-simple-notes-editor .tiptap a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 0.125em; }
 .bb-simple-notes-editor .tiptap strong { font-weight: 600; }
-.bb-simple-notes-editor .tiptap code {
-  background: var(--muted); border-radius: min(calc(var(--radius) * 0.6), 0.35em); padding: 0.125em 0.3em;
-  font-size: 0.85em; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-}
-.bb-simple-notes-editor .tiptap pre {
-  background: var(--muted); border-radius: var(--radius);
-  padding: 0.75em 1em; overflow-x: auto; font-size: 0.875em; line-height: 1.5;
-  margin: 1.43em 0 0; tab-size: 2;
-}
+.bb-simple-notes-editor .tiptap code { background: var(--muted); border-radius: min(calc(var(--radius) * 0.6), 0.35em); padding: 0.125em 0.3em; font-size: 0.85em; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+.bb-simple-notes-editor .tiptap pre { background: var(--muted); border-radius: var(--radius); padding: 0.75em 1em; overflow-x: auto; font-size: 0.875em; line-height: 1.5; margin: 1.43em 0 0; tab-size: 2; }
 .bb-simple-notes-editor .tiptap pre code { background: none; padding: 0; font-size: inherit; }
-.bb-simple-notes-editor .tiptap blockquote {
-  border-left: 2px solid var(--border); padding-left: 1em; margin: 1.25em 0 0;
-}
+.bb-simple-notes-editor .tiptap blockquote { border-left: 2px solid var(--border); padding-left: 1em; margin: 1.25em 0 0; }
 .bb-simple-notes-editor .tiptap hr { border: none; border-top: 1px solid var(--border); margin: 3em 0 0; }
 .bb-simple-notes-editor .tiptap hr + :is(h1, h2, h3, h4) { margin-top: 1.25em; }
-/* GFM task lists (todos) */
+.bb-simple-notes-editor .tiptap img { display: block; max-width: 100%; max-height: 38rem; margin: 1.5em auto 0; border-radius: var(--radius); border: 1px solid var(--border); }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0.25em; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin-top: 0.5em; padding-left: 0; }
-.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > label {
-  flex: 0 0 auto; display: inline-flex; align-items: center; height: 1.7em; user-select: none;
-}
+.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > label { flex: 0 0 auto; display: inline-flex; align-items: center; height: 1.7em; user-select: none; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div { flex: 1 1 auto; min-width: 0; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div > p { line-height: 1.75; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div > p:first-child { margin-top: 0; }
-.bb-simple-notes-editor .tiptap ul[data-type="taskList"] input[type="checkbox"] {
-  display: block; width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; margin: 0;
-}
-.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li[data-checked="true"] > div {
-  color: var(--muted-foreground); text-decoration: line-through;
-}
-/* placeholder (empty document) */
-.bb-simple-notes-editor .tiptap p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  float: left; height: 0; pointer-events: none; color: var(--muted-foreground);
-}
+.bb-simple-notes-editor .tiptap ul[data-type="taskList"] input[type="checkbox"] { display: block; width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; margin: 0; }
+.bb-simple-notes-editor .tiptap ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--muted-foreground); text-decoration: line-through; }
+.bb-simple-notes-editor .tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: var(--muted-foreground); }
 .bb-simple-notes-editor .tiptap ::selection { background: color-mix(in oklab, var(--primary) 22%, transparent); }
-@media (max-width: 47.999rem) {
-  .bb-simple-notes-editor .tiptap { padding-inline: 1.25rem; font-size: 16.875px; }
-}
+.simple-html-embed { margin:1.5em 0 0; overflow:hidden; border:1px solid var(--border); border-radius:var(--radius); background:var(--background); }
+.simple-html-embed-header { border-bottom:1px solid var(--border); background:var(--muted); padding:.45rem .7rem; color:var(--muted-foreground); font:11px var(--font-mono,monospace); }
+.simple-html-embed iframe { display:block; width:100%; border:0; background:white; }
+.bb-docs-panel .tiptap { max-width: none; padding: 1rem 0 3rem; font-size: 14px; }
+@media (max-width: 47.999rem) { .bb-simple-notes-editor .tiptap { padding-inline: 1.25rem; font-size: 16.875px; } }
 `;
 
 function ensureEditorStyles(): void {
@@ -143,49 +394,40 @@ function ensureEditorStyles(): void {
   const style = document.createElement("style");
   style.setAttribute(STYLE_MARKER, "");
   style.textContent = EDITOR_CSS;
-  document.head.appendChild(style);
+  document.head.append(style);
 }
 
-// GFM checkbox input: typing "[ ] ", "[] " or "[x] " turns the line into a
-// checkbox — and so does the natural "- [ ] " (the "- " first becomes a bullet
-// via StarterKit, then this rule converts that list into a task list). Runs at
-// a higher priority than the default task-item rule so it handles both the
-// plain-paragraph and inside-a-bullet cases via toggleTaskList().
-const MarkdownTaskInput = Extension.create({
-  name: "markdownTaskInput",
-  priority: 200,
-  addInputRules() {
-    return [
-      new InputRule({
-        find: /^\s*\[([ xX]?)\]\s$/,
-        handler: ({ range, match, chain }) => {
-          const checked = /[xX]/.test(match[1] ?? "");
-          const commands = chain().deleteRange(range).toggleTaskList();
-          if (checked) commands.updateAttributes("taskItem", { checked: true });
-          commands.run();
-        },
-      }),
-    ];
-  },
-});
-
-// --- the Tiptap editor ------------------------------------------------------
-// Remounted (via key) per note; markdown flows out through a ref so the effect
-// never re-runs mid-edit. Tiptap's `update` never fires for the initial
-// content, so we publish the normalized initial markdown once via
-// `onFirstRender` as the saved baseline — that keeps merely opening a note from
-// looking "dirty" and triggering a save.
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("Could not read image"));
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function TiptapEditor({
   initialValue,
+  previewBaseUrl,
+  notePath,
+  onUpload,
   onFirstRender,
   onMarkdownChange,
 }: {
   initialValue: string;
-  onFirstRender: (markdown: string) => void;
-  onMarkdownChange: (markdown: string) => void;
+  previewBaseUrl: string;
+  notePath: string;
+  onUpload(file: File): Promise<{ markdownPath: string }>;
+  onFirstRender(markdown: string): void;
+  onMarkdownChange(markdown: string): void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const uploadRef = useRef(onUpload);
+  uploadRef.current = onUpload;
   const firstRef = useRef(onFirstRender);
   firstRef.current = onFirstRender;
   const changeRef = useRef(onMarkdownChange);
@@ -193,39 +435,73 @@ function TiptapEditor({
 
   useEffect(() => {
     ensureEditorStyles();
-    const element = rootRef.current;
-    if (!element) return;
-    const editor = new Editor({
-      element,
+    if (!rootRef.current) return;
+    let editor: Editor;
+    const upload = async (file: File) => {
+      if (!file.type.startsWith("image/")) return false;
+      const result = await uploadRef.current(file);
+      editor
+        .chain()
+        .focus()
+        .setImage({
+          src: previewUrl(previewBaseUrl, notePath, result.markdownPath),
+          alt: file.name,
+        })
+        .run();
+      return true;
+    };
+    editor = new Editor({
+      element: rootRef.current,
       extensions: [
         StarterKit,
         Link.configure({ openOnClick: false, autolink: true }),
+        Image.configure({ allowBase64: false }),
         TaskList,
         TaskItem.configure({ nested: true }),
         MarkdownTaskInput,
+        HtmlEmbed.configure({ baseUrl: previewBaseUrl, notePath }),
         Placeholder.configure({ placeholder: "Start writing…" }),
-        // tiptap-markdown: parses `content` as markdown and exposes
-        // editor.storage.markdown.getMarkdown() for serialization.
         Markdown.configure({
-          html: false,
+          html: true,
           tightLists: true,
           bulletListMarker: "-",
           linkify: true,
         }),
       ],
-      content: initialValue,
+      content: displayMarkdown(initialValue, previewBaseUrl, notePath),
       autofocus: "end",
+      editorProps: {
+        handlePaste(_view, event) {
+          const file = [...(event.clipboardData?.files ?? [])].find(
+            (candidate) => candidate.type.startsWith("image/"),
+          );
+          if (!file) return false;
+          void upload(file);
+          return true;
+        },
+        handleDrop(_view, event) {
+          const file = [...(event.dataTransfer?.files ?? [])].find(
+            (candidate) => candidate.type.startsWith("image/"),
+          );
+          if (!file) return false;
+          event.preventDefault();
+          void upload(file);
+          return true;
+        },
+      },
     });
-    const getMarkdown = (): string => editor.storage.markdown.getMarkdown();
+    const getMarkdown = () =>
+      storedMarkdown(
+        editor.storage.markdown.getMarkdown(),
+        previewBaseUrl,
+        notePath,
+      );
     firstRef.current(getMarkdown());
     editor.on("update", () => changeRef.current(getMarkdown()));
     return () => {
       editor.destroy();
     };
-    // initialValue is captured once — the editor owns the document after mount;
-    // callers remount with a new key to reload.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialValue, notePath, previewBaseUrl]);
 
   return (
     <div
@@ -235,106 +511,345 @@ function TiptapEditor({
   );
 }
 
-// --- the editor pane over one note ------------------------------------------
+function useNotebook(vaultId: string | null) {
+  const rpc = useRpc();
+  const [data, setData] = useState<NotesData | null>(null);
+  const refresh = useCallback(() => {
+    void rpc
+      .call("listNotes", vaultId ? { vaultId } : {})
+      .then((value) => setData(parseNotesData(value)))
+      .catch((error: unknown) => {
+        setData((current) =>
+          current
+            ? {
+                ...current,
+                error: error instanceof Error ? error.message : String(error),
+              }
+            : null,
+        );
+      });
+  }, [rpc, vaultId]);
+  useEffect(refresh, [refresh]);
+  useRealtime("vault-changed", refresh);
+  return { data, refresh };
+}
 
-type PaneState =
-  | { phase: "loading" }
-  | { phase: "error"; message: string }
-  | { phase: "ready"; initialContent: string };
-
-const AUTOSAVE_MS = 700;
-
-function SidebarButton({
-  onClick,
-  label,
-}: {
-  onClick: () => void;
-  label: string;
-}) {
+function DocumentSkeleton() {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    <div
+      className="min-w-0 flex-1 overflow-hidden"
+      role="status"
+      aria-label="Loading document"
     >
-      <HugeiconsIcon icon={SidebarLeftIcon} size={18} strokeWidth={1.8} />
-    </button>
+      <span className="sr-only">Loading…</span>
+      <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-12">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-2/5" />
+          <Skeleton className="h-4 w-3/5" />
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-4 w-4/5" />
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+        <div className="space-y-4 pt-2">
+          <Skeleton className="h-6 w-1/3" />
+          <div className="space-y-3">
+            {["w-11/12", "w-4/5", "w-2/3"].map((width) => (
+              <div className="flex items-center gap-3" key={width}>
+                <Skeleton className="size-4 shrink-0" />
+                <Skeleton className={cn("h-4", width)} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function NoteEditorPane({
+interface DocumentRef {
+  vaultId: string;
+  path: string;
+  title: string;
+}
+
+function documentTitle(path: string): string {
+  return (path.split("/").at(-1) ?? path).replace(/\.(md|html?)$/i, "");
+}
+
+function parseDocumentRef(value: unknown): DocumentRef | null {
+  if (!isRecord(value)) return null;
+  const vaultId =
+    typeof value.vaultId === "string"
+      ? value.vaultId
+      : typeof value.vault === "string"
+        ? value.vault
+        : "";
+  const path = typeof value.path === "string" ? value.path : "";
+  const title =
+    typeof value.title === "string" && value.title.trim()
+      ? value.title.trim()
+      : documentTitle(path);
+  if (
+    !vaultId ||
+    !path ||
+    path.startsWith("/") ||
+    path.split("/").some((part) => !part || part === "." || part === "..") ||
+    !/\.(md|html?)$/i.test(path)
+  )
+    return null;
+  return { vaultId, path, title };
+}
+
+function DocsDirectiveCard({
+  attributes,
+  openThreadPanel,
+}: PluginMessageDirectiveProps) {
+  const navigate = useBbNavigate();
+  const document = parseDocumentRef(attributes);
+  if (!document) {
+    return (
+      <div className="my-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+        Invalid Docs link. Expected a vault and a Markdown or HTML path.
+      </div>
+    );
+  }
+  const openInDocs = () =>
+    navigate.toPluginPanel("docs", {
+      subPath: `${encodeURIComponent(document.vaultId)}/${encodePath(document.path)}`,
+    });
+  const openPreview = () => {
+    const opened =
+      openThreadPanel?.({
+        actionId: "document",
+        title: document.title,
+        params: {
+          vaultId: document.vaultId,
+          path: document.path,
+          title: document.title,
+        },
+      }) ?? false;
+    if (!opened) openInDocs();
+  };
+  return (
+    <div className="my-3 flex h-11 items-center gap-1 rounded-lg border border-border bg-card px-2 shadow-sm transition-colors hover:bg-state-hover">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onClick={openPreview}
+      >
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <HugeiconsIcon
+            icon={/\.html?$/i.test(document.path) ? HtmlFile01Icon : File01Icon}
+            className="size-4"
+          />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {document.title}
+        </span>
+      </button>
+      <Button
+        className="size-8 shrink-0"
+        size="icon"
+        variant="ghost"
+        aria-label="Open in Docs"
+        onClick={openInDocs}
+      >
+        <HugeiconsIcon icon={ArrowUpRight01Icon} />
+      </Button>
+    </div>
+  );
+}
+
+function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
+  const rpc = useRpc();
+  const [state, setState] = useState<PreviewLease | { error: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    let active = true;
+    setState(null);
+    rpc
+      .call("preparePreview", {
+        vaultId: document.vaultId,
+        path: document.path,
+      })
+      .then(parsePreviewLease)
+      .then((lease) => {
+        if (active) setState(lease);
+      })
+      .catch((error: unknown) => {
+        if (active)
+          setState({
+            error: error instanceof Error ? error.message : String(error),
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [document.path, document.vaultId, rpc]);
+  if (!state) return <DocumentSkeleton />;
+  if ("error" in state)
+    return <div className="text-sm text-destructive">{state.error}</div>;
+  return (
+    <iframe
+      className="min-h-[32rem] flex-1 border-0 bg-white"
+      sandbox="allow-scripts"
+      title={document.title}
+      src={`${state.baseUrl}/${encodePath(document.path)}`}
+    />
+  );
+}
+
+function DocumentPanel({ params }: PluginThreadPanelProps) {
+  const document = parseDocumentRef(params);
+  const navigate = useBbNavigate();
+  if (!document)
+    return (
+      <div className="text-sm text-muted-foreground">
+        Open a Docs card from a message to edit it here.
+      </div>
+    );
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pb-2">
+        <div className="min-w-0 flex-1 truncate text-sm font-medium">
+          {document.title}
+        </div>
+        <Button
+          className="size-8 shrink-0"
+          size="icon"
+          variant="ghost"
+          aria-label="Open in Docs"
+          onClick={() =>
+            navigate.toPluginPanel("docs", {
+              subPath: `${encodeURIComponent(document.vaultId)}/${encodePath(document.path)}`,
+            })
+          }
+        >
+          <HugeiconsIcon icon={ArrowUpRight01Icon} />
+        </Button>
+      </div>
+      {/\.html?$/i.test(document.path) ? (
+        <HtmlDocumentPanelBody document={document} />
+      ) : (
+        <NotePane
+          vaultId={document.vaultId}
+          notePath={document.path}
+          onChanged={() => undefined}
+          onRenamed={() => undefined}
+          renameToTitle={false}
+        />
+      )}
+    </div>
+  );
+}
+
+function NotePane({
+  vaultId,
   notePath,
-  onListChanged,
+  onChanged,
   onRenamed,
-  sidebarCollapsed,
-  onToggleSidebar,
+  renameToTitle = true,
 }: {
-  /** Path at open time; the pane owns the live path from here (via rename). */
+  vaultId: string;
   notePath: string;
-  onListChanged: () => void;
-  onRenamed: (path: string) => void;
-  sidebarCollapsed: boolean;
-  onToggleSidebar: () => void;
+  onChanged(): void;
+  onRenamed(path: string): void;
+  renameToTitle?: boolean;
 }) {
   const rpc = useRpc();
-  const [pane, setPane] = useState<PaneState>({ phase: "loading" });
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [state, setState] = useState<
+    { content: string; lease: PreviewLease } | { error: string } | null
+  >(null);
   const [conflict, setConflict] = useState(false);
-  const [reloadNonce, setReloadNonce] = useState(0);
-
-  // Live editing state kept outside React so keystrokes don't re-render.
-  const livePathRef = useRef(notePath); // updated in place as the file renames
+  const [saveError, setSaveError] = useState<string | null>(null);
   const markdownRef = useRef("");
-  const savedContentRef = useRef("");
-  const sha256Ref = useRef<string | null>(null);
-  const savingRef = useRef(false);
+  const savedRef = useRef("");
+  const shaRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onListChangedRef = useRef(onListChanged);
-  onListChangedRef.current = onListChanged;
-  const onRenamedRef = useRef(onRenamed);
-  onRenamedRef.current = onRenamed;
-  const doSaveRef = useRef<(options?: { force?: boolean }) => Promise<void>>(
-    async () => {},
-  );
+  const savingRef = useRef(false);
+  const pathRef = useRef(notePath);
+  const changedRef = useRef(onChanged);
+  changedRef.current = onChanged;
+  const renamedRef = useRef(onRenamed);
+  renamedRef.current = onRenamed;
 
-  // Save the current markdown, then — live, on every autosave — settle the
-  // filename to the kebab-case of the title. The rename updates the live path
-  // in place, so the editor never remounts and the cursor stays put.
-  const doSave = useCallback(
-    async (options?: { force?: boolean }) => {
-      if (savingRef.current) return;
-      if (!options?.force && markdownRef.current === savedContentRef.current) {
+  useEffect(() => {
+    let active = true;
+    setState(null);
+    Promise.all([
+      rpc.call("readNote", { vaultId, path: notePath }).then(parseNoteContent),
+      rpc
+        .call("preparePreview", { vaultId, path: notePath })
+        .then(parsePreviewLease),
+    ])
+      .then(([file, lease]) => {
+        if (!active) return;
+        pathRef.current = notePath;
+        markdownRef.current = file.content;
+        savedRef.current = file.content;
+        shaRef.current = file.sha256;
+        setState({ content: file.content, lease });
+      })
+      .catch((error: unknown) => {
+        if (active)
+          setState({
+            error: error instanceof Error ? error.message : String(error),
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [notePath, rpc, vaultId]);
+
+  const save = useCallback(
+    async (force = false) => {
+      if (
+        savingRef.current ||
+        (!force && markdownRef.current === savedRef.current)
+      )
         return;
-      }
       savingRef.current = true;
       setSaveError(null);
       const content = markdownRef.current;
-      const expected = sha256Ref.current;
       try {
-        const result = (await rpc.call("saveNote", {
-          path: livePathRef.current,
+        const value = await rpc.call("saveNote", {
+          vaultId,
+          path: pathRef.current,
           content,
-          ...(!options?.force && typeof expected === "string"
-            ? { expectedSha256: expected }
+          ...(!force && shaRef.current
+            ? { expectedSha256: shaRef.current }
             : {}),
-        })) as SaveResult;
+        });
+        const result = value as SaveResult;
         if (result.outcome === "conflict") {
           setConflict(true);
           return;
         }
-        savedContentRef.current = content;
-        sha256Ref.current = result.sha256;
+        savedRef.current = content;
+        shaRef.current = result.sha256;
         setConflict(false);
-        onListChangedRef.current();
-        const renamed = (await rpc.call("renameToTitle", {
-          path: livePathRef.current,
-        })) as { path: string };
-        if (renamed.path !== livePathRef.current) {
-          livePathRef.current = renamed.path;
-          onRenamedRef.current(renamed.path);
-          onListChangedRef.current();
+        changedRef.current();
+        if (renameToTitle) {
+          const renamed = await rpc.call("renameToTitle", {
+            vaultId,
+            path: pathRef.current,
+          });
+          if (
+            isRecord(renamed) &&
+            typeof renamed.path === "string" &&
+            renamed.path !== pathRef.current
+          ) {
+            pathRef.current = renamed.path;
+            renamedRef.current(renamed.path);
+          }
         }
       } catch (error) {
         setSaveError(error instanceof Error ? error.message : String(error));
@@ -342,428 +857,737 @@ function NoteEditorPane({
         savingRef.current = false;
       }
     },
-    [rpc],
+    [renameToTitle, rpc, vaultId],
   );
-  doSaveRef.current = doSave;
 
   const scheduleSave = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      void doSaveRef.current();
-    }, AUTOSAVE_MS);
-  }, []);
+    timerRef.current = setTimeout(() => void save(), 700);
+  }, [save]);
 
-  // Load on mount (the parent remounts this pane per note via a key) and on an
-  // explicit conflict reload. On unmount, flush unsaved edits + settle the name.
-  useEffect(() => {
-    let alive = true;
-    const loadPath = livePathRef.current;
-    setPane({ phase: "loading" });
-    setSaveError(null);
-    setConflict(false);
-    rpc
-      .call("readNote", { path: loadPath })
-      .then((result) => {
-        if (!alive) return;
-        const note = result as NoteContent;
-        markdownRef.current = note.content;
-        savedContentRef.current = note.content;
-        sha256Ref.current = note.sha256;
-        setPane({ phase: "ready", initialContent: note.content });
-      })
-      .catch((error: unknown) => {
-        if (!alive) return;
-        setPane({
-          phase: "error",
-          message: error instanceof Error ? error.message : String(error),
-        });
-      });
-    return () => {
-      alive = false;
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      const pending = markdownRef.current;
-      const dirty = pending !== savedContentRef.current;
-      const path = livePathRef.current;
-      const sha = sha256Ref.current;
-      void (async () => {
-        if (dirty) {
-          await rpc
-            .call("saveNote", {
-              path,
-              content: pending,
-              ...(typeof sha === "string" ? { expectedSha256: sha } : {}),
-            })
-            .catch(() => {});
-        }
-        await rpc.call("renameToTitle", { path }).catch(() => {});
-        onListChangedRef.current();
-      })();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadNonce, rpc]);
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      void save();
+    },
+    [save],
+  );
 
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-      event.preventDefault();
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      void doSaveRef.current();
-    }
-  }, []);
+  if (!state) return <DocumentSkeleton />;
+  if ("error" in state)
+    return (
+      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
+        {state.error}
+      </div>
+    );
 
   return (
-    <div
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col"
-      onKeyDown={handleKeyDown}
-    >
-      {sidebarCollapsed ? (
-        <div className="absolute left-2 top-2 z-10">
-          <SidebarButton onClick={onToggleSidebar} label="Show sidebar" />
-        </div>
-      ) : null}
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {conflict ? (
-        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-4 py-1.5 text-xs">
-          <span>This note changed on disk since it was opened.</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setReloadNonce((n) => n + 1)}
-          >
+        <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
+          Changed on disk.
+          <Button size="sm" variant="ghost" onClick={() => location.reload()}>
             Reload
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void doSaveRef.current({ force: true })}
-          >
+          <Button size="sm" variant="ghost" onClick={() => void save(true)}>
             Overwrite
           </Button>
         </div>
       ) : null}
       {saveError ? (
-        <div className="shrink-0 border-b border-border px-4 py-1.5 text-xs text-destructive">
+        <div className="border-b border-border px-4 py-2 text-xs text-destructive">
           {saveError}
         </div>
       ) : null}
-      {pane.phase === "loading" ? (
-        <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-      ) : pane.phase === "error" ? (
-        <div className="p-6 text-sm text-destructive">{pane.message}</div>
-      ) : (
-        <TiptapEditor
-          key={reloadNonce}
-          initialValue={pane.initialContent}
-          onFirstRender={(markdown) => {
-            markdownRef.current = markdown;
-            savedContentRef.current = markdown;
-          }}
-          onMarkdownChange={(markdown) => {
-            markdownRef.current = markdown;
-            if (markdown === savedContentRef.current) return;
-            scheduleSave();
-          }}
-        />
-      )}
+      <TiptapEditor
+        initialValue={state.content}
+        previewBaseUrl={state.lease.baseUrl}
+        notePath={notePath}
+        onUpload={async (file) => {
+          const content = await fileToBase64(file);
+          const value = await rpc.call("uploadAttachment", {
+            vaultId,
+            notePath: pathRef.current,
+            name: file.name,
+            content,
+          });
+          if (!isRecord(value) || typeof value.markdownPath !== "string")
+            throw new Error("Upload returned an invalid path");
+          return { markdownPath: value.markdownPath };
+        }}
+        onFirstRender={(markdown) => {
+          markdownRef.current = markdown;
+          savedRef.current = markdown;
+        }}
+        onMarkdownChange={(markdown) => {
+          markdownRef.current = markdown;
+          scheduleSave();
+        }}
+      />
     </div>
   );
 }
 
-// --- notes data -------------------------------------------------------------
-
-function useNotes(): { data: NotesData | null; refresh: () => void } {
+function HtmlPane({
+  vaultId,
+  filePath,
+}: {
+  vaultId: string;
+  filePath: string;
+}) {
   const rpc = useRpc();
-  const [data, setData] = useState<NotesData | null>(null);
-  const refresh = useCallback(() => {
-    rpc
-      .call("listNotes")
-      .then((result) => setData(result as NotesData))
-      .catch((error: unknown) =>
-        setData({
-          root: "",
-          notes: [],
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
-  }, [rpc]);
+  const [lease, setLease] = useState<PreviewLease | null>(null);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    refresh();
-  }, [refresh]);
-  return { data, refresh };
+    setLease(null);
+    setError(null);
+    void rpc
+      .call("preparePreview", { vaultId, path: filePath })
+      .then((value) => setLease(parsePreviewLease(value)))
+      .catch((reason: unknown) =>
+        setError(reason instanceof Error ? reason.message : String(reason)),
+      );
+  }, [filePath, rpc, vaultId]);
+  if (error)
+    return (
+      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">{error}</div>
+    );
+  if (!lease) return <DocumentSkeleton />;
+  return (
+    <iframe
+      className="min-h-0 flex-1 border-0 bg-white"
+      sandbox="allow-scripts"
+      title={filePath}
+      src={`${lease.baseUrl}/${encodePath(filePath)}`}
+    />
+  );
 }
 
-// --- the notes list (left column) ------------------------------------------
-
-function formatTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < minute) return "just now";
-  if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
-  if (diff < 7 * day) return `${Math.floor(diff / day)}d ago`;
-  return new Date(ms).toLocaleDateString();
+function orderEntries(entries: VaultEntry[]): VaultEntry[] {
+  const children = new Map<string, VaultEntry[]>();
+  for (const entry of entries) {
+    const parent = dirname(entry.path);
+    const siblings = children.get(parent) ?? [];
+    siblings.push(entry);
+    children.set(parent, siblings);
+  }
+  for (const siblings of children.values()) {
+    siblings.sort((left, right) => {
+      if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+      const leftName = left.path.split("/").at(-1) ?? left.path;
+      const rightName = right.path.split("/").at(-1) ?? right.path;
+      return leftName.localeCompare(rightName, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+  }
+  const ordered: VaultEntry[] = [];
+  const visit = (parent: string) => {
+    for (const entry of children.get(parent) ?? []) {
+      ordered.push(entry);
+      if (entry.kind === "directory") visit(entry.path);
+    }
+  };
+  visit("");
+  return ordered;
 }
 
-function NotesList({
+function Tree({
   data,
   selectedPath,
-  onSelect,
-  onNew,
-  onCollapse,
+  onOpen,
+  onNewNote,
+  onNewFolder,
+  onVaultChange,
+  onAddVault,
 }: {
-  data: NotesData | null;
+  data: NotesData;
   selectedPath: string | null;
-  onSelect: (notePath: string) => void;
-  onNew: () => void;
-  onCollapse: () => void;
+  onOpen(path: string): void;
+  onNewNote(): void;
+  onNewFolder(): void;
+  onVaultChange(vaultId: string): void;
+  onAddVault(): void;
 }) {
   const [query, setQuery] = useState("");
-  const notes = data?.notes ?? [];
-  const filtered = useMemo(() => {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(288);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      resizeCleanupRef.current?.();
+    },
+    [],
+  );
+  const notesByPath = useMemo(
+    () => new Map(data.notes.map((note) => [note.path, note])),
+    [data.notes],
+  );
+  const selectedHost = data.vault.hostId
+    ? data.hosts.find((host) => host.id === data.vault.hostId)
+    : null;
+  const hostUnavailable = Boolean(
+    data.vault.hostId && selectedHost?.status !== "connected",
+  );
+  const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return notes;
-    return notes.filter(
-      (note) =>
-        note.title.toLowerCase().includes(needle) ||
-        note.preview.toLowerCase().includes(needle),
+    const ordered = orderEntries(data.entries);
+    const included = new Set<string>();
+    if (needle) {
+      for (const entry of ordered) {
+        const note = notesByPath.get(entry.path);
+        if (
+          entry.path.toLowerCase().includes(needle) ||
+          note?.title.toLowerCase().includes(needle) ||
+          note?.preview.toLowerCase().includes(needle)
+        ) {
+          included.add(entry.path);
+          const parents = entry.path.split("/").slice(0, -1);
+          let parent = "";
+          for (const part of parents) {
+            parent = parent ? `${parent}/${part}` : part;
+            included.add(parent);
+          }
+        }
+      }
+    }
+    return ordered.filter((entry) => {
+      if (needle) return included.has(entry.path);
+      const parents = entry.path.split("/").slice(0, -1);
+      let current = "";
+      return !parents.some((part) => {
+        current = current ? `${current}/${part}` : part;
+        return collapsed.has(current);
+      });
+    });
+  }, [collapsed, data.entries, notesByPath, query]);
+
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    resizeCleanupRef.current?.();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    const move = (moveEvent: PointerEvent) => {
+      setSidebarWidth(
+        Math.min(480, Math.max(220, startWidth + startX - moveEvent.clientX)),
+      );
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", cleanup);
+      resizeCleanupRef.current = null;
+    };
+    resizeCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", cleanup);
+  };
+
+  if (sidebarCollapsed) {
+    return (
+      <aside
+        className="order-2 flex w-10 shrink-0 flex-col items-center border-l border-border bg-muted/20 py-2"
+        style={{ width: 40 }}
+      >
+        <Button
+          className="size-8"
+          size="icon"
+          variant="ghost"
+          aria-label="Expand notes sidebar"
+          onClick={() => setSidebarCollapsed(false)}
+        >
+          <HugeiconsIcon icon={SidebarRightIcon} />
+        </Button>
+      </aside>
     );
-  }, [notes, query]);
+  }
 
   return (
-    <div className="flex w-72 shrink-0 flex-col border-r border-border">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-border p-2">
-        <SidebarButton onClick={onCollapse} label="Collapse sidebar" />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search notes"
-          className="h-8"
-        />
-        <button
-          type="button"
-          onClick={onNew}
-          aria-label="New note"
-          title="New note"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <HugeiconsIcon icon={PencilEdit02Icon} size={19} strokeWidth={1.8} />
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {data?.error ? (
-          <div className="p-3 text-xs text-destructive">{data.error}</div>
-        ) : notes.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">
-            No notes yet. Use the compose button to create your first note.
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">
-            No notes match “{query}”.
-          </div>
+    <aside
+      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
+      style={{ width: sidebarWidth }}
+    >
+      <div className="flex items-center gap-1 border-b border-border p-2">
+        {searchOpen ? (
+          <>
+            <div className="relative min-w-0 flex-1">
+              <HugeiconsIcon
+                icon={Search01Icon}
+                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                autoFocus
+                className="h-8 pl-8"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  setQuery("");
+                  setSearchOpen(false);
+                }}
+                placeholder="Search this vault"
+              />
+            </div>
+            <Button
+              className="size-8"
+              size="icon"
+              variant="ghost"
+              aria-label="Close search"
+              onClick={() => {
+                setQuery("");
+                setSearchOpen(false);
+              }}
+            >
+              <HugeiconsIcon icon={Cancel01Icon} />
+            </Button>
+          </>
         ) : (
-          <ul className="flex flex-col">
-            {filtered.map((note) => (
-              <li key={note.path}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(note.path)}
-                  className={cn(
-                    "flex w-full flex-col gap-0.5 border-b border-border/60 px-3 py-2.5 text-left hover:bg-accent",
-                    selectedPath === note.path && "bg-accent",
-                  )}
-                >
-                  <span className="truncate text-sm font-medium">
-                    {note.title || "Untitled"}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="shrink-0">
-                      {formatTime(note.modifiedAtMs)}
-                    </span>
-                    {note.preview ? (
-                      <span className="truncate">{note.preview}</span>
-                    ) : (
-                      <span className="italic">No additional text</span>
-                    )}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <Button
+              className="size-8"
+              size="icon"
+              variant="ghost"
+              aria-label="Search notes"
+              onClick={() => setSearchOpen(true)}
+            >
+              <HugeiconsIcon icon={Search01Icon} />
+            </Button>
+            <Button
+              className="size-8"
+              size="icon"
+              variant="ghost"
+              aria-label="New note"
+              onClick={onNewNote}
+            >
+              <HugeiconsIcon icon={FileAddIcon} />
+            </Button>
+            <Button
+              className="size-8"
+              size="icon"
+              variant="ghost"
+              aria-label="New folder"
+              onClick={onNewFolder}
+            >
+              <HugeiconsIcon icon={FolderAddIcon} />
+            </Button>
+            <span className="min-w-0 flex-1" />
+          </>
         )}
-      </div>
-      {data?.root ? (
-        <div
-          className="shrink-0 truncate border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground"
-          title={data.root}
+        <Button
+          className="size-8"
+          size="icon"
+          variant="ghost"
+          aria-label="Collapse notes sidebar"
+          onClick={() => setSidebarCollapsed(true)}
         >
-          {data.root}
+          <HugeiconsIcon icon={SidebarRightIcon} />
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        {data.error ? (
+          <div className="p-3 text-xs text-destructive">{data.error}</div>
+        ) : null}
+        {visible.map((entry) => {
+          const depth = entry.path.split("/").length - 1;
+          const label =
+            notesByPath.get(entry.path)?.title ??
+            entry.path.split("/").at(-1) ??
+            entry.path;
+          const isFolder = entry.kind === "directory";
+          return (
+            <button
+              key={`${entry.kind}:${entry.path}`}
+              type="button"
+              onClick={() => {
+                if (isFolder)
+                  setCollapsed((current) => {
+                    const next = new Set(current);
+                    if (next.has(entry.path)) next.delete(entry.path);
+                    else next.add(entry.path);
+                    return next;
+                  });
+                else onOpen(entry.path);
+              }}
+              className={cn(
+                "flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-sm text-foreground transition-colors hover:bg-state-hover",
+                selectedPath === entry.path && "bg-state-active font-medium",
+              )}
+              style={{ paddingLeft: `${8 + depth * 15}px` }}
+            >
+              {isFolder ? (
+                <HugeiconsIcon
+                  icon={
+                    collapsed.has(entry.path)
+                      ? ArrowRight01Icon
+                      : ArrowDown01Icon
+                  }
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                />
+              ) : (
+                <span className="size-3.5 shrink-0" />
+              )}
+              <HugeiconsIcon
+                icon={
+                  isFolder
+                    ? collapsed.has(entry.path)
+                      ? Folder01Icon
+                      : Folder02Icon
+                    : /\.html?$/i.test(entry.path)
+                      ? HtmlFile01Icon
+                      : File01Icon
+                }
+                className="size-4 shrink-0 text-muted-foreground"
+              />
+              <span className="truncate">{label}</span>
+            </button>
+          );
+        })}
+        {data.truncated ? (
+          <div className="p-2 text-xs text-muted-foreground">
+            Tree truncated at 5,000 entries.
+          </div>
+        ) : null}
+      </div>
+      <div className="grid gap-1.5 border-t border-border p-2">
+        <div className="flex items-center gap-1">
+          <Select value={data.vault.id} onValueChange={onVaultChange}>
+            <SelectTrigger
+              className="min-w-0 flex-1 border-transparent px-2 shadow-none hover:bg-state-hover"
+              aria-label="Vault"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {data.vaults.map((vault) => (
+                <SelectItem key={vault.id} value={vault.id}>
+                  {vault.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            className="size-8 shrink-0"
+            size="icon"
+            variant="ghost"
+            aria-label="Add vault"
+            onClick={onAddVault}
+          >
+            <HugeiconsIcon icon={PlusSignIcon} />
+          </Button>
         </div>
-      ) : null}
-    </div>
+        {hostUnavailable ? (
+          <div
+            className="flex items-center gap-1.5 px-1 text-xs text-destructive"
+            role="status"
+          >
+            <HugeiconsIcon icon={AlertCircleIcon} className="size-4 shrink-0" />
+            <span className="truncate">Host unavailable</span>
+          </div>
+        ) : null}
+      </div>
+      <div
+        className="absolute inset-y-0 -left-0.5 z-10 w-1 cursor-col-resize touch-none transition-colors hover:bg-border"
+        role="separator"
+        aria-label="Resize notes sidebar"
+        aria-orientation="vertical"
+        aria-valuemin={220}
+        aria-valuemax={480}
+        aria-valuenow={sidebarWidth}
+        onPointerDown={startResize}
+        onDoubleClick={() => setSidebarWidth(288)}
+      />
+    </aside>
   );
 }
 
-// --- the panel --------------------------------------------------------------
+function parseRoute(subPath: string): {
+  vaultId: string | null;
+  filePath: string | null;
+} {
+  if (!subPath) return { vaultId: null, filePath: null };
+  const parts = subPath.split("/").map(decodeURIComponent);
+  if (parts.length === 1 && /\.(md|html?)$/i.test(parts[0] ?? "")) {
+    return { vaultId: null, filePath: parts[0] ?? null };
+  }
+  return {
+    vaultId: parts.shift() ?? null,
+    filePath: parts.length ? parts.join("/") : null,
+  };
+}
 
 function NotesPanel({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc();
   const navigate = useBbNavigate();
-  const { data, refresh } = useNotes();
-  const urlPath = subPath ? decodeURIComponent(subPath) : null;
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("bb-simple-notes:sidebar-collapsed") === "1";
-    } catch {
-      return false;
-    }
-  });
-  const toggleSidebar = useCallback(() => {
-    setCollapsed((current) => {
-      const next = !current;
-      try {
-        localStorage.setItem(
-          "bb-simple-notes:sidebar-collapsed",
-          next ? "1" : "0",
-        );
-      } catch {
-        // ignore storage failures
-      }
-      return next;
-    });
-  }, []);
+  const route = parseRoute(subPath);
+  const [vaultId, setVaultId] = useState<string | null>(route.vaultId);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [vaultDialogOpen, setVaultDialogOpen] = useState(false);
+  const [vaultName, setVaultName] = useState("");
+  const [vaultRootPath, setVaultRootPath] = useState("");
+  const [vaultHostId, setVaultHostId] = useState("primary");
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const { data, refresh } = useNotebook(vaultId);
+  const activeVaultId = data?.vault.id ?? vaultId;
+  const filePath =
+    route.vaultId === null || route.vaultId === activeVaultId
+      ? route.filePath
+      : null;
 
-  // Open-note session: `id` keys the editor mount; `path` is the live file. A
-  // live rename changes `path` under the same `id` (no remount, cursor kept);
-  // navigating to a different note (click, deep link, back/forward, delete)
-  // changes the URL, which bumps `id` for a fresh load.
-  const [open, setOpen] = useState<{ id: number; path: string | null }>(() => ({
-    id: 0,
-    path: urlPath,
-  }));
   useEffect(() => {
-    setOpen((prev) =>
-      prev.path === urlPath ? prev : { id: prev.id + 1, path: urlPath },
+    if (!vaultId && data?.vault.id) setVaultId(data.vault.id);
+  }, [data, vaultId]);
+
+  const open = useCallback(
+    (path: string, replace = false) => {
+      if (!activeVaultId) return;
+      navigate.toPluginPanel("docs", {
+        subPath: `${encodeURIComponent(activeVaultId)}/${encodePath(path)}`,
+        replace,
+      });
+    },
+    [activeVaultId, navigate],
+  );
+
+  if (!data || !activeVaultId)
+    return (
+      <div className="p-6 text-sm text-muted-foreground">Loading vaults…</div>
     );
-  }, [urlPath]);
 
-  // Remember the last note across visits to the Simple Notes tab.
-  useEffect(() => {
-    if (!open.path) return;
-    try {
-      localStorage.setItem("bb-simple-notes:last-note", open.path);
-    } catch {
-      // ignore storage failures
-    }
-  }, [open.path]);
-
-  // Arriving at Simple Notes with no note in the URL: reopen the last one,
-  // if it still exists. Runs once per mount.
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (restoredRef.current) return;
-    if (urlPath !== null) {
-      restoredRef.current = true;
-      return;
-    }
-    if (!data) return; // wait for the note list to load
-    restoredRef.current = true;
-    let last: string | null = null;
-    try {
-      last = localStorage.getItem("bb-simple-notes:last-note");
-    } catch {
-      last = null;
-    }
-    if (last && data.notes.some((note) => note.path === last)) {
-      navigate.toPluginPanel("simple-notes", {
-        subPath: encodeURIComponent(last),
-        replace: true,
-      });
-    }
-  }, [urlPath, data, navigate]);
-
-  const openNote = useCallback(
-    (notePath: string) => {
-      navigate.toPluginPanel("simple-notes", {
-        subPath: encodeURIComponent(notePath),
-      });
-    },
-    [navigate],
-  );
-
-  const handleRenamed = useCallback(
-    (newPath: string) => {
-      setOpen((prev) => ({ id: prev.id, path: newPath }));
-      navigate.toPluginPanel("simple-notes", {
-        subPath: encodeURIComponent(newPath),
-        replace: true,
-      });
-    },
-    [navigate],
-  );
-
-  const newNote = useCallback(() => {
-    rpc
-      .call("createNote", { name: "Untitled" })
-      .then((result) => {
-        refresh();
-        openNote((result as { path: string }).path);
+  const selectedFolder = filePath ? dirname(filePath) : "";
+  const newNote = () =>
+    void rpc
+      .call("createNote", {
+        vaultId: activeVaultId,
+        parent: selectedFolder,
+        name: "Untitled",
       })
-      .catch((error: unknown) => {
-        console.warn("[plugin:simple-notes] create failed:", error);
+      .then((value) => {
+        if (isRecord(value) && typeof value.path === "string") {
+          refresh();
+          open(value.path);
+        }
       });
-  }, [rpc, refresh, openNote]);
+  const createFolder = async () => {
+    const name = folderName.trim();
+    if (!name) return;
+    setFolderError(null);
+    const target = selectedFolder ? `${selectedFolder}/${name}` : name;
+    try {
+      await rpc.call("createFolder", { vaultId: activeVaultId, path: target });
+      setFolderName("");
+      setFolderDialogOpen(false);
+      refresh();
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const createVault = async () => {
+    const name = vaultName.trim();
+    const rootPath = vaultRootPath.trim();
+    if (!name || !rootPath) return;
+    setVaultError(null);
+    try {
+      const value = await rpc.call("createVault", {
+        name,
+        rootPath,
+        ...(vaultHostId === "primary" ? {} : { hostId: vaultHostId }),
+      });
+      if (!isRecord(value) || typeof value.id !== "string")
+        throw new Error("Create vault returned an invalid response");
+      setVaultName("");
+      setVaultRootPath("");
+      setVaultHostId("primary");
+      setVaultDialogOpen(false);
+      setVaultId(value.id);
+      navigate.toPluginPanel("docs", {
+        subPath: encodeURIComponent(value.id),
+      });
+    } catch (error) {
+      setVaultError(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   return (
-    <div className="flex min-h-0 flex-1">
-      {!collapsed ? (
-        <NotesList
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1">
+        <Tree
           data={data}
-          selectedPath={open.path}
-          onSelect={openNote}
-          onNew={newNote}
-          onCollapse={toggleSidebar}
+          selectedPath={filePath}
+          onOpen={open}
+          onNewNote={newNote}
+          onNewFolder={() => setFolderDialogOpen(true)}
+          onVaultChange={(value) => {
+            setVaultId(value);
+            navigate.toPluginPanel("docs", {
+              subPath: encodeURIComponent(value),
+            });
+          }}
+          onAddVault={() => setVaultDialogOpen(true)}
         />
-      ) : null}
-      {open.path ? (
-        <NoteEditorPane
-          key={open.id}
-          notePath={open.path}
-          onListChanged={refresh}
-          onRenamed={handleRenamed}
-          sidebarCollapsed={collapsed}
-          onToggleSidebar={toggleSidebar}
-        />
-      ) : (
-        <div className="relative flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
-          {collapsed ? (
-            <div className="absolute left-2 top-2">
-              <SidebarButton onClick={toggleSidebar} label="Show sidebar" />
-            </div>
-          ) : null}
-          <p>Select a note, or create a new one.</p>
-          <Button size="sm" variant="outline" onClick={newNote}>
-            New note
-          </Button>
-        </div>
-      )}
+        {filePath && /\.md$/i.test(filePath) ? (
+          <NotePane
+            key={`${activeVaultId}:${filePath}`}
+            vaultId={activeVaultId}
+            notePath={filePath}
+            onChanged={refresh}
+            onRenamed={(next) => {
+              refresh();
+              open(next, true);
+            }}
+          />
+        ) : filePath && /\.html?$/i.test(filePath) ? (
+          <HtmlPane
+            key={`${activeVaultId}:${filePath}`}
+            vaultId={activeVaultId}
+            filePath={filePath}
+          />
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+            <p>Select a note or HTML page.</p>
+            <Button size="sm" variant="outline" onClick={newNote}>
+              New note
+            </Button>
+          </div>
+        )}
+      </div>
+      <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
+        <DialogContent>
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createFolder();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>New folder</DialogTitle>
+              <DialogDescription>
+                Create it{" "}
+                {selectedFolder
+                  ? `inside ${selectedFolder}`
+                  : "at the vault root"}
+                .
+              </DialogDescription>
+            </DialogHeader>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Folder name
+              <Input
+                autoFocus
+                value={folderName}
+                onChange={(event) => setFolderName(event.target.value)}
+                placeholder="Projects"
+              />
+            </label>
+            {folderError ? (
+              <p className="text-xs text-destructive">{folderError}</p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setFolderDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!folderName.trim()}>
+                Create folder
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={vaultDialogOpen} onOpenChange={setVaultDialogOpen}>
+        <DialogContent>
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createVault();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Add vault</DialogTitle>
+              <DialogDescription>
+                Open a notes folder from this machine or a connected host.
+              </DialogDescription>
+            </DialogHeader>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Name
+              <Input
+                autoFocus
+                value={vaultName}
+                onChange={(event) => setVaultName(event.target.value)}
+                placeholder="Personal"
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Folder path
+              <Input
+                value={vaultRootPath}
+                onChange={(event) => setVaultRootPath(event.target.value)}
+                placeholder="/Users/me/Notes"
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Host
+              <Select value={vaultHostId} onValueChange={setVaultHostId}>
+                <SelectTrigger aria-label="Vault host">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="primary">Primary host</SelectItem>
+                  {data.hosts.map((host) => (
+                    <SelectItem key={host.id} value={host.id}>
+                      {host.name} · {host.status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            {vaultError ? (
+              <p className="text-xs text-destructive">{vaultError}</p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setVaultDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!vaultName.trim() || !vaultRootPath.trim()}
+              >
+                Add vault
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 export default definePluginApp((app) => {
   app.slots.navPanel({
-    id: "simple-notes",
-    title: "Simple Notes",
+    id: "docs",
+    title: "Docs",
     icon: "FileText",
-    path: "simple-notes",
+    path: "docs",
     chrome: "none",
     component: NotesPanel,
   });
+  app.slots.threadPanelAction({
+    id: "document",
+    title: "Docs",
+    icon: "FileText",
+    component: DocumentPanel,
+  });
+  app.slots.messageDirective({ id: "docs", component: DocsDirectiveCard });
 });

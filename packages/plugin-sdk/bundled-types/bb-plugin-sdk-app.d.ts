@@ -112,6 +112,14 @@ interface PluginMessageDirectiveMessage {
  * viewer declined it.
  */
 type PluginMessageDirectiveOpenWorkspaceFile = (path: string) => boolean;
+interface PluginMessageDirectiveThreadPanelOptions {
+    /** A `threadPanelAction` id registered by this same plugin. */
+    actionId: string;
+    title?: string;
+    params?: JsonValue;
+}
+/** Open this plugin's registered action in the current thread side panel. */
+type PluginMessageDirectiveOpenThreadPanel = (options: PluginMessageDirectiveThreadPanelOptions) => boolean;
 /**
  * Props passed to a `messageDirective` component. Attributes are untrusted
  * strings parsed from the directive; the plugin validates its own fields.
@@ -127,6 +135,12 @@ interface PluginMessageDirectiveProps {
      * when the message surface has no workspace viewer available.
      */
     openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
+    /**
+     * Opens one of this plugin's own `threadPanelAction` components in the
+     * current thread side panel. Omitted by older hosts; null on message
+     * surfaces without a thread panel.
+     */
+    openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
 }
 /**
  * Slot/panel ids and nav-panel paths must match this pattern (letters,
@@ -431,4 +445,4 @@ declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
 
 export { PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN, PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN, definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRpc, useSettings };
-export type { BbContext, BbNavigate, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRpcClient, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };
+export type { BbContext, BbNavigate, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRpcClient, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };

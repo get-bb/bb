@@ -16,6 +16,7 @@ import {
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
   type ThreadTimelineLocalFileLinkHandler,
+  type ThreadTimelineOpenPluginPanelHandler,
   type TimelineTitleActionResolver,
   useThreadTimelineController,
 } from "@/components/thread/timeline";
@@ -636,7 +637,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openPluginPanel,
     threadId,
   });
-  const { fileOpeners: pluginFileOpeners } = usePluginSlots();
+  const {
+    fileOpeners: pluginFileOpeners,
+    threadPanelActions: pluginThreadPanelActions,
+  } = usePluginSlots();
   useThreadOpenFileSignal({
     threadId,
     environmentId: thread?.environmentId,
@@ -1002,6 +1006,44 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadId,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
+  const handleOpenTimelinePluginPanel =
+    useCallback<ThreadTimelineOpenPluginPanelHandler>(
+      ({ pluginId, actionId, title, params }) => {
+        if (props.surface === "popout") return false;
+        const action = pluginThreadPanelActions.find(
+          (candidate) =>
+            candidate.pluginId === pluginId && candidate.id === actionId,
+        );
+        if (action === undefined) return false;
+        let paramsJson: string | null = null;
+        if (params !== undefined) {
+          try {
+            paramsJson = JSON.stringify(params) ?? null;
+          } catch (error) {
+            console.warn(
+              `[plugin:${pluginId}] messageDirective openThreadPanel params are not JSON-serializable: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            return false;
+          }
+        }
+        openPluginPanel({
+          pluginId,
+          actionId,
+          title: title ?? action.title,
+          paramsJson,
+        });
+        openCompactDrawer();
+        return true;
+      },
+      [
+        openCompactDrawer,
+        openPluginPanel,
+        pluginThreadPanelActions,
+        props.surface,
+      ],
+    );
   const handleSideChatMessage =
     useCallback<ThreadTimelineSideChatMessageHandler>(
       (target) => {
@@ -1508,7 +1550,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               onSelect: () => activateSideChatTab(tab.id),
               onClose: () => closeSideChatTab(tab.id),
             };
-          case "plugin-panel":
+          case "plugin-panel": {
+            const actionIcon =
+              pluginThreadPanelActions.find(
+                (action) =>
+                  action.pluginId === tab.pluginId &&
+                  action.id === tab.actionId,
+              )?.icon ?? null;
             return {
               id: tab.id,
               filename: tab.title,
@@ -1516,7 +1564,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               leadingVisual: (
                 <PluginIcon
                   pluginId={tab.pluginId}
-                  icon={null}
+                  icon={actionIcon}
                   className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
                 />
               ),
@@ -1524,6 +1572,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
+          }
         }
       },
     );
@@ -1537,6 +1586,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     handleActivateFileTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
+    pluginThreadPanelActions,
     syncedOrderedSecondaryFileTabs,
     terminalsById,
   ]);
@@ -2608,6 +2658,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             onLoadOlderRows: loadOlderTimelineRows,
             onOpenLink: handleOpenTimelineLink,
             onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+            onOpenPluginPanel: handleOpenTimelinePluginPanel,
             onTitleAction: handleTimelineTitleAction,
             projectId,
             resolveMentionLink,

@@ -162,7 +162,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   fileOpener: ["path", "source"],
-  messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
+  messageDirective: [
+    "attributes",
+    "source",
+    "message",
+    "openWorkspaceFile",
+    "openThreadPanel",
+  ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };

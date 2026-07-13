@@ -37,14 +37,56 @@ export interface FileListArgs {
   limit?: number;
 }
 
+export interface PathListArgs extends FileListArgs {
+  includeFiles: boolean;
+  includeDirectories: boolean;
+}
+
+export interface FileMkdirArgs {
+  hostId?: string;
+  path: string;
+  rootPath?: string;
+  recursive?: boolean;
+}
+
+export interface FileMoveArgs {
+  hostId?: string;
+  sourcePath: string;
+  destinationPath: string;
+  rootPath?: string;
+}
+
+export interface FileRemoveArgs {
+  hostId?: string;
+  path: string;
+  rootPath?: string;
+  recursive?: boolean;
+}
+
+export interface FilePreviewArgs {
+  hostId?: string;
+  rootPath: string;
+  ttlMs?: number;
+}
+
 export type FileReadResult = PublicApiOutput<"/files/read", "$post">;
 export type FileWriteResult = PublicApiOutput<"/files/write", "$post">;
 export type FileListResult = PublicApiOutput<"/files/list", "$post">;
+export type PathListResult = PublicApiOutput<"/files/paths", "$post">;
+export type FileMkdirResult = PublicApiOutput<"/files/mkdir", "$post">;
+export type FileMoveResult = PublicApiOutput<"/files/move", "$post">;
+export type FileRemoveResult = PublicApiOutput<"/files/remove", "$post">;
+export type FilePreviewResult = PublicApiOutput<"/files/previews", "$post">;
 
 export interface FilesArea {
   read(args: FileReadArgs): Promise<FileReadResult>;
   write(args: FileWriteArgs): Promise<FileWriteResult>;
   list(args: FileListArgs): Promise<FileListResult>;
+  listPaths(args: PathListArgs): Promise<PathListResult>;
+  mkdir(args: FileMkdirArgs): Promise<FileMkdirResult>;
+  move(args: FileMoveArgs): Promise<FileMoveResult>;
+  remove(args: FileRemoveArgs): Promise<FileRemoveResult>;
+  createPreview(args: FilePreviewArgs): Promise<FilePreviewResult>;
 }
 
 export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
@@ -63,6 +105,31 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
     async list(input) {
       return transport.readJson(
         transport.api.v1.files.list.$post({ json: input }),
+      );
+    },
+    async listPaths(input) {
+      return transport.readJson(
+        transport.api.v1.files.paths.$post({ json: input }),
+      );
+    },
+    async mkdir(input) {
+      return transport.readJson(
+        transport.api.v1.files.mkdir.$post({ json: input }),
+      );
+    },
+    async move(input) {
+      return transport.readJson(
+        transport.api.v1.files.move.$post({ json: input }),
+      );
+    },
+    async remove(input) {
+      return transport.readJson(
+        transport.api.v1.files.remove.$post({ json: input }),
+      );
+    },
+    async createPreview(input) {
+      return transport.readJson(
+        transport.api.v1.files.previews.$post({ json: input }),
       );
     },
   };
