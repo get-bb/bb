@@ -41,7 +41,6 @@ import {
   PluginUpdatesSourceCard,
   pluginHasUpdateSurfaces,
 } from "./plugins/PluginUpdatesCard";
-import { PluginLogo } from "./plugins/plugin-ui";
 
 /**
  * The Settings "Plugins" surfaces (plugin design §5.2 settingsSection; the
