@@ -10,7 +10,10 @@ import {
 import { useSetAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
-import { closePanesForThreadsAtom } from "@/lib/split-layout/atoms";
+import {
+  closePanesForThreadsAtom,
+  type ClosePanesForThreadsResult,
+} from "@/lib/split-layout/atoms";
 import { defaultExperiments, type Thread } from "@bb/domain";
 import {
   useArchiveThreadAndChildren,
@@ -89,6 +92,12 @@ export function ThreadActionsProvider({
 }: ThreadActionsProviderProps) {
   const navigate = useNavigate();
   const { threadId: viewedThreadId } = useRouteState();
+  // Read the currently-viewed thread live inside async mutation callbacks: a
+  // pane's stale-prune (deleted/archived thread) can move the URL between a
+  // delete/archive click and its onSuccess. A captured value would then think
+  // it's still viewing the removed thread and wrongly navigate the window away.
+  const viewedThreadIdRef = useRef(viewedThreadId);
+  viewedThreadIdRef.current = viewedThreadId;
   const closePanesForThreads = useSetAtom(closePanesForThreadsAtom);
   const archiveThreadAndChildrenMutation = useArchiveThreadAndChildren();
   const unarchiveThreadMutation = useUnarchiveThread();
@@ -129,13 +138,30 @@ export function ThreadActionsProvider({
 
   const navigateAwayIfViewing = useCallback(
     (thread: Thread) => {
-      if (viewedThreadId === thread.id) {
+      if (viewedThreadIdRef.current === thread.id) {
         // Push (not replace) so the back button still returns the user to the
         // archived/deleted thread's URL if they want to re-open it.
         navigate(getRootComposeRoutePath());
       }
     },
-    [navigate, viewedThreadId],
+    [navigate],
+  );
+
+  // Single place that reconciles the URL after archive/delete closed panes.
+  // When a valid pane survives, replace-navigate to it (but only when focus
+  // actually moved — an unfocused close, or a stale-prune that already moved the
+  // URL, leaves it correct). Otherwise run the caller's pre-split navigate-away.
+  const syncNavigationAfterClose = useCallback(
+    (result: ClosePanesForThreadsResult, navigateAway: () => void) => {
+      if (result.removedAny && result.focusedRoute !== null) {
+        if (result.focusedRoute.threadId !== viewedThreadIdRef.current) {
+          navigate(getThreadRoutePath(result.focusedRoute), { replace: true });
+        }
+        return;
+      }
+      navigateAway();
+    },
+    [navigate],
   );
 
   const requestRename = useCallback(
@@ -228,16 +254,22 @@ export function ThreadActionsProvider({
               threadId: thread.id,
             });
             closeDialog();
-            // In a split, close the pane holding this thread instead of
-            // navigating the whole window away; single pane falls through.
-            if (!closePanesForThreads([thread.id]).removedAny) {
-              navigateAwayIfViewing(thread);
-            }
+            // In a split, close the pane holding this thread and move the URL to
+            // the surviving focused pane; single pane falls through to the
+            // navigate-away.
+            syncNavigationAfterClose(closePanesForThreads([thread.id]), () =>
+              navigateAwayIfViewing(thread),
+            );
           },
         },
       );
     },
-    [closePanesForThreads, deleteMutate, navigateAwayIfViewing],
+    [
+      closePanesForThreads,
+      deleteMutate,
+      navigateAwayIfViewing,
+      syncNavigationAfterClose,
+    ],
   );
 
   const requestDelete = useCallback(
@@ -281,18 +313,18 @@ export function ThreadActionsProvider({
         { id: thread.id },
         {
           onSuccess: (response) => {
-            // Close any split panes showing archived threads; only navigate the
-            // window away when nothing closed and the viewed thread was archived.
-            const { removedAny } = closePanesForThreads(
-              response.archivedThreadIds,
+            // Close any split panes showing archived threads and sync the URL to
+            // the surviving focused pane; only navigate the window away when
+            // nothing closed and the viewed thread was archived.
+            syncNavigationAfterClose(
+              closePanesForThreads(response.archivedThreadIds),
+              () => {
+                const viewed = viewedThreadIdRef.current;
+                if (viewed && response.archivedThreadIds.includes(viewed)) {
+                  navigate(getRootComposeRoutePath());
+                }
+              },
             );
-            if (
-              !removedAny &&
-              viewedThreadId &&
-              response.archivedThreadIds.includes(viewedThreadId)
-            ) {
-              navigate(getRootComposeRoutePath());
-            }
             const toastId = `thread-archived-${thread.id}`;
             appToast.success(
               <ArchivedThreadToastTitle
@@ -327,7 +359,7 @@ export function ThreadActionsProvider({
       archiveThreadAndChildrenMutate,
       closePanesForThreads,
       navigate,
-      viewedThreadId,
+      syncNavigationAfterClose,
     ],
   );
 

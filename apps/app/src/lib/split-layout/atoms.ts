@@ -4,7 +4,8 @@ import {
   createLocalStorageSyncStorage,
   type SyncStorage,
 } from "@/lib/browser-storage";
-import { listPanes, removePane } from "./ops";
+import type { ThreadRoutePathArgs } from "@/lib/route-paths";
+import { findPane, listPanes, removePane } from "./ops";
 import {
   deserializeSplitLayout,
   serializeSplitLayout,
@@ -36,23 +37,35 @@ export const splitLayoutAtom = atomWithStorage<SplitLayout | null>(
 );
 
 export interface ClosePanesForThreadsResult {
-  /** True when at least one pane closed, so the caller should not navigate. */
+  /** True when at least one pane closed. */
   removedAny: boolean;
+  /**
+   * The route of the focused pane that survived the close, or null when nothing
+   * closed or no valid pane survived (a recursive archive covering every open
+   * pane leaves only a targeted thread, since the last pane can't be removed).
+   * The caller replace-navigates to this route so the URL never lingers on a
+   * removed pane, and falls back to its pre-split navigate-away when it's null.
+   */
+  focusedRoute: ThreadRoutePathArgs | null;
 }
 
 /**
  * Closes every pane whose thread is in `threadIds`, one at a time, while more
  * than one pane remains (the layout never collapses below a single pane). This
  * bridges archive/delete: a thread open in a split pane closes that pane
- * instead of navigating the whole window away. Returns whether anything closed
- * so the caller can fall back to its single-pane navigation when nothing did.
+ * instead of navigating the whole window away.
+ *
+ * Route policy lives here so the caller never re-derives it: when a valid pane
+ * survives, the result carries its route (the caller syncs the URL to it); when
+ * every surviving pane is itself targeted, the layout is cleared and the result
+ * carries a null route (the caller runs its pre-split navigate-away/reset).
  */
 export const closePanesForThreadsAtom = atom(
   null,
   (get, set, threadIds: readonly string[]): ClosePanesForThreadsResult => {
     const current = get(splitLayoutAtom);
     if (current === null || threadIds.length === 0) {
-      return { removedAny: false };
+      return { removedAny: false, focusedRoute: null };
     }
     const targets = new Set(threadIds);
     let layout = current;
@@ -74,9 +87,28 @@ export const closePanesForThreadsAtom = atom(
       layout = next;
       removedAny = true;
     }
-    if (removedAny) {
-      set(splitLayoutAtom, layout);
+    if (!removedAny) {
+      return { removedAny: false, focusedRoute: null };
     }
-    return { removedAny };
+    // The surviving focused pane may still be a targeted thread (recursive
+    // archive covering every pane). Treat that as "no valid survivor": clear the
+    // layout so a stale pane isn't left behind, and signal the caller to fall
+    // back to navigating the window away.
+    const focused = findPane(layout.root, layout.focusedPaneId);
+    const survivorRoute =
+      focused !== null &&
+      focused.content.kind === "thread" &&
+      !targets.has(focused.content.threadId)
+        ? {
+            projectId: focused.content.projectId,
+            threadId: focused.content.threadId,
+          }
+        : null;
+    if (survivorRoute === null) {
+      set(splitLayoutAtom, null);
+      return { removedAny: true, focusedRoute: null };
+    }
+    set(splitLayoutAtom, layout);
+    return { removedAny: true, focusedRoute: survivorRoute };
   },
 );

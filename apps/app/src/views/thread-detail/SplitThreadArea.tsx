@@ -7,11 +7,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadRoutePath, type ThreadRoutePathArgs } from "@/lib/route-paths";
+import { HttpError } from "@/lib/api";
+import { useThread } from "@/hooks/queries/thread-queries";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   countPanes,
@@ -168,6 +171,33 @@ export function SplitThreadArea() {
     [setLayout],
   );
 
+  // Prune a pane whose thread turned out to be deleted or archived (a restored
+  // layout can reference a stale thread; archived threads don't belong in split
+  // panes). Reuses the close navigation sync: focus falls to a survivor and the
+  // URL follows. The last pane is left as-is so single-pane viewing of a stale
+  // thread stays at parity with the pre-split page (a bare "Not found"). Reads
+  // the store imperatively so concurrent per-pane signals act on fresh state.
+  const pruneStalePane = useCallback(
+    (paneId: string) => {
+      const current = store.get(splitLayoutAtom);
+      if (current === null) {
+        return;
+      }
+      const next = removePane(current, paneId);
+      if (next === current) {
+        return;
+      }
+      store.set(splitLayoutAtom, next);
+      if (next.focusedPaneId !== current.focusedPaneId) {
+        const route = focusedThreadRoute(next);
+        if (route !== null) {
+          navigate(getThreadRoutePath(route), { replace: true });
+        }
+      }
+    },
+    [navigate, store],
+  );
+
   // Pane reorder: dragging a pane header through the shared split-drag layer.
   // Edge drop = movePane (allowed at the cap — moves never add a pane), center
   // drop = swapPanes. Both ops set the layout's focus, and the URL follows it.
@@ -293,6 +323,7 @@ export function SplitThreadArea() {
         onResize={resize}
         onNavigateInPane={navigateInPane}
         onBeginPaneDrag={beginPaneDrag}
+        onPruneStalePane={pruneStalePane}
       />
     </div>
   );
@@ -308,6 +339,7 @@ interface SplitTreeProps {
   onResize: (splitPath: SplitPath, childIndex: number, fraction: number) => void;
   onNavigateInPane: NavigateInPane;
   onBeginPaneDrag: BeginPaneDrag;
+  onPruneStalePane: (paneId: string) => void;
 }
 
 function SplitTree(props: SplitTreeProps) {
@@ -315,6 +347,7 @@ function SplitTree(props: SplitTreeProps) {
 
   if (node.type === "pane") {
     const isFocused = node.paneId === focusedPaneId;
+    const threadId = node.content.threadId;
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
@@ -324,6 +357,12 @@ function SplitTree(props: SplitTreeProps) {
         )}
         data-split-pane-id={node.paneId}
       >
+        {/* Only mounted in split mode, so single panes never pay for the extra
+            thread subscription (and never prune the last pane). */}
+        <PaneStaleWatcher
+          threadId={threadId}
+          onStale={() => props.onPruneStalePane(node.paneId)}
+        />
         <ThreadPaneContent
           content={node.content}
           paneId={node.paneId}
@@ -492,6 +531,40 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
       />
     </div>
   );
+}
+
+interface PaneStaleWatcherProps {
+  threadId: string;
+  onStale: () => void;
+}
+
+/**
+ * Watches a split pane's thread and signals when it becomes deleted (a 404 once
+ * the query settles) or archived, so the pane can be pruned. Shares the same
+ * react-query cache entry the pane's own view already subscribes to, so it adds
+ * a subscriber, not a fetch. Renders nothing.
+ */
+function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
+  const { data: thread, isSuccess, isError, error } = useThread(threadId);
+  const isGone = isError && error instanceof HttpError && error.status === 404;
+  const isArchivedOrDeleted =
+    isSuccess &&
+    thread !== undefined &&
+    (thread.archivedAt !== null || thread.deletedAt !== null);
+  const isStale = isGone || isArchivedOrDeleted;
+
+  // Keep the latest callback without re-arming the effect: it fires once when
+  // staleness is first observed. Pruning unmounts this watcher (or is a no-op on
+  // the last pane), so a single fire is enough.
+  const onStaleRef = useRef(onStale);
+  onStaleRef.current = onStale;
+  useEffect(() => {
+    if (isStale) {
+      onStaleRef.current();
+    }
+  }, [isStale]);
+
+  return null;
 }
 
 function paneKey(node: LayoutNode): string {

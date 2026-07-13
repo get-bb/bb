@@ -23,6 +23,17 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useIndexedAppCommandHandlers: () => undefined,
 }));
 
+// Split panes mount a PaneStaleWatcher that reads the thread query; keep it in a
+// benign "still loading" state so DOM parity is observed without pruning.
+vi.mock("@/hooks/queries/thread-queries", () => ({
+  useThread: () => ({
+    data: undefined,
+    isSuccess: false,
+    isError: false,
+    error: null,
+  }),
+}));
+
 vi.mock("@/hooks/useRouteState", () => ({
   useRouteState: () => ({ projectId: "p1", threadId: "t1" }),
 }));
