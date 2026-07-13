@@ -547,6 +547,7 @@ describe("builtin plugin reconciliation", () => {
 
   it("registers but does not load a packaged builtin with stale backend metadata", async () => {
     const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
+    const incompatibleMajor = PLUGIN_SDK_MAJOR + 1;
     const targetRoot = join(workDir, "builtin-plugins");
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
@@ -557,7 +558,10 @@ describe("builtin plugin reconciliation", () => {
     const copiedRoot = join(targetRoot, "automations");
     await writeFile(
       join(copiedRoot, "dist", "server.meta.json"),
-      JSON.stringify({ sdkMajor: 0, sdkVersion: "0.1.0" }),
+      JSON.stringify({
+        sdkMajor: incompatibleMajor,
+        sdkVersion: `${incompatibleMajor}.0.0`,
+      }),
     );
     const before = packagedLoadCount();
 
@@ -576,7 +580,7 @@ describe("builtin plugin reconciliation", () => {
         version: "0.1.0",
         enabled: true,
         status: "incompatible",
-        statusDetail: `server artifact for plugin "automations" was built for SDK major 0, running SDK major is ${PLUGIN_SDK_MAJOR}; rebuild the server artifact with this bb version`,
+        statusDetail: `server artifact for plugin "automations" was built for SDK major ${incompatibleMajor}, running SDK major is ${PLUGIN_SDK_MAJOR}; rebuild the server artifact with this bb version`,
       },
     ]);
     expect(packagedLoadCount()).toBe(before);

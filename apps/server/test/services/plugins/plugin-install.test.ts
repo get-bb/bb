@@ -612,6 +612,7 @@ describe("plugin install flows", () => {
 
   it("registers a path install with stale backend artifact metadata", async () => {
     const rootDir = join(workDir, "local-stale-server-meta");
+    const incompatibleMajor = PLUGIN_SDK_MAJOR + 1;
     await writePluginFixture(rootDir, {
       name: "bb-plugin-local-stale-server-meta",
     });
@@ -620,8 +621,8 @@ describe("plugin install flows", () => {
       join(rootDir, "dist", "server.meta.json"),
       artifactMeta({
         pluginId: "local-stale-server-meta",
-        sdkMajor: 0,
-        sdkVersion: "0.1.0",
+        sdkMajor: incompatibleMajor,
+        sdkVersion: `${incompatibleMajor}.0.0`,
       }),
     );
 
