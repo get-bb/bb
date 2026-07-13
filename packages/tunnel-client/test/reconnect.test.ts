@@ -34,6 +34,14 @@ describe("ReconnectBackoff", () => {
     expect(backoff.nextDelayAfterClose(10_001)).toBe(1_000);
   });
 
+  it("does not reset at exactly the stable threshold", () => {
+    const backoff = new ReconnectBackoff({ stableConnectionMs: 10_000 });
+    // First unstable close → attempt 1 → 2s
+    expect(backoff.nextDelayAfterClose(0)).toBe(2_000);
+    // Exactly 10_000ms is not more than the threshold, so attempt advances.
+    expect(backoff.nextDelayAfterClose(10_000)).toBe(4_000);
+  });
+
   it("reset() clears the attempt counter", () => {
     const backoff = new ReconnectBackoff();
     backoff.nextDelayAfterClose(0);

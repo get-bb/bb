@@ -3,8 +3,9 @@ export const DEFAULT_RECONNECT_BASE_DELAY_MS = 1_000;
 /** Cap on exponential reconnect delay (30s). */
 export const DEFAULT_MAX_RECONNECT_DELAY_MS = 30_000;
 /**
- * A connection that stayed open at least this long resets the attempt
+ * A connection that stayed open more than this long resets the attempt
  * counter (so a brief blip after a stable session does not jump to long delays).
+ * Equality with the threshold does not reset — the comparison is strict `>`.
  */
 export const DEFAULT_STABLE_CONNECTION_MS = 10_000;
 
