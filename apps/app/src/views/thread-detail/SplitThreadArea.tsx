@@ -361,7 +361,12 @@ function SplitTree(props: SplitTreeProps) {
         onPointerDown={() => props.onFocusPane(node.paneId)}
         className={cn(
           "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
-          isFocused && "ring-1 ring-inset ring-ring",
+          // Card chrome for split panes. The padding exactly cancels the
+          // content's page-bleed negative margins (see
+          // ThreadDetailSecondaryContent), so pane content fills the card
+          // instead of being clipped by overflow-hidden.
+          "rounded-lg border bg-background p-4 md:p-5",
+          isFocused ? "border-ring/50" : "border-border",
         )}
         data-split-pane-id={node.paneId}
       >

@@ -529,9 +529,7 @@ function ThreadRowComponent({
     // Subtle open-in-split tint, weaker than the active-row treatment. The
     // focused pane's thread is already the active row, so this only marks the
     // other open panes; hover still wins over it.
-    !showActive &&
-      splitIndicator.isOpenInSplit &&
-      "bg-sidebar-border/40",
+    !showActive && splitIndicator.isOpenInSplit && "bg-sidebar-accent/50",
     !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
   );

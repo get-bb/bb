@@ -48,9 +48,9 @@ export function ThreadRowMiniMap({ slots, label }: ThreadRowMiniMapProps) {
           className={cn(
             slot.isMe
               ? slot.isFocused
-                ? "fill-primary stroke-none"
-                : "fill-muted-foreground/70 stroke-none"
-              : "fill-none stroke-muted-foreground/40",
+                ? "fill-primary/70 stroke-none"
+                : "fill-muted-foreground/45 stroke-none"
+              : "fill-none stroke-muted-foreground/30",
           )}
         />
       ))}
