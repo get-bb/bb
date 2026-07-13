@@ -7,10 +7,12 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   connectCode,
+  labelClaim,
   machine,
   MAX_SERVERS_PER_ACCOUNT,
   schema,
   server,
+  tryClaimLabel,
   user,
 } from "@bb/connect-db";
 import {
@@ -570,6 +572,16 @@ describe("dashboard machine recovery", () => {
         },
       ])
       .run();
+    db.insert(labelClaim)
+      .values({
+        label: "lost-laptop",
+        kind: "machine",
+        ownerId: "machine-owner",
+        userId: "u1",
+        generation: "lost-generation",
+        createdAt: now,
+      })
+      .run();
 
     expect((await getAccountState(deps, "u1")).machines).toEqual([
       {
@@ -585,7 +597,7 @@ describe("dashboard machine recovery", () => {
     await expect(revokeMachine(deps, "u1", "machine-owner")).resolves.toEqual({
       ok: true,
     });
-    expect(closeTunnel).toHaveBeenCalledWith("lost-laptop");
+    expect(closeTunnel).toHaveBeenCalledWith("lost-laptop:lost-generation");
     expect((await getAccountState(deps, "u1")).machines).toEqual([]);
     expect(
       db.select().from(machine).where(eq(machine.id, "machine-owner")).get()
@@ -595,5 +607,111 @@ describe("dashboard machine recovery", () => {
       db.select().from(machine).where(eq(machine.id, "machine-other")).get()
         ?.revokedAt,
     ).toBeNull();
+  });
+
+  it("keeps a revoked label pinned when tunnel close fails", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values({
+        id: "machine-a",
+        userId: "u1",
+        subdomain: "shared-machine",
+        credentialHash: "hash-a",
+        createdAt: now,
+      })
+      .run();
+    db.insert(labelClaim)
+      .values({
+        label: "shared-machine",
+        kind: "machine",
+        ownerId: "machine-a",
+        userId: "u1",
+        generation: "generation-a",
+        createdAt: now,
+      })
+      .run();
+    closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
+
+    await expect(revokeMachine(deps, "u1", "machine-a")).resolves.toEqual({
+      error: "tunnel-close-failed",
+    });
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-a")).get()
+        ?.subdomain,
+    ).toBe("shared-machine");
+    expect(
+      await tryClaimLabel(db, {
+        label: "shared-machine",
+        kind: "machine",
+        ownerId: "machine-b",
+        userId: "u2",
+        generation: "generation-b",
+        createdAt: now,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not release a label until delayed close confirms, then gives the new owner a new generation", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values({
+        id: "machine-a",
+        userId: "u1",
+        subdomain: "shared-machine",
+        credentialHash: "hash-a",
+        createdAt: now,
+      })
+      .run();
+    db.insert(labelClaim)
+      .values({
+        label: "shared-machine",
+        kind: "machine",
+        ownerId: "machine-a",
+        userId: "u1",
+        generation: "generation-a",
+        createdAt: now,
+      })
+      .run();
+    let confirmClose: (() => void) | undefined;
+    closeTunnel.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          confirmClose = resolve;
+        }),
+    );
+
+    const revocation = revokeMachine(deps, "u1", "machine-a");
+    await vi.waitFor(() => expect(closeTunnel).toHaveBeenCalledTimes(1));
+    expect(
+      await tryClaimLabel(db, {
+        label: "shared-machine",
+        kind: "machine",
+        ownerId: "machine-b",
+        userId: "u2",
+        generation: "generation-b",
+        createdAt: now,
+      }),
+    ).toBe(false);
+
+    confirmClose?.();
+    await expect(revocation).resolves.toEqual({ ok: true });
+    expect(
+      await tryClaimLabel(db, {
+        label: "shared-machine",
+        kind: "machine",
+        ownerId: "machine-b",
+        userId: "u2",
+        generation: "generation-b",
+        createdAt: now,
+      }),
+    ).toBe(true);
+    expect(db.select().from(labelClaim).get()).toMatchObject({
+      ownerId: "machine-b",
+      generation: "generation-b",
+    });
   });
 });

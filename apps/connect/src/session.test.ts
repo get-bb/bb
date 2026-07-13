@@ -5,7 +5,14 @@ import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { machine, profile, schema, server, user } from "@bb/connect-db";
+import {
+  labelClaim,
+  machine,
+  profile,
+  schema,
+  server,
+  user,
+} from "@bb/connect-db";
 
 import {
   MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
@@ -13,6 +20,7 @@ import {
   resolveLabel,
   verifyMachineCredentialDetails,
 } from "./session.js";
+import { assignMachineLabel } from "./machine-label.js";
 
 // Real in-memory SQLite (never mock the DB). resolveLabel accepts any Drizzle
 // SQLite database (the widened ConnectDb type), so the better-sqlite3 driver
@@ -76,6 +84,16 @@ function seedServer(over: {
       createdAt: now,
     })
     .run();
+  db.insert(labelClaim)
+    .values({
+      label: over.subdomain,
+      kind: "server",
+      ownerId: over.id,
+      userId: over.userId,
+      generation: `${over.id}-generation`,
+      createdAt: now,
+    })
+    .run();
 }
 
 function seedMachine(over: {
@@ -85,6 +103,7 @@ function seedMachine(over: {
   credentialHash?: string;
   revokedAt?: Date | null;
   lastSeenAt?: Date | null;
+  claim?: boolean;
 }): void {
   db.insert(machine)
     .values({
@@ -97,6 +116,18 @@ function seedMachine(over: {
       createdAt: now,
     })
     .run();
+  if (over.subdomain !== null && over.claim !== false) {
+    db.insert(labelClaim)
+      .values({
+        label: over.subdomain,
+        kind: "machine",
+        ownerId: over.id,
+        userId: over.userId,
+        generation: `${over.id}-generation`,
+        createdAt: now,
+      })
+      .run();
+  }
 }
 
 describe("resolveLabel — label → server row (multi-server)", () => {
@@ -117,6 +148,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     const resolved = await resolveLabel("sawyer", db, { fresh: true });
     expect(resolved).toEqual({
       kind: "server",
+      routingKey: "sawyer",
       userId: "acct-a",
       server: {
         id: "srv-primary",
@@ -198,6 +230,30 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     expect(await resolveLabel("nobody", db, { fresh: true })).toBeNull();
   });
 
+  it("fresh resolution sees an immediately assigned label after a cached negative", async () => {
+    seedUser("acct-a");
+    db.insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
+      .run();
+    seedMachine({
+      id: "machine-new",
+      userId: "acct-a",
+      subdomain: null,
+    });
+    await expect(resolveLabel("new-machine", db)).resolves.toBeNull();
+    await expect(
+      assignMachineLabel(db, "machine-new", "New Machine"),
+    ).resolves.toBe("new-machine");
+    await expect(resolveLabel("new-machine", db)).resolves.toBeNull();
+    await expect(
+      resolveLabel("new-machine", db, { fresh: true }),
+    ).resolves.toMatchObject({
+      kind: "machine",
+      routingKey: expect.stringMatching(/^new-machine:/u),
+      machine: { id: "machine-new" },
+    });
+  });
+
   it("surfaces revoked / unpaired credential state for the tunnel gate", async () => {
     seedUser("acct-a");
     seedServer({
@@ -231,6 +287,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       resolveLabel("sawyer-air", db, { fresh: true }),
     ).resolves.toEqual({
       kind: "machine",
+      routingKey: "sawyer-air:machine-air-generation",
       userId: "acct-a",
       accountHandle: "sawyer",
       machine: {
@@ -257,6 +314,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       id: "machine-collision",
       userId: "acct-a",
       subdomain: "collision",
+      claim: false,
     });
 
     const resolved = await resolveLabel("collision", db, { fresh: true });

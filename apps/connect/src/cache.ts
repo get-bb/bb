@@ -4,9 +4,9 @@
 // into a handful of dynamic API calls plus edge hits.
 //
 // Security: only called AFTER the gate has verified the requester owns the
-// handle, and the cache key is namespaced by host label (bare handle or
-// `handle--port` share label), so a cached body can never be served across
-// namespaces or accounts. Caching is opt-in via the ORIGIN's Cache-Control,
+// handle, and the cache key is namespaced by the resolved routing key (including
+// a machine ownership generation) plus share target, so a cached body can never
+// be served across label owners. Caching is opt-in via the ORIGIN's Cache-Control,
 // so a dev server (no-cache module responses) is proxied uncached and correct,
 // while a bundled build (max-age=31536000, immutable) is cached.
 
@@ -15,7 +15,9 @@ const MIN_CACHEABLE_MAX_AGE = 300;
 
 /** Build the edge-cache Request key for a namespace label + visitor URL. */
 export function cacheKey(namespace: string, url: URL): Request {
-  return new Request(`${CACHE_HOST}/${namespace}${url.pathname}${url.search}`, { method: "GET" });
+  return new Request(`${CACHE_HOST}/${namespace}${url.pathname}${url.search}`, {
+    method: "GET",
+  });
 }
 
 function isCacheable(resp: Response): boolean {
@@ -31,9 +33,9 @@ function isCacheable(resp: Response): boolean {
  * Serve `request` from the edge cache when possible, else run `fetchOrigin`
  * (the tunnel) and populate the cache when the response is cacheable.
  *
- * `namespace` is the full host label used for key isolation — the bare handle
- * (`sawyer`) or a share label (`sawyer--8000`) — so share responses never
- * collide with app-asset cache entries.
+ * `namespace` is the resolved routing key plus optional share target. Server
+ * keys remain their legacy label; reusable machine keys include an ownership
+ * generation so old and new owners can never share cached responses.
  */
 export async function serveWithCache(
   request: Request,

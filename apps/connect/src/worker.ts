@@ -230,9 +230,12 @@ function isHostManagementMutation(request: Request, pathname: string): boolean {
   );
 }
 
-/** Cache namespace for the full visitor host label (bare handle or share). */
-export function cacheNamespace(handle: string, target: string | null): string {
-  return target !== null ? `${handle}--${target}` : handle;
+/** Cache namespace for a resolved routing key plus optional share target. */
+export function cacheNamespace(
+  routingKey: string,
+  target: string | null,
+): string {
+  return target !== null ? `${routingKey}--${target}` : routingKey;
 }
 
 export default {
@@ -275,39 +278,33 @@ export default {
     // Bind the schema so the db satisfies the shared ConnectDb type (also what
     // the session helpers accept, and what in-memory tests exercise directly).
     const db = drizzle(env.DB, { schema });
-    const resolved = await resolveLabel(label, db);
+    // Tunnel dials bypass the label cache from their very first lookup. This
+    // avoids both stale credentials and a cached negative immediately after a
+    // machine label is assigned.
+    const isTunnelDial = url.pathname === "/__tunnel";
+    const resolved = await resolveLabel(
+      label,
+      db,
+      isTunnelDial ? { fresh: true } : undefined,
+    );
     if (!resolved) return text(`bb connect: no server for "${label}"\n`, 404);
 
-    // One TunnelDO + one edge-cache namespace per resolved label (= subdomain),
-    // so each bb on the account gets its own DO instance and cache isolation.
-    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(label));
+    // One TunnelDO + edge-cache namespace per resolved routing key. Server keys
+    // stay label-compatible; reusable machine keys include their claim generation.
+    const stub = env.TUNNEL_DO.get(
+      env.TUNNEL_DO.idFromName(resolved.routingKey),
+    );
 
     // Tunnel client connection — bare label only (share hosts are visitor-facing).
     if (url.pathname === "/__tunnel") {
       if (target !== null) return text("bb connect: not found\n", 404);
       const auth = request.headers.get("authorization") ?? "";
       const credential = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-      // Re-resolve fresh (bypass the isolate cache): a warm isolate would
-      // otherwise honor a just-revoked credential for up to the cache TTL,
-      // letting a leaked credential re-establish a tunnel after disconnect.
-      const freshResolved = await resolveLabel(label, db, { fresh: true });
-      // A fresh discriminated resolve also prevents a stale cached machine
-      // label or credential from reconnecting after machine revocation.
-      if (!freshResolved) {
-        return text(
-          resolved.kind === "server"
-            ? "bb connect: server not paired\n"
-            : "bb connect: machine not paired\n",
-          403,
-        );
-      }
       const owner =
-        freshResolved.kind === "server"
-          ? freshResolved.server
-          : freshResolved.machine;
+        resolved.kind === "server" ? resolved.server : resolved.machine;
       if (owner.revokedAt != null || owner.credentialHash == null) {
         return text(
-          freshResolved.kind === "server"
+          resolved.kind === "server"
             ? "bb connect: server not paired\n"
             : "bb connect: machine not paired\n",
           403,
@@ -317,7 +314,9 @@ export default {
         return text("bb connect: invalid credential\n", 401);
       }
       const forward = new URL(request.url);
-      if (freshResolved.kind === "server") {
+      forward.searchParams.delete("serverId");
+      forward.searchParams.delete("machineId");
+      if (resolved.kind === "server") {
         forward.searchParams.set("serverId", owner.id);
       } else {
         forward.searchParams.set("machineId", owner.id);
@@ -425,7 +424,7 @@ export default {
     // share response never collides with bare-label app assets.
     const response = await serveWithCache(
       request,
-      cacheNamespace(label, target),
+      cacheNamespace(resolved.routingKey, target),
       ctx,
       () => stub.fetch(doRequest),
     );

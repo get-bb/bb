@@ -1,14 +1,13 @@
 // Label availability across the single public namespace shared by account
 // handles (`profile.handle`), server subdomains (`server.subdomain`), and machine
-// subdomains (`machine.subdomain`). A label is claimable only when it is
-// well-formed AND unused in all three tables. The
-// dashboard (apps/web) and the gate reuse this so the two claim paths cannot
-// disagree about what is free.
+// subdomains (`machine.subdomain`). `label_claim.label` is the authoritative
+// globally-unique allocation point; product tables denormalize the label only
+// after winning that row.
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { type HandleValidationError, validateSubdomain } from "./constants.js";
-import { machine, profile, server } from "./schema.js";
+import { labelClaim, type LabelClaimKind } from "./schema.js";
 
 /**
  * The minimal Drizzle SQLite database shape this helper needs. Satisfied by both
@@ -47,9 +46,7 @@ export type LabelAvailability =
 /**
  * Check whether `rawLabel` can be claimed as an account, server, or machine
  * label. Normalizes (trim + lowercase), validates the shared grammar, then
- * queries all three unique columns, so a single `.get()` per table suffices.
- * Handles then servers are checked first to preserve stable precedence for
- * legacy claim paths; any hit means unavailable.
+ * queries the authoritative global claim row in one exact lookup.
  */
 export async function checkLabelAvailability(
   db: ConnectDb,
@@ -60,29 +57,73 @@ export async function checkLabelAvailability(
   const invalid = validateSubdomain(label);
   if (invalid) return { available: false, reason: "invalid", error: invalid };
 
-  const handleRow = await db
-    .select({ handle: profile.handle })
-    .from(profile)
-    .where(eq(profile.handle, label))
+  const claim = await db
+    .select({ kind: labelClaim.kind })
+    .from(labelClaim)
+    .where(eq(labelClaim.label, label))
     .get();
-  if (handleRow)
-    return { available: false, reason: "taken", namespace: "handle" };
-
-  const serverRow = await db
-    .select({ subdomain: server.subdomain })
-    .from(server)
-    .where(eq(server.subdomain, label))
-    .get();
-  if (serverRow)
-    return { available: false, reason: "taken", namespace: "subdomain" };
-
-  const machineRow = await db
-    .select({ subdomain: machine.subdomain })
-    .from(machine)
-    .where(eq(machine.subdomain, label))
-    .get();
-  if (machineRow)
-    return { available: false, reason: "taken", namespace: "machine" };
+  if (claim) {
+    return {
+      available: false,
+      reason: "taken",
+      namespace: claim.kind === "server" ? "subdomain" : claim.kind,
+    };
+  }
 
   return { available: true, label };
+}
+
+export interface NewLabelClaim {
+  label: string;
+  kind: LabelClaimKind;
+  ownerId: string;
+  userId: string;
+  generation: string;
+  createdAt: Date;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Error && /unique constraint/iu.test(error.message);
+}
+
+/** Atomically win the one global routing-label namespace. */
+export async function tryClaimLabel(
+  db: ConnectDb,
+  claim: NewLabelClaim,
+): Promise<boolean> {
+  if (validateSubdomain(claim.label) !== null) return false;
+  try {
+    await db.insert(labelClaim).values(claim).run();
+    return true;
+  } catch (error) {
+    if (isUniqueConstraintError(error)) return false;
+    throw error;
+  }
+}
+
+/** Release only the exact ownership generation the caller previously won. */
+export async function releaseLabelClaim(
+  db: ConnectDb,
+  claim: Pick<NewLabelClaim, "label" | "kind" | "ownerId" | "generation">,
+): Promise<void> {
+  await db
+    .delete(labelClaim)
+    .where(
+      and(
+        eq(labelClaim.label, claim.label),
+        eq(labelClaim.kind, claim.kind),
+        eq(labelClaim.ownerId, claim.ownerId),
+        eq(labelClaim.generation, claim.generation),
+      ),
+    )
+    .run();
+}
+
+/** Preserve legacy server DO/cache keys; isolate reusable machine generations. */
+export function routingKeyForLabelClaim(
+  label: string,
+  kind: LabelClaimKind,
+  generation: string,
+): string {
+  return kind === "machine" ? `${label}:${generation}` : label;
 }

@@ -131,10 +131,15 @@ export class TunnelDO {
   fetch(request: Request): Response | Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/__tunnel") {
+      const serverId = url.searchParams.get("serverId");
+      const machineId = url.searchParams.get("machineId");
+      if (serverId !== null && machineId !== null) {
+        return new Response("conflicting tunnel identity", { status: 400 });
+      }
       return this.acceptTunnel(
         request,
-        url.searchParams.get("serverId"),
-        url.searchParams.get("machineId"),
+        serverId,
+        machineId,
         parseClientProtocolVersion(
           url.searchParams.get(TUNNEL_PROTOCOL_QUERY_PARAM),
         ),

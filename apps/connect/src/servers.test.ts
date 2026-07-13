@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SERVER_OFFLINE_AFTER_MS,
+  labelClaim,
   machine,
   profile,
   schema,
@@ -335,6 +336,34 @@ describe("machine label assignment", () => {
         },
       ])
       .run();
+    db.insert(labelClaim)
+      .values([
+        {
+          label: "sawyer-air",
+          kind: "handle",
+          ownerId: "acct-a",
+          userId: "acct-a",
+          generation: "handle-generation",
+          createdAt: now,
+        },
+        {
+          label: "sawyer-air-2",
+          kind: "server",
+          ownerId: "s2",
+          userId: "acct-a",
+          generation: "server-generation",
+          createdAt: now,
+        },
+        {
+          label: "sawyer-air-3",
+          kind: "machine",
+          ownerId: "machine-existing",
+          userId: "acct-a",
+          generation: "machine-generation",
+          createdAt: now,
+        },
+      ])
+      .run();
 
     expect(sanitizeMachineLabelBase("  Sawyer Air!!!  ", "machine-new")).toBe(
       "sawyer-air",
@@ -388,5 +417,72 @@ describe("machine label assignment", () => {
     await expect(
       assignMachineLabelForCredential(db, credential, "Sawyer Air"),
     ).resolves.toBeNull();
+  });
+
+  it("keeps concurrent assignments on one atomic global claim", async () => {
+    seedUser("acct-a");
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-a",
+          userId: "acct-a",
+          credentialHash: "a",
+          createdAt: now,
+        },
+        {
+          id: "machine-b",
+          userId: "acct-a",
+          credentialHash: "b",
+          createdAt: now,
+        },
+      ])
+      .run();
+
+    const [a, b] = await Promise.all([
+      assignMachineLabel(db, "machine-a", "Shared Name"),
+      assignMachineLabel(db, "machine-b", "Shared Name"),
+    ]);
+    expect(new Set([a, b])).toEqual(new Set(["shared-name", "shared-name-2"]));
+    expect(db.select().from(labelClaim).all()).toHaveLength(2);
+  });
+
+  it("loses cleanly when revocation crosses the post-claim assignment barrier", async () => {
+    seedUser("acct-a");
+    db.insert(machine)
+      .values({
+        id: "machine-race",
+        userId: "acct-a",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+    let releaseBarrier: (() => void) | undefined;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    let claimReached: (() => void) | undefined;
+    const claimed = new Promise<void>((resolve) => {
+      claimReached = resolve;
+    });
+    const assignment = assignMachineLabel(db, "machine-race", "Race Box", {
+      afterClaim: async () => {
+        claimReached?.();
+        await barrier;
+      },
+    });
+
+    await claimed;
+    db.update(machine)
+      .set({ revokedAt: now })
+      .where(eq(machine.id, "machine-race"))
+      .run();
+    releaseBarrier?.();
+
+    await expect(assignment).resolves.toBeNull();
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-race")).get()
+        ?.subdomain,
+    ).toBeNull();
+    expect(db.select().from(labelClaim).all()).toEqual([]);
   });
 });

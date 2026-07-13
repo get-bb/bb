@@ -1,8 +1,10 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import {
   type ConnectDb,
+  labelClaim,
   machine,
   profile,
+  routingKeyForLabelClaim,
   server,
   session,
 } from "@bb/connect-db";
@@ -37,6 +39,7 @@ function cacheGet<T>(
 
 export interface ResolvedServer {
   kind: "server";
+  routingKey: string;
   /**
    * The account that owns this server (`server.userId`). Session and machine
    * auth scope to this: only this account may visit the server, and only this
@@ -55,6 +58,7 @@ export interface ResolvedServer {
 
 export interface ResolvedMachine {
   kind: "machine";
+  routingKey: string;
   userId: string;
   accountHandle: string;
   machine: {
@@ -69,10 +73,9 @@ export interface ResolvedMachine {
 export type ResolvedLabel = ResolvedServer | ResolvedMachine;
 
 /**
- * Resolve a routing label to its server row first, then fall through to a
- * machine row. Server-first preserves the established routing precedence even
- * if legacy/corrupt data contains a cross-table collision. `null` means no
- * server or machine owns the label.
+ * Resolve the authoritative global claim, then its exact product row. The
+ * claim table makes cross-table collisions impossible and supplies the machine
+ * ownership generation used to isolate DO and edge-cache state.
  *
  * Pass `{ fresh: true }` to bypass the read cache for credential-sensitive
  * paths (tunnel (re)connect): the ~15s cache TTL would otherwise let a
@@ -90,6 +93,58 @@ export async function resolveLabel(
     if (cached !== undefined) return cached;
   }
 
+  const claim = await db
+    .select()
+    .from(labelClaim)
+    .where(eq(labelClaim.label, label))
+    .get();
+  if (!claim) {
+    labelCache.set(label, { value: null, expires: now + LABEL_TTL_MS });
+    return null;
+  }
+  const routingKey = routingKeyForLabelClaim(
+    claim.label,
+    claim.kind,
+    claim.generation,
+  );
+
+  if (claim.kind === "machine") {
+    const machineRow = await db
+      .select({
+        userId: machine.userId,
+        accountHandle: profile.handle,
+        machineId: machine.id,
+        credentialHash: machine.credentialHash,
+        revokedAt: machine.revokedAt,
+        lastSeenAt: machine.lastSeenAt,
+      })
+      .from(machine)
+      .innerJoin(profile, eq(profile.userId, machine.userId))
+      .where(
+        and(eq(machine.id, claim.ownerId), eq(machine.subdomain, claim.label)),
+      )
+      .get();
+    const resolvedMachine: ResolvedMachine | null = machineRow
+      ? {
+          kind: "machine",
+          routingKey,
+          userId: machineRow.userId,
+          accountHandle: machineRow.accountHandle,
+          machine: {
+            id: machineRow.machineId,
+            credentialHash: machineRow.credentialHash,
+            revokedAt: machineRow.revokedAt,
+            lastSeenAt: machineRow.lastSeenAt,
+          },
+        }
+      : null;
+    labelCache.set(label, {
+      value: resolvedMachine,
+      expires: now + LABEL_TTL_MS,
+    });
+    return resolvedMachine;
+  }
+
   const row = await db
     .select({
       userId: server.userId,
@@ -99,12 +154,20 @@ export async function resolveLabel(
       lastSeenAt: server.lastSeenAt,
     })
     .from(server)
-    .where(eq(server.subdomain, label))
+    .where(
+      claim.kind === "server"
+        ? and(eq(server.id, claim.ownerId), eq(server.subdomain, claim.label))
+        : and(
+            eq(server.userId, claim.ownerId),
+            eq(server.subdomain, claim.label),
+          ),
+    )
     .get();
 
   const resolvedServer: ResolvedServer | null = row
     ? {
         kind: "server",
+        routingKey,
         userId: row.userId,
         server: {
           id: row.serverId,
@@ -114,43 +177,11 @@ export async function resolveLabel(
         },
       }
     : null;
-  if (resolvedServer) {
-    labelCache.set(label, {
-      value: resolvedServer,
-      expires: now + LABEL_TTL_MS,
-    });
-    return resolvedServer;
-  }
-
-  const machineRow = await db
-    .select({
-      userId: machine.userId,
-      accountHandle: profile.handle,
-      machineId: machine.id,
-      credentialHash: machine.credentialHash,
-      revokedAt: machine.revokedAt,
-      lastSeenAt: machine.lastSeenAt,
-    })
-    .from(machine)
-    .innerJoin(profile, eq(profile.userId, machine.userId))
-    .where(eq(machine.subdomain, label))
-    .get();
-
-  const resolved: ResolvedMachine | null = machineRow
-    ? {
-        kind: "machine",
-        userId: machineRow.userId,
-        accountHandle: machineRow.accountHandle,
-        machine: {
-          id: machineRow.machineId,
-          credentialHash: machineRow.credentialHash,
-          revokedAt: machineRow.revokedAt,
-          lastSeenAt: machineRow.lastSeenAt,
-        },
-      }
-    : null;
-  labelCache.set(label, { value: resolved, expires: now + LABEL_TTL_MS });
-  return resolved;
+  labelCache.set(label, {
+    value: resolvedServer,
+    expires: now + LABEL_TTL_MS,
+  });
+  return resolvedServer;
 }
 
 /**

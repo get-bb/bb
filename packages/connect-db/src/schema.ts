@@ -104,6 +104,31 @@ export const profile = sqliteTable("profile", {
   createdAt: timestampMs("created_at").notNull(),
 });
 
+export const labelClaimKinds = ["handle", "server", "machine"] as const;
+export type LabelClaimKind = (typeof labelClaimKinds)[number];
+
+/**
+ * The authoritative global routing-label namespace. Product rows retain their
+ * denormalized handle/subdomain for direct reads, but every claim path must win
+ * this table's primary key before writing one of those fields. `generation`
+ * changes whenever a reusable machine label changes owners, isolating both its
+ * Durable Object and edge-cache namespace from the previous owner.
+ */
+export const labelClaim = sqliteTable(
+  "label_claim",
+  {
+    label: text("label").primaryKey(),
+    kind: text("kind", { enum: labelClaimKinds }).notNull(),
+    ownerId: text("owner_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    generation: text("generation").notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+  },
+  (table) => [index("label_claim_user_id_idx").on(table.userId)],
+);
+
 /**
  * A connected bb server (the machine running the tunnel client). An account may
  * own up to `MAX_SERVERS_PER_ACCOUNT` servers; each owns a globally-unique
@@ -224,6 +249,7 @@ export const schema = {
   account,
   verification,
   profile,
+  labelClaim,
   server,
   machine,
   connectCode,

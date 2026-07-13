@@ -9,11 +9,13 @@ import {
   CONNECT_CODE_TTL_MS,
   checkLabelAvailability,
   connectCode,
+  labelClaim,
   machine,
   parseVisitorHost,
   profile,
   schema,
   server,
+  tryClaimLabel,
   user,
   validateHandle,
   validateSubdomain,
@@ -63,6 +65,24 @@ function seedUser(id = "u1"): void {
     .run();
 }
 
+function seedLabelClaim(
+  label: string,
+  kind: "handle" | "server" | "machine",
+  ownerId: string,
+  userId = "u1",
+): void {
+  db.insert(labelClaim)
+    .values({
+      label,
+      kind,
+      ownerId,
+      userId,
+      generation: `${ownerId}-generation`,
+      createdAt: new Date(),
+    })
+    .run();
+}
+
 describe("migration matches the drizzle schema", () => {
   it("drizzle inserts/reads round-trip against the hand-written DDL", () => {
     seedUser();
@@ -70,6 +90,7 @@ describe("migration matches the drizzle schema", () => {
     db.insert(profile)
       .values({ userId: "u1", handle: "sawyer", createdAt: now })
       .run();
+    seedLabelClaim("sawyer", "handle", "u1");
     db.insert(server)
       .values({
         id: "s1",
@@ -97,6 +118,7 @@ describe("migration matches the drizzle schema", () => {
         createdAt: now,
       })
       .run();
+    seedLabelClaim("sawyer-air", "machine", "m1");
     expect(db.select().from(machine).get()?.subdomain).toBe("sawyer-air");
 
     const p = db
@@ -120,6 +142,45 @@ describe("migration matches the drizzle schema", () => {
     expect(
       db.select().from(user).where(eq(user.id, "u1")).get()?.githubLogin,
     ).toBe("sawyerhood");
+  });
+
+  it("atomically allows only one cross-namespace claimant", async () => {
+    seedUser("u1");
+    const createdAt = new Date();
+    const results = await Promise.all([
+      tryClaimLabel(db, {
+        label: "shared-label",
+        kind: "handle",
+        ownerId: "u1",
+        userId: "u1",
+        generation: "handle-generation",
+        createdAt,
+      }),
+      tryClaimLabel(db, {
+        label: "shared-label",
+        kind: "server",
+        ownerId: "s1",
+        userId: "u1",
+        generation: "server-generation",
+        createdAt,
+      }),
+      tryClaimLabel(db, {
+        label: "shared-label",
+        kind: "machine",
+        ownerId: "m1",
+        userId: "u1",
+        generation: "machine-generation",
+        createdAt,
+      }),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "shared-label"))
+        .all(),
+    ).toHaveLength(1);
   });
 });
 
@@ -502,8 +563,104 @@ describe("0003 backfill (staged application on real prior data)", () => {
       const machineSubdomain = machineCols.find((c) => c.name === "subdomain");
       expect(machineSubdomain).toBeDefined();
       expect(machineSubdomain?.notnull).toBe(0);
+      expect(
+        fresh
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'label_claim'",
+          )
+          .get(),
+      ).toBeDefined();
     } finally {
       fresh.close();
+    }
+  });
+});
+
+describe("0004 global label claims", () => {
+  it("backfills handles and secondary servers without duplicating the primary label", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      staged
+        .prepare(
+          "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+        )
+        .run("u1", "Test", "u1@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "sawyer", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s1", "u1", "default", "sawyer", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s2", "u1", "desktop", "sawyer-desktop", now);
+
+      applyMigration(staged, "0004_machine_labels.sql");
+
+      expect(
+        staged
+          .prepare(
+            "SELECT label, kind, owner_id FROM label_claim ORDER BY label",
+          )
+          .all(),
+      ).toEqual([
+        { label: "sawyer", kind: "handle", owner_id: "u1" },
+        {
+          label: "sawyer-desktop",
+          kind: "server",
+          owner_id: "s2",
+        },
+      ]);
+    } finally {
+      staged.close();
+    }
+  });
+
+  it("fails instead of silently orphaning a historical cross-tenant collision", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "shared-label", now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u2", "other-label", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s2", "u2", "collision", "shared-label", now);
+
+      expect(() => applyMigration(staged, "0004_machine_labels.sql")).toThrow(
+        /unique constraint/iu,
+      );
+    } finally {
+      staged.close();
     }
   });
 });
@@ -546,6 +703,7 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
     db.insert(profile)
       .values({ userId: "u1", handle: "sawyer", createdAt: now })
       .run();
+    seedLabelClaim("sawyer", "handle", "u1");
     expect(await checkLabelAvailability(db, "sawyer")).toEqual({
       available: false,
       reason: "taken",
@@ -568,6 +726,7 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
         createdAt: now,
       })
       .run();
+    seedLabelClaim("sawyer-desktop", "server", "s1");
     expect(await checkLabelAvailability(db, "sawyer-desktop")).toEqual({
       available: false,
       reason: "taken",
@@ -587,6 +746,7 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
         createdAt: now,
       })
       .run();
+    seedLabelClaim("sawyer-air", "machine", "m1");
     expect(await checkLabelAvailability(db, "sawyer-air")).toEqual({
       available: false,
       reason: "taken",
