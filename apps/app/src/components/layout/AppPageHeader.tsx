@@ -29,14 +29,6 @@ interface AppPageHeaderProps {
   actions?: ReactNode;
   bordered?: boolean;
   className?: string;
-  /**
-   * Skips the left inset normally reserved for the pinned sidebar trigger
-   * when the sidebar is collapsed. Split pane headers set this: the split
-   * area reserves a dedicated chrome strip above the cards for the trigger
-   * (and macOS traffic lights), so the per-header inset would indent every
-   * pane title for nothing.
-   */
-  disableSidebarTriggerReserve?: boolean;
 }
 
 export function AppPageHeader({
@@ -44,7 +36,6 @@ export function AppPageHeader({
   actions,
   bordered = true,
   className,
-  disableSidebarTriggerReserve = false,
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
   const isCompactViewport = useIsCompactViewport();
@@ -55,8 +46,7 @@ export function AppPageHeader({
     desktopInfo,
     windowState: desktopWindowState,
   });
-  const shouldReserveSidebarTrigger =
-    !disableSidebarTriggerReserve && (isCompactViewport || !isSidebarShowing);
+  const shouldReserveSidebarTrigger = isCompactViewport || !isSidebarShowing;
   return (
     <header
       className={cn(

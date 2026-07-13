@@ -8,7 +8,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -48,13 +47,6 @@ import {
   useAppCommandHandler,
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
-import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
-import {
-  CHROME_ROW_HEIGHT_CLASS,
-  MACOS_WINDOW_DRAG_CLASS,
-  getBbDesktopInfo,
-  shouldUseMacosDesktopChrome,
-} from "@/lib/bb-desktop";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadDetailView } from "./ThreadDetailView";
 import {
@@ -94,11 +86,6 @@ export function SplitThreadArea() {
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
-  // null (no provider, e.g. focused component tests) means there is no pinned
-  // sidebar trigger to make room for — treat it as "showing" (no strip).
-  const isSidebarShowing = useOptionalIsSidebarShowing() ?? true;
-  const [desktopInfo] = useState(getBbDesktopInfo);
-  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
 
   const routeThread = useMemo<ThreadRoutePathArgs | null>(
     () => (projectId && threadId ? { projectId, threadId } : null),
@@ -330,38 +317,24 @@ export function SplitThreadArea() {
   }
 
   return (
-    // The negative margins cancel AppLayout's main padding; the inner p-2
-    // restores a tight 8px gutter around the card tiles. When the sidebar is
-    // collapsed, a chrome-row strip is reserved above the cards so the pinned
-    // sidebar trigger (and macOS traffic lights in desktop chrome) get their
-    // own row instead of floating over the first card's corner. The strip is
-    // a window-drag region in desktop chrome, like other title-bar chrome.
-    // overflow-hidden keeps short windows from scrolling the whole split when
-    // stacked panes hit their min content height.
-    <div className="-m-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-m-5">
-      {isSidebarShowing ? null : (
-        <div
-          className={cn(
-            CHROME_ROW_HEIGHT_CLASS,
-            "shrink-0",
-            usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
-          )}
-        />
-      )}
-      <div className="flex min-h-0 min-w-0 flex-1 p-2">
-        <SplitTree
-          node={layout.root}
-          path={EMPTY_PATH}
-          focusedPaneId={layout.focusedPaneId}
-          paneCount={panes.length}
-          onFocusPane={focusPane}
-          onClosePane={closePane}
-          onResize={resize}
-          onNavigateInPane={navigateInPane}
-          onBeginPaneDrag={beginPaneDrag}
-          onPruneStalePane={pruneStalePane}
-        />
-      </div>
+    // Full-bleed like the single-pane page surface: outer edges stay flush,
+    // so the top pane headers share the chrome axis with the pinned sidebar
+    // trigger exactly like the unsplit page. overflow-hidden keeps short
+    // windows from scrolling the whole split when stacked panes hit their min
+    // content height.
+    <div className="-m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
+      <SplitTree
+        node={layout.root}
+        path={EMPTY_PATH}
+        focusedPaneId={layout.focusedPaneId}
+        paneCount={panes.length}
+        onFocusPane={focusPane}
+        onClosePane={closePane}
+        onResize={resize}
+        onNavigateInPane={navigateInPane}
+        onBeginPaneDrag={beginPaneDrag}
+        onPruneStalePane={pruneStalePane}
+      />
     </div>
   );
 }
@@ -392,15 +365,12 @@ function SplitTree(props: SplitTreeProps) {
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
-        // Card tiles with tight gutters: rounded, bordered panes where the
-        // focused pane's outline is the single focus indicator. Bounded panes
+        // Flush tiles: no gaps, no rounding, no per-pane chrome — the
+        // hairline dividers are the only lines in the split area. Focus is
+        // conveyed by the sidebar mini-map accent and the URL. Bounded panes
         // suppress the content's page-bleed negative margins (see
-        // PaneContextValue.isBoundedPane) so content fills the card exactly.
-        className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
-          "rounded-lg border bg-background transition-colors",
-          isFocused ? "border-ring" : "border-border",
-        )}
+        // PaneContextValue.isBoundedPane) so content fills the tile exactly.
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
         data-split-pane-id={node.paneId}
       >
         {/* Only mounted in split mode, so single panes never pay for the extra
@@ -574,19 +544,18 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       onPointerDown={handlePointerDown}
       className={cn(
-        // The divider is the 6px gutter between card tiles; a quiet pill
-        // appears on hover/drag as the resize affordance.
-        "group relative z-[5] flex-shrink-0",
-        horizontal ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize",
+        // A 1px hairline is the only visible separation between flush tiles;
+        // the absolutely-positioned child widens the grab target to 8px
+        // without consuming layout space.
+        "group relative z-[5] flex-shrink-0 bg-border transition-colors",
+        "hover:bg-ring/50 data-[dragging]:bg-ring/50",
+        horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
       )}
     >
       <div
         className={cn(
-          "pointer-events-none absolute rounded-full bg-transparent transition-colors",
-          "group-hover:bg-border group-data-[dragging]:bg-border",
-          horizontal
-            ? "inset-x-[2px] inset-y-[20%]"
-            : "inset-x-[20%] inset-y-[2px]",
+          "absolute",
+          horizontal ? "-inset-x-1 inset-y-0" : "inset-x-0 -inset-y-1",
         )}
       />
     </div>
