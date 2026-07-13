@@ -317,11 +317,14 @@ export function SplitThreadArea() {
   }
 
   return (
-    // The negative margins cancel AppLayout's main padding and the small
-    // padding puts it back as a tight 8px gutter around the card tiles. As a
-    // column flex item, flex-1 absorbs the vertical margin space and
-    // align-stretch handles the horizontal.
-    <div className="-m-4 flex min-h-0 min-w-0 flex-1 p-2 md:-m-5">
+    // Full-bleed like the single-pane page surface: outer edges stay flush
+    // (the top card headers share the chrome axis with the pinned sidebar
+    // trigger, exactly like the unsplit page) and gutters exist only BETWEEN
+    // cards via the dividers. overflow-hidden keeps short windows from
+    // scrolling the whole split when stacked panes hit their min content
+    // height. As a column flex item, flex-1 absorbs the vertical margin
+    // space and align-stretch handles the horizontal.
+    <div className="-m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
       <SplitTree
         node={layout.root}
         path={EMPTY_PATH}
