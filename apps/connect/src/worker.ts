@@ -289,9 +289,9 @@ export default {
     );
     if (!resolved) return text(`bb connect: no server for "${label}"\n`, 404);
 
-    // One TunnelDO + edge-cache namespace per resolved routing key. Primary
-    // handles stay label-compatible; reusable server/machine labels include
-    // their claim generation.
+    // Server DOs stay bare-label compatible with the old gate; machine DOs use
+    // generation identity. Edge-cache isolation is separately keyed by
+    // resolved.cacheKey below.
     const stub = env.TUNNEL_DO.get(
       env.TUNNEL_DO.idFromName(resolved.routingKey),
     );
@@ -425,7 +425,7 @@ export default {
     // share response never collides with bare-label app assets.
     const response = await serveWithCache(
       request,
-      cacheNamespace(resolved.routingKey, target),
+      cacheNamespace(resolved.cacheKey, target),
       ctx,
       () => stub.fetch(doRequest),
     );

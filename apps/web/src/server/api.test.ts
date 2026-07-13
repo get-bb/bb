@@ -10,10 +10,9 @@ import {
   labelClaim,
   machine,
   MAX_SERVERS_PER_ACCOUNT,
-  routingKeyForLabelClaim,
   schema,
   server,
-  tryClaimLabel,
+  tunnelKeysForLabelClaim,
   user,
 } from "@bb/connect-db";
 import {
@@ -330,14 +329,13 @@ describe("disconnectServer (server-scoped)", () => {
 
     const r = await disconnectServer(deps, "u1", desktop.server.id);
     expect(r).toEqual({ ok: true });
-    expect(closeTunnel).toHaveBeenCalledTimes(1);
-    expect(closeTunnel).toHaveBeenCalledWith(
-      routingKeyForLabelClaim(
-        desktopClaim.label,
-        desktopClaim.kind,
-        desktopClaim.generation,
-      ),
+    const keys = tunnelKeysForLabelClaim(
+      desktopClaim.label,
+      desktopClaim.kind,
+      desktopClaim.generation,
     );
+    expect(closeTunnel).toHaveBeenCalledTimes(keys.length);
+    for (const key of keys) expect(closeTunnel).toHaveBeenCalledWith(key);
 
     const target = db
       .select()
@@ -373,7 +371,7 @@ describe("disconnectServer (server-scoped)", () => {
     expect(closeTunnel).not.toHaveBeenCalled();
   });
 
-  it("generation-isolates reuse after close fails, disconnect succeeds, and removal frees the label", async () => {
+  it("blocks reuse until both generation and old-gate bare-label tunnels close", async () => {
     seedUser("u1");
     seedUser("u2");
     await claimHandle(deps, "u1", "owner-one");
@@ -390,18 +388,30 @@ describe("disconnectServer (server-scoped)", () => {
       .where(eq(labelClaim.ownerId, first.server.id))
       .get();
     if (!firstClaim) throw new Error("missing first claim");
-    closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
+    closeTunnel.mockImplementation(async (key: string) => {
+      if (key === "shared-server") throw new Error("old-gate DO unavailable");
+    });
 
     await expect(
       disconnectServer(deps, "u1", first.server.id),
-    ).resolves.toEqual({ ok: true });
-    expect(closeTunnel).toHaveBeenCalledWith(
-      routingKeyForLabelClaim(
-        firstClaim.label,
-        firstClaim.kind,
-        firstClaim.generation,
-      ),
+    ).resolves.toEqual({ error: "tunnel-close-failed" });
+    const firstKeys = tunnelKeysForLabelClaim(
+      firstClaim.label,
+      firstClaim.kind,
+      firstClaim.generation,
     );
+    for (const key of firstKeys) expect(closeTunnel).toHaveBeenCalledWith(key);
+    expect(
+      db.select().from(server).where(eq(server.id, first.server.id)).get()
+        ?.credentialHash,
+    ).toBe("hash");
+    await expect(removeServer(deps, "u1", first.server.id)).resolves.toEqual({
+      error: "tunnel-close-failed",
+    });
+    await expect(createServer(deps, "u2", "shared-server")).resolves.toEqual({
+      error: "taken",
+    });
+    closeTunnel.mockResolvedValue(undefined);
     await expect(removeServer(deps, "u1", first.server.id)).resolves.toEqual({
       ok: true,
     });
@@ -414,19 +424,7 @@ describe("disconnectServer (server-scoped)", () => {
       .get();
     if (!secondClaim) throw new Error("missing second claim");
 
-    expect(
-      routingKeyForLabelClaim(
-        firstClaim.label,
-        firstClaim.kind,
-        firstClaim.generation,
-      ),
-    ).not.toBe(
-      routingKeyForLabelClaim(
-        secondClaim.label,
-        secondClaim.kind,
-        secondClaim.generation,
-      ),
-    );
+    expect(firstClaim.generation).not.toBe(secondClaim.generation);
   });
 });
 
@@ -503,18 +501,13 @@ describe("removeServer (delete a never-paired row)", () => {
     });
   });
 
-  it("repairs an orphan claim after failure immediately after server deletion", async () => {
+  it("deletes source and claim atomically before a post-delete failure", async () => {
     seedUser("u1");
     seedUser("u2");
     await claimHandle(deps, "u1", "owner-one");
     await claimHandle(deps, "u2", "owner-two");
     const first = await createServer(deps, "u1", "repairable-server");
     if (!("ok" in first)) throw new Error("first server setup failed");
-    db.update(labelClaim)
-      .set({ createdAt: new Date(0) })
-      .where(eq(labelClaim.ownerId, first.server.id))
-      .run();
-
     await expect(
       removeServer(deps, "u1", first.server.id, {
         afterDelete: async () => {
@@ -531,7 +524,7 @@ describe("removeServer (delete a never-paired row)", () => {
         .from(labelClaim)
         .where(eq(labelClaim.label, "repairable-server"))
         .get(),
-    ).toBeDefined();
+    ).toBeUndefined();
 
     const second = await createServer(deps, "u2", "repairable-server");
     if (!("ok" in second)) throw new Error("repair claim failed");
@@ -685,15 +678,9 @@ describe("dashboard machine recovery", () => {
         },
       ])
       .run();
-    db.insert(labelClaim)
-      .values({
-        label: "lost-laptop",
-        kind: "machine",
-        ownerId: "machine-owner",
-        userId: "u1",
-        generation: "lost-generation",
-        createdAt: now,
-      })
+    db.update(labelClaim)
+      .set({ generation: "lost-generation" })
+      .where(eq(labelClaim.label, "lost-laptop"))
       .run();
 
     expect((await getAccountState(deps, "u1")).machines).toEqual([
@@ -711,6 +698,7 @@ describe("dashboard machine recovery", () => {
       ok: true,
     });
     expect(closeTunnel).toHaveBeenCalledWith("lost-laptop:lost-generation");
+    expect(closeTunnel).toHaveBeenCalledWith("lost-laptop");
     expect((await getAccountState(deps, "u1")).machines).toEqual([]);
     expect(
       db.select().from(machine).where(eq(machine.id, "machine-owner")).get()
@@ -727,23 +715,25 @@ describe("dashboard machine recovery", () => {
     seedUser("u2");
     const now = new Date();
     db.insert(machine)
-      .values({
-        id: "machine-a",
-        userId: "u1",
-        subdomain: "shared-machine",
-        credentialHash: "hash-a",
-        createdAt: now,
-      })
+      .values([
+        {
+          id: "machine-a",
+          userId: "u1",
+          subdomain: "shared-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-b",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
       .run();
-    db.insert(labelClaim)
-      .values({
-        label: "shared-machine",
-        kind: "machine",
-        ownerId: "machine-a",
-        userId: "u1",
-        generation: "generation-a",
-        createdAt: now,
-      })
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "shared-machine"))
       .run();
     closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
 
@@ -754,16 +744,13 @@ describe("dashboard machine recovery", () => {
       db.select().from(machine).where(eq(machine.id, "machine-a")).get()
         ?.subdomain,
     ).toBe("shared-machine");
-    expect(
-      await tryClaimLabel(db, {
-        label: "shared-machine",
-        kind: "machine",
-        ownerId: "machine-b",
-        userId: "u2",
-        generation: "generation-b",
-        createdAt: now,
-      }),
-    ).toBe(false);
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
   });
 
   it("retries a failed machine close during the reachable account-state sweep", async () => {
@@ -771,32 +758,34 @@ describe("dashboard machine recovery", () => {
     seedUser("u2");
     const now = new Date();
     db.insert(machine)
-      .values({
-        id: "machine-retry",
-        userId: "u1",
-        subdomain: "retry-machine",
-        credentialHash: "hash-a",
-        createdAt: now,
-      })
+      .values([
+        {
+          id: "machine-retry",
+          userId: "u1",
+          subdomain: "retry-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-new",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
       .run();
-    db.insert(labelClaim)
-      .values({
-        label: "retry-machine",
-        kind: "machine",
-        ownerId: "machine-retry",
-        userId: "u1",
-        generation: "generation-a",
-        createdAt: now,
-      })
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "retry-machine"))
       .run();
     closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
 
     await expect(revokeMachine(deps, "u1", "machine-retry")).resolves.toEqual({
       error: "tunnel-close-failed",
     });
-    expect(closeTunnel).toHaveBeenCalledTimes(1);
-    await getAccountState(deps, "u1");
     expect(closeTunnel).toHaveBeenCalledTimes(2);
+    await getAccountState(deps, "u1");
+    expect(closeTunnel).toHaveBeenCalledTimes(4);
     expect(
       db
         .select()
@@ -804,16 +793,13 @@ describe("dashboard machine recovery", () => {
         .where(eq(labelClaim.label, "retry-machine"))
         .get(),
     ).toBeUndefined();
-    expect(
-      await tryClaimLabel(db, {
-        label: "retry-machine",
-        kind: "machine",
-        ownerId: "machine-new",
-        userId: "u2",
-        generation: "generation-b",
-        createdAt: now,
-      }),
-    ).toBe(true);
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "retry-machine" })
+        .where(eq(machine.id, "machine-new"))
+        .run(),
+    ).not.toThrow();
   });
 
   it("does not release a label until delayed close confirms, then gives the new owner a new generation", async () => {
@@ -821,23 +807,25 @@ describe("dashboard machine recovery", () => {
     seedUser("u2");
     const now = new Date();
     db.insert(machine)
-      .values({
-        id: "machine-a",
-        userId: "u1",
-        subdomain: "shared-machine",
-        credentialHash: "hash-a",
-        createdAt: now,
-      })
+      .values([
+        {
+          id: "machine-a",
+          userId: "u1",
+          subdomain: "shared-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-b",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
       .run();
-    db.insert(labelClaim)
-      .values({
-        label: "shared-machine",
-        kind: "machine",
-        ownerId: "machine-a",
-        userId: "u1",
-        generation: "generation-a",
-        createdAt: now,
-      })
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "shared-machine"))
       .run();
     let confirmClose: (() => void) | undefined;
     closeTunnel.mockImplementationOnce(
@@ -848,33 +836,27 @@ describe("dashboard machine recovery", () => {
     );
 
     const revocation = revokeMachine(deps, "u1", "machine-a");
-    await vi.waitFor(() => expect(closeTunnel).toHaveBeenCalledTimes(1));
-    expect(
-      await tryClaimLabel(db, {
-        label: "shared-machine",
-        kind: "machine",
-        ownerId: "machine-b",
-        userId: "u2",
-        generation: "generation-b",
-        createdAt: now,
-      }),
-    ).toBe(false);
+    await vi.waitFor(() => expect(closeTunnel).toHaveBeenCalledTimes(2));
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
 
     confirmClose?.();
     await expect(revocation).resolves.toEqual({ ok: true });
-    expect(
-      await tryClaimLabel(db, {
-        label: "shared-machine",
-        kind: "machine",
-        ownerId: "machine-b",
-        userId: "u2",
-        generation: "generation-b",
-        createdAt: now,
-      }),
-    ).toBe(true);
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).not.toThrow();
     expect(db.select().from(labelClaim).get()).toMatchObject({
       ownerId: "machine-b",
-      generation: "generation-b",
+      generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
     });
   });
 });

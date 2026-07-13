@@ -1,23 +1,15 @@
 // Label availability across the single public namespace shared by account
 // handles (`profile.handle`), server subdomains (`server.subdomain`), and machine
 // subdomains (`machine.subdomain`). `label_claim.label` is the atomic
-// globally-unique allocation point. During a dual-worker rollout, source-table
-// reads repair claims omitted by the old web worker; stale orphan claims are
-// likewise verified before reuse.
+// globally-unique allocation point. Migration-owned triggers attach and release
+// claims in the same SQLite statement as every source-table mutation, including
+// writes from claim-ignorant old workers.
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { type HandleValidationError, validateSubdomain } from "./constants.js";
-import {
-  labelClaim,
-  machine,
-  profile,
-  server,
-  type LabelClaimKind,
-} from "./schema.js";
+import { labelClaim, type LabelClaimKind } from "./schema.js";
 
-export const LABEL_CLAIM_ATTACH_GRACE_MS = 60_000;
-export const LEGACY_LABEL_CLAIM_GENERATION = "legacy";
 export type LabelClaim = typeof labelClaim.$inferSelect;
 
 /**
@@ -57,7 +49,7 @@ export type LabelAvailability =
 /**
  * Check whether `rawLabel` can be claimed as an account, server, or machine
  * label. Normalizes (trim + lowercase), validates the shared grammar, then
- * checks the global claim row, repairing it from legacy source rows if needed.
+ * checks the trigger-maintained global claim row.
  */
 export async function checkLabelAvailability(
   db: ConnectDb,
@@ -68,7 +60,11 @@ export async function checkLabelAvailability(
   const invalid = validateSubdomain(label);
   if (invalid) return { available: false, reason: "invalid", error: invalid };
 
-  const claim = await findOrRepairLabelClaim(db, label);
+  const claim = await db
+    .select({ kind: labelClaim.kind })
+    .from(labelClaim)
+    .where(eq(labelClaim.label, label))
+    .get();
   if (claim) {
     return {
       available: false,
@@ -80,206 +76,20 @@ export async function checkLabelAvailability(
   return { available: true, label };
 }
 
-export interface NewLabelClaim {
-  label: string;
-  kind: LabelClaimKind;
-  ownerId: string;
-  userId: string;
-  generation: string;
-  createdAt: Date;
-}
-
-function isUniqueConstraintError(error: unknown): boolean {
-  return error instanceof Error && /unique constraint/iu.test(error.message);
-}
-
-async function claimHasLiveSource(
-  db: ConnectDb,
-  claim: LabelClaim,
-): Promise<boolean> {
-  if (claim.kind === "handle") {
-    return Boolean(
-      await db
-        .select({ userId: profile.userId })
-        .from(profile)
-        .where(
-          and(
-            eq(profile.userId, claim.ownerId),
-            eq(profile.handle, claim.label),
-          ),
-        )
-        .get(),
-    );
-  }
-  if (claim.kind === "server") {
-    return Boolean(
-      await db
-        .select({ id: server.id })
-        .from(server)
-        .where(
-          and(
-            eq(server.id, claim.ownerId),
-            eq(server.userId, claim.userId),
-            eq(server.subdomain, claim.label),
-          ),
-        )
-        .get(),
-    );
-  }
-  return Boolean(
-    await db
-      .select({ id: machine.id })
-      .from(machine)
-      .where(
-        and(
-          eq(machine.id, claim.ownerId),
-          eq(machine.userId, claim.userId),
-          eq(machine.subdomain, claim.label),
-        ),
-      )
-      .get(),
-  );
-}
-
-async function findLegacyLabelSource(
-  db: ConnectDb,
-  label: string,
-): Promise<Omit<NewLabelClaim, "generation" | "createdAt"> | null> {
-  const handleRow = await db
-    .select({ userId: profile.userId })
-    .from(profile)
-    .where(eq(profile.handle, label))
-    .get();
-  if (handleRow) {
-    return {
-      label,
-      kind: "handle",
-      ownerId: handleRow.userId,
-      userId: handleRow.userId,
-    };
-  }
-
-  const serverRow = await db
-    .select({ id: server.id, userId: server.userId })
-    .from(server)
-    .where(eq(server.subdomain, label))
-    .get();
-  if (serverRow) {
-    return {
-      label,
-      kind: "server",
-      ownerId: serverRow.id,
-      userId: serverRow.userId,
-    };
-  }
-
-  const machineRow = await db
-    .select({ id: machine.id, userId: machine.userId })
-    .from(machine)
-    .where(eq(machine.subdomain, label))
-    .get();
-  return machineRow
-    ? {
-        label,
-        kind: "machine",
-        ownerId: machineRow.id,
-        userId: machineRow.userId,
-      }
-    : null;
-}
-
-/**
- * Return the live claim for a label, repairing either side of the rollout:
- * old workers can still write source rows without claims, while interrupted
- * new-worker mutations can leave claims without source rows. A short grace
- * keeps an in-flight claim from being reclaimed between its claim/source writes.
- */
-export async function findOrRepairLabelClaim(
-  db: ConnectDb,
-  label: string,
-  now = Date.now(),
-): Promise<LabelClaim | null> {
-  const existing = await db
-    .select()
-    .from(labelClaim)
-    .where(eq(labelClaim.label, label))
-    .get();
-  if (existing) {
-    if (await claimHasLiveSource(db, existing)) return existing;
-    if (now - existing.createdAt.getTime() < LABEL_CLAIM_ATTACH_GRACE_MS) {
-      return existing;
-    }
-    await releaseLabelClaim(db, existing);
-  }
-
-  const source = await findLegacyLabelSource(db, label);
-  if (!source) return null;
-
-  const repaired: NewLabelClaim = {
-    ...source,
-    generation:
-      source.kind === "server"
-        ? LEGACY_LABEL_CLAIM_GENERATION
-        : crypto.randomUUID(),
-    createdAt: new Date(now),
-  };
-  try {
-    await db.insert(labelClaim).values(repaired).run();
-    return repaired;
-  } catch (error) {
-    if (!isUniqueConstraintError(error)) throw error;
-    return (
-      (await db
-        .select()
-        .from(labelClaim)
-        .where(eq(labelClaim.label, label))
-        .get()) ?? null
-    );
-  }
-}
-
-/** Atomically win the one global routing-label namespace. */
-export async function tryClaimLabel(
-  db: ConnectDb,
-  claim: NewLabelClaim,
-): Promise<boolean> {
-  if (validateSubdomain(claim.label) !== null) return false;
-  if (await findOrRepairLabelClaim(db, claim.label)) return false;
-  try {
-    await db.insert(labelClaim).values(claim).run();
-    return true;
-  } catch (error) {
-    if (isUniqueConstraintError(error)) return false;
-    throw error;
-  }
-}
-
-/** Release only the exact ownership generation the caller previously won. */
-export async function releaseLabelClaim(
-  db: ConnectDb,
-  claim: Pick<NewLabelClaim, "label" | "kind" | "ownerId" | "generation">,
-): Promise<void> {
-  await db
-    .delete(labelClaim)
-    .where(
-      and(
-        eq(labelClaim.label, claim.label),
-        eq(labelClaim.kind, claim.kind),
-        eq(labelClaim.ownerId, claim.ownerId),
-        eq(labelClaim.generation, claim.generation),
-      ),
-    )
-    .run();
-}
-
-/** Preserve primary/legacy keys; isolate newly reusable server/machine claims. */
+/** Cache namespace: primary handles are stable; reusable labels use generation. */
 export function routingKeyForLabelClaim(
   label: string,
   kind: LabelClaimKind,
   generation: string,
 ): string {
-  return kind === "handle" ||
-    (kind === "server" && generation === LEGACY_LABEL_CLAIM_GENERATION)
-    ? label
-    : `${label}:${generation}`;
+  return kind === "handle" ? label : `${label}:${generation}`;
+}
+
+/** Close every DO key a current or old gate could have used for this claim. */
+export function tunnelKeysForLabelClaim(
+  label: string,
+  _kind: LabelClaimKind,
+  generation: string,
+): string[] {
+  return [`${label}:${generation}`, label];
 }

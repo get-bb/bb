@@ -336,35 +336,6 @@ describe("machine label assignment", () => {
         },
       ])
       .run();
-    db.insert(labelClaim)
-      .values([
-        {
-          label: "sawyer-air",
-          kind: "handle",
-          ownerId: "acct-a",
-          userId: "acct-a",
-          generation: "handle-generation",
-          createdAt: now,
-        },
-        {
-          label: "sawyer-air-2",
-          kind: "server",
-          ownerId: "s2",
-          userId: "acct-a",
-          generation: "server-generation",
-          createdAt: now,
-        },
-        {
-          label: "sawyer-air-3",
-          kind: "machine",
-          ownerId: "machine-existing",
-          userId: "acct-a",
-          generation: "machine-generation",
-          createdAt: now,
-        },
-      ])
-      .run();
-
     expect(sanitizeMachineLabelBase("  Sawyer Air!!!  ", "machine-new")).toBe(
       "sawyer-air",
     );
@@ -446,7 +417,7 @@ describe("machine label assignment", () => {
     expect(db.select().from(labelClaim).all()).toHaveLength(2);
   });
 
-  it("loses cleanly when revocation crosses the post-claim assignment barrier", async () => {
+  it("loses cleanly when revocation crosses the pre-attach barrier", async () => {
     seedUser("acct-a");
     db.insert(machine)
       .values({
@@ -460,18 +431,18 @@ describe("machine label assignment", () => {
     const barrier = new Promise<void>((resolve) => {
       releaseBarrier = resolve;
     });
-    let claimReached: (() => void) | undefined;
-    const claimed = new Promise<void>((resolve) => {
-      claimReached = resolve;
+    let attachReached: (() => void) | undefined;
+    const attaching = new Promise<void>((resolve) => {
+      attachReached = resolve;
     });
     const assignment = assignMachineLabel(db, "machine-race", "Race Box", {
-      afterClaim: async () => {
-        claimReached?.();
+      beforeAttach: async () => {
+        attachReached?.();
         await barrier;
       },
     });
 
-    await claimed;
+    await attaching;
     db.update(machine)
       .set({ revokedAt: now })
       .where(eq(machine.id, "machine-race"))
@@ -486,31 +457,69 @@ describe("machine label assignment", () => {
     expect(db.select().from(labelClaim).all()).toEqual([]);
   });
 
-  it("releases the claim when assignment throws after the claim insert", async () => {
+  it("has no pause-after-claim gap against a claim-ignorant server writer", async () => {
     seedUser("acct-a");
+    seedUser("acct-b");
     db.insert(machine)
       .values({
-        id: "machine-failure",
+        id: "machine-atomic",
         userId: "acct-a",
         credentialHash: "hash",
         createdAt: now,
       })
       .run();
-
-    await expect(
-      assignMachineLabel(db, "machine-failure", "Failure Box", {
-        afterClaim: async () => {
-          throw new Error("injected post-claim failure");
+    let resumeAttach: (() => void) | undefined;
+    const barrier = new Promise<void>((resolve) => {
+      resumeAttach = resolve;
+    });
+    let attachReached: (() => void) | undefined;
+    const attaching = new Promise<void>((resolve) => {
+      attachReached = resolve;
+    });
+    let paused = false;
+    const assignment = assignMachineLabel(
+      db,
+      "machine-atomic",
+      "Shared Atomic",
+      {
+        beforeAttach: async (candidate) => {
+          if (candidate !== "shared-atomic" || paused) return;
+          paused = true;
+          attachReached?.();
+          await barrier;
         },
-      }),
-    ).rejects.toThrow("injected post-claim failure");
+      },
+    );
+
+    await attaching;
+    // The machine update has not begun, so neither source nor claim exists.
     expect(db.select().from(labelClaim).all()).toEqual([]);
+    // Simulate an old web worker: it inserts only the server source row. The
+    // migration trigger claims the label in that same statement.
+    seedServer({
+      id: "old-writer-server",
+      userId: "acct-b",
+      name: "default",
+      subdomain: "shared-atomic",
+      credentialHash: null,
+    });
+    resumeAttach?.();
+
+    await expect(assignment).resolves.toBe("shared-atomic-2");
     expect(
-      db.select().from(machine).where(eq(machine.id, "machine-failure")).get()
+      db.select().from(server).where(eq(server.id, "old-writer-server")).get()
         ?.subdomain,
-    ).toBeNull();
-    await expect(
-      assignMachineLabel(db, "machine-failure", "Failure Box"),
-    ).resolves.toBe("failure-box");
+    ).toBe("shared-atomic");
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-atomic")).get()
+        ?.subdomain,
+    ).toBe("shared-atomic-2");
+    expect(
+      db
+        .select({ label: labelClaim.label })
+        .from(labelClaim)
+        .orderBy(labelClaim.label)
+        .all(),
+    ).toEqual([{ label: "shared-atomic" }, { label: "shared-atomic-2" }]);
   });
 });

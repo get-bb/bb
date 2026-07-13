@@ -7,17 +7,14 @@ import {
   SERVER_OFFLINE_AFTER_MS,
   checkLabelAvailability,
   connectCode,
-  findOrRepairLabelClaim,
   labelClaim,
   machine,
   profile,
-  releaseLabelClaim,
-  routingKeyForLabelClaim,
   server,
-  tryClaimLabel,
+  tunnelKeysForLabelClaim,
   user,
 } from "@bb/connect-db";
-import type { ConnectDb, LabelAvailability } from "@bb/connect-db";
+import type { ConnectDb, LabelAvailability, LabelClaim } from "@bb/connect-db";
 import type { Env } from "./env.js";
 import { generateConnectCode, generateToken, sha256Hex } from "./tokens.js";
 
@@ -47,6 +44,28 @@ export function depsFromEnv(env: Env): Deps {
       }
     },
   };
+}
+
+async function closeClaimTunnels(
+  deps: Pick<Deps, "closeTunnel">,
+  claim: LabelClaim,
+): Promise<void> {
+  const closeTunnel = deps.closeTunnel;
+  if (!closeTunnel) throw new Error("tunnel close unavailable");
+  const results = await Promise.allSettled(
+    tunnelKeysForLabelClaim(claim.label, claim.kind, claim.generation).map(
+      (key) => closeTunnel(key),
+    ),
+  );
+  const failures = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures.map((failure) => failure.reason),
+      "one or more tunnel closures failed",
+    );
+  }
 }
 
 /** One connected bb server, projected for the dashboard. */
@@ -256,11 +275,8 @@ export async function revokeMachine(
   if (!claim && existing.revokedAt !== null) return { error: "not-found" };
 
   if (claim) {
-    if (!deps.closeTunnel) return { error: "tunnel-close-failed" };
     try {
-      await deps.closeTunnel(
-        routingKeyForLabelClaim(claim.label, claim.kind, claim.generation),
-      );
+      await closeClaimTunnels(deps, claim);
     } catch {
       return { error: "tunnel-close-failed" };
     }
@@ -271,14 +287,6 @@ export async function revokeMachine(
     .set({ subdomain: null })
     .where(and(eq(machine.id, machineId), eq(machine.userId, userId)))
     .run();
-  if (claim) {
-    await releaseLabelClaim(deps.db, {
-      label: claim.label,
-      kind: claim.kind,
-      ownerId: claim.ownerId,
-      generation: claim.generation,
-    });
-  }
   return { ok: true };
 }
 
@@ -341,25 +349,11 @@ export async function claimHandle(
   const handle = avail.label;
 
   const now = new Date();
-  const generation = crypto.randomUUID();
-  const claimed = await tryClaimLabel(db, {
-    label: handle,
-    kind: "handle",
-    ownerId: userId,
-    userId,
-    generation,
-    createdAt: now,
-  });
-  if (!claimed) return { error: "taken" };
   try {
+    // The profile trigger inserts label_claim in this same SQLite statement;
+    // a global collision aborts both source and claim atomically.
     await db.insert(profile).values({ userId, handle, createdAt: now }).run();
   } catch {
-    await releaseLabelClaim(db, {
-      label: handle,
-      kind: "handle",
-      ownerId: userId,
-      generation,
-    });
     return { error: "taken" };
   }
   try {
@@ -378,12 +372,6 @@ export async function claimHandle(
       .delete(profile)
       .where(and(eq(profile.userId, userId), eq(profile.handle, handle)))
       .run();
-    await releaseLabelClaim(db, {
-      label: handle,
-      kind: "handle",
-      ownerId: userId,
-      generation,
-    });
     return { error: "taken" };
   }
   return { ok: true, handle };
@@ -423,28 +411,13 @@ export async function createServer(
 
   const now = new Date();
   const id = crypto.randomUUID();
-  const generation = crypto.randomUUID();
-  const claimed = await tryClaimLabel(db, {
-    label,
-    kind: "server",
-    ownerId: id,
-    userId,
-    generation,
-    createdAt: now,
-  });
-  if (!claimed) return { error: "taken" };
   try {
+    // The server trigger claims the label in this same SQLite statement.
     await db
       .insert(server)
       .values({ id, userId, name: label, subdomain: label, createdAt: now })
       .run();
   } catch {
-    await releaseLabelClaim(db, {
-      label,
-      kind: "server",
-      ownerId: id,
-      generation,
-    });
     return { error: "taken" };
   }
   // Re-check the cap after inserting: the pre-insert count is a TOCTOU
@@ -458,22 +431,10 @@ export async function createServer(
     .all();
   if (afterCount.length > MAX_SERVERS_PER_ACCOUNT) {
     await db.delete(server).where(eq(server.id, id)).run();
-    await releaseLabelClaim(db, {
-      label,
-      kind: "server",
-      ownerId: id,
-      generation,
-    });
     return { error: "server-limit" };
   }
   const created = await db.select().from(server).where(eq(server.id, id)).get();
   if (!created) {
-    await releaseLabelClaim(db, {
-      label,
-      kind: "server",
-      ownerId: id,
-      generation,
-    });
     return { error: "taken" };
   }
   return {
@@ -669,8 +630,8 @@ export async function revokeMachineForServerCredential(
 
 /**
  * Revoke ONE server's credential and sever its live tunnel. Server-scoped: only
- * the target row is cleared and only its claim-generation TunnelDO is closed,
- * so disconnecting one bb never touches the account's other servers.
+ * the target row is cleared and both its generation and legacy bare-label
+ * TunnelDOs are closed, so mixed gate versions cannot leave an origin attached.
  */
 export async function disconnectServer(
   deps: Deps,
@@ -687,21 +648,27 @@ export async function disconnectServer(
 
   await db
     .update(server)
-    .set({ credentialHash: null, revokedAt: new Date() })
+    .set({ revokedAt: srv.revokedAt ?? new Date() })
     .where(eq(server.id, srv.id))
     .run();
-  const claim = await findOrRepairLabelClaim(db, srv.subdomain);
-  const routingKey =
-    claim &&
-    ((claim.kind === "server" && claim.ownerId === srv.id) ||
-      (claim.kind === "handle" && claim.ownerId === srv.userId))
-      ? routingKeyForLabelClaim(claim.label, claim.kind, claim.generation)
-      : srv.subdomain;
+  const claim = await db
+    .select()
+    .from(labelClaim)
+    .where(eq(labelClaim.label, srv.subdomain))
+    .get();
+  if (!claim) return { error: "tunnel-close-failed" };
   try {
-    await deps.closeTunnel?.(routingKey);
+    await closeClaimTunnels(deps, claim);
   } catch {
-    // best-effort; the credential is already revoked so reconnect is blocked
+    // Keep credentialHash as a durable "closure pending" marker. Reconnect is
+    // blocked by revokedAt, and removeServer retries both DO keys before delete.
+    return { error: "tunnel-close-failed" };
   }
+  await db
+    .update(server)
+    .set({ credentialHash: null })
+    .where(eq(server.id, srv.id))
+    .run();
   return { ok: true };
 }
 
@@ -732,24 +699,27 @@ export async function removeServer(
     .get();
   if (!srv) return { error: "not-found" };
   if (prof && srv.subdomain === prof.handle) return { error: "is-primary" };
-  if (srv.credentialHash != null && srv.revokedAt == null)
+  if (srv.credentialHash != null && srv.revokedAt == null) {
     return { error: "connected" };
+  }
 
-  const candidateClaim = await findOrRepairLabelClaim(db, srv.subdomain);
+  const candidateClaim = await db
+    .select()
+    .from(labelClaim)
+    .where(eq(labelClaim.label, srv.subdomain))
+    .get();
   const claim =
     candidateClaim?.kind === "server" && candidateClaim.ownerId === srv.id
       ? candidateClaim
       : null;
+  if (!claim) return { error: "tunnel-close-failed" };
+  try {
+    await closeClaimTunnels(deps, claim);
+  } catch {
+    return { error: "tunnel-close-failed" };
+  }
   await db.delete(server).where(eq(server.id, srv.id)).run();
   await hooks.afterDelete?.();
-  if (claim) {
-    await releaseLabelClaim(db, {
-      label: claim.label,
-      kind: claim.kind,
-      ownerId: claim.ownerId,
-      generation: claim.generation,
-    });
-  }
   return { ok: true };
 }
 

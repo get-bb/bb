@@ -176,6 +176,7 @@ const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 /** A resolved server row; overrides let a test tweak one field. */
 function resolvedServer(
   over: Partial<{
+    cacheKey: string;
     lastSeenAt: Date | null;
     routingKey: string;
     userId: string;
@@ -183,6 +184,7 @@ function resolvedServer(
 ) {
   return {
     kind: "server" as const,
+    cacheKey: over.cacheKey ?? over.routingKey ?? "sawyer",
     routingKey: over.routingKey ?? "sawyer",
     userId: over.userId ?? OWNER,
     server: {
@@ -197,6 +199,7 @@ function resolvedServer(
 function resolvedMachine(
   over: Partial<{
     credentialHash: string;
+    cacheKey: string;
     lastSeenAt: Date | null;
     revokedAt: Date | null;
     routingKey: string;
@@ -205,6 +208,8 @@ function resolvedMachine(
 ) {
   return {
     kind: "machine" as const,
+    cacheKey:
+      over.cacheKey ?? over.routingKey ?? "sawyer-air:machine-generation",
     routingKey: over.routingKey ?? "sawyer-air:machine-generation",
     userId: over.userId ?? OWNER,
     accountHandle: "sawyer",
@@ -775,9 +780,12 @@ describe("gate worker share hosts", () => {
     );
   });
 
-  it("isolates a reused secondary-server label and cache by ownership generation", async () => {
+  it("isolates reused server cache generations while retaining the bare DO key", async () => {
     mockResolveLabel.mockResolvedValue(
-      resolvedServer({ routingKey: "shared-server:generation-a" }),
+      resolvedServer({
+        cacheKey: "shared-server:generation-a",
+        routingKey: "shared-server",
+      }),
     );
     const oldEnv = makeEnv(() => new Response("owner-a"));
     const oldResponse = await worker.fetch(
@@ -786,7 +794,7 @@ describe("gate worker share hosts", () => {
       oldEnv.ctx,
     );
     expect(oldResponse.status).toBe(200);
-    expect(oldEnv.routingKeys).toEqual(["shared-server:generation-a"]);
+    expect(oldEnv.routingKeys).toEqual(["shared-server"]);
     expect(mockServeWithCache).toHaveBeenLastCalledWith(
       expect.any(Request),
       "shared-server:generation-a--3000",
@@ -796,7 +804,8 @@ describe("gate worker share hosts", () => {
 
     mockResolveLabel.mockResolvedValue(
       resolvedServer({
-        routingKey: "shared-server:generation-b",
+        cacheKey: "shared-server:generation-b",
+        routingKey: "shared-server",
         userId: OTHER,
       }),
     );
@@ -807,7 +816,7 @@ describe("gate worker share hosts", () => {
       blockedEnv.ctx,
     );
     expect(blockedResponse.status).toBe(403);
-    expect(blockedEnv.routingKeys).toEqual(["shared-server:generation-b"]);
+    expect(blockedEnv.routingKeys).toEqual(["shared-server"]);
     expect(blockedEnv.captured).toHaveLength(0);
 
     mockVerifySession.mockResolvedValue(OTHER);
@@ -818,7 +827,7 @@ describe("gate worker share hosts", () => {
       newEnv.ctx,
     );
     expect(newResponse.status).toBe(200);
-    expect(newEnv.routingKeys).toEqual(["shared-server:generation-b"]);
+    expect(newEnv.routingKeys).toEqual(["shared-server"]);
     expect(mockServeWithCache).toHaveBeenLastCalledWith(
       expect.any(Request),
       "shared-server:generation-b--3000",
@@ -866,7 +875,10 @@ describe("gate worker share hosts", () => {
     // `--3000` nests its port share. parseVisitorHost splits on the first `--`
     // only, so the base label stays `sawyer-desktop` and resolves per-bb.
     mockResolveLabel.mockResolvedValue(
-      resolvedServer({ routingKey: "sawyer-desktop:desktop-generation" }),
+      resolvedServer({
+        cacheKey: "sawyer-desktop:desktop-generation",
+        routingKey: "sawyer-desktop",
+      }),
     );
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(

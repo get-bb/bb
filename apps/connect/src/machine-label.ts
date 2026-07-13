@@ -3,9 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import {
   HANDLE_MAX_LENGTH,
   machine,
-  releaseLabelClaim,
   schema,
-  tryClaimLabel,
   validateLabel,
   type ConnectDb,
 } from "@bb/connect-db";
@@ -66,8 +64,12 @@ function affectedRows(result: unknown): number | null {
 }
 
 export interface MachineLabelAssignmentHooks {
-  /** Test/control barrier after the global claim is won, before machine attach. */
-  afterClaim?: (candidate: string) => Promise<void>;
+  /** Test/control barrier before the one atomic source+claim update. */
+  beforeAttach?: (candidate: string) => Promise<void>;
+}
+
+function isLabelCollision(error: unknown): boolean {
+  return error instanceof Error && /unique constraint/iu.test(error.message);
 }
 
 /** Assign once, suffixing through the namespace on collisions. */
@@ -80,7 +82,6 @@ export async function assignMachineLabel(
   const row = await db
     .select({
       subdomain: machine.subdomain,
-      userId: machine.userId,
       revokedAt: machine.revokedAt,
     })
     .from(machine)
@@ -93,20 +94,11 @@ export async function assignMachineLabel(
   const base = sanitizeMachineLabelBase(desiredName, machineId);
   for (let ordinal = 1; ; ordinal += 1) {
     const candidate = labelWithSuffix(base, ordinal);
-    const generation = crypto.randomUUID();
-    const claimed = await tryClaimLabel(db, {
-      label: candidate,
-      kind: "machine",
-      ownerId: machineId,
-      userId: row.userId,
-      generation,
-      createdAt: new Date(),
-    });
-    if (!claimed) continue;
-
+    await hooks.beforeAttach?.(candidate);
     let updateResult: unknown;
     try {
-      await hooks.afterClaim?.(candidate);
+      // machine_label_claim_update runs inside this SQLite statement. Its
+      // global UNIQUE insert and the source update commit or roll back together.
       updateResult = await db
         .update(machine)
         .set({ subdomain: candidate })
@@ -119,19 +111,7 @@ export async function assignMachineLabel(
         )
         .run();
     } catch (error) {
-      try {
-        await releaseLabelClaim(db, {
-          label: candidate,
-          kind: "machine",
-          ownerId: machineId,
-          generation,
-        });
-      } catch (cleanupError) {
-        throw new AggregateError(
-          [error, cleanupError],
-          "machine label assignment and claim cleanup failed",
-        );
-      }
+      if (isLabelCollision(error)) continue;
       throw error;
     }
     const changes = affectedRows(updateResult);
@@ -152,12 +132,6 @@ export async function assignMachineLabel(
       return candidate;
     }
 
-    await releaseLabelClaim(db, {
-      label: candidate,
-      kind: "machine",
-      ownerId: machineId,
-      generation,
-    });
     if (!current || current.revokedAt !== null) return null;
     if (current.subdomain !== null) return current.subdomain;
     if (changes === null) {

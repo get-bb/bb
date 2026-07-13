@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import {
   type ConnectDb,
-  findOrRepairLabelClaim,
+  labelClaim,
   machine,
   profile,
   routingKeyForLabelClaim,
@@ -39,6 +39,7 @@ function cacheGet<T>(
 
 export interface ResolvedServer {
   kind: "server";
+  cacheKey: string;
   routingKey: string;
   /**
    * The account that owns this server (`server.userId`). Session and machine
@@ -58,6 +59,7 @@ export interface ResolvedServer {
 
 export interface ResolvedMachine {
   kind: "machine";
+  cacheKey: string;
   routingKey: string;
   userId: string;
   accountHandle: string;
@@ -74,8 +76,10 @@ export type ResolvedLabel = ResolvedServer | ResolvedMachine;
 
 /**
  * Resolve the authoritative global claim, then its exact product row. The
- * claim table makes cross-table collisions impossible and supplies the machine
- * ownership generation used to isolate DO and edge-cache state.
+ * trigger-maintained claim table makes cross-table collisions impossible and
+ * supplies the ownership generation used to isolate reusable cache state and
+ * machine TunnelDOs. Server TunnelDOs retain the bare key for old-gate
+ * compatibility and are explicitly closed under both keys before reuse.
  *
  * Pass `{ fresh: true }` to bypass the read cache for credential-sensitive
  * paths (tunnel (re)connect): the ~15s cache TTL would otherwise let a
@@ -93,16 +97,24 @@ export async function resolveLabel(
     if (cached !== undefined) return cached;
   }
 
-  const claim = await findOrRepairLabelClaim(db, label, now);
+  const claim = await db
+    .select()
+    .from(labelClaim)
+    .where(eq(labelClaim.label, label))
+    .get();
   if (!claim) {
     labelCache.set(label, { value: null, expires: now + LABEL_TTL_MS });
     return null;
   }
-  const routingKey = routingKeyForLabelClaim(
+  const cacheKey = routingKeyForLabelClaim(
     claim.label,
     claim.kind,
     claim.generation,
   );
+  // Server tunnels stay on the bare label for old/new gate compatibility;
+  // their edge cache is still generation-isolated. Machines use generation
+  // for both because no old gate established machine-label tunnels.
+  const routingKey = claim.kind === "machine" ? cacheKey : claim.label;
 
   if (claim.kind === "machine") {
     const machineRow = await db
@@ -123,6 +135,7 @@ export async function resolveLabel(
     const resolvedMachine: ResolvedMachine | null = machineRow
       ? {
           kind: "machine",
+          cacheKey,
           routingKey,
           userId: machineRow.userId,
           accountHandle: machineRow.accountHandle,
@@ -163,6 +176,7 @@ export async function resolveLabel(
   const resolvedServer: ResolvedServer | null = row
     ? {
         kind: "server",
+        cacheKey,
         routingKey,
         userId: row.userId,
         server: {

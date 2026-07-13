@@ -109,10 +109,10 @@ export type LabelClaimKind = (typeof labelClaimKinds)[number];
 
 /**
  * The authoritative global routing-label namespace. Product rows retain their
- * denormalized handle/subdomain for direct reads, but every claim path must win
- * this table's primary key before writing one of those fields. `generation`
- * changes whenever a reusable server or machine label changes owners, isolating
- * both its Durable Object and edge-cache namespace from the previous owner.
+ * denormalized handle/subdomain for direct reads. Migration-owned triggers
+ * insert/delete the claim in the same statement as each source mutation, so
+ * the primary key is an atomic cross-namespace constraint even for old workers.
+ * `generation` changes when a reusable label changes owners and isolates caches.
  */
 export const labelClaim = sqliteTable(
   "label_claim",

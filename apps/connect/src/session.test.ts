@@ -71,12 +71,6 @@ function seedServer(over: {
   revokedAt?: Date | null;
   lastSeenAt?: Date | null;
 }): void {
-  const isPrimary =
-    db
-      .select({ handle: profile.handle })
-      .from(profile)
-      .where(eq(profile.userId, over.userId))
-      .get()?.handle === over.subdomain;
   db.insert(server)
     .values({
       id: over.id,
@@ -90,15 +84,9 @@ function seedServer(over: {
       createdAt: now,
     })
     .run();
-  db.insert(labelClaim)
-    .values({
-      label: over.subdomain,
-      kind: isPrimary ? "handle" : "server",
-      ownerId: isPrimary ? over.userId : over.id,
-      userId: over.userId,
-      generation: `${over.id}-generation`,
-      createdAt: now,
-    })
+  db.update(labelClaim)
+    .set({ generation: `${over.id}-generation` })
+    .where(eq(labelClaim.label, over.subdomain))
     .run();
 }
 
@@ -109,7 +97,6 @@ function seedMachine(over: {
   credentialHash?: string;
   revokedAt?: Date | null;
   lastSeenAt?: Date | null;
-  claim?: boolean;
 }): void {
   db.insert(machine)
     .values({
@@ -122,16 +109,10 @@ function seedMachine(over: {
       createdAt: now,
     })
     .run();
-  if (over.subdomain !== null && over.claim !== false) {
-    db.insert(labelClaim)
-      .values({
-        label: over.subdomain,
-        kind: "machine",
-        ownerId: over.id,
-        userId: over.userId,
-        generation: `${over.id}-generation`,
-        createdAt: now,
-      })
+  if (over.subdomain !== null) {
+    db.update(labelClaim)
+      .set({ generation: `${over.id}-generation` })
+      .where(eq(labelClaim.label, over.subdomain))
       .run();
   }
 }
@@ -154,6 +135,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     const resolved = await resolveLabel("sawyer", db, { fresh: true });
     expect(resolved).toEqual({
       kind: "server",
+      cacheKey: "sawyer",
       routingKey: "sawyer",
       userId: "acct-a",
       server: {
@@ -192,7 +174,8 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     }
     expect(primary.server.id).toBe("srv-primary");
     expect(desktop.server.id).toBe("srv-desktop");
-    expect(desktop.routingKey).toBe("sawyer-desktop:srv-desktop-generation");
+    expect(desktop.routingKey).toBe("sawyer-desktop");
+    expect(desktop.cacheKey).toBe("sawyer-desktop:srv-desktop-generation");
     expect(primary?.userId).toBe("acct-a");
     expect(desktop?.userId).toBe("acct-a");
   });
@@ -237,7 +220,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     expect(await resolveLabel("nobody", db, { fresh: true })).toBeNull();
   });
 
-  it("routes and repairs a server row written without a claim during rollout", async () => {
+  it("routes a server row atomically claimed by the migration trigger", async () => {
     seedUser("acct-a");
     db.insert(profile)
       .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
@@ -257,6 +240,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       resolveLabel("legacy-desktop", db, { fresh: true }),
     ).resolves.toMatchObject({
       kind: "server",
+      cacheKey: expect.stringMatching(/^legacy-desktop:/u),
       routingKey: "legacy-desktop",
       server: { id: "legacy-server" },
     });
@@ -269,7 +253,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     ).toMatchObject({
       kind: "server",
       ownerId: "legacy-server",
-      generation: "legacy",
+      generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
     });
   });
 
@@ -292,6 +276,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       resolveLabel("new-machine", db, { fresh: true }),
     ).resolves.toMatchObject({
       kind: "machine",
+      cacheKey: expect.stringMatching(/^new-machine:/u),
       routingKey: expect.stringMatching(/^new-machine:/u),
       machine: { id: "machine-new" },
     });
@@ -330,6 +315,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       resolveLabel("sawyer-air", db, { fresh: true }),
     ).resolves.toEqual({
       kind: "machine",
+      cacheKey: "sawyer-air:machine-air-generation",
       routingKey: "sawyer-air:machine-air-generation",
       userId: "acct-a",
       accountHandle: "sawyer",
@@ -342,7 +328,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     });
   });
 
-  it("keeps server precedence over a machine on a cross-table collision", async () => {
+  it("keeps the server claim when a machine source attempts a collision", async () => {
     seedUser("acct-a");
     db.insert(profile)
       .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
@@ -356,9 +342,15 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     seedMachine({
       id: "machine-collision",
       userId: "acct-a",
-      subdomain: "collision",
-      claim: false,
+      subdomain: null,
     });
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "collision" })
+        .where(eq(machine.id, "machine-collision"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
 
     const resolved = await resolveLabel("collision", db, { fresh: true });
     expect(resolved?.kind).toBe("server");

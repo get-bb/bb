@@ -15,7 +15,6 @@ import {
   profile,
   schema,
   server,
-  tryClaimLabel,
   user,
   validateHandle,
   validateSubdomain,
@@ -65,24 +64,6 @@ function seedUser(id = "u1"): void {
     .run();
 }
 
-function seedLabelClaim(
-  label: string,
-  kind: "handle" | "server" | "machine",
-  ownerId: string,
-  userId = "u1",
-): void {
-  db.insert(labelClaim)
-    .values({
-      label,
-      kind,
-      ownerId,
-      userId,
-      generation: `${ownerId}-generation`,
-      createdAt: new Date(),
-    })
-    .run();
-}
-
 describe("migration matches the drizzle schema", () => {
   it("drizzle inserts/reads round-trip against the hand-written DDL", () => {
     seedUser();
@@ -90,7 +71,6 @@ describe("migration matches the drizzle schema", () => {
     db.insert(profile)
       .values({ userId: "u1", handle: "sawyer", createdAt: now })
       .run();
-    seedLabelClaim("sawyer", "handle", "u1");
     db.insert(server)
       .values({
         id: "s1",
@@ -118,7 +98,6 @@ describe("migration matches the drizzle schema", () => {
         createdAt: now,
       })
       .run();
-    seedLabelClaim("sawyer-air", "machine", "m1");
     expect(db.select().from(machine).get()?.subdomain).toBe("sawyer-air");
 
     const p = db
@@ -144,36 +123,40 @@ describe("migration matches the drizzle schema", () => {
     ).toBe("sawyerhood");
   });
 
-  it("atomically allows only one cross-namespace claimant", async () => {
+  it("atomically rejects claim-ignorant cross-namespace source writes", () => {
     seedUser("u1");
+    seedUser("u2");
     const createdAt = new Date();
-    const results = await Promise.all([
-      tryClaimLabel(db, {
-        label: "shared-label",
-        kind: "handle",
-        ownerId: "u1",
-        userId: "u1",
-        generation: "handle-generation",
+    db.insert(profile)
+      .values({ userId: "u1", handle: "shared-label", createdAt })
+      .run();
+    expect(() =>
+      db
+        .insert(server)
+        .values({
+          id: "claim-ignorant-server",
+          userId: "u2",
+          name: "default",
+          subdomain: "shared-label",
+          createdAt,
+        })
+        .run(),
+    ).toThrow(/unique constraint/iu);
+    db.insert(machine)
+      .values({
+        id: "claim-ignorant-machine",
+        userId: "u2",
+        credentialHash: "hash",
         createdAt,
-      }),
-      tryClaimLabel(db, {
-        label: "shared-label",
-        kind: "server",
-        ownerId: "s1",
-        userId: "u1",
-        generation: "server-generation",
-        createdAt,
-      }),
-      tryClaimLabel(db, {
-        label: "shared-label",
-        kind: "machine",
-        ownerId: "m1",
-        userId: "u1",
-        generation: "machine-generation",
-        createdAt,
-      }),
-    ]);
-    expect(results.filter(Boolean)).toHaveLength(1);
+      })
+      .run();
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-label" })
+        .where(eq(machine.id, "claim-ignorant-machine"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
     expect(
       db
         .select()
@@ -181,6 +164,20 @@ describe("migration matches the drizzle schema", () => {
         .where(eq(labelClaim.label, "shared-label"))
         .all(),
     ).toHaveLength(1);
+    expect(
+      db
+        .select()
+        .from(server)
+        .where(eq(server.id, "claim-ignorant-server"))
+        .get(),
+    ).toBeUndefined();
+    expect(
+      db
+        .select()
+        .from(machine)
+        .where(eq(machine.id, "claim-ignorant-machine"))
+        .get()?.subdomain,
+    ).toBeNull();
   });
 });
 
@@ -626,7 +623,9 @@ describe("0004 global label claims", () => {
         staged
           .prepare("SELECT generation FROM label_claim WHERE label = ?")
           .get("sawyer-desktop"),
-      ).toEqual({ generation: "legacy" });
+      ).toEqual({
+        generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      });
     } finally {
       staged.close();
     }
@@ -679,7 +678,7 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
     });
   });
 
-  it("self-heals handle and server rows written by the old web worker after 0004", async () => {
+  it("trigger-claims handle and server rows written by the old web worker after 0004", async () => {
     seedUser("u1");
     seedUser("u2");
     const now = new Date();
@@ -712,16 +711,21 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
       reason: "taken",
       namespace: "handle",
     });
-    await expect(
-      tryClaimLabel(db, {
-        label: "legacy-server",
-        kind: "machine",
-        ownerId: "attacker-machine",
+    db.insert(machine)
+      .values({
+        id: "attacker-machine",
         userId: "u2",
-        generation: "attacker-generation",
+        credentialHash: "hash",
         createdAt: now,
-      }),
-    ).resolves.toBe(false);
+      })
+      .run();
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "legacy-server" })
+        .where(eq(machine.id, "attacker-machine"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
     await expect(checkLabelAvailability(db, "legacy-server")).resolves.toEqual({
       available: false,
       reason: "taken",
@@ -740,7 +744,7 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
     ).toEqual({
       label: "legacy-server",
       kind: "server",
-      generation: "legacy",
+      generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
     });
   });
 
@@ -773,7 +777,6 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
     db.insert(profile)
       .values({ userId: "u1", handle: "sawyer", createdAt: now })
       .run();
-    seedLabelClaim("sawyer", "handle", "u1");
     expect(await checkLabelAvailability(db, "sawyer")).toEqual({
       available: false,
       reason: "taken",
@@ -796,7 +799,6 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
         createdAt: now,
       })
       .run();
-    seedLabelClaim("sawyer-desktop", "server", "s1");
     expect(await checkLabelAvailability(db, "sawyer-desktop")).toEqual({
       available: false,
       reason: "taken",
@@ -816,7 +818,6 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
         createdAt: now,
       })
       .run();
-    seedLabelClaim("sawyer-air", "machine", "m1");
     expect(await checkLabelAvailability(db, "sawyer-air")).toEqual({
       available: false,
       reason: "taken",
