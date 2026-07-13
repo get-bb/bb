@@ -310,6 +310,7 @@ export function SplitThreadArea() {
         isFocused
         canShowSecondaryPanel
         onRequestClose={null}
+        isBoundedPane={false}
         onNavigateInPane={navigateInPane}
       />
     );
@@ -360,12 +361,12 @@ function SplitTree(props: SplitTreeProps) {
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
         className={cn(
+          // Card chrome for split panes. Bounded panes suppress the content's
+          // page-bleed negative margins (see PaneContextValue.isBoundedPane),
+          // so the content fills the card edge-to-edge with no cancelling
+          // padding and no dead band at the bottom.
           "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
-          // Card chrome for split panes. The padding exactly cancels the
-          // content's page-bleed negative margins (see
-          // ThreadDetailSecondaryContent), so pane content fills the card
-          // instead of being clipped by overflow-hidden.
-          "rounded-lg border bg-background p-4 md:p-5",
+          "rounded-lg border bg-background",
           isFocused ? "border-ring/50" : "border-border",
         )}
         data-split-pane-id={node.paneId}
@@ -384,6 +385,7 @@ function SplitTree(props: SplitTreeProps) {
           // pane may show its own; ≤2 panes keep per-pane panels.
           canShowSecondaryPanel={paneCount < 3 || isFocused}
           onRequestClose={() => props.onClosePane(node.paneId)}
+          isBoundedPane
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
@@ -424,6 +426,9 @@ interface ThreadPaneContentProps {
   isFocused: boolean;
   canShowSecondaryPanel: boolean;
   onRequestClose: (() => void) | null;
+  // True inside multi-pane split cards; suppresses the page-bleed margins so
+  // content fills the card exactly (see PaneContextValue.isBoundedPane).
+  isBoundedPane: boolean;
   onNavigateInPane: NavigateInPane;
   // Absent for the single-pane surface — a lone pane has nothing to reorder.
   onBeginPaneDrag?: BeginPaneDrag;
@@ -435,6 +440,7 @@ function ThreadPaneContent({
   isFocused,
   canShowSecondaryPanel,
   onRequestClose,
+  isBoundedPane,
   onNavigateInPane,
   onBeginPaneDrag,
 }: ThreadPaneContentProps) {
@@ -456,12 +462,14 @@ function ThreadPaneContent({
       isFocused,
       canShowSecondaryPanel,
       onRequestClose,
+      isBoundedPane,
       navigateInPane,
       beginPaneDrag,
     }),
     [
       beginPaneDrag,
       canShowSecondaryPanel,
+      isBoundedPane,
       isFocused,
       navigateInPane,
       onRequestClose,

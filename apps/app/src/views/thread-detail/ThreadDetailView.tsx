@@ -538,8 +538,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
 
 function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const { projectId, threadId } = props;
-  const { isFocused, navigateInPane, canShowSecondaryPanel, onRequestClose } =
-    usePaneContext();
+  const {
+    isFocused,
+    navigateInPane,
+    canShowSecondaryPanel,
+    onRequestClose,
+    isBoundedPane,
+  } = usePaneContext();
   const navigate = useNavigate();
   const routeSurface = props.surface === "popout" ? "popout" : "page";
   useFixedPanelTabsStorageMaintenance(threadId);
@@ -2637,6 +2642,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           isSecondaryPanelOpen={isSecondaryPanelOpen}
           isConversationCollapsed={isConversationCollapsed}
           surface={props.surface}
+          isBoundedPane={isBoundedPane}
           onToggleConversationCollapse={toggleConversationCollapse}
           metadata={{
             thread,

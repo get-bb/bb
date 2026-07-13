@@ -27,6 +27,15 @@ export interface PaneContextValue {
    * or popout). Bridges the pane close affordance and archive/delete-when-split.
    */
   onRequestClose: (() => void) | null;
+  /**
+   * True when this pane renders inside a bounded split card (multi-pane
+   * layouts). Bounded panes suppress the page-bleed negative margins in
+   * ThreadDetailSecondaryContent — the content fills the card exactly, so the
+   * card needs no cancelling padding and shows no dead band at the bottom.
+   * False on the page, popout, and single-pane surfaces, which keep the
+   * full-bleed page layout.
+   */
+  isBoundedPane: boolean;
   navigateInPane: (thread: ThreadRoutePathArgs) => void;
   /**
    * Starts a pane-reorder drag from the pane header via the shared split-drag
@@ -74,6 +83,7 @@ export function DefaultPaneContextProvider({
       isFocused: true,
       canShowSecondaryPanel: true,
       onRequestClose: null,
+      isBoundedPane: false,
       navigateInPane,
     }),
     [navigateInPane],

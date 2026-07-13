@@ -62,6 +62,14 @@ interface ThreadDetailSecondaryContentProps {
   isSecondaryPanelOpen: boolean;
   isConversationCollapsed: boolean;
   surface: "page" | "pane" | "popout";
+  /**
+   * True when rendering inside a bounded split card. Bounded panes skip the
+   * page-bleed negative margins below — the card supplies the boundary, so
+   * bleeding out of it only gets clipped by the card's overflow-hidden (and
+   * leaves a dead band at the bottom, since negative margins shift content
+   * without stretching it).
+   */
+  isBoundedPane: boolean;
   onToggleConversationCollapse: () => void;
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
@@ -75,6 +83,7 @@ export function ThreadDetailSecondaryContent({
   isSecondaryPanelOpen,
   isConversationCollapsed,
   surface,
+  isBoundedPane,
   onToggleConversationCollapse,
   metadata,
   secondaryPanel,
@@ -279,7 +288,9 @@ export function ThreadDetailSecondaryContent({
     <div
       className={cn(
         "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip",
-        surface !== "popout" && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
+        surface !== "popout" &&
+          !isBoundedPane &&
+          "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
       )}
     >
       {/*
