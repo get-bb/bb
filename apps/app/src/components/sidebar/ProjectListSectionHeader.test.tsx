@@ -25,4 +25,22 @@ describe("TopLevelSidebarSection", () => {
       screen.getByRole("button", { name: "Expand Pinned section" }),
     ).not.toBeNull();
   });
+
+  it("reserves only the rendered action width beside a long section label", () => {
+    render(
+      <TopLevelSidebarSection
+        label="Sawyer's MacBook Pro"
+        actions={<button type="button">Display options</button>}
+      >
+        <div>Machine thread</div>
+      </TopLevelSidebarSection>,
+    );
+
+    const label = screen.getByTitle("Sawyer's MacBook Pro");
+    const action = screen.getByRole("button", { name: "Display options" });
+
+    expect(label.parentElement?.className).not.toContain("pr-[7.5rem]");
+    expect(action.parentElement?.className).toContain("shrink-0");
+    expect(action.parentElement?.className).not.toContain("absolute");
+  });
 });

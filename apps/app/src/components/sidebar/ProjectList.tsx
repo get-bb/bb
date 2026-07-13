@@ -937,17 +937,10 @@ export function TopLevelSidebarSection({
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
-        <span
-          className={cn(
-            "relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left",
-            actions && "pr-[7.5rem] max-md:pointer-coarse:pr-[9.75rem]",
-          )}
-        >
+        <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
           <span className="min-w-0 truncate" title={label}>
             {label}
           </span>
-          {/* Reserve room for the compact section action cluster on the right;
-              coarse pointers need a little more. */}
           {collapseControl ? (
             <button
               type="button"
@@ -981,8 +974,11 @@ export function TopLevelSidebarSection({
           ) : null}
         </span>
         {actions ? (
+          // Keep the cluster in the flex row so labels reserve its real width.
+          // The fixed wrapper height prevents taller action buttons from
+          // changing the section-header height.
           <span
-            className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center"
+            className="relative z-20 inline-flex h-6 shrink-0 items-center"
             onClick={stopActionsClick}
           >
             <span
