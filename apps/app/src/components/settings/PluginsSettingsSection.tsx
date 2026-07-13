@@ -182,7 +182,7 @@ function PluginSettingField({
     return (
       <SettingOptionPicker
         ariaLabel={descriptor.label}
-        valueLabel={value.length > 0 ? value : "Select…"}
+        valueLabel={value.length > 0 ? value : "Select"}
         options={descriptor.options.map((option) => ({
           label: option,
           value: option,
@@ -214,7 +214,7 @@ function PluginSettingField({
       : [];
     const valueLabel =
       options.find((option) => option.value === value)?.label ??
-      (value.length > 0 ? value : "Select a project…");
+      (value.length > 0 ? value : "Select a project");
     return (
       <SettingOptionPicker
         ariaLabel={descriptor.label}
@@ -539,7 +539,7 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
         className="h-7 shrink-0 px-2.5 text-xs text-destructive-text"
         onClick={() => setConfirmOpen(true)}
       >
-        Remove…
+        Remove
       </Button>
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="sm:max-w-md">

@@ -193,7 +193,7 @@ function MarketplaceRow({
               className="text-destructive-text"
               onSelect={onRemove}
             >
-              Remove…
+              Remove
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

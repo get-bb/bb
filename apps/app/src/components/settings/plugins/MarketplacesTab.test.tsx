@@ -71,7 +71,7 @@ describe("MarketplacesTab removal", () => {
       }),
       { button: 0 },
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove…" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
 
     // Nothing is deleted before the confirm; the copy states the keep rule.
     expect(await screen.findByText("Remove Acme Tools?")).toBeTruthy();
@@ -125,7 +125,7 @@ describe("MarketplacesTab removal", () => {
       }),
       { button: 0 },
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove…" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Remove marketplace" }),
     );

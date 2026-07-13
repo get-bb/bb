@@ -79,7 +79,7 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
           className="h-7 px-2.5 text-xs"
           onClick={() => setUpdateOpen(true)}
         >
-          Update…
+          Update
         </Button>
       </div>
       <UpdatePluginDialog
