@@ -317,7 +317,11 @@ export function SplitThreadArea() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0">
+    // Full-bleed like the single-pane page surface: the negative margins
+    // cancel AppLayout's main padding so the flush tiles reach the window
+    // edges with no outer gutter. As a column flex item, flex-1 absorbs the
+    // vertical margin space and align-stretch handles the horizontal.
+    <div className="-m-4 flex min-h-0 min-w-0 flex-1 md:-m-5">
       <SplitTree
         node={layout.root}
         path={EMPTY_PATH}
@@ -361,13 +365,14 @@ function SplitTree(props: SplitTreeProps) {
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
         className={cn(
-          // Card chrome for split panes. Bounded panes suppress the content's
-          // page-bleed negative margins (see PaneContextValue.isBoundedPane),
-          // so the content fills the card edge-to-edge with no cancelling
-          // padding and no dead band at the bottom.
+          // Flush tiles: no gaps, no rounding, no per-pane borders — panes are
+          // separated only by the hairline dividers. Bounded panes suppress
+          // the content's page-bleed negative margins (see
+          // PaneContextValue.isBoundedPane) so content fills the tile exactly.
           "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
-          "rounded-lg border bg-background",
-          isFocused ? "border-ring/50" : "border-border",
+          // The focused pane gets a single soft inset line; unfocused tiles
+          // carry no chrome at all.
+          isFocused && "ring-1 ring-inset ring-ring/50",
         )}
         data-split-pane-id={node.paneId}
       >
@@ -542,17 +547,18 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       onPointerDown={handlePointerDown}
       className={cn(
-        "group relative z-[5] flex-shrink-0",
-        horizontal ? "w-2 cursor-col-resize" : "h-2 cursor-row-resize",
+        // A 1px hairline is the only visible separation between flush tiles;
+        // the absolutely-positioned child widens the grab target to 8px
+        // without consuming layout space.
+        "group relative z-[5] flex-shrink-0 bg-border transition-colors",
+        "hover:bg-ring/50 data-[dragging]:bg-ring/50",
+        horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
       )}
     >
       <div
         className={cn(
-          "pointer-events-none absolute rounded-full bg-transparent transition-colors",
-          "group-hover:bg-border group-data-[dragging]:bg-border",
-          horizontal
-            ? "inset-x-[3px] inset-y-[20%]"
-            : "inset-x-[20%] inset-y-[3px]",
+          "absolute",
+          horizontal ? "-inset-x-1 inset-y-0" : "inset-x-0 -inset-y-1",
         )}
       />
     </div>
