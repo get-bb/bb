@@ -228,6 +228,7 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import { DefaultPaneContextProvider, usePaneContext } from "./PaneContext";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -287,6 +288,10 @@ interface ThreadDetailViewPageProps {
   surface: "page";
 }
 
+interface ThreadDetailViewPaneProps extends ThreadRoutePathArgs {
+  surface: "pane";
+}
+
 interface ThreadDetailViewPopoutProps {
   onPopoutHide: () => void;
   onPopoutNewQuickThread: () => void;
@@ -296,7 +301,13 @@ interface ThreadDetailViewPopoutProps {
 
 type ThreadDetailViewProps =
   | ThreadDetailViewPageProps
+  | ThreadDetailViewPaneProps
   | ThreadDetailViewPopoutProps;
+
+type ThreadDetailViewInternalProps =
+  | (ThreadDetailViewPageProps & ThreadRoutePathArgs)
+  | ThreadDetailViewPaneProps
+  | (ThreadDetailViewPopoutProps & ThreadRoutePathArgs);
 
 interface PopoutThreadHeaderProps {
   onHide: () => void;
@@ -479,9 +490,57 @@ export function resolveHostFilePreviewLinkRootPath({
   return null;
 }
 
-export function ThreadDetailView(props: ThreadDetailViewProps) {
+function ThreadDetailNotFound() {
+  return (
+    <PageShell contentClassName="min-h-full items-center justify-center">
+      <p className="py-12 text-center text-sm text-destructive">Not found</p>
+    </PageShell>
+  );
+}
+
+function RoutedThreadDetailView(
+  props: ThreadDetailViewPageProps | ThreadDetailViewPopoutProps,
+) {
   const { projectId, threadId } = useRouteState();
+
+  if (!projectId || !threadId) {
+    return <ThreadDetailNotFound />;
+  }
+
+  return (
+    <DefaultPaneContextProvider surface={props.surface}>
+      {props.surface === "popout" ? (
+        <ThreadDetailViewInternal
+          surface="popout"
+          projectId={projectId}
+          threadId={threadId}
+          onPopoutHide={props.onPopoutHide}
+          onPopoutNewQuickThread={props.onPopoutNewQuickThread}
+          onPopoutOpenInMain={props.onPopoutOpenInMain}
+        />
+      ) : (
+        <ThreadDetailViewInternal
+          surface="page"
+          projectId={projectId}
+          threadId={threadId}
+        />
+      )}
+    </DefaultPaneContextProvider>
+  );
+}
+
+export function ThreadDetailView(props: ThreadDetailViewProps) {
+  if (props.surface === "pane") {
+    return <ThreadDetailViewInternal {...props} />;
+  }
+  return <RoutedThreadDetailView {...props} />;
+}
+
+function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
+  const { projectId, threadId } = props;
+  const { isFocused, navigateInPane } = usePaneContext();
   const navigate = useNavigate();
+  const routeSurface = props.surface === "popout" ? "popout" : "page";
   useFixedPanelTabsStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
@@ -731,7 +790,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // and handled web links keep their external-open behavior.
   const desktopBrowserAvailable = isDesktopBrowserAvailable();
   const canOpenUrlsInAppBrowser =
-    props.surface === "page" && desktopBrowserAvailable;
+    props.surface !== "popout" && desktopBrowserAvailable;
   const browserTabIds = useMemo(
     () => new Set(browserTabs.map((tab) => tab.id)),
     [browserTabs],
@@ -1226,13 +1285,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         const targetProjectId = resource.projectId ?? projectId;
         if (!targetProjectId) return null;
         return () =>
-          navigate(
-            getSurfaceAwareThreadRoutePath({
-              projectId: targetProjectId,
-              surface: props.surface,
-              threadId: resource.threadId,
-            }),
-          );
+          navigateInPane({
+            projectId: targetProjectId,
+            threadId: resource.threadId,
+          });
       }
       if (resource.kind === "project") {
         return () => navigate(getProjectComposeRoutePath(resource.projectId));
@@ -1258,6 +1314,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [
       navigate,
+      navigateInPane,
       openStorageFile,
       openWorkspaceFile,
       projectId,
@@ -1271,17 +1328,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openNewTab]);
   useAppCommandHandler("panel.newTab", () => {
-    if (props.surface !== "page") return false;
+    if (props.surface === "popout" || !isFocused) return false;
     handleOpenNewTab();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
-    if (props.surface !== "page") return false;
+    if (props.surface === "popout" || !isFocused) return false;
     handleOpenNewTab();
     return true;
   });
   useEffect(() => {
-    if (props.surface !== "page") {
+    if (props.surface === "popout" || !isFocused) {
       return;
     }
     const desktopInfo = getBbDesktopInfo();
@@ -1293,7 +1350,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       return;
     }
     return desktopInfo.onOpenNewTab(handleOpenNewTab);
-  }, [handleOpenNewTab, props.surface]);
+  }, [handleOpenNewTab, isFocused, props.surface]);
   const handleOpenBrowser = useCallback(() => {
     openBrowserTabAndReveal();
   }, [openBrowserTabAndReveal]);
@@ -1324,7 +1381,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   ]);
   useAppCommandHandler("terminal.open", () => {
     if (
-      props.surface !== "page" ||
+      props.surface === "popout" ||
+      !isFocused ||
       !canCreateTerminal ||
       createTerminal.isPending ||
       !threadId
@@ -1391,16 +1449,16 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     isSecondaryPanelOpen,
   ]);
   useAppCommandHandler("panel.toggle", () => {
-    if (props.surface !== "page") return false;
+    if (props.surface === "popout" || !isFocused) return false;
     toggleSecondaryPanel();
     return true;
   });
   useAppCommandHandler("panel.close", () => {
-    if (props.surface !== "page") return false;
+    if (props.surface === "popout" || !isFocused) return false;
     return handleCloseWindowRequest();
   });
   useAppCommandHandler("diff.toggle", () => {
-    if (props.surface !== "page" || !canUseGitUi) {
+    if (props.surface === "popout" || !isFocused || !canUseGitUi) {
       return false;
     }
     if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "git-diff") {
@@ -1411,7 +1469,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     return true;
   });
   useEffect(() => {
-    if (props.surface !== "page") {
+    if (props.surface === "popout" || !isFocused) {
       return;
     }
     const desktopInfo = getBbDesktopInfo();
@@ -1422,7 +1480,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       return;
     }
     return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
-  }, [handleCloseWindowRequest, props.surface]);
+  }, [handleCloseWindowRequest, isFocused, props.surface]);
   const handleChangedFileClick = useCallback(
     (selection: WorkspaceChangedFileSelection) => {
       const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);
@@ -1760,7 +1818,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       if (!thread || !relatedThreadId) return null;
       const href = getSurfaceAwareThreadRoutePath({
         projectId: thread.projectId,
-        surface: props.surface,
+        surface: routeSurface,
         threadId: relatedThreadId,
       });
       const relationship =
@@ -1796,7 +1854,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       };
     }, [
       parentThread,
-      props.surface,
+      routeSurface,
       sourceThread,
       thread,
       threadOriginKind,
@@ -1819,13 +1877,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           title: getThreadDisplayTitle(entry),
           href: getSurfaceAwareThreadRoutePath({
             projectId: entry.projectId,
-            surface: props.surface,
+            surface: routeSurface,
             threadId: entry.id,
           }),
         }));
       if (activeItems.length === 0) return null;
       return { items: activeItems };
-    }, [childThreadSubsetQuery.data, props.surface]);
+    }, [childThreadSubsetQuery.data, routeSurface]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -2077,7 +2135,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
   });
   useAppCommandHandler("workspace.openPreferred", () => {
-    if (props.surface !== "page") return false;
+    if (props.surface === "popout" || !isFocused) return false;
     if (activeWorkspaceFilePath && handleOpenFileInEditor) {
       handleOpenFileInEditor(activeWorkspaceFilePath);
       return true;
@@ -2277,13 +2335,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     [openWorkspaceFile],
   );
 
-  if (!projectId || !threadId) {
-    return (
-      <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-destructive">Not found</p>
-      </PageShell>
-    );
-  }
   if (threadQueryState.status === "loading") {
     return (
       <PageShell contentClassName="min-h-full items-center justify-center">

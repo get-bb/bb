@@ -61,7 +61,7 @@ interface ThreadDetailSecondaryContentProps {
   isMetadataLoading: boolean;
   isSecondaryPanelOpen: boolean;
   isConversationCollapsed: boolean;
-  surface: "page" | "popout";
+  surface: "page" | "pane" | "popout";
   onToggleConversationCollapse: () => void;
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
@@ -279,7 +279,7 @@ export function ThreadDetailSecondaryContent({
     <div
       className={cn(
         "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip",
-        surface === "page" && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
+        surface !== "popout" && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
       )}
     >
       {/*

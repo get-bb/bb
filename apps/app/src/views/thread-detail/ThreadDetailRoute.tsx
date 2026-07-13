@@ -1,4 +1,5 @@
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
+import type { ReactNode } from "react";
 import {
   createDiffWorker,
   getDiffWorkerPoolSize,
@@ -27,25 +28,40 @@ type ThreadDetailRouteProps =
   | ThreadDetailRoutePageProps
   | ThreadDetailRoutePopoutProps;
 
-export default function ThreadDetailRoute(props: ThreadDetailRouteProps) {
-  const view =
-    props.surface === "popout" ? (
-      <ThreadDetailView
-        surface="popout"
-        onPopoutHide={props.onPopoutHide}
-        onPopoutNewQuickThread={props.onPopoutNewQuickThread}
-        onPopoutOpenInMain={props.onPopoutOpenInMain}
-      />
-    ) : (
-      <ThreadDetailView surface="page" />
-    );
+interface ThreadDetailWorkerPoolProviderProps {
+  children: ReactNode;
+}
 
+export function ThreadDetailWorkerPoolProvider({
+  children,
+}: ThreadDetailWorkerPoolProviderProps) {
   return (
     <WorkerPoolContextProvider
       poolOptions={WORKER_POOL_OPTIONS}
       highlighterOptions={HIGHLIGHTER_OPTIONS}
     >
-      {view}
+      {children}
     </WorkerPoolContextProvider>
+  );
+}
+
+export function SingleThreadDetailRoute(props: ThreadDetailRouteProps) {
+  return props.surface === "popout" ? (
+    <ThreadDetailView
+      surface="popout"
+      onPopoutHide={props.onPopoutHide}
+      onPopoutNewQuickThread={props.onPopoutNewQuickThread}
+      onPopoutOpenInMain={props.onPopoutOpenInMain}
+    />
+  ) : (
+    <ThreadDetailView surface="page" />
+  );
+}
+
+export default function ThreadDetailRoute(props: ThreadDetailRouteProps) {
+  return (
+    <ThreadDetailWorkerPoolProvider>
+      <SingleThreadDetailRoute {...props} />
+    </ThreadDetailWorkerPoolProvider>
   );
 }
