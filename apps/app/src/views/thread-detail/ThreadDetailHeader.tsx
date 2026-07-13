@@ -67,7 +67,7 @@ export function ThreadDetailHeader({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // The title doubles as the pane-reorder drag handle when the layout is split;
   // beginPaneDrag is undefined on the single-pane, page, and popout surfaces.
-  const { beginPaneDrag } = usePaneContext();
+  const { beginPaneDrag, isBoundedPane } = usePaneContext();
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (!beginPaneDrag || event.button !== 0) {
       return;
@@ -197,6 +197,7 @@ export function ThreadDetailHeader({
       center={center}
       actions={actions}
       bordered={false}
+      disableSidebarTriggerReserve={isBoundedPane}
       className="border-b border-border-seam-vertical/60"
     />
   );

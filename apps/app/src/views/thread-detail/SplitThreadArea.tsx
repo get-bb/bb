@@ -8,6 +8,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -47,6 +48,13 @@ import {
   useAppCommandHandler,
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
+import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
+import {
+  CHROME_ROW_HEIGHT_CLASS,
+  MACOS_WINDOW_DRAG_CLASS,
+  getBbDesktopInfo,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadDetailView } from "./ThreadDetailView";
 import {
@@ -86,6 +94,11 @@ export function SplitThreadArea() {
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
+  // null (no provider, e.g. focused component tests) means there is no pinned
+  // sidebar trigger to make room for — treat it as "showing" (no strip).
+  const isSidebarShowing = useOptionalIsSidebarShowing() ?? true;
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
 
   const routeThread = useMemo<ThreadRoutePathArgs | null>(
     () => (projectId && threadId ? { projectId, threadId } : null),
@@ -317,26 +330,38 @@ export function SplitThreadArea() {
   }
 
   return (
-    // Full-bleed like the single-pane page surface: outer edges stay flush
-    // (the top card headers share the chrome axis with the pinned sidebar
-    // trigger, exactly like the unsplit page) and gutters exist only BETWEEN
-    // cards via the dividers. overflow-hidden keeps short windows from
-    // scrolling the whole split when stacked panes hit their min content
-    // height. As a column flex item, flex-1 absorbs the vertical margin
-    // space and align-stretch handles the horizontal.
-    <div className="-m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
-      <SplitTree
-        node={layout.root}
-        path={EMPTY_PATH}
-        focusedPaneId={layout.focusedPaneId}
-        paneCount={panes.length}
-        onFocusPane={focusPane}
-        onClosePane={closePane}
-        onResize={resize}
-        onNavigateInPane={navigateInPane}
-        onBeginPaneDrag={beginPaneDrag}
-        onPruneStalePane={pruneStalePane}
-      />
+    // The negative margins cancel AppLayout's main padding; the inner p-2
+    // restores a tight 8px gutter around the card tiles. When the sidebar is
+    // collapsed, a chrome-row strip is reserved above the cards so the pinned
+    // sidebar trigger (and macOS traffic lights in desktop chrome) get their
+    // own row instead of floating over the first card's corner. The strip is
+    // a window-drag region in desktop chrome, like other title-bar chrome.
+    // overflow-hidden keeps short windows from scrolling the whole split when
+    // stacked panes hit their min content height.
+    <div className="-m-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-m-5">
+      {isSidebarShowing ? null : (
+        <div
+          className={cn(
+            CHROME_ROW_HEIGHT_CLASS,
+            "shrink-0",
+            usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+          )}
+        />
+      )}
+      <div className="flex min-h-0 min-w-0 flex-1 p-2">
+        <SplitTree
+          node={layout.root}
+          path={EMPTY_PATH}
+          focusedPaneId={layout.focusedPaneId}
+          paneCount={panes.length}
+          onFocusPane={focusPane}
+          onClosePane={closePane}
+          onResize={resize}
+          onNavigateInPane={navigateInPane}
+          onBeginPaneDrag={beginPaneDrag}
+          onPruneStalePane={pruneStalePane}
+        />
+      </div>
     </div>
   );
 }
