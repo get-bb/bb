@@ -55,6 +55,7 @@ import {
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -502,12 +503,22 @@ function AssistantConversationMessage({
   turnId,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
-  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
-    if (!onOpenLink && !onOpenLocalFileLink) {
-      return undefined;
+  const linkRouting = useMemo<MarkdownLinkRouting>(() => {
+    const localImage: NonNullable<MarkdownLinkRouting["localImage"]> = {
+      absolutePaths: {
+        kind: "trusted-host",
+      },
+      resolveSrc: ({ path }) => buildThreadHostFileContentUrl(threadId, path),
+    };
+    const routing: MarkdownLinkRouting = {
+      localImage,
+    };
+    if (workspaceRootPath !== undefined) {
+      localImage.relativePaths = {
+        baseDir: workspaceRootPath,
+        rootPath: workspaceRootPath,
+      };
     }
-
-    const routing: MarkdownLinkRouting = {};
     if (onOpenLink) {
       routing.onOpenLink = onOpenLink;
     }
@@ -526,7 +537,7 @@ function AssistantConversationMessage({
       }
     }
     return routing;
-  }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
+  }, [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath]);
 
   // Registry is subscribed once at the timeline root and provided via context;
   // only assistant (and nested delegation) bodies activate plugin directives.

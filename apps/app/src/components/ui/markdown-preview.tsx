@@ -50,6 +50,7 @@ import {
   parseLocalFileHref,
   resolveRelativeLocalFileHref,
   type MarkdownAbsoluteLocalFileLinkRouting,
+  type MarkdownPreviewLocalFileLink,
   type MarkdownRelativeLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
 import {
@@ -57,6 +58,7 @@ import {
   type MarkdownLinkRouting,
   type MarkdownLocalFileContextMenuItem,
   type MarkdownLocalFileLinkRouting,
+  type MarkdownLocalImageRouting,
 } from "./markdown-link-routing.js";
 import {
   buildThreadMentionComponent,
@@ -171,9 +173,10 @@ interface ResolvedPromptMentions {
   resolveMentionLink?: PromptMentionLinkResolver;
 }
 
-interface BuildLocalFileAwareUrlTransformArgs {
+interface BuildLocalAwareUrlTransformArgs {
   fallbackUrlTransform: UrlTransform | undefined;
-  localFileRouting: MarkdownLocalFileLinkRouting;
+  localFileRouting: MarkdownLocalFileLinkRouting | undefined;
+  localImageRouting: MarkdownLocalImageRouting | undefined;
 }
 
 interface MarkdownImageRendererArgs {
@@ -201,6 +204,11 @@ interface AreMarkdownRelativeLocalFileLinkRoutingsEqualArgs {
 interface AreMarkdownLocalFileLinkRoutingsEqualArgs {
   next: MarkdownLocalFileLinkRouting | undefined;
   previous: MarkdownLocalFileLinkRouting | undefined;
+}
+
+interface AreMarkdownLocalImageRoutingsEqualArgs {
+  next: MarkdownLocalImageRouting | undefined;
+  previous: MarkdownLocalImageRouting | undefined;
 }
 
 interface AreMarkdownLinkRoutingsEqualArgs {
@@ -330,6 +338,25 @@ function areMarkdownLocalFileLinkRoutingsEqual({
   );
 }
 
+function areMarkdownLocalImageRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownLocalImageRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.resolveSrc === next.resolveSrc &&
+    areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
+      next: next.absolutePaths,
+      previous: previous.absolutePaths,
+    }) &&
+    areMarkdownRelativeLocalFileLinkRoutingsEqual({
+      next: next.relativePaths,
+      previous: previous.relativePaths,
+    })
+  );
+}
+
 function areMarkdownLinkRoutingsEqual({
   next,
   previous,
@@ -341,6 +368,10 @@ function areMarkdownLinkRoutingsEqual({
     areMarkdownLocalFileLinkRoutingsEqual({
       next: next.localFile,
       previous: previous.localFile,
+    }) &&
+    areMarkdownLocalImageRoutingsEqual({
+      next: next.localImage,
+      previous: previous.localImage,
     })
   );
 }
@@ -429,12 +460,38 @@ function isMarkdownAppRouteHref({ href }: IsMarkdownAppRouteHrefArgs): boolean {
   );
 }
 
-function buildLocalFileAwareUrlTransform({
+function resolveMarkdownLocalPath(
+  value: string,
+  absolutePaths: MarkdownAbsoluteLocalFileLinkRouting,
+  relativePaths: MarkdownRelativeLocalFileLinkRouting | undefined,
+): MarkdownPreviewLocalFileLink | null {
+  const absolutePath = parseLocalFileHref({
+    absoluteLinks: absolutePaths,
+    href: value,
+  });
+  if (absolutePath !== null || relativePaths === undefined) {
+    return absolutePath;
+  }
+
+  const resolvedHref = resolveRelativeLocalFileHref({
+    href: value,
+    ...relativePaths,
+  });
+  return resolvedHref === null
+    ? null
+    : parseLocalFileHref({
+        absoluteLinks: absolutePaths,
+        href: resolvedHref,
+      });
+}
+
+function buildLocalAwareUrlTransform({
   fallbackUrlTransform,
   localFileRouting,
-}: BuildLocalFileAwareUrlTransformArgs): UrlTransform {
+  localImageRouting,
+}: BuildLocalAwareUrlTransformArgs): UrlTransform {
   return (value, key, node) => {
-    if (key === "href") {
+    if (key === "href" && localFileRouting !== undefined) {
       if (
         parseLocalFileHref({
           absoluteLinks: localFileRouting.absoluteLinks,
@@ -458,6 +515,17 @@ function buildLocalFileAwareUrlTransform({
         ) {
           return resolvedHref;
         }
+      }
+    }
+
+    if (key === "src" && localImageRouting !== undefined) {
+      const localImage = resolveMarkdownLocalPath(
+        value,
+        localImageRouting.absolutePaths,
+        localImageRouting.relativePaths,
+      );
+      if (localImage !== null) {
+        return localImageRouting.resolveSrc(localImage);
       }
     }
 
@@ -1140,7 +1208,9 @@ function MarkdownPreviewComponent({
   const contentRef = useMarkdownContentWidthVariable();
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const localFileRouting = linkRouting?.localFile;
-  const normalizeLocalFileLinks = localFileRouting !== undefined;
+  const localImageRouting = linkRouting?.localImage;
+  const normalizeLocalFileLinks =
+    localFileRouting !== undefined || localImageRouting !== undefined;
   // Substitute prompt-mention spans for inert sentinels first (offsets index
   // into the raw `content`), so the sentinels are present before frontmatter
   // splitting and link normalization run. `resolvedPromptMentions` carries the
@@ -1273,13 +1343,14 @@ function MarkdownPreviewComponent({
   }, [threadMentions, promptMentions, messageDirectiveMounts]);
   const resolvedUrlTransform = useMemo(
     () =>
-      localFileRouting
-        ? buildLocalFileAwareUrlTransform({
+      localFileRouting || localImageRouting
+        ? buildLocalAwareUrlTransform({
             fallbackUrlTransform: urlTransform,
             localFileRouting,
+            localImageRouting,
           })
         : urlTransform,
-    [localFileRouting, urlTransform],
+    [localFileRouting, localImageRouting, urlTransform],
   );
 
   return (

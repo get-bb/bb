@@ -132,6 +132,43 @@ describe("MarkdownPreview", () => {
     expect(screen.getByText("README.md").tagName).toBe("CODE");
   });
 
+  it("routes local Markdown images through the configured content resolver", () => {
+    const resolveSrc = vi.fn(
+      ({ path }: { path: string }) =>
+        `/api/files/content?path=${encodeURIComponent(path)}`,
+    );
+    const { container } = render(
+      <MarkdownPreview
+        content={[
+          "![absolute](/workspace/generated.png)",
+          "![relative](art/chart.png)",
+          "![remote](https://example.com/image.png)",
+        ].join("\n\n")}
+        linkRouting={{
+          localImage: {
+            absolutePaths: { kind: "trusted-host" },
+            relativePaths: {
+              baseDir: "/workspace",
+              rootPath: "/workspace",
+            },
+            resolveSrc,
+          },
+        }}
+      />,
+    );
+
+    expect(
+      container.querySelector('img[alt="absolute"]')?.getAttribute("src"),
+    ).toBe("/api/files/content?path=%2Fworkspace%2Fgenerated.png");
+    expect(
+      container.querySelector('img[alt="relative"]')?.getAttribute("src"),
+    ).toBe("/api/files/content?path=%2Fworkspace%2Fart%2Fchart.png");
+    expect(
+      container.querySelector('img[alt="remote"]')?.getAttribute("src"),
+    ).toBe("https://example.com/image.png");
+    expect(resolveSrc).toHaveBeenCalledTimes(2);
+  });
+
   it("lets link routing open absolute app-origin URLs", () => {
     const onOpenLink = vi.fn(() => true);
     const href = `${window.location.origin}/threads/thr_localhost`;
