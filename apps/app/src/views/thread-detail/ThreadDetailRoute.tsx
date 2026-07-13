@@ -4,6 +4,7 @@ import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
+import { SplitThreadArea } from "./SplitThreadArea";
 import { ThreadDetailView } from "./ThreadDetailView";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 
@@ -59,9 +60,15 @@ export function SingleThreadDetailRoute(props: ThreadDetailRouteProps) {
 }
 
 export default function ThreadDetailRoute(props: ThreadDetailRouteProps) {
+  // Popout keeps its dedicated single-thread route. The page surface renders
+  // the split area, with one shared diff worker pool above all panes.
   return (
     <ThreadDetailWorkerPoolProvider>
-      <SingleThreadDetailRoute {...props} />
+      {props.surface === "popout" ? (
+        <SingleThreadDetailRoute {...props} />
+      ) : (
+        <SplitThreadArea />
+      )}
     </ThreadDetailWorkerPoolProvider>
   );
 }

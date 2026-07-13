@@ -32,6 +32,8 @@ interface ThreadDetailHeaderProps {
   /** Pill shown beside the title for side chats and hierarchical child threads. */
   childPillLabel: "child" | "side chat" | null;
   isSecondaryPanelOpen: boolean;
+  /** Closes this pane; only provided when the layout is split (>1 pane). */
+  onClosePane?: () => void;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
   /** Plugin-contributed thread action buttons (design §4.9); optional. */
@@ -45,6 +47,7 @@ export function ThreadDetailHeader({
   actionsMenu,
   childPillLabel,
   isSecondaryPanelOpen,
+  onClosePane,
   onOpenThreadGitAction,
   onToggleSecondaryPanel,
   pluginActions,
@@ -143,6 +146,18 @@ export function ThreadDetailHeader({
             <Icon name={rightPanelIconName} />
           </Button>
         </span>
+      ) : null}
+      {onClosePane ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={HEADER_ICON_BUTTON_CLASS}
+          aria-label="Close pane"
+          onClick={onClosePane}
+        >
+          <Icon name="X" />
+        </Button>
       ) : null}
     </>
   );

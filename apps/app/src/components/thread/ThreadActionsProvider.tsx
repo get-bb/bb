@@ -7,8 +7,10 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { useSetAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
+import { closePanesForThreadsAtom } from "@/lib/split-layout/atoms";
 import { defaultExperiments, type Thread } from "@bb/domain";
 import {
   useArchiveThreadAndChildren,
@@ -87,6 +89,7 @@ export function ThreadActionsProvider({
 }: ThreadActionsProviderProps) {
   const navigate = useNavigate();
   const { threadId: viewedThreadId } = useRouteState();
+  const closePanesForThreads = useSetAtom(closePanesForThreadsAtom);
   const archiveThreadAndChildrenMutation = useArchiveThreadAndChildren();
   const unarchiveThreadMutation = useUnarchiveThread();
   const markThreadRead = useMarkThreadRead();
@@ -225,12 +228,16 @@ export function ThreadActionsProvider({
               threadId: thread.id,
             });
             closeDialog();
-            navigateAwayIfViewing(thread);
+            // In a split, close the pane holding this thread instead of
+            // navigating the whole window away; single pane falls through.
+            if (!closePanesForThreads([thread.id]).removedAny) {
+              navigateAwayIfViewing(thread);
+            }
           },
         },
       );
     },
-    [deleteMutate, navigateAwayIfViewing],
+    [closePanesForThreads, deleteMutate, navigateAwayIfViewing],
   );
 
   const requestDelete = useCallback(
@@ -274,7 +281,13 @@ export function ThreadActionsProvider({
         { id: thread.id },
         {
           onSuccess: (response) => {
+            // Close any split panes showing archived threads; only navigate the
+            // window away when nothing closed and the viewed thread was archived.
+            const { removedAny } = closePanesForThreads(
+              response.archivedThreadIds,
+            );
             if (
+              !removedAny &&
               viewedThreadId &&
               response.archivedThreadIds.includes(viewedThreadId)
             ) {
@@ -310,7 +323,12 @@ export function ThreadActionsProvider({
         },
       );
     },
-    [archiveThreadAndChildrenMutate, navigate, viewedThreadId],
+    [
+      archiveThreadAndChildrenMutate,
+      closePanesForThreads,
+      navigate,
+      viewedThreadId,
+    ],
   );
 
   const toggleRead = useCallback(

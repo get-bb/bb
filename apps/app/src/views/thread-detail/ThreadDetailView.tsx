@@ -538,14 +538,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
 
 function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const { projectId, threadId } = props;
-  const { isFocused, navigateInPane } = usePaneContext();
+  const { isFocused, navigateInPane, canShowSecondaryPanel, onRequestClose } =
+    usePaneContext();
   const navigate = useNavigate();
   const routeSurface = props.surface === "popout" ? "popout" : "page";
   useFixedPanelTabsStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const isPersistedSecondaryPanelOpenForSurface =
-    props.surface === "popout" ? false : isPersistedSecondaryPanelOpen;
+    props.surface === "popout"
+      ? false
+      : isPersistedSecondaryPanelOpen && canShowSecondaryPanel;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
@@ -2466,6 +2469,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               : null
         }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
+        onClosePane={onRequestClose ?? undefined}
         onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
         onToggleSecondaryPanel={toggleSecondaryPanel}
         pluginActions={<PluginThreadActions threadId={thread.id} />}

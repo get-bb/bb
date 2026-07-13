@@ -15,6 +15,17 @@ import {
 export interface PaneContextValue {
   paneId: string;
   isFocused: boolean;
+  /**
+   * Whether this pane may show its secondary panel. Always true for the page
+   * and popout surfaces; false for unfocused panes once the split reaches ≥3
+   * panes (no room for two secondary panels).
+   */
+  canShowSecondaryPanel: boolean;
+  /**
+   * Closes this pane, or null when closing isn't available (single pane, page,
+   * or popout). Bridges the pane close affordance and archive/delete-when-split.
+   */
+  onRequestClose: (() => void) | null;
   navigateInPane: (thread: ThreadRoutePathArgs) => void;
 }
 
@@ -53,6 +64,8 @@ export function DefaultPaneContextProvider({
     () => ({
       paneId: "main",
       isFocused: true,
+      canShowSecondaryPanel: true,
+      onRequestClose: null,
       navigateInPane,
     }),
     [navigateInPane],
