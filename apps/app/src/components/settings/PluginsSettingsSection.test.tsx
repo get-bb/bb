@@ -175,9 +175,9 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     logoUrl,
     logoDarkUrl: null,
     hasSettings: true,
-    provenance: null,
+    provenance: "builtin" as const,
     marketplaceName: null,
-    sourceDisplay: null,
+    sourceDisplay: "builtin",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };
 }
@@ -235,6 +235,7 @@ describe("PluginSettingsDetail settings gating", () => {
         }
         if (path === "/api/v1/plugins") {
           return responseJson({
+            enabled: false,
             plugins: [
               {
                 id: "connect",
@@ -246,6 +247,9 @@ describe("PluginSettingsDetail settings gating", () => {
                 logoUrl: null,
                 logoDarkUrl: null,
                 hasSettings: false,
+                provenance: "builtin",
+                sourceDisplay: "builtin",
+                updateState: {},
               },
             ],
           });

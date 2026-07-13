@@ -43,14 +43,39 @@ describe("fetchPluginList envelope", () => {
     expect(plugin?.updateState.blockedReasons).toEqual([]);
   });
 
-  it("drops half-shaped rows instead of defaulting required fields", async () => {
+  it("rejects an envelope missing enabled or plugins instead of half-parsing it", async () => {
+    expect(await fetchPluginList(fetchReturning({ plugins: [ROW] }))).toEqual({
+      plugins: [],
+    });
+    expect(await fetchPluginList(fetchReturning({ enabled: true }))).toEqual({
+      plugins: [],
+    });
+  });
+
+  it("drops rows missing the server-mandated fields instead of defaulting them", async () => {
+    const { updateState, ...noUpdateState } = ROW;
+    const { provenance, ...noProvenance } = ROW;
+    const { sourceDisplay, ...noSourceDisplay } = ROW;
     const result = await fetchPluginList(
       fetchReturning({
         enabled: true,
-        plugins: [{ id: "half" }, ROW],
+        plugins: [noUpdateState, noProvenance, noSourceDisplay, ROW],
       }),
     );
     expect(result.plugins.map((plugin) => plugin.id)).toEqual(["linear"]);
+  });
+
+  it("drops a row with a partial lastFailure rather than showing the quiet state", async () => {
+    // A rollback whose record lost `at` or `detail` is contract drift; the
+    // quiet state would suppress the Needs-attention pill and banner.
+    const partialFailure = {
+      ...ROW,
+      updateState: { lastFailure: { version: "1.7.0" } },
+    };
+    const result = await fetchPluginList(
+      fetchReturning({ enabled: true, plugins: [partialFailure] }),
+    );
+    expect(result.plugins).toEqual([]);
   });
 
   it("returns the quiet empty state on a malformed envelope or error", async () => {

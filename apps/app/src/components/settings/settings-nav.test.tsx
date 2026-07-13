@@ -136,6 +136,7 @@ describe("useSettingsNavState", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
+          enabled: false,
           plugins: [
             {
               id: "connect",
@@ -148,6 +149,9 @@ describe("useSettingsNavState", () => {
               logoUrl: null,
               logoDarkUrl: null,
               hasSettings: false,
+              provenance: "builtin",
+              sourceDisplay: "builtin",
+              updateState: {},
             },
           ],
         }),

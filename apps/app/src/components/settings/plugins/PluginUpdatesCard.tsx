@@ -22,8 +22,7 @@ import { UpdatePluginDialog } from "./UpdatePluginDialog";
  * disclosure deeper under "Source details".
  *
  * Builtins are provenance, not a marketplace: their update channel is the
- * bb app release itself, so none of these surfaces render for them (or for
- * older servers that predate provenance).
+ * bb app release itself, so none of these surfaces render for them.
  */
 export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
   return plugin.provenance === "direct" || plugin.provenance === "marketplace";
@@ -48,8 +47,9 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
             {failure.at !== null ? ` on ${formatAbsoluteDate(failure.at)}` : ""}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {failure.detail ??
-              `Code and data were restored to ${plugin.version}.`}
+            {failure.detail.length > 0
+              ? failure.detail
+              : `Code and data were restored to ${plugin.version}.`}
           </p>
         </div>
       </div>
@@ -122,10 +122,7 @@ export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) 
       <div className="rounded-lg border border-border bg-card px-4 py-3.5">
         <div className="divide-y divide-border">
           <div className="pb-3">
-            <SettingsWithControl
-              label="Source"
-              description={plugin.sourceDisplay ?? "Unknown source"}
-            >
+            <SettingsWithControl label="Source" description={plugin.sourceDisplay}>
               <Button
                 type="button"
                 variant="ghost"

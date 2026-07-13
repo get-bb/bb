@@ -152,9 +152,7 @@ function UpdatePluginDialogContent({
           <DetailsDisclosure summary="Details — source, versions">
             <KeyValueGrid
               entries={[
-                ...(plugin.sourceDisplay !== null
-                  ? [{ key: "Source", value: plugin.sourceDisplay }]
-                  : []),
+                { key: "Source", value: plugin.sourceDisplay },
                 { key: "Current", value: plugin.version },
                 { key: "Candidate", value: candidate },
               ]}
