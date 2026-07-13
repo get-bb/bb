@@ -20,7 +20,12 @@ class FakeVisualViewport extends EventTarget implements VisualViewport {
 function VisualViewportShell({ enabled }: { enabled: boolean }) {
   const shellRef = useRef<HTMLDivElement>(null);
   useMobileVisualViewportHeight(shellRef, enabled);
-  return <div ref={shellRef} data-testid="shell" />;
+  return (
+    <div ref={shellRef} data-testid="shell">
+      <textarea data-testid="editor" />
+      <textarea data-testid="other-editor" />
+    </div>
+  );
 }
 
 function withFakeVisualViewport(
@@ -94,6 +99,40 @@ describe("useMobileVisualViewportHeight", () => {
         visualViewport.dispatchEvent(new Event("scroll"));
       });
       await waitFor(() => expect(window.scrollTo).toHaveBeenCalledWith(0, 0));
+    });
+  });
+
+  it("restores the shell height as soon as focus leaves keyboard targets", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const shell = screen.getByTestId("shell");
+      const editor = screen.getByTestId("editor");
+      const otherEditor = screen.getByTestId("other-editor");
+
+      act(() => {
+        visualViewport.height = 300;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await waitFor(() => expect(shell.style.height).toBe("300px"));
+
+      // Focus moving between keyboard targets keeps the keyboard open, so
+      // the shell must stay aligned with the shortened viewport.
+      act(() => {
+        editor.dispatchEvent(
+          new FocusEvent("focusout", {
+            bubbles: true,
+            relatedTarget: otherEditor,
+          }),
+        );
+      });
+      expect(shell.style.height).toBe("300px");
+
+      act(() => {
+        editor.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+      expect(shell.style.height).toBe("");
     });
   });
 

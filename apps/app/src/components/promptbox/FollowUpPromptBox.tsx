@@ -496,11 +496,7 @@ function FollowUpPromptBoxWithComposer({
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>
-        <div
-          ref={composerInteractionRef}
-          data-follow-up-composer=""
-          onFocusCapture={handleComposerFocus}
-        >
+        <div ref={composerInteractionRef} onFocusCapture={handleComposerFocus}>
           <PromptBoxWithScrollAnchor
             id={id}
             promptBoxRef={promptBoxRef}
