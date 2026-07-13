@@ -366,11 +366,16 @@ function SplitTree(props: SplitTreeProps) {
         onPointerDown={() => props.onFocusPane(node.paneId)}
         // Flush tiles: no gaps, no rounding, no per-pane chrome — the hairline
         // dividers are the only lines in the split area (a focus ring here
-        // fights them with doubled parallel lines). Focus is conveyed by the
-        // sidebar mini-map accent and the URL. Bounded panes suppress the
-        // content's page-bleed negative margins (see
-        // PaneContextValue.isBoundedPane) so content fills the tile exactly.
-        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+        // fights them with doubled parallel lines). Focus reads through
+        // surface depth instead: unfocused panes recess behind a faint ink
+        // wash (plus their dimmed header) while the focused pane sits "lit"
+        // on the plain background. Bounded panes suppress the content's
+        // page-bleed negative margins (see PaneContextValue.isBoundedPane)
+        // so content fills the tile exactly.
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden transition-colors",
+          !isFocused && "bg-muted/25",
+        )}
         data-split-pane-id={node.paneId}
       >
         {/* Only mounted in split mode, so single panes never pay for the extra
