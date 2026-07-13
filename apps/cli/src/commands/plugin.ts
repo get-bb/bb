@@ -18,50 +18,38 @@ import { resolveBbCliVersion } from "../version.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 import { renderBorderlessTable } from "../table.js";
 
-interface PluginEntry {
-  id: string;
-  source: string;
-  rootDir: string;
-  version: string;
-  enabled: boolean;
-  status: string;
-  statusDetail: string | null;
-  handlerStats: {
-    count: number;
-    totalMs: number;
-    maxMs: number;
-    errorCount: number;
-  };
-  services: Array<{ name: string; state: string }>;
-  schedules: Array<{
-    name: string;
-    cron: string;
-    nextRunAt: number;
-    lastRunAt: number | null;
-    lastStatus: string | null;
-    lastError: string | null;
-  }>;
-  cliCommand: { name: string; summary: string } | null;
-}
+const pluginUpdateStateSchema = z.object({
+  outcome: z
+    .enum([
+      "current",
+      "update-available",
+      "pinned",
+      "incompatible",
+      "unavailable",
+    ])
+    .optional(),
+  availableVersion: z.string().optional(),
+  blockedVersion: z.string().optional(),
+  blockedReasons: z.array(z.string()).optional(),
+  lastCheckAt: z.number().optional(),
+  lastFailure: z
+    .object({ version: z.string(), at: z.number(), detail: z.string() })
+    .optional(),
+});
 
-interface PluginListResponse {
-  enabled: boolean;
-  plugins: PluginEntry[];
-}
-
-interface PluginMutationResult {
-  ok: boolean;
-  error?: string;
-  plugin?: PluginEntry;
-  plugins?: PluginEntry[];
-}
-
-const pluginEntrySchema: z.ZodType<PluginEntry> = z.object({
+const pluginEntrySchema = z.object({
   id: z.string(),
   source: z.string(),
   rootDir: z.string(),
   version: z.string(),
+  provenance: z.enum(["builtin", "direct", "marketplace"]),
+  marketplaceName: z.string().optional(),
+  sourceDisplay: z.string(),
+  updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
+  description: z.string().nullable(),
+  displayName: z.string().nullable(),
+  icon: z.string().nullable(),
   status: z.string(),
   statusDetail: z.string().nullable(),
   handlerStats: z.object({
@@ -82,6 +70,27 @@ const pluginEntrySchema: z.ZodType<PluginEntry> = z.object({
     }),
   ),
   cliCommand: z.object({ name: z.string(), summary: z.string() }).nullable(),
+  hasSettings: z.boolean(),
+  app: z.object({
+    hasApp: z.boolean(),
+    bundle: z
+      .object({
+        jsUrl: z.string(),
+        cssUrl: z.string().nullable(),
+        hash: z.string(),
+        sdkMajor: z.number(),
+        sdkVersion: z.string(),
+        compatible: z.boolean(),
+      })
+      .nullable(),
+  }),
+  logoUrl: z.string().nullable(),
+  logoDarkUrl: z.string().nullable(),
+});
+
+const pluginListSchema = z.object({
+  enabled: z.boolean(),
+  plugins: z.array(pluginEntrySchema),
 });
 
 const pluginMutationResultSchema = z.object({
@@ -90,7 +99,6 @@ const pluginMutationResultSchema = z.object({
   plugin: pluginEntrySchema.optional(),
   plugins: z.array(pluginEntrySchema).optional(),
 });
-
 const marketplaceViewSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -98,13 +106,9 @@ const marketplaceViewSchema = z.object({
   source: z.string(),
   resolvedCommit: z.string().optional(),
   pluginCount: z.number(),
-  lastRefreshAt: z.union([z.string(), z.number()]).optional(),
-  lastAttemptAt: z.union([z.string(), z.number()]).optional(),
+  lastRefreshAt: z.number().optional(),
+  lastAttemptAt: z.number().optional(),
   lastError: z.string().optional(),
-  enabled: z.boolean(),
-  scope: z.enum(["builtin", "user", "project", "managed"]),
-  autoCheck: z.boolean(),
-  autoApply: z.boolean(),
 });
 
 const marketplaceListSchema = z.object({
@@ -115,13 +119,9 @@ const marketplaceMutationSchema = z.object({
 });
 const marketplaceErrorSchema = z.object({
   error: z.string(),
-  affectedPlugins: z
-    .array(z.object({ id: z.string(), version: z.string() }))
-    .optional(),
 });
 const marketplaceRemoveSchema = z.object({
-  kept: z.array(z.string()),
-  uninstalled: z.array(z.string()),
+  convertedPluginIds: z.array(z.string()),
 });
 const marketplaceSearchResultSchema = z.object({
   marketplaceId: z.string(),
@@ -138,41 +138,9 @@ const marketplaceSearchSchema = z.object({
   results: z.array(marketplaceSearchResultSchema),
 });
 
-const autoApplyResultSchema = z.object({ autoApply: z.boolean() }).strict();
-const marketplaceAutoPolicySchema = z
-  .object({ autoCheck: z.boolean(), autoApply: z.boolean() })
-  .strict();
-const updateEventSchema = z
-  .object({
-    kind: z.enum([
-      "check",
-      "resolve",
-      "download",
-      "activate",
-      "rollback",
-      "auto-apply-skipped",
-    ]),
-    fromVersion: z.string().optional(),
-    toVersion: z.string().optional(),
-    outcome: z.string(),
-    detail: z.string().optional(),
-    at: z.number(),
-  })
-  .strict();
-const pluginHistorySchema = z
-  .object({ events: z.array(updateEventSchema) })
-  .strict();
-const pluginAuditSchema = z
-  .object({
-    events: z.array(updateEventSchema.extend({ pluginId: z.string() })),
-  })
-  .strict();
-const systemConfigAutoApplySchema = z.object({
-  generalSettings: z.object({ pluginAutoApplyDisabled: z.boolean() }),
-});
-
 type MarketplaceView = z.infer<typeof marketplaceViewSchema>;
 type MarketplaceSearchResult = z.infer<typeof marketplaceSearchResultSchema>;
+type PluginEntry = z.infer<typeof pluginEntrySchema>;
 
 async function callApi(
   baseUrl: string,
@@ -235,7 +203,7 @@ const pluginUpdateResultSchema = z.object({
     "incompatible",
     "unavailable",
   ]),
-  devMode: z.boolean().optional(),
+  devMode: z.literal(true).optional(),
   installed: pluginVersionSchema,
   candidate: pluginVersionSchema.optional(),
   blocked: z
@@ -250,7 +218,6 @@ const pluginUpdatesSchema = z.object({
 
 const pluginUpdateMutationSchema = z.object({
   applied: z.boolean(),
-  dryRun: z.boolean(),
   from: pluginVersionSchema,
   to: pluginVersionSchema.optional(),
   outcome: z.string(),
@@ -258,10 +225,6 @@ const pluginUpdateMutationSchema = z.object({
 });
 
 const pluginUpdateErrorSchema = z.object({ error: z.string() });
-
-const pluginSourceListSchema = z.object({
-  plugins: z.array(z.object({ id: z.string(), source: z.string() })),
-});
 
 type PluginUpdateResult = z.infer<typeof pluginUpdateResultSchema>;
 
@@ -272,28 +235,53 @@ export function canDevelopPlugin(
   return pluginsExperimentEnabled || entry.source.startsWith("builtin:");
 }
 
-interface PluginSettingDescriptor {
-  type: "string" | "boolean" | "select" | "project";
-  label: string;
-  description?: string;
-  secret?: true;
-  default?: string | boolean;
-  options?: string[];
-}
+const pluginSettingDescriptorSchema = z.object({
+  type: z.enum(["string", "boolean", "select", "project"]),
+  label: z.string(),
+  description: z.string().optional(),
+  secret: z.literal(true).optional(),
+  default: z.union([z.string(), z.boolean()]).optional(),
+  options: z.array(z.string()).optional(),
+});
+const pluginSettingsResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  schema: z.record(z.string(), pluginSettingDescriptorSchema).optional(),
+  values: z.record(z.string(), z.unknown()).optional(),
+});
+const pluginTokenResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  token: z.string().optional(),
+});
+const pluginLogsResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  lines: z.array(z.string()).optional(),
+});
+const pluginPackageSummarySchema = z.object({
+  name: z.string().optional(),
+  version: z.string().optional(),
+});
+const pluginManifestSchema = z.object({
+  bb: z
+    .object({
+      server: z.unknown().optional(),
+      app: z.unknown().optional(),
+    })
+    .optional(),
+});
+const secretSettingValueSchema = z.object({ set: z.boolean().optional() });
 
-interface PluginSettingsResult {
-  ok: boolean;
-  error?: string;
-  schema?: Record<string, PluginSettingDescriptor>;
-  values?: Record<string, unknown>;
-}
+type PluginSettingDescriptor = z.infer<typeof pluginSettingDescriptorSchema>;
+type PluginSettingsResult = z.infer<typeof pluginSettingsResultSchema>;
 
-async function callPlugins<T>(
+async function callPlugins(
   baseUrl: string,
   path: string,
   method: "GET" | "POST" | "PUT" | "DELETE",
   body?: unknown,
-): Promise<T> {
+): Promise<unknown> {
   const response = await cliFetch(`${baseUrl}/api/v1/plugins${path}`, {
     method,
     ...(body === undefined
@@ -318,7 +306,7 @@ async function callPlugins<T>(
   if (!response.ok && ![400, 404, 422].includes(response.status)) {
     throw new Error(`/api/v1/plugins${path} failed: HTTP ${response.status}`);
   }
-  return parsed as T;
+  return parsed;
 }
 
 async function callPluginUpdates(
@@ -326,34 +314,26 @@ async function callPluginUpdates(
   path: string,
   body: unknown,
 ): Promise<z.infer<typeof pluginUpdatesSchema>> {
-  const value = await callPlugins<unknown>(baseUrl, path, "POST", body);
+  const value = await callPlugins(baseUrl, path, "POST", body);
   return pluginUpdatesSchema.parse(value);
 }
 
 async function callPluginUpdate(
   baseUrl: string,
   id: string,
-  body: { dryRun?: boolean; latest?: boolean },
 ): Promise<
   | z.infer<typeof pluginUpdateMutationSchema>
   | z.infer<typeof pluginUpdateErrorSchema>
 > {
-  const value = await callPlugins<unknown>(
+  const value = await callPlugins(
     baseUrl,
     `/${encodeURIComponent(id)}/update`,
     "POST",
-    body,
+    {},
   );
   const error = pluginUpdateErrorSchema.safeParse(value);
   if (error.success) return error.data;
   return pluginUpdateMutationSchema.parse(value);
-}
-
-async function callPluginSources(
-  baseUrl: string,
-): Promise<z.infer<typeof pluginSourceListSchema>> {
-  const value = await callPlugins<unknown>(baseUrl, "", "GET");
-  return pluginSourceListSchema.parse(value);
 }
 
 const UPDATE_STATUS_LABELS: Record<PluginUpdateResult["outcome"], string> = {
@@ -418,29 +398,6 @@ function formatAbsoluteDate(value: string | number | undefined): string {
   if (value === undefined) return "unknown date";
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : String(value);
-}
-
-function parseOnOff(value: string, label: string): boolean {
-  if (value === "on") return true;
-  if (value === "off") return false;
-  throw new Error(`${label} must be "on" or "off".`);
-}
-
-function assertEchoedBoolean(
-  label: string,
-  requested: boolean,
-  echoed: boolean,
-): void {
-  if (requested !== echoed) {
-    throw new Error(
-      `${label} response did not match the requested state (requested ${requested ? "on" : "off"}, received ${echoed ? "on" : "off"}).`,
-    );
-  }
-}
-
-function eventVersion(fromVersion?: string, toVersion?: string): string {
-  if (fromVersion && toVersion) return `${fromVersion} → ${toVersion}`;
-  return fromVersion ?? toVersion ?? "—";
 }
 
 function printMarketplace(marketplace: MarketplaceView): void {
@@ -647,8 +604,8 @@ function printSettings(result: PluginSettingsResult): void {
     ].join(", ");
     let display: string;
     if (descriptor.secret) {
-      const value = values[key] as { set?: boolean } | undefined;
-      display = value?.set ? "[set]" : "[not set]";
+      const value = secretSettingValueSchema.safeParse(values[key]);
+      display = value.success && value.data.set ? "[set]" : "[not set]";
     } else {
       const value = values[key];
       display = value === undefined ? "(unset)" : JSON.stringify(value);
@@ -743,9 +700,6 @@ export function registerPluginCommands(
         }
         const rows = marketplaces.map((entry) => [
           entry.name,
-          entry.scope,
-          entry.autoCheck ? "on" : "off",
-          entry.autoApply ? "on" : "off",
           entry.source,
           String(entry.pluginCount),
           formatRelativeDate(entry.lastRefreshAt),
@@ -756,75 +710,13 @@ export function registerPluginCommands(
         console.log(
           renderBorderlessTable(
             {
-              head: [
-                "Name",
-                "Scope",
-                "Auto-check",
-                "Auto-apply",
-                "Source",
-                "Plugins",
-                "Last refreshed",
-                "State",
-              ],
-              colWidths: [22, 10, 12, 12, 44, 10, 20, 62],
+              head: ["Name", "Source", "Plugins", "Last refreshed", "State"],
+              colWidths: [22, 44, 10, 20, 62],
               trimTrailingWhitespace: true,
             },
             rows,
           ),
         );
-      }),
-    );
-
-  marketplace
-    .command("auto <name>")
-    .description("Set automatic update checking and application policy")
-    .option("--check <on|off>", "Enable or disable automatic update checks")
-    .option("--apply <on|off>", "Enable or disable automatic application")
-    .action(
-      action(async (name: string, opts: { check?: string; apply?: string }) => {
-        if (opts.check === undefined && opts.apply === undefined) {
-          throw new Error(
-            "Pass at least one of --check on|off or --apply on|off.",
-          );
-        }
-        const marketplaces = await listMarketplaces(getUrl());
-        const entry = marketplaces.find((candidate) => candidate.name === name);
-        if (!entry) throw new Error(`Unknown marketplace "${name}".`);
-        const requested = {
-          autoCheck:
-            opts.check === undefined
-              ? entry.autoCheck
-              : parseOnOff(opts.check, "--check"),
-          autoApply:
-            opts.apply === undefined
-              ? entry.autoApply
-              : parseOnOff(opts.apply, "--apply"),
-        };
-        const response = await callApi(
-          getUrl(),
-          `/marketplaces/${encodeURIComponent(entry.id)}/auto-policy`,
-          "POST",
-          requested,
-        );
-        exitOnApiError(response);
-        const result = marketplaceAutoPolicySchema.parse(response.value);
-        assertEchoedBoolean(
-          "auto-check",
-          requested.autoCheck,
-          result.autoCheck,
-        );
-        assertEchoedBoolean(
-          "auto-apply",
-          requested.autoApply,
-          result.autoApply,
-        );
-        console.log(`Auto-check: ${result.autoCheck ? "on" : "off"}`);
-        console.log(`Auto-apply: ${result.autoApply ? "on" : "off"}`);
-        if (entry.scope === "builtin" && result.autoApply) {
-          console.log(
-            "Note: official marketplace auto-apply remains limited to compatible, non-major updates.",
-          );
-        }
       }),
     );
 
@@ -867,94 +759,27 @@ export function registerPluginCommands(
   marketplace
     .command("remove <name>")
     .description("Remove a plugin marketplace")
-    .option("--keep-all", "Keep affected plugins as direct installs")
-    .option("--uninstall-all", "Uninstall every affected plugin")
     .action(
-      action(
-        async (
-          name: string,
-          opts: { keepAll?: boolean; uninstallAll?: boolean },
-        ) => {
-          if (opts.keepAll && opts.uninstallAll) {
-            console.error("Choose only one of --keep-all or --uninstall-all.");
-            process.exit(1);
-          }
-          const marketplaces = await listMarketplaces(getUrl());
-          const entry = marketplaces.find(
-            (candidate) => candidate.name === name,
-          );
-          if (!entry) {
-            console.error(`Unknown marketplace "${name}".`);
-            process.exit(1);
-          }
-          const remove = (
-            dispositions: Array<{
-              pluginId: string;
-              action: "keep" | "uninstall";
-            }>,
-          ) =>
-            callApi(
-              getUrl(),
-              `/marketplaces/${encodeURIComponent(entry.id)}`,
-              "DELETE",
-              { dispositions },
-            );
-          let response = await remove([]);
-          if (response.status === 422) {
-            const error = marketplaceErrorSchema.parse(response.value);
-            const affected = error.affectedPlugins ?? [];
-            if (affected.length === 0) exitWithError(error);
-            let dispositions: Array<{
-              pluginId: string;
-              action: "keep" | "uninstall";
-            }>;
-            if (opts.keepAll || opts.uninstallAll) {
-              const policy = opts.keepAll ? "keep" : "uninstall";
-              dispositions = affected.map((plugin) => ({
-                pluginId: plugin.id,
-                action: policy,
-              }));
-            } else {
-              if (!process.stdin.isTTY) exitWithError(error);
-              const rl = createInterface({
-                input: process.stdin,
-                output: process.stdout,
-              });
-              dispositions = [];
-              for (const plugin of affected) {
-                const answer = (
-                  await rl.question(
-                    `${plugin.id}@${plugin.version}: keep as a direct install or uninstall? [k/u] `,
-                  )
-                )
-                  .trim()
-                  .toLowerCase();
-                if (!["k", "keep", "u", "uninstall"].includes(answer)) {
-                  rl.close();
-                  console.error("Please answer keep (k) or uninstall (u).");
-                  process.exit(1);
-                }
-                dispositions.push({
-                  pluginId: plugin.id,
-                  action:
-                    answer === "k" || answer === "keep" ? "keep" : "uninstall",
-                });
-              }
-              rl.close();
-            }
-            response = await remove(dispositions);
-          }
-          const error = marketplaceErrorSchema.safeParse(response.value);
-          if (response.status === 422 && error.success)
-            exitWithError(error.data);
-          const removed = marketplaceRemoveSchema.parse(response.value);
-          console.log(`Removed marketplace ${name}.`);
-          if (removed.kept.length > 0)
-            console.log(`Kept: ${removed.kept.join(", ")}`);
-          if (removed.uninstalled.length > 0)
-            console.log(`Uninstalled: ${removed.uninstalled.join(", ")}`);
-        },
-      ),
+      action(async (name: string) => {
+        const marketplaces = await listMarketplaces(getUrl());
+        const entry = marketplaces.find((candidate) => candidate.name === name);
+        if (!entry) {
+          console.error(`Unknown marketplace "${name}".`);
+          process.exit(1);
+        }
+        const response = await callApi(
+          getUrl(),
+          `/marketplaces/${encodeURIComponent(entry.id)}`,
+          "DELETE",
+        );
+        const error = marketplaceErrorSchema.safeParse(response.value);
+        if (response.status === 422 && error.success) exitWithError(error.data);
+        const removed = marketplaceRemoveSchema.parse(response.value);
+        console.log(`Removed marketplace ${name}.`);
+        console.log(
+          `${removed.convertedPluginIds.length} plugins kept as direct installs.`,
+        );
+      }),
     );
 
   plugin
@@ -993,128 +818,13 @@ export function registerPluginCommands(
     );
 
   plugin
-    .command("auto-apply <id> <on|off>")
-    .description("Enable or disable automatic updates for one plugin")
-    .action(
-      action(async (id: string, state: string) => {
-        const enabled = parseOnOff(state, "state");
-        const response = await callApi(
-          getUrl(),
-          `/plugins/${encodeURIComponent(id)}/auto-apply`,
-          "POST",
-          { enabled },
-        );
-        exitOnApiError(response);
-        const result = autoApplyResultSchema.parse(response.value);
-        assertEchoedBoolean("auto-apply", enabled, result.autoApply);
-        console.log(`Auto-apply for ${id}: ${result.autoApply ? "on" : "off"}`);
-
-        const settingsResponse = await callApi(
-          getUrl(),
-          "/system/config",
-          "GET",
-        );
-        const settings = systemConfigAutoApplySchema.parse(
-          settingsResponse.value,
-        );
-        if (settings.generalSettings.pluginAutoApplyDisabled) {
-          console.log(
-            "Note: organization policy currently disables auto-apply and overrides this plugin setting.",
-          );
-        }
-      }),
-    );
-
-  plugin
-    .command("history [id]")
-    .description("Show plugin update history or the cross-plugin audit feed")
-    .option("--all", "Show update events for all plugins")
-    .option("--limit <number>", "Limit the cross-plugin audit feed")
-    .option("--json", "Output the raw response as JSON")
-    .action(
-      action(
-        async (
-          id: string | undefined,
-          opts: JsonOutputOptions & { all?: boolean; limit?: string },
-        ) => {
-          if ((id === undefined) === (opts.all !== true)) {
-            throw new Error("Pass a plugin id or --all, but not both.");
-          }
-          if (opts.limit !== undefined && opts.all !== true) {
-            throw new Error("--limit is only valid with --all.");
-          }
-          const limit = Number(opts.limit ?? "50");
-          if (!Number.isInteger(limit) || limit < 1) {
-            throw new Error("--limit must be a positive integer.");
-          }
-          const path =
-            opts.all === true
-              ? `/plugins/updates/audit?limit=${limit}`
-              : `/plugins/${encodeURIComponent(id ?? "")}/history`;
-          const response = await callApi(getUrl(), path, "GET");
-          exitOnApiError(response);
-          let rows: string[][];
-          if (opts.all === true) {
-            const result = pluginAuditSchema.parse(response.value);
-            if (opts.json) {
-              outputJson(opts, result);
-              return;
-            }
-            rows = result.events.map((event) => [
-              new Date(event.at).toISOString(),
-              event.pluginId,
-              event.kind,
-              eventVersion(event.fromVersion, event.toVersion),
-              event.outcome,
-              event.detail ?? "",
-            ]);
-          } else {
-            const result = pluginHistorySchema.parse(response.value);
-            if (opts.json) {
-              outputJson(opts, result);
-              return;
-            }
-            rows = result.events.map((event) => [
-              new Date(event.at).toISOString(),
-              event.kind,
-              eventVersion(event.fromVersion, event.toVersion),
-              event.outcome,
-              event.detail ?? "",
-            ]);
-          }
-          console.log(
-            renderBorderlessTable(
-              {
-                head: [
-                  "Time",
-                  ...(opts.all ? ["Plugin"] : []),
-                  "Kind",
-                  "From → to",
-                  "Outcome",
-                  "Detail",
-                ],
-                colWidths: opts.all
-                  ? [26, 24, 22, 24, 20, 50]
-                  : [26, 22, 24, 20, 50],
-                trimTrailingWhitespace: true,
-              },
-              rows,
-            ),
-          );
-        },
-      ),
-    );
-
-  plugin
     .command("list")
     .description("List installed plugins and their status")
     .option("--json", "Output JSON")
     .action(
       action(async (opts: JsonOutputOptions) => {
-        const result = await callPlugins<PluginListResponse>(
-          getUrl(),
-          "",
-          "GET",
+        const result = pluginListSchema.parse(
+          await callPlugins(getUrl(), "", "GET"),
         );
         if (opts.json) {
           outputJson(opts, result);
@@ -1141,33 +851,26 @@ export function registerPluginCommands(
       "Install a plugin from a local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; builtin ids are reserved)",
     )
     .option("--yes", "Skip the confirmation prompt")
-    .option("--version <range>", "Select a marketplace plugin version or range")
     .option("--json", "Output JSON")
     .action(
       action(
-        async (
-          source: string,
-          opts: JsonOutputOptions & { yes?: boolean; version?: string },
-        ) => {
+        async (source: string, opts: JsonOutputOptions & { yes?: boolean }) => {
           const intent = await resolveInstallIntent(getUrl(), source);
           let summary =
             intent.kind === "source"
               ? intent.summary
-              : `Installing ${intent.entry.displayName}@${opts.version ?? "latest"} from marketplace ${intent.marketplace.name} (${intent.entry.source})`;
-          if (opts.version !== undefined && intent.kind !== "marketplace") {
-            console.error("--version is only valid for marketplace installs.");
-            process.exit(1);
-          }
+              : `Installing ${intent.entry.displayName} from marketplace ${intent.marketplace.name} (${intent.entry.source})`;
           if (intent.kind === "source" && intent.source.startsWith("path:")) {
             const path = intent.source.slice(5);
             // Best effort — a missing/invalid manifest is the server's
             // error to report after confirmation.
             try {
-              const pkg = JSON.parse(
+              const raw: unknown = JSON.parse(
                 await readFile(join(path, "package.json"), "utf8"),
-              ) as { name?: unknown; version?: unknown };
-              if (typeof pkg.name === "string") {
-                summary = `Installing ${pkg.name}@${typeof pkg.version === "string" ? pkg.version : "?"} from ${path}`;
+              );
+              const pkg = pluginPackageSummarySchema.parse(raw);
+              if (pkg.name !== undefined) {
+                summary = `Installing ${pkg.name}@${pkg.version ?? "?"} from ${path}`;
               }
             } catch {
               // fall through to the bare path summary
@@ -1198,7 +901,7 @@ export function registerPluginCommands(
               process.exit(1);
             }
           }
-          const value = await callPlugins<unknown>(
+          const value = await callPlugins(
             getUrl(),
             "/install",
             "POST",
@@ -1209,9 +912,6 @@ export function registerPluginCommands(
                     marketplaceId: intent.marketplace.id,
                     entryId: intent.entry.entryId,
                   },
-                  ...(opts.version === undefined
-                    ? {}
-                    : { version: opts.version }),
                 },
           );
           const result = pluginMutationResultSchema.parse(value);
@@ -1272,11 +972,6 @@ export function registerPluginCommands(
     .command("update [id]")
     .description("Update one plugin, or all plugins with --all")
     .option("--all", "Update every plugin with a compatible update")
-    .option("--dry-run", "Show the selected updates without changing plugins")
-    .option(
-      "--latest",
-      "Widen one plugin's pinned/range source to the latest compatible version",
-    )
     .option("--yes", "Skip confirmation prompts")
     .action(
       action(
@@ -1284,8 +979,6 @@ export function registerPluginCommands(
           id: string | undefined,
           opts: {
             all?: boolean;
-            dryRun?: boolean;
-            latest?: boolean;
             yes?: boolean;
           },
         ) => {
@@ -1293,38 +986,29 @@ export function registerPluginCommands(
             console.error("Specify exactly one plugin id or --all.");
             process.exit(1);
           }
-          if (opts.all && opts.latest) {
-            console.error("--latest is only valid when updating one plugin.");
-            process.exit(1);
-          }
-
           const { results } = await callPluginUpdates(
             getUrl(),
             "/updates/check",
             id === undefined ? {} : { id },
           );
           const sources = new Map<string, string>();
-          if (
-            results.some(
-              (result) => result.outcome === "update-available" || opts.latest,
-            )
-          ) {
-            const list = await callPluginSources(getUrl());
+          if (results.some((result) => result.outcome === "update-available")) {
+            const list = pluginListSchema.parse(
+              await callPlugins(getUrl(), "", "GET"),
+            );
             for (const entry of list.plugins)
-              sources.set(entry.id, entry.source);
+              sources.set(entry.id, entry.sourceDisplay);
           }
 
           for (const result of results) {
             const source = sources.get(result.id) ?? "unknown source";
             const detail = updateDetail(result);
-            const shouldAttempt =
-              result.outcome === "update-available" ||
-              (opts.latest === true && result.outcome === "pinned");
+            const shouldAttempt = result.outcome === "update-available";
 
             if (!shouldAttempt) {
               if (result.outcome === "pinned") {
                 console.log(
-                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; use --latest to widen the source intent.`,
+                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range or git branch to receive updates.`,
                 );
               } else if (result.outcome === "incompatible") {
                 console.log(
@@ -1343,44 +1027,18 @@ export function registerPluginCommands(
             }
 
             const target = result.candidate?.display ?? "latest compatible";
-            if (opts.latest) {
-              console.log(
-                `${result.id} source intent: ${source} → latest compatible`,
-              );
-              if (!opts.dryRun) {
-                await confirmPluginAction(
-                  "Change source intent?",
-                  "Refusing to change source intent without confirmation — re-run with --yes.",
-                  opts.yes === true,
-                );
-              }
-            }
+            console.log(
+              `${result.id}: ${result.installed.display} → ${target} from ${source}. Plugins are full-trust code.`,
+            );
+            await confirmPluginAction(
+              "Update and activate?",
+              "Refusing to update without confirmation — re-run with --yes.",
+              opts.yes === true,
+            );
 
-            if (opts.dryRun) {
-              console.log(
-                `${result.id}: dry run — would select ${target} from ${source}, activate ${result.installed.display} → ${target}.`,
-              );
-            } else {
-              console.log(
-                `${result.id}: ${result.installed.display} → ${target} from ${source}. Plugins are full-trust code.`,
-              );
-              await confirmPluginAction(
-                "Update and activate?",
-                "Refusing to update without confirmation — re-run with --yes.",
-                opts.yes === true,
-              );
-            }
-
-            const mutation = await callPluginUpdate(getUrl(), result.id, {
-              ...(opts.dryRun ? { dryRun: true } : {}),
-              ...(opts.latest ? { latest: true } : {}),
-            });
+            const mutation = await callPluginUpdate(getUrl(), result.id);
             if ("error" in mutation) exitWithError(mutation);
-            if (mutation.dryRun) {
-              console.log(
-                `${result.id}: would update ${mutation.from.display} → ${mutation.to?.display ?? target}${mutation.detail ? ` — ${mutation.detail}` : ""}`,
-              );
-            } else if (mutation.applied) {
+            if (mutation.applied) {
               console.log(
                 `${result.id}: updated and activated ${mutation.from.display} → ${mutation.to?.display ?? target}.`,
               );
@@ -1469,9 +1127,10 @@ export function registerPluginCommands(
         const files = [server.jsPath, server.mapPath, server.metaPath];
         let hasApp = false;
         try {
-          const pkg = JSON.parse(
+          const raw: unknown = JSON.parse(
             await readFile(join(rootDir, "package.json"), "utf8"),
-          ) as { bb?: { app?: unknown } };
+          );
+          const pkg = pluginManifestSchema.parse(raw);
           hasApp = typeof pkg.bb?.app === "string";
         } catch {
           // Unreachable in practice: buildPluginServer already read it.
@@ -1494,11 +1153,12 @@ export function registerPluginCommands(
     .action(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
-        let manifest: { bb?: { server?: unknown; app?: unknown } };
+        let manifest: z.infer<typeof pluginManifestSchema>;
         try {
-          manifest = JSON.parse(
+          const raw: unknown = JSON.parse(
             await readFile(join(rootDir, "package.json"), "utf8"),
-          ) as { bb?: { server?: unknown; app?: unknown } };
+          );
+          manifest = pluginManifestSchema.parse(raw);
         } catch {
           console.error(
             `No readable package.json in ${rootDir} — run from a plugin directory or pass its path.`,
@@ -1516,7 +1176,9 @@ export function registerPluginCommands(
         // against the server's installed rows (realpath tolerates symlinked
         // checkouts).
         const realDir = await realpath(rootDir).catch(() => rootDir);
-        const list = await callPlugins<PluginListResponse>(getUrl(), "", "GET");
+        const list = pluginListSchema.parse(
+          await callPlugins(getUrl(), "", "GET"),
+        );
         const entry = list.plugins.find(
           (candidate) =>
             candidate.rootDir === rootDir || candidate.rootDir === realDir,
@@ -1540,10 +1202,12 @@ export function registerPluginCommands(
             await buildPluginApp(rootDir, resolveBbCliVersion());
           },
           reloadPlugin: async () => {
-            const result = await callPlugins<PluginMutationResult>(
-              getUrl(),
-              `/reload?id=${encodeURIComponent(entry.id)}`,
-              "POST",
+            const result = pluginMutationResultSchema.parse(
+              await callPlugins(
+                getUrl(),
+                `/reload?id=${encodeURIComponent(entry.id)}`,
+                "POST",
+              ),
             );
             if (!result.ok) throw new Error(result.error ?? "reload failed");
           },
@@ -1582,10 +1246,8 @@ export function registerPluginCommands(
     .action(
       action(async (id: string | undefined, opts: JsonOutputOptions) => {
         const query = id ? `?id=${encodeURIComponent(id)}` : "";
-        const result = await callPlugins<PluginMutationResult>(
-          getUrl(),
-          `/reload${query}`,
-          "POST",
+        const result = pluginMutationResultSchema.parse(
+          await callPlugins(getUrl(), `/reload${query}`, "POST"),
         );
         if (opts.json) {
           outputJson(opts, result);
@@ -1609,10 +1271,12 @@ export function registerPluginCommands(
       .option("--json", "Output JSON")
       .action(
         action(async (id: string, opts: JsonOutputOptions) => {
-          const result = await callPlugins<PluginMutationResult>(
-            getUrl(),
-            `/${encodeURIComponent(id)}/${name}`,
-            "POST",
+          const result = pluginMutationResultSchema.parse(
+            await callPlugins(
+              getUrl(),
+              `/${encodeURIComponent(id)}/${name}`,
+              "POST",
+            ),
           );
           if (opts.json) {
             outputJson(opts, result);
@@ -1642,10 +1306,8 @@ export function registerPluginCommands(
         ) => {
           const settingsPath = `/${encodeURIComponent(id)}/settings`;
           if (actionName === undefined) {
-            const result = await callPlugins<PluginSettingsResult>(
-              getUrl(),
-              settingsPath,
-              "GET",
+            const result = pluginSettingsResultSchema.parse(
+              await callPlugins(getUrl(), settingsPath, "GET"),
             );
             if (opts.json) {
               outputJson(opts, result);
@@ -1675,12 +1337,14 @@ export function registerPluginCommands(
           }
           let parsedValue: string | boolean | null = null;
           if (actionName === "set") {
+            if (value === undefined) {
+              console.error("Usage: bb plugin config <id> set <key> <value>");
+              process.exit(1);
+            }
             // Fetch the schema first so booleans/selects are parsed and
             // validated client-side with a friendly message.
-            const current = await callPlugins<PluginSettingsResult>(
-              getUrl(),
-              settingsPath,
-              "GET",
+            const current = pluginSettingsResultSchema.parse(
+              await callPlugins(getUrl(), settingsPath, "GET"),
             );
             if (!current.ok || !current.schema) exitWithError(current);
             const descriptor = current.schema[key];
@@ -1691,13 +1355,12 @@ export function registerPluginCommands(
               );
               process.exit(1);
             }
-            parsedValue = parseSettingValue(descriptor, key, value as string);
+            parsedValue = parseSettingValue(descriptor, key, value);
           }
-          const result = await callPlugins<PluginSettingsResult>(
-            getUrl(),
-            settingsPath,
-            "PUT",
-            { values: { [key]: parsedValue } },
+          const result = pluginSettingsResultSchema.parse(
+            await callPlugins(getUrl(), settingsPath, "PUT", {
+              values: { [key]: parsedValue },
+            }),
           );
           if (opts.json) {
             outputJson(opts, result);
@@ -1720,15 +1383,13 @@ export function registerPluginCommands(
     .action(
       action(
         async (id: string, opts: JsonOutputOptions & { rotate?: boolean }) => {
-          const result = await callPlugins<{
-            ok: boolean;
-            error?: string;
-            token?: string;
-          }>(
-            getUrl(),
-            `/${encodeURIComponent(id)}/token`,
-            "POST",
-            opts.rotate ? { rotate: true } : {},
+          const result = pluginTokenResultSchema.parse(
+            await callPlugins(
+              getUrl(),
+              `/${encodeURIComponent(id)}/token`,
+              "POST",
+              opts.rotate ? { rotate: true } : {},
+            ),
           );
           if (opts.json) {
             outputJson(opts, result);
@@ -1767,11 +1428,13 @@ export function registerPluginCommands(
         const tail =
           Number.isFinite(requested) && requested > 0 ? requested : 100;
         const fetchTail = async (count: number): Promise<string[]> => {
-          const result = await callPlugins<{
-            ok: boolean;
-            error?: string;
-            lines?: string[];
-          }>(getUrl(), `/${encodeURIComponent(id)}/logs?tail=${count}`, "GET");
+          const result = pluginLogsResultSchema.parse(
+            await callPlugins(
+              getUrl(),
+              `/${encodeURIComponent(id)}/logs?tail=${count}`,
+              "GET",
+            ),
+          );
           if (!result.ok || !result.lines) exitWithError(result);
           return result.lines;
         };
@@ -1801,10 +1464,8 @@ export function registerPluginCommands(
     .option("--json", "Output JSON")
     .action(
       action(async (id: string, opts: JsonOutputOptions) => {
-        const result = await callPlugins<PluginMutationResult>(
-          getUrl(),
-          `/${encodeURIComponent(id)}`,
-          "DELETE",
+        const result = pluginMutationResultSchema.parse(
+          await callPlugins(getUrl(), `/${encodeURIComponent(id)}`, "DELETE"),
         );
         if (opts.json) {
           outputJson(opts, result);

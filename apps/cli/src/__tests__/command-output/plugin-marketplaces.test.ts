@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   collectLogPayloads,
+  getHelpOutput,
   readlineMocks,
   runCommand,
   setupCommandOutputTestEnvironment,
@@ -15,11 +16,7 @@ const marketplace = {
   source: "https://example.com/catalog.git",
   resolvedCommit: "abc123",
   pluginCount: 2,
-  lastRefreshAt: "2026-07-12T12:00:00.000Z",
-  enabled: true,
-  scope: "builtin" as const,
-  autoCheck: true,
-  autoApply: false,
+  lastRefreshAt: Date.parse("2026-07-12T12:00:00.000Z"),
 };
 
 const searchResult = {
@@ -37,13 +34,24 @@ const installedPlugin = {
   source: "marketplace:market-1/linear",
   rootDir: "/plugins/linear",
   version: "1.4.2",
+  provenance: "marketplace",
+  marketplaceName: "BB Official",
+  sourceDisplay: "npm · @example/linear · tracks compatible",
+  updateState: {},
   enabled: true,
+  description: "Linear issue tools",
+  displayName: "Linear",
+  icon: null,
   status: "active",
   statusDetail: null,
   handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
   services: [],
   schedules: [],
   cliCommand: null,
+  hasSettings: false,
+  app: { hasApp: false, bundle: null },
+  logoUrl: null,
+  logoDarkUrl: null,
 };
 
 function json(value: object, status = 200): Response {
@@ -58,7 +66,7 @@ describe("bb plugin marketplaces", () => {
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
 
-  it("lists marketplace scope and automatic update states", async () => {
+  it("lists the reduced marketplace view", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       json({ marketplaces: [marketplace] }),
     );
@@ -66,12 +74,10 @@ describe("bb plugin marketplaces", () => {
     await runCommand(["plugin", "marketplace", "list"], register);
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
-    expect(output).toContain("Scope");
-    expect(output).toContain("Auto-check");
-    expect(output).toContain("Auto-apply");
-    expect(output).toContain("builtin");
-    expect(output).toContain("on");
-    expect(output).toContain("off");
+    expect(output).toContain("Name");
+    expect(output).toContain("Source");
+    expect(output).toContain("Plugins");
+    expect(output).not.toContain("Auto-check");
   });
 
   it("warns before adding a remote marketplace and says it installs nothing", async () => {
@@ -155,7 +161,7 @@ describe("bb plugin marketplaces", () => {
     expect(body.source).toMatch(/^path:.*\/linear$/);
   });
 
-  it("resolves name@marketplace and passes the requested version", async () => {
+  it("resolves name@marketplace without a version override", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(json({ marketplaces: [marketplace] }))
@@ -163,20 +169,12 @@ describe("bb plugin marketplaces", () => {
       .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
 
     await runCommand(
-      [
-        "plugin",
-        "install",
-        "linear@bb-official",
-        "--version",
-        "^1.4.0",
-        "--yes",
-      ],
+      ["plugin", "install", "linear@bb-official", "--yes"],
       register,
     );
 
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
       marketplace: { marketplaceId: "market-1", entryId: "linear" },
-      version: "^1.4.0",
     });
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
       "bb-official",
@@ -234,69 +232,42 @@ describe("bb plugin marketplaces", () => {
     expect(error).toContain("git:<url>@<ref>");
   });
 
-  it.each([
-    { flag: "--keep-all", action: "keep" },
-    { flag: "--uninstall-all", action: "uninstall" },
-  ])("applies the $flag removal policy", async ({ flag, action }) => {
+  it("removes a marketplace without a body and reports direct installs", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(json({ marketplaces: [marketplace] }))
-      .mockResolvedValueOnce(
-        json(
-          {
-            error: "policy required",
-            affectedPlugins: [{ id: "linear", version: "1.4.2" }],
-          },
-          422,
-        ),
-      )
-      .mockResolvedValueOnce(json({ kept: [], uninstalled: [] }));
+      .mockResolvedValueOnce(json({ convertedPluginIds: ["linear"] }));
 
-    await runCommand(
-      ["plugin", "marketplace", "remove", marketplace.name, flag],
-      register,
-    );
-
-    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
-      dispositions: [{ pluginId: "linear", action }],
-    });
-  });
-
-  it("prompts per plugin and fails non-interactively without a policy", async () => {
-    const affected = {
-      error: "choose dispositions",
-      affectedPlugins: [{ id: "linear", version: "1.4.2" }],
-    };
-    const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(json({ marketplaces: [marketplace] }))
-      .mockResolvedValueOnce(json(affected, 422))
-      .mockResolvedValueOnce(json({ kept: ["linear"], uninstalled: [] }));
-    readlineMocks.question.mockResolvedValue("keep");
     await runCommand(
       ["plugin", "marketplace", "remove", marketplace.name],
       register,
     );
-    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
-      dispositions: [{ pluginId: "linear", action: "keep" }],
-    });
 
-    fetchMock.mockReset();
-    fetchMock
-      .mockResolvedValueOnce(json({ marketplaces: [marketplace] }))
-      .mockResolvedValueOnce(json(affected, 422));
-    Object.defineProperty(process.stdin, "isTTY", {
-      value: false,
-      configurable: true,
-    });
-    await expect(
-      runCommand(
-        ["plugin", "marketplace", "remove", marketplace.name],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-    expect(collectLogPayloads(vi.mocked(console.error)).join("\n")).toContain(
-      "choose dispositions",
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBeUndefined();
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "1 plugins kept as direct installs",
     );
+  });
+
+  it("does not advertise removed marketplace and automatic-update surfaces", async () => {
+    const pluginHelp = await getHelpOutput(["plugin"], register);
+    expect(pluginHelp).not.toContain("auto-apply");
+    expect(pluginHelp).not.toContain("history");
+
+    const marketplaceHelp = await getHelpOutput(
+      ["plugin", "marketplace"],
+      register,
+    );
+    expect(marketplaceHelp).not.toContain("auto [options]");
+
+    const installHelp = await getHelpOutput(["plugin", "install"], register);
+    expect(installHelp).not.toContain("--version");
+
+    const removeHelp = await getHelpOutput(
+      ["plugin", "marketplace", "remove"],
+      register,
+    );
+    expect(removeHelp).not.toContain("--keep-all");
+    expect(removeHelp).not.toContain("--uninstall-all");
   });
 });
