@@ -317,11 +317,11 @@ export function SplitThreadArea() {
   }
 
   return (
-    // Full-bleed like the single-pane page surface: the negative margins
-    // cancel AppLayout's main padding so the flush tiles reach the window
-    // edges with no outer gutter. As a column flex item, flex-1 absorbs the
-    // vertical margin space and align-stretch handles the horizontal.
-    <div className="-m-4 flex min-h-0 min-w-0 flex-1 md:-m-5">
+    // The negative margins cancel AppLayout's main padding and the small
+    // padding puts it back as a tight 8px gutter around the card tiles. As a
+    // column flex item, flex-1 absorbs the vertical margin space and
+    // align-stretch handles the horizontal.
+    <div className="-m-4 flex min-h-0 min-w-0 flex-1 p-2 md:-m-5">
       <SplitTree
         node={layout.root}
         path={EMPTY_PATH}
@@ -364,17 +364,14 @@ function SplitTree(props: SplitTreeProps) {
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
-        // Flush tiles: no gaps, no rounding, no per-pane chrome — the hairline
-        // dividers are the only lines in the split area (a focus ring here
-        // fights them with doubled parallel lines). Focus reads through
-        // surface depth instead: unfocused panes recess behind a faint ink
-        // wash (plus their dimmed header) while the focused pane sits "lit"
-        // on the plain background. Bounded panes suppress the content's
-        // page-bleed negative margins (see PaneContextValue.isBoundedPane)
-        // so content fills the tile exactly.
+        // Card tiles with tight gutters: rounded, bordered panes where the
+        // focused pane's outline is the single focus indicator. Bounded panes
+        // suppress the content's page-bleed negative margins (see
+        // PaneContextValue.isBoundedPane) so content fills the card exactly.
         className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden transition-colors",
-          !isFocused && "bg-muted/25",
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
+          "rounded-lg border bg-background transition-colors",
+          isFocused ? "border-ring" : "border-border",
         )}
         data-split-pane-id={node.paneId}
       >
@@ -549,18 +546,19 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       onPointerDown={handlePointerDown}
       className={cn(
-        // A 1px hairline is the only visible separation between flush tiles;
-        // the absolutely-positioned child widens the grab target to 8px
-        // without consuming layout space.
-        "group relative z-[5] flex-shrink-0 bg-border transition-colors",
-        "hover:bg-ring/50 data-[dragging]:bg-ring/50",
-        horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
+        // The divider is the 6px gutter between card tiles; a quiet pill
+        // appears on hover/drag as the resize affordance.
+        "group relative z-[5] flex-shrink-0",
+        horizontal ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize",
       )}
     >
       <div
         className={cn(
-          "absolute",
-          horizontal ? "-inset-x-1 inset-y-0" : "inset-x-0 -inset-y-1",
+          "pointer-events-none absolute rounded-full bg-transparent transition-colors",
+          "group-hover:bg-border group-data-[dragging]:bg-border",
+          horizontal
+            ? "inset-x-[2px] inset-y-[20%]"
+            : "inset-x-[20%] inset-y-[2px]",
         )}
       />
     </div>
