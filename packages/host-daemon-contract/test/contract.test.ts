@@ -2493,6 +2493,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -2505,6 +2506,7 @@ describe("host-daemon session schemas", () => {
     ).toMatchObject({
       hostId: "host_123",
       hostType: "persistent",
+      hasMachineCredential: true,
       loadedEnvironments: [],
     });
 
@@ -2514,6 +2516,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: false,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -2538,6 +2541,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -2555,6 +2559,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
@@ -2570,6 +2575,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: 0,

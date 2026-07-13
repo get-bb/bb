@@ -148,6 +148,7 @@ describe("server skeleton", () => {
           instanceId: "instance-1",
           hostName: "Host",
           hostType: "persistent",
+          hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-data",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,

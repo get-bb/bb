@@ -90,6 +90,7 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   hostName: z.string().min(1),
   hostType: hostTypeSchema,
   connectMachineId: z.string().min(1).optional(),
+  hasMachineCredential: z.boolean(),
   platform: hostPlatformSchema,
   dataDir: z.string().min(1),
   // Accept any version at the schema boundary so the server can return an

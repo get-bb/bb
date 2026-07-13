@@ -92,6 +92,11 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
       });
       deps.hub.recordDaemonSessionPlatform(session.id, payload.platform);
+      deps.sharedPorts.recordHostConnectCapability({
+        hostId: daemon.hostId,
+        sessionId: session.id,
+        hasMachineCredential: payload.hasMachineCredential,
+      });
 
       await handleHostSessionOpened(deps, {
         activeThreads: payload.activeThreads,

@@ -212,7 +212,12 @@ export function onDaemonSocketMessage(
 export function onDaemonSocketClose(
   deps: Pick<
     AppDeps,
-    "db" | "hub" | "logger" | "pendingInteractions" | "terminalSessions"
+    | "db"
+    | "hub"
+    | "logger"
+    | "pendingInteractions"
+    | "sharedPorts"
+    | "terminalSessions"
   >,
   sessionId: string,
 ): void {

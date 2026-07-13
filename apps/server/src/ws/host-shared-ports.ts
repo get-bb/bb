@@ -1,4 +1,4 @@
-import { getNonDestroyedHost, type DbConnection } from "@bb/db";
+import { getNonDestroyedHost, getSessionById, type DbConnection } from "@bb/db";
 import {
   hostDaemonConnectTunnelIdentitySchema,
   type HostDaemonConnectShares,
@@ -13,6 +13,11 @@ interface HostSharedPortCoordinatorDeps {
 
 interface SharedPortDeclaration {
   ports: number[];
+}
+
+interface HostConnectCapability {
+  hasMachineCredential: boolean;
+  sessionId: string;
 }
 
 function normalizePorts(ports: readonly number[]): number[] {
@@ -52,8 +57,32 @@ export class HostSharedPortCoordinator {
     string,
     Promise<HostDaemonConnectTunnelIdentity>
   >();
+  private readonly connectCapabilityByHost = new Map<
+    string,
+    HostConnectCapability
+  >();
 
   constructor(private readonly deps: HostSharedPortCoordinatorDeps) {}
+
+  recordHostConnectCapability(args: {
+    hostId: string;
+    sessionId: string;
+    hasMachineCredential: boolean;
+  }): void {
+    this.requireShareCapableHost(args.hostId);
+    this.connectCapabilityByHost.set(args.hostId, {
+      hasMachineCredential: args.hasMachineCredential,
+      sessionId: args.sessionId,
+    });
+  }
+
+  clearHostConnectCapability(sessionId: string): void {
+    for (const [hostId, capability] of this.connectCapabilityByHost) {
+      if (capability.sessionId === sessionId) {
+        this.connectCapabilityByHost.delete(hostId);
+      }
+    }
+  }
 
   declareSharedPorts(args: {
     ownerId: string;
@@ -153,7 +182,17 @@ export class HostSharedPortCoordinator {
 
   private requireEnrolledHost(hostId: string) {
     const host = this.requireShareCapableHost(hostId);
-    if (host.connectMachineId === null) {
+    const capability = this.connectCapabilityByHost.get(hostId);
+    const session = capability
+      ? getSessionById(this.deps.db, { sessionId: capability.sessionId })
+      : null;
+    if (
+      host.connectMachineId === null ||
+      capability?.hasMachineCredential !== true ||
+      session?.hostId !== host.id ||
+      session.status !== "active" ||
+      session.leaseExpiresAt <= Date.now()
+    ) {
       throw new Error(
         `cannot share ports from host "${host.name}" (${host.id}) because it has no bb connect machine credential; remove and re-add the machine from Settings > Machines`,
       );

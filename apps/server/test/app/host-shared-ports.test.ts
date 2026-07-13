@@ -1,4 +1,10 @@
-import { createConnection, migrate, noopNotifier, upsertHost } from "@bb/db";
+import {
+  createConnection,
+  migrate,
+  noopNotifier,
+  openSession,
+  upsertHost,
+} from "@bb/db";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonServerWsMessageSchema,
@@ -29,14 +35,35 @@ function setup(args: { enrolled?: boolean } = {}) {
     type: "persistent",
     ...(args.enrolled === false ? {} : { connectMachineId: "machine-1" }),
   });
-  return { db, host, hub, sharedPorts };
+  if (args.enrolled !== false) {
+    const session = openSession(db, noopNotifier, {
+      hostId: host.id,
+      instanceId: "instance-1",
+      hostName: host.name,
+      hostType: host.type,
+      dataDir: "/tmp/host-data",
+      protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+      heartbeatIntervalMs: 30_000,
+      leaseTimeoutMs: 90_000,
+    });
+    sharedPorts.recordHostConnectCapability({
+      hostId: host.id,
+      sessionId: session.id,
+      hasMachineCredential: true,
+    });
+    return { db, host, hub, session, sharedPorts };
+  }
+  return { db, host, hub, session: null, sharedPorts };
 }
 
 describe("HostSharedPortCoordinator", () => {
   it("aggregates owner replacements and pushes only changed desired sets", () => {
-    const { host, hub, sharedPorts } = setup();
+    const { host, hub, session, sharedPorts } = setup();
     const daemonSocket = createMockHubSocket();
-    hub.registerDaemon("session-1", host.id, daemonSocket);
+    if (!session) {
+      throw new Error("expected an enrolled setup session");
+    }
+    hub.registerDaemon(session.id, host.id, daemonSocket);
 
     expect(sharedPorts.reconcileSharedPortsForHost(host.id)).toEqual({
       generation: 0,
@@ -133,6 +160,21 @@ describe("daemon session connect shares", () => {
         type: "persistent",
         connectMachineId: "machine-1",
       });
+      const previousSession = openSession(harness.db, harness.hub, {
+        hostId: "host-1",
+        instanceId: "previous-instance",
+        hostName: "Host",
+        hostType: "persistent",
+        dataDir: "/tmp/host-data",
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        heartbeatIntervalMs: 30_000,
+        leaseTimeoutMs: 90_000,
+      });
+      harness.deps.sharedPorts.recordHostConnectCapability({
+        hostId: "host-1",
+        sessionId: previousSession.id,
+        hasMachineCredential: true,
+      });
       harness.deps.sharedPorts.declareSharedPorts({
         ownerId: "connect",
         hostId: "host-1",
@@ -150,6 +192,7 @@ describe("daemon session connect shares", () => {
           instanceId: "instance-1",
           hostName: "Host",
           hostType: "persistent",
+          hasMachineCredential: true,
           platform: "darwin",
           dataDir: "/tmp/host-data",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -183,6 +226,7 @@ describe("daemon session connect shares", () => {
           instanceId: "instance-1",
           hostName: "Host",
           hostType: "persistent",
+          hasMachineCredential: true,
           platform: "darwin",
           dataDir: "/tmp/host-data",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -229,6 +273,60 @@ describe("daemon session connect shares", () => {
         label: "sawyer-air",
         baseDomain: "getbb.app",
       });
+    });
+  });
+
+  it("rejects declarations when the current session lacks its persisted machine credential", async () => {
+    await withTestHarness(async (harness) => {
+      upsertHost(harness.db, harness.hub, {
+        id: "host-1",
+        name: "Host",
+        type: "persistent",
+        connectMachineId: "machine-1",
+      });
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${createTestDaemonHostKey({ hostId: "host-1" })}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          hostId: "host-1",
+          instanceId: "restarted-without-credential",
+          hostName: "Host",
+          hostType: "persistent",
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-data",
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+        }),
+      });
+      expect(response.status).toBe(201);
+      const session = hostDaemonSessionOpenResponseSchema.parse(
+        await response.json(),
+      );
+      const daemonSocket = createMockHubSocket();
+      onDaemonSocketOpen(harness.deps, {
+        hostId: "host-1",
+        sessionId: session.sessionId,
+        socket: daemonSocket,
+      });
+      const messagesBeforeDeclaration = [...daemonSocket.messages];
+
+      expect(() =>
+        harness.deps.sharedPorts.declareSharedPorts({
+          ownerId: "connect",
+          hostId: "host-1",
+          ports: [4173],
+        }),
+      ).toThrow(
+        'cannot share ports from host "Host" (host-1) because it has no bb connect machine credential; remove and re-add the machine from Settings > Machines',
+      );
+      expect(daemonSocket.messages).toEqual(messagesBeforeDeclaration);
+      expect(
+        harness.deps.sharedPorts.reconcileSharedPortsForHost("host-1"),
+      ).toEqual({ generation: 0, ports: [] });
     });
   });
 });
