@@ -18,6 +18,16 @@ describe("serializedTextForPromptMentionResource", () => {
     ).toBe("@project:proj_abc");
   });
 
+  it("serializes a folder mention as an @folder token", () => {
+    expect(
+      serializedTextForPromptMentionResource({
+        kind: "folder",
+        folderId: "fld_abc",
+        label: "Release work",
+      }),
+    ).toBe("@folder:fld_abc");
+  });
+
   it("serializes a thread mention as an @thread token", () => {
     expect(
       serializedTextForPromptMentionResource({

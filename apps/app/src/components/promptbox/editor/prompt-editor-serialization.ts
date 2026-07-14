@@ -1060,6 +1060,14 @@ export function promptMentionResourceFromSuggestion(
     };
   }
 
+  if (suggestion.kind === "folder") {
+    return {
+      kind: "folder",
+      folderId: suggestion.folderId,
+      label: suggestion.name.trim() || suggestion.folderId,
+    };
+  }
+
   if (suggestion.kind === "plugin") {
     return {
       kind: "plugin",

@@ -170,6 +170,11 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
     label: z.string(),
   }),
   z.object({
+    kind: z.literal("folder"),
+    folderId: z.string(),
+    label: z.string(),
+  }),
+  z.object({
     kind: z.literal("path"),
     source: promptMentionPathSourceSchema,
     entryKind: promptMentionPathEntryKindSchema,

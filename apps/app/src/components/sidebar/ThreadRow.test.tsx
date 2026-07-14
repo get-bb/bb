@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
+import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "./sidebarRowClasses";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
@@ -146,6 +147,38 @@ function renderThreadRow({
 afterEach(cleanup);
 
 describe("ThreadRow", () => {
+  it("renders serialized title mentions as non-interactive pills", () => {
+    const mentionedThread = createThread({
+      id: "thr_mentioned",
+      projectId: "proj_mentioned",
+      title: "Mention target",
+      titleFallback: "Mention target",
+    });
+
+    render(
+      <SidebarThreadTitleMentionResourcesProvider
+        folderNamesById={new Map([["fld_mentioned", "Mention folder"]])}
+        projectNamesById={new Map([["proj_mentioned", "Mention project"]])}
+        threadById={new Map([[mentionedThread.id, mentionedThread]])}
+      >
+        <ThreadRowTestHarness
+          thread={createThread({
+            title:
+              "Compare @thread:thr_mentioned in @project:proj_mentioned, @folder:fld_mentioned, and @apps/app/src/ThreadRow.tsx",
+            titleFallback:
+              "Compare @thread:thr_mentioned in @project:proj_mentioned, @folder:fld_mentioned, and @apps/app/src/ThreadRow.tsx",
+          })}
+        />
+      </SidebarThreadTitleMentionResourcesProvider>,
+    );
+
+    expect(screen.getByText("Mention target").closest("a")).toBeNull();
+    expect(screen.getByText("Mention project").closest("a")).toBeNull();
+    expect(screen.getByText("Mention folder").closest("a")).toBeNull();
+    expect(screen.getByTitle("apps/app/src/ThreadRow.tsx")).not.toBeNull();
+    expect(screen.queryByText("@thread:thr_mentioned")).toBeNull();
+  });
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread" }),

@@ -649,6 +649,22 @@ describe("prompt editor serialization", () => {
     expect(roundTrip(value)).toEqual(value);
   });
 
+  it("builds a folder mention resource from a folder suggestion", () => {
+    expect(
+      promptMentionResourceFromSuggestion({
+        kind: "folder",
+        path: "folder:fld_abc",
+        replacement: "folder:fld_abc",
+        folderId: "fld_abc",
+        name: "Release work",
+      }),
+    ).toEqual({
+      kind: "folder",
+      folderId: "fld_abc",
+      label: "Release work",
+    });
+  });
+
   it("builds command mention resources from provider command suggestions", () => {
     expect(
       promptCommandResourceFromSuggestion({

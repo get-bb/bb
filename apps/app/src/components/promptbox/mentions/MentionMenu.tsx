@@ -100,6 +100,7 @@ type PluginMentionSectionKind = `plugin:${string}`;
 type MentionSectionKind =
   | "threads"
   | "projects"
+  | "folders"
   | PathMentionSectionKind
   | PluginMentionSectionKind;
 type PathMentionSuggestion = Extract<PromptMentionSuggestion, { kind: "path" }>;
@@ -108,6 +109,7 @@ type SecondaryContextKind = "path" | "project";
 const MENTION_SECTION_ORDER: readonly MentionSectionKind[] = [
   "threads",
   "projects",
+  "folders",
   "workspace",
   "thread-storage",
 ];
@@ -159,6 +161,9 @@ function getMentionSectionKind(
   if (item.kind === "project") {
     return "projects";
   }
+  if (item.kind === "folder") {
+    return "folders";
+  }
   if (item.kind === "plugin") {
     return getPluginSectionKind(item);
   }
@@ -180,6 +185,9 @@ function getMentionSectionLabel(
   }
   if (kind === "projects") {
     return "Projects";
+  }
+  if (kind === "folders") {
+    return "Folders";
   }
   if (kind === "workspace" || kind === "thread-storage") {
     return getPathSectionLabel(kind);
@@ -208,6 +216,10 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
 
   if (item.kind === "project") {
     return `Project: ${item.name}`;
+  }
+
+  if (item.kind === "folder") {
+    return `Folder: ${item.name}`;
   }
 
   if (item.kind === "plugin") {
@@ -401,6 +413,8 @@ function MentionResults({
                 secondaryContextKind =
                   item.projectName === undefined ? null : "project";
               } else if (item.kind === "project") {
+                primary = item.name;
+              } else if (item.kind === "folder") {
                 primary = item.name;
               } else if (item.kind === "plugin") {
                 primary = item.title;

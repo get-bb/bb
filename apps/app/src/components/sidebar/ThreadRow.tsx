@@ -63,6 +63,7 @@ import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
 import { ThreadRowMiniMap } from "./ThreadRowMiniMap";
 import { useThreadSplitIndicator } from "./threadSplitIndicator";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
+import { SidebarThreadTitle } from "./SidebarThreadTitleMentions";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -572,7 +573,7 @@ function ThreadRowComponent({
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate" title={labelTitle}>
-          {visibleTitle}
+          <SidebarThreadTitle title={visibleTitle} />
         </span>
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron

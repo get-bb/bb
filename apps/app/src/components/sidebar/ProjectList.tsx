@@ -110,6 +110,7 @@ import {
   PinnedThreadTree,
   type PinnedThreadTreeProps,
 } from "./PinnedThreadTree";
+import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import { buildPinnedSidebarState } from "./pinnedSidebarThreads";
 import {
   collapsedEnvironmentIdsAtom,
@@ -191,6 +192,11 @@ interface ProjectListActionButtonsProps {
 
 interface ProjectListShellProps {
   children: ReactNode;
+  titleMentionResources?: {
+    folderNamesById: ReadonlyMap<string, string>;
+    projectNamesById: ReadonlyMap<string, string>;
+    threadById: ReadonlyMap<string, ThreadListEntry>;
+  };
 }
 
 interface ProjectListSectionIconButtonProps {
@@ -1141,11 +1147,22 @@ export function ProjectListActionButtons({
   );
 }
 
-export function ProjectListShell({ children }: ProjectListShellProps) {
-  return (
+export function ProjectListShell({
+  children,
+  titleMentionResources,
+}: ProjectListShellProps) {
+  const content = (
     <SidebarStickyStack data-sidebar-sticky-density="compact-actions">
       <SidebarGroupContent>{children}</SidebarGroupContent>
     </SidebarStickyStack>
+  );
+  if (!titleMentionResources) {
+    return content;
+  }
+  return (
+    <SidebarThreadTitleMentionResourcesProvider {...titleMentionResources}>
+      {content}
+    </SidebarThreadTitleMentionResourcesProvider>
   );
 }
 
@@ -1200,6 +1217,10 @@ function ProjectListComponent({
     }
     return map;
   }, [threads]);
+  const titleMentionResources = useMemo(
+    () => ({ folderNamesById, projectNamesById, threadById }),
+    [folderNamesById, projectNamesById, threadById],
+  );
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
@@ -2056,7 +2077,7 @@ function ProjectListComponent({
 
   if (threadSearch?.isActive) {
     return (
-      <ProjectListShell>
+      <ProjectListShell titleMentionResources={titleMentionResources}>
         <SidebarThreadSearchPanel
           activeIndex={threadSearch.activeIndex}
           isRecentsLoading={projectsState.status === "loading"}
@@ -2075,7 +2096,7 @@ function ProjectListComponent({
 
   if (projectsState.status === "loading") {
     return (
-      <ProjectListShell>
+      <ProjectListShell titleMentionResources={titleMentionResources}>
         <ProjectListNavigationLoadingState />
       </ProjectListShell>
     );
@@ -2083,7 +2104,7 @@ function ProjectListComponent({
 
   if (isMachineOrganizationMode) {
     return (
-      <ProjectListShell>
+      <ProjectListShell titleMentionResources={titleMentionResources}>
         <div className="space-y-4">
           {hasPinnedSection ? (
             <TopLevelSidebarSection
@@ -2161,7 +2182,7 @@ function ProjectListComponent({
 
   if (isFolderOrganizationMode) {
     return (
-      <ProjectListShell>
+      <ProjectListShell titleMentionResources={titleMentionResources}>
         <div className="space-y-4">
           {hasPinnedSection ? (
             <TopLevelSidebarSection
@@ -2185,7 +2206,7 @@ function ProjectListComponent({
   }
 
   return (
-    <ProjectListShell>
+    <ProjectListShell titleMentionResources={titleMentionResources}>
       <DndContext {...sidebarSectionDndContextProps}>
         <SortableContext
           items={visibleSidebarSectionOrder}

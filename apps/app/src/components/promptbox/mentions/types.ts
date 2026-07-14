@@ -42,6 +42,13 @@ export type PromptMentionSuggestion =
       name: string;
     }
   | {
+      kind: "folder";
+      path: string;
+      replacement: string;
+      folderId: string;
+      name: string;
+    }
+  | {
       /**
        * One plugin mention-provider row (plugin design §4.9), from
        * GET /plugins/mentions/search. Items group under `providerLabel` in

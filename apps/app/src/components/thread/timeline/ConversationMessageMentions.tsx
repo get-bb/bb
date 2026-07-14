@@ -16,6 +16,8 @@ import { promptMentionClipboardDataAttributes } from "@/components/promptbox/men
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 
 interface PromptMentionPillProps {
+  /** Render visual mention styling without allowing navigation or activation. */
+  interactive?: boolean;
   resource: PromptMentionResource;
   resolveMentionLink?: PromptMentionLinkResolver;
   serializedText: string;
@@ -122,6 +124,7 @@ function mentionPillClassName(interactive: boolean): string {
 }
 
 export function PromptMentionPill({
+  interactive = true,
   resource,
   resolveMentionLink,
   serializedText,
@@ -141,6 +144,18 @@ export function PromptMentionPill({
       <span className="truncate">{resource.label}</span>
     </>
   );
+
+  if (!interactive) {
+    return (
+      <span
+        className={mentionPillClassName(false)}
+        {...clipboardAttributes}
+        title={title}
+      >
+        {labelNode}
+      </span>
+    );
+  }
 
   // Markdown bodies route thread mentions through `resolveSegmentLinkHref`
   // (same resolver the title links use); the plain-text path passes no

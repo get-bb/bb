@@ -61,6 +61,9 @@ export function serializedTextForPromptMentionResource(
   if (resource.kind === "project") {
     return `@project:${resource.projectId}`;
   }
+  if (resource.kind === "folder") {
+    return `@folder:${resource.folderId}`;
+  }
   if (resource.kind === "command") {
     return `${resource.trigger}${resource.name}`;
   }
