@@ -81,6 +81,7 @@ import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -445,6 +446,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   useMobileVisualViewportHeight(contentShellRef, isCompactViewport);
   const location = useLocation();
   const navigate = useNavigate();
+  const { appRoutePath, settingsRoutePath } = useAppSettingsRouteMemory();
   useEffect(
     () =>
       wsManager.onThreadOpen((signal) => {
@@ -480,7 +482,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     return true;
   });
   useAppCommandHandler("settings.open", () => {
-    void navigate(SETTINGS_ROUTE_PATH);
+    void navigate(settingsRoutePath);
     return true;
   });
   // Native server rail "+" tile.
@@ -766,12 +768,14 @@ export function AppLayout({ children }: AppLayoutProps) {
               onResizeMouseDown={handleResizeMouseDown}
               isResizing={isSidebarResizing}
               showTopReserve={true}
+              appRoutePath={appRoutePath}
             />
           ) : (
             <AppSidebar
               onResizeMouseDown={handleResizeMouseDown}
               isResizing={isSidebarResizing}
               showTopReserve={true}
+              settingsRoutePath={settingsRoutePath}
             />
           )}
           <SidebarInset>
