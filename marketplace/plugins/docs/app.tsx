@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -1216,6 +1217,107 @@ function orderEntries(
 
 const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
 
+interface NotesSidebarState {
+  headerMounted: boolean;
+  paneNarrow: boolean;
+  userCollapsed: boolean | null;
+}
+
+interface NotesSidebarStore {
+  state: NotesSidebarState;
+  headerMounts: number;
+  viewMounts: number;
+  listeners: Set<() => void>;
+}
+
+const notesSidebarStores = new Map<string, NotesSidebarStore>();
+
+function notesSidebarKey(subPath: string): string {
+  const firstSegment = subPath.split("/", 1)[0];
+  return firstSegment ? decodeURIComponent(firstSegment) : "";
+}
+
+function getNotesSidebarStore(key: string): NotesSidebarStore {
+  const existing = notesSidebarStores.get(key);
+  if (existing) return existing;
+  const store: NotesSidebarStore = {
+    state: {
+      headerMounted: false,
+      paneNarrow: false,
+      userCollapsed: null,
+    },
+    headerMounts: 0,
+    viewMounts: 0,
+    listeners: new Set(),
+  };
+  notesSidebarStores.set(key, store);
+  return store;
+}
+
+function updateNotesSidebarState(
+  store: NotesSidebarStore,
+  patch: Partial<NotesSidebarState>,
+): void {
+  const next = { ...store.state, ...patch };
+  if (
+    next.headerMounted === store.state.headerMounted &&
+    next.paneNarrow === store.state.paneNarrow &&
+    next.userCollapsed === store.state.userCollapsed
+  ) {
+    return;
+  }
+  store.state = next;
+  for (const listener of store.listeners) listener();
+}
+
+function useNotesSidebarState(key: string): {
+  state: NotesSidebarState;
+  store: NotesSidebarStore;
+} {
+  const store = useMemo(() => getNotesSidebarStore(key), [key]);
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      store.listeners.add(listener);
+      return () => store.listeners.delete(listener);
+    },
+    [store],
+  );
+  const getSnapshot = useCallback(() => store.state, [store]);
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return { state, store };
+}
+
+function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
+  const { state: sidebar, store } = useNotesSidebarState(
+    notesSidebarKey(subPath),
+  );
+  const collapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
+  useLayoutEffect(() => {
+    store.headerMounts += 1;
+    updateNotesSidebarState(store, { headerMounted: true });
+    return () => {
+      store.headerMounts = Math.max(0, store.headerMounts - 1);
+      if (store.headerMounts === 0) {
+        updateNotesSidebarState(store, { headerMounted: false });
+      }
+    };
+  }, [store]);
+  return (
+    <Button
+      className="size-8"
+      size="icon"
+      variant="ghost"
+      aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
+      aria-expanded={!collapsed}
+      onClick={() =>
+        updateNotesSidebarState(store, { userCollapsed: !collapsed })
+      }
+    >
+      <HugeiconsIcon icon={SidebarRightIcon} />
+    </Button>
+  );
+}
+
 function Tree({
   data,
   selectedPath,
@@ -1227,6 +1329,7 @@ function Tree({
   onMoveFile,
   onVaultChange,
   onAddVault,
+  sidebarKey,
 }: {
   data: NotesData;
   selectedPath: string | null;
@@ -1242,6 +1345,7 @@ function Tree({
   ): void;
   onVaultChange(vaultId: string): void;
   onAddVault(): void;
+  sidebarKey: string;
 }) {
   const portalScopeProps = usePortalScopeProps();
   const [query, setQuery] = useState("");
@@ -1254,14 +1358,31 @@ function Tree({
     edge: "before" | "after";
   } | null>(null);
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
+  const { state: sidebar, store: sidebarStore } =
+    useNotesSidebarState(sidebarKey);
   // null = follow the responsive default (collapsed in narrow panes) until
   // the user toggles the sidebar explicitly.
-  const [sidebarUserCollapsed, setSidebarUserCollapsed] = useState<
-    boolean | null
-  >(null);
-  const [paneNarrow, setPaneNarrow] = useState(false);
+  const sidebarCollapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
   const [sidebarWidth, setSidebarWidth] = useState(288);
   const asideRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (sidebarStore.viewMounts === 0) {
+      updateNotesSidebarState(sidebarStore, {
+        paneNarrow: false,
+        userCollapsed: null,
+      });
+    }
+    sidebarStore.viewMounts += 1;
+    return () => {
+      sidebarStore.viewMounts = Math.max(0, sidebarStore.viewMounts - 1);
+      if (sidebarStore.viewMounts === 0) {
+        updateNotesSidebarState(sidebarStore, {
+          paneNarrow: false,
+          userCollapsed: null,
+        });
+      }
+    };
+  }, [sidebarStore]);
   useLayoutEffect(() => {
     const pane = asideRef.current?.parentElement;
     if (!pane || typeof ResizeObserver === "undefined") return;
@@ -1269,14 +1390,15 @@ function Tree({
       const width = pane.clientWidth;
       // Width 0 means the pane is hidden or not yet laid out — keep the
       // wide-pane default rather than collapsing.
-      setPaneNarrow(width > 0 && width < SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH);
+      updateNotesSidebarState(sidebarStore, {
+        paneNarrow: width > 0 && width < SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH,
+      });
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(pane);
     return () => observer.disconnect();
-  }, []);
-  const sidebarCollapsed = sidebarUserCollapsed ?? paneNarrow;
+  }, [sidebarStore]);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   useEffect(
     () => () => {
@@ -1442,18 +1564,26 @@ function Tree({
     return (
       <aside
         ref={asideRef}
-        className="order-2 flex w-10 shrink-0 flex-col items-center border-l border-border bg-muted/20 py-2"
-        style={{ width: 40 }}
+        className={cn(
+          "order-2 flex shrink-0 flex-col items-center",
+          !sidebar.headerMounted &&
+            "w-10 border-l border-border bg-muted/20 py-2",
+        )}
+        style={{ width: sidebar.headerMounted ? 0 : 40 }}
       >
-        <Button
-          className="size-8"
-          size="icon"
-          variant="ghost"
-          aria-label="Expand notes sidebar"
-          onClick={() => setSidebarUserCollapsed(false)}
-        >
-          <HugeiconsIcon icon={SidebarRightIcon} />
-        </Button>
+        {!sidebar.headerMounted ? (
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="Expand notes sidebar"
+            onClick={() =>
+              updateNotesSidebarState(sidebarStore, { userCollapsed: false })
+            }
+          >
+            <HugeiconsIcon icon={SidebarRightIcon} />
+          </Button>
+        ) : null}
       </aside>
     );
   }
@@ -1530,15 +1660,19 @@ function Tree({
             <span className="min-w-0 flex-1" />
           </>
         )}
-        <Button
-          className="size-8"
-          size="icon"
-          variant="ghost"
-          aria-label="Collapse notes sidebar"
-          onClick={() => setSidebarUserCollapsed(true)}
-        >
-          <HugeiconsIcon icon={SidebarRightIcon} />
-        </Button>
+        {!sidebar.headerMounted ? (
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="Collapse notes sidebar"
+            onClick={() =>
+              updateNotesSidebarState(sidebarStore, { userCollapsed: true })
+            }
+          >
+            <HugeiconsIcon icon={SidebarRightIcon} />
+          </Button>
+        ) : null}
         {draggingPath && dirname(draggingPath) ? (
           <button
             type="button"
@@ -1958,6 +2092,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
             });
           }}
           onAddVault={() => setVaultDialogOpen(true)}
+          sidebarKey={route.vaultId ?? ""}
         />
         {filePath && /\.md$/i.test(filePath) ? (
           <NotePane
@@ -2112,6 +2247,7 @@ export default definePluginApp((app) => {
     path: "docs",
     chrome: "none",
     component: NotesPanel,
+    headerContent: NotesPanelHeader,
   });
   app.slots.threadPanelAction({
     id: "document",

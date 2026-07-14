@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 
@@ -69,6 +69,7 @@ describe("Docs nav panel", () => {
       id: "docs",
       title: "Docs",
       path: "docs",
+      headerContent: expect.any(Function),
     });
     expect(app.messageDirectives).toHaveLength(1);
     expect(app.messageDirectives[0]?.id).toBe("docs");
@@ -81,6 +82,33 @@ describe("Docs nav panel", () => {
       title: "Docs",
       extensions: ["md", "mdx", "markdown"],
     });
+  });
+
+  it("moves the sidebar toggle into the shared panel header", async () => {
+    const panel = app.navPanels[0]!;
+    const slot = renderSlot(
+      panel,
+      { subPath: "personal" },
+      { rpc: { listNotes: () => listNotesResult([]) } },
+    );
+    await slot.findByText("Select a note or HTML page.");
+
+    const HeaderContent = panel.headerContent!;
+    const header = render(<HeaderContent subPath="personal" />);
+    await waitFor(() => {
+      expect(
+        slot.container.querySelector('[aria-label="Collapse notes sidebar"]'),
+      ).toBeNull();
+    });
+
+    fireEvent.click(
+      header.getByRole("button", { name: "Collapse notes sidebar" }),
+    );
+    expect(slot.container.querySelector("aside")?.style.width).toBe("0px");
+    fireEvent.click(
+      header.getByRole("button", { name: "Expand notes sidebar" }),
+    );
+    expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
   });
 
   it("keeps the right sidebar pinned while a note loads", async () => {

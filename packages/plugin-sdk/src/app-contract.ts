@@ -202,13 +202,14 @@ export interface PluginNavPanelRegistration {
   /**
    * Panel chrome (default "page"): "page" renders the host title bar (plugin
    * logo + `title` + your `headerContent`) above a full-width padded body;
-   * "none" hands the ENTIRE panel area to `component` — no host padding, no
-   * title bar (`headerContent` is ignored) — only the per-plugin error
-   * boundary remains.
+   * "none" hands the entire BODY area to `component` with no host padding.
+   * The shared app/pane title bar remains host-owned in both modes and still
+   * renders `headerContent`; only the per-plugin body boundary remains inside
+   * the body area.
    */
   chrome?: "page" | "none";
   /**
-   * Optional component rendered on the right side of the "page" title bar
+   * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
    * throwing headerContent is hidden without breaking the title bar.
    */

@@ -57,9 +57,9 @@ export function PluginPanelHeaderCenter({
 
 /**
  * Header actions for a plugin panel route: the registration's
- * `headerContent`, in its own boundary. Null when the panel registers none
- * or uses `chrome: "none"` (the plugin owns the body wholesale there; the
- * shared header stays logo + title only).
+ * `headerContent`, in its own boundary. The body chrome mode is deliberately
+ * independent: full-bleed panels still use the shared app/pane header and may
+ * contribute actions there.
  */
 export function PluginPanelHeaderActions({
   panel,
@@ -69,7 +69,7 @@ export function PluginPanelHeaderActions({
   subPath: string;
 }) {
   const HeaderContent = panel.headerContent;
-  if (HeaderContent === undefined || panel.chrome === "none") return null;
+  if (HeaderContent === undefined) return null;
   return (
     <HeaderContentBoundary
       // Generation in the key: a P3.4 reload remounts the accessory with

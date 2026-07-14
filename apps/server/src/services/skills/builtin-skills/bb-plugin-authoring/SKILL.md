@@ -663,9 +663,9 @@ Slot props contracts (versioned, additive-only):
   the standard page padding at full width — wrap your content in a
   `mx-auto w-full max-w-3xl space-y-4` div to opt back into the classic
   centered, width-capped column instead; `chrome: "none"` is the escape hatch — your
-  `component` owns the ENTIRE body region with zero host padding
-  (`headerContent` is ignored; the shared header still shows logo + title)
-  and only the crash boundary remains.
+  `component` owns the ENTIRE body region with zero host padding and only the
+  crash boundary remains; the shared header still shows logo + title +
+  `headerContent`.
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
   `title` with your plugin logo. Registration:

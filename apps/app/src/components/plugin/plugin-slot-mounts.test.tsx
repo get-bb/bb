@@ -304,9 +304,9 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: "Simple notes" }).getAttribute(
-        "aria-current",
-      ),
+      screen
+        .getByRole("button", { name: "Simple notes" })
+        .getAttribute("aria-current"),
     ).toBe("page");
   });
 
@@ -370,6 +370,20 @@ describe("plugin panel chrome (shared header + body modes)", () => {
     // The header center survives; the accessory is hidden, not chip-ified.
     expect(screen.getByText("Demo board")).toBeDefined();
     expect(screen.queryByText(/plugin demo crashed/)).toBeNull();
+  });
+
+  it('renders headerContent for a full-bleed "none" panel', () => {
+    function Accessory() {
+      return <button type="button">Toggle sidebar</button>;
+    }
+    const panel = panelSlot({
+      chrome: "none",
+      headerContent: Accessory,
+    });
+    render(<PluginPanelHeaderActions panel={panel} subPath="notes/today.md" />);
+    expect(
+      screen.getByRole("button", { name: "Toggle sidebar" }),
+    ).toBeDefined();
   });
 
   it('still contains a crashing "none" panel inside the error boundary', () => {

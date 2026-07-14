@@ -326,6 +326,46 @@ describe("SplitThreadArea", () => {
     expect(dragHandle?.className).toContain("[-webkit-app-region:no-drag]");
   });
 
+  it("places full-bleed plugin header actions before the pane close button", async () => {
+    setPluginSlotRegistrations("docs", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText",
+          path: "docs",
+          chrome: "none",
+          component: () => <div>Docs panel</div>,
+          headerContent: () => (
+            <button type="button">Toggle docs sidebar</button>
+          ),
+        },
+      ],
+      threadPanelActions: [],
+      composerAccessories: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    const toggle = await screen.findByRole("button", {
+      name: "Toggle docs sidebar",
+    });
+    const close = screen.getByRole("button", { name: "Close pane" });
+    expect(
+      toggle.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
   it("falls back to a single pane from the route when persisted state is malformed", async () => {
     window.localStorage.setItem(SPLIT_LAYOUT_STORAGE_KEY, "not json");
     renderSplitArea({ path: threadPath("thr-a") });
