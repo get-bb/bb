@@ -46,21 +46,24 @@ function labelWithSuffix(base: string, ordinal: number): string {
   return `${stem}${suffix}`;
 }
 
-function affectedRows(result: unknown): number | null {
-  if (typeof result !== "object" || result === null) return null;
-  if ("changes" in result && typeof result.changes === "number") {
-    return result.changes;
+/** Affected-row count from either driver shape: better-sqlite3 `{changes}` or
+ * D1 `{meta: {changes}}`. Anything else is a broken driver — fail fast. */
+function affectedRows(result: unknown): number {
+  if (typeof result === "object" && result !== null) {
+    if ("changes" in result && typeof result.changes === "number") {
+      return result.changes;
+    }
+    if (
+      "meta" in result &&
+      typeof result.meta === "object" &&
+      result.meta !== null &&
+      "changes" in result.meta &&
+      typeof result.meta.changes === "number"
+    ) {
+      return result.meta.changes;
+    }
   }
-  if (
-    "meta" in result &&
-    typeof result.meta === "object" &&
-    result.meta !== null &&
-    "changes" in result.meta &&
-    typeof result.meta.changes === "number"
-  ) {
-    return result.meta.changes;
-  }
-  return null;
+  throw new Error("machine label update did not report affected rows");
 }
 
 export interface MachineLabelAssignmentHooks {
@@ -114,29 +117,15 @@ export async function assignMachineLabel(
       if (isLabelCollision(error)) continue;
       throw error;
     }
-    const changes = affectedRows(updateResult);
-    if (changes === 1) return candidate;
+    if (affectedRows(updateResult) === 1) return candidate;
 
     const current = await db
       .select({ subdomain: machine.subdomain, revokedAt: machine.revokedAt })
       .from(machine)
       .where(eq(machine.id, machineId))
       .get();
-    // Some drivers do not report affected-row counts. The exact attached row
-    // is authoritative and must retain the claim in that case.
-    if (
-      changes === null &&
-      current?.revokedAt === null &&
-      current.subdomain === candidate
-    ) {
-      return candidate;
-    }
-
     if (!current || current.revokedAt !== null) return null;
     if (current.subdomain !== null) return current.subdomain;
-    if (changes === null) {
-      throw new Error("machine label update did not report affected rows");
-    }
   }
 }
 

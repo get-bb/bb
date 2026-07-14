@@ -1131,11 +1131,6 @@ export function createPluginApi(options: {
     },
     declareSharedPorts(hostId, ports) {
       assertLive();
-      if (arguments.length !== 2) {
-        throw new Error(
-          "bb.hosts.declareSharedPorts accepts only hostId and ports; tunnel identity is daemon-owned",
-        );
-      }
       declareSharedPorts(hostId, ports);
     },
   };

@@ -16,14 +16,11 @@ import { deriveConnectBaseUrl } from "./redeem.js";
 
 export const SHARES_KV_KEY = "shares";
 
-export interface Share {
+export interface ShareListing {
   hostId: string;
+  hostName: string;
   port: number;
   createdAt: number;
-}
-
-export interface ShareListing extends Share {
-  hostName: string;
   /** Empty only when unavailableReason explains why no public URL exists. */
   url: string;
   unavailableReason?: string;
@@ -41,16 +38,11 @@ const persistedShareSchema = z
 const sharesContainerSchema = z.record(z.string(), z.unknown());
 
 interface RestoredShare {
-  /** Preserve legacy keys until a user mutation naturally rewrites the map. */
-  storageKey: string;
-  /** Null means a legacy entry whose omitted hostId denotes the server host. */
+  /** Null means a legacy entry whose omitted hostId denotes the server host;
+   * normalized to the real server host id once activation resolves it. */
   hostId: string | null;
   port: number;
   createdAt: number;
-  host?: ShareHost;
-  machineUrl?: string;
-  unavailableHostName?: string;
-  unavailableReason?: string;
 }
 
 export interface ShareRemoval {
@@ -97,21 +89,7 @@ export function machineSharePublicUrl(
   identity: { label: string; baseDomain: string },
   port: number,
 ): string {
-  const expectedHost = `${identity.label}--${port}.${identity.baseDomain}`;
-  const origin = new URL(`https://${expectedHost}`);
-  if (
-    origin.host !== expectedHost ||
-    origin.username ||
-    origin.password ||
-    origin.pathname !== "/" ||
-    origin.search ||
-    origin.hash
-  ) {
-    throw new SharePortError(
-      "the host returned an invalid connect tunnel identity",
-    );
-  }
-  return origin.origin;
+  return `https://${identity.label}--${port}.${identity.baseDomain}`;
 }
 
 export function shareLoopbackOrigin(port: number): string {
@@ -146,6 +124,18 @@ function restoredShareKey(hostId: string | null, port: number): string {
   return hostId === null ? `legacy-server:${port}` : shareKey(hostId, port);
 }
 
+/** Listing hostId for a legacy share before the real server host id is known.
+ * remove() round-trips it, so it can never strand a share un-removable. */
+const UNRESOLVED_SERVER_HOST_ID = "server";
+
+function compareListings(a: ShareListing, b: ShareListing): number {
+  return (
+    a.hostName.localeCompare(b.hostName) ||
+    a.hostId.localeCompare(b.hostId) ||
+    a.port - b.port
+  );
+}
+
 function sharedPortErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null) return undefined;
   if ("code" in error && typeof error.code === "string") return error.code;
@@ -170,6 +160,8 @@ export class ShareRegistry {
   private loaded = false;
   private loading: Promise<void> | null = null;
   private serverHostId: string | null = null;
+  /** Latest resolved listings, replaced wholesale; snapshot() reads it. */
+  private lastListings: ShareListing[] = [];
   private readonly declaredMachineHostIds = new Set<string>();
 
   constructor(private readonly options: ShareRegistryOptions) {}
@@ -211,7 +203,6 @@ export class ShareRegistry {
         }
         const hostId = parsed.data.hostId ?? null;
         const share: RestoredShare = {
-          storageKey,
           hostId,
           port: parsed.data.port,
           createdAt: parsed.data.createdAt,
@@ -224,13 +215,29 @@ export class ShareRegistry {
       }
     }
     this.shares = next;
+    // Seed the sync snapshot so restored shares are visible in status and
+    // realtime immediately — including unpaired, where no resolution runs.
+    this.lastListings = [...next.values()]
+      .map((share) => this.seededListing(share))
+      .sort(compareListings);
+  }
+
+  /** Pre-resolution listing built from persisted state alone (no RPCs). */
+  private seededListing(share: RestoredShare): ShareListing {
+    return {
+      hostId: share.hostId ?? this.serverHostId ?? UNRESOLVED_SERVER_HOST_ID,
+      hostName: share.hostId ?? "server host",
+      port: share.port,
+      createdAt: share.createdAt,
+      url: "",
+      unavailableReason: "Share URL has not been resolved yet.",
+    };
   }
 
   hasServerPort(port: number): boolean {
     for (const share of this.shares.values()) {
       if (share.port !== port) continue;
-      if (share.hostId === null || share.host?.isServer === true) return true;
-      if (this.serverHostId !== null && share.hostId === this.serverHostId) {
+      if (share.hostId === null || share.hostId === this.serverHostId) {
         return true;
       }
     }
@@ -243,30 +250,17 @@ export class ShareRegistry {
     const listings = await Promise.all(
       [...this.shares.values()].map((share) => this.resolveListing(share)),
     );
-    const filtered = listings.filter(
-      (share) => hostId === undefined || share.hostId === hostId,
-    );
-    filtered.sort(
-      (a, b) =>
-        a.hostName.localeCompare(b.hostName) ||
-        a.hostId.localeCompare(b.hostId) ||
-        a.port - b.port,
-    );
-    return filtered;
+    listings.sort(compareListings);
+    this.lastListings = listings;
+    return hostId === undefined
+      ? listings
+      : listings.filter((share) => share.hostId === hostId);
   }
 
-  /** Synchronous cached view for realtime/status paths that cannot await. */
+  /** Synchronous cached view for realtime/status paths that cannot await.
+   * Refreshed wholesale by list() and incrementally by add()/remove(). */
   snapshot(): ShareListing[] {
-    const listings = [...this.shares.values()].map((share) =>
-      this.snapshotListing(share),
-    );
-    listings.sort(
-      (a, b) =>
-        a.hostName.localeCompare(b.hostName) ||
-        a.hostId.localeCompare(b.hostId) ||
-        a.port - b.port,
-    );
-    return listings;
+    return this.lastListings;
   }
 
   async add(port: number, host: ShareHost): Promise<ShareListing> {
@@ -293,19 +287,17 @@ export class ShareRegistry {
         (share.hostId === host.id || (share.hostId === null && host.isServer)),
     );
     if (existing) {
-      existing.host = host;
-      return this.resolveListing(existing);
+      const listing = await this.resolveListing(existing, host);
+      this.updateSnapshot(listing, existing.hostId === null);
+      return listing;
     }
 
     const url = await this.urlFor(host, validated);
     const key = shareKey(host.id, validated);
     const share: RestoredShare = {
-      storageKey: key,
       hostId: host.id,
-      host,
       port: validated,
       createdAt: Date.now(),
-      ...(host.isServer ? {} : { machineUrl: url }),
     };
     this.shares.set(key, share);
     try {
@@ -316,14 +308,16 @@ export class ShareRegistry {
       if (!host.isServer) this.restoreDeclaration(host.id);
       throw error;
     }
-    this.options.onChange?.();
-    return {
+    const listing: ShareListing = {
       hostId: host.id,
       hostName: host.name,
       port: validated,
       createdAt: share.createdAt,
       url,
     };
+    this.updateSnapshot(listing, false);
+    this.options.onChange?.();
+    return listing;
   }
 
   async remove(port: number, hostSelector: string): Promise<ShareRemoval> {
@@ -338,13 +332,11 @@ export class ShareRegistry {
       return { removed: false, hostId: selector, hostName: selector };
     }
     const { key, share } = resolved;
-    let host = share.host;
-    if (!host) {
-      try {
-        host = await this.resolveHost(share);
-      } catch {
-        // A deleted host must remain prunable by its durable id.
-      }
+    let host: ShareHost | undefined;
+    try {
+      host = await this.resolveHost(share);
+    } catch {
+      // A deleted host must remain prunable by its durable id.
     }
     const publicHostId = host?.id ?? share.hostId ?? selector;
     const hostName = host?.name ?? "removed host";
@@ -373,6 +365,14 @@ export class ShareRegistry {
         );
       }
     }
+    const removedListingIds = this.snapshotAliases(
+      publicHostId,
+      share.hostId === null,
+    );
+    this.lastListings = this.lastListings.filter(
+      (entry) =>
+        !(entry.port === validated && removedListingIds.has(entry.hostId)),
+    );
     this.options.onChange?.();
     return { removed: true, hostId: publicHostId, hostName };
   }
@@ -399,6 +399,7 @@ export class ShareRegistry {
     const serverHostId = await this.options.hostResolver.serverHostId();
     if (!isActivationCurrent()) return;
     this.serverHostId = serverHostId;
+    await this.normalizeLegacyShares(serverHostId);
     let firstError: unknown;
     for (const hostId of this.machineHostIds()) {
       if (!isActivationCurrent()) return;
@@ -414,64 +415,101 @@ export class ShareRegistry {
     if (firstError !== undefined) throw firstError;
   }
 
-  private async resolveListing(share: RestoredShare): Promise<ShareListing> {
+  /** Rewrite legacy hostId-less entries to the resolved server host id. */
+  private async normalizeLegacyShares(serverHostId: string): Promise<void> {
+    let changed = false;
+    for (const [key, share] of [...this.shares]) {
+      if (share.hostId !== null) continue;
+      this.shares.delete(key);
+      const canonicalKey = shareKey(serverHostId, share.port);
+      if (!this.shares.has(canonicalKey)) {
+        this.shares.set(canonicalKey, { ...share, hostId: serverHostId });
+      }
+      changed = true;
+    }
+    if (!changed) return;
     try {
-      const host = await this.resolveHost(share);
-      share.host = host;
+      await this.persist();
+    } catch (error) {
+      // In-memory state is already normalized; the next successful persist
+      // (any add/remove, or the next activation) rewrites the stored map.
+      this.options.log.warn(
+        `failed to persist normalized legacy shares: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * All snapshot hostIds this share may currently be listed under. A legacy
+   * or server-host share may have a pre-resolution placeholder row, so every
+   * snapshot mutation must clear the aliases, not just the concrete id.
+   */
+  private snapshotAliases(hostId: string, wasLegacy: boolean): Set<string> {
+    const aliases = new Set([hostId]);
+    if (wasLegacy || hostId === this.serverHostId) {
+      aliases.add(UNRESOLVED_SERVER_HOST_ID);
+      if (this.serverHostId !== null) aliases.add(this.serverHostId);
+    }
+    return aliases;
+  }
+
+  private updateSnapshot(listing: ShareListing, wasLegacy: boolean): void {
+    const aliases = this.snapshotAliases(listing.hostId, wasLegacy);
+    const next = this.lastListings.filter(
+      (entry) => !(entry.port === listing.port && aliases.has(entry.hostId)),
+    );
+    next.push(listing);
+    next.sort(compareListings);
+    this.lastListings = next;
+  }
+
+  private async resolveListing(
+    share: RestoredShare,
+    knownHost?: ShareHost,
+  ): Promise<ShareListing> {
+    let host = knownHost;
+    try {
+      host ??= await this.resolveHost(share);
       if (host.isServer) this.serverHostId = host.id;
-      const url = host.isServer
-        ? this.serverUrl(share.port)
-        : (share.machineUrl ?? (await this.urlFor(host, share.port)));
-      if (!host.isServer) share.machineUrl = url;
-      share.unavailableHostName = undefined;
-      share.unavailableReason = undefined;
       return {
         hostId: host.id,
         hostName: host.name,
         port: share.port,
         createdAt: share.createdAt,
-        url,
+        url: await this.urlFor(host, share.port),
       };
     } catch (error) {
-      const reason = this.unavailableReason(share, error);
-      share.unavailableHostName =
-        error instanceof ShareHostNotFoundError ? "removed host" : undefined;
-      share.unavailableReason = reason;
-      return this.snapshotListing(share);
+      return this.unavailableListing(share, error, host);
     }
   }
 
   private async resolveHost(share: RestoredShare): Promise<ShareHost> {
-    if (share.host) return share.host;
     return share.hostId === null
       ? this.options.hostResolver.serverHost()
       : this.options.hostResolver.byId(share.hostId);
   }
 
-  private snapshotListing(share: RestoredShare): ShareListing {
-    const hostId =
-      share.host?.id ?? share.hostId ?? this.serverHostId ?? "server";
-    const hostName =
-      share.host?.name ??
-      share.unavailableHostName ??
-      (share.hostId === null ? "server host" : share.hostId);
-    let url = "";
-    if (share.host?.isServer === true) {
-      url = this.serverUrl(share.port);
-    } else if (share.machineUrl !== undefined) {
-      url = share.machineUrl;
-    }
-    const unavailableReason =
-      url === ""
-        ? (share.unavailableReason ?? "Share URL has not been resolved yet.")
-        : undefined;
+  /** `host` is set when resolution succeeded and only the URL failed. */
+  private unavailableListing(
+    share: RestoredShare,
+    error: unknown,
+    host?: ShareHost,
+  ): ShareListing {
     return {
-      hostId,
-      hostName,
+      hostId:
+        host?.id ??
+        share.hostId ??
+        this.serverHostId ??
+        UNRESOLVED_SERVER_HOST_ID,
+      hostName:
+        host?.name ??
+        (error instanceof ShareHostNotFoundError
+          ? "removed host"
+          : (share.hostId ?? "server host")),
       port: share.port,
       createdAt: share.createdAt,
-      url,
-      ...(unavailableReason === undefined ? {} : { unavailableReason }),
+      url: "",
+      unavailableReason: this.unavailableReason(share, error),
     };
   }
 
@@ -531,7 +569,15 @@ export class ShareRegistry {
     selector: string,
   ): Promise<{ key: string; share: RestoredShare } | undefined> {
     for (const [key, share] of this.shares) {
-      if (share.port === port && share.hostId === selector) {
+      if (share.port !== port) continue;
+      if (share.hostId === selector) return { key, share };
+      // Round-trip the ids a legacy share may have been listed under before
+      // its host resolved, so a placeholder can never strand a share.
+      if (
+        share.hostId === null &&
+        (selector === this.serverHostId ||
+          selector === UNRESOLVED_SERVER_HOST_ID)
+      ) {
         return { key, share };
       }
     }
@@ -540,7 +586,6 @@ export class ShareRegistry {
       if (share.port !== port) continue;
       try {
         const host = await this.resolveHost(share);
-        share.host = host;
         if (
           host.id === selector ||
           host.name.toLocaleLowerCase() === selector.toLocaleLowerCase()
@@ -589,7 +634,11 @@ export class ShareRegistry {
     }
     const map: Record<string, unknown> = {};
     for (const share of this.shares.values()) {
-      map[share.storageKey] = {
+      const storageKey =
+        share.hostId === null
+          ? String(share.port)
+          : shareKey(share.hostId, share.port);
+      map[storageKey] = {
         ...(share.hostId === null ? {} : { hostId: share.hostId }),
         port: share.port,
         createdAt: share.createdAt,
