@@ -235,6 +235,71 @@ describe("connect settings section", () => {
     );
   });
 
+  it("groups shares by host and degrades an unreachable host's group", async () => {
+    const reason = "sawyer-air is not connected right now.";
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            connected({
+              shares: [
+                {
+                  hostId: "host-air",
+                  hostName: "Sawyer Air",
+                  port: 5173,
+                  url: "",
+                  unavailableReason: reason,
+                },
+                {
+                  hostId: "host-server",
+                  hostName: "Workstation",
+                  port: 3000,
+                  url: "https://workstation--3000.getbb.app",
+                },
+                {
+                  hostId: "host-server",
+                  hostName: "Workstation",
+                  port: 8080,
+                  url: "https://workstation--8080.getbb.app",
+                },
+              ],
+            }),
+          unexpose: () => ({ removed: true, port: 5173 }),
+        },
+      },
+    );
+
+    // One header per host, even with two shares on the same host.
+    await slot.findByText("Sawyer Air");
+    expect(slot.getAllByText("Workstation")).toHaveLength(1);
+
+    // Live shares stay clickable links; the unreachable host's share shows
+    // its reason with no link and no copy affordance.
+    expect(
+      slot
+        .getByText("workstation--3000.getbb.app")
+        .closest("a")
+        ?.getAttribute("href"),
+    ).toBe("https://workstation--3000.getbb.app");
+    slot.getByText(`Unavailable — ${reason}`);
+    expect(
+      slot.queryByRole("button", { name: "Copy share URL for port 5173" }),
+    ).toBeNull();
+
+    // Revoke still works while the host is unreachable (removal is local).
+    const revokeButtons = slot.getAllByRole("button", { name: "Revoke" });
+    expect(revokeButtons).toHaveLength(3);
+    fireEvent.click(revokeButtons[0]!);
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "unexpose",
+        input: { hostId: "host-air", port: 5173 },
+      }),
+    );
+  });
+
   it("exposes a port through the disclosure form and surfaces errors", async () => {
     const slot = renderSlot(
       app.settingsSections[0]!,

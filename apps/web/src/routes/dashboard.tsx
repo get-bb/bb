@@ -1100,25 +1100,61 @@ function AccountDashboard({ state }: { state: ServerState }) {
             Add machines from bb Settings → Machines.
           </p>
         ) : (
-          state.machines.map((machine: MachineSummary) => (
-            <div
-              key={machine.id}
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5"
-            >
-              <StatusDot
-                state={machine.lastSeenAt === null ? "new" : "online"}
-              />
-              <span className="min-w-0 flex-1 truncate text-sm">
-                {machine.name ?? `Machine ${machine.id.slice(0, 8)}`}
-              </span>
-              <button
-                className="text-xs text-destructive-text hover:underline"
-                onClick={() => void revoke(machine)}
+          state.machines.map((machine: MachineSummary) => {
+            const machineName =
+              machine.name ?? `Machine ${machine.id.slice(0, 8)}`;
+            return (
+              <div
+                key={machine.id}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5"
               >
-                Revoke
-              </button>
-            </div>
-          ))
+                <StatusDot
+                  state={
+                    machine.lastSeenAt === null
+                      ? "new"
+                      : machine.online
+                        ? "online"
+                        : "offline"
+                  }
+                />
+                <span className="min-w-0 flex-1">
+                  {machine.subdomain !== null ? (
+                    <span className="block truncate font-mono text-sm font-medium leading-tight">
+                      {machine.subdomain}
+                      <span className="font-normal text-subtle-foreground">
+                        .{state.baseDomain}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="block truncate text-sm font-medium leading-tight">
+                      {machineName}
+                    </span>
+                  )}
+                  <span className="mt-px block truncate text-xs text-muted-foreground">
+                    {machine.online ? (
+                      "Online"
+                    ) : machine.lastSeenAt !== null ? (
+                      <>
+                        <span className="text-warning-text">Offline</span>
+                        {` · last seen ${relativeTime(machine.lastSeenAt)}`}
+                      </>
+                    ) : (
+                      "Never connected"
+                    )}
+                    {machine.subdomain !== null && machine.name !== null
+                      ? ` · ${machine.name}`
+                      : ""}
+                  </span>
+                </span>
+                <button
+                  className="text-xs text-destructive-text hover:underline"
+                  onClick={() => void revoke(machine)}
+                >
+                  Revoke
+                </button>
+              </div>
+            );
+          })
         )}
       </div>
       {dialog}

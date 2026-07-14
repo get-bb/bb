@@ -90,6 +90,10 @@ export interface AccountState {
 export interface MachineSummary {
   id: string;
   name: string | null;
+  /** Routing label (`<subdomain>.<baseDomain>`); null until first expose. */
+  subdomain: string | null;
+  /** Heartbeated within the same offline window servers use. */
+  online: boolean;
   lastSeenAt: number | null;
   createdAt: number;
 }
@@ -186,6 +190,7 @@ export async function getAccountState(
     .select({
       id: machine.id,
       name: machine.name,
+      subdomain: machine.subdomain,
       lastSeenAt: machine.lastSeenAt,
       createdAt: machine.createdAt,
     })
@@ -193,12 +198,17 @@ export async function getAccountState(
     .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
     .all();
   const machines = machineRows
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      lastSeenAt: row.lastSeenAt?.getTime() ?? null,
-      createdAt: row.createdAt.getTime(),
-    }))
+    .map((row) => {
+      const lastSeenMs = row.lastSeenAt?.getTime() ?? null;
+      return {
+        id: row.id,
+        name: row.name,
+        subdomain: row.subdomain,
+        online: lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+        lastSeenAt: lastSeenMs,
+        createdAt: row.createdAt.getTime(),
+      };
+    })
     .sort((left, right) => left.createdAt - right.createdAt);
 
   if (!prof) {

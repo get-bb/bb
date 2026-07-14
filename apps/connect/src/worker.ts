@@ -166,13 +166,28 @@ function signInPage(label: string, appUrl: string, returnTo: string): Response {
  * navigations; the last-seen timestamp comes from the row the gate already
  * resolved (fresh enough to be truthful) and the page self-retries.
  */
-export function offlinePage(lastSeenAt: Date | null): Response {
-  const lastSeen = lastSeenAt ? `Last seen ${relativeTime(lastSeenAt)}. ` : "";
+export function offlinePage(
+  lastSeenAt: Date | null,
+  kind: "server" | "machine",
+): Response {
+  // A machine label fronts a daemon's port shares, not a bb app — the copy
+  // names the machine so "your bb" never claims a laptop that only shares.
+  const heading =
+    kind === "machine" ? "This machine is offline" : "Your bb is offline";
+  const lastSeen = lastSeenAt
+    ? kind === "machine"
+      ? `This machine was last seen ${relativeTime(lastSeenAt)}. `
+      : `Last seen ${relativeTime(lastSeenAt)}. `
+    : "";
+  const note =
+    kind === "machine"
+      ? "Usually this means the machine is asleep or bb isn't running on it."
+      : "Usually this means the machine is asleep or bb isn't running.";
   return gatePage(
     `<div class="glyph"><svg viewBox="0 0 16 16" fill="none" stroke-width="1.5"><path d="M1.5 6.2a9.5 9.5 0 0 1 13 0M3.8 8.7a6 6 0 0 1 8.4 0M6.1 11.2a2.6 2.6 0 0 1 3.8 0" stroke-linecap="round"/><path d="M2 2l12 12" stroke-linecap="round"/><circle cx="8" cy="13.6" r="0.9" fill="currentColor" stroke="none"/></svg></div>
-     <h1>Your bb is offline</h1>
+     <h1>${heading}</h1>
      <p>${lastSeen}This page retries automatically when it comes back.</p>
-     <p class="note">Usually this means the machine is asleep or bb isn't running.</p>
+     <p class="note">${note}</p>
      <button class="btn" onclick="location.reload()">Retry now</button>`,
     503,
     10,
@@ -440,6 +455,7 @@ export default {
         resolved.kind === "server"
           ? resolved.server.lastSeenAt
           : resolved.machine.lastSeenAt,
+        resolved.kind,
       );
     }
     return response;
