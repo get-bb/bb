@@ -3,12 +3,11 @@
 // the tunnel round-trip entirely — turning a page's hundreds of asset requests
 // into a handful of dynamic API calls plus edge hits.
 //
-// Security: only called AFTER the gate has verified the requester owns the
-// handle, and the cache key is namespaced by the resolved routing key (including
-// a reusable-label ownership generation) plus share target, so a cached body
-// can never be served across label owners. Caching is opt-in via the ORIGIN's
-// Cache-Control, so a dev server (no-cache module responses) is proxied uncached
-// and correct, while a bundled build (max-age=31536000, immutable) is cached.
+// Only called AFTER the gate has verified the requester owns the label. Server
+// cache namespaces remain the bare/full host label exactly as on main; new
+// machine labels include their ownership generation. Caching is opt-in via the
+// ORIGIN's Cache-Control, so a dev server is proxied uncached while a bundled
+// immutable build is cached.
 
 const CACHE_HOST = "https://bb-connect-asset-cache.internal";
 const MIN_CACHEABLE_MAX_AGE = 300;
@@ -33,9 +32,8 @@ function isCacheable(resp: Response): boolean {
  * Serve `request` from the edge cache when possible, else run `fetchOrigin`
  * (the tunnel) and populate the cache when the response is cacheable.
  *
- * `namespace` is the resolved cache key plus optional share target. Primary
- * handles keep their legacy key; reusable server/machine claims include an
- * ownership generation so old and new owners never share cached responses.
+ * `namespace` is the server label or generation-isolated machine routing key,
+ * plus the optional share target.
  */
 export async function serveWithCache(
   request: Request,

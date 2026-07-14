@@ -21,6 +21,17 @@ import {
 } from "../src/index.js";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations", import.meta.url));
+const LABEL_CLAIM_TRIGGERS = [
+  "machine_label_claim_delete",
+  "machine_label_claim_insert",
+  "machine_label_claim_update",
+  "profile_label_claim_delete",
+  "profile_label_claim_insert",
+  "profile_label_claim_update",
+  "server_label_claim_delete",
+  "server_label_claim_insert",
+  "server_label_claim_update",
+] as const;
 
 /** Migration files in lexical (apply) order. */
 function migrationFiles(): string[] {
@@ -178,6 +189,70 @@ describe("migration matches the drizzle schema", () => {
         .where(eq(machine.id, "claim-ignorant-machine"))
         .get()?.subdomain,
     ).toBeNull();
+  });
+
+  it("rolls back claim-ignorant profile and server updates on global collisions", () => {
+    seedUser("u1");
+    seedUser("u2");
+    const createdAt = Date.now();
+    sqlite
+      .prepare(
+        "INSERT INTO profile (user_id, handle, created_at) VALUES (?, ?, ?)",
+      )
+      .run("u1", "owner-one", createdAt);
+    sqlite
+      .prepare(
+        "INSERT INTO profile (user_id, handle, created_at) VALUES (?, ?, ?)",
+      )
+      .run("u2", "owner-two", createdAt);
+
+    // Attaching the primary server to its owner's handle is legitimate and
+    // shares the existing handle claim instead of attempting a duplicate.
+    sqlite
+      .prepare(
+        "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("primary-one", "u1", "default", "owner-one", createdAt);
+    sqlite
+      .prepare(
+        "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("secondary-two", "u2", "desktop", "server-two", createdAt);
+    expect(
+      sqlite
+        .prepare("SELECT kind, owner_id FROM label_claim WHERE label = ?")
+        .get("owner-one"),
+    ).toEqual({ kind: "handle", owner_id: "u1" });
+
+    expect(() =>
+      sqlite
+        .prepare("UPDATE profile SET handle = ? WHERE user_id = ?")
+        .run("server-two", "u1"),
+    ).toThrow(/unique constraint/iu);
+    expect(() =>
+      sqlite
+        .prepare("UPDATE server SET subdomain = ? WHERE id = ?")
+        .run("owner-one", "secondary-two"),
+    ).toThrow(/unique constraint/iu);
+
+    expect(
+      sqlite.prepare("SELECT handle FROM profile WHERE user_id = ?").get("u1"),
+    ).toEqual({ handle: "owner-one" });
+    expect(
+      sqlite
+        .prepare("SELECT subdomain FROM server WHERE id = ?")
+        .get("secondary-two"),
+    ).toEqual({ subdomain: "server-two" });
+    expect(
+      sqlite
+        .prepare(
+          "SELECT label, kind FROM label_claim WHERE label IN (?, ?) ORDER BY label",
+        )
+        .all("owner-one", "server-two"),
+    ).toEqual([
+      { label: "owner-one", kind: "handle" },
+      { label: "server-two", kind: "server" },
+    ]);
   });
 });
 
@@ -338,6 +413,9 @@ describe("constraints", () => {
   it("cascades connect codes and servers when a user is deleted", () => {
     seedUser();
     const now = new Date();
+    db.insert(profile)
+      .values({ userId: "u1", handle: "sawyer", createdAt: now })
+      .run();
     db.insert(server)
       .values({
         id: "s1",
@@ -359,8 +437,10 @@ describe("constraints", () => {
       .run();
 
     db.delete(user).where(eq(user.id, "u1")).run();
+    expect(db.select().from(profile).all()).toHaveLength(0);
     expect(db.select().from(server).all()).toHaveLength(0);
     expect(db.select().from(connectCode).all()).toHaveLength(0);
+    expect(db.select().from(labelClaim).all()).toHaveLength(0);
   });
 
   it("marks a connect code consumed exactly once (single-use redemption)", () => {
@@ -567,6 +647,13 @@ describe("0003 backfill (staged application on real prior data)", () => {
           )
           .get(),
       ).toBeDefined();
+      expect(
+        fresh
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name",
+          )
+          .all(),
+      ).toEqual(LABEL_CLAIM_TRIGGERS.map((name) => ({ name })));
     } finally {
       fresh.close();
     }
@@ -678,7 +765,7 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
     });
   });
 
-  it("trigger-claims handle and server rows written by the old web worker after 0004", async () => {
+  it("trigger-claims handle and server rows written by an old web worker", async () => {
     seedUser("u1");
     seedUser("u2");
     const now = new Date();

@@ -84,10 +84,6 @@ function seedServer(over: {
       createdAt: now,
     })
     .run();
-  db.update(labelClaim)
-    .set({ generation: `${over.id}-generation` })
-    .where(eq(labelClaim.label, over.subdomain))
-    .run();
 }
 
 function seedMachine(over: {
@@ -135,8 +131,6 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     const resolved = await resolveLabel("sawyer", db, { fresh: true });
     expect(resolved).toEqual({
       kind: "server",
-      cacheKey: "sawyer",
-      routingKey: "sawyer",
       userId: "acct-a",
       server: {
         id: "srv-primary",
@@ -174,8 +168,6 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     }
     expect(primary.server.id).toBe("srv-primary");
     expect(desktop.server.id).toBe("srv-desktop");
-    expect(desktop.routingKey).toBe("sawyer-desktop");
-    expect(desktop.cacheKey).toBe("sawyer-desktop:srv-desktop-generation");
     expect(primary?.userId).toBe("acct-a");
     expect(desktop?.userId).toBe("acct-a");
   });
@@ -240,8 +232,6 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       resolveLabel("legacy-desktop", db, { fresh: true }),
     ).resolves.toMatchObject({
       kind: "server",
-      cacheKey: expect.stringMatching(/^legacy-desktop:/u),
-      routingKey: "legacy-desktop",
       server: { id: "legacy-server" },
     });
     expect(
@@ -276,7 +266,6 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       resolveLabel("new-machine", db, { fresh: true }),
     ).resolves.toMatchObject({
       kind: "machine",
-      cacheKey: expect.stringMatching(/^new-machine:/u),
       routingKey: expect.stringMatching(/^new-machine:/u),
       machine: { id: "machine-new" },
     });
@@ -315,7 +304,6 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       resolveLabel("sawyer-air", db, { fresh: true }),
     ).resolves.toEqual({
       kind: "machine",
-      cacheKey: "sawyer-air:machine-air-generation",
       routingKey: "sawyer-air:machine-air-generation",
       userId: "acct-a",
       accountHandle: "sawyer",

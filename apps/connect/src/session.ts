@@ -3,8 +3,8 @@ import {
   type ConnectDb,
   labelClaim,
   machine,
+  machineRoutingKey,
   profile,
-  routingKeyForLabelClaim,
   server,
   session,
 } from "@bb/connect-db";
@@ -39,8 +39,6 @@ function cacheGet<T>(
 
 export interface ResolvedServer {
   kind: "server";
-  cacheKey: string;
-  routingKey: string;
   /**
    * The account that owns this server (`server.userId`). Session and machine
    * auth scope to this: only this account may visit the server, and only this
@@ -59,7 +57,6 @@ export interface ResolvedServer {
 
 export interface ResolvedMachine {
   kind: "machine";
-  cacheKey: string;
   routingKey: string;
   userId: string;
   accountHandle: string;
@@ -75,11 +72,10 @@ export interface ResolvedMachine {
 export type ResolvedLabel = ResolvedServer | ResolvedMachine;
 
 /**
- * Resolve the authoritative global claim, then its exact product row. The
- * trigger-maintained claim table makes cross-table collisions impossible and
- * supplies the ownership generation used to isolate reusable cache state and
- * machine TunnelDOs. Server TunnelDOs retain the bare key for old-gate
- * compatibility and are explicitly closed under both keys before reuse.
+ * Preserve the existing server-label resolution path and precedence: first
+ * resolve `server.subdomain` exactly as main does, then fall through to a
+ * machine label. Machine claims supply the ownership generation used to keep a
+ * stale cached resolution pinned to the previous machine TunnelDO after reuse.
  *
  * Pass `{ fresh: true }` to bypass the read cache for credential-sensitive
  * paths (tunnel (re)connect): the ~15s cache TTL would otherwise let a
@@ -97,64 +93,7 @@ export async function resolveLabel(
     if (cached !== undefined) return cached;
   }
 
-  const claim = await db
-    .select()
-    .from(labelClaim)
-    .where(eq(labelClaim.label, label))
-    .get();
-  if (!claim) {
-    labelCache.set(label, { value: null, expires: now + LABEL_TTL_MS });
-    return null;
-  }
-  const cacheKey = routingKeyForLabelClaim(
-    claim.label,
-    claim.kind,
-    claim.generation,
-  );
-  // Server tunnels stay on the bare label for old/new gate compatibility;
-  // their edge cache is still generation-isolated. Machines use generation
-  // for both because no old gate established machine-label tunnels.
-  const routingKey = claim.kind === "machine" ? cacheKey : claim.label;
-
-  if (claim.kind === "machine") {
-    const machineRow = await db
-      .select({
-        userId: machine.userId,
-        accountHandle: profile.handle,
-        machineId: machine.id,
-        credentialHash: machine.credentialHash,
-        revokedAt: machine.revokedAt,
-        lastSeenAt: machine.lastSeenAt,
-      })
-      .from(machine)
-      .innerJoin(profile, eq(profile.userId, machine.userId))
-      .where(
-        and(eq(machine.id, claim.ownerId), eq(machine.subdomain, claim.label)),
-      )
-      .get();
-    const resolvedMachine: ResolvedMachine | null = machineRow
-      ? {
-          kind: "machine",
-          cacheKey,
-          routingKey,
-          userId: machineRow.userId,
-          accountHandle: machineRow.accountHandle,
-          machine: {
-            id: machineRow.machineId,
-            credentialHash: machineRow.credentialHash,
-            revokedAt: machineRow.revokedAt,
-            lastSeenAt: machineRow.lastSeenAt,
-          },
-        }
-      : null;
-    labelCache.set(label, {
-      value: resolvedMachine,
-      expires: now + LABEL_TTL_MS,
-    });
-    return resolvedMachine;
-  }
-
-  const row = await db
+  const serverRow = await db
     .select({
       userId: server.userId,
       serverId: server.id,
@@ -163,35 +102,67 @@ export async function resolveLabel(
       lastSeenAt: server.lastSeenAt,
     })
     .from(server)
-    .where(
-      claim.kind === "server"
-        ? and(eq(server.id, claim.ownerId), eq(server.subdomain, claim.label))
-        : and(
-            eq(server.userId, claim.ownerId),
-            eq(server.subdomain, claim.label),
-          ),
-    )
+    .where(eq(server.subdomain, label))
     .get();
+  if (serverRow) {
+    const resolvedServer: ResolvedServer = {
+      kind: "server",
+      userId: serverRow.userId,
+      server: {
+        id: serverRow.serverId,
+        credentialHash: serverRow.credentialHash,
+        revokedAt: serverRow.revokedAt,
+        lastSeenAt: serverRow.lastSeenAt,
+      },
+    };
+    labelCache.set(label, {
+      value: resolvedServer,
+      expires: now + LABEL_TTL_MS,
+    });
+    return resolvedServer;
+  }
 
-  const resolvedServer: ResolvedServer | null = row
+  const machineRow = await db
+    .select({
+      userId: machine.userId,
+      accountHandle: profile.handle,
+      machineId: machine.id,
+      credentialHash: machine.credentialHash,
+      revokedAt: machine.revokedAt,
+      lastSeenAt: machine.lastSeenAt,
+      generation: labelClaim.generation,
+    })
+    .from(machine)
+    .innerJoin(profile, eq(profile.userId, machine.userId))
+    .innerJoin(
+      labelClaim,
+      and(
+        eq(labelClaim.label, machine.subdomain),
+        eq(labelClaim.kind, "machine"),
+        eq(labelClaim.ownerId, machine.id),
+      ),
+    )
+    .where(eq(machine.subdomain, label))
+    .get();
+  const resolvedMachine: ResolvedMachine | null = machineRow
     ? {
-        kind: "server",
-        cacheKey,
-        routingKey,
-        userId: row.userId,
-        server: {
-          id: row.serverId,
-          credentialHash: row.credentialHash,
-          revokedAt: row.revokedAt,
-          lastSeenAt: row.lastSeenAt,
+        kind: "machine",
+        routingKey: machineRoutingKey(label, machineRow.generation),
+        userId: machineRow.userId,
+        accountHandle: machineRow.accountHandle,
+        machine: {
+          id: machineRow.machineId,
+          credentialHash: machineRow.credentialHash,
+          revokedAt: machineRow.revokedAt,
+          lastSeenAt: machineRow.lastSeenAt,
         },
       }
     : null;
   labelCache.set(label, {
-    value: resolvedServer,
+    value: resolvedMachine,
     expires: now + LABEL_TTL_MS,
   });
-  return resolvedServer;
+  return resolvedMachine;
 }
 
 /**

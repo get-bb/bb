@@ -112,7 +112,8 @@ export type LabelClaimKind = (typeof labelClaimKinds)[number];
  * denormalized handle/subdomain for direct reads. Migration-owned triggers
  * insert/delete the claim in the same statement as each source mutation, so
  * the primary key is an atomic cross-namespace constraint even for old workers.
- * `generation` changes when a reusable label changes owners and isolates caches.
+ * `generation` changes when a claim changes owners; machine routing uses it to
+ * isolate TunnelDO and cache state. Server routing remains unchanged from main.
  */
 export const labelClaim = sqliteTable(
   "label_claim",

@@ -289,12 +289,11 @@ export default {
     );
     if (!resolved) return text(`bb connect: no server for "${label}"\n`, 404);
 
-    // Server DOs stay bare-label compatible with the old gate; machine DOs use
-    // generation identity. Edge-cache isolation is separately keyed by
-    // resolved.cacheKey below.
-    const stub = env.TUNNEL_DO.get(
-      env.TUNNEL_DO.idFromName(resolved.routingKey),
-    );
+    // Server routing stays exactly as on main (the bare label). Machine labels
+    // are new and use ownership-generation identity from their first dial.
+    const routingKey =
+      resolved.kind === "machine" ? resolved.routingKey : label;
+    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
 
     // Tunnel client connection — bare label only (share hosts are visitor-facing).
     if (url.pathname === "/__tunnel") {
@@ -425,7 +424,7 @@ export default {
     // share response never collides with bare-label app assets.
     const response = await serveWithCache(
       request,
-      cacheNamespace(resolved.cacheKey, target),
+      cacheNamespace(routingKey, target),
       ctx,
       () => stub.fetch(doRequest),
     );

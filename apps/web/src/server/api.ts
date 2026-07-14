@@ -9,9 +9,9 @@ import {
   connectCode,
   labelClaim,
   machine,
+  machineRoutingKey,
   profile,
   server,
-  tunnelKeysForLabelClaim,
   user,
 } from "@bb/connect-db";
 import type { ConnectDb, LabelAvailability, LabelClaim } from "@bb/connect-db";
@@ -46,26 +46,13 @@ export function depsFromEnv(env: Env): Deps {
   };
 }
 
-async function closeClaimTunnels(
+async function closeMachineTunnel(
   deps: Pick<Deps, "closeTunnel">,
   claim: LabelClaim,
 ): Promise<void> {
   const closeTunnel = deps.closeTunnel;
   if (!closeTunnel) throw new Error("tunnel close unavailable");
-  const results = await Promise.allSettled(
-    tunnelKeysForLabelClaim(claim.label, claim.kind, claim.generation).map(
-      (key) => closeTunnel(key),
-    ),
-  );
-  const failures = results.filter(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
-  );
-  if (failures.length > 0) {
-    throw new AggregateError(
-      failures.map((failure) => failure.reason),
-      "one or more tunnel closures failed",
-    );
-  }
+  await closeTunnel(machineRoutingKey(claim.label, claim.generation));
 }
 
 /** One connected bb server, projected for the dashboard. */
@@ -276,7 +263,7 @@ export async function revokeMachine(
 
   if (claim) {
     try {
-      await closeClaimTunnels(deps, claim);
+      await closeMachineTunnel(deps, claim);
     } catch {
       return { error: "tunnel-close-failed" };
     }
@@ -630,8 +617,8 @@ export async function revokeMachineForServerCredential(
 
 /**
  * Revoke ONE server's credential and sever its live tunnel. Server-scoped: only
- * the target row is cleared and both its generation and legacy bare-label
- * TunnelDOs are closed, so mixed gate versions cannot leave an origin attached.
+ * the target row is cleared and only its TunnelDO (keyed by subdomain) is closed,
+ * so disconnecting one bb never touches the account's other servers.
  */
 export async function disconnectServer(
   deps: Deps,
@@ -648,27 +635,14 @@ export async function disconnectServer(
 
   await db
     .update(server)
-    .set({ revokedAt: srv.revokedAt ?? new Date() })
+    .set({ credentialHash: null, revokedAt: new Date() })
     .where(eq(server.id, srv.id))
     .run();
-  const claim = await db
-    .select()
-    .from(labelClaim)
-    .where(eq(labelClaim.label, srv.subdomain))
-    .get();
-  if (!claim) return { error: "tunnel-close-failed" };
   try {
-    await closeClaimTunnels(deps, claim);
+    await deps.closeTunnel?.(srv.subdomain);
   } catch {
-    // Keep credentialHash as a durable "closure pending" marker. Reconnect is
-    // blocked by revokedAt, and removeServer retries both DO keys before delete.
-    return { error: "tunnel-close-failed" };
+    // best-effort; the credential is already revoked so reconnect is blocked
   }
-  await db
-    .update(server)
-    .set({ credentialHash: null })
-    .where(eq(server.id, srv.id))
-    .run();
   return { ok: true };
 }
 
@@ -684,7 +658,6 @@ export async function removeServer(
   deps: Deps,
   userId: string,
   serverId: string,
-  hooks: { afterDelete?: () => Promise<void> } = {},
 ): Promise<{ ok: true } | { error: string }> {
   const { db } = deps;
   const prof = await db
@@ -703,23 +676,7 @@ export async function removeServer(
     return { error: "connected" };
   }
 
-  const candidateClaim = await db
-    .select()
-    .from(labelClaim)
-    .where(eq(labelClaim.label, srv.subdomain))
-    .get();
-  const claim =
-    candidateClaim?.kind === "server" && candidateClaim.ownerId === srv.id
-      ? candidateClaim
-      : null;
-  if (!claim) return { error: "tunnel-close-failed" };
-  try {
-    await closeClaimTunnels(deps, claim);
-  } catch {
-    return { error: "tunnel-close-failed" };
-  }
   await db.delete(server).where(eq(server.id, srv.id)).run();
-  await hooks.afterDelete?.();
   return { ok: true };
 }
 

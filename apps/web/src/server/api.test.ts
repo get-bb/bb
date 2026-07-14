@@ -12,7 +12,6 @@ import {
   MAX_SERVERS_PER_ACCOUNT,
   schema,
   server,
-  tunnelKeysForLabelClaim,
   user,
 } from "@bb/connect-db";
 import {
@@ -317,25 +316,14 @@ describe("disconnectServer (server-scoped)", () => {
     await claimHandle(deps, "u1", "sawyer");
     const desktop = await createServer(deps, "u1", "sawyer-desktop");
     if (!("ok" in desktop)) throw new Error("setup");
-    const desktopClaim = db
-      .select()
-      .from(labelClaim)
-      .where(eq(labelClaim.ownerId, desktop.server.id))
-      .get();
-    if (!desktopClaim) throw new Error("missing server claim");
 
     // Pair both servers (give each a credential).
     db.update(server).set({ credentialHash: "hash", revokedAt: null }).run();
 
     const r = await disconnectServer(deps, "u1", desktop.server.id);
     expect(r).toEqual({ ok: true });
-    const keys = tunnelKeysForLabelClaim(
-      desktopClaim.label,
-      desktopClaim.kind,
-      desktopClaim.generation,
-    );
-    expect(closeTunnel).toHaveBeenCalledTimes(keys.length);
-    for (const key of keys) expect(closeTunnel).toHaveBeenCalledWith(key);
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
+    expect(closeTunnel).toHaveBeenCalledWith("sawyer-desktop");
 
     const target = db
       .select()
@@ -369,62 +357,6 @@ describe("disconnectServer (server-scoped)", () => {
       error: "not-found",
     });
     expect(closeTunnel).not.toHaveBeenCalled();
-  });
-
-  it("blocks reuse until both generation and old-gate bare-label tunnels close", async () => {
-    seedUser("u1");
-    seedUser("u2");
-    await claimHandle(deps, "u1", "owner-one");
-    await claimHandle(deps, "u2", "owner-two");
-    const first = await createServer(deps, "u1", "shared-server");
-    if (!("ok" in first)) throw new Error("first server setup failed");
-    db.update(server)
-      .set({ credentialHash: "hash", revokedAt: null })
-      .where(eq(server.id, first.server.id))
-      .run();
-    const firstClaim = db
-      .select()
-      .from(labelClaim)
-      .where(eq(labelClaim.ownerId, first.server.id))
-      .get();
-    if (!firstClaim) throw new Error("missing first claim");
-    closeTunnel.mockImplementation(async (key: string) => {
-      if (key === "shared-server") throw new Error("old-gate DO unavailable");
-    });
-
-    await expect(
-      disconnectServer(deps, "u1", first.server.id),
-    ).resolves.toEqual({ error: "tunnel-close-failed" });
-    const firstKeys = tunnelKeysForLabelClaim(
-      firstClaim.label,
-      firstClaim.kind,
-      firstClaim.generation,
-    );
-    for (const key of firstKeys) expect(closeTunnel).toHaveBeenCalledWith(key);
-    expect(
-      db.select().from(server).where(eq(server.id, first.server.id)).get()
-        ?.credentialHash,
-    ).toBe("hash");
-    await expect(removeServer(deps, "u1", first.server.id)).resolves.toEqual({
-      error: "tunnel-close-failed",
-    });
-    await expect(createServer(deps, "u2", "shared-server")).resolves.toEqual({
-      error: "taken",
-    });
-    closeTunnel.mockResolvedValue(undefined);
-    await expect(removeServer(deps, "u1", first.server.id)).resolves.toEqual({
-      ok: true,
-    });
-    const second = await createServer(deps, "u2", "shared-server");
-    if (!("ok" in second)) throw new Error("second server setup failed");
-    const secondClaim = db
-      .select()
-      .from(labelClaim)
-      .where(eq(labelClaim.ownerId, second.server.id))
-      .get();
-    if (!secondClaim) throw new Error("missing second claim");
-
-    expect(firstClaim.generation).not.toBe(secondClaim.generation);
   });
 });
 
@@ -498,45 +430,6 @@ describe("removeServer (delete a never-paired row)", () => {
       .get();
     expect(await removeServer(deps, "u1", victim!.id)).toEqual({
       error: "not-found",
-    });
-  });
-
-  it("deletes source and claim atomically before a post-delete failure", async () => {
-    seedUser("u1");
-    seedUser("u2");
-    await claimHandle(deps, "u1", "owner-one");
-    await claimHandle(deps, "u2", "owner-two");
-    const first = await createServer(deps, "u1", "repairable-server");
-    if (!("ok" in first)) throw new Error("first server setup failed");
-    await expect(
-      removeServer(deps, "u1", first.server.id, {
-        afterDelete: async () => {
-          throw new Error("injected after-delete failure");
-        },
-      }),
-    ).rejects.toThrow("injected after-delete failure");
-    expect(
-      db.select().from(server).where(eq(server.id, first.server.id)).get(),
-    ).toBeUndefined();
-    expect(
-      db
-        .select()
-        .from(labelClaim)
-        .where(eq(labelClaim.label, "repairable-server"))
-        .get(),
-    ).toBeUndefined();
-
-    const second = await createServer(deps, "u2", "repairable-server");
-    if (!("ok" in second)) throw new Error("repair claim failed");
-    expect(
-      db
-        .select()
-        .from(labelClaim)
-        .where(eq(labelClaim.label, "repairable-server"))
-        .get(),
-    ).toMatchObject({
-      userId: "u2",
-      ownerId: second.server.id,
     });
   });
 });
@@ -698,7 +591,7 @@ describe("dashboard machine recovery", () => {
       ok: true,
     });
     expect(closeTunnel).toHaveBeenCalledWith("lost-laptop:lost-generation");
-    expect(closeTunnel).toHaveBeenCalledWith("lost-laptop");
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
     expect((await getAccountState(deps, "u1")).machines).toEqual([]);
     expect(
       db.select().from(machine).where(eq(machine.id, "machine-owner")).get()
@@ -783,9 +676,9 @@ describe("dashboard machine recovery", () => {
     await expect(revokeMachine(deps, "u1", "machine-retry")).resolves.toEqual({
       error: "tunnel-close-failed",
     });
-    expect(closeTunnel).toHaveBeenCalledTimes(2);
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
     await getAccountState(deps, "u1");
-    expect(closeTunnel).toHaveBeenCalledTimes(4);
+    expect(closeTunnel).toHaveBeenCalledTimes(2);
     expect(
       db
         .select()
@@ -836,7 +729,7 @@ describe("dashboard machine recovery", () => {
     );
 
     const revocation = revokeMachine(deps, "u1", "machine-a");
-    await vi.waitFor(() => expect(closeTunnel).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(closeTunnel).toHaveBeenCalledTimes(1));
     expect(() =>
       db
         .update(machine)

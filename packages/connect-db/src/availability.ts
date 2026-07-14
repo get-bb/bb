@@ -8,7 +8,7 @@
 import { eq } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { type HandleValidationError, validateSubdomain } from "./constants.js";
-import { labelClaim, type LabelClaimKind } from "./schema.js";
+import { labelClaim } from "./schema.js";
 
 export type LabelClaim = typeof labelClaim.$inferSelect;
 
@@ -76,20 +76,7 @@ export async function checkLabelAvailability(
   return { available: true, label };
 }
 
-/** Cache namespace: primary handles are stable; reusable labels use generation. */
-export function routingKeyForLabelClaim(
-  label: string,
-  kind: LabelClaimKind,
-  generation: string,
-): string {
-  return kind === "handle" ? label : `${label}:${generation}`;
-}
-
-/** Close every DO key a current or old gate could have used for this claim. */
-export function tunnelKeysForLabelClaim(
-  label: string,
-  _kind: LabelClaimKind,
-  generation: string,
-): string[] {
-  return [`${label}:${generation}`, label];
+/** Machine routing key, isolated across label ownership generations. */
+export function machineRoutingKey(label: string, generation: string): string {
+  return `${label}:${generation}`;
 }

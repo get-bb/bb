@@ -3,8 +3,9 @@
 Migrations 0000–0003 predate this package's Drizzle Kit workflow and remain the
 deployed SQL source of truth. Their journal positions were bootstrapped with
 Drizzle custom migrations, and 0003 is the generated full-schema baseline.
-Migration 0004 and later use the normal schema-diff workflow and generated
-snapshots.
+Migration 0004 uses the normal schema-diff workflow and generated snapshot.
+Migration 0005 is an explicitly generated custom migration because Drizzle's
+SQLite schema diff and snapshots do not model triggers.
 
 From this package, generate the next migration with:
 
@@ -14,21 +15,30 @@ pnpm db:generate --name <migration_name>
 
 Never edit snapshot JSON by hand.
 
-## Connect 0004 deployment order
+For SQL objects that Drizzle does not model, create a journaled custom migration
+before adding the SQL:
 
-Migration `0004_machine_labels.sql` installs triggers that make every profile,
-server, and machine label mutation update `label_claim` in the same SQLite
-statement. Old web workers are therefore safe after the migration: their source
-writes cannot bypass the global namespace.
+```sh
+pnpm exec drizzle-kit generate --config drizzle.config.ts --custom --name <migration_name>
+```
 
-The gate and web deploys must still be ordered:
+This creates the SQL file plus its journal/snapshot entry. Edit only the custom
+SQL file; never hand-edit `_journal.json` or snapshot JSON.
 
-1. Apply migration 0004.
-2. Deploy `apps/connect` and wait for the old gate deployment to be fully retired.
-3. Deploy `apps/web`.
+## Machine-label migration deployment order
 
-Do not deploy the new web worker while the old gate is serving traffic. The old
-gate uses a bare-label edge-cache namespace that cannot be purged by ownership
-generation; only the new gate isolates reusable server cache entries. Tunnel
-disconnect/revocation closes both bare and generation DO keys, but that cannot
-retroactively change the old gate's cache key.
+Migration `0004_machine_labels.sql` creates `label_claim` and the nullable
+machine label column. Custom migration `0005_label_claim_triggers.sql` installs
+the insert/update/delete triggers that make every profile, server, and machine
+label mutation update `label_claim` in the same SQLite statement. Old web
+workers are therefore safe after the full migration chain: their source writes
+cannot bypass the global namespace.
+
+Apply migrations through 0005 before deploying either worker version that
+relies on `label_claim`. After that database-first step, the gate and web workers
+may deploy independently. The old gate does not resolve machine labels, while
+new machine TunnelDO/cache keys are generation-isolated from their first use.
+
+Server label resolution, cache/DO keys, disconnect, and reuse behavior remain
+exactly as on main. The pre-existing server-label reuse race is out of scope for
+this migration and must be handled as separate server hardening.

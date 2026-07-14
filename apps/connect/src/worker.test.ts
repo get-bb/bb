@@ -176,16 +176,12 @@ const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 /** A resolved server row; overrides let a test tweak one field. */
 function resolvedServer(
   over: Partial<{
-    cacheKey: string;
     lastSeenAt: Date | null;
-    routingKey: string;
     userId: string;
   }> = {},
 ) {
   return {
     kind: "server" as const,
-    cacheKey: over.cacheKey ?? over.routingKey ?? "sawyer",
-    routingKey: over.routingKey ?? "sawyer",
     userId: over.userId ?? OWNER,
     server: {
       id: "srv1",
@@ -199,7 +195,6 @@ function resolvedServer(
 function resolvedMachine(
   over: Partial<{
     credentialHash: string;
-    cacheKey: string;
     lastSeenAt: Date | null;
     revokedAt: Date | null;
     routingKey: string;
@@ -208,8 +203,6 @@ function resolvedMachine(
 ) {
   return {
     kind: "machine" as const,
-    cacheKey:
-      over.cacheKey ?? over.routingKey ?? "sawyer-air:machine-generation",
     routingKey: over.routingKey ?? "sawyer-air:machine-generation",
     userId: over.userId ?? OWNER,
     accountHandle: "sawyer",
@@ -780,62 +773,6 @@ describe("gate worker share hosts", () => {
     );
   });
 
-  it("isolates reused server cache generations while retaining the bare DO key", async () => {
-    mockResolveLabel.mockResolvedValue(
-      resolvedServer({
-        cacheKey: "shared-server:generation-a",
-        routingKey: "shared-server",
-      }),
-    );
-    const oldEnv = makeEnv(() => new Response("owner-a"));
-    const oldResponse = await worker.fetch(
-      visitorRequest("shared-server--3000.getbb.app", "/asset.js"),
-      oldEnv.env as never,
-      oldEnv.ctx,
-    );
-    expect(oldResponse.status).toBe(200);
-    expect(oldEnv.routingKeys).toEqual(["shared-server"]);
-    expect(mockServeWithCache).toHaveBeenLastCalledWith(
-      expect.any(Request),
-      "shared-server:generation-a--3000",
-      oldEnv.ctx,
-      expect.any(Function),
-    );
-
-    mockResolveLabel.mockResolvedValue(
-      resolvedServer({
-        cacheKey: "shared-server:generation-b",
-        routingKey: "shared-server",
-        userId: OTHER,
-      }),
-    );
-    const blockedEnv = makeEnv(() => new Response("wrong-owner-content"));
-    const blockedResponse = await worker.fetch(
-      visitorRequest("shared-server--3000.getbb.app", "/asset.js"),
-      blockedEnv.env as never,
-      blockedEnv.ctx,
-    );
-    expect(blockedResponse.status).toBe(403);
-    expect(blockedEnv.routingKeys).toEqual(["shared-server"]);
-    expect(blockedEnv.captured).toHaveLength(0);
-
-    mockVerifySession.mockResolvedValue(OTHER);
-    const newEnv = makeEnv(() => new Response("owner-b"));
-    const newResponse = await worker.fetch(
-      visitorRequest("shared-server--3000.getbb.app", "/asset.js"),
-      newEnv.env as never,
-      newEnv.ctx,
-    );
-    expect(newResponse.status).toBe(200);
-    expect(newEnv.routingKeys).toEqual(["shared-server"]);
-    expect(mockServeWithCache).toHaveBeenLastCalledWith(
-      expect.any(Request),
-      "shared-server:generation-b--3000",
-      newEnv.ctx,
-      expect.any(Function),
-    );
-  });
-
   it("strips a smuggled target header on bare hosts", async () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     await worker.fetch(
@@ -874,12 +811,7 @@ describe("gate worker share hosts", () => {
     // `sawyer-desktop` is a second bb's own subdomain, not the account handle;
     // `--3000` nests its port share. parseVisitorHost splits on the first `--`
     // only, so the base label stays `sawyer-desktop` and resolves per-bb.
-    mockResolveLabel.mockResolvedValue(
-      resolvedServer({
-        cacheKey: "sawyer-desktop:desktop-generation",
-        routingKey: "sawyer-desktop",
-      }),
-    );
+    mockResolveLabel.mockResolvedValue(resolvedServer());
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
       visitorRequest("sawyer-desktop--3000.getbb.app", "/app"),
@@ -895,7 +827,7 @@ describe("gate worker share hosts", () => {
     expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("3000");
     expect(mockServeWithCache).toHaveBeenCalledWith(
       expect.any(Request),
-      "sawyer-desktop:desktop-generation--3000",
+      "sawyer-desktop--3000",
       ctx,
       expect.any(Function),
     );
