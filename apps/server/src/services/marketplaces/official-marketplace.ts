@@ -47,7 +47,7 @@ export const OFFICIAL_MARKETPLACE_CATALOG = {
         githubRelease: {
           repository: "ymichael/bb",
           package: "bb-plugin-simple-notes",
-          range: "^0.1.0",
+          range: "^0.1.1",
           tagTemplate: "plugin-docs-v{version}",
           assetTemplate: "bb-plugin-simple-notes-{version}.tgz",
         },
