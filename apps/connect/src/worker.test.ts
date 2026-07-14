@@ -1041,6 +1041,25 @@ describe("gate offline page", () => {
     expect(html).not.toContain("Last seen");
   });
 
+  it("names the machine and its last-seen when a machine share host is offline", async () => {
+    mockResolveLabel.mockResolvedValue(
+      resolvedMachine({ lastSeenAt: new Date(Date.now() - 5 * 60_000) }),
+    );
+    const { env, ctx } = makeEnv(offlineDoResponse);
+    const res = await worker.fetch(
+      visitorRequest("sawyer-air--3000.getbb.app", "/", {
+        headers: { accept: "text/html" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(503);
+    const html = await res.text();
+    expect(html).toContain("This machine is offline");
+    expect(html).toContain("This machine was last seen 5 minutes ago");
+    expect(html).not.toContain("Your bb is offline");
+  });
+
   it("keeps the plain 503 for non-navigation requests (API/assets/fetch)", async () => {
     mockResolveLabel.mockResolvedValue(resolvedServer());
     const { env, ctx } = makeEnv(offlineDoResponse);
@@ -1109,7 +1128,7 @@ describe("gate page helpers", () => {
   });
 
   it("offlinePage is a self-retrying styled 503", async () => {
-    const res = offlinePage(null);
+    const res = offlinePage(null, "server");
     expect(res.status).toBe(503);
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(await res.text()).toContain("Retry now");

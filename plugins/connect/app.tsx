@@ -506,6 +506,28 @@ function PairForm({
 // Shared ports subsection (restyled into the section grammar).
 // ---------------------------------------------------------------------------
 
+interface ShareHostGroup {
+  hostId: string;
+  hostName: string;
+  shares: ConnectStatus["shares"];
+}
+
+/** Group shares under their host, preserving the backend's host/port order. */
+function groupSharesByHost(shares: ConnectStatus["shares"]): ShareHostGroup[] {
+  const groups: ShareHostGroup[] = [];
+  const byHostId = new Map<string, ShareHostGroup>();
+  for (const share of shares) {
+    let group = byHostId.get(share.hostId);
+    if (group === undefined) {
+      group = { hostId: share.hostId, hostName: share.hostName, shares: [] };
+      byHostId.set(share.hostId, group);
+      groups.push(group);
+    }
+    group.shares.push(share);
+  }
+  return groups;
+}
+
 function SharedPortsSection({
   shares,
   dimmed,
@@ -587,54 +609,85 @@ function SharedPortsSection({
       </div>
 
       {shares.length > 0 ? (
-        <ul className="space-y-1">
-          {shares.map((share) => (
-            <li
-              key={`${share.hostId}:${share.port}`}
-              className="flex items-center gap-2"
-            >
-              <span className="shrink-0 font-mono text-xs tabular-nums text-foreground">
-                :{share.port}
-              </span>
-              {share.url ? (
-                <>
-                  <a
-                    href={share.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline"
+        <div className="space-y-2.5">
+          {groupSharesByHost(shares).map((group) => {
+            // A host whose shares all lack a URL is unreachable right now
+            // (offline daemon, removed host, …) — the whole group reads
+            // degraded, but Revoke stays live since removal works offline.
+            const hostDown = group.shares.every((share) => share.url === "");
+            return (
+              <div key={group.hostId} className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <StatusDot tone={hostDown ? "muted" : "ok"} />
+                  <span
+                    className={cn(
+                      "min-w-0 truncate text-xs font-medium",
+                      hostDown ? "text-muted-foreground" : "text-foreground",
+                    )}
                   >
-                    {hostOf(share.url)}
-                  </a>
-                  <QuietCopyButton
-                    url={share.url}
-                    label={`Copy share URL for port ${share.port}`}
-                  />
-                </>
-              ) : (
-                <span
-                  className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
-                  title={share.unavailableReason}
-                >
-                  Unavailable — {share.unavailableReason ?? "unknown reason"}
-                </span>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={DANGER_QUIET_CLASS}
-                disabled={revokingShare === `${share.hostId}:${share.port}`}
-                onClick={() => unexpose(share.hostId, share.port)}
-              >
-                {revokingShare === `${share.hostId}:${share.port}` ? (
-                  <Icon name="Spinner" className="size-4 animate-spin" />
-                ) : null}
-                Revoke
-              </Button>
-            </li>
-          ))}
-        </ul>
+                    {group.hostName}
+                  </span>
+                </div>
+                <ul className="space-y-1 pl-3.5">
+                  {group.shares.map((share) => (
+                    <li
+                      key={`${share.hostId}:${share.port}`}
+                      className="flex items-center gap-2"
+                    >
+                      <span
+                        className={cn(
+                          "shrink-0 font-mono text-xs tabular-nums",
+                          share.url ? "text-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        :{share.port}
+                      </span>
+                      {share.url ? (
+                        <>
+                          <a
+                            href={share.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline"
+                          >
+                            {hostOf(share.url)}
+                          </a>
+                          <QuietCopyButton
+                            url={share.url}
+                            label={`Copy share URL for port ${share.port}`}
+                          />
+                        </>
+                      ) : (
+                        <span
+                          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+                          title={share.unavailableReason}
+                        >
+                          Unavailable —{" "}
+                          {share.unavailableReason ?? "unknown reason"}
+                        </span>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={DANGER_QUIET_CLASS}
+                        disabled={
+                          revokingShare === `${share.hostId}:${share.port}`
+                        }
+                        onClick={() => unexpose(share.hostId, share.port)}
+                      >
+                        {revokingShare === `${share.hostId}:${share.port}` ? (
+                          <Icon name="Spinner" className="size-4 animate-spin" />
+                        ) : null}
+                        Revoke
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
       ) : null}
 
       {formOpen ? (

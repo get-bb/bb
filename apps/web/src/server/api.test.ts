@@ -580,6 +580,8 @@ describe("dashboard machine recovery", () => {
       {
         id: "machine-owner",
         name: "lost laptop",
+        subdomain: "lost-laptop",
+        online: true,
         lastSeenAt: now.getTime(),
         createdAt: now.getTime(),
       },
@@ -601,6 +603,45 @@ describe("dashboard machine recovery", () => {
       db.select().from(machine).where(eq(machine.id, "machine-other")).get()
         ?.revokedAt,
     ).toBeNull();
+  });
+
+  it("marks a machine online only when freshly seen, offline when stale", async () => {
+    seedUser("u1");
+    const now = new Date();
+    const stale = new Date(now.getTime() - 10 * 60_000);
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-fresh",
+          userId: "u1",
+          subdomain: "fresh-machine",
+          credentialHash: "hash-fresh",
+          lastSeenAt: now,
+          createdAt: new Date(now.getTime() - 2000),
+        },
+        {
+          id: "machine-stale",
+          userId: "u1",
+          subdomain: "stale-machine",
+          credentialHash: "hash-stale",
+          lastSeenAt: stale,
+          createdAt: new Date(now.getTime() - 1000),
+        },
+        {
+          id: "machine-unlabeled",
+          userId: "u1",
+          credentialHash: "hash-unlabeled",
+          createdAt: now,
+        },
+      ])
+      .run();
+
+    const machines = (await getAccountState(deps, "u1")).machines;
+    expect(machines.map((m) => [m.id, m.subdomain, m.online])).toEqual([
+      ["machine-fresh", "fresh-machine", true],
+      ["machine-stale", "stale-machine", false],
+      ["machine-unlabeled", null, false],
+    ]);
   });
 
   it("keeps a revoked label pinned when tunnel close fails", async () => {
