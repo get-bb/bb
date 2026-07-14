@@ -3,6 +3,7 @@
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { PluginThreadPanelProps } from "@bb/plugin-sdk";
@@ -31,6 +32,7 @@ import {
   usePluginPanelActions,
   type OpenPluginPanelArgs,
 } from "./PluginPanelActions";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -276,6 +278,65 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
     fireEvent.click(screen.getByText("Demo board"));
     expect(screen.getByText("board panel body")).toBeDefined();
+  });
+
+  it("shows a plugin panel's position when it is open in a split", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        navPanels: [
+          {
+            id: "board",
+            title: "Demo board",
+            icon: "columns",
+            path: "board",
+            component: Board,
+          },
+        ],
+      }),
+    );
+    const store = createStore();
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-thread",
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-plugin",
+            content: {
+              kind: "plugin-panel",
+              pluginId: "demo",
+              panelPath: "board",
+              subPath: "card/1",
+            },
+          },
+          {
+            type: "pane",
+            paneId: "pane-thread",
+            content: {
+              kind: "thread",
+              projectId: "proj_test",
+              threadId: "thr_test",
+            },
+          },
+        ],
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={["/"]}>
+          <PluginNavSidebarItems splitEnabled />
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Demo board — open in split" }),
+    ).not.toBeNull();
   });
 
   it("keeps the sidebar entry active on nested plugin panel routes", () => {

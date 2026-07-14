@@ -2,7 +2,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { ThreadRowMiniMap } from "./ThreadRowMiniMap";
+import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 
 afterEach(cleanup);
 
@@ -18,10 +18,10 @@ function visibleBounds(rect: SVGElement) {
   };
 }
 
-describe("ThreadRowMiniMap", () => {
+describe("SplitPaneMiniMap", () => {
   it("keeps filled and outlined slots the same size with square corners", () => {
     render(
-      <ThreadRowMiniMap
+      <SplitPaneMiniMap
         label="Two-pane split"
         slots={[
           {

@@ -60,8 +60,9 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
-import { ThreadRowMiniMap } from "./ThreadRowMiniMap";
-import { useThreadSplitIndicator } from "./threadSplitIndicator";
+import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
+import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 
 interface ThreadRowBaseOptions {
@@ -460,7 +461,11 @@ function ThreadRowComponent({
   // Inside a folder the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
   const labelTitle = accessibleTitle ?? threadTitle;
-  const splitIndicator = useThreadSplitIndicator(projectId, thread.id);
+  const threadSplitsEnabled = useThreadSplitsEnabled();
+  const splitIndicator = usePaneContentSplitIndicator(
+    { kind: "thread", projectId, threadId: thread.id },
+    threadSplitsEnabled,
+  );
   const { onPointerDown: onSplitDragPointerDown, openInSplit } =
     useThreadRowSplitDrag({
       projectId,
@@ -587,7 +592,7 @@ function ThreadRowComponent({
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
         {splitIndicator.miniMap ? (
-          <ThreadRowMiniMap
+          <SplitPaneMiniMap
             slots={splitIndicator.miniMap}
             label={`${labelTitle} — open in split`}
           />

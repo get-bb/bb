@@ -172,6 +172,8 @@ import {
   type SidebarThreadSearchPanelController,
 } from "./sidebarThreadSearch";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
+import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 
 interface ProjectListProps {
   onNewProject?: () => void;
@@ -181,6 +183,7 @@ interface ProjectListProps {
 }
 
 interface ProjectListActionButtonsProps {
+  splitEnabled?: boolean;
   newThreadSplit?: {
     onPointerDown?: PointerEventHandler<HTMLElement>;
     openInSplit(): void;
@@ -238,8 +241,7 @@ export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
 
 const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
   "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:cursor-default disabled:opacity-50",
-  COARSE_POINTER_ROW_HEIGHT_CLASS,
-  "w-8",
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
 
 const PROJECT_LIST_SEARCH_INPUT_ROW_CLASS = cn(
@@ -1031,6 +1033,7 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 });
 
 export function ProjectListActionButtons({
+  splitEnabled = false,
   newThreadSplit,
   onNewChat,
   threadSearch,
@@ -1038,6 +1041,10 @@ export function ProjectListActionButtons({
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
   const threadSearchShortcut = useAppCommandShortcut("thread.search");
+  const newThreadSplitIndicator = usePaneContentSplitIndicator(
+    { kind: "new-thread" },
+    splitEnabled,
+  );
   // One click on the X fully dismisses search — it clears the query and closes
   // the input in a single step (onClose resets the query too). Previously this
   // was a two-step clear-then-close, which felt like the X "needed two presses".
@@ -1087,7 +1094,7 @@ export function ProjectListActionButtons({
           </Button>
         </div>
       ) : (
-        <div className="flex min-w-0 items-center gap-1">
+        <div className="flex min-w-0 items-center gap-0.5">
           <Button
             type="button"
             size="sm"
@@ -1110,9 +1117,15 @@ export function ProjectListActionButtons({
             aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
           >
             <Icon name="MessageSquarePlus" />
-            <span className="min-w-0 truncate text-left">
+            <span className="min-w-0 flex-1 truncate text-left">
               New thread
             </span>
+            {newThreadSplitIndicator.miniMap ? (
+              <SplitPaneMiniMap
+                slots={newThreadSplitIndicator.miniMap}
+                label="New thread — open in split"
+              />
+            ) : null}
             <AppCommandShortcutHint shortcut={newThreadShortcut} />
           </Button>
           {threadSearch ? (
@@ -1131,7 +1144,10 @@ export function ProjectListActionButtons({
                 className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
                 onClick={threadSearch.onActivate}
               >
-                <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+                <Icon
+                  name="Search"
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
               </Button>
             </span>
           ) : null}
@@ -2136,7 +2152,8 @@ function ProjectListComponent({
                   actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedMachineKeys.has(section.key),
-                    onToggleCollapsed: () => toggleMachineCollapsed(section.key),
+                    onToggleCollapsed: () =>
+                      toggleMachineCollapsed(section.key),
                   }}
                 >
                   <ProjectThreadTree

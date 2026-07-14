@@ -337,11 +337,7 @@ export function AppSidebar({
       return;
     }
     hideThreadShortcuts();
-  }, [
-    hideThreadShortcuts,
-    isAppCommandModifierHeld,
-    showThreadShortcuts,
-  ]);
+  }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
@@ -382,6 +378,7 @@ export function AppSidebar({
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
         >
           <ProjectListActionButtons
+            splitEnabled={threadSplitsEnabled}
             newThreadSplit={newThreadSplit}
             onNewChat={handleNewChat}
             threadSearch={{

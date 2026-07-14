@@ -1,12 +1,12 @@
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { MiniMapSlot } from "./threadSplitIndicator";
+import type { MiniMapSlot } from "./paneContentSplitIndicator";
 
 const GLYPH_SIZE = 14;
 const GLYPH_PADDING = 1;
 const INNER = GLYPH_SIZE - 2 * GLYPH_PADDING;
 const OUTLINE_WIDTH = 1;
 
-interface ThreadRowMiniMapProps {
+interface SplitPaneMiniMapProps {
   slots: MiniMapSlot[];
   label: string;
 }
@@ -27,19 +27,16 @@ function outlineInset(isFilled: boolean): number {
 }
 
 /**
- * Tiny outline of the current pane arrangement drawn at a sidebar row's trailing
- * edge, with this thread's slot filled and the focused pane's slot in the accent
- * token. Colors come from theme tokens (stroke/fill utilities), never hardcoded,
- * so custom palettes re-anchor cleanly. Sits left of the hover-action slot so it
- * never fights the row's revealed actions.
+ * Tiny outline of the current pane arrangement, with the sidebar item's slot
+ * filled and the focused pane's slot in the accent token.
  */
-export function ThreadRowMiniMap({ slots, label }: ThreadRowMiniMapProps) {
+export function SplitPaneMiniMap({ slots, label }: SplitPaneMiniMapProps) {
   return (
     <svg
       width={GLYPH_SIZE}
       height={GLYPH_SIZE}
       viewBox={`0 0 ${GLYPH_SIZE} ${GLYPH_SIZE}`}
-      className="pointer-events-none ml-0.5 shrink-0"
+      className="pointer-events-none ml-0.5 !size-3.5 shrink-0"
       shapeRendering="crispEdges"
       role="img"
       aria-label={label}
