@@ -13,19 +13,7 @@ import {
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import type { AppDeps } from "../../types.js";
 import { requirePrimaryHostId } from "../hosts/primary-host.js";
-
-/**
- * Default `limit` applied when the route receives no `limit` query param.
- * Matches the composer mention menu cap so the command and mention menus show
- * the same number of rows.
- */
-export const PROVIDER_COMMAND_DEFAULT_LIMIT = 8;
-
-/**
- * Upper bound on the `limit` query param. Command/skill sets are small local
- * directories, so this only guards against absurd client requests.
- */
-export const PROVIDER_COMMAND_LIMIT_MAX = 50;
+import type { ResolvedSkillCatalogEntry } from "../skills/injected-skills.js";
 
 const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
   {
@@ -132,28 +120,16 @@ function toProviderCommand(command: HostProviderCommand): ProviderCommand {
   };
 }
 
-function commandSearchNames(command: ProviderCommand): string[] {
-  const name = command.name.toLowerCase();
-  if (command.source !== "skill") {
-    return [name];
-  }
-  const separatorIndex = name.lastIndexOf(":");
-  if (separatorIndex < 0 || separatorIndex === name.length - 1) {
-    return [name];
-  }
-  return [name, name.slice(separatorIndex + 1)];
-}
-
-function matchesQuery(command: ProviderCommand, query: string): boolean {
-  if (query === "") {
-    return true;
-  }
-  if (commandSearchNames(command).some((name) => name.includes(query))) {
-    return true;
-  }
-  return command.description !== null
-    ? command.description.toLowerCase().includes(query)
-    : false;
+function toSkillCommand(entry: ResolvedSkillCatalogEntry): ProviderCommand {
+  const { provenance, runtimeSource } = entry;
+  return {
+    name: runtimeSource.name,
+    source: "skill",
+    origin: provenance.kind === "project" ? "project" : "user",
+    description: runtimeSource.description,
+    argumentHint: null,
+    ...(provenance.kind === "plugin" ? { pluginId: provenance.pluginId } : {}),
+  };
 }
 
 /**
@@ -185,11 +161,7 @@ function commandOriginRank(command: ProviderCommand): number {
   }
 }
 
-function compareForQuery(
-  a: ProviderCommand,
-  b: ProviderCommand,
-  query: string,
-): number {
+function compareCommands(a: ProviderCommand, b: ProviderCommand): number {
   // Section rank is the PRIMARY key so the flat response is grouped in the
   // composer menu's visual order (skills → project commands → user commands).
   // The composer walks this flat order for keyboard nav, so deriving both from
@@ -201,17 +173,6 @@ function compareForQuery(
   if (bySection !== 0) {
     return bySection;
   }
-  if (query !== "") {
-    const aPrefix = commandSearchNames(a).some((name) =>
-      name.startsWith(query),
-    );
-    const bPrefix = commandSearchNames(b).some((name) =>
-      name.startsWith(query),
-    );
-    if (aPrefix !== bPrefix) {
-      return aPrefix ? -1 : 1;
-    }
-  }
   // Same section + same name is a true tie: section rank (the primary key) is a
   // pure function of source+origin, so two entries that reach here already share
   // a section and therefore a source. A same-named skill and legacy command land
@@ -221,35 +182,24 @@ function compareForQuery(
 
 export interface BuildCommandListResponseArgs {
   commands: HostProviderCommand[];
-  limit: number;
-  offset: number;
-  query: string | undefined;
+  skillCatalog: readonly ResolvedSkillCatalogEntry[];
 }
 
 /**
- * Server policy over the daemon's raw command set: case-insensitive filter,
- * de-dup by `(source, name)` (project wins), section-grouped
- * (skills → project commands → user commands) then prefix-then-alphabetical
- * sort, offset, and truncation to `limit`. The section grouping mirrors the
+ * Server policy over the daemon's raw command set: de-dup by `(source, name)`
+ * (project wins), then section-grouped and alphabetically sorted. The section grouping mirrors the
  * composer menu's visual order so the flat response and the rendered sections
- * stay in lockstep. `truncated` reflects whether more rows remain after this
- * page, so the client can fetch the next page while keyboard navigation
- * approaches the end.
+ * stay in lockstep. Filtering is local to the composer, so discovery runs once
+ * per project/environment/provider snapshot rather than once per keystroke.
  */
 export function buildCommandListResponse(
   args: BuildCommandListResponseArgs,
 ): CommandListResponse {
-  const query = (args.query ?? "").toLowerCase();
-  const filtered = dedupeBySourceAndName(
-    [
-      ...BUILT_IN_PROVIDER_COMMANDS,
-      ...args.commands.map(toProviderCommand),
-    ].filter((command) => matchesQuery(command, query)),
-  ).sort((a, b) => compareForQuery(a, b, query));
-  const end = args.offset + args.limit;
-
   return {
-    commands: filtered.slice(args.offset, end),
-    truncated: filtered.length > end,
+    commands: dedupeBySourceAndName([
+      ...BUILT_IN_PROVIDER_COMMANDS,
+      ...args.skillCatalog.map(toSkillCommand),
+      ...args.commands.map(toProviderCommand),
+    ]).sort(compareCommands),
   };
 }

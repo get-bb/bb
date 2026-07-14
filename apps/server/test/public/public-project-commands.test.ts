@@ -30,29 +30,30 @@ interface RegisterCommandRpcArgs {
 }
 
 /**
- * Mocks the host online-RPC boundary for `host.list_commands` only: returns the
- * supplied raw command set and records every request so tests can assert what
- * `cwd`/`providerId` the server sent. All other RPC types fail loudly so an
- * unexpected daemon call surfaces instead of silently passing.
+ * Mocks provider-native command discovery and an empty project skill root.
+ * Only list-commands requests are recorded for concise assertions.
  */
 function registerCommandRpc(
   harness: Parameters<typeof registerHostRpcResponder>[0],
   args: RegisterCommandRpcArgs,
 ): CommandRpcStub {
   const stub: CommandRpcStub = { commands: args.commands, requests: [] };
-  const responder = registerHostRpcResponder(harness, {
+  registerHostRpcResponder(harness, {
     hostId: args.hostId,
     sessionId: args.sessionId,
     handle: (request) => {
-      if (request.command.type !== "host.list_commands") {
-        throw new Error(
-          `Unexpected RPC command ${request.command.type} in command typeahead test`,
-        );
+      if (request.command.type === "host.list_files") {
+        return { ok: true, result: { files: [], truncated: false } };
       }
-      return { ok: true, result: { commands: stub.commands } };
+      if (request.command.type === "host.list_commands") {
+        stub.requests.push(request);
+        return { ok: true, result: { commands: stub.commands } };
+      }
+      throw new Error(
+        `Unexpected RPC command ${request.command.type} in command typeahead test`,
+      );
     },
   });
-  stub.requests = responder.requests;
   return stub;
 }
 
@@ -85,7 +86,7 @@ function legacyCommand(
 }
 
 describe("public project command typeahead route", () => {
-  it("sends the synchronized skill catalog when discovery targets another machine", async () => {
+  it("uses the server skill catalog when discovery targets another machine", async () => {
     await withTestHarness(async (harness) => {
       const primaryHost = seedHost(harness.deps, {
         id: "host-commands-primary",
@@ -117,7 +118,7 @@ describe("public project command typeahead route", () => {
       const stub = registerCommandRpc(harness, {
         hostId: remoteHost.id,
         sessionId: session.id,
-        commands: [skill("synced-remote", "user")],
+        commands: [],
       });
 
       const response = await harness.app.request(
@@ -125,24 +126,23 @@ describe("public project command typeahead route", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(stub.requests[0]?.command).toEqual(
-        expect.objectContaining({
-          type: "host.list_commands",
-          providerId: "codex",
-          cwd: "/tmp/remote-commands-env",
-          injectedSkillSources: expect.arrayContaining([
-            expect.objectContaining({
-              kind: "tree",
-              sourceType: "data-dir",
-              name: "synced-remote",
-            }),
-          ]),
-        }),
-      );
+      const body = commandListResponseSchema.parse(await readJson(response));
+      expect(body.commands).toContainEqual({
+        name: "synced-remote",
+        source: "skill",
+        origin: "user",
+        description: "Synced remote skill",
+        argumentHint: null,
+      });
+      expect(stub.requests[0]?.command).toEqual({
+        type: "host.list_commands",
+        providerId: "codex",
+        cwd: "/tmp/remote-commands-env",
+      });
     });
   });
 
-  it("filters, sorts, and de-dupes claude-code commands with project winning over user", async () => {
+  it("sorts and de-dupes the command catalog with project winning over user", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-claude",
@@ -176,18 +176,31 @@ describe("public project command typeahead route", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}&query=re`,
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,
       );
 
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
-      // query "re": names review/refactor match; deploy does not. Section rank
-      // is primary (skills before legacy commands), then within a section the
-      // prefix-then-alphabetical order: skills `refactor` < `review`, then the
-      // `command`-source `review`. The (skill review) collision keeps the
+      // Section rank is primary (built-ins, skills, then legacy commands),
+      // with alphabetical ordering inside each section. The (skill review)
+      // collision keeps the
       // project-origin entry over the user-origin one, while the cross-source
       // (command review) is retained as a distinct invocation.
       expect(body.commands).toEqual([
+        {
+          name: "compact",
+          source: "command",
+          origin: "builtin",
+          description: "Compact context",
+          argumentHint: null,
+        },
+        {
+          name: "deploy",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
         {
           name: "refactor",
           source: "skill",
@@ -210,7 +223,6 @@ describe("public project command typeahead route", () => {
           argumentHint: null,
         },
       ]);
-      expect(body.truncated).toBe(false);
 
       // Exactly one RPC, carrying the requested provider + resolved env cwd.
       expect(stub.requests.map((request) => request.command)).toEqual([
@@ -218,8 +230,6 @@ describe("public project command typeahead route", () => {
           type: "host.list_commands",
           providerId: "claude-code",
           cwd: "/tmp/claude-commands-env",
-          builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
-          injectedSkillSources: [],
         },
       ]);
     });
@@ -259,18 +269,15 @@ describe("public project command typeahead route", () => {
         "prd",
         "skill-installer",
       ]);
-      expect(body.truncated).toBe(false);
       expect(stub.requests[0]?.command).toEqual({
         type: "host.list_commands",
         providerId: "codex",
         cwd: "/tmp/codex-commands-env",
-        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
-        injectedSkillSources: [],
       });
     });
   });
 
-  it("passes inherited skills roots to command discovery", async () => {
+  it("keeps inherited bb skill roots out of provider-native discovery", async () => {
     await withTestHarness(
       {
         inheritedSkillsRootPaths: ["/tmp/bb-parent-skills"],
@@ -295,27 +302,25 @@ describe("public project command typeahead route", () => {
         });
 
         const response = await harness.app.request(
-          `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=&query=stories`,
+          `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=`,
         );
 
         expect(response.status).toBe(200);
         const body = commandListResponseSchema.parse(await readJson(response));
         expect(body.commands.map((command) => command.name)).toEqual([
+          "compact",
           "stories",
         ]);
         expect(stub.requests[0]?.command).toEqual({
           type: "host.list_commands",
           providerId: "codex",
           cwd: "/tmp/inherited-skills-project",
-          builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
-          additionalSkillsRootPaths: ["/tmp/bb-parent-skills"],
-          injectedSkillSources: [],
         });
       },
     );
   });
 
-  it("matches namespaced skills by their direct skill name", async () => {
+  it("returns the complete snapshot for local composer filtering", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-direct-skill",
@@ -340,15 +345,17 @@ describe("public project command typeahead route", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=${environment.id}&query=review&limit=1`,
+        `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=${environment.id}`,
       );
 
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "compact",
+        "alpha-review-notes",
         "ottonomous:review",
+        "zeta-review",
       ]);
-      expect(body.truncated).toBe(true);
     });
   });
 
@@ -376,7 +383,7 @@ describe("public project command typeahead route", () => {
 
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
-      expect(body).toEqual({ commands: [], truncated: false });
+      expect(body).toEqual({ commands: [] });
       // No daemon roundtrip for a provider without a command surface.
       expect(stub.requests).toEqual([]);
     });
@@ -398,9 +405,7 @@ describe("public project command typeahead route", () => {
       const stub = registerCommandRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
-        commands: [
-          skill("bb-cli", "user", { description: "Use the bb CLI" }),
-        ],
+        commands: [skill("bb-cli", "user", { description: "Use the bb CLI" })],
       });
 
       const response = await harness.app.request(
@@ -417,8 +422,6 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "pi",
         cwd: "/tmp/pi-commands-env",
-        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
-        injectedSkillSources: [],
       });
     });
   });
@@ -457,8 +460,6 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/no-env-project",
-        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
-        injectedSkillSources: [],
       });
     });
   });
@@ -503,8 +504,6 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/provisioning-project",
-        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
-        injectedSkillSources: [],
       });
     });
   });
@@ -542,8 +541,6 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: null,
-        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
-        injectedSkillSources: [],
       });
     });
   });
@@ -574,8 +571,6 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "codex",
         cwd: null,
-        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
-        injectedSkillSources: [],
       });
     });
   });
@@ -602,7 +597,7 @@ describe("public project command typeahead route", () => {
     });
   });
 
-  it("honors limit, offset, and reports truncation; empty query returns the full capped list", async () => {
+  it("returns the full command catalog in one snapshot", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-limit",
@@ -627,32 +622,6 @@ describe("public project command typeahead route", () => {
         ],
       });
 
-      const limitedResponse = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}&limit=2`,
-      );
-      expect(limitedResponse.status).toBe(200);
-      const limited = commandListResponseSchema.parse(
-        await readJson(limitedResponse),
-      );
-      expect(limited.commands.map((command) => command.name)).toEqual([
-        "compact",
-        "alpha",
-      ]);
-      expect(limited.truncated).toBe(true);
-
-      const nextPageResponse = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}&limit=2&offset=2`,
-      );
-      expect(nextPageResponse.status).toBe(200);
-      const nextPage = commandListResponseSchema.parse(
-        await readJson(nextPageResponse),
-      );
-      expect(nextPage.commands.map((command) => command.name)).toEqual([
-        "bravo",
-        "charlie",
-      ]);
-      expect(nextPage.truncated).toBe(true);
-
       const fullResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,
       );
@@ -667,7 +636,6 @@ describe("public project command typeahead route", () => {
         "charlie",
         "delta",
       ]);
-      expect(full.truncated).toBe(false);
     });
   });
 });

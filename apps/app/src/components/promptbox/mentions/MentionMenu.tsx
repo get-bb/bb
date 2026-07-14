@@ -257,8 +257,21 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
 const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
 
 function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
+  if (item.pluginId !== undefined) {
+    return (
+      <PluginIcon
+        pluginId={item.pluginId}
+        icon={null}
+        className={ROW_ICON_CLASS}
+      />
+    );
+  }
   return (
-    <Icon name={promptCommandIconName(item)} className={ROW_ICON_CLASS} aria-hidden />
+    <Icon
+      name={promptCommandIconName(item)}
+      className={ROW_ICON_CLASS}
+      aria-hidden
+    />
   );
 }
 
@@ -273,7 +286,11 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
     );
   }
   return (
-    <Icon name={getMentionIconName(item)} className={ROW_ICON_CLASS} aria-hidden />
+    <Icon
+      name={getMentionIconName(item)}
+      className={ROW_ICON_CLASS}
+      aria-hidden
+    />
   );
 }
 

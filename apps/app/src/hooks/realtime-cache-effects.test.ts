@@ -15,6 +15,7 @@ import {
   environmentWorkStatusQueryKey,
   hostPathExistenceQueryKey,
   projectPathsQueryKey,
+  projectCommandsQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
   projectsQueryKey,
@@ -157,13 +158,19 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("invalidates the plugin contributions cache on plugins-changed", () => {
+  it("invalidates plugin contributions and command catalogs on plugins-changed", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const contributionsKey = pluginContributionsQueryKey(true);
     queryClient.setQueryData(contributionsKey, {
       threadActions: [],
       mentionProviders: [],
     });
+    const commandsKey = projectCommandsQueryKey(
+      "project-1",
+      "codex",
+      "environment-1",
+    );
+    queryClient.setQueryData(commandsKey, { commands: [] });
 
     effects.handleChanged({
       type: "changed",
@@ -176,6 +183,7 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(contributionsKey)?.isInvalidated).toBe(
       true,
     );
+    expect(queryClient.getQueryState(commandsKey)?.isInvalidated).toBe(true);
   });
 
   it.each(PROJECT_PROMPT_HISTORY_THREAD_CHANGES)(

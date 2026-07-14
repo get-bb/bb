@@ -61,6 +61,7 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  allProjectCommandsQueryKeyPrefix,
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
@@ -301,9 +302,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "tabs-changed": {
     flush: "immediate",
-    dirty: [
-      dirtyThreadTabsQueries,
-    ],
+    dirty: [dirtyThreadTabsQueries],
   },
   "terminals-changed": {
     flush: "debounced",
@@ -428,6 +427,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "plugins-changed": {
     dirty: [
       dirtyPluginContributionQueries,
+      dirtyProjectCommandCatalogQueries,
       dirtyPluginManagementQueries,
       reconcilePluginFrontendBundles,
     ],
@@ -876,6 +876,10 @@ function dirtySystemExecutionOptionQueries(): QueryKey[] {
 
 function dirtyPluginContributionQueries(): QueryKey[] {
   return [allPluginContributionsQueryKeyPrefix()];
+}
+
+function dirtyProjectCommandCatalogQueries(): QueryKey[] {
+  return [allProjectCommandsQueryKeyPrefix()];
 }
 
 function dirtyPluginManagementQueries(): QueryKey[] {

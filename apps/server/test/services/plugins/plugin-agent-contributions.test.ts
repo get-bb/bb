@@ -20,6 +20,7 @@ import {
 import {
   SkillTreeRegistry,
   resolveInjectedSkillSources,
+  resolveSkillCatalogEntries,
 } from "../../../src/services/skills/injected-skills.js";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
 import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
@@ -141,13 +142,14 @@ describe("plugin skills tier", () => {
     const projectGamma = await writeSkill(projectRoot, "gamma"); // beats the plugin copy
 
     const skillTreeRegistry = new SkillTreeRegistry();
-    const sources = resolveInjectedSkillSources(testLogger, {
+    const entries = resolveSkillCatalogEntries(testLogger, {
       builtinSkillsRootPath: builtinRoot,
       dataDir,
-      pluginSkillsRootPaths: service.listSkillsRootPaths(),
+      pluginSkillRoots: service.listSkillRootContributions(),
       projectSkillsRootPath: projectRoot,
       skillTreeRegistry,
     });
+    const sources = entries.map((entry) => entry.runtimeSource);
     const byName = new Map(sources.map((source) => [source.name, source]));
 
     const alpha = byName.get("alpha");
@@ -164,6 +166,9 @@ describe("plugin skills tier", () => {
       throw new Error("Expected server-owned tree sources");
     }
     expect(alpha.sourceType).toBe("data-dir");
+    expect(
+      entries.find((entry) => entry.runtimeSource.name === "alpha")?.provenance,
+    ).toEqual({ kind: "plugin", pluginId: "skiller" });
     expect(beta.sourceType).toBe("data-dir");
     expect(byName.get("gamma")).toMatchObject({
       kind: "workspace-path",
@@ -184,17 +189,19 @@ describe("plugin skills tier", () => {
     });
     await service.installPath(rootDir);
 
-    expect(service.listSkillsRootPaths()).toEqual([join(rootDir, "custom")]);
+    expect(service.listSkillRootContributions()).toEqual([
+      { pluginId: "relocated", rootPath: join(rootDir, "custom") },
+    ]);
     const sources = resolveInjectedSkillSources(testLogger, {
       builtinSkillsRootPath: join(workDir, "no-builtins"),
       dataDir: join(workDir, "data"),
-      pluginSkillsRootPaths: service.listSkillsRootPaths(),
+      pluginSkillRoots: service.listSkillRootContributions(),
       skillTreeRegistry: new SkillTreeRegistry(),
     });
     expect(sources.map((source) => source.name)).toEqual(["relocated-skill"]);
 
     experimentOn = false;
-    expect(service.listSkillsRootPaths()).toEqual([]);
+    expect(service.listSkillRootContributions()).toEqual([]);
   });
 
   it("a skill added after install is discovered on the next resolve after reload", async () => {
@@ -208,7 +215,7 @@ describe("plugin skills tier", () => {
       resolveInjectedSkillSources(testLogger, {
         builtinSkillsRootPath: join(workDir, "no-builtins"),
         dataDir: join(workDir, "data"),
-        pluginSkillsRootPaths: service.listSkillsRootPaths(),
+        pluginSkillRoots: service.listSkillRootContributions(),
         skillTreeRegistry: new SkillTreeRegistry(),
       }).map((source) => source.name);
 

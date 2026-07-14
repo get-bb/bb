@@ -27,9 +27,7 @@ describe("buildCommandListResponse", () => {
           argumentHint: "<target>",
         },
       ],
-      limit: 10,
-      offset: 0,
-      query: "compact",
+      skillCatalog: [],
     });
 
     expect(response.commands).toEqual([
@@ -43,22 +41,32 @@ describe("buildCommandListResponse", () => {
     ]);
   });
 
-  it("matches namespaced skills by their direct skill name", () => {
+  it("includes plugin provenance on canonical skill rows", () => {
     const response = buildCommandListResponse({
-      commands: [
-        skill("alpha-review-notes"),
-        skill("ottonomous:review"),
-        skill("zeta-review"),
+      commands: [],
+      skillCatalog: [
+        {
+          provenance: { kind: "plugin", pluginId: "ottonomous" },
+          runtimeSource: {
+            kind: "tree",
+            sourceType: "data-dir",
+            name: "review",
+            description: "Review the current change",
+            treeHash: "abc123",
+            entryPath: "SKILL.md",
+          },
+        },
       ],
-      limit: 1,
-      offset: 0,
-      query: "review",
     });
 
-    expect(response.commands.map((command) => command.name)).toEqual([
-      "ottonomous:review",
-    ]);
-    expect(response.truncated).toBe(true);
+    expect(response.commands).toContainEqual({
+      name: "review",
+      source: "skill",
+      origin: "user",
+      description: "Review the current change",
+      argumentHint: null,
+      pluginId: "ottonomous",
+    });
   });
 
   it("keeps the first user-origin skill when global roots provide the same name", () => {
@@ -67,12 +75,12 @@ describe("buildCommandListResponse", () => {
         skill("bb-cli", { description: "Data-dir override" }),
         skill("bb-cli", { description: "Built-in default" }),
       ],
-      limit: 10,
-      offset: 0,
-      query: "bb-cli",
+      skillCatalog: [],
     });
 
-    expect(response.commands).toEqual([
+    expect(
+      response.commands.filter((command) => command.name === "bb-cli"),
+    ).toEqual([
       {
         name: "bb-cli",
         source: "skill",

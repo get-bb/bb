@@ -2,7 +2,6 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import {
@@ -13,18 +12,10 @@ import {
   discoverProviderCommands,
   type CommandScanRoot,
 } from "../command-discovery.js";
-import { stageInjectedSkillSources } from "../injected-skills.js";
-import type { FetchSkillTree } from "../skill-trees.js";
 
 export interface CommandRootResolution {
   /** Resolved workspace path, or null for an unprovisioned thread. */
   cwd: string | null;
-  /** Built-in bb skills bundled with the server. */
-  builtinSkillsRootPath: string;
-  /** Additional bb skill roots inherited by managed dev app instances. */
-  additionalSkillsRootPaths: readonly string[];
-  /** bb data directory containing user-installed bb skills. */
-  dataDir: string;
   /** Claude user-home base (`os.homedir()`). */
   homeDir: string;
   /** Codex user-home base (`$CODEX_HOME` or `~/.codex`). */
@@ -1061,53 +1052,10 @@ export async function resolveProviderCommandScanRoots(
 }
 
 /**
- * Shared bb skill roots scanned for every provider that exposes slash-command
- * typeahead: project `.bb/skills`, data-dir skills, inherited roots, and
- * built-in skills. Project roots are skipped when `cwd` is null.
- */
-function pushBbSkillCommandScanRoots(
-  roots: CommandScanRoot[],
-  resolution: CommandRootResolution,
-): void {
-  if (resolution.cwd !== null) {
-    roots.push({
-      rootPath: path.join(resolution.cwd, ".bb", "skills"),
-      shape: "skill",
-      namePrefix: "",
-      source: "skill",
-      origin: "project",
-    });
-  }
-  roots.push({
-    rootPath: resolveDataDirSkillsRootPath(resolution.dataDir),
-    shape: "skill",
-    namePrefix: "",
-    source: "skill",
-    origin: "user",
-  });
-  for (const rootPath of resolution.additionalSkillsRootPaths) {
-    roots.push({
-      rootPath,
-      shape: "skill",
-      namePrefix: "",
-      source: "skill",
-      origin: "user",
-    });
-  }
-  roots.push({
-    rootPath: resolution.builtinSkillsRootPath,
-    shape: "skill",
-    namePrefix: "",
-    source: "skill",
-    origin: "user",
-  });
-}
-
-/**
  * Build the ordered set of roots to scan for a provider. Project (cwd-dependent)
  * roots are skipped when `cwd` is null; user-home roots are always included.
- * Every provider that injects bb skills also scans those roots for typeahead;
- * Claude Code and Codex add their native skill/command directories on top.
+ * The daemon owns provider-native discovery only. The server adds its canonical
+ * bb skill catalog to the final composer response.
  * Unknown provider ids yield an empty root set.
  */
 export function resolveCommandScanRoots(
@@ -1118,13 +1066,6 @@ export function resolveCommandScanRoots(
   if (resolution.providerId === "claude-code") {
     if (resolution.cwd !== null) {
       roots.push({
-        rootPath: path.join(resolution.cwd, ".bb", "skills"),
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "project",
-      });
-      roots.push({
         rootPath: path.join(resolution.cwd, ".claude", "skills"),
         shape: "skill",
         namePrefix: "",
@@ -1134,29 +1075,6 @@ export function resolveCommandScanRoots(
     }
     roots.push({
       rootPath: path.join(resolution.homeDir, ".claude", "skills"),
-      shape: "skill",
-      namePrefix: "",
-      source: "skill",
-      origin: "user",
-    });
-    roots.push({
-      rootPath: resolveDataDirSkillsRootPath(resolution.dataDir),
-      shape: "skill",
-      namePrefix: "",
-      source: "skill",
-      origin: "user",
-    });
-    for (const rootPath of resolution.additionalSkillsRootPaths) {
-      roots.push({
-        rootPath,
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "user",
-      });
-    }
-    roots.push({
-      rootPath: resolution.builtinSkillsRootPath,
       shape: "skill",
       namePrefix: "",
       source: "skill",
@@ -1184,13 +1102,6 @@ export function resolveCommandScanRoots(
   if (resolution.providerId === "codex") {
     if (resolution.cwd !== null) {
       roots.push({
-        rootPath: path.join(resolution.cwd, ".bb", "skills"),
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "project",
-      });
-      roots.push({
         rootPath: path.join(resolution.cwd, ".codex", "skills"),
         shape: "skill",
         namePrefix: "",
@@ -1206,29 +1117,6 @@ export function resolveCommandScanRoots(
       origin: "user",
     });
     roots.push({
-      rootPath: resolveDataDirSkillsRootPath(resolution.dataDir),
-      shape: "skill",
-      namePrefix: "",
-      source: "skill",
-      origin: "user",
-    });
-    for (const rootPath of resolution.additionalSkillsRootPaths) {
-      roots.push({
-        rootPath,
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "user",
-      });
-    }
-    roots.push({
-      rootPath: resolution.builtinSkillsRootPath,
-      shape: "skill",
-      namePrefix: "",
-      source: "skill",
-      origin: "user",
-    });
-    roots.push({
       rootPath: path.join(resolution.codexHome, "skills", ".system"),
       shape: "skill",
       namePrefix: "",
@@ -1238,65 +1126,22 @@ export function resolveCommandScanRoots(
     return roots;
   }
 
-  // Pi and all ACP agents (built-in `acp-cursor` and dynamic `acp-*`) receive
-  // the shared bb skills catalog at runtime and expose the same set in
-  // slash-command typeahead. No provider-native command directories.
-  if (
-    resolution.providerId === "pi" ||
-    resolution.providerId.startsWith("acp-")
-  ) {
-    pushBbSkillCommandScanRoots(roots, resolution);
-    return roots;
-  }
-
   return roots;
 }
 
 export async function listHostCommands(
   command: CommandOf<"host.list_commands">,
-  options: { dataDir: string; fetchSkillTree?: FetchSkillTree },
 ): Promise<HostDaemonOnlineRpcResult<"host.list_commands">> {
   if (command.cwd !== null && !path.isAbsolute(command.cwd)) {
     throw new CommandDispatchError("invalid_path", "cwd must be absolute");
   }
-  if (!path.isAbsolute(command.builtinSkillsRootPath)) {
-    throw new CommandDispatchError(
-      "invalid_path",
-      "builtinSkillsRootPath must be absolute",
-    );
-  }
   const homeDir = os.homedir();
   const roots = await resolveProviderCommandScanRoots({
     cwd: command.cwd,
-    builtinSkillsRootPath: command.builtinSkillsRootPath,
-    additionalSkillsRootPaths: command.additionalSkillsRootPaths ?? [],
-    dataDir: options.dataDir,
     homeDir,
     codexHome: resolveCodexHome(homeDir),
     providerId: command.providerId,
   });
-  const staged = await stageInjectedSkillSources({
-    dataDir: options.dataDir,
-    injectedSkillSources: command.injectedSkillSources,
-    ...(options.fetchSkillTree !== undefined
-      ? { fetchSkillTree: options.fetchSkillTree }
-      : {}),
-  });
-  const stagedSkillsRootPath = staged.skillRoots.find(
-    (root): root is typeof root & { skillDirectoryRootPath: string } =>
-      "skillDirectoryRootPath" in root,
-  )?.skillDirectoryRootPath;
-  if (stagedSkillsRootPath !== undefined) {
-    for (const source of command.injectedSkillSources) {
-      roots.push({
-        rootPath: path.join(stagedSkillsRootPath, source.name),
-        shape: "skill-directory",
-        namePrefix: "",
-        source: "skill",
-        origin: source.sourceType === "project" ? "project" : "user",
-      });
-    }
-  }
   const commands = await discoverProviderCommands({ roots });
   return { commands };
 }

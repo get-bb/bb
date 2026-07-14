@@ -678,8 +678,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
-  "hostDaemonOnlineRpcCommandSchema.additionalSkillsRootPaths":
-    "host.list_commands may include inherited skill roots for source-dev app instances; ordinary app instances scan data-dir and built-in skills.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.path":
@@ -1226,15 +1224,11 @@ describe("host-daemon command schemas", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/workspace",
-        builtinSkillsRootPath: "/tmp/builtin-skills",
-        injectedSkillSources: [],
       }),
     ).toMatchObject({
       type: "host.list_commands",
       providerId: "claude-code",
       cwd: "/tmp/workspace",
-      builtinSkillsRootPath: "/tmp/builtin-skills",
-      injectedSkillSources: [],
     });
 
     expect(

@@ -105,14 +105,14 @@ Both attachment flags are repeatable. `thread spawn` additionally supports
 
 ## Projects
 
-| SDK                                               | CLI                                                                                                 |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                                         |
-| `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                                            |
-| `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`                          |
-| `bb.projects.paths(...)`                          | `bb project paths <id> [--environment <id>] [--query <query>] [--limit <count>]`                    |
-| `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--environment <id>] [--query <query>] [--limit <count>]` |
-| `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.                     |
+| SDK                                               | CLI                                                                              |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                      |
+| `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                         |
+| `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`       |
+| `bb.projects.paths(...)`                          | `bb project paths <id> [--environment <id>] [--query <query>] [--limit <count>]` |
+| `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--environment <id>]`                  |
+| `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.  |
 
 Existing project source operations remain available under
 `bb.projects.sources` and `bb project source`.

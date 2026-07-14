@@ -7,6 +7,7 @@ import type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
   PluginService,
+  PluginSkillRootContribution,
 } from "./plugin-service.js";
 
 /**
@@ -19,7 +20,7 @@ import type {
  */
 type PluginAgentContributions = Pick<
   PluginService,
-  | "listSkillsRootPaths"
+  | "listSkillRootContributions"
   | "listAgentTools"
   | "listInstructionContributions"
   | "findAgentTool"
@@ -36,8 +37,8 @@ export function setPluginAgentContributions(
 }
 
 /** Skills roots contributed by running plugins (the "plugin" skill tier). */
-export function getPluginSkillsRootPaths(): string[] {
-  return contributions?.listSkillsRootPaths() ?? [];
+export function getPluginSkillRootContributions(): PluginSkillRootContribution[] {
+  return contributions?.listSkillRootContributions() ?? [];
 }
 
 /** Native tools from bb.agents.registerTool, resolved live per session start. */

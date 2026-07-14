@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 53 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 54 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -603,7 +603,7 @@ export type HostCommandOrigin = z.infer<typeof hostCommandOriginSchema>;
 
 /**
  * A discovered provider skill or legacy slash command. The daemon returns the
- * raw parsed records; server policy (filter/de-dup/sort/limit) is applied on
+ * raw parsed records; server policy (merge/de-dup/sort) is applied on
  * top. Mirrors `@bb/server-contract`'s `ProviderCommand` shape (the contract
  * packages intentionally define matching record shapes independently, like
  * `hostPathEntrySchema` / `workspacePathEntrySchema`).
@@ -619,21 +619,18 @@ export type HostProviderCommand = z.infer<typeof hostProviderCommandSchema>;
 
 /**
  * List the provider's discoverable skills / legacy slash commands. The daemon
- * resolves the user-home roots itself and scans the project roots under `cwd`
- * when provided; `cwd: null` (unprovisioned thread) skips the project roots and
- * returns only user-origin entries. Synchronized skills are supplied as the
- * same content-addressed sources used by thread runtime injection. Returns the
- * full raw set — the server owns de-dup/sort/limit, so there is no `truncated`
- * field here.
+ * resolves provider-native user-home roots itself and scans provider-native
+ * project roots under `cwd` when provided; `cwd: null` skips project roots.
+ * bb-managed skills are resolved by the server's canonical skill catalog and
+ * never cross this discovery boundary.
  */
-const hostListCommandsCommandSchema = z.object({
-  type: z.literal("host.list_commands"),
-  providerId: z.string().min(1),
-  cwd: z.string().min(1).nullable(),
-  builtinSkillsRootPath: z.string().min(1),
-  additionalSkillsRootPaths: z.array(z.string().min(1)).optional(),
-  injectedSkillSources: z.array(hostDaemonInjectedSkillSourceSchema),
-});
+const hostListCommandsCommandSchema = z
+  .object({
+    type: z.literal("host.list_commands"),
+    providerId: z.string().min(1),
+    cwd: z.string().min(1).nullable(),
+  })
+  .strict();
 
 /**
  * List a bounded page of git branches at an absolute host path. Path-only
