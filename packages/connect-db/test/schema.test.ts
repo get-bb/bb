@@ -9,6 +9,8 @@ import {
   CONNECT_CODE_TTL_MS,
   checkLabelAvailability,
   connectCode,
+  labelClaim,
+  machine,
   parseVisitorHost,
   profile,
   schema,
@@ -19,6 +21,17 @@ import {
 } from "../src/index.js";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations", import.meta.url));
+const LABEL_CLAIM_TRIGGERS = [
+  "machine_label_claim_delete",
+  "machine_label_claim_insert",
+  "machine_label_claim_update",
+  "profile_label_claim_delete",
+  "profile_label_claim_insert",
+  "profile_label_claim_update",
+  "server_label_claim_delete",
+  "server_label_claim_insert",
+  "server_label_claim_update",
+] as const;
 
 /** Migration files in lexical (apply) order. */
 function migrationFiles(): string[] {
@@ -86,6 +99,18 @@ describe("migration matches the drizzle schema", () => {
     expect(rows[0].lastSeenAt).toBeNull();
     expect(rows[0].revokedAt).toBeNull();
 
+    db.insert(machine)
+      .values({
+        id: "m1",
+        userId: "u1",
+        name: "laptop",
+        subdomain: "sawyer-air",
+        credentialHash: "machine-hash",
+        createdAt: now,
+      })
+      .run();
+    expect(db.select().from(machine).get()?.subdomain).toBe("sawyer-air");
+
     const p = db
       .select()
       .from(profile)
@@ -108,6 +133,127 @@ describe("migration matches the drizzle schema", () => {
       db.select().from(user).where(eq(user.id, "u1")).get()?.githubLogin,
     ).toBe("sawyerhood");
   });
+
+  it("atomically rejects claim-ignorant cross-namespace source writes", () => {
+    seedUser("u1");
+    seedUser("u2");
+    const createdAt = new Date();
+    db.insert(profile)
+      .values({ userId: "u1", handle: "shared-label", createdAt })
+      .run();
+    expect(() =>
+      db
+        .insert(server)
+        .values({
+          id: "claim-ignorant-server",
+          userId: "u2",
+          name: "default",
+          subdomain: "shared-label",
+          createdAt,
+        })
+        .run(),
+    ).toThrow(/unique constraint/iu);
+    db.insert(machine)
+      .values({
+        id: "claim-ignorant-machine",
+        userId: "u2",
+        credentialHash: "hash",
+        createdAt,
+      })
+      .run();
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-label" })
+        .where(eq(machine.id, "claim-ignorant-machine"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
+    expect(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "shared-label"))
+        .all(),
+    ).toHaveLength(1);
+    expect(
+      db
+        .select()
+        .from(server)
+        .where(eq(server.id, "claim-ignorant-server"))
+        .get(),
+    ).toBeUndefined();
+    expect(
+      db
+        .select()
+        .from(machine)
+        .where(eq(machine.id, "claim-ignorant-machine"))
+        .get()?.subdomain,
+    ).toBeNull();
+  });
+
+  it("rolls back claim-ignorant profile and server updates on global collisions", () => {
+    seedUser("u1");
+    seedUser("u2");
+    const createdAt = Date.now();
+    sqlite
+      .prepare(
+        "INSERT INTO profile (user_id, handle, created_at) VALUES (?, ?, ?)",
+      )
+      .run("u1", "owner-one", createdAt);
+    sqlite
+      .prepare(
+        "INSERT INTO profile (user_id, handle, created_at) VALUES (?, ?, ?)",
+      )
+      .run("u2", "owner-two", createdAt);
+
+    // Attaching the primary server to its owner's handle is legitimate and
+    // shares the existing handle claim instead of attempting a duplicate.
+    sqlite
+      .prepare(
+        "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("primary-one", "u1", "default", "owner-one", createdAt);
+    sqlite
+      .prepare(
+        "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("secondary-two", "u2", "desktop", "server-two", createdAt);
+    expect(
+      sqlite
+        .prepare("SELECT kind, owner_id FROM label_claim WHERE label = ?")
+        .get("owner-one"),
+    ).toEqual({ kind: "handle", owner_id: "u1" });
+
+    expect(() =>
+      sqlite
+        .prepare("UPDATE profile SET handle = ? WHERE user_id = ?")
+        .run("server-two", "u1"),
+    ).toThrow(/unique constraint/iu);
+    expect(() =>
+      sqlite
+        .prepare("UPDATE server SET subdomain = ? WHERE id = ?")
+        .run("owner-one", "secondary-two"),
+    ).toThrow(/unique constraint/iu);
+
+    expect(
+      sqlite.prepare("SELECT handle FROM profile WHERE user_id = ?").get("u1"),
+    ).toEqual({ handle: "owner-one" });
+    expect(
+      sqlite
+        .prepare("SELECT subdomain FROM server WHERE id = ?")
+        .get("secondary-two"),
+    ).toEqual({ subdomain: "server-two" });
+    expect(
+      sqlite
+        .prepare(
+          "SELECT label, kind FROM label_claim WHERE label IN (?, ?) ORDER BY label",
+        )
+        .all("owner-one", "server-two"),
+    ).toEqual([
+      { label: "owner-one", kind: "handle" },
+      { label: "server-two", kind: "server" },
+    ]);
+  });
 });
 
 describe("constraints", () => {
@@ -124,6 +270,41 @@ describe("constraints", () => {
         .values({ userId: "u2", handle: "taken", createdAt: now })
         .run(),
     ).toThrow(/UNIQUE/i);
+  });
+
+  it("allows nullable machine labels and enforces uniqueness when assigned", () => {
+    seedUser("u1");
+    const now = new Date();
+    db.insert(machine)
+      .values([
+        {
+          id: "m1",
+          userId: "u1",
+          subdomain: "sawyer-air",
+          credentialHash: "h1",
+          createdAt: now,
+        },
+        {
+          id: "m2",
+          userId: "u1",
+          subdomain: null,
+          credentialHash: "h2",
+          createdAt: now,
+        },
+      ])
+      .run();
+    expect(() =>
+      db
+        .insert(machine)
+        .values({
+          id: "m3",
+          userId: "u1",
+          subdomain: "sawyer-air",
+          credentialHash: "h3",
+          createdAt: now,
+        })
+        .run(),
+    ).toThrow(/UNIQUE/iu);
   });
 
   it("enforces one server name per user but allows the same name across users", () => {
@@ -232,6 +413,9 @@ describe("constraints", () => {
   it("cascades connect codes and servers when a user is deleted", () => {
     seedUser();
     const now = new Date();
+    db.insert(profile)
+      .values({ userId: "u1", handle: "sawyer", createdAt: now })
+      .run();
     db.insert(server)
       .values({
         id: "s1",
@@ -253,8 +437,10 @@ describe("constraints", () => {
       .run();
 
     db.delete(user).where(eq(user.id, "u1")).run();
+    expect(db.select().from(profile).all()).toHaveLength(0);
     expect(db.select().from(server).all()).toHaveLength(0);
     expect(db.select().from(connectCode).all()).toHaveLength(0);
+    expect(db.select().from(labelClaim).all()).toHaveLength(0);
   });
 
   it("marks a connect code consumed exactly once (single-use redemption)", () => {
@@ -447,18 +633,492 @@ describe("0003 backfill (staged application on real prior data)", () => {
       const subdomainCol = cols.find((c) => c.name === "subdomain");
       expect(subdomainCol).toBeDefined();
       expect(subdomainCol?.notnull).toBe(1);
+      const machineCols = fresh.prepare("PRAGMA table_info(machine)").all() as {
+        name: string;
+        notnull: number;
+      }[];
+      const machineSubdomain = machineCols.find((c) => c.name === "subdomain");
+      expect(machineSubdomain).toBeDefined();
+      expect(machineSubdomain?.notnull).toBe(0);
+      expect(
+        fresh
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'label_claim'",
+          )
+          .get(),
+      ).toBeDefined();
+      expect(
+        fresh
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name",
+          )
+          .all(),
+      ).toEqual(LABEL_CLAIM_TRIGGERS.map((name) => ({ name })));
     } finally {
       fresh.close();
     }
   });
 });
 
-describe("checkLabelAvailability (both namespaces)", () => {
+describe("0004 global label claims", () => {
+  it("backfills handles and secondary servers without duplicating the primary label", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      staged
+        .prepare(
+          "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+        )
+        .run("u1", "Test", "u1@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "sawyer", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s1", "u1", "default", "sawyer", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s2", "u1", "desktop", "sawyer-desktop", now);
+
+      applyMigration(staged, "0004_machine_labels.sql");
+
+      expect(
+        staged
+          .prepare(
+            "SELECT label, kind, owner_id FROM label_claim ORDER BY label",
+          )
+          .all(),
+      ).toEqual([
+        { label: "sawyer", kind: "handle", owner_id: "u1" },
+        {
+          label: "sawyer-desktop",
+          kind: "server",
+          owner_id: "s2",
+        },
+      ]);
+      expect(
+        staged
+          .prepare("SELECT generation FROM label_claim WHERE label = ?")
+          .get("sawyer-desktop"),
+      ).toEqual({
+        generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      });
+    } finally {
+      staged.close();
+    }
+  });
+
+  it("fails instead of silently orphaning a historical cross-tenant collision", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "shared-label", now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u2", "other-label", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s2", "u2", "collision", "shared-label", now);
+
+      expect(() => applyMigration(staged, "0004_machine_labels.sql")).toThrow(
+        /unique constraint/iu,
+      );
+    } finally {
+      staged.close();
+    }
+  });
+});
+
+describe("0005 label-claim reconciliation", () => {
+  it("claims an old-worker row written after 0004 and prevents cross-tenant reuse", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0005")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+
+      // Simulate a claim-ignorant old web worker in the per-migration gap.
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "gap-label", now);
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("gap-label"),
+      ).toBeUndefined();
+
+      // D1 applies one migration transactionally. The reconciliation completes
+      // before the triggers become the permanent write barrier.
+      staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      })();
+      expect(
+        staged
+          .prepare(
+            "SELECT label, kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("gap-label"),
+      ).toEqual({
+        label: "gap-label",
+        kind: "handle",
+        owner_id: "u1",
+        user_id: "u1",
+      });
+
+      expect(() =>
+        staged
+          .prepare(
+            "INSERT INTO machine (id, user_id, subdomain, credential_hash, created_at) VALUES (?,?,?,?,?)",
+          )
+          .run("m2", "u2", "gap-label", "hash", now),
+      ).toThrow(/unique constraint/iu);
+      expect(
+        staged.prepare("SELECT id FROM machine WHERE id = ?").get("m2"),
+      ).toBeUndefined();
+    } finally {
+      staged.close();
+    }
+  });
+
+  it("removes a claim orphaned by an old-worker delete and makes the label reusable", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "owner-one", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s1", "u1", "desktop", "orphan-label", now);
+      applyMigration(staged, "0004_machine_labels.sql");
+      expect(
+        staged
+          .prepare("SELECT kind FROM label_claim WHERE label = ?")
+          .get("orphan-label"),
+      ).toEqual({ kind: "server" });
+
+      // The old worker deletes the source without knowing about label_claim.
+      staged.prepare("DELETE FROM server WHERE id = ?").run("s1");
+      staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      })();
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("orphan-label"),
+      ).toBeUndefined();
+
+      expect(() =>
+        staged
+          .prepare(
+            "INSERT INTO machine (id, user_id, subdomain, credential_hash, created_at) VALUES (?,?,?,?,?)",
+          )
+          .run("m2", "u2", "orphan-label", "hash", now),
+      ).not.toThrow();
+      expect(
+        staged
+          .prepare(
+            "SELECT kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("orphan-label"),
+      ).toEqual({ kind: "machine", owner_id: "m2", user_id: "u2" });
+    } finally {
+      staged.close();
+    }
+  });
+
+  it("reassigns a stale claim to the current owner after a gap ownership swap", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+      const insertProfile = staged.prepare(
+        "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+      );
+      insertProfile.run("u1", "owner-one", now);
+      insertProfile.run("u2", "owner-two", now);
+      const insertServer = staged.prepare(
+        "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+      );
+      insertServer.run("old-server", "u1", "desktop", "reused-label", now);
+      applyMigration(staged, "0004_machine_labels.sql");
+      expect(
+        staged
+          .prepare(
+            "SELECT kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("reused-label"),
+      ).toEqual({ kind: "server", owner_id: "old-server", user_id: "u1" });
+
+      // A claim-ignorant old worker swaps the source ownership between the two
+      // per-migration transactions, leaving the 0004 claim stale by identity.
+      staged.prepare("DELETE FROM server WHERE id = ?").run("old-server");
+      insertServer.run("new-server", "u2", "desktop", "reused-label", now + 1);
+      staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      })();
+      expect(
+        staged
+          .prepare(
+            "SELECT kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("reused-label"),
+      ).toEqual({ kind: "server", owner_id: "new-server", user_id: "u2" });
+
+      // The installed delete trigger now releases the corrected claim, proving
+      // the label is not pinned to either prior server identity.
+      staged.prepare("DELETE FROM server WHERE id = ?").run("new-server");
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("reused-label"),
+      ).toBeUndefined();
+      expect(() =>
+        staged
+          .prepare(
+            "INSERT INTO machine (id, user_id, subdomain, credential_hash, created_at) VALUES (?,?,?,?,?)",
+          )
+          .run("replacement-machine", "u1", "reused-label", "hash", now + 2),
+      ).not.toThrow();
+    } finally {
+      staged.close();
+    }
+  });
+
+  it("moves a claim when an old worker updates a server label in the gap", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      staged
+        .prepare(
+          "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+        )
+        .run("u1", "One", "u1@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "owner-one", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s1", "u1", "desktop", "old-label", now);
+      applyMigration(staged, "0004_machine_labels.sql");
+
+      staged
+        .prepare("UPDATE server SET subdomain = ? WHERE id = ?")
+        .run("new-label", "s1");
+      expect(
+        staged
+          .prepare("SELECT kind FROM label_claim WHERE label = ?")
+          .get("old-label"),
+      ).toEqual({ kind: "server" });
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("new-label"),
+      ).toBeUndefined();
+
+      staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      })();
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("old-label"),
+      ).toBeUndefined();
+      expect(
+        staged
+          .prepare(
+            "SELECT kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("new-label"),
+      ).toEqual({ kind: "server", owner_id: "s1", user_id: "u1" });
+    } finally {
+      staged.close();
+    }
+  });
+
+  it("fails atomically when gap writes contain a genuine cross-source collision", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0005")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "conflict-label", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s2", "u2", "default", "conflict-label", now);
+
+      const apply = staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      });
+      expect(apply).toThrow(/label_claim_reconciliation_conflict/iu);
+      expect(staged.prepare("SELECT label FROM label_claim").all()).toEqual([]);
+      expect(
+        staged
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%_label_claim_%'",
+          )
+          .all(),
+      ).toEqual([]);
+    } finally {
+      staged.close();
+    }
+  });
+});
+
+describe("checkLabelAvailability (all routing namespaces)", () => {
   it("reports a free, well-formed label available", async () => {
     seedUser();
     expect(await checkLabelAvailability(db, "sawyer-desktop")).toEqual({
       available: true,
       label: "sawyer-desktop",
+    });
+  });
+
+  it("trigger-claims handle and server rows written by an old web worker", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    // Pre-PR write shape: source rows are committed after migration, but the
+    // independently deployed old web worker knows nothing about label_claim.
+    db.insert(profile)
+      .values({ userId: "u1", handle: "legacy-handle", createdAt: now })
+      .run();
+    db.insert(server)
+      .values([
+        {
+          id: "legacy-primary",
+          userId: "u1",
+          name: "default",
+          subdomain: "legacy-handle",
+          createdAt: now,
+        },
+        {
+          id: "legacy-secondary",
+          userId: "u1",
+          name: "desktop",
+          subdomain: "legacy-server",
+          createdAt: now,
+        },
+      ])
+      .run();
+
+    await expect(checkLabelAvailability(db, "legacy-handle")).resolves.toEqual({
+      available: false,
+      reason: "taken",
+      namespace: "handle",
+    });
+    db.insert(machine)
+      .values({
+        id: "attacker-machine",
+        userId: "u2",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "legacy-server" })
+        .where(eq(machine.id, "attacker-machine"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
+    await expect(checkLabelAvailability(db, "legacy-server")).resolves.toEqual({
+      available: false,
+      reason: "taken",
+      namespace: "subdomain",
+    });
+    expect(
+      db
+        .select({
+          label: labelClaim.label,
+          kind: labelClaim.kind,
+          generation: labelClaim.generation,
+        })
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "legacy-server"))
+        .get(),
+    ).toEqual({
+      label: "legacy-server",
+      kind: "server",
+      generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
     });
   });
 
@@ -517,6 +1177,25 @@ describe("checkLabelAvailability (both namespaces)", () => {
       available: false,
       reason: "taken",
       namespace: "subdomain",
+    });
+  });
+
+  it("reports a label taken by an existing machine subdomain", async () => {
+    seedUser("u1");
+    const now = new Date();
+    db.insert(machine)
+      .values({
+        id: "m1",
+        userId: "u1",
+        subdomain: "sawyer-air",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+    expect(await checkLabelAvailability(db, "sawyer-air")).toEqual({
+      available: false,
+      reason: "taken",
+      namespace: "machine",
     });
   });
 });

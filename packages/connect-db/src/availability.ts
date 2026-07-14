@@ -1,13 +1,16 @@
 // Label availability across the single public namespace shared by account
-// handles (`profile.handle`) and server subdomains (`server.subdomain`). A label
-// is claimable only when it is well-formed AND unused in BOTH tables. The
-// dashboard (apps/web) and the gate reuse this so the two claim paths cannot
-// disagree about what is free.
+// handles (`profile.handle`), server subdomains (`server.subdomain`), and machine
+// subdomains (`machine.subdomain`). `label_claim.label` is the atomic
+// globally-unique allocation point. Migration-owned triggers attach and release
+// claims in the same SQLite statement as every source-table mutation, including
+// writes from claim-ignorant old workers.
 
 import { eq } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { type HandleValidationError, validateSubdomain } from "./constants.js";
-import { profile, server } from "./schema.js";
+import { labelClaim } from "./schema.js";
+
+export type LabelClaim = typeof labelClaim.$inferSelect;
 
 /**
  * The minimal Drizzle SQLite database shape this helper needs. Satisfied by both
@@ -19,27 +22,34 @@ import { profile, server } from "./schema.js";
 // uses the core `.select()` surface — so they are widened to accept any Drizzle
 // SQLite database (D1 or better-sqlite3, with or without a bound schema).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ConnectDb = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>, any>;
+export type ConnectDb = BaseSQLiteDatabase<
+  "sync" | "async",
+  unknown,
+  Record<string, unknown>,
+  any
+>;
 
 /**
  * Result of a label-availability check.
- *   - `available: true` — well-formed and free in both namespaces.
+ *   - `available: true` — well-formed and free in every routing namespace.
  *   - `reason: "invalid"` — failed the shared handle/subdomain grammar
  *     (`error` carries the specific reason, incl. reserved words and `--`).
  *   - `reason: "taken"` — already claimed; `namespace` says which table holds
- *     it (an existing account handle vs another server's subdomain).
+ *     it.
  */
 export type LabelAvailability =
   | { available: true; label: string }
   | { available: false; reason: "invalid"; error: HandleValidationError }
-  | { available: false; reason: "taken"; namespace: "handle" | "subdomain" };
+  | {
+      available: false;
+      reason: "taken";
+      namespace: "handle" | "subdomain" | "machine";
+    };
 
 /**
- * Check whether `rawLabel` can be claimed as an account handle or server
- * subdomain. Normalizes (trim + lowercase), validates the shared grammar, then
- * queries `profile.handle` and `server.subdomain` — both are unique, so a single
- * `.get()` per table suffices. The handle namespace is checked first only so a
- * collision reports a stable namespace; either hit means unavailable.
+ * Check whether `rawLabel` can be claimed as an account, server, or machine
+ * label. Normalizes (trim + lowercase), validates the shared grammar, then
+ * checks the trigger-maintained global claim row.
  */
 export async function checkLabelAvailability(
   db: ConnectDb,
@@ -50,19 +60,23 @@ export async function checkLabelAvailability(
   const invalid = validateSubdomain(label);
   if (invalid) return { available: false, reason: "invalid", error: invalid };
 
-  const handleRow = await db
-    .select({ handle: profile.handle })
-    .from(profile)
-    .where(eq(profile.handle, label))
+  const claim = await db
+    .select({ kind: labelClaim.kind })
+    .from(labelClaim)
+    .where(eq(labelClaim.label, label))
     .get();
-  if (handleRow) return { available: false, reason: "taken", namespace: "handle" };
-
-  const serverRow = await db
-    .select({ subdomain: server.subdomain })
-    .from(server)
-    .where(eq(server.subdomain, label))
-    .get();
-  if (serverRow) return { available: false, reason: "taken", namespace: "subdomain" };
+  if (claim) {
+    return {
+      available: false,
+      reason: "taken",
+      namespace: claim.kind === "server" ? "subdomain" : claim.kind,
+    };
+  }
 
   return { available: true, label };
+}
+
+/** Machine routing key, isolated across label ownership generations. */
+export function machineRoutingKey(label: string, generation: string): string {
+  return `${label}:${generation}`;
 }

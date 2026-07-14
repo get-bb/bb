@@ -1311,6 +1311,9 @@ importers:
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
+      drizzle-kit:
+        specifier: ^0.30.0
+        version: 0.30.6
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'

@@ -11,7 +11,13 @@
 // data, it is in the wrong database.
 
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 const timestampMs = (name: string) => integer(name, { mode: "timestamp_ms" });
 
@@ -21,7 +27,9 @@ export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
+  emailVerified: integer("email_verified", { mode: "boolean" })
+    .notNull()
+    .default(false),
   image: text("image"),
   // GitHub username, refreshed from the OAuth profile on every sign-in.
   // Null only for rows predating the column.
@@ -96,6 +104,32 @@ export const profile = sqliteTable("profile", {
   createdAt: timestampMs("created_at").notNull(),
 });
 
+export const labelClaimKinds = ["handle", "server", "machine"] as const;
+export type LabelClaimKind = (typeof labelClaimKinds)[number];
+
+/**
+ * The authoritative global routing-label namespace. Product rows retain their
+ * denormalized handle/subdomain for direct reads. Migration-owned triggers
+ * insert/delete the claim in the same statement as each source mutation, so
+ * the primary key is an atomic cross-namespace constraint even for old workers.
+ * `generation` changes when a claim changes owners; machine routing uses it to
+ * isolate TunnelDO and cache state. Server routing remains unchanged from main.
+ */
+export const labelClaim = sqliteTable(
+  "label_claim",
+  {
+    label: text("label").primaryKey(),
+    kind: text("kind", { enum: labelClaimKinds }).notNull(),
+    ownerId: text("owner_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    generation: text("generation").notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+  },
+  (table) => [index("label_claim_user_id_idx").on(table.userId)],
+);
+
 /**
  * A connected bb server (the machine running the tunnel client). An account may
  * own up to `MAX_SERVERS_PER_ACCOUNT` servers; each owns a globally-unique
@@ -105,8 +139,9 @@ export const profile = sqliteTable("profile", {
  * servers claim their own free labels (e.g. `sawyerhood-desktop`).
  *
  * `subdomain` uses the exact handle grammar (see `validateLabel`) — reserved
- * words and the `--` share separator are rejected — and is unique across BOTH
- * `server.subdomain` and `profile.handle` (see `checkLabelAvailability`).
+ * words and the `--` share separator are rejected — and is unique across
+ * `server.subdomain`, `machine.subdomain`, and `profile.handle` (see
+ * `checkLabelAvailability`).
  *
  * `credentialHash` is a hash of the durable tunnel credential — the plaintext
  * lives only on the user's machine. `lastSeenAt` is bumped by tunnel
@@ -148,7 +183,9 @@ export const connectCode = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    serverId: text("server_id").references(() => server.id, { onDelete: "cascade" }),
+    serverId: text("server_id").references(() => server.id, {
+      onDelete: "cascade",
+    }),
     purpose: text("purpose").notNull(),
     expiresAt: timestampMs("expires_at").notNull(),
     consumedAt: timestampMs("consumed_at"),
@@ -163,7 +200,9 @@ export const connectCode = sqliteTable(
  * a machine is a bb host-daemon on another computer that reaches that server via
  * the tunnel, authenticated to the gate by `credentialHash`. The daemon also
  * carries its own bb host key for the server's auth — this credential only
- * authorizes it to traverse the gate's `/internal/*` path.
+ * authorizes it to traverse the gate's `/internal/*` path. `subdomain` is a
+ * nullable routing label assigned lazily for machine-direct port shares. It
+ * uses the same global label namespace and grammar as servers and handles.
  */
 export const machine = sqliteTable(
   "machine",
@@ -173,6 +212,7 @@ export const machine = sqliteTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name"),
+    subdomain: text("subdomain").unique(),
     credentialHash: text("credential_hash").notNull(),
     lastSeenAt: timestampMs("last_seen_at"),
     createdAt: timestampMs("created_at").notNull(),
@@ -197,7 +237,11 @@ export const auditLog = sqliteTable(
   (table) => [index("audit_log_user_id_idx").on(table.userId)],
 );
 
-export const connectCodePurposes = ["server-pair", "manual-pair", "machine-pair"] as const;
+export const connectCodePurposes = [
+  "server-pair",
+  "manual-pair",
+  "machine-pair",
+] as const;
 export type ConnectCodePurpose = (typeof connectCodePurposes)[number];
 
 export const schema = {
@@ -206,6 +250,7 @@ export const schema = {
   account,
   verification,
   profile,
+  labelClaim,
   server,
   machine,
   connectCode,

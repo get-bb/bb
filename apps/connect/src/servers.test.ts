@@ -3,10 +3,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SERVER_OFFLINE_AFTER_MS,
+  labelClaim,
   machine,
+  profile,
   schema,
   server,
   session,
@@ -20,6 +23,11 @@ import {
   verifyDesktopSessionCookie,
   verifyServerCredential,
 } from "./servers.js";
+import {
+  assignMachineLabel,
+  assignMachineLabelForCredential,
+  sanitizeMachineLabelBase,
+} from "./machine-label.js";
 import { verifyMachineCredential } from "./session.js";
 
 // Real in-memory SQLite (never mock the DB). Same harness as session.test.ts.
@@ -296,5 +304,222 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
       },
     });
     expect(await resolveAccountUserId(req, secret, db)).toBe("acct-a");
+  });
+});
+
+describe("machine label assignment", () => {
+  it("sanitizes a host name, suffixes across every namespace, and is idempotent", async () => {
+    seedUser("acct-a");
+    db.insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer-air", createdAt: now })
+      .run();
+    seedServer({
+      id: "s2",
+      userId: "acct-a",
+      name: "second",
+      subdomain: "sawyer-air-2",
+    });
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-existing",
+          userId: "acct-a",
+          subdomain: "sawyer-air-3",
+          credentialHash: "existing-hash",
+          createdAt: now,
+        },
+        {
+          id: "machine-new",
+          userId: "acct-a",
+          credentialHash: "new-hash",
+          createdAt: now,
+        },
+      ])
+      .run();
+    expect(sanitizeMachineLabelBase("  Sawyer Air!!!  ", "machine-new")).toBe(
+      "sawyer-air",
+    );
+    await expect(
+      assignMachineLabel(db, "machine-new", "  Sawyer Air!!!  "),
+    ).resolves.toBe("sawyer-air-4");
+    await expect(
+      assignMachineLabel(db, "machine-new", "a totally different name"),
+    ).resolves.toBe("sawyer-air-4");
+  });
+
+  it("uses machine-<id-prefix> when the desired name is empty or invalid", async () => {
+    seedUser("acct-a");
+    db.insert(machine)
+      .values({
+        id: "ABC-12345-rest",
+        userId: "acct-a",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+
+    expect(sanitizeMachineLabelBase("", "ABC-12345-rest")).toBe(
+      "machine-abc12345",
+    );
+    await expect(
+      assignMachineLabel(db, "ABC-12345-rest", "admin"),
+    ).resolves.toBe("machine-abc12345");
+  });
+
+  it("authenticates the assigning machine and refuses revoked credentials", async () => {
+    seedUser("acct-a");
+    const credential = "bbcm_assigning_machine";
+    db.insert(machine)
+      .values({
+        id: "machine-auth",
+        userId: "acct-a",
+        credentialHash: await sha256Hex(credential),
+        createdAt: now,
+      })
+      .run();
+
+    await expect(
+      assignMachineLabelForCredential(db, credential, "Sawyer Air"),
+    ).resolves.toBe("sawyer-air");
+    db.update(machine)
+      .set({ revokedAt: now, subdomain: null })
+      .where(eq(machine.id, "machine-auth"))
+      .run();
+    await expect(
+      assignMachineLabelForCredential(db, credential, "Sawyer Air"),
+    ).resolves.toBeNull();
+  });
+
+  it("keeps concurrent assignments on one atomic global claim", async () => {
+    seedUser("acct-a");
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-a",
+          userId: "acct-a",
+          credentialHash: "a",
+          createdAt: now,
+        },
+        {
+          id: "machine-b",
+          userId: "acct-a",
+          credentialHash: "b",
+          createdAt: now,
+        },
+      ])
+      .run();
+
+    const [a, b] = await Promise.all([
+      assignMachineLabel(db, "machine-a", "Shared Name"),
+      assignMachineLabel(db, "machine-b", "Shared Name"),
+    ]);
+    expect(new Set([a, b])).toEqual(new Set(["shared-name", "shared-name-2"]));
+    expect(db.select().from(labelClaim).all()).toHaveLength(2);
+  });
+
+  it("loses cleanly when revocation crosses the pre-attach barrier", async () => {
+    seedUser("acct-a");
+    db.insert(machine)
+      .values({
+        id: "machine-race",
+        userId: "acct-a",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+    let releaseBarrier: (() => void) | undefined;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    let attachReached: (() => void) | undefined;
+    const attaching = new Promise<void>((resolve) => {
+      attachReached = resolve;
+    });
+    const assignment = assignMachineLabel(db, "machine-race", "Race Box", {
+      beforeAttach: async () => {
+        attachReached?.();
+        await barrier;
+      },
+    });
+
+    await attaching;
+    db.update(machine)
+      .set({ revokedAt: now })
+      .where(eq(machine.id, "machine-race"))
+      .run();
+    releaseBarrier?.();
+
+    await expect(assignment).resolves.toBeNull();
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-race")).get()
+        ?.subdomain,
+    ).toBeNull();
+    expect(db.select().from(labelClaim).all()).toEqual([]);
+  });
+
+  it("has no pause-after-claim gap against a claim-ignorant server writer", async () => {
+    seedUser("acct-a");
+    seedUser("acct-b");
+    db.insert(machine)
+      .values({
+        id: "machine-atomic",
+        userId: "acct-a",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+    let resumeAttach: (() => void) | undefined;
+    const barrier = new Promise<void>((resolve) => {
+      resumeAttach = resolve;
+    });
+    let attachReached: (() => void) | undefined;
+    const attaching = new Promise<void>((resolve) => {
+      attachReached = resolve;
+    });
+    let paused = false;
+    const assignment = assignMachineLabel(
+      db,
+      "machine-atomic",
+      "Shared Atomic",
+      {
+        beforeAttach: async (candidate) => {
+          if (candidate !== "shared-atomic" || paused) return;
+          paused = true;
+          attachReached?.();
+          await barrier;
+        },
+      },
+    );
+
+    await attaching;
+    // The machine update has not begun, so neither source nor claim exists.
+    expect(db.select().from(labelClaim).all()).toEqual([]);
+    // Simulate an old web worker: it inserts only the server source row. The
+    // migration trigger claims the label in that same statement.
+    seedServer({
+      id: "old-writer-server",
+      userId: "acct-b",
+      name: "default",
+      subdomain: "shared-atomic",
+      credentialHash: null,
+    });
+    resumeAttach?.();
+
+    await expect(assignment).resolves.toBe("shared-atomic-2");
+    expect(
+      db.select().from(server).where(eq(server.id, "old-writer-server")).get()
+        ?.subdomain,
+    ).toBe("shared-atomic");
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-atomic")).get()
+        ?.subdomain,
+    ).toBe("shared-atomic-2");
+    expect(
+      db
+        .select({ label: labelClaim.label })
+        .from(labelClaim)
+        .orderBy(labelClaim.label)
+        .all(),
+    ).toEqual([{ label: "shared-atomic" }, { label: "shared-atomic-2" }]);
   });
 });

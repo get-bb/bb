@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   connectCode,
+  labelClaim,
   machine,
   MAX_SERVERS_PER_ACCOUNT,
   schema,
@@ -557,6 +558,7 @@ describe("dashboard machine recovery", () => {
           id: "machine-owner",
           userId: "u1",
           name: "lost laptop",
+          subdomain: "lost-laptop",
           credentialHash: "hash-owner",
           lastSeenAt: now,
           createdAt: now,
@@ -568,6 +570,10 @@ describe("dashboard machine recovery", () => {
           createdAt: now,
         },
       ])
+      .run();
+    db.update(labelClaim)
+      .set({ generation: "lost-generation" })
+      .where(eq(labelClaim.label, "lost-laptop"))
       .run();
 
     expect((await getAccountState(deps, "u1")).machines).toEqual([
@@ -584,10 +590,166 @@ describe("dashboard machine recovery", () => {
     await expect(revokeMachine(deps, "u1", "machine-owner")).resolves.toEqual({
       ok: true,
     });
+    expect(closeTunnel).toHaveBeenCalledWith("lost-laptop:lost-generation");
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
     expect((await getAccountState(deps, "u1")).machines).toEqual([]);
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-owner")).get()
+        ?.subdomain,
+    ).toBeNull();
     expect(
       db.select().from(machine).where(eq(machine.id, "machine-other")).get()
         ?.revokedAt,
     ).toBeNull();
+  });
+
+  it("keeps a revoked label pinned when tunnel close fails", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-a",
+          userId: "u1",
+          subdomain: "shared-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-b",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
+      .run();
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "shared-machine"))
+      .run();
+    closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
+
+    await expect(revokeMachine(deps, "u1", "machine-a")).resolves.toEqual({
+      error: "tunnel-close-failed",
+    });
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-a")).get()
+        ?.subdomain,
+    ).toBe("shared-machine");
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
+  });
+
+  it("retries a failed machine close during the reachable account-state sweep", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-retry",
+          userId: "u1",
+          subdomain: "retry-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-new",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
+      .run();
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "retry-machine"))
+      .run();
+    closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
+
+    await expect(revokeMachine(deps, "u1", "machine-retry")).resolves.toEqual({
+      error: "tunnel-close-failed",
+    });
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
+    await getAccountState(deps, "u1");
+    expect(closeTunnel).toHaveBeenCalledTimes(2);
+    expect(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "retry-machine"))
+        .get(),
+    ).toBeUndefined();
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "retry-machine" })
+        .where(eq(machine.id, "machine-new"))
+        .run(),
+    ).not.toThrow();
+  });
+
+  it("does not release a label until delayed close confirms, then gives the new owner a new generation", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-a",
+          userId: "u1",
+          subdomain: "shared-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-b",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
+      .run();
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "shared-machine"))
+      .run();
+    let confirmClose: (() => void) | undefined;
+    closeTunnel.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          confirmClose = resolve;
+        }),
+    );
+
+    const revocation = revokeMachine(deps, "u1", "machine-a");
+    await vi.waitFor(() => expect(closeTunnel).toHaveBeenCalledTimes(1));
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
+
+    confirmClose?.();
+    await expect(revocation).resolves.toEqual({ ok: true });
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).not.toThrow();
+    expect(db.select().from(labelClaim).get()).toMatchObject({
+      ownerId: "machine-b",
+      generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
+    });
   });
 });

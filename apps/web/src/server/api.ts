@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   CONNECT_CODE_TTL_MS,
@@ -7,12 +7,14 @@ import {
   SERVER_OFFLINE_AFTER_MS,
   checkLabelAvailability,
   connectCode,
+  labelClaim,
   machine,
+  machineRoutingKey,
   profile,
   server,
   user,
 } from "@bb/connect-db";
-import type { ConnectDb, LabelAvailability } from "@bb/connect-db";
+import type { ConnectDb, LabelAvailability, LabelClaim } from "@bb/connect-db";
 import type { Env } from "./env.js";
 import { generateConnectCode, generateToken, sha256Hex } from "./tokens.js";
 
@@ -26,7 +28,7 @@ export interface Deps {
   db: ConnectDb;
   baseDomain: string;
   appUrl: string;
-  closeTunnel?: (subdomain: string) => Promise<void>;
+  closeTunnel?: (routingKey: string) => Promise<void>;
 }
 
 export function depsFromEnv(env: Env): Deps {
@@ -34,11 +36,23 @@ export function depsFromEnv(env: Env): Deps {
     db: drizzle(env.DB),
     baseDomain: env.BASE_DOMAIN,
     appUrl: env.APP_URL,
-    closeTunnel: async (subdomain) => {
-      const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(subdomain));
-      await stub.fetch("https://tunnel/__control/close");
+    closeTunnel: async (routingKey) => {
+      const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
+      const response = await stub.fetch("https://tunnel/__control/close");
+      if (!response.ok) {
+        throw new Error(`tunnel close failed (${response.status})`);
+      }
     },
   };
+}
+
+async function closeMachineTunnel(
+  deps: Pick<Deps, "closeTunnel">,
+  claim: LabelClaim,
+): Promise<void> {
+  const closeTunnel = deps.closeTunnel;
+  if (!closeTunnel) throw new Error("tunnel close unavailable");
+  await closeTunnel(machineRoutingKey(claim.label, claim.generation));
 }
 
 /** One connected bb server, projected for the dashboard. */
@@ -148,6 +162,7 @@ export async function getAccountState(
   userId: string,
 ): Promise<AccountState> {
   const { db, baseDomain } = deps;
+  await retryPendingMachineRevocations(deps, userId);
   const prof = await db
     .select()
     .from(profile)
@@ -210,13 +225,24 @@ export async function getAccountState(
 }
 
 export async function revokeMachine(
-  deps: Pick<Deps, "db">,
+  deps: Pick<Deps, "db" | "closeTunnel">,
   userId: string,
   machineId: string,
-): Promise<{ ok: true } | { error: "not-found" }> {
+): Promise<{ ok: true } | { error: "not-found" | "tunnel-close-failed" }> {
   const existing = await deps.db
-    .select({ id: machine.id })
+    .select({ id: machine.id, revokedAt: machine.revokedAt })
     .from(machine)
+    .where(and(eq(machine.id, machineId), eq(machine.userId, userId)))
+    .get();
+  if (!existing) return { error: "not-found" };
+
+  // Revoke first so neither a stale assignment request nor a reconnect can
+  // attach after the closure barrier. Keep the claim pinned until the DO has
+  // positively acknowledged close; failures are retryable and never free the
+  // label for another tenant.
+  await deps.db
+    .update(machine)
+    .set({ revokedAt: existing.revokedAt ?? new Date() })
     .where(
       and(
         eq(machine.id, machineId),
@@ -224,14 +250,52 @@ export async function revokeMachine(
         isNull(machine.revokedAt),
       ),
     )
+    .run();
+
+  const claim = await deps.db
+    .select()
+    .from(labelClaim)
+    .where(
+      and(eq(labelClaim.kind, "machine"), eq(labelClaim.ownerId, machineId)),
+    )
     .get();
-  if (!existing) return { error: "not-found" };
+  if (!claim && existing.revokedAt !== null) return { error: "not-found" };
+
+  if (claim) {
+    try {
+      await closeMachineTunnel(deps, claim);
+    } catch {
+      return { error: "tunnel-close-failed" };
+    }
+  }
+
   await deps.db
     .update(machine)
-    .set({ revokedAt: new Date() })
+    .set({ subdomain: null })
     .where(and(eq(machine.id, machineId), eq(machine.userId, userId)))
     .run();
   return { ok: true };
+}
+
+/** Retry closure/release for revocations left pending by a transient DO error. */
+export async function retryPendingMachineRevocations(
+  deps: Pick<Deps, "db" | "closeTunnel">,
+  userId: string,
+): Promise<void> {
+  const pending = await deps.db
+    .select({ id: machine.id })
+    .from(machine)
+    .where(
+      and(
+        eq(machine.userId, userId),
+        isNotNull(machine.revokedAt),
+        isNotNull(machine.subdomain),
+      ),
+    )
+    .all();
+  for (const row of pending) {
+    await revokeMachine(deps, userId, row.id);
+  }
 }
 
 /** Live label-availability check for the claim UIs (handle + "connect another"). */
@@ -273,6 +337,8 @@ export async function claimHandle(
 
   const now = new Date();
   try {
+    // The profile trigger inserts label_claim in this same SQLite statement;
+    // a global collision aborts both source and claim atomically.
     await db.insert(profile).values({ userId, handle, createdAt: now }).run();
   } catch {
     return { error: "taken" };
@@ -289,6 +355,10 @@ export async function claimHandle(
       })
       .run();
   } catch {
+    await db
+      .delete(profile)
+      .where(and(eq(profile.userId, userId), eq(profile.handle, handle)))
+      .run();
     return { error: "taken" };
   }
   return { ok: true, handle };
@@ -329,6 +399,7 @@ export async function createServer(
   const now = new Date();
   const id = crypto.randomUUID();
   try {
+    // The server trigger claims the label in this same SQLite statement.
     await db
       .insert(server)
       .values({ id, userId, name: label, subdomain: label, createdAt: now })
@@ -350,7 +421,9 @@ export async function createServer(
     return { error: "server-limit" };
   }
   const created = await db.select().from(server).where(eq(server.id, id)).get();
-  if (!created) return { error: "taken" };
+  if (!created) {
+    return { error: "taken" };
+  }
   return {
     ok: true,
     server: toServerSummary(created, prof.handle, baseDomain, Date.now()),
@@ -516,7 +589,7 @@ export async function createMachineCodeForServerCredential(
 }
 
 export async function revokeMachineForServerCredential(
-  deps: Pick<Deps, "db">,
+  deps: Pick<Deps, "db" | "closeTunnel">,
   credential: string,
   machineId: string,
 ): Promise<{ ok: true } | { error: string; status: number }> {
@@ -534,7 +607,12 @@ export async function revokeMachineForServerCredential(
     .get();
   if (!srv) return { error: "unauthorized", status: 401 };
   const result = await revokeMachine(deps, srv.userId, machineId);
-  return "error" in result ? { error: result.error, status: 404 } : result;
+  return "error" in result
+    ? {
+        error: result.error,
+        status: result.error === "tunnel-close-failed" ? 503 : 404,
+      }
+    : result;
 }
 
 /**
@@ -594,8 +672,9 @@ export async function removeServer(
     .get();
   if (!srv) return { error: "not-found" };
   if (prof && srv.subdomain === prof.handle) return { error: "is-primary" };
-  if (srv.credentialHash != null && srv.revokedAt == null)
+  if (srv.credentialHash != null && srv.revokedAt == null) {
     return { error: "connected" };
+  }
 
   await db.delete(server).where(eq(server.id, srv.id)).run();
   return { ok: true };
