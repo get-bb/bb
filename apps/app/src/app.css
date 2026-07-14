@@ -185,6 +185,12 @@
     min-width: 0;
   }
 
+  [data-promptbox-editor-content]
+    .ProseMirror
+    p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+  }
+
   /*
    * Light up the `ultracode` keyword in the prompt editor with animated purple
    * sparkles (mirrors Claude Code). The wrapping span is added as a ProseMirror
@@ -324,7 +330,202 @@
       display: none !important;
     }
   }
+}
 
+/*
+ * A split can make a thread narrow without making the browser viewport
+ * compact. Reuse the follow-up composer's one-line presentation at the
+ * prompt's existing compact-control breakpoint, then let focus expand it.
+ * This is intentionally unlayered so it can override the prompt's utility
+ * classes. The mobile path still owns its React state so software-keyboard
+ * expansion remains synchronized with visualViewport changes.
+ */
+@container promptbox-shell (max-width: 30rem) {
+  [data-follow-up-composer] [data-promptbox-layout] {
+    height: 100%;
+  }
+
+  [data-follow-up-composer] [data-promptbox-main] {
+    position: static;
+  }
+
+  [data-follow-up-composer] [data-promptbox-action-row] {
+    padding-right: 3rem;
+  }
+
+  [data-follow-up-composer] [data-promptbox-submit-group] {
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    z-index: 1;
+  }
+
+  [data-follow-up-composer] [data-promptbox-submit-action] {
+    width: 2rem;
+    height: 2rem;
+    margin-left: 0;
+    padding: 0;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    ) {
+    overflow: hidden;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-main] {
+    height: 3rem;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-expanded-only] {
+    display: none !important;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-scroll] {
+    height: 3rem !important;
+    min-height: 3rem !important;
+    max-height: 3rem !important;
+    overflow: hidden;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-right: 3.5rem;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content] {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror[contenteditable] {
+    width: 100%;
+    min-height: 0 !important;
+    max-height: 1.7em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap !important;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror[contenteditable]
+    > *,
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror[contenteditable]
+    :where(blockquote, h1, h2, h3, h4, h5, h6, li, ol, p, ul) {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    list-style: none;
+    white-space: inherit;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror[contenteditable]
+    > *
+    + *::before,
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror[contenteditable]
+    :where(blockquote, li)
+    > *
+    + *::before,
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror[contenteditable]
+    :where(ol, ul)
+    > li
+    + li::before {
+    content: " ";
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror[contenteditable]
+    br {
+    display: inline;
+    content: " ";
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror[contenteditable]
+    br::after {
+    content: " ";
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .prompt-mention-pill
+    > span:last-child {
+    min-width: 0;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-editor-content]
+    .ProseMirror
+    p.is-editor-empty:first-child::before {
+    content: var(--promptbox-container-compact-placeholder);
+  }
+}
+
+@layer base {
   /*
    * Sonner clips collapsed native toasts on the toast node. Our custom card
    * lives inside that node, so clip it there too when it is behind the front

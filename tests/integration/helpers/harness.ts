@@ -38,6 +38,7 @@ import type {
   ServerLogger,
   ServerRuntimeConfig,
 } from "../../../apps/server/src/types.js";
+import { HostSharedPortCoordinator } from "../../../apps/server/src/ws/host-shared-ports.js";
 import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
 import { createPublicApiClient } from "@bb/server-contract";
@@ -216,6 +217,7 @@ async function startIntegrationServer(
 
   const db = initDb(":memory:");
   const hub = new NotificationHub();
+  const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const config: ServerRuntimeConfig = {
     appSurface: "web",
@@ -283,6 +285,7 @@ async function startIntegrationServer(
     logger: testLogger,
     machineAuth,
     pendingInteractions,
+    sharedPorts,
     skillTreeRegistry,
     telemetry,
     terminalSessions,

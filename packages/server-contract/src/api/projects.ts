@@ -264,6 +264,8 @@ export const providerCommandSchema = z.object({
   description: z.string().nullable(),
   /** `null` = no argument hint. */
   argumentHint: z.string().nullable(),
+  /** Present when this skill is contributed by a running bb plugin. */
+  pluginId: z.string().min(1).optional(),
 });
 export type ProviderCommand = z.infer<typeof providerCommandSchema>;
 
@@ -313,23 +315,17 @@ export function providerCommandSectionRank(cmd: {
 
 export const commandListResponseSchema = z.object({
   commands: z.array(providerCommandSchema),
-  truncated: z.boolean(),
 });
 export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
 
-/**
- * Command typeahead query. Extends the shared project file-search query
- * (`query`/`limit`/`environmentId`, including the empty-string→null wire
- * convention) with the `provider` whose skill/command surface to discover.
- * `query` here is a case-insensitive substring filter on command name/description.
- * Namespaced skills also match on their local name after `:` (for example,
- * `review` matches `ottonomous:review`).
- */
-export const projectCommandsQuerySchema = projectFilesQuerySchema.extend({
-  /** Provider whose command/skill surface to discover (e.g. `claude-code`, `codex`). */
-  provider: z.string().min(1),
-  offset: z.string().regex(/^\d+$/).optional(),
-});
+/** Query for the complete command catalog available to a project and provider. */
+export const projectCommandsQuerySchema = projectFilesQuerySchema
+  .pick({ environmentId: true })
+  .extend({
+    /** Provider whose command/skill surface to discover (e.g. `claude-code`, `codex`). */
+    provider: z.string().min(1),
+  })
+  .strict();
 export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
 
 export const projectResponseSchema = projectSchema.extend({

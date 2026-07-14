@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type {
   CommandListResponse,
   ProjectBranchesResponse,
@@ -11,7 +11,6 @@ import type { FilePreview } from "@/lib/api";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   projectCommandsQueryKey,
-  projectCommandsPagesQueryKey,
   projectFilePreviewQueryKey,
   projectPathsQueryKey,
   projectPromptHistoryQueryKey,
@@ -50,9 +49,6 @@ interface UseProjectCommandsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   environmentId: string | null;
-  query: string;
-  limit: number;
-  offset: number;
 }
 
 const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
@@ -237,58 +233,18 @@ export function useProjectCommands(
       args.projectId,
       args.providerId,
       args.environmentId,
-      args.query,
-      args.offset,
-      args.limit,
     ),
     queryFn: ({ signal }) =>
       api.listProjectCommands({
         projectId: requireProjectId(args.projectId, "useProjectCommands"),
         providerId: requireProviderId(args.providerId, "useProjectCommands"),
         environmentId: args.environmentId,
-        query: args.query,
-        limit: args.limit,
-        offset: args.offset,
         signal,
       }),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
-    placeholderData: (previousData) => previousData,
-  });
-}
-
-export function useProjectCommandsPages(
-  args: Omit<UseProjectCommandsArgs, "offset">,
-  options?: QueryOptions,
-) {
-  return useInfiniteQuery({
-    queryKey: projectCommandsPagesQueryKey(
-      args.projectId,
-      args.providerId,
-      args.environmentId,
-      args.query,
-      args.limit,
-    ),
-    queryFn: ({ pageParam, signal }) =>
-      api.listProjectCommands({
-        projectId: requireProjectId(args.projectId, "useProjectCommandsPages"),
-        providerId: requireProviderId(
-          args.providerId,
-          "useProjectCommandsPages",
-        ),
-        environmentId: args.environmentId,
-        query: args.query,
-        limit: args.limit,
-        offset: pageParam,
-        signal,
-      }),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
-      lastPage.truncated ? lastPageParam + args.limit : undefined,
-    enabled:
-      (options?.enabled ?? true) &&
-      Boolean(args.projectId) &&
-      Boolean(args.providerId),
-    ...TYPEAHEAD_QUERY_POLICY,
+    // Reopening the slash menu refreshes provider-native files that may have
+    // changed on disk; typing keeps the same key and still filters locally.
+    staleTime: 0,
   });
 }

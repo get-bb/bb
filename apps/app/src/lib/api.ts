@@ -704,9 +704,6 @@ interface ListProjectCommandsArgs {
   projectId: string;
   providerId: string;
   environmentId: string | null;
-  query: string;
-  limit: number;
-  offset: number;
   signal?: AbortSignal;
 }
 
@@ -729,9 +726,6 @@ export async function listProjectCommands(
         query: {
           provider: args.providerId,
           environmentId: args.environmentId ?? "",
-          ...(args.query.length > 0 ? { query: args.query } : {}),
-          limit: String(args.limit),
-          ...(args.offset > 0 ? { offset: String(args.offset) } : {}),
         },
       },
       requestOptions(args.signal),

@@ -295,8 +295,6 @@ export function registerProjectCommands(
       "--environment <id>",
       "Environment workspace; omit for default source",
     )
-    .option("--query <query>", "Command-name filter")
-    .option("--limit <count>", "Maximum commands")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
@@ -304,8 +302,6 @@ export function registerProjectCommands(
           projectId: id,
           provider: opts.provider ?? "",
           environmentId: opts.environment ?? null,
-          ...(opts.query ? { query: opts.query } : {}),
-          ...(opts.limit ? { limit: opts.limit } : {}),
         });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));

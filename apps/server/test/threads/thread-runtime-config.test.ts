@@ -1554,7 +1554,7 @@ describe("thread runtime config", () => {
       }>;
     }): void {
       setPluginAgentContributions({
-        listSkillsRootPaths: () => [],
+        listSkillRootContributions: () => [],
         listAgentTools: () => args.tools ?? [],
         listInstructionContributions: () => args.instructions ?? [],
         findAgentTool: () => undefined,

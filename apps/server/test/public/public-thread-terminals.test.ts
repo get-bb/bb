@@ -1105,13 +1105,17 @@ describe("public thread terminal routes", () => {
       socket: replacementSocket,
     });
 
-    const closeMessage = await waitForDaemonMessage(replacementSocket);
+    expect(await waitForDaemonMessage(replacementSocket)).toEqual({
+      type: "connect-shares.replace",
+      generation: 0,
+      ports: [],
+    });
+    const closeMessage = await waitForDaemonMessage(replacementSocket, 1);
     expect(closeMessage).toMatchObject({
       type: "terminal.close",
       terminalId: stored.id,
       reason: "daemon-disconnect",
     });
-    expect(replacementSocket.sentMessages).toHaveLength(1);
     expect(
       listTerminalSessionsByThread(fixture.harness.db, fixture.thread.id),
     ).toEqual([
@@ -1179,7 +1183,12 @@ describe("public thread terminal routes", () => {
       socket: replacementSocket,
     });
 
-    const closeMessage = await waitForDaemonMessage(replacementSocket);
+    expect(await waitForDaemonMessage(replacementSocket)).toEqual({
+      type: "connect-shares.replace",
+      generation: 0,
+      ports: [],
+    });
+    const closeMessage = await waitForDaemonMessage(replacementSocket, 1);
     expect(closeMessage).toMatchObject({
       type: "terminal.close",
       terminalId: stored.id,

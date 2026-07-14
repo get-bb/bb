@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
   getThread,
@@ -43,10 +43,7 @@ async function writePlugin(
   return rootDir;
 }
 
-function requireApi(
-  service: PluginService,
-  pluginId: string,
-): BbPluginApi {
+function requireApi(service: PluginService, pluginId: string): BbPluginApi {
   const api = service.getApi(pluginId);
   if (!api) throw new Error(`plugin ${pluginId} is not running`);
   return api;
@@ -56,13 +53,26 @@ describe("plugin bb.sdk bind gate", () => {
   let db: DbConnection;
   let workDir: string;
   let service: PluginService;
+  const sharedPorts = {
+    declareSharedPorts: vi.fn(),
+    clearDeclarationsForOwner: vi.fn(),
+  };
+  const ensureSharedPortTunnel = vi.fn().mockResolvedValue({
+    label: "sawyer-air",
+    baseDomain: "getbb.app",
+  });
 
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-test-"));
+    sharedPorts.declareSharedPorts.mockClear();
+    sharedPorts.clearDeclarationsForOwner.mockClear();
+    ensureSharedPortTunnel.mockClear();
     service = createPluginService({
       db,
+      sharedPorts,
+      ensureSharedPortTunnel,
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginSignal: () => 0,
@@ -111,6 +121,34 @@ describe("plugin bb.sdk bind gate", () => {
     expect(entry.status).toBe("error");
     expect(entry.statusDetail).toContain(
       "bb.sdk is not available until the server is listening",
+    );
+  });
+
+  it("delivers shared-port declarations through the server control plane", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-shares",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    const api = requireApi(service, "shares");
+
+    await expect(api.hosts.ensureSharedPortTunnel("host-1")).resolves.toEqual({
+      label: "sawyer-air",
+      baseDomain: "getbb.app",
+    });
+    api.hosts.declareSharedPorts("host-1", [8080, 3000]);
+
+    expect(ensureSharedPortTunnel).toHaveBeenCalledWith("host-1");
+
+    expect(sharedPorts.declareSharedPorts).toHaveBeenCalledWith({
+      ownerId: "shares",
+      hostId: "host-1",
+      ports: [8080, 3000],
+    });
+
+    await service.stop();
+    expect(sharedPorts.clearDeclarationsForOwner).toHaveBeenCalledWith(
+      "shares",
     );
   });
 });

@@ -27,6 +27,7 @@ describe("internal session protocol version", () => {
           instanceId: "instance-1",
           hostName: "Protocol Host",
           hostType: "persistent",
+          hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
           protocolVersion: staleProtocolVersion,
@@ -39,9 +40,9 @@ describe("internal session protocol version", () => {
         code: "protocol_version_mismatch",
         message: `Daemon protocol version ${staleProtocolVersion} does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
       });
-      expect(getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion).toBe(
-        staleProtocolVersion,
-      );
+      expect(
+        getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion,
+      ).toBe(staleProtocolVersion);
       await expect(
         fetch(`${server.baseUrl}/api/v1/hosts/host-protocol`).then((result) =>
           result.json(),
@@ -56,6 +57,7 @@ describe("internal session protocol version", () => {
           instanceId: "instance-2",
           hostName: "Protocol Host",
           hostType: "persistent",
+          hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -63,7 +65,9 @@ describe("internal session protocol version", () => {
         },
       });
       expect(accepted.status).toBe(201);
-      expect(getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion).toBeNull();
+      expect(
+        getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion,
+      ).toBeNull();
       await expect(
         fetch(`${server.baseUrl}/api/v1/hosts/host-protocol`).then((result) =>
           result.json(),

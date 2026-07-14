@@ -25,6 +25,7 @@ import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
 import { WatchInterestCoordinator } from "./ws/watch-interests.js";
+import { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const logger = createLogger({
@@ -37,6 +38,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
+  const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();
   const appUrl = toOptionalString(serverConfig.BB_APP_URL);
   const threadStorageRootPath = resolveThreadStorageRootPath({
@@ -141,6 +143,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       telemetry,
       terminalSessions,
       watchInterests,
+      sharedPorts,
     },
     { staticDir },
   );

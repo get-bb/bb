@@ -57,9 +57,6 @@ async function discoverClaude(
     roots: await resolveProviderCommandScanRoots({
       providerId: "claude-code",
       cwd,
-      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
-      additionalSkillsRootPaths: [],
-      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     }),
@@ -74,9 +71,6 @@ async function discoverCodex(
     roots: await resolveProviderCommandScanRoots({
       providerId: "codex",
       cwd,
-      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
-      additionalSkillsRootPaths: [],
-      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     }),
@@ -99,7 +93,7 @@ afterEach(async () => {
 });
 
 describe("discoverProviderCommands (claude-code)", () => {
-  it("discovers project-local and globally installed bb skills", async () => {
+  it("leaves bb-managed skills to the server catalog", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
       path.join(fixture.cwd, ".bb", "skills", "project-bb", "SKILL.md"),
@@ -116,27 +110,9 @@ describe("discoverProviderCommands (claude-code)", () => {
 
     const commands = await discoverClaude(fixture, fixture.cwd);
 
-    expect(byName(commands, "project-bb")).toEqual({
-      name: "project-bb",
-      source: "skill",
-      origin: "project",
-      description: "Project bb skill",
-      argumentHint: null,
-    });
-    expect(byName(commands, "user-bb")).toEqual({
-      name: "user-bb",
-      source: "skill",
-      origin: "user",
-      description: "User bb skill",
-      argumentHint: null,
-    });
-    expect(byName(commands, "bb-cli")).toEqual({
-      name: "bb-cli",
-      source: "skill",
-      origin: "user",
-      description: "Built-in bb CLI skill",
-      argumentHint: null,
-    });
+    expect(byName(commands, "project-bb")).toBeUndefined();
+    expect(byName(commands, "user-bb")).toBeUndefined();
+    expect(byName(commands, "bb-cli")).toBeUndefined();
   });
 
   it("parses project skills, namespaced commands, and frontmatter", async () => {
@@ -823,7 +799,7 @@ describe("discoverProviderCommands (claude-code)", () => {
 });
 
 describe("discoverProviderCommands (codex)", () => {
-  it("discovers project-local and globally installed bb skills", async () => {
+  it("leaves bb-managed skills to the server catalog", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
       path.join(fixture.cwd, ".bb", "skills", "project-bb", "SKILL.md"),
@@ -840,30 +816,12 @@ describe("discoverProviderCommands (codex)", () => {
 
     const commands = await discoverCodex(fixture, fixture.cwd);
 
-    expect(byName(commands, "project-bb")).toEqual({
-      name: "project-bb",
-      source: "skill",
-      origin: "project",
-      description: "Project bb skill",
-      argumentHint: null,
-    });
-    expect(byName(commands, "user-bb")).toEqual({
-      name: "user-bb",
-      source: "skill",
-      origin: "user",
-      description: "User bb skill",
-      argumentHint: null,
-    });
-    expect(byName(commands, "bb-cli")).toEqual({
-      name: "bb-cli",
-      source: "skill",
-      origin: "user",
-      description: "Built-in bb CLI skill",
-      argumentHint: null,
-    });
+    expect(byName(commands, "project-bb")).toBeUndefined();
+    expect(byName(commands, "user-bb")).toBeUndefined();
+    expect(byName(commands, "bb-cli")).toBeUndefined();
   });
 
-  it("discovers inherited bb skills as user-origin codex skills", async () => {
+  it("does not scan inherited bb skill roots", async () => {
     const fixture = await makeWorkspaceFixture();
     const inheritedSkillsRootPath = path.join(tempRoot, "inherited-skills");
     await writeFileEnsuringDir(
@@ -875,21 +833,12 @@ describe("discoverProviderCommands (codex)", () => {
       roots: await resolveProviderCommandScanRoots({
         providerId: "codex",
         cwd: fixture.cwd,
-        builtinSkillsRootPath: fixture.builtinSkillsRootPath,
-        additionalSkillsRootPaths: [inheritedSkillsRootPath],
-        dataDir: fixture.dataDir,
         homeDir: fixture.homeDir,
         codexHome: fixture.codexHome,
       }),
     });
 
-    expect(byName(commands, "stories")).toEqual({
-      name: "stories",
-      source: "skill",
-      origin: "user",
-      description: "Show Ladle stories",
-      argumentHint: null,
-    });
+    expect(byName(commands, "stories")).toBeUndefined();
   });
 
   it("parses project and user codex skills with correct origins", async () => {
@@ -1118,8 +1067,7 @@ describe("discoverProviderCommands (codex)", () => {
 });
 
 describe("resolveCommandScanRoots", () => {
-  it("discovers synchronized skills staged outside the daemon's normal roots", async () => {
-    const fixture = await makeWorkspaceFixture();
+  it("does not accept synchronized bb skills", async () => {
     const sourceRootPath = path.join(tempRoot, "server-skill", "synced-skill");
     const skillFilePath = path.join(sourceRootPath, "SKILL.md");
     await writeFileEnsuringDir(
@@ -1127,105 +1075,35 @@ describe("resolveCommandScanRoots", () => {
       "---\nname: synced-skill\ndescription: Synced from the primary machine\n---\n",
     );
 
-    const result = await listHostCommands(
-      {
-        type: "host.list_commands",
-        providerId: "pi",
-        cwd: null,
-        builtinSkillsRootPath: fixture.builtinSkillsRootPath,
-        injectedSkillSources: [
-          {
-            kind: "workspace-path",
-            sourceType: "project",
-            name: "synced-skill",
-            description: "Synced from the primary machine",
-            sourceRootPath,
-            skillFilePath,
-          },
-        ],
-      },
-      { dataDir: fixture.dataDir },
-    );
-
-    expect(byName(result.commands, "synced-skill")).toEqual({
-      name: "synced-skill",
-      source: "skill",
-      origin: "project",
-      description: "Synced from the primary machine",
-      argumentHint: null,
+    const result = await listHostCommands({
+      type: "host.list_commands",
+      providerId: "pi",
+      cwd: null,
     });
+
+    expect(byName(result.commands, "synced-skill")).toBeUndefined();
   });
 
-  it("scans shared bb skill roots for pi", async () => {
+  it("returns no provider-native roots for pi", async () => {
     const fixture = await makeWorkspaceFixture();
     const roots = resolveCommandScanRoots({
       providerId: "pi",
       cwd: fixture.cwd,
-      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
-      additionalSkillsRootPaths: [path.join(fixture.dataDir, "inherited")],
-      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     });
-    expect(roots).toEqual([
-      {
-        rootPath: path.join(fixture.cwd, ".bb", "skills"),
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "project",
-      },
-      {
-        rootPath: path.join(fixture.dataDir, "skills"),
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "user",
-      },
-      {
-        rootPath: path.join(fixture.dataDir, "inherited"),
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "user",
-      },
-      {
-        rootPath: fixture.builtinSkillsRootPath,
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "user",
-      },
-    ]);
+    expect(roots).toEqual([]);
   });
 
-  it("scans shared bb skill roots for ACP providers", async () => {
+  it("returns no provider-native roots for ACP providers", async () => {
     const fixture = await makeWorkspaceFixture();
     const roots = resolveCommandScanRoots({
       providerId: "acp-cursor",
       cwd: null,
-      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
-      additionalSkillsRootPaths: [],
-      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     });
-    expect(roots).toEqual([
-      {
-        rootPath: path.join(fixture.dataDir, "skills"),
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "user",
-      },
-      {
-        rootPath: fixture.builtinSkillsRootPath,
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "user",
-      },
-    ]);
+    expect(roots).toEqual([]);
   });
 
   it("returns no roots for an unknown provider", async () => {
@@ -1233,9 +1111,6 @@ describe("resolveCommandScanRoots", () => {
     const roots = resolveCommandScanRoots({
       providerId: "unknown-provider",
       cwd: fixture.cwd,
-      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
-      additionalSkillsRootPaths: [],
-      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     });

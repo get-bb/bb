@@ -14,6 +14,7 @@
     "migrations"
   ],
   "scripts": {
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
@@ -25,6 +26,7 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "better-sqlite3": "12.10.0",
+    "drizzle-kit": "^0.30.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"

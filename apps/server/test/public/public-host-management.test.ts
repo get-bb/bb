@@ -101,6 +101,7 @@ describe("public host management", () => {
             activeThreads: [],
             connectMachineId: "machine-cloud-2",
             dataDir: "/tmp/remote-bb",
+            hasMachineCredential: true,
             hostId: issued.hostId,
             hostName: "Build Machine",
             hostType: "persistent",

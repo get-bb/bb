@@ -40,7 +40,10 @@ import {
   shareLoopbackHost,
   shareLoopbackOrigin,
   sharePublicUrl,
+  type ShareListing,
+  type ShareRemoval,
 } from "./shares.js";
+import type { ShareHost } from "./hosts.js";
 import type { ConnectStateName, ConnectStatus } from "./types.js";
 
 export interface ConnectTunnelOptions {
@@ -78,6 +81,8 @@ export class ConnectTunnel {
   private lastRemoteActivityAt: number | null = null;
   private remoteClients = 0;
   private nextRetryAt: number | null = null;
+  private shareRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private shareActivationEpoch = 0;
 
   constructor(private readonly options: ConnectTunnelOptions) {}
 
@@ -92,13 +97,13 @@ export class ConnectTunnel {
 
   /** Service start: reconnect from a previously-stored credential, if any. */
   async start(): Promise<void> {
-    await this.options.shares.load();
     const stored = await this.options.store.read();
     if (stored) {
       this.credential = stored;
       this.stopped = false;
       this.openTunnel();
     }
+    this.startShareActivation();
     this.publish();
   }
 
@@ -139,6 +144,7 @@ export class ConnectTunnel {
       this.credential = credential;
       this.lastError = null;
       this.reconnect();
+      this.startShareActivation();
     } finally {
       this.pairing = false;
       this.publish();
@@ -147,7 +153,9 @@ export class ConnectTunnel {
   }
 
   async disconnect(): Promise<ConnectStatus> {
+    this.shareActivationEpoch += 1;
     await this.options.store.clear();
+    this.options.shares.clearMachineDeclarations();
     this.credential = null;
     this.teardown();
     this.lastError = null;
@@ -155,21 +163,24 @@ export class ConnectTunnel {
     return this.status();
   }
 
-  async expose(port: number): Promise<{ port: number; url: string }> {
-    const listing = await this.options.shares.add(port);
+  async expose(port: number, host: ShareHost): Promise<ShareListing> {
+    const listing = await this.options.shares.add(port, host);
     // shares.onChange already publishes; ensure status is fresh if it didn't.
     this.publish();
-    return { port: listing.port, url: listing.url };
+    return listing;
   }
 
-  async unexpose(port: number): Promise<{ removed: boolean; port: number }> {
-    const removed = await this.options.shares.remove(port);
+  async unexpose(
+    port: number,
+    hostSelector: string,
+  ): Promise<ShareRemoval & { port: number }> {
+    const result = await this.options.shares.remove(port, hostSelector);
     this.publish();
-    return { removed, port };
+    return { ...result, port };
   }
 
-  listShares(): Array<{ port: number; url: string }> {
-    return this.options.shares.list().map(({ port, url }) => ({ port, url }));
+  async listShares(hostId?: string): Promise<ShareListing[]> {
+    return this.options.shares.list(hostId);
   }
 
   /**
@@ -213,6 +224,14 @@ export class ConnectTunnel {
   }
 
   status(): ConnectStatus {
+    return this.statusWithShares(this.options.shares.snapshot());
+  }
+
+  async refreshStatus(): Promise<ConnectStatus> {
+    return this.statusWithShares(await this.listShares());
+  }
+
+  private statusWithShares(shares: ConnectStatus["shares"]): ConnectStatus {
     const state = this.computeState();
     return {
       state,
@@ -225,7 +244,7 @@ export class ConnectTunnel {
       since: this.stateSince,
       remoteClients: this.remoteClients,
       lastRemoteActivityAt: this.lastRemoteActivityAt,
-      shares: this.listShares(),
+      shares,
     };
   }
 
@@ -238,7 +257,8 @@ export class ConnectTunnel {
     return `${base.replace(/\/$/, "")}/dashboard`;
   }
 
-  /** Stop the tunnel without clearing the credential (service abort). */
+  /** Stop the tunnel without clearing the credential (service abort). Plugin
+   * dispose clears server-side declarations via the load-scoped hook. */
   stop(): void {
     this.teardown();
     this.publish();
@@ -261,10 +281,15 @@ export class ConnectTunnel {
   }
 
   private teardown(): void {
+    this.shareActivationEpoch += 1;
     this.stopped = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
+    }
+    if (this.shareRetryTimer) {
+      clearTimeout(this.shareRetryTimer);
+      this.shareRetryTimer = undefined;
     }
     this.session?.dispose();
     this.session = undefined;
@@ -284,6 +309,52 @@ export class ConnectTunnel {
     this.teardown();
     this.stopped = false;
     this.openTunnel();
+  }
+
+  /**
+   * A disconnected enrolled host must not block this server's own tunnel.
+   * Keep retrying persisted machine-share hydration/declaration separately.
+   */
+  private startShareActivation(): void {
+    const epoch = ++this.shareActivationEpoch;
+    void this.activateShares(epoch);
+  }
+
+  private isShareActivationCurrent(epoch: number): boolean {
+    return !this.stopped && epoch === this.shareActivationEpoch;
+  }
+
+  private async activateShares(epoch: number): Promise<void> {
+    try {
+      await this.options.shares.load();
+      if (!this.isShareActivationCurrent(epoch)) return;
+      await this.options.shares.declareMachineShares(() =>
+        this.isShareActivationCurrent(epoch),
+      );
+      if (!this.isShareActivationCurrent(epoch)) return;
+      if (this.credential !== null) {
+        // Warm the sync status snapshot so realtime consumers see persisted
+        // shares without waiting for a status rpc. list() never rejects on an
+        // unavailable host — it lists that share as unavailable instead.
+        await this.options.shares.list();
+        if (!this.isShareActivationCurrent(epoch)) return;
+      }
+      this.publish();
+    } catch (error) {
+      this.options.log.warn(
+        `shared-port activation failed; retrying: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      if (
+        this.credential !== null &&
+        this.isShareActivationCurrent(epoch) &&
+        this.shareRetryTimer === undefined
+      ) {
+        this.shareRetryTimer = setTimeout(() => {
+          this.shareRetryTimer = undefined;
+          this.startShareActivation();
+        }, 5_000);
+      }
+    }
   }
 
   /**
@@ -321,7 +392,7 @@ export class ConnectTunnel {
       };
     }
     const port = Number(target);
-    if (!Number.isInteger(port) || !this.options.shares.has(port)) {
+    if (!Number.isInteger(port) || !this.options.shares.hasServerPort(port)) {
       return { kind: "unregistered" };
     }
     const credential = this.credential;

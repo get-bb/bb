@@ -21,15 +21,16 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import type {
-  ActiveTrigger,
-  CommandMenuState,
-  ComposerCommandSuggestion,
-  MentionMenuState,
-  ProviderCommandSuggestion,
-  PromptMentionSuggestion,
-  TypeaheadMenuState,
-  TypeaheadTrigger,
+import {
+  orderCommandSuggestionsBySection,
+  type ActiveTrigger,
+  type CommandMenuState,
+  type ComposerCommandSuggestion,
+  type MentionMenuState,
+  type ProviderCommandSuggestion,
+  type PromptMentionSuggestion,
+  type TypeaheadMenuState,
+  type TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -343,6 +344,13 @@ export interface PromptBoxInternalProps {
   zenMode?: PromptBoxZenModeConfig;
   /** Optional one-line presentation for unfocused mobile follow-up composers. */
   compact?: PromptBoxCompactConfig;
+  /** Compact placeholder used when a follow-up composer is narrowed by its container. */
+  containerCompactPlaceholder?: string;
+  /**
+   * Changing this after captureHeightForLayoutChange() animates a layout
+   * change that is driven outside this component, such as a container query.
+   */
+  heightAnimationKey?: string | number;
   history?: HistoryConfig;
   /** When omitted, the mic button is hidden. Wrappers wire this via usePromptVoice. */
   voice?: PromptVoiceConfig;
@@ -1025,6 +1033,8 @@ export function PromptBoxInternal({
   promptActions,
   zenMode = {},
   compact,
+  containerCompactPlaceholder,
+  heightAnimationKey,
   history,
   voice,
   promptBoxRef,
@@ -1081,6 +1091,20 @@ export function PromptBoxInternal({
     heightAnimationFromRef.current =
       formElement?.getBoundingClientRect().height ?? null;
   }, []);
+  useLayoutEffect(() => {
+    const formElement = formRef.current;
+    if (!formElement) return;
+    if (containerCompactPlaceholder === undefined) {
+      formElement.style.removeProperty(
+        "--promptbox-container-compact-placeholder",
+      );
+      return;
+    }
+    formElement.style.setProperty(
+      "--promptbox-container-compact-placeholder",
+      JSON.stringify(containerCompactPlaceholder),
+    );
+  }, [containerCompactPlaceholder]);
   const editorRef = useRef<Editor | null>(null);
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
   const revealSelectionFrameRef = useRef<number | null>(null);
@@ -1627,12 +1651,21 @@ export function PromptBoxInternal({
 
     const previousTransition = formElement.style.transition;
     const previousWillChange = formElement.style.willChange;
+    const previousOverflow = formElement.style.overflow;
 
     formElement.style.transition = "none";
     formElement.style.height = "";
     const toHeight = formElement.getBoundingClientRect().height;
+    if (Math.abs(toHeight - fromHeight) < 0.5) {
+      formElement.style.transition = previousTransition;
+      return;
+    }
     formElement.style.height = `${fromHeight}px`;
     formElement.getBoundingClientRect();
+    // The next layout is already mounted while the card still has its old
+    // height. Clip it for the whole tween so footer controls are revealed by
+    // the moving border instead of briefly painting outside the card.
+    formElement.style.overflow = "hidden";
     formElement.style.willChange = "height";
     formElement.style.transition =
       "height 240ms cubic-bezier(0.22, 1, 0.36, 1)";
@@ -1644,6 +1677,7 @@ export function PromptBoxInternal({
       isCleanedUp = true;
       formElement.style.transition = previousTransition;
       formElement.style.willChange = previousWillChange;
+      formElement.style.overflow = previousOverflow;
       formElement.style.height = "";
       formElement.removeEventListener("transitionend", handleTransitionEnd);
       window.clearTimeout(fallbackTimeout);
@@ -1656,7 +1690,7 @@ export function PromptBoxInternal({
     formElement.addEventListener("transitionend", handleTransitionEnd);
 
     return cleanup;
-  }, [isZenMode, showCompactLayout, zenModeLayout]);
+  }, [heightAnimationKey, isZenMode, showCompactLayout, zenModeLayout]);
 
   const trimmedValue = value.trim();
   const hasAttachments = attachments.length > 0;
@@ -1673,17 +1707,21 @@ export function PromptBoxInternal({
       isError: commandError,
       isLoadingMore: commandIsLoadingMore,
     });
+  const orderedCommandSuggestions = useMemo(
+    () => orderCommandSuggestionsBySection(commandSuggestions),
+    [commandSuggestions],
+  );
   // The suggestion list driving keyboard nav + Enter/Tab apply for whichever
   // trigger is active. Empty when no trigger is open. Memoized so the keyboard
   // handler's useCallback identity is stable across renders.
   const activeSuggestions = useMemo<readonly TypeaheadSuggestion[]>(
     () =>
       activeTriggerKind === "command"
-        ? commandSuggestions
+        ? orderedCommandSuggestions
         : activeTriggerKind === "mention"
           ? mentionSuggestions
           : [],
-    [activeTriggerKind, commandSuggestions, mentionSuggestions],
+    [activeTriggerKind, mentionSuggestions, orderedCommandSuggestions],
   );
 
   const activeMentionQuery =
@@ -1701,7 +1739,7 @@ export function PromptBoxInternal({
     ? { kind: "loading" }
     : commandError
       ? { kind: "error" }
-      : { kind: "results", suggestions: commandSuggestions };
+      : { kind: "results", suggestions: orderedCommandSuggestions };
 
   // Loaded-empty suppression (§6): a command trigger with zero loaded results
   // (not loading, not error) is literal text — never open the menu. Mention
@@ -2526,6 +2564,8 @@ export function PromptBoxInternal({
       ref={formRef}
       data-promptbox=""
       data-promptbox-compact={showCompactLayout ? "" : undefined}
+      data-promptbox-zen={showZenLayout ? "" : undefined}
+      data-promptbox-voice-active={showVoiceActionGroup ? "" : undefined}
       onSubmit={handleSubmit}
       onMouseDown={handlePromptBoxMouseDown}
       onDragOver={(event) => {
@@ -2560,10 +2600,12 @@ export function PromptBoxInternal({
         onChange={handleAttachmentInputChange}
       />
       <div
+        data-promptbox-layout=""
         className={cn(COLLAPSING_GRID_CLASS, showZenLayout && "min-h-0 flex-1")}
         style={{ gridTemplateRows: showVoiceActionGroup ? "0fr" : "1fr" }}
       >
         <div
+          data-promptbox-main=""
           className={cn(
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
             isZenMode && "flex flex-col",
@@ -2577,7 +2619,10 @@ export function PromptBoxInternal({
             // shifts from px-4 to px-6 when entering zen). Right padding leaves
             // room for the zen-mode toggle button in the top-right corner. Zen
             // mode also gets more top room since the card fills the viewport.
-            <div className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}>
+            <div
+              data-promptbox-expanded-only=""
+              className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}
+            >
               {header}
             </div>
           ) : null}
@@ -2589,11 +2634,16 @@ export function PromptBoxInternal({
           >
             {!showCompactLayout ? (
               <>
-                <AppCommandShortcutHint
-                  shortcut={focusComposerShortcut}
-                  className="absolute right-10 top-2 z-20 group-focus-within/promptbox:hidden"
-                />
-                <div className="absolute right-2 top-2 z-20 flex items-center gap-0.5">
+                <div data-promptbox-expanded-only="">
+                  <AppCommandShortcutHint
+                    shortcut={focusComposerShortcut}
+                    className="absolute right-10 top-2 z-20 group-focus-within/promptbox:hidden"
+                  />
+                </div>
+                <div
+                  data-promptbox-expanded-only=""
+                  className="absolute right-2 top-2 z-20 flex items-center gap-0.5"
+                >
                   {isZenMode ? (
                     <Button
                       type="button"
@@ -2674,6 +2724,7 @@ export function PromptBoxInternal({
               >
                 <EditorContent
                   editor={editor}
+                  data-promptbox-editor-content=""
                   data-promptbox-compact-content={
                     showCompactLayout ? "" : undefined
                   }
@@ -2698,7 +2749,6 @@ export function PromptBoxInternal({
                     "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-subtle-foreground",
                     "[&_.ProseMirror_p.is-editor-empty:first-child::before]:font-light",
                     "[&_.ProseMirror_p.is-editor-empty:first-child::before]:opacity-70",
-                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
                   )}
                 />
               </PromptMentionLinkContext.Provider>
@@ -2737,34 +2787,37 @@ export function PromptBoxInternal({
 
           {!showCompactLayout ? (
             <>
-              <AttachmentPreview
-                attachments={attachments}
-                attachmentProjectId={attachmentProjectId}
-                expandedImageIndex={expandedImageIndex}
-                onExpandedImageIndexChange={setExpandedImageIndex}
-                onRemoveAttachment={onRemoveAttachment}
-              />
+              <div data-promptbox-expanded-only="">
+                <AttachmentPreview
+                  attachments={attachments}
+                  attachmentProjectId={attachmentProjectId}
+                  expandedImageIndex={expandedImageIndex}
+                  onExpandedImageIndexChange={setExpandedImageIndex}
+                  onRemoveAttachment={onRemoveAttachment}
+                />
 
-              {attachmentError ? (
-                <div className="mx-3 mb-1 mt-1 flex items-center gap-2 text-xs text-destructive">
-                  <span>{attachmentError}</span>
-                  {onRetryTransfer ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto px-1 py-0 text-xs text-destructive"
-                      onClick={onRetryTransfer}
-                    >
-                      Retry attachment transfer
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
+                {attachmentError ? (
+                  <div className="mx-3 mb-1 mt-1 flex items-center gap-2 text-xs text-destructive">
+                    <span>{attachmentError}</span>
+                    {onRetryTransfer ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-1 py-0 text-xs text-destructive"
+                        onClick={onRetryTransfer}
+                      >
+                        Retry attachment transfer
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </>
           ) : null}
 
           <div
+            data-promptbox-action-row=""
             className={cn(
               "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
               showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
@@ -2772,6 +2825,7 @@ export function PromptBoxInternal({
           >
             {!showCompactLayout ? (
               <div
+                data-promptbox-expanded-only=""
                 className="flex min-w-0 flex-1 flex-row items-center gap-1"
                 aria-live="polite"
               >
@@ -2794,6 +2848,7 @@ export function PromptBoxInternal({
                 <>
                   {voice && !showVoiceActionGroup ? (
                     <Button
+                      data-promptbox-expanded-only=""
                       type="button"
                       size="icon"
                       variant="ghost"
@@ -2811,46 +2866,53 @@ export function PromptBoxInternal({
                   ) : null}
                 </>
               ) : null}
-              {showStop ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="secondary"
-                  aria-label="Stop run"
-                  onClick={onStop}
-                  className={
-                    showCompactLayout
-                      ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                      : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
-                  }
-                >
-                  <Icon
-                    name="Square"
-                    className="size-3.5 fill-current [&_*]:stroke-0"
-                  />
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  size={showCompactLayout ? "icon" : "sm"}
-                  variant="default"
-                  aria-label={effectiveSubmitTitle}
-                  disabled={!canSubmit}
-                  className={cn(
-                    showCompactLayout
-                      ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                      : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
-                  )}
-                >
-                  {isSubmitting ? (
-                    <Icon name="Spinner" className="size-4 animate-spin" />
-                  ) : isZenMode ? (
-                    <Icon name="ArrowUp" className="size-4" />
-                  ) : (
-                    <Icon name="CornerDownLeft" className="size-4" />
-                  )}
-                </Button>
-              )}
+              <div
+                data-promptbox-submit-group=""
+                className="flex shrink-0 flex-row items-center"
+              >
+                {showStop ? (
+                  <Button
+                    data-promptbox-submit-action=""
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    aria-label="Stop run"
+                    onClick={onStop}
+                    className={
+                      showCompactLayout
+                        ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                        : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
+                    }
+                  >
+                    <Icon
+                      name="Square"
+                      className="size-3.5 fill-current [&_*]:stroke-0"
+                    />
+                  </Button>
+                ) : (
+                  <Button
+                    data-promptbox-submit-action=""
+                    type="submit"
+                    size={showCompactLayout ? "icon" : "sm"}
+                    variant="default"
+                    aria-label={effectiveSubmitTitle}
+                    disabled={!canSubmit}
+                    className={cn(
+                      showCompactLayout
+                        ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                        : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
+                    )}
+                  >
+                    {isSubmitting ? (
+                      <Icon name="Spinner" className="size-4 animate-spin" />
+                    ) : isZenMode ? (
+                      <Icon name="ArrowUp" className="size-4" />
+                    ) : (
+                      <Icon name="CornerDownLeft" className="size-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>

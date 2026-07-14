@@ -679,6 +679,29 @@ describe("PromptBoxInternal zen mode layout", () => {
 });
 
 describe("PromptBoxInternal compact layout", () => {
+  it("publishes the container-compact placeholder for CSS", () => {
+    const baseProps = createPromptBoxProps();
+    const view = render(
+      <PromptBoxInternal
+        {...baseProps}
+        containerCompactPlaceholder="Reconnecting..."
+      />,
+    );
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+
+    expect(
+      form.style.getPropertyValue("--promptbox-container-compact-placeholder"),
+    ).toBe('"Reconnecting..."');
+
+    view.rerender(<PromptBoxInternal {...baseProps} />);
+    expect(
+      form.style.getPropertyValue("--promptbox-container-compact-placeholder"),
+    ).toBe("");
+  });
+
   it("animates between compact and full layouts", async () => {
     const promptBoxRef = createRef<PromptBoxHandle>();
     const baseProps = createPromptBoxProps({ promptBoxRef });
@@ -708,8 +731,60 @@ describe("PromptBoxInternal compact layout", () => {
     await waitFor(() => {
       expect(form.style.transition).toContain("height 240ms");
       expect(form.style.height).toBe("144px");
+      expect(form.style.overflow).toBe("hidden");
     });
     fireEvent.transitionEnd(form, { propertyName: "height" });
+    expect(form.style.overflow).toBe("");
+  });
+
+  it("animates an externally driven layout change", async () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const baseProps = createPromptBoxProps({ promptBoxRef });
+    const view = render(
+      <PromptBoxInternal {...baseProps} heightAnimationKey="compact" />,
+    );
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+    vi.spyOn(form, "getBoundingClientRect")
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 48))
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 144))
+      .mockReturnValue(new DOMRect(0, 0, 320, 144));
+
+    act(() => promptBoxRef.current?.captureHeightForLayoutChange());
+    view.rerender(
+      <PromptBoxInternal {...baseProps} heightAnimationKey="expanded" />,
+    );
+
+    await waitFor(() => {
+      expect(form.style.transition).toContain("height 240ms");
+      expect(form.style.height).toBe("144px");
+    });
+    fireEvent.transitionEnd(form, { propertyName: "height" });
+  });
+
+  it("skips an external layout animation when the height did not change", () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const baseProps = createPromptBoxProps({ promptBoxRef });
+    const view = render(
+      <PromptBoxInternal {...baseProps} heightAnimationKey="compact" />,
+    );
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+    vi.spyOn(form, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 320, 144),
+    );
+
+    act(() => promptBoxRef.current?.captureHeightForLayoutChange());
+    view.rerender(
+      <PromptBoxInternal {...baseProps} heightAnimationKey="expanded" />,
+    );
+
+    expect(form.style.transition).toBe("");
+    expect(form.style.height).toBe("");
   });
 
   it("keeps only the one-line editor and primary action", () => {
@@ -818,6 +893,30 @@ describe("PromptBoxInternal compact layout", () => {
     expect(editor.querySelector("br")).toBeTruthy();
     expect(editor.children.length).toBeGreaterThan(1);
     expect(editor.textContent).toContain("A hidden paragraph after the quote");
+  });
+
+  it("anchors only the primary action during a container-driven reveal", () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          voice: {
+            state: "idle",
+            isSupported: true,
+            stream: null,
+            start: vi.fn(),
+            stop: vi.fn(),
+            cancel: vi.fn(),
+          },
+        })}
+      />,
+    );
+
+    const submitGroup = document.querySelector("[data-promptbox-submit-group]");
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+    const voice = screen.getByRole("button", { name: "Start voice input" });
+
+    expect(submitGroup?.contains(submit)).toBe(true);
+    expect(submitGroup?.contains(voice)).toBe(false);
   });
 
   it("does not expose zen controls in the full mobile layout", () => {
@@ -953,6 +1052,46 @@ describe("PromptBoxInternal mention triggers", () => {
     );
     expect(logo.getAttribute("src")).toBe(
       "/api/v1/plugins/github/assets/logo?h=abc",
+    );
+  });
+
+  it("keeps path-first mention results in keyboard navigation order", async () => {
+    const pathSuggestion: PromptMentionSuggestion = {
+      kind: "path",
+      source: "workspace",
+      entryKind: "file",
+      path: "src/app.ts",
+      name: "app.ts",
+      replacement: "src/app.ts",
+    };
+    const threadSuggestion: PromptMentionSuggestion = {
+      kind: "thread",
+      path: "thread:thr_app",
+      replacement: "thread:thr_app",
+      projectId: "proj_app",
+      projectName: "App",
+      threadId: "thr_app",
+      title: "App thread",
+    };
+    const { promptBoxRef } = renderPromptBox("@src/", {
+      mentionSuggestions: [pathSuggestion, threadSuggestion],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const workspaceLabel = await screen.findByText("Workspace");
+    const menu = workspaceLabel.closest(".overflow-hidden");
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error("Expected mention menu");
+    }
+    const [pathButton, threadButton] = within(menu).getAllByRole("button");
+    expect(pathButton.textContent).toContain("app.ts");
+    expect(threadButton.textContent).toContain("App thread");
+    expect(pathButton.className).toContain("bg-state-active");
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
+
+    await waitFor(() =>
+      expect(threadButton.className).toContain("bg-state-active"),
     );
   });
 });
@@ -1486,6 +1625,88 @@ describe("PromptBoxInternal command typeahead submit", () => {
     await act(async () => {});
 
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("PromptBoxInternal command typeahead navigation", () => {
+  it("uses the rendered section order for Arrow keys and Enter", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("/", {
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "review",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "compact",
+          source: "command",
+          origin: "builtin",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "interview",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "deploy",
+          source: "command",
+          origin: "project",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const sectionLabel = await screen.findByText("Commands");
+    const menu = sectionLabel.closest(".overflow-hidden");
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error("Expected command menu");
+    }
+    const buttons = within(menu).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "compact",
+      "review",
+      "deploy",
+      "plan",
+      "interview",
+    ]);
+
+    const editor = getPromptEditorElement();
+    for (const name of ["compact", "review", "deploy", "plan", "interview"]) {
+      const button = within(menu).getByRole("button", { name });
+      await waitFor(() =>
+        expect(button.className).toContain("bg-state-active"),
+      );
+      if (name !== "interview") {
+        fireEvent.keyDown(editor, { key: "ArrowDown" });
+      }
+    }
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/interview "));
+    expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
+      kind: "command",
+      name: "interview",
+    });
   });
 });
 

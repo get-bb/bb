@@ -40,10 +40,26 @@ export interface ResolveInjectedSkillSourcesArgs {
    * skills by name, and overriding built-ins by name. Earlier roots win
    * plugin-vs-plugin name collisions.
    */
-  pluginSkillsRootPaths?: readonly string[];
+  pluginSkillRoots?: readonly PluginSkillRoot[];
   projectSkillSources?: readonly ProjectInjectedSkillSource[];
   projectSkillsRootPath?: string;
   skillTreeRegistry: SkillTreeRegistry;
+}
+
+export interface PluginSkillRoot {
+  pluginId: string;
+  rootPath: string;
+}
+
+export type SkillCatalogProvenance =
+  | { kind: "builtin" }
+  | { kind: "plugin"; pluginId: string }
+  | { kind: "project" }
+  | { kind: "user" };
+
+export interface ResolvedSkillCatalogEntry {
+  provenance: SkillCatalogProvenance;
+  runtimeSource: HostDaemonInjectedSkillSource;
 }
 
 export type ProjectInjectedSkillSource = Extract<
@@ -566,10 +582,10 @@ function excludeCollisions(
  * sources remain workspace paths so the target daemon stages their full trees
  * directly from its workspace after the server enumerates their metadata.
  */
-export function resolveInjectedSkillSources(
+export function resolveSkillCatalogEntries(
   logger: ServerLogger,
   args: ResolveInjectedSkillSourcesArgs,
-): HostDaemonInjectedSkillSource[] {
+): ResolvedSkillCatalogEntry[] {
   const { skillTreeRegistry } = args;
   if (
     args.projectSkillSources !== undefined &&
@@ -627,19 +643,21 @@ export function resolveInjectedSkillSources(
   // The plugin tier (design §4.4): sources ride the "data-dir" wire label —
   // the daemon stages every sourceType identically, so the tier is purely a
   // server-side precedence concept and needs no daemon-contract change.
-  const pluginSourceGroups = (args.pluginSkillsRootPaths ?? []).map(
-    (skillsRootPath) =>
-      readSkillsRoot({
+  const pluginSourceGroups = (args.pluginSkillRoots ?? []).map(
+    ({ pluginId, rootPath }) => ({
+      pluginId,
+      sources: readSkillsRoot({
         logger,
         skillTreeRegistry,
-        skillsRootPath,
+        skillsRootPath: rootPath,
         sourceType: "data-dir",
       }),
+    }),
   );
   const pluginSources = pluginSourceGroups.reduce<
     HostDaemonInjectedSkillSource[]
   >(
-    (higherPrioritySources, lowerPrioritySources) => [
+    (higherPrioritySources, { sources: lowerPrioritySources }) => [
       ...higherPrioritySources,
       ...excludeOverriddenLowerPriorityUserSources(logger, {
         higherPrioritySources,
@@ -669,10 +687,48 @@ export function resolveInjectedSkillSources(
     activeProjectSources.map((source) => source.name),
   );
 
+  const provenanceBySource = new Map<
+    HostDaemonInjectedSkillSource,
+    SkillCatalogProvenance
+  >();
+  for (const source of projectSources) {
+    provenanceBySource.set(source, { kind: "project" });
+  }
+  for (const source of builtinSources) {
+    provenanceBySource.set(source, { kind: "builtin" });
+  }
+  for (const source of [...dataDirSources, ...inheritedSourceGroups.flat()]) {
+    provenanceBySource.set(source, { kind: "user" });
+  }
+  for (const group of pluginSourceGroups) {
+    for (const source of group.sources) {
+      provenanceBySource.set(source, {
+        kind: "plugin",
+        pluginId: group.pluginId,
+      });
+    }
+  }
+
   return [...activeProjectSources, ...globalSources]
     .filter(
       (source) =>
         source.sourceType === "project" || !projectNames.has(source.name),
     )
-    .sort((left, right) => compareStringsByCodePoint(left.name, right.name));
+    .sort((left, right) => compareStringsByCodePoint(left.name, right.name))
+    .map((runtimeSource) => {
+      const provenance = provenanceBySource.get(runtimeSource);
+      if (provenance === undefined) {
+        throw new Error(`Missing skill provenance for ${runtimeSource.name}`);
+      }
+      return { provenance, runtimeSource };
+    });
+}
+
+export function resolveInjectedSkillSources(
+  logger: ServerLogger,
+  args: ResolveInjectedSkillSourcesArgs,
+): HostDaemonInjectedSkillSource[] {
+  return resolveSkillCatalogEntries(logger, args).map(
+    (entry) => entry.runtimeSource,
+  );
 }

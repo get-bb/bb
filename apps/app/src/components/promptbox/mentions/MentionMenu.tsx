@@ -7,7 +7,6 @@ import {
   type UIEvent,
 } from "react";
 import {
-  PROVIDER_COMMAND_SECTIONS,
   providerCommandSection,
   type ProviderCommandSection,
 } from "@bb/server-contract";
@@ -59,14 +58,13 @@ interface MenuSection<TKind extends string, TItem> {
 }
 
 /**
- * Groups a flat suggestion list into ordered sections. Shared by the mention
- * and command paths so the section-building/ordering logic lives in one place;
- * each caller supplies how to map a row to its section kind plus the canonical
- * order and labels.
+ * Groups a flat suggestion list into sections without changing its section
+ * order. The same flat list drives keyboard navigation, so rendering must
+ * preserve the first occurrence of every section instead of applying a second
+ * visual-only order.
  */
 function groupSections<TKind extends string, TItem>(args: {
   suggestions: readonly TItem[];
-  order: readonly TKind[];
   sectionKind: (item: TItem) => TKind;
   sectionLabel: (kind: TKind) => string;
 }): MenuSection<TKind, TItem>[] {
@@ -86,10 +84,7 @@ function groupSections<TKind extends string, TItem>(args: {
     });
   }
 
-  return args.order.flatMap((kind) => {
-    const section = sectionsByKind.get(kind);
-    return section ? [section] : [];
-  });
+  return [...sectionsByKind.values()];
 }
 
 type PathMentionSectionKind = "workspace" | "thread-storage";
@@ -105,29 +100,6 @@ type MentionSectionKind =
   | PluginMentionSectionKind;
 type PathMentionSuggestion = Extract<PromptMentionSuggestion, { kind: "path" }>;
 type SecondaryContextKind = "path" | "project";
-
-const MENTION_SECTION_ORDER: readonly MentionSectionKind[] = [
-  "threads",
-  "projects",
-  "folders",
-  "workspace",
-  "thread-storage",
-];
-
-/** Built-in sections first, then plugin provider sections in row order. */
-function getMentionSectionOrder(
-  suggestions: readonly PromptMentionSuggestion[],
-): MentionSectionKind[] {
-  const pluginKinds: PluginMentionSectionKind[] = [];
-  for (const item of suggestions) {
-    if (item.kind !== "plugin") continue;
-    const kind = getPluginSectionKind(item);
-    if (!pluginKinds.includes(kind)) {
-      pluginKinds.push(kind);
-    }
-  }
-  return [...MENTION_SECTION_ORDER, ...pluginKinds];
-}
 
 function getPluginSectionKind(
   item: Extract<PromptMentionSuggestion, { kind: "plugin" }>,
@@ -239,14 +211,11 @@ function getMentionKey(item: PromptMentionSuggestion, index: number): string {
   return `${item.kind}-${item.path}-${index}`;
 }
 
-// Command sections derive from the shared `PROVIDER_COMMAND_SECTIONS` order and
-// `providerCommandSection` mapping in @bb/server-contract — the SAME definition
-// the server sorts the flat response by — so the menu's visual order and the
-// keyboard-nav order can't drift. The menu only adds the human-readable labels.
+// Command sections use the shared `providerCommandSection` mapping from
+// @bb/server-contract. PromptBoxInternal orders the flat suggestions with the
+// matching section rank before that same array reaches rendering, keyboard
+// navigation, and apply; the menu only adds human-readable labels.
 type CommandSectionKind = ProviderCommandSection;
-
-const COMMAND_SECTION_ORDER: readonly CommandSectionKind[] =
-  PROVIDER_COMMAND_SECTIONS;
 
 function getCommandSectionKind(
   item: ComposerCommandSuggestion,
@@ -269,8 +238,21 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
 const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
 
 function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
+  if (item.pluginId !== undefined) {
+    return (
+      <PluginIcon
+        pluginId={item.pluginId}
+        icon={null}
+        className={ROW_ICON_CLASS}
+      />
+    );
+  }
   return (
-    <Icon name={promptCommandIconName(item)} className={ROW_ICON_CLASS} aria-hidden />
+    <Icon
+      name={promptCommandIconName(item)}
+      className={ROW_ICON_CLASS}
+      aria-hidden
+    />
   );
 }
 
@@ -285,7 +267,11 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
     );
   }
   return (
-    <Icon name={getMentionIconName(item)} className={ROW_ICON_CLASS} aria-hidden />
+    <Icon
+      name={getMentionIconName(item)}
+      className={ROW_ICON_CLASS}
+      aria-hidden
+    />
   );
 }
 
@@ -380,7 +366,6 @@ function MentionResults({
     const pluginSectionLabels = getPluginSectionLabels(suggestions);
     return groupSections({
       suggestions,
-      order: getMentionSectionOrder(suggestions),
       sectionKind: getMentionSectionKind,
       sectionLabel: (kind) => getMentionSectionLabel(kind, pluginSectionLabels),
     });
@@ -472,7 +457,6 @@ function CommandResults({
     () =>
       groupSections({
         suggestions,
-        order: COMMAND_SECTION_ORDER,
         sectionKind: getCommandSectionKind,
         sectionLabel: getCommandSectionLabel,
       }),

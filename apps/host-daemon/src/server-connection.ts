@@ -68,6 +68,8 @@ function recoverableMessageKey(
   message: HostDaemonDaemonWsMessage,
 ): string | null {
   switch (message.type) {
+    case "connect-tunnel.identity":
+      return "connect-tunnel.identity";
     case "environment-change":
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
     default:
@@ -466,6 +468,22 @@ export class ServerConnection {
             ...runtimeErrorLogFields(error),
           },
           "Watch set handler failed",
+        );
+      });
+      return;
+    }
+
+    if (message.data.type === "connect-shares.replace") {
+      const sharesMessage = message.data;
+      void Promise.resolve(
+        this.options.onConnectSharesReplace?.(sharesMessage),
+      ).catch((error) => {
+        this.options.logger.warn(
+          {
+            generation: sharesMessage.generation,
+            ...runtimeErrorLogFields(error),
+          },
+          "Connect shares handler failed",
         );
       });
       return;

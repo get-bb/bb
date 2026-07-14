@@ -609,6 +609,12 @@ importers:
       '@bb/templates':
         specifier: workspace:*
         version: link:../../packages/templates
+      '@bb/tunnel-client':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-client
+      '@bb/tunnel-contract':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-contract
       '@hono/node-server':
         specifier: ^1.19.11
         version: 1.19.14(hono@4.11.9)
@@ -1342,6 +1348,9 @@ importers:
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
+      drizzle-kit:
+        specifier: ^0.30.0
+        version: 0.30.6
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'

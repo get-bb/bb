@@ -1,5 +1,6 @@
 import type { DbConnection } from "@bb/db";
 import type { DynamicTool, Thread } from "@bb/domain";
+import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
@@ -12,6 +13,7 @@ import type {
   PluginThreadActionToast,
 } from "./plugin-api.js";
 import type { PluginAppState } from "./app-bundle.js";
+import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { PluginResolvedUpdateVersion } from "./update-resolver.js";
 
 /**
@@ -151,6 +153,14 @@ export interface LoadedPlugin {
 
 export interface PluginServiceDeps {
   db: DbConnection;
+  /** Omitted only by isolated plugin-runtime tests without a daemon plane. */
+  sharedPorts?: Pick<
+    HostSharedPortCoordinator,
+    "declareSharedPorts" | "clearDeclarationsForOwner"
+  >;
+  ensureSharedPortTunnel?: (
+    hostId: string,
+  ) => Promise<HostDaemonConnectTunnelIdentity>;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<

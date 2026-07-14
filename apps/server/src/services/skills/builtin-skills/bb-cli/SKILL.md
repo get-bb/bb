@@ -84,10 +84,15 @@ message agents, or inspect projects, providers, and environments.
   server itself holds the tunnel and reconnects on restart, so there is no
   foreground process.
   `bb connect status` / `bb connect off` report and clear the pairing.
-  Port sharing: `bb connect expose <port>` publishes a local HTTP port at
-  `https://<handle>--<port>.getbb.app` (owner-session-gated, not public);
-  `bb connect unexpose <port>` stops sharing; `bb connect shares` lists active
-  URLs. `bb connect servers` lists every bb on the paired account (handle,
+  Port sharing works from a thread on any enrolled host. `bb connect expose
+<port>` resolves that thread's environment host and returns its public URL;
+  outside a thread it defaults to the server host. Pass `--host
+<name-or-id>` to override expose, unexpose, or shares. Server-host URLs use
+  the server label; machine-host URLs use the machine label and proxy directly
+  through its daemon. Shares are owner-session-gated, not public.
+  `bb connect status` shows every share's host and URL; `shares --json` includes
+  the resolved host plus `hostId`, `hostName`, `port`, and `url` per row.
+  `bb connect servers` lists every bb on the paired account (handle,
   name, url, live) so callers can discover siblings; `--json` includes
   `selfHandle` for deduping this server. When you start a local server the user should open
   remotely, expose the port and give them the share URL. Remote access is owned

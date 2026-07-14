@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   connectCode,
+  labelClaim,
   machine,
   MAX_SERVERS_PER_ACCOUNT,
   schema,
@@ -557,6 +558,7 @@ describe("dashboard machine recovery", () => {
           id: "machine-owner",
           userId: "u1",
           name: "lost laptop",
+          subdomain: "lost-laptop",
           credentialHash: "hash-owner",
           lastSeenAt: now,
           createdAt: now,
@@ -569,11 +571,17 @@ describe("dashboard machine recovery", () => {
         },
       ])
       .run();
+    db.update(labelClaim)
+      .set({ generation: "lost-generation" })
+      .where(eq(labelClaim.label, "lost-laptop"))
+      .run();
 
     expect((await getAccountState(deps, "u1")).machines).toEqual([
       {
         id: "machine-owner",
         name: "lost laptop",
+        subdomain: "lost-laptop",
+        online: true,
         lastSeenAt: now.getTime(),
         createdAt: now.getTime(),
       },
@@ -584,10 +592,205 @@ describe("dashboard machine recovery", () => {
     await expect(revokeMachine(deps, "u1", "machine-owner")).resolves.toEqual({
       ok: true,
     });
+    expect(closeTunnel).toHaveBeenCalledWith("lost-laptop:lost-generation");
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
     expect((await getAccountState(deps, "u1")).machines).toEqual([]);
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-owner")).get()
+        ?.subdomain,
+    ).toBeNull();
     expect(
       db.select().from(machine).where(eq(machine.id, "machine-other")).get()
         ?.revokedAt,
     ).toBeNull();
+  });
+
+  it("marks a machine online only when freshly seen, offline when stale", async () => {
+    seedUser("u1");
+    const now = new Date();
+    const stale = new Date(now.getTime() - 10 * 60_000);
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-fresh",
+          userId: "u1",
+          subdomain: "fresh-machine",
+          credentialHash: "hash-fresh",
+          lastSeenAt: now,
+          createdAt: new Date(now.getTime() - 2000),
+        },
+        {
+          id: "machine-stale",
+          userId: "u1",
+          subdomain: "stale-machine",
+          credentialHash: "hash-stale",
+          lastSeenAt: stale,
+          createdAt: new Date(now.getTime() - 1000),
+        },
+        {
+          id: "machine-unlabeled",
+          userId: "u1",
+          credentialHash: "hash-unlabeled",
+          createdAt: now,
+        },
+      ])
+      .run();
+
+    const machines = (await getAccountState(deps, "u1")).machines;
+    expect(machines.map((m) => [m.id, m.subdomain, m.online])).toEqual([
+      ["machine-fresh", "fresh-machine", true],
+      ["machine-stale", "stale-machine", false],
+      ["machine-unlabeled", null, false],
+    ]);
+  });
+
+  it("keeps a revoked label pinned when tunnel close fails", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-a",
+          userId: "u1",
+          subdomain: "shared-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-b",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
+      .run();
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "shared-machine"))
+      .run();
+    closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
+
+    await expect(revokeMachine(deps, "u1", "machine-a")).resolves.toEqual({
+      error: "tunnel-close-failed",
+    });
+    expect(
+      db.select().from(machine).where(eq(machine.id, "machine-a")).get()
+        ?.subdomain,
+    ).toBe("shared-machine");
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
+  });
+
+  it("retries a failed machine close during the reachable account-state sweep", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-retry",
+          userId: "u1",
+          subdomain: "retry-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-new",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
+      .run();
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "retry-machine"))
+      .run();
+    closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
+
+    await expect(revokeMachine(deps, "u1", "machine-retry")).resolves.toEqual({
+      error: "tunnel-close-failed",
+    });
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
+    await getAccountState(deps, "u1");
+    expect(closeTunnel).toHaveBeenCalledTimes(2);
+    expect(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.label, "retry-machine"))
+        .get(),
+    ).toBeUndefined();
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "retry-machine" })
+        .where(eq(machine.id, "machine-new"))
+        .run(),
+    ).not.toThrow();
+  });
+
+  it("does not release a label until delayed close confirms, then gives the new owner a new generation", async () => {
+    seedUser("u1");
+    seedUser("u2");
+    const now = new Date();
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-a",
+          userId: "u1",
+          subdomain: "shared-machine",
+          credentialHash: "hash-a",
+          createdAt: now,
+        },
+        {
+          id: "machine-b",
+          userId: "u2",
+          credentialHash: "hash-b",
+          createdAt: now,
+        },
+      ])
+      .run();
+    db.update(labelClaim)
+      .set({ generation: "generation-a" })
+      .where(eq(labelClaim.label, "shared-machine"))
+      .run();
+    let confirmClose: (() => void) | undefined;
+    closeTunnel.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          confirmClose = resolve;
+        }),
+    );
+
+    const revocation = revokeMachine(deps, "u1", "machine-a");
+    await vi.waitFor(() => expect(closeTunnel).toHaveBeenCalledTimes(1));
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).toThrow(/unique constraint/iu);
+
+    confirmClose?.();
+    await expect(revocation).resolves.toEqual({ ok: true });
+    expect(() =>
+      db
+        .update(machine)
+        .set({ subdomain: "shared-machine" })
+        .where(eq(machine.id, "machine-b"))
+        .run(),
+    ).not.toThrow();
+    expect(db.select().from(labelClaim).get()).toMatchObject({
+      ownerId: "machine-b",
+      generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
+    });
   });
 });

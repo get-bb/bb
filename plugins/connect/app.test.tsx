@@ -174,7 +174,12 @@ describe("connect settings section", () => {
           status: () =>
             connected({
               shares: [
-                { port: 3000, url: "https://workstation--3000.getbb.app" },
+                {
+                  hostId: "host-server",
+                  hostName: "Workstation",
+                  port: 3000,
+                  url: "https://workstation--3000.getbb.app",
+                },
               ],
             }),
           unexpose: () => ({ removed: true, port: 3000 }),
@@ -188,7 +193,109 @@ describe("connect settings section", () => {
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
         method: "unexpose",
-        input: { port: 3000 },
+        input: { hostId: "host-server", port: 3000 },
+      }),
+    );
+  });
+
+  it("renders an unavailable share reason and keeps it revocable", async () => {
+    const reason = "This host is not connected right now.";
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            connected({
+              shares: [
+                {
+                  hostId: "host-air",
+                  hostName: "Sawyer Air",
+                  port: 3000,
+                  url: "",
+                  unavailableReason: reason,
+                },
+              ],
+            }),
+          unexpose: () => ({ removed: true, port: 3000 }),
+        },
+      },
+    );
+
+    await slot.findByText(`Unavailable — ${reason}`);
+    expect(
+      slot.queryByRole("button", { name: "Copy share URL for port 3000" }),
+    ).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Revoke" }));
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "unexpose",
+        input: { hostId: "host-air", port: 3000 },
+      }),
+    );
+  });
+
+  it("groups shares by host and degrades an unreachable host's group", async () => {
+    const reason = "sawyer-air is not connected right now.";
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            connected({
+              shares: [
+                {
+                  hostId: "host-air",
+                  hostName: "Sawyer Air",
+                  port: 5173,
+                  url: "",
+                  unavailableReason: reason,
+                },
+                {
+                  hostId: "host-server",
+                  hostName: "Workstation",
+                  port: 3000,
+                  url: "https://workstation--3000.getbb.app",
+                },
+                {
+                  hostId: "host-server",
+                  hostName: "Workstation",
+                  port: 8080,
+                  url: "https://workstation--8080.getbb.app",
+                },
+              ],
+            }),
+          unexpose: () => ({ removed: true, port: 5173 }),
+        },
+      },
+    );
+
+    // One header per host, even with two shares on the same host.
+    await slot.findByText("Sawyer Air");
+    expect(slot.getAllByText("Workstation")).toHaveLength(1);
+
+    // Live shares stay clickable links; the unreachable host's share shows
+    // its reason with no link and no copy affordance.
+    expect(
+      slot
+        .getByText("workstation--3000.getbb.app")
+        .closest("a")
+        ?.getAttribute("href"),
+    ).toBe("https://workstation--3000.getbb.app");
+    slot.getByText(`Unavailable — ${reason}`);
+    expect(
+      slot.queryByRole("button", { name: "Copy share URL for port 5173" }),
+    ).toBeNull();
+
+    // Revoke still works while the host is unreachable (removal is local).
+    const revokeButtons = slot.getAllByRole("button", { name: "Revoke" });
+    expect(revokeButtons).toHaveLength(3);
+    fireEvent.click(revokeButtons[0]!);
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "unexpose",
+        input: { hostId: "host-air", port: 5173 },
       }),
     );
   });

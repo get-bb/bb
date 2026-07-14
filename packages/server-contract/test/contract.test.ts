@@ -1500,6 +1500,27 @@ describe("server-contract clients", () => {
     ).toEqual({ path: "/Users/me/notes/plan.md" });
   });
 
+  it("keeps project command catalog queries snapshot-only", () => {
+    expect(
+      contract.projectCommandsQuerySchema.parse({
+        provider: "codex",
+        environmentId: "",
+      }),
+    ).toEqual({ provider: "codex", environmentId: null });
+    expect(() =>
+      contract.projectCommandsQuerySchema.parse({
+        provider: "codex",
+        query: "review",
+      }),
+    ).toThrow();
+    expect(() =>
+      contract.projectCommandsQuerySchema.parse({
+        provider: "codex",
+        limit: "50",
+      }),
+    ).toThrow();
+  });
+
   it("rejects zero timeline pagination cursor sequences", () => {
     expect(() =>
       contract.timelinePaginationCursorSchema.parse({

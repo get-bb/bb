@@ -1,4 +1,5 @@
 import type { BbPluginApi, PluginCliResult } from "@bb/plugin-sdk";
+import type { ShareHostResolver } from "./hosts.js";
 import { parseSharePort } from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
@@ -41,10 +42,29 @@ function stringFlag(parsed: ParsedFlags, name: string): string | undefined {
   return value === undefined || value === true ? undefined : value;
 }
 
+function validateFlags(
+  parsed: ParsedFlags,
+  options: { boolean?: readonly string[]; value?: readonly string[] },
+): void {
+  const booleans = new Set(options.boolean ?? []);
+  const values = new Set(options.value ?? []);
+  for (const [name, value] of parsed.flags) {
+    if (!booleans.has(name) && !values.has(name)) {
+      throw new Error(`Unknown flag --${name}`);
+    }
+    if (booleans.has(name) && value !== true) {
+      throw new Error(`--${name} does not take a value`);
+    }
+    if (values.has(name) && value === true) {
+      throw new Error(`--${name} requires a value`);
+    }
+  }
+}
+
 function helpText(): string {
   return [
     "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app.",
-    "Share local HTTP ports at https://<handle>--<port>.… (owner session only).",
+    "Share HTTP ports from any enrolled host (owner session only).",
     "",
     "  1. Sign in at https://getbb.app and claim a handle.",
     "  2. Copy the connect command from the dashboard and run it here:",
@@ -52,9 +72,9 @@ function helpText(): string {
     "",
     "  bb connect status              Show remote-access status",
     "  bb connect off                 Disconnect and forget the pairing (re-pairing needs a new code)",
-    "  bb connect expose <port>       Share a local HTTP port at https://<handle>--<port>.…",
-    "  bb connect unexpose <port>     Stop sharing a port",
-    "  bb connect shares              List shared ports and their URLs",
+    "  bb connect expose <port> [--host <name-or-id>]    Share a port from the thread's host",
+    "  bb connect unexpose <port> [--host <name-or-id>]  Stop sharing a port on that host",
+    "  bb connect shares [--host <name-or-id>]           List shares for the thread's host",
     "  bb connect servers             List every bb on this account (from getbb.app)",
     "",
     "The server holds the tunnel; it stays up while bb is running.",
@@ -72,7 +92,9 @@ function formatStatus(status: ConnectStatus): string {
   if (status.shares.length > 0) {
     lines.push("  shares:");
     for (const share of status.shares) {
-      lines.push(`    ${share.port}  ${share.url}`);
+      lines.push(
+        `    ${share.hostName} (${share.hostId})  ${share.port}  ${share.url || `unavailable: ${share.unavailableReason ?? "unknown reason"}`}`,
+      );
     }
   }
   return lines.join("\n");
@@ -89,8 +111,9 @@ function notPairedError(): string {
 export function registerConnectCli(args: {
   bb: Pick<BbPluginApi, "cli">;
   tunnel: ConnectTunnel;
+  hostResolver: ShareHostResolver;
 }): void {
-  const { bb, tunnel } = args;
+  const { bb, tunnel, hostResolver } = args;
   bb.cli.register({
     name: "connect",
     summary:
@@ -108,18 +131,18 @@ export function registerConnectCli(args: {
       },
       {
         name: "expose",
-        summary: "Share a local HTTP port via the connect tunnel",
-        usage: "bb connect expose <port> [--json]",
+        summary: "Share an HTTP port from an enrolled host",
+        usage: "bb connect expose <port> [--host <name-or-id>] [--json]",
       },
       {
         name: "unexpose",
-        summary: "Stop sharing a local HTTP port",
-        usage: "bb connect unexpose <port> [--json]",
+        summary: "Stop sharing an HTTP port from a host",
+        usage: "bb connect unexpose <port> [--host <name-or-id>] [--json]",
       },
       {
         name: "shares",
         summary: "List shared ports and their public URLs",
-        usage: "bb connect shares [--json]",
+        usage: "bb connect shares [--host <name-or-id>] [--json]",
       },
       {
         name: "servers",
@@ -127,12 +150,13 @@ export function registerConnectCli(args: {
         usage: "bb connect servers [--json]",
       },
     ],
-    async run(argv): Promise<PluginCliResult> {
+    async run(argv, ctx): Promise<PluginCliResult> {
       try {
         const [first] = argv;
         if (first === "status") {
           const parsed = parseFlags(argv.slice(1));
-          const status = tunnel.status();
+          validateFlags(parsed, { boolean: ["json"] });
+          const status = await tunnel.refreshStatus();
           return {
             exitCode: 0,
             stdout: parsed.flags.has("json")
@@ -142,10 +166,13 @@ export function registerConnectCli(args: {
         }
         if (first === "off") {
           const parsed = parseFlags(argv.slice(1));
+          validateFlags(parsed, { boolean: ["json"] });
           const status = await tunnel.disconnect();
           return {
             exitCode: 0,
-            stdout: parsed.flags.has("json") ? asJson(status) : "Disconnected\n",
+            stdout: parsed.flags.has("json")
+              ? asJson(status)
+              : "Disconnected\n",
           };
         }
         if (first === "expose") {
@@ -153,14 +180,23 @@ export function registerConnectCli(args: {
           if (portArg === undefined || portArg.startsWith("--")) {
             return {
               exitCode: 1,
-              stderr: "Usage: bb connect expose <port> [--json]\n",
+              stderr:
+                "Usage: bb connect expose <port> [--host <name-or-id>] [--json]\n",
             };
           }
           const parsed = parseFlags(argv.slice(2));
+          validateFlags(parsed, { boolean: ["json"], value: ["host"] });
           if (!tunnel.status().paired) {
             return { exitCode: 1, stderr: `${notPairedError()}\n` };
           }
-          const listing = await tunnel.expose(parseSharePort(portArg));
+          const targetHost = await hostResolver.resolve(
+            ctx,
+            stringFlag(parsed, "host"),
+          );
+          const listing = await tunnel.expose(
+            parseSharePort(portArg),
+            targetHost,
+          );
           if (parsed.flags.has("json")) {
             return { exitCode: 0, stdout: asJson(listing) };
           }
@@ -174,39 +210,58 @@ export function registerConnectCli(args: {
           if (portArg === undefined || portArg.startsWith("--")) {
             return {
               exitCode: 1,
-              stderr: "Usage: bb connect unexpose <port> [--json]\n",
+              stderr:
+                "Usage: bb connect unexpose <port> [--host <name-or-id>] [--json]\n",
             };
           }
           const parsed = parseFlags(argv.slice(2));
-          const result = await tunnel.unexpose(parseSharePort(portArg));
+          validateFlags(parsed, { boolean: ["json"], value: ["host"] });
+          const targetHost =
+            stringFlag(parsed, "host") ?? (await hostResolver.resolveId(ctx));
+          const result = await tunnel.unexpose(
+            parseSharePort(portArg),
+            targetHost,
+          );
           if (parsed.flags.has("json")) {
             return { exitCode: 0, stdout: asJson(result) };
           }
           if (!result.removed) {
             return {
               exitCode: 0,
-              stdout: `Port ${result.port} was not shared (idempotent).\n`,
+              stdout: `Port ${result.port} was not shared on ${result.hostName} (${result.hostId}) (idempotent).\n`,
             };
           }
           return {
             exitCode: 0,
-            stdout: `Stopped sharing port ${result.port}\n`,
+            stdout: `Stopped sharing port ${result.port} on ${result.hostName} (${result.hostId})\n`,
           };
         }
         if (first === "shares") {
           const parsed = parseFlags(argv.slice(1));
-          const shares = tunnel.listShares();
+          validateFlags(parsed, { boolean: ["json"], value: ["host"] });
+          const targetHost = await hostResolver.resolve(
+            ctx,
+            stringFlag(parsed, "host"),
+          );
+          const shares = await tunnel.listShares(targetHost.id);
           if (parsed.flags.has("json")) {
-            return { exitCode: 0, stdout: asJson({ shares }) };
+            return {
+              exitCode: 0,
+              stdout: asJson({ host: targetHost, shares }),
+            };
           }
           if (shares.length === 0) {
             return { exitCode: 0, stdout: "No shared ports\n" };
           }
-          const lines = shares.map((s) => `${s.port}  ${s.url}`);
+          const lines = shares.map(
+            (share) =>
+              `${share.hostName} (${share.hostId})  ${share.port}  ${share.url || `unavailable: ${share.unavailableReason ?? "unknown reason"}`}`,
+          );
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
         }
         if (first === "servers") {
           const parsed = parseFlags(argv.slice(1));
+          validateFlags(parsed, { boolean: ["json"] });
           if (!tunnel.status().paired) {
             return { exitCode: 1, stderr: `${notPairedError()}\n` };
           }
@@ -246,6 +301,10 @@ export function registerConnectCli(args: {
           };
         }
         const parsed = parseFlags(argv);
+        validateFlags(parsed, {
+          boolean: ["json"],
+          value: ["code", "server", "base-url"],
+        });
         const code = stringFlag(parsed, "code");
         if (code === undefined) {
           // Bare `bb connect` is a how-to, not an argument error: it is a

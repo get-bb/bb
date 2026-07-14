@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
-import { promptActionCommandSuggestions } from "./useCommandSuggestions";
+import {
+  commandSuggestionMatchesQuery,
+  filterCommandSuggestions,
+  promptActionCommandSuggestions,
+} from "./useCommandSuggestions";
 
 const promptActions = [
   { kind: "skills", text: "/" },
@@ -61,5 +65,61 @@ describe("promptActionCommandSuggestions", () => {
         trigger: "/",
       }).map((suggestion) => suggestion.name),
     ).toEqual(["automation"]);
+  });
+});
+
+describe("commandSuggestionMatchesQuery", () => {
+  const pluginSkill = {
+    kind: "command",
+    name: "review",
+    source: "skill",
+    origin: "user",
+    description: "Review a pull request",
+    argumentHint: null,
+    pluginId: "github",
+  } as const;
+
+  it("filters the cached catalog locally by name and description", () => {
+    expect(commandSuggestionMatchesQuery(pluginSkill, "rev")).toBe(true);
+    expect(commandSuggestionMatchesQuery(pluginSkill, "pull")).toBe(true);
+    expect(commandSuggestionMatchesQuery(pluginSkill, "deploy")).toBe(false);
+  });
+
+  it("ranks a namespaced skill by its direct name without another fetch", () => {
+    const names = filterCommandSuggestions(
+      [
+        { ...pluginSkill, name: "alpha-review-notes" },
+        { ...pluginSkill, name: "ottonomous:review" },
+        { ...pluginSkill, name: "zeta-review" },
+      ],
+      "review",
+    ).map((suggestion) => suggestion.name);
+
+    expect(names).toEqual([
+      "ottonomous:review",
+      "alpha-review-notes",
+      "zeta-review",
+    ]);
+  });
+
+  it("keeps menu sections primary when ranking prefix matches", () => {
+    const names = filterCommandSuggestions(
+      [
+        {
+          ...pluginSkill,
+          name: "review-helper",
+          description: "Contains deploy guidance",
+        },
+        {
+          ...pluginSkill,
+          name: "deploy",
+          source: "command",
+          origin: "user",
+        },
+      ],
+      "deploy",
+    ).map((suggestion) => suggestion.name);
+
+    expect(names).toEqual(["review-helper", "deploy"]);
   });
 });

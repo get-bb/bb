@@ -55,16 +55,11 @@ import {
   createDaemonFileContentResponse,
   remapDaemonFileRouteError,
 } from "../services/hosts/daemon-file-response.js";
-import {
-  parseBoundedPositiveOptionalInteger,
-  parseOptionalInteger,
-} from "../services/lib/validation.js";
+import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
   buildCommandListResponse,
   providerHasCommandSurface,
   resolveCommandWorkspace,
-  PROVIDER_COMMAND_DEFAULT_LIMIT,
-  PROVIDER_COMMAND_LIMIT_MAX,
 } from "../services/threads/provider-command-typeahead.js";
 import {
   beginProjectDeletion,
@@ -79,11 +74,11 @@ import {
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
-import { resolveSkillCatalogSources } from "../services/skills/skill-catalog.js";
+import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
+import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
 import {
   assertUsableHostId,
   requirePrimaryHostId,
-  resolvePrimaryHostId,
 } from "../services/hosts/primary-host.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
@@ -709,47 +704,35 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     // Providers without a skills composer action have no typeahead entries,
     // so skip the daemon roundtrip entirely.
     if (!providerHasCommandSurface(query.provider)) {
-      return context.json({ commands: [], truncated: false });
+      return context.json({ commands: [] });
     }
 
-    const limit = parseBoundedPositiveOptionalInteger({
-      defaultValue: PROVIDER_COMMAND_DEFAULT_LIMIT,
-      max: PROVIDER_COMMAND_LIMIT_MAX,
-      name: "limit",
-      value: query.limit,
-    });
-    const offset = parseOptionalInteger(query.offset, "offset") ?? 0;
     const workspace = resolveCommandWorkspace(deps, {
       environmentId: query.environmentId,
       projectId,
     });
-    const primaryHostId = resolvePrimaryHostId(deps);
-    const isRemoteHost =
-      primaryHostId !== null && workspace.hostId !== primaryHostId;
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId: workspace.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.list_commands",
-        providerId: query.provider,
-        cwd: workspace.cwd,
-        builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
-        ...(deps.config.inheritedSkillsRootPaths.length > 0
-          ? { additionalSkillsRootPaths: deps.config.inheritedSkillsRootPaths }
-          : {}),
-        // These absolute roots live on the primary machine. Remote daemons
-        // receive the same content-addressed catalog used for runtime injection.
-        injectedSkillSources: isRemoteHost
-          ? resolveSkillCatalogSources(deps)
-          : [],
-      },
-    });
+    const [result, projectSkillSources] = await Promise.all([
+      callHostRetryableOnlineRpc(deps, {
+        hostId: workspace.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_commands",
+          providerId: query.provider,
+          cwd: workspace.cwd,
+        },
+      }),
+      workspace.cwd === null
+        ? Promise.resolve([])
+        : resolveWorkspaceProjectSkills(deps, {
+            hostId: workspace.hostId,
+            workspacePath: workspace.cwd,
+          }),
+    ]);
+    const skillCatalog = resolveSkillCatalog(deps, { projectSkillSources });
     return context.json(
       buildCommandListResponse({
         commands: result.commands,
-        limit,
-        offset,
-        query: query.query,
+        skillCatalog,
       }),
     );
   });

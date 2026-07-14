@@ -92,6 +92,11 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
       });
       deps.hub.recordDaemonSessionPlatform(session.id, payload.platform);
+      deps.sharedPorts.recordHostConnectCapability({
+        hostId: daemon.hostId,
+        sessionId: session.id,
+        hasMachineCredential: payload.hasMachineCredential,
+      });
 
       await handleHostSessionOpened(deps, {
         activeThreads: payload.activeThreads,
@@ -116,6 +121,9 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
           leaseTimeoutMs: LEASE_TIMEOUT_MS,
           watchSet: deps.watchInterests.reconcileWatchSetForHost(daemon.hostId),
+          connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
+            daemon.hostId,
+          ),
           retiredEnvironmentIds,
         },
         201,
