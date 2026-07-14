@@ -477,6 +477,13 @@
       "when": 1783979475769,
       "tag": "0067_early_warbird",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "6",
+      "when": 1783990869150,
+      "tag": "0068_productive_excalibur",
+      "breakpoints": true
     }
   ]
 }
