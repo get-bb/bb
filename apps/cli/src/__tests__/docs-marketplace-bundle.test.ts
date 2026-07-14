@@ -91,6 +91,7 @@ describe("Docs marketplace frontend bundle", () => {
       vaul: componentStub,
       pierreDiffs: componentStub,
       pierreDiffsReact: componentStub,
+      radixContextMenu: componentStub,
       radixDialog: componentStub,
       radixSelect: componentStub,
     };
