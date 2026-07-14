@@ -366,15 +366,10 @@ function SplitTree(props: SplitTreeProps) {
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
         // Flush tiles: no rounding, outer edges flush; a straight recessed
-        // gutter separates panes (see SplitDivider). The focused pane carries
-        // a single inset outline — with real gutters between tiles there is
-        // no adjacent hairline for it to double up against. Bounded panes
-        // suppress the content's page-bleed negative margins (see
+        // gutter separates panes (see SplitDivider). Bounded panes suppress
+        // the content's page-bleed negative margins (see
         // PaneContextValue.isBoundedPane) so content fills the tile exactly.
-        className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
-          isFocused && "ring-1 ring-inset ring-ring",
-        )}
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
         data-split-pane-id={node.paneId}
       >
         {/* Only mounted in split mode, so single panes never pay for the extra
@@ -395,6 +390,16 @@ function SplitTree(props: SplitTreeProps) {
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
+        {/* The focus outline lives on an overlay above the pane's content —
+            an inset ring on the pane itself gets painted over by children
+            with opaque backgrounds (header scrim, composer), which cut the
+            line at the top and bottom. */}
+        {isFocused ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-20 ring-1 ring-inset ring-ring"
+          />
+        ) : null}
       </div>
     );
   }
