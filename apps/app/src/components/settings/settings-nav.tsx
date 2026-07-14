@@ -26,7 +26,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Laptop", id: "machines", label: "Machines" },
-  { icon: "Zap", id: "experiments", label: "Experiments" },
+  { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "Layers", id: "plugins", label: "Plugins" },
   { icon: "MessageSquare", id: "community", label: "Community" },
 ] as const satisfies readonly {
