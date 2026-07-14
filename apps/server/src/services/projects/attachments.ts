@@ -187,6 +187,21 @@ export async function readAttachment(
   };
 }
 
+/** Delete one project-scoped upload without touching other draft attachments. */
+export async function deleteAttachment(
+  dataDir: string,
+  projectId: string,
+  relativePath: string,
+): Promise<void> {
+  const dir = projectAttachmentDir(dataDir, projectId);
+  const resolved = resolveAttachmentPath(dir, relativePath);
+  const fileStat = await stat(resolved).catch(() => null);
+  if (!fileStat || !fileStat.isFile()) {
+    throw new ApiError(404, "invalid_request", "Attachment not found");
+  }
+  await rm(resolved);
+}
+
 export async function deleteProjectAttachments(
   dataDir: string,
   projectId: string,

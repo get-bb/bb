@@ -260,6 +260,7 @@ export interface AttachmentsConfig {
   error?: string | null;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
   onRemove?: (path: string) => void;
+  onRetryTransfer?: () => void;
   projectId?: string;
 }
 
@@ -1059,6 +1060,7 @@ export function PromptBoxInternal({
     error: attachmentError = null,
     onAttachFiles,
     onRemove: onRemoveAttachment,
+    onRetryTransfer,
     projectId: attachmentProjectId,
   } = attachmentConfig;
   const {
@@ -2744,8 +2746,19 @@ export function PromptBoxInternal({
               />
 
               {attachmentError ? (
-                <div className="mx-3 mb-1 mt-1 text-xs text-destructive">
-                  {attachmentError}
+                <div className="mx-3 mb-1 mt-1 flex items-center gap-2 text-xs text-destructive">
+                  <span>{attachmentError}</span>
+                  {onRetryTransfer ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-1 py-0 text-xs text-destructive"
+                      onClick={onRetryTransfer}
+                    >
+                      Retry attachment transfer
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </>

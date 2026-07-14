@@ -22,6 +22,7 @@ import {
   hasSingleUseRootComposeTargetState,
   isProjectSourceWorktreeUnavailable,
   mergeMissingPromptDraftAttachments,
+  preparePromptAttachmentProjectMigration,
   readFolderIdFromLocationState,
   readRootComposeFolderTargetFromLocationState,
   readInitialPromptFromLocationState,
@@ -31,6 +32,7 @@ import {
   resolveRootComposePanelThreadId,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
+  withPromptAttachmentSourceProject,
 } from "./RootComposeView";
 
 interface MakeThreadArgs {
@@ -340,6 +342,86 @@ describe("mergeMissingPromptDraftAttachments", () => {
         ],
       ),
     ).toBeNull();
+  });
+});
+
+describe("withPromptAttachmentSourceProject", () => {
+  it("keeps uploaded attachments tied to their source project during a project change", () => {
+    expect(
+      withPromptAttachmentSourceProject(
+        [
+          {
+            type: "localImage",
+            path: "screenshot.png",
+            name: "screenshot.png",
+            mimeType: "image/png",
+            sizeBytes: 64,
+          },
+        ],
+        "proj_source",
+      ),
+    ).toEqual([
+      {
+        type: "localImage",
+        path: "screenshot.png",
+        name: "screenshot.png",
+        mimeType: "image/png",
+        sizeBytes: 64,
+        sourceProjectId: "proj_source",
+      },
+    ]);
+  });
+
+  it("does not overwrite an attachment's original source during a later switch", () => {
+    expect(
+      withPromptAttachmentSourceProject(
+        [
+          {
+            type: "localImage",
+            path: "screenshot.png",
+            name: "screenshot.png",
+            mimeType: "image/png",
+            sizeBytes: 64,
+            sourceProjectId: "proj_original",
+          },
+        ],
+        "proj_intermediate",
+      ),
+    ).toEqual([
+      {
+        type: "localImage",
+        path: "screenshot.png",
+        name: "screenshot.png",
+        mimeType: "image/png",
+        sizeBytes: 64,
+        sourceProjectId: "proj_original",
+      },
+    ]);
+  });
+});
+
+describe("preparePromptAttachmentProjectMigration", () => {
+  it("transfers a source-tagged global draft on its initial project observation", () => {
+    const attachment = {
+      type: "localImage" as const,
+      path: "screenshot.png",
+      name: "screenshot.png",
+      mimeType: "image/png",
+      sizeBytes: 64,
+      sourceProjectId: "proj_source",
+    };
+
+    expect(
+      preparePromptAttachmentProjectMigration({
+        attachments: [attachment],
+        currentProjectId: "proj_destination",
+        previousProjectId: "proj_destination",
+      }),
+    ).toEqual({
+      attachments: [attachment],
+      shouldPersistAnnotations: false,
+      shouldTransfer: true,
+    });
   });
 });
 

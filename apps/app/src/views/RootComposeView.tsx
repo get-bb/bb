@@ -75,7 +75,10 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginPanelTabContent } from "@/components/plugin/PluginPanelActions";
-import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+import {
+  useDeletePromptAttachment,
+  useUploadPromptAttachment,
+} from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useCloseTerminal,
@@ -110,6 +113,14 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { fetchWithAppSurface } from "@/lib/app-surface";
+import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
+import {
+  cleanupStalePromptAttachmentCopies,
+  hasPromptDraftAttachmentsOutsideProject,
+  reconcileTransferredPromptAttachments,
+  transferPromptAttachments,
+} from "@/lib/prompt-attachment-transfer";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import {
@@ -277,6 +288,46 @@ export function mergeMissingPromptDraftAttachments(
     return null;
   }
   return [...currentAttachments, ...missingAttachments];
+}
+
+export function withPromptAttachmentSourceProject(
+  attachments: readonly PromptDraftAttachment[],
+  sourceProjectId: string,
+): PromptDraftAttachment[] {
+  return attachments.map((attachment) =>
+    attachment.sourceProjectId
+      ? attachment
+      : { ...attachment, sourceProjectId },
+  );
+}
+
+export function preparePromptAttachmentProjectMigration({
+  attachments,
+  currentProjectId,
+  previousProjectId,
+}: {
+  attachments: readonly PromptDraftAttachment[];
+  currentProjectId: string;
+  previousProjectId: string;
+}): {
+  attachments: PromptDraftAttachment[];
+  shouldPersistAnnotations: boolean;
+  shouldTransfer: boolean;
+} {
+  const shouldPersistAnnotations =
+    previousProjectId !== currentProjectId &&
+    attachments.some((attachment) => attachment.sourceProjectId === undefined);
+  const migratedAttachments = shouldPersistAnnotations
+    ? withPromptAttachmentSourceProject(attachments, previousProjectId)
+    : [...attachments];
+  return {
+    attachments: migratedAttachments,
+    shouldPersistAnnotations,
+    shouldTransfer: hasPromptDraftAttachmentsOutsideProject({
+      attachments: migratedAttachments,
+      projectId: currentProjectId,
+    }),
+  };
 }
 
 export function restorePromptDraftAfterOptionChange({
@@ -1007,7 +1058,17 @@ export function RootComposeView(props: RootComposeViewProps) {
     return new Map(hosts.map((host) => [host.id, host.name]));
   }, [hostsQuery.data, multiMachineEnabled]);
   const uploadPromptAttachment = useUploadPromptAttachment();
+  const deletePromptAttachment = useDeletePromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
+  const currentProjectIdRef = useRef(projectId);
+  currentProjectIdRef.current = projectId;
+  const previousProjectIdRef = useRef(projectId);
+  const attemptedAttachmentTransfersByProjectRef = useRef(
+    new Map<string, Set<string>>(),
+  );
+  const attachmentTransferCountRef = useRef(0);
+  const [isTransferringAttachments, setIsTransferringAttachments] =
+    useState(false);
   // Plugin useComposer() writes (from nav panels / homepage sections) target
   // the new-thread draft; surface + focus the composer when they ask.
   useEffect(
@@ -1035,6 +1096,14 @@ export function RootComposeView(props: RootComposeViewProps) {
     useProjectPromptHistory(projectId);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const prompt = promptDraft.text;
+  const hasAttachmentsFromAnotherProject = useMemo(
+    () =>
+      hasPromptDraftAttachmentsOutsideProject({
+        attachments: promptDraft.attachments,
+        projectId,
+      }),
+    [projectId, promptDraft.attachments],
+  );
   const promptInput = useMemo(
     () =>
       promptDraftToInput({
@@ -1120,6 +1189,119 @@ export function RootComposeView(props: RootComposeViewProps) {
     serviceTierSupportByProvider,
   } = creationOptions;
   const executionInputSources = creationOptions.executionInputSources;
+  const transferPromptAttachmentsToProject = useCallback(
+    async ({
+      attachments,
+      targetProjectId,
+    }: {
+      attachments: readonly PromptDraftAttachment[];
+      targetProjectId: string;
+    }) => {
+      const attachmentsToTransfer = attachments.filter(
+        (attachment) => attachment.sourceProjectId !== targetProjectId,
+      );
+      if (attachmentsToTransfer.length === 0) {
+        return;
+      }
+
+      attachmentTransferCountRef.current += 1;
+      setIsTransferringAttachments(true);
+      setAttachmentError(null);
+      try {
+        const transferResult = await transferPromptAttachments({
+          attachments: attachmentsToTransfer,
+          targetProjectId,
+          readAttachment: async ({ projectId, path }) => {
+            const response = await fetchWithAppSurface(
+              buildProjectAttachmentContentUrl(projectId, path),
+            );
+            if (!response.ok) {
+              throw new Error("Unable to read attachment from its project");
+            }
+            return response.blob();
+          },
+          uploadAttachment: ({ projectId, file }) =>
+            uploadPromptAttachment.mutateAsync({ projectId, file }),
+        });
+
+        const nextAttachments = reconcileTransferredPromptAttachments({
+          currentProjectId: currentProjectIdRef.current,
+          currentAttachments: promptDraft.getCurrent().attachments,
+          targetProjectId,
+          transferredAttachments: transferResult.transferredAttachments,
+        });
+        if (nextAttachments === null) {
+          await cleanupStalePromptAttachmentCopies({
+            currentAttachments: promptDraft.getCurrent().attachments,
+            currentProjectId: currentProjectIdRef.current,
+            deleteAttachment: ({ projectId, path }) =>
+              deletePromptAttachment.mutateAsync({ projectId, path }),
+            targetProjectId,
+            transferredAttachments: transferResult.transferredAttachments,
+          });
+          return;
+        }
+        promptDraft.setAttachments(nextAttachments);
+        if (transferResult.failedAttachments.length > 0) {
+          setAttachmentError(
+            getMutationErrorMessage({
+              error: transferResult.failedAttachments[0]!.error,
+              fallbackMessage:
+                "Attachment could not be moved to the selected project",
+            }),
+          );
+        }
+      } finally {
+        attachmentTransferCountRef.current -= 1;
+        setIsTransferringAttachments(attachmentTransferCountRef.current > 0);
+      }
+    },
+    [deletePromptAttachment, promptDraft, uploadPromptAttachment],
+  );
+  useEffect(() => {
+    const previousProjectId = previousProjectIdRef.current;
+    const projectChanged = previousProjectId !== projectId;
+    const migration = preparePromptAttachmentProjectMigration({
+      attachments: promptDraft.getCurrent().attachments,
+      currentProjectId: projectId,
+      previousProjectId,
+    });
+
+    if (!projectChanged && !migration.shouldTransfer) return;
+
+    previousProjectIdRef.current = projectId;
+    if (projectChanged) {
+      attemptedAttachmentTransfersByProjectRef.current.delete(projectId);
+      setAttachmentError(null);
+    }
+    if (migration.shouldPersistAnnotations) {
+      promptDraft.setAttachments(migration.attachments);
+    }
+    if (!migration.shouldTransfer) return;
+
+    let attemptedSourceAttachments =
+      attemptedAttachmentTransfersByProjectRef.current.get(projectId);
+    if (!attemptedSourceAttachments) {
+      attemptedSourceAttachments = new Set();
+      attemptedAttachmentTransfersByProjectRef.current.set(
+        projectId,
+        attemptedSourceAttachments,
+      );
+    }
+    const attachmentsToTransfer = migration.attachments.filter((attachment) => {
+      const sourceProjectId = attachment.sourceProjectId;
+      if (!sourceProjectId || sourceProjectId === projectId) return false;
+      const key = `${sourceProjectId}:${attachment.path}`;
+      if (attemptedSourceAttachments.has(key)) return false;
+      attemptedSourceAttachments.add(key);
+      return true;
+    });
+    if (attachmentsToTransfer.length === 0) return;
+    void transferPromptAttachmentsToProject({
+      attachments: attachmentsToTransfer,
+      targetProjectId: projectId,
+    });
+  }, [projectId, promptDraft, transferPromptAttachmentsToProject]);
   const snapshotPromptDraftBeforeOptionChange = useCallback(() => {
     const currentDraft = promptDraft.getCurrent();
     promptOptionDraftSnapshotRef.current = isPromptDraftEmpty(currentDraft)
@@ -1670,6 +1852,12 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [projectId, setRootComposeProjectId, snapshotPromptDraftBeforeOptionChange],
   );
+  const handleRetryAttachmentTransfer = useCallback(() => {
+    void transferPromptAttachmentsToProject({
+      attachments: promptDraft.getCurrent().attachments,
+      targetProjectId: projectId,
+    });
+  }, [projectId, promptDraft, transferPromptAttachmentsToProject]);
   const shouldFocusPrompt =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -1696,7 +1884,18 @@ export function RootComposeView(props: RootComposeViewProps) {
             projectId,
             file,
           });
-          promptDraft.addAttachment(uploaded);
+          const attachment = {
+            ...uploaded,
+            sourceProjectId: projectId,
+          } satisfies PromptDraftAttachment;
+          promptDraft.addAttachment(attachment);
+          const selectedProjectId = currentProjectIdRef.current;
+          if (selectedProjectId !== projectId) {
+            void transferPromptAttachmentsToProject({
+              attachments: [attachment],
+              targetProjectId: selectedProjectId,
+            });
+          }
         } catch (err) {
           setAttachmentError(
             getMutationErrorMessage({
@@ -1708,7 +1907,12 @@ export function RootComposeView(props: RootComposeViewProps) {
         }
       }
     },
-    [projectId, promptDraft, uploadPromptAttachment],
+    [
+      projectId,
+      promptDraft,
+      transferPromptAttachmentsToProject,
+      uploadPromptAttachment,
+    ],
   );
 
   // `inputsOverride` bypasses the draft: plugin slash-command `{ send }`
@@ -1741,6 +1945,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       isCodexCliVersionBlocked ||
       managedWorktreeAvailabilityPending ||
       managedWorktreeUnavailable ||
+      isTransferringAttachments ||
+      hasAttachmentsFromAnotherProject ||
       (forkSeed === null && !selectedEnvironment)
     ) {
       return;
@@ -1809,7 +2015,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     createThread,
     executionInputSources,
     forkSeed,
+    hasAttachmentsFromAnotherProject,
     isCodexCliVersionBlocked,
+    isTransferringAttachments,
     managedWorktreeAvailabilityPending,
     managedWorktreeUnavailable,
     navigate,
@@ -1840,6 +2048,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     isCodexCliVersionBlocked ||
     !selectedThreadModel ||
     createThread.isPending ||
+    isTransferringAttachments ||
+    hasAttachmentsFromAnotherProject ||
     promptInput.length === 0 ||
     (forkSeed === null && !selectedEnvironment) ||
     managedWorktreeAvailabilityPending ||
@@ -3160,16 +3370,22 @@ export function RootComposeView(props: RootComposeViewProps) {
       projectId: projectId ?? "",
       onAttachFiles: handleAttachFiles,
       onRemove: promptDraft.removeAttachment,
-      isAttaching: uploadPromptAttachment.isPending,
+      isAttaching: uploadPromptAttachment.isPending || isTransferringAttachments,
       error: attachmentError,
+      onRetryTransfer: hasAttachmentsFromAnotherProject
+        ? handleRetryAttachmentTransfer
+        : undefined,
     }),
     [
       attachmentError,
       handleAttachFiles,
+      handleRetryAttachmentTransfer,
+      hasAttachmentsFromAnotherProject,
       projectId,
       promptDraft.attachments,
       promptDraft.removeAttachment,
       uploadPromptAttachment.isPending,
+      isTransferringAttachments,
     ],
   );
   const executionConfig = useMemo(

@@ -101,6 +101,7 @@ import type {
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
   ProjectAttachmentContentQuery,
+  ProjectAttachmentDeleteQuery,
   ProjectAttachmentUploadForm,
   ProjectBranchesQuery,
   ProjectBranchesResponse,
@@ -221,6 +222,7 @@ import {
   hostPathsExistRequestSchema,
   hostProviderCliInstallRequestSchema,
   projectAttachmentContentQuerySchema,
+  projectAttachmentDeleteQuerySchema,
   projectBranchesQuerySchema,
   projectCommandsQuerySchema,
   projectDefaultExecutionOptionsQuerySchema,
@@ -409,6 +411,14 @@ export const publicApiRoutes = {
       method: "post",
       request: formRequest<PathProjectId, ProjectAttachmentUploadForm>(),
       response: jsonResponse<UploadedPromptAttachment>({ status: 201 }),
+    }),
+    deleteAttachment: defineRoute({
+      path: "/projects/:id/attachments",
+      method: "delete",
+      request: queryRequest<PathProjectId, ProjectAttachmentDeleteQuery>(
+        projectAttachmentDeleteQuerySchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
     }),
     attachmentContent: defineRoute({
       path: "/projects/:id/attachments/content",

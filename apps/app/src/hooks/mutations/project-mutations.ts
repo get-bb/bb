@@ -52,6 +52,11 @@ interface UploadPromptAttachmentRequest {
   file: File;
 }
 
+interface DeletePromptAttachmentRequest {
+  projectId: string;
+  path: string;
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient();
 
@@ -230,6 +235,18 @@ export function useUploadPromptAttachment() {
       file,
     }: UploadPromptAttachmentRequest): Promise<UploadedPromptAttachment> =>
       api.uploadPromptAttachment(projectId, file),
+    retry: false,
+  });
+}
+
+export function useDeletePromptAttachment() {
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to remove attachment.",
+      showErrorToast: false,
+    },
+    mutationFn: ({ projectId, path }: DeletePromptAttachmentRequest) =>
+      api.deletePromptAttachment(projectId, path),
     retry: false,
   });
 }

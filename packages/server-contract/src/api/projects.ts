@@ -192,6 +192,13 @@ export type ProjectAttachmentContentQuery = z.infer<
   typeof projectAttachmentContentQuerySchema
 >;
 
+export const projectAttachmentDeleteQuerySchema = z.object({
+  path: z.string().min(1),
+});
+export type ProjectAttachmentDeleteQuery = z.infer<
+  typeof projectAttachmentDeleteQuerySchema
+>;
+
 export const projectDefaultExecutionOptionsQuerySchema = z.object({});
 export type ProjectDefaultExecutionOptionsQuery = z.infer<
   typeof projectDefaultExecutionOptionsQuerySchema

@@ -41,6 +41,7 @@ describe("prompt draft helpers", () => {
             name: "image.png",
             sizeBytes: 12,
             mimeType: "image/png",
+            sourceProjectId: "proj_source",
           },
         ],
       }),
@@ -56,6 +57,7 @@ describe("prompt draft helpers", () => {
           name: "image.png",
           sizeBytes: 12,
           mimeType: "image/png",
+          sourceProjectId: "proj_source",
         },
       ],
     });
@@ -91,6 +93,7 @@ describe("prompt draft helpers", () => {
           name: "image.png",
           sizeBytes: 32,
           mimeType: "image/png",
+          sourceProjectId: "proj_source",
         },
         {
           type: "localFile",

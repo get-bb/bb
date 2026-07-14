@@ -34,6 +34,7 @@ import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import {
+  deleteAttachment,
   readAttachment,
   storeAttachment,
 } from "../services/projects/attachments.js";
@@ -791,6 +792,16 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       await storeAttachment(deps.config.dataDir, context.req.param("id"), file),
       201,
     );
+  });
+
+  del(routes.deleteAttachment, async (context, query) => {
+    requirePublicProject(deps.db, context.req.param("id"));
+    await deleteAttachment(
+      deps.config.dataDir,
+      context.req.param("id"),
+      query.path,
+    );
+    return context.json({ ok: true });
   });
 
   get(routes.attachmentContent, async (context, query) => {

@@ -766,6 +766,18 @@ export async function uploadPromptAttachment(
   );
 }
 
+export async function deletePromptAttachment(
+  projectId: string,
+  path: string,
+): Promise<void> {
+  await requestVoid(
+    apiClient.projects[":id"].attachments.$delete({
+      param: { id: projectId },
+      query: { path },
+    }),
+  );
+}
+
 export async function transcribeVoiceInput(
   file: File,
   prompt?: string,

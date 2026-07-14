@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  deleteAttachment,
   readAttachment,
   validatePromptAttachmentReferences,
 } from "./attachments.js";
@@ -34,6 +35,45 @@ describe("project attachments", () => {
 
     expect(result.content.toString("utf8")).toBe("hello");
     expect(result.mimeType).toBe("text/plain");
+  });
+
+  it("deletes only the requested attachment from its project directory", async () => {
+    const dataDir = await makeTempDir();
+    const projectId = "proj_test";
+    const attachmentDir = join(dataDir, "attachments", projectId);
+    const deletedPath = join(attachmentDir, "delete-me.txt");
+    const retainedPath = join(attachmentDir, "keep-me.txt");
+
+    await mkdir(attachmentDir, { recursive: true });
+    await Promise.all([
+      writeFile(deletedPath, "delete", "utf8"),
+      writeFile(retainedPath, "keep", "utf8"),
+    ]);
+
+    await deleteAttachment(dataDir, projectId, "delete-me.txt");
+
+    await expect(
+      readAttachment(dataDir, projectId, "delete-me.txt"),
+    ).rejects.toMatchObject({
+      status: 404,
+      body: expect.objectContaining({ message: "Attachment not found" }),
+    });
+    await expect(
+      readAttachment(dataDir, projectId, "keep-me.txt"),
+    ).resolves.toMatchObject({ content: Buffer.from("keep") });
+  });
+
+  it("applies the same containment checks before deleting an attachment", async () => {
+    const dataDir = await makeTempDir();
+
+    await expect(
+      deleteAttachment(dataDir, "proj_test", "../secret.txt"),
+    ).rejects.toMatchObject({
+      status: 400,
+      body: expect.objectContaining({
+        message: "Attachment path escapes project directory",
+      }),
+    });
   });
 
   it("accepts prompt attachment references to uploaded project files", async () => {
