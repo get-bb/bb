@@ -1326,7 +1326,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       openStorageFile,
       openWorkspaceFile,
       projectId,
-      props.surface,
       thread?.environmentId,
     ],
   );
