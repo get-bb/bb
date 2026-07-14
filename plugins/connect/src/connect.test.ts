@@ -311,6 +311,115 @@ describe("ShareRegistry", () => {
     await fakeHost.harness.dispose();
   });
 
+  it("lists persisted shares in the sync snapshot before any resolution, including unpaired", async () => {
+    const kv = new Map<string, unknown>([
+      [
+        SHARES_KV_KEY,
+        {
+          "3000": { port: 3000, createdAt: 1 },
+          [`${REMOTE_HOST_ID}:4000`]: {
+            hostId: REMOTE_HOST_ID,
+            port: 4000,
+            createdAt: 2,
+          },
+        },
+      ],
+    ]);
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const registry = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: pluginBb.hosts,
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => null,
+      log: pluginBb.log,
+    });
+
+    await registry.load();
+    expect(registry.snapshot()).toEqual([
+      {
+        hostId: REMOTE_HOST_ID,
+        hostName: REMOTE_HOST_ID,
+        port: 4000,
+        createdAt: 2,
+        url: "",
+        unavailableReason: "Share URL has not been resolved yet.",
+      },
+      {
+        hostId: "server",
+        hostName: "server host",
+        port: 3000,
+        createdAt: 1,
+        url: "",
+        unavailableReason: "Share URL has not been resolved yet.",
+      },
+    ]);
+    await fakeHost.harness.dispose();
+  });
+
+  it("collapses the placeholder snapshot row when a legacy share resolves", async () => {
+    const kv = new Map<string, unknown>([
+      [SHARES_KV_KEY, { "3000": { port: 3000, createdAt: 123 } }],
+    ]);
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const registry = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: pluginBb.hosts,
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => ({
+        serverUrl: "https://sawyer.getbb.app",
+        handle: "sawyer",
+        credential: "bbcred_x",
+      }),
+      log: pluginBb.log,
+    });
+
+    await registry.load();
+    expect(registry.snapshot()).toEqual([
+      expect.objectContaining({ hostId: "server", port: 3000 }),
+    ]);
+    // Idempotent re-expose after the server host resolves must replace the
+    // placeholder row, not sit beside it.
+    await registry.add(3000, {
+      id: SERVER_HOST_ID,
+      name: SERVER_HOST_NAME,
+      isServer: true,
+    });
+    expect(registry.snapshot()).toEqual([
+      {
+        hostId: SERVER_HOST_ID,
+        hostName: SERVER_HOST_NAME,
+        port: 3000,
+        createdAt: 123,
+        url: "https://sawyer--3000.getbb.app",
+      },
+    ]);
+    await fakeHost.harness.dispose();
+  });
+
   it("normalizes legacy entries to the server host id at activation", async () => {
     const kv = new Map<string, unknown>([
       [SHARES_KV_KEY, { "3000": { port: 3000, createdAt: 123 } }],
@@ -586,6 +695,72 @@ describe("ConnectTunnel share activation", () => {
         (declaration) => declaration.ports.length > 0,
       ),
     ).toEqual([]);
+    await fakeHost.harness.dispose();
+  });
+
+  it("keeps persisted shares visible in status after an unpaired restart", async () => {
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const kv = new Map<string, unknown>([
+      [
+        SHARES_KV_KEY,
+        {
+          "3000": { port: 3000, createdAt: 1 },
+          [`${REMOTE_HOST_ID}:4000`]: {
+            hostId: REMOTE_HOST_ID,
+            port: 4000,
+            createdAt: 2,
+          },
+        },
+      ],
+    ]);
+    const shares = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: pluginBb.hosts,
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      // disconnect() cleared the pairing but kept the share kv.
+      getCredential: () => null,
+      log: pluginBb.log,
+    });
+    const tunnel = new ConnectTunnel({
+      store: {
+        read: async () => null,
+        write: async () => {},
+        clear: async () => {},
+      },
+      shares,
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      log: pluginBb.log,
+    });
+
+    await tunnel.start();
+    await waitFor(() => tunnel.status().shares.length === 2);
+    expect(tunnel.status().shares).toEqual([
+      expect.objectContaining({
+        hostId: REMOTE_HOST_ID,
+        port: 4000,
+        url: "",
+        unavailableReason: "Share URL has not been resolved yet.",
+      }),
+      expect.objectContaining({
+        hostId: "server",
+        port: 3000,
+        url: "",
+        unavailableReason: "Share URL has not been resolved yet.",
+      }),
+    ]);
+    tunnel.stop();
     await fakeHost.harness.dispose();
   });
 });

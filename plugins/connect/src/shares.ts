@@ -215,6 +215,23 @@ export class ShareRegistry {
       }
     }
     this.shares = next;
+    // Seed the sync snapshot so restored shares are visible in status and
+    // realtime immediately — including unpaired, where no resolution runs.
+    this.lastListings = [...next.values()]
+      .map((share) => this.seededListing(share))
+      .sort(compareListings);
+  }
+
+  /** Pre-resolution listing built from persisted state alone (no RPCs). */
+  private seededListing(share: RestoredShare): ShareListing {
+    return {
+      hostId: share.hostId ?? this.serverHostId ?? UNRESOLVED_SERVER_HOST_ID,
+      hostName: share.hostId ?? "server host",
+      port: share.port,
+      createdAt: share.createdAt,
+      url: "",
+      unavailableReason: "Share URL has not been resolved yet.",
+    };
   }
 
   hasServerPort(port: number): boolean {
@@ -271,7 +288,7 @@ export class ShareRegistry {
     );
     if (existing) {
       const listing = await this.resolveListing(existing, host);
-      this.updateSnapshot(listing);
+      this.updateSnapshot(listing, existing.hostId === null);
       return listing;
     }
 
@@ -298,7 +315,7 @@ export class ShareRegistry {
       createdAt: share.createdAt,
       url,
     };
-    this.updateSnapshot(listing);
+    this.updateSnapshot(listing, false);
     this.options.onChange?.();
     return listing;
   }
@@ -348,11 +365,10 @@ export class ShareRegistry {
         );
       }
     }
-    const removedListingIds = new Set([publicHostId]);
-    if (share.hostId === null) {
-      removedListingIds.add(UNRESOLVED_SERVER_HOST_ID);
-      if (this.serverHostId !== null) removedListingIds.add(this.serverHostId);
-    }
+    const removedListingIds = this.snapshotAliases(
+      publicHostId,
+      share.hostId === null,
+    );
     this.lastListings = this.lastListings.filter(
       (entry) =>
         !(entry.port === validated && removedListingIds.has(entry.hostId)),
@@ -423,10 +439,24 @@ export class ShareRegistry {
     }
   }
 
-  private updateSnapshot(listing: ShareListing): void {
+  /**
+   * All snapshot hostIds this share may currently be listed under. A legacy
+   * or server-host share may have a pre-resolution placeholder row, so every
+   * snapshot mutation must clear the aliases, not just the concrete id.
+   */
+  private snapshotAliases(hostId: string, wasLegacy: boolean): Set<string> {
+    const aliases = new Set([hostId]);
+    if (wasLegacy || hostId === this.serverHostId) {
+      aliases.add(UNRESOLVED_SERVER_HOST_ID);
+      if (this.serverHostId !== null) aliases.add(this.serverHostId);
+    }
+    return aliases;
+  }
+
+  private updateSnapshot(listing: ShareListing, wasLegacy: boolean): void {
+    const aliases = this.snapshotAliases(listing.hostId, wasLegacy);
     const next = this.lastListings.filter(
-      (entry) =>
-        !(entry.port === listing.port && entry.hostId === listing.hostId),
+      (entry) => !(entry.port === listing.port && aliases.has(entry.hostId)),
     );
     next.push(listing);
     next.sort(compareListings);
