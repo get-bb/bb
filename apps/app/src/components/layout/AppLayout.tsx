@@ -251,7 +251,7 @@ function SidebarTriggerOverlay({
     <div
       data-testid="app-sidebar-trigger-overlay"
       className={cn(
-        "fixed left-0 top-0 z-50",
+        "fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)] z-50",
         CHROME_ROW_CLASS,
         BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
       )}
@@ -782,7 +782,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div
               ref={contentShellRef}
               data-testid="app-layout-content-shell"
-              className="relative flex h-[100dvh] min-w-0 w-full flex-col"
+              className="relative flex h-[100dvh] min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
             >
               {showHeader ? (
                 <AppHeader

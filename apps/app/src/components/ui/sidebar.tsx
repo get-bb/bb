@@ -590,7 +590,7 @@ const Sidebar = React.forwardRef<
                 suppressMobileOpenAnimation ? "true" : undefined
               }
               className={cn(
-                "group fixed inset-y-0 z-40 flex h-svh w-(--sidebar-width-mobile) flex-col bg-sidebar text-sidebar-foreground outline-none",
+                "group fixed inset-y-0 z-40 flex h-dvh w-(--sidebar-width-mobile) flex-col bg-sidebar text-sidebar-foreground outline-none",
                 "[&[data-sidebar-suppress-open-animation=true][data-state=open]]:![animation:none]",
                 side === "left" ? "left-0" : "right-0",
                 variant === "floating" || variant === "inset"
@@ -615,7 +615,7 @@ const Sidebar = React.forwardRef<
               </DrawerPrimitive.Description>
               <div
                 data-sidebar="sidebar"
-                className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
+                className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
               >
                 {children}
               </div>

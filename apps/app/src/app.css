@@ -33,12 +33,6 @@
     padding-bottom: 0.5rem;
   }
 
-  @media (display-mode: standalone) {
-    .chat-prompt-box {
-      padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
-    }
-  }
-
   * {
     scrollbar-width: thin;
     scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent)
