@@ -17,9 +17,14 @@ env:
 permissions:
   contents: read
 
+# Shared group with deploy-web so the two never run `wrangler d1 migrations
+# apply` concurrently against the same prod D1: a parallel double-apply would
+# fail on already-applied SQL (e.g. 0005's CREATE TRIGGER). Serializing the
+# two workflows makes the second run's migrate step a tracked no-op.
+# cancel-in-progress:false so a queued deploy waits rather than being dropped.
 concurrency:
-  group: deploy-connect-${{ github.ref }}
-  cancel-in-progress: true
+  group: connect-db-deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
