@@ -585,76 +585,78 @@ function ThreadRowComponent({
         ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
-      {splitIndicator.miniMap ? (
-        <ThreadRowMiniMap
-          slots={splitIndicator.miniMap}
-          label={`${labelTitle} — open in split`}
-        />
-      ) : null}
-      {shortcut ? (
-        <kbd
-          aria-hidden="true"
-          className="pointer-events-none inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent px-1 text-xs font-medium tabular-nums text-muted-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]"
-        >
-          {shortcut.label}
-        </kbd>
-      ) : (
-        <span
-          className={cn(
-            "flex shrink-0 items-center justify-end max-md:pointer-coarse:pointer-events-none",
-            COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-          )}
-        >
+      <span className="flex shrink-0 items-center gap-0.5">
+        {splitIndicator.miniMap ? (
+          <ThreadRowMiniMap
+            slots={splitIndicator.miniMap}
+            label={`${labelTitle} — open in split`}
+          />
+        ) : null}
+        {shortcut ? (
+          <kbd
+            aria-hidden="true"
+            className="pointer-events-none inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent px-1 text-xs font-medium tabular-nums text-muted-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]"
+          >
+            {shortcut.label}
+          </kbd>
+        ) : (
           <span
             className={cn(
-              "relative shrink-0",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              "flex shrink-0 items-center justify-end max-md:pointer-coarse:pointer-events-none",
+              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
             )}
           >
             <span
-              data-sidebar-hover-actions-open={
-                isActionsOpen ? "true" : undefined
-              }
               className={cn(
-                SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-                "absolute inset-0 flex items-center justify-center",
+                "relative shrink-0",
+                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
               )}
             >
-              <ThreadTrailingIndicator
-                hasPendingInteraction={trailingHasPendingInteraction}
-                isBackgroundAgentActive={trailingBackgroundAgentActive}
-                isBackgroundCommandActive={trailingBackgroundCommandActive}
-                isForegroundAgentWorking={trailingRuntimeBusy}
-                isGoalActive={trailingGoalActive}
-                isPlanModeActive={trailingPlanModeActive}
-                isBusy={trailingIsBusy}
-                isWorkflowActive={trailingIsWorkflowActive}
-                showUnreadBadge={trailingShowUnreadBadge}
-                unreadBadgeTone={trailingUnreadBadgeTone}
-              />
-            </span>
-            <div
-              data-sidebar-hover-actions-open={
-                isActionsOpen ? "true" : undefined
-              }
-              className={cn(
-                SIDEBAR_HOVER_ACTIONS_CLASS,
-                "absolute inset-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
-              )}
-            >
-              <ThreadActionsMenu
-                thread={thread}
-                triggerClassName={cn(
-                  "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+              <span
+                data-sidebar-hover-actions-open={
+                  isActionsOpen ? "true" : undefined
+                }
+                className={cn(
+                  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+                  "absolute inset-0 flex items-center justify-center",
                 )}
-                onOpenInSplit={splitAvailable ? openInSplit : undefined}
-                onOpenChange={setIsDropdownActionsOpen}
-              />
-            </div>
+              >
+                <ThreadTrailingIndicator
+                  hasPendingInteraction={trailingHasPendingInteraction}
+                  isBackgroundAgentActive={trailingBackgroundAgentActive}
+                  isBackgroundCommandActive={trailingBackgroundCommandActive}
+                  isForegroundAgentWorking={trailingRuntimeBusy}
+                  isGoalActive={trailingGoalActive}
+                  isPlanModeActive={trailingPlanModeActive}
+                  isBusy={trailingIsBusy}
+                  isWorkflowActive={trailingIsWorkflowActive}
+                  showUnreadBadge={trailingShowUnreadBadge}
+                  unreadBadgeTone={trailingUnreadBadgeTone}
+                />
+              </span>
+              <div
+                data-sidebar-hover-actions-open={
+                  isActionsOpen ? "true" : undefined
+                }
+                className={cn(
+                  SIDEBAR_HOVER_ACTIONS_CLASS,
+                  "absolute inset-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+                )}
+              >
+                <ThreadActionsMenu
+                  thread={thread}
+                  triggerClassName={cn(
+                    "text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                  )}
+                  onOpenInSplit={splitAvailable ? openInSplit : undefined}
+                  onOpenChange={setIsDropdownActionsOpen}
+                />
+              </div>
+            </span>
           </span>
-        </span>
-      )}
+        )}
+      </span>
     </>
   );
 
