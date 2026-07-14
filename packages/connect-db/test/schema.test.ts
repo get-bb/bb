@@ -816,6 +816,125 @@ describe("0005 label-claim reconciliation", () => {
     }
   });
 
+  it("removes a claim orphaned by an old-worker delete and makes the label reusable", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "owner-one", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s1", "u1", "desktop", "orphan-label", now);
+      applyMigration(staged, "0004_machine_labels.sql");
+      expect(
+        staged
+          .prepare("SELECT kind FROM label_claim WHERE label = ?")
+          .get("orphan-label"),
+      ).toEqual({ kind: "server" });
+
+      // The old worker deletes the source without knowing about label_claim.
+      staged.prepare("DELETE FROM server WHERE id = ?").run("s1");
+      staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      })();
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("orphan-label"),
+      ).toBeUndefined();
+
+      expect(() =>
+        staged
+          .prepare(
+            "INSERT INTO machine (id, user_id, subdomain, credential_hash, created_at) VALUES (?,?,?,?,?)",
+          )
+          .run("m2", "u2", "orphan-label", "hash", now),
+      ).not.toThrow();
+      expect(
+        staged
+          .prepare(
+            "SELECT kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("orphan-label"),
+      ).toEqual({ kind: "machine", owner_id: "m2", user_id: "u2" });
+    } finally {
+      staged.close();
+    }
+  });
+
+  it("moves a claim when an old worker updates a server label in the gap", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      staged
+        .prepare(
+          "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+        )
+        .run("u1", "One", "u1@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "owner-one", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s1", "u1", "desktop", "old-label", now);
+      applyMigration(staged, "0004_machine_labels.sql");
+
+      staged
+        .prepare("UPDATE server SET subdomain = ? WHERE id = ?")
+        .run("new-label", "s1");
+      expect(
+        staged
+          .prepare("SELECT kind FROM label_claim WHERE label = ?")
+          .get("old-label"),
+      ).toEqual({ kind: "server" });
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("new-label"),
+      ).toBeUndefined();
+
+      staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      })();
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("old-label"),
+      ).toBeUndefined();
+      expect(
+        staged
+          .prepare(
+            "SELECT kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("new-label"),
+      ).toEqual({ kind: "server", owner_id: "s1", user_id: "u1" });
+    } finally {
+      staged.close();
+    }
+  });
+
   it("fails atomically when gap writes contain a genuine cross-source collision", () => {
     const staged = new Database(":memory:");
     staged.pragma("foreign_keys = ON");

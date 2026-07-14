@@ -1,6 +1,6 @@
 -- Custom SQL migration: Drizzle schema snapshots do not model SQLite triggers.
--- First reconcile source rows written by a claim-ignorant worker after 0004,
--- then install the triggers. D1 applies this migration as one transaction.
+-- Reconcile source rows written/deleted/renamed by a claim-ignorant worker
+-- after 0004, then install the triggers. D1 applies this as one transaction.
 
 -- Fail rather than choose a winner if the source tables already disagree.
 CREATE TABLE `_label_claim_reconcile_guard` (
@@ -23,6 +23,19 @@ WHERE EXISTS (
 	SELECT 1
 	FROM `server` s
 	INNER JOIN `machine` m ON m.`subdomain` = s.`subdomain`
+);
+--> statement-breakpoint
+DELETE FROM `label_claim`
+WHERE NOT EXISTS (
+	SELECT 1 FROM `profile` p WHERE p.`handle` = `label_claim`.`label`
+)
+AND NOT EXISTS (
+	SELECT 1 FROM `server` s
+	WHERE s.`subdomain` IS NOT NULL AND s.`subdomain` = `label_claim`.`label`
+)
+AND NOT EXISTS (
+	SELECT 1 FROM `machine` m
+	WHERE m.`subdomain` IS NOT NULL AND m.`subdomain` = `label_claim`.`label`
 );
 --> statement-breakpoint
 INSERT INTO `label_claim` (`label`, `kind`, `owner_id`, `user_id`, `generation`, `created_at`)
