@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import {
   notifyManager,
   QueryClientContext,
@@ -63,14 +63,9 @@ function buildSenderThreadMetadataById(
     return metadataById;
   }
 
-  for (const cachedList of getCachedThreadLists(queryClient, {
-    queryKey: threadsQueryKey(),
-  })) {
-    for (const thread of iterateThreadListCacheEntries(cachedList.data)) {
-      addSenderThreadMetadata(metadataById, thread);
-    }
-  }
-
+  // Prefer the sidebar snapshot for visible threads. It is actively observed
+  // and refetched after title changes, while broader thread-list caches can be
+  // present but inactive and therefore retain an older non-null title.
   for (const thread of getCachedSidebarNavigationThreads(queryClient)) {
     addSenderThreadMetadata(metadataById, thread);
   }
@@ -83,12 +78,20 @@ function buildSenderThreadMetadataById(
     }
   }
 
+  for (const cachedList of getCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+  })) {
+    for (const thread of iterateThreadListCacheEntries(cachedList.data)) {
+      addSenderThreadMetadata(metadataById, thread);
+    }
+  }
+
   return metadataById;
 }
 
 function shouldSyncSenderThreadMetadata(event: QueryCacheNotifyEvent): boolean {
   return (
-    event.type === "updated" &&
+    (event.type === "updated" || event.type === "observerResultsUpdated") &&
     (event.query.queryKey[0] === SIDEBAR_NAVIGATION_QUERY_KEY ||
       event.query.queryKey[0] === THREADS_QUERY_KEY ||
       event.query.queryKey[0] === THREAD_QUERY_KEY)
@@ -105,13 +108,9 @@ export function useSenderThreadMetadataById(): ReadonlyMap<
   SenderThreadMetadata
 > {
   const queryClient = useContext(QueryClientContext) ?? null;
-  const [cacheRevision, setCacheRevision] = useState(0);
-  const metadataById = useMemo(() => {
-    // Query-cache events don't change the QueryClient identity. Reading this
-    // revision deliberately invalidates the derived map after those events.
-    void cacheRevision;
-    return buildSenderThreadMetadataById(queryClient);
-  }, [cacheRevision, queryClient]);
+  const [metadataById, setMetadataById] = useState(() =>
+    buildSenderThreadMetadataById(queryClient),
+  );
 
   useEffect(() => {
     if (queryClient === null) {
@@ -121,7 +120,10 @@ export function useSenderThreadMetadataById(): ReadonlyMap<
     let subscribed = true;
     const syncMetadataById = () => {
       if (subscribed) {
-        setCacheRevision((revision) => revision + 1);
+        // QueryClient has stable identity while the data inside its cache is
+        // mutable. Store the rebuilt map itself so consumers receive a new
+        // state value instead of relying on render-time reads of that object.
+        setMetadataById(buildSenderThreadMetadataById(queryClient));
       }
     };
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {

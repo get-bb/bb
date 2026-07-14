@@ -30,7 +30,10 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
-import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import {
+  sidebarNavigationQueryKey,
+  threadListQueryKey,
+} from "@/hooks/queries/query-keys";
 import {
   findActiveItemIds,
   selectTocRailItems,
@@ -459,6 +462,10 @@ describe("ThreadTableOfContents", () => {
     queryClient.setQueryData(
       sidebarNavigationQueryKey(),
       sidebarNavigation([threadListEntry({ title: "Calendar worker" })]),
+    );
+    queryClient.setQueryData(
+      threadListQueryKey({ archived: false }),
+      [threadListEntry({ title: "Calendar worker" })],
     );
     setOutline([
       {
