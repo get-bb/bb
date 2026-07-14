@@ -955,6 +955,46 @@ describe("PromptBoxInternal mention triggers", () => {
       "/api/v1/plugins/github/assets/logo?h=abc",
     );
   });
+
+  it("keeps path-first mention results in keyboard navigation order", async () => {
+    const pathSuggestion: PromptMentionSuggestion = {
+      kind: "path",
+      source: "workspace",
+      entryKind: "file",
+      path: "src/app.ts",
+      name: "app.ts",
+      replacement: "src/app.ts",
+    };
+    const threadSuggestion: PromptMentionSuggestion = {
+      kind: "thread",
+      path: "thread:thr_app",
+      replacement: "thread:thr_app",
+      projectId: "proj_app",
+      projectName: "App",
+      threadId: "thr_app",
+      title: "App thread",
+    };
+    const { promptBoxRef } = renderPromptBox("@src/", {
+      mentionSuggestions: [pathSuggestion, threadSuggestion],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const workspaceLabel = await screen.findByText("Workspace");
+    const menu = workspaceLabel.closest(".overflow-hidden");
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error("Expected mention menu");
+    }
+    const [pathButton, threadButton] = within(menu).getAllByRole("button");
+    expect(pathButton.textContent).toContain("app.ts");
+    expect(threadButton.textContent).toContain("App thread");
+    expect(pathButton.className).toContain("bg-state-active");
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
+
+    await waitFor(() =>
+      expect(threadButton.className).toContain("bg-state-active"),
+    );
+  });
 });
 
 describe("PromptBoxInternal prompt actions", () => {
@@ -1486,6 +1526,88 @@ describe("PromptBoxInternal command typeahead submit", () => {
     await act(async () => {});
 
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("PromptBoxInternal command typeahead navigation", () => {
+  it("uses the rendered section order for Arrow keys and Enter", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("/", {
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "review",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "compact",
+          source: "command",
+          origin: "builtin",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "interview",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "deploy",
+          source: "command",
+          origin: "project",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const sectionLabel = await screen.findByText("Commands");
+    const menu = sectionLabel.closest(".overflow-hidden");
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error("Expected command menu");
+    }
+    const buttons = within(menu).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "compact",
+      "review",
+      "deploy",
+      "plan",
+      "interview",
+    ]);
+
+    const editor = getPromptEditorElement();
+    for (const name of ["compact", "review", "deploy", "plan", "interview"]) {
+      const button = within(menu).getByRole("button", { name });
+      await waitFor(() =>
+        expect(button.className).toContain("bg-state-active"),
+      );
+      if (name !== "interview") {
+        fireEvent.keyDown(editor, { key: "ArrowDown" });
+      }
+    }
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/interview "));
+    expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
+      kind: "command",
+      name: "interview",
+    });
   });
 });
 

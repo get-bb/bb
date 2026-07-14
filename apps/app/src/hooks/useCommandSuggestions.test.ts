@@ -101,4 +101,25 @@ describe("commandSuggestionMatchesQuery", () => {
       "zeta-review",
     ]);
   });
+
+  it("keeps menu sections primary when ranking prefix matches", () => {
+    const names = filterCommandSuggestions(
+      [
+        {
+          ...pluginSkill,
+          name: "review-helper",
+          description: "Contains deploy guidance",
+        },
+        {
+          ...pluginSkill,
+          name: "deploy",
+          source: "command",
+          origin: "user",
+        },
+      ],
+      "deploy",
+    ).map((suggestion) => suggestion.name);
+
+    expect(names).toEqual(["review-helper", "deploy"]);
+  });
 });

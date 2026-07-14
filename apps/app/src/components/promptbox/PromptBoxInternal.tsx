@@ -21,15 +21,16 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import type {
-  ActiveTrigger,
-  CommandMenuState,
-  ComposerCommandSuggestion,
-  MentionMenuState,
-  ProviderCommandSuggestion,
-  PromptMentionSuggestion,
-  TypeaheadMenuState,
-  TypeaheadTrigger,
+import {
+  orderCommandSuggestionsBySection,
+  type ActiveTrigger,
+  type CommandMenuState,
+  type ComposerCommandSuggestion,
+  type MentionMenuState,
+  type ProviderCommandSuggestion,
+  type PromptMentionSuggestion,
+  type TypeaheadMenuState,
+  type TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -1671,17 +1672,21 @@ export function PromptBoxInternal({
       isError: commandError,
       isLoadingMore: commandIsLoadingMore,
     });
+  const orderedCommandSuggestions = useMemo(
+    () => orderCommandSuggestionsBySection(commandSuggestions),
+    [commandSuggestions],
+  );
   // The suggestion list driving keyboard nav + Enter/Tab apply for whichever
   // trigger is active. Empty when no trigger is open. Memoized so the keyboard
   // handler's useCallback identity is stable across renders.
   const activeSuggestions = useMemo<readonly TypeaheadSuggestion[]>(
     () =>
       activeTriggerKind === "command"
-        ? commandSuggestions
+        ? orderedCommandSuggestions
         : activeTriggerKind === "mention"
           ? mentionSuggestions
           : [],
-    [activeTriggerKind, commandSuggestions, mentionSuggestions],
+    [activeTriggerKind, mentionSuggestions, orderedCommandSuggestions],
   );
 
   const activeMentionQuery =
@@ -1699,7 +1704,7 @@ export function PromptBoxInternal({
     ? { kind: "loading" }
     : commandError
       ? { kind: "error" }
-      : { kind: "results", suggestions: commandSuggestions };
+      : { kind: "results", suggestions: orderedCommandSuggestions };
 
   // Loaded-empty suppression (§6): a command trigger with zero loaded results
   // (not loading, not error) is literal text — never open the menu. Mention

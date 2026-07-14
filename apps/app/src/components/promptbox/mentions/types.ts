@@ -1,7 +1,8 @@
-import type {
-  ProviderCommand,
-  ProviderCommandOrigin,
-  ProviderCommandSource,
+import {
+  providerCommandSectionRank,
+  type ProviderCommand,
+  type ProviderCommandOrigin,
+  type ProviderCommandSource,
 } from "@bb/server-contract";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import type { PluginMentionTrigger } from "@/lib/plugin-mention-triggers";
@@ -100,6 +101,24 @@ export function toProviderCommandSuggestion(
 
 /** Every row the command typeahead menu can render. */
 export type ComposerCommandSuggestion = ProviderCommandSuggestion;
+
+export function compareCommandSuggestionSections(
+  left: ComposerCommandSuggestion,
+  right: ComposerCommandSuggestion,
+): number {
+  return providerCommandSectionRank(left) - providerCommandSectionRank(right);
+}
+
+/**
+ * Put the flat command list in the same section order the menu renders. The
+ * composer uses this exact array for keyboard navigation and Enter/Tab apply,
+ * so visual grouping must never be the first place section ordering happens.
+ */
+export function orderCommandSuggestionsBySection(
+  suggestions: readonly ComposerCommandSuggestion[],
+): ComposerCommandSuggestion[] {
+  return [...suggestions].sort(compareCommandSuggestionSections);
+}
 
 /**
  * A typeahead trigger the composer watches for. Mention triggers open the

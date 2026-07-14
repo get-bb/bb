@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import {
+  compareCommandSuggestionSections,
+  orderCommandSuggestionsBySection,
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@/components/promptbox/mentions/types";
@@ -85,6 +87,10 @@ export function filterCommandSuggestions(
       commandSuggestionMatchesQuery(suggestion, normalizedQuery),
     )
     .sort((left, right) => {
+      const bySection = compareCommandSuggestionSections(left, right);
+      if (bySection !== 0) {
+        return bySection;
+      }
       const leftPrefix = commandSuggestionSearchNames(left).some((name) =>
         name.startsWith(normalizedQuery),
       );
@@ -197,9 +203,8 @@ export function useCommandSuggestions(
       (commandsQuery.data?.commands ?? []).map(toProviderCommandSuggestion),
       trimmedQuery,
     );
-    return mergeCommandSuggestions(
-      promptActionSuggestions,
-      discoveredSuggestions,
+    return orderCommandSuggestionsBySection(
+      mergeCommandSuggestions(promptActionSuggestions, discoveredSuggestions),
     );
   }, [
     commandsQuery.data?.commands,
