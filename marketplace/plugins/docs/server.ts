@@ -249,6 +249,13 @@ export default async function plugin(bb: BbPluginApi) {
       root_path TEXT NOT NULL,
       created_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS entry_order (
+      vault_id TEXT NOT NULL,
+      parent_path TEXT NOT NULL,
+      child_path TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (vault_id, parent_path, child_path)
+    )`,
   ]);
 
   let seededDefaultVault = false;
@@ -283,6 +290,15 @@ export default async function plugin(bb: BbPluginApi) {
         vaultId ? `Unknown vault: ${vaultId}` : "No vault configured",
       );
     return vault;
+  }
+
+  function listEntryOrder(vaultId: string): string[] {
+    return db
+      .prepare(
+        "SELECT child_path FROM entry_order WHERE vault_id = ? ORDER BY parent_path, position",
+      )
+      .all(vaultId)
+      .map((row) => requireString(requireRecord(row).child_path, "child_path"));
   }
 
   if (seededDefaultVault) {
@@ -364,6 +380,7 @@ export default async function plugin(bb: BbPluginApi) {
         vault,
         hosts,
         entries,
+        entryOrder: listEntryOrder(vault.id),
         notes,
         truncated,
         error: null,
@@ -374,6 +391,7 @@ export default async function plugin(bb: BbPluginApi) {
         vault,
         hosts: await bb.sdk.hosts.list().catch(() => []),
         entries: [],
+        entryOrder: listEntryOrder(vault.id),
         notes: [],
         truncated: false,
         error: error instanceof Error ? error.message : String(error),
@@ -566,6 +584,52 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { path: relativePath };
     },
+    async reorderFiles(input: unknown) {
+      const record = requireRecord(input);
+      const vault = getVault(optionalString(record.vaultId));
+      const parent = requireOptionalDirectory(record.parent);
+      if (!Array.isArray(record.paths)) throw new Error('"paths" must be an array');
+      const paths = record.paths.map((value) => requireVaultPath(value));
+      if (new Set(paths).size !== paths.length) {
+        throw new Error('"paths" must not contain duplicates');
+      }
+      if (
+        paths.some(
+          (filePath) =>
+            path.posix.dirname(filePath) !== (parent || ".") ||
+            !/\.(md|html?)$/i.test(filePath),
+        )
+      ) {
+        throw new Error('Every ordered path must be a file in "parent"');
+      }
+      const currentFiles = (await listEntries(vault)).entries
+        .filter(
+          (entry) =>
+            entry.kind === "file" &&
+            path.posix.dirname(entry.path) === (parent || "."),
+        )
+        .map((entry) => entry.path);
+      if (
+        paths.length !== currentFiles.length ||
+        currentFiles.some((filePath) => !paths.includes(filePath))
+      ) {
+        throw new Error("Files changed while reordering; refresh and try again");
+      }
+      const replaceOrder = db.transaction(() => {
+        db.prepare(
+          "DELETE FROM entry_order WHERE vault_id = ? AND parent_path = ?",
+        ).run(vault.id, parent);
+        const insert = db.prepare(
+          "INSERT INTO entry_order (vault_id, parent_path, child_path, position) VALUES (?, ?, ?, ?)",
+        );
+        paths.forEach((filePath, position) =>
+          insert.run(vault.id, parent, filePath, position),
+        );
+      });
+      replaceOrder();
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      return { paths };
+    },
     async movePath(input: unknown) {
       const record = requireRecord(input);
       return movePath(optionalString(record.vaultId), record.from, record.to);
@@ -616,6 +680,7 @@ export default async function plugin(bb: BbPluginApi) {
       const id = requireString(record.vaultId, "vaultId");
       if (listVaults().length <= 1)
         throw new Error("At least one vault is required");
+      db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
       db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
       bb.realtime.publish("vault-changed", { vaultId: id });
       return { ok: true };

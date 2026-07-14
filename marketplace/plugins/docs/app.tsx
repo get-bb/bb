@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
@@ -31,12 +32,15 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
+import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
+import { toast } from "sonner";
 import {
   ArrowDown01Icon,
   ArrowRight01Icon,
   AlertCircleIcon,
   ArrowUpRight01Icon,
   Cancel01Icon,
+  Delete02Icon,
   File01Icon,
   FileAddIcon,
   Folder01Icon,
@@ -67,6 +71,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 
 interface Vault {
   id: string;
@@ -98,6 +103,7 @@ interface NotesData {
   vault: Vault;
   hosts: Host[];
   entries: VaultEntry[];
+  entryOrder: string[];
   notes: NoteSummary[];
   truncated: boolean;
   error: string | null;
@@ -125,7 +131,9 @@ function parseNotesData(value: unknown): NotesData {
   if (
     !isRecord(value) ||
     !Array.isArray(value.vaults) ||
-    !isRecord(value.vault)
+    !isRecord(value.vault) ||
+    !Array.isArray(value.entryOrder) ||
+    value.entryOrder.some((entry) => typeof entry !== "string")
   ) {
     throw new Error("Docs returned an invalid notebook response");
   }
@@ -409,6 +417,7 @@ const EDITOR_CSS = `
 .bb-simple-notes-editor .tiptap hr + :is(h1, h2, h3, h4) { margin-top: 1.25em; }
 .bb-simple-notes-editor .tiptap img { display: block; max-width: 100%; max-height: 38rem; margin: 1.5em auto 0; border-radius: var(--radius); border: 1px solid var(--border); }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0.25em; }
+.bb-simple-notes-editor .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin-top: 0.5em; padding-left: 0; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > label { flex: 0 0 auto; display: inline-flex; align-items: center; height: 1.7em; user-select: none; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li > div { flex: 1 1 auto; min-width: 0; }
@@ -426,7 +435,13 @@ const EDITOR_CSS = `
 `;
 
 function ensureEditorStyles(): void {
-  if (document.head.querySelector(`[${STYLE_MARKER}]`)) return;
+  const existing = document.head.querySelector<HTMLStyleElement>(
+    `[${STYLE_MARKER}]`,
+  );
+  if (existing) {
+    existing.textContent = EDITOR_CSS;
+    return;
+  }
   const style = document.createElement("style");
   style.setAttribute(STYLE_MARKER, "");
   style.textContent = EDITOR_CSS;
@@ -1154,7 +1169,13 @@ function HtmlPane({
   );
 }
 
-function orderEntries(entries: VaultEntry[]): VaultEntry[] {
+function orderEntries(
+  entries: VaultEntry[],
+  entryOrder: readonly string[],
+): VaultEntry[] {
+  const orderByPath = new Map(
+    entryOrder.map((entryPath, index) => [entryPath, index]),
+  );
   const children = new Map<string, VaultEntry[]>();
   for (const entry of entries) {
     const parent = dirname(entry.path);
@@ -1165,6 +1186,15 @@ function orderEntries(entries: VaultEntry[]): VaultEntry[] {
   for (const siblings of children.values()) {
     siblings.sort((left, right) => {
       if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+      if (left.kind === "file") {
+        const leftOrder = orderByPath.get(left.path);
+        const rightOrder = orderByPath.get(right.path);
+        if (leftOrder !== undefined || rightOrder !== undefined) {
+          if (leftOrder === undefined) return 1;
+          if (rightOrder === undefined) return -1;
+          if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        }
+      }
       const leftName = left.path.split("/").at(-1) ?? left.path;
       const rightName = right.path.split("/").at(-1) ?? right.path;
       return leftName.localeCompare(rightName, undefined, {
@@ -1192,6 +1222,9 @@ function Tree({
   onOpen,
   onNewNote,
   onNewFolder,
+  onDeleteFile,
+  onReorderFiles,
+  onMoveFile,
   onVaultChange,
   onAddVault,
 }: {
@@ -1200,12 +1233,27 @@ function Tree({
   onOpen(path: string): void;
   onNewNote(): void;
   onNewFolder(): void;
+  onDeleteFile(path: string): void;
+  onReorderFiles(parent: string, paths: string[]): void;
+  onMoveFile(
+    sourcePath: string,
+    targetFolder: string,
+    targetOrder?: string[],
+  ): void;
   onVaultChange(vaultId: string): void;
   onAddVault(): void;
 }) {
+  const portalScopeProps = usePortalScopeProps();
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [draggingPath, setDraggingPath] = useState<string | null>(null);
+  const draggingPathRef = useRef<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    path: string;
+    edge: "before" | "after";
+  } | null>(null);
+  const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
   // null = follow the responsive default (collapsed in narrow panes) until
   // the user toggles the sidebar explicitly.
   const [sidebarUserCollapsed, setSidebarUserCollapsed] = useState<
@@ -1248,7 +1296,7 @@ function Tree({
   );
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const ordered = orderEntries(data.entries);
+    const ordered = orderEntries(data.entries, data.entryOrder);
     const included = new Set<string>();
     if (needle) {
       for (const entry of ordered) {
@@ -1277,7 +1325,85 @@ function Tree({
         return collapsed.has(current);
       });
     });
-  }, [collapsed, data.entries, notesByPath, query]);
+  }, [collapsed, data.entries, data.entryOrder, notesByPath, query]);
+
+  const acceptsFileDrag = (event: ReactDragEvent<HTMLButtonElement>) =>
+    draggingPathRef.current !== null ||
+    Array.from(event.dataTransfer.types).includes("text/plain");
+
+  const reorderAtTarget = (
+    event: ReactDragEvent<HTMLButtonElement>,
+    targetPath: string,
+  ) => {
+    if (!acceptsFileDrag(event)) return;
+    event.preventDefault();
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    const edge =
+      event.clientY < targetRect.top + targetRect.height / 2
+        ? "before"
+        : "after";
+    setDropTarget({ path: targetPath, edge });
+    setFolderDropTarget(null);
+    event.dataTransfer.dropEffect = "move";
+  };
+
+  const dropAtTarget = (
+    event: ReactDragEvent<HTMLButtonElement>,
+    targetPath: string,
+  ) => {
+    event.preventDefault();
+    const sourcePath =
+      event.dataTransfer.getData("text/plain") || draggingPathRef.current;
+    if (!sourcePath || sourcePath === targetPath) {
+      setDropTarget(null);
+      return;
+    }
+    const parent = dirname(targetPath);
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    const edge =
+      event.clientY < targetRect.top + targetRect.height / 2
+        ? "before"
+        : "after";
+    const siblings = orderEntries(data.entries, data.entryOrder)
+      .filter(
+        (entry) => entry.kind === "file" && dirname(entry.path) === parent,
+      )
+      .map((entry) => entry.path)
+      .filter((entryPath) => entryPath !== sourcePath);
+    const targetIndex = siblings.indexOf(targetPath);
+    if (targetIndex === -1) return;
+    const fileName = sourcePath.split("/").at(-1) ?? sourcePath;
+    const destinationPath = parent ? `${parent}/${fileName}` : fileName;
+    siblings.splice(
+      targetIndex + (edge === "after" ? 1 : 0),
+      0,
+      destinationPath,
+    );
+    if (dirname(sourcePath) === parent) {
+      onReorderFiles(parent, siblings);
+    } else {
+      onMoveFile(sourcePath, parent, siblings);
+    }
+    draggingPathRef.current = null;
+    setDraggingPath(null);
+    setDropTarget(null);
+    setFolderDropTarget(null);
+  };
+
+  const moveIntoFolder = (
+    event: ReactDragEvent<HTMLButtonElement>,
+    targetFolder: string,
+  ) => {
+    event.preventDefault();
+    const sourcePath =
+      event.dataTransfer.getData("text/plain") || draggingPathRef.current;
+    if (!sourcePath || dirname(sourcePath) === targetFolder) return;
+    onMoveFile(sourcePath, targetFolder);
+    draggingPathRef.current = null;
+    setDraggingPath(null);
+    setDropTarget(null);
+    setFolderDropTarget(null);
+  };
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1338,7 +1464,7 @@ function Tree({
       className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
       style={{ width: sidebarWidth }}
     >
-      <div className="flex items-center gap-1 border-b border-border p-2">
+      <div className="relative flex items-center gap-1 border-b border-border p-2">
         {searchOpen ? (
           <>
             <div className="relative min-w-0 flex-1">
@@ -1413,8 +1539,32 @@ function Tree({
         >
           <HugeiconsIcon icon={SidebarRightIcon} />
         </Button>
+        {draggingPath && dirname(draggingPath) ? (
+          <button
+            type="button"
+            className={cn(
+              "absolute inset-1 z-20 flex items-center gap-1.5 rounded-md border border-dashed border-border bg-popover px-2 text-left text-xs text-muted-foreground shadow-sm transition-colors",
+              folderDropTarget === "" &&
+                "border-primary/60 bg-state-active text-foreground",
+            )}
+            onDragOver={(event) => {
+              if (!acceptsFileDrag(event)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setDropTarget(null);
+              setFolderDropTarget("");
+            }}
+            onDrop={(event) => moveIntoFolder(event, "")}
+          >
+            <HugeiconsIcon
+              icon={Folder01Icon}
+              className="size-4 shrink-0"
+            />
+            Move to top level
+          </button>
+        ) : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      <div className="relative min-h-0 flex-1 overflow-y-auto p-1.5">
         {data.error ? (
           <div className="p-3 text-xs text-destructive">{data.error}</div>
         ) : null}
@@ -1425,10 +1575,39 @@ function Tree({
             entry.path.split("/").at(-1) ??
             entry.path;
           const isFolder = entry.kind === "directory";
-          return (
+          const row = (
             <button
-              key={`${entry.kind}:${entry.path}`}
               type="button"
+              draggable={!isFolder}
+              onDragStart={(event) => {
+                if (isFolder) return;
+                draggingPathRef.current = entry.path;
+                setDraggingPath(entry.path);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", entry.path);
+              }}
+              onDragOver={(event) => {
+                if (!isFolder) {
+                  reorderAtTarget(event, entry.path);
+                  return;
+                }
+                if (acceptsFileDrag(event)) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setDropTarget(null);
+                  setFolderDropTarget(entry.path);
+                }
+              }}
+              onDrop={(event) => {
+                if (isFolder) moveIntoFolder(event, entry.path);
+                else dropAtTarget(event, entry.path);
+              }}
+              onDragEnd={() => {
+                draggingPathRef.current = null;
+                setDraggingPath(null);
+                setDropTarget(null);
+                setFolderDropTarget(null);
+              }}
               onClick={() => {
                 if (isFolder)
                   setCollapsed((current) => {
@@ -1442,6 +1621,15 @@ function Tree({
               className={cn(
                 "flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-sm text-foreground transition-colors hover:bg-state-hover",
                 selectedPath === entry.path && "bg-state-active font-medium",
+                draggingPath === entry.path && "opacity-50",
+                folderDropTarget === entry.path &&
+                  "bg-state-active ring-1 ring-inset ring-primary/50",
+                dropTarget?.path === entry.path &&
+                  dropTarget.edge === "before" &&
+                  "relative before:absolute before:inset-x-2 before:top-0 before:h-0.5 before:rounded-full before:bg-primary",
+                dropTarget?.path === entry.path &&
+                  dropTarget.edge === "after" &&
+                  "relative after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary",
               )}
               style={{ paddingLeft: `${8 + depth * 15}px` }}
             >
@@ -1471,6 +1659,30 @@ function Tree({
               />
               <span className="truncate">{label}</span>
             </button>
+          );
+          if (isFolder) {
+            return <div key={`${entry.kind}:${entry.path}`}>{row}</div>;
+          }
+          return (
+            <ContextMenuPrimitive.Root key={`${entry.kind}:${entry.path}`}>
+              <ContextMenuPrimitive.Trigger asChild>
+                {row}
+              </ContextMenuPrimitive.Trigger>
+              <ContextMenuPrimitive.Portal>
+                <ContextMenuPrimitive.Content
+                  {...portalScopeProps}
+                  className="z-50 min-w-32 overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+                >
+                  <ContextMenuPrimitive.Item
+                    className="flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-destructive outline-none focus:bg-destructive/15 focus:text-destructive"
+                    onSelect={() => onDeleteFile(entry.path)}
+                  >
+                    <HugeiconsIcon icon={Delete02Icon} className="size-4" />
+                    Delete
+                  </ContextMenuPrimitive.Item>
+                </ContextMenuPrimitive.Content>
+              </ContextMenuPrimitive.Portal>
+            </ContextMenuPrimitive.Root>
           );
         })}
         {data.truncated ? (
@@ -1641,6 +1853,88 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
     }
   };
 
+  const deleteFile = async (path: string) => {
+    try {
+      await rpc.call("deletePath", {
+        vaultId: activeVaultId,
+        path,
+      });
+      refresh();
+      if (filePath === path) {
+        navigate.toPluginPanel("docs", {
+          subPath: encodeURIComponent(activeVaultId),
+          replace: true,
+        });
+      }
+      toast.success(`Deleted ${path}`);
+    } catch (error) {
+      toast.error(
+        `Could not delete ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
+  const reorderFiles = async (parent: string, paths: string[]) => {
+    try {
+      await rpc.call("reorderFiles", {
+        vaultId: activeVaultId,
+        parent,
+        paths,
+      });
+      refresh();
+    } catch (error) {
+      toast.error(
+        `Could not reorder files: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
+  const moveFile = async (
+    sourcePath: string,
+    targetFolder: string,
+    targetOrder?: string[],
+  ) => {
+    const fileName = sourcePath.split("/").at(-1) ?? sourcePath;
+    const destinationPath = targetFolder
+      ? `${targetFolder}/${fileName}`
+      : fileName;
+    try {
+      let orderPreserved = true;
+      await rpc.call("movePath", {
+        vaultId: activeVaultId,
+        from: sourcePath,
+        to: destinationPath,
+      });
+      if (targetOrder) {
+        try {
+          await rpc.call("reorderFiles", {
+            vaultId: activeVaultId,
+            parent: targetFolder,
+            paths: targetOrder,
+          });
+        } catch (error) {
+          orderPreserved = false;
+          toast.error(
+            `Moved ${fileName}, but could not preserve its drop position: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      refresh();
+      if (filePath === sourcePath) open(destinationPath, true);
+      if (orderPreserved) {
+        toast.success(
+          targetFolder
+            ? `Moved ${fileName} to ${targetFolder}`
+            : `Moved ${fileName} to the top level`,
+        );
+      }
+    } catch (error) {
+      toast.error(
+        `Could not move ${fileName}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
@@ -1650,6 +1944,13 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
           onOpen={open}
           onNewNote={newNote}
           onNewFolder={() => setFolderDialogOpen(true)}
+          onDeleteFile={(path) => void deleteFile(path)}
+          onReorderFiles={(parent, paths) =>
+            void reorderFiles(parent, paths)
+          }
+          onMoveFile={(sourcePath, targetFolder, targetOrder) =>
+            void moveFile(sourcePath, targetFolder, targetOrder)
+          }
           onVaultChange={(value) => {
             setVaultId(value);
             navigate.toPluginPanel("docs", {

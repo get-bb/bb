@@ -133,6 +133,27 @@ describe("Docs vault operations", () => {
     });
   });
 
+  it("persists a manual file order per vault folder", async () => {
+    const { harness } = await loadNotebook({
+      "first.md": "# First",
+      "second.md": "# Second",
+    });
+
+    await expect(
+      harness.callRpc("reorderFiles", {
+        vaultId: "personal",
+        parent: "",
+        paths: ["second.md", "first.md"],
+      }),
+    ).resolves.toEqual({ paths: ["second.md", "first.md"] });
+
+    await expect(
+      harness.callRpc("listNotes", { vaultId: "personal" }),
+    ).resolves.toMatchObject({
+      entryOrder: ["second.md", "first.md"],
+    });
+  });
+
   it("keeps nested mutations confined to the selected vault root", async () => {
     const { harness } = await loadNotebook({ "draft.md": "# Draft" });
     const rootPath = temporaryDirectories[0]!;

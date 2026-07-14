@@ -19,6 +19,7 @@ function listNotesResult(
   entries: Array<{ kind: "file" | "directory"; path: string }> = notes.map(
     (note) => ({ kind: "file", path: note.path }),
   ),
+  entryOrder: string[] = [],
 ) {
   return {
     vaults: [
@@ -37,6 +38,7 @@ function listNotesResult(
     },
     hosts: [{ id: "host_local", name: "My Mac", status: "connected" }],
     entries,
+    entryOrder,
     notes,
     truncated: false,
     error: null,
@@ -47,6 +49,19 @@ const preview = {
   baseUrl: "/api/v1/file-previews/lease",
   expiresAtMs: Date.now() + 60_000,
 };
+
+function makeDataTransfer(path: string) {
+  let storedPath = path;
+  return {
+    effectAllowed: "none",
+    dropEffect: "none",
+    types: ["text/plain"],
+    setData: vi.fn((_type: string, value: string) => {
+      storedPath = value;
+    }),
+    getData: vi.fn(() => storedPath),
+  };
+}
 
 describe("Docs nav panel", () => {
   it("registers the Docs surfaces", () => {
@@ -230,6 +245,10 @@ describe("Docs nav panel", () => {
   });
 
   it("keeps task checkboxes aligned with the first line of their text", async () => {
+    const existingStyles = document.head.querySelector(
+      "style[data-bb-simple-notes-styles]",
+    );
+    if (existingStyles) existingStyles.textContent = "stale editor styles";
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "personal/tasks.md" },
@@ -244,7 +263,10 @@ describe("Docs nav panel", () => {
                 modifiedAtMs: 1,
               },
             ]),
-          readNote: () => ({ content: "- [ ] One task", sha256: "sha" }),
+          readNote: () => ({
+            content: "- [x] One task\n  - [ ] Nested task",
+            sha256: "sha",
+          }),
           preparePreview: () => preview,
           renameToTitle: () => ({ path: "tasks.md" }),
         },
@@ -257,9 +279,16 @@ describe("Docs nav panel", () => {
     const styles = document.head.querySelector(
       "style[data-bb-simple-notes-styles]",
     );
+    expect(styles?.textContent).not.toBe("stale editor styles");
     expect(styles?.textContent).toContain("align-items: flex-start");
     expect(styles?.textContent).toContain("height: 1.7em");
     expect(styles?.textContent).toContain("cursor: pointer; margin: 0");
+    expect(styles?.textContent).toContain(
+      'ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0; }',
+    );
+    expect(styles?.textContent).toContain(
+      'ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin-top: 0.5em;',
+    );
   });
 
   it("renders nested folders, images, and sandboxed HTML directives", async () => {
@@ -352,6 +381,212 @@ describe("Docs nav panel", () => {
       method: "toPluginPanel",
       path: "docs",
       options: { subPath: "personal/projects/Untitled.md", replace: false },
+    });
+  });
+
+  it("deletes a file directly from its context menu", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/projects/old.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult(
+              [
+                {
+                  path: "projects/old.md",
+                  title: "Old note",
+                  preview: "",
+                  modifiedAtMs: 1,
+                },
+              ],
+              [
+                { kind: "directory", path: "projects" },
+                { kind: "file", path: "projects/old.md" },
+              ],
+            ),
+          readNote: () => ({ content: "# Old note", sha256: "sha" }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "projects/old.md" }),
+          deletePath: () => ({ ok: true }),
+        },
+      },
+    );
+
+    const file = await slot.findByRole("button", { name: /Old note/ });
+    fireEvent.contextMenu(file);
+    fireEvent.click(await slot.findByRole("menuitem", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(slot.rpcCalls).toContainEqual({
+        method: "deletePath",
+        input: { vaultId: "personal", path: "projects/old.md" },
+      });
+    });
+    expect(slot.queryByText("Delete file?")).toBeNull();
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "docs",
+      options: { subPath: "personal", replace: true },
+    });
+  });
+
+  it("reorders files by dragging within a folder", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "first.md",
+                title: "First",
+                preview: "",
+                modifiedAtMs: 1,
+              },
+              {
+                path: "second.md",
+                title: "Second",
+                preview: "",
+                modifiedAtMs: 1,
+              },
+            ]),
+          reorderFiles: () => ({ paths: ["second.md", "first.md"] }),
+        },
+      },
+    );
+
+    const first = await slot.findByRole("button", { name: "First" });
+    const second = slot.getByRole("button", { name: "Second" });
+    second.getBoundingClientRect = () => new DOMRect(0, 0, 100, 32);
+    const dataTransfer = makeDataTransfer("first.md");
+    fireEvent.dragStart(first, { dataTransfer });
+    fireEvent.dragOver(second, { clientY: 31, dataTransfer });
+    fireEvent.drop(second, { clientY: 31, dataTransfer });
+
+    await waitFor(() => {
+      expect(slot.rpcCalls).toContainEqual({
+        method: "reorderFiles",
+        input: {
+          vaultId: "personal",
+          parent: "",
+          paths: ["second.md", "first.md"],
+        },
+      });
+    });
+  });
+
+  it("moves a file when it is dropped onto a folder", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/old.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult(
+              [
+                {
+                  path: "old.md",
+                  title: "Old note",
+                  preview: "",
+                  modifiedAtMs: 1,
+                },
+              ],
+              [
+                { kind: "directory", path: "projects" },
+                { kind: "file", path: "old.md" },
+              ],
+            ),
+          readNote: () => ({ content: "# Old note", sha256: "sha" }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "old.md" }),
+          movePath: () => ({ path: "projects/old.md" }),
+        },
+      },
+    );
+
+    const file = await slot.findByRole("button", { name: "Old note" });
+    const folder = slot.getByRole("button", { name: "projects" });
+    const dataTransfer = makeDataTransfer("old.md");
+    fireEvent.dragStart(file, { dataTransfer });
+    fireEvent.dragOver(folder, { dataTransfer });
+    fireEvent.drop(folder, { dataTransfer });
+
+    await waitFor(() => {
+      expect(slot.rpcCalls).toContainEqual({
+        method: "movePath",
+        input: {
+          vaultId: "personal",
+          from: "old.md",
+          to: "projects/old.md",
+        },
+      });
+    });
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "docs",
+      options: {
+        subPath: "personal/projects/old.md",
+        replace: true,
+      },
+    });
+  });
+
+  it("moves a nested file back to the top level", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/projects/old.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult(
+              [
+                {
+                  path: "projects/old.md",
+                  title: "Old note",
+                  preview: "",
+                  modifiedAtMs: 1,
+                },
+              ],
+              [
+                { kind: "directory", path: "projects" },
+                { kind: "file", path: "projects/old.md" },
+              ],
+            ),
+          readNote: () => ({ content: "# Old note", sha256: "sha" }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "projects/old.md" }),
+          movePath: () => ({ path: "old.md" }),
+        },
+      },
+    );
+
+    const file = await slot.findByRole("button", { name: "Old note" });
+    expect(
+      slot.queryByRole("button", { name: "Move to top level" }),
+    ).toBeNull();
+    const dataTransfer = makeDataTransfer("projects/old.md");
+    fireEvent.dragStart(file, { dataTransfer });
+    const topLevel = slot.getByRole("button", { name: "Move to top level" });
+    expect(topLevel.className).toContain("absolute");
+    fireEvent.dragOver(topLevel, { dataTransfer });
+    fireEvent.drop(topLevel, { dataTransfer });
+
+    await waitFor(() => {
+      expect(slot.rpcCalls).toContainEqual({
+        method: "movePath",
+        input: {
+          vaultId: "personal",
+          from: "projects/old.md",
+          to: "old.md",
+        },
+      });
+    });
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "docs",
+      options: { subPath: "personal/old.md", replace: true },
     });
   });
 
