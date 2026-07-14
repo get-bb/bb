@@ -876,6 +876,72 @@ describe("0005 label-claim reconciliation", () => {
     }
   });
 
+  it("reassigns a stale claim to the current owner after a gap ownership swap", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0004")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+      const insertProfile = staged.prepare(
+        "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+      );
+      insertProfile.run("u1", "owner-one", now);
+      insertProfile.run("u2", "owner-two", now);
+      const insertServer = staged.prepare(
+        "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+      );
+      insertServer.run("old-server", "u1", "desktop", "reused-label", now);
+      applyMigration(staged, "0004_machine_labels.sql");
+      expect(
+        staged
+          .prepare(
+            "SELECT kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("reused-label"),
+      ).toEqual({ kind: "server", owner_id: "old-server", user_id: "u1" });
+
+      // A claim-ignorant old worker swaps the source ownership between the two
+      // per-migration transactions, leaving the 0004 claim stale by identity.
+      staged.prepare("DELETE FROM server WHERE id = ?").run("old-server");
+      insertServer.run("new-server", "u2", "desktop", "reused-label", now + 1);
+      staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      })();
+      expect(
+        staged
+          .prepare(
+            "SELECT kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("reused-label"),
+      ).toEqual({ kind: "server", owner_id: "new-server", user_id: "u2" });
+
+      // The installed delete trigger now releases the corrected claim, proving
+      // the label is not pinned to either prior server identity.
+      staged.prepare("DELETE FROM server WHERE id = ?").run("new-server");
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("reused-label"),
+      ).toBeUndefined();
+      expect(() =>
+        staged
+          .prepare(
+            "INSERT INTO machine (id, user_id, subdomain, credential_hash, created_at) VALUES (?,?,?,?,?)",
+          )
+          .run("replacement-machine", "u1", "reused-label", "hash", now + 2),
+      ).not.toThrow();
+    } finally {
+      staged.close();
+    }
+  });
+
   it("moves a claim when an old worker updates a server label in the gap", () => {
     const staged = new Database(":memory:");
     staged.pragma("foreign_keys = ON");

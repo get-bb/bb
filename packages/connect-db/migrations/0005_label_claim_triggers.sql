@@ -1,6 +1,6 @@
 -- Custom SQL migration: Drizzle schema snapshots do not model SQLite triggers.
--- Reconcile source rows written/deleted/renamed by a claim-ignorant worker
--- after 0004, then install the triggers. D1 applies this as one transaction.
+-- Rebuild claims as the exact (label, kind, owner_id, user_id) projection of
+-- canonical sources after 0004, then install triggers in the same transaction.
 
 -- Fail rather than choose a winner if the source tables already disagree.
 CREATE TABLE `_label_claim_reconcile_guard` (
@@ -27,22 +27,41 @@ WHERE EXISTS (
 --> statement-breakpoint
 DELETE FROM `label_claim`
 WHERE NOT EXISTS (
-	SELECT 1 FROM `profile` p WHERE p.`handle` = `label_claim`.`label`
+	SELECT 1 FROM `profile` p
+	WHERE `label_claim`.`label` = p.`handle`
+		AND `label_claim`.`kind` = 'handle'
+		AND `label_claim`.`owner_id` = p.`user_id`
+		AND `label_claim`.`user_id` = p.`user_id`
 )
 AND NOT EXISTS (
 	SELECT 1 FROM `server` s
-	WHERE s.`subdomain` IS NOT NULL AND s.`subdomain` = `label_claim`.`label`
+	WHERE `label_claim`.`label` = s.`subdomain`
+		AND `label_claim`.`kind` = 'server'
+		AND `label_claim`.`owner_id` = s.`id`
+		AND `label_claim`.`user_id` = s.`user_id`
+		AND NOT EXISTS (
+			SELECT 1 FROM `profile` p
+			WHERE p.`user_id` = s.`user_id` AND p.`handle` = s.`subdomain`
+		)
 )
 AND NOT EXISTS (
 	SELECT 1 FROM `machine` m
-	WHERE m.`subdomain` IS NOT NULL AND m.`subdomain` = `label_claim`.`label`
+	WHERE m.`subdomain` IS NOT NULL
+		AND `label_claim`.`label` = m.`subdomain`
+		AND `label_claim`.`kind` = 'machine'
+		AND `label_claim`.`owner_id` = m.`id`
+		AND `label_claim`.`user_id` = m.`user_id`
 );
 --> statement-breakpoint
 INSERT INTO `label_claim` (`label`, `kind`, `owner_id`, `user_id`, `generation`, `created_at`)
 SELECT p.`handle`, 'handle', p.`user_id`, p.`user_id`, lower(hex(randomblob(16))), p.`created_at`
 FROM `profile` p
 WHERE NOT EXISTS (
-	SELECT 1 FROM `label_claim` c WHERE c.`label` = p.`handle`
+	SELECT 1 FROM `label_claim` c
+	WHERE c.`label` = p.`handle`
+		AND c.`kind` = 'handle'
+		AND c.`owner_id` = p.`user_id`
+		AND c.`user_id` = p.`user_id`
 );
 --> statement-breakpoint
 INSERT INTO `label_claim` (`label`, `kind`, `owner_id`, `user_id`, `generation`, `created_at`)
@@ -53,7 +72,11 @@ WHERE NOT EXISTS (
 	WHERE p.`user_id` = s.`user_id` AND p.`handle` = s.`subdomain`
 )
 AND NOT EXISTS (
-	SELECT 1 FROM `label_claim` c WHERE c.`label` = s.`subdomain`
+	SELECT 1 FROM `label_claim` c
+	WHERE c.`label` = s.`subdomain`
+		AND c.`kind` = 'server'
+		AND c.`owner_id` = s.`id`
+		AND c.`user_id` = s.`user_id`
 );
 --> statement-breakpoint
 INSERT INTO `label_claim` (`label`, `kind`, `owner_id`, `user_id`, `generation`, `created_at`)
@@ -61,7 +84,11 @@ SELECT m.`subdomain`, 'machine', m.`id`, m.`user_id`, lower(hex(randomblob(16)))
 FROM `machine` m
 WHERE m.`subdomain` IS NOT NULL
 AND NOT EXISTS (
-	SELECT 1 FROM `label_claim` c WHERE c.`label` = m.`subdomain`
+	SELECT 1 FROM `label_claim` c
+	WHERE c.`label` = m.`subdomain`
+		AND c.`kind` = 'machine'
+		AND c.`owner_id` = m.`id`
+		AND c.`user_id` = m.`user_id`
 );
 --> statement-breakpoint
 DROP TABLE `_label_claim_reconcile_guard`;
