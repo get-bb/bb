@@ -67,7 +67,8 @@ export function ThreadDetailHeader({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // The title doubles as the pane-reorder drag handle when the layout is split;
   // beginPaneDrag is undefined on the single-pane, page, and popout surfaces.
-  const { beginPaneDrag } = usePaneContext();
+  const { beginPaneDrag, isFocused } = usePaneContext();
+  const showFocusedPaneTitlePill = beginPaneDrag !== undefined && isFocused;
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (!beginPaneDrag || event.button !== 0) {
       return;
@@ -86,21 +87,29 @@ export function ThreadDetailHeader({
 
   const center = (
     <>
-      <p
-        className={cn(
-          "min-w-0 truncate text-sm font-medium",
-          beginPaneDrag &&
-            cn(
-              "cursor-grab touch-none select-none",
-              // Opt the drag handle out of the macOS title-bar drag region so a
-              // pane-reorder gesture isn't swallowed as a window drag.
-              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-            ),
-        )}
-        onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
-      >
-        {threadTitle}
-      </p>
+      <div className="relative min-w-0">
+        {showFocusedPaneTitlePill ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -inset-x-2 -inset-y-1 rounded-md bg-state-active"
+          />
+        ) : null}
+        <p
+          className={cn(
+            "relative min-w-0 truncate text-sm font-medium",
+            beginPaneDrag &&
+              cn(
+                "cursor-grab touch-none select-none",
+                // Opt the drag handle out of the macOS title-bar drag region so a
+                // pane-reorder gesture isn't swallowed as a window drag.
+                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+              ),
+          )}
+          onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
+        >
+          {threadTitle}
+        </p>
+      </div>
       {childPillLabel ? (
         <Pill variant="outline" size="sm">
           {childPillLabel}
@@ -197,7 +206,10 @@ export function ThreadDetailHeader({
       center={center}
       actions={actions}
       bordered={false}
-      className="border-b border-border-seam-vertical/60"
+      className={cn(
+        "border-b border-border-seam-vertical/60",
+        beginPaneDrag && isFocused && "bg-surface-raised",
+      )}
     />
   );
 }

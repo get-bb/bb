@@ -453,17 +453,14 @@ function SplitTree(props: SplitTreeProps) {
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
-        {/* Focus chrome lives on an overlay ABOVE the pane's content — styles
-            painted on the pane element itself get covered by children with
-            opaque backgrounds (header scrim, composer). Focused pane: an
-            unbroken inset outline. Unfocused panes: a translucent canvas
-            scrim that fades the whole pane toward the background, the
-            "inactive editor" grey-out. */}
+        {/* The inactive-pane scrim lives on an overlay ABOVE the pane's content
+            because styles painted on the pane element itself get covered by
+            children with opaque backgrounds (header scrim, composer). */}
         <div
           aria-hidden
           className={cn(
             "pointer-events-none absolute inset-0 z-20 transition-colors",
-            isFocused ? "ring-1 ring-inset ring-ring" : "bg-background/30",
+            isFocused ? "bg-transparent" : "bg-background/40",
           )}
         />
       </div>
