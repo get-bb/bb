@@ -824,7 +824,7 @@ guide templates (plugin-commands chapter), the `bb-cli` builtin skill,
 ## 8. Hero plugin sketches (API validation)
 
 **Linear** *(built, then REMOVED 2026-07-02 — superseded by the GitHub hero,
-`examples/plugins/github`, which exercises the full stack without a third-party API
+`marketplace/plugins/github`, which exercises the full stack without a third-party API
 key)* — settings (`apiKey`, `teamKey`); sqlite issue cache; `background.schedule`
 sync; `bb.cli.register` (`bb linear issues|start`) so agents and humans share the surface;
 `registerMentionProvider` (@ENG-123 → issue context); rpc `listIssues/startWork`; slots:

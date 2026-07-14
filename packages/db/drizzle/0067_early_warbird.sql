@@ -1,0 +1,1 @@
+ALTER TABLE `marketplaces` ADD `removed_at` integer;

@@ -1,13 +1,34 @@
 {
   "name": "bb-plugin-simple-notes",
   "version": "0.1.0",
+  "description": "Create and edit Markdown documents across local and connected-host vaults.",
   "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/ymichael/bb#readme",
+  "bugs": {
+    "url": "https://github.com/ymichael/bb/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ymichael/bb.git",
+    "directory": "marketplace/plugins/docs"
+  },
   "type": "module",
+  "files": [
+    "dist",
+    "server.ts",
+    "app.tsx",
+    "components",
+    "lib",
+    "skills",
+    "README.md"
+  ],
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": "^0.2.0"
   },
   "bb": {
+    "displayName": "Docs",
     "icon": "FileText",
     "server": "./server.ts",
     "app": "./app.tsx",
@@ -19,11 +40,11 @@
     "bb-plugin"
   ],
   "scripts": {
+    "build": "node --conditions=source --import tsx ../../../scripts/build-official-plugins.mjs docs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
   "devDependencies": {
-    "@bb/plugin-sdk": "workspace:*",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",

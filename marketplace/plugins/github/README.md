@@ -2,6 +2,12 @@
 
 GitHub issues and pull requests inside BB, with one-click agent dispatch.
 
+Install it from the default BB Official marketplace:
+
+```sh
+bb plugin install github@bb-official
+```
+
 ## What it does
 
 - **Sidebar panel** (GitHub logo, full width): Issues and Pull requests tabs

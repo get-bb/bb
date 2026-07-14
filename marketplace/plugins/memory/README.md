@@ -1,7 +1,7 @@
 # bb-plugin-memory
 
-BB's builtin headless plugin for durable, progressively disclosed agent
-memory. It provides:
+BB's official plugin for durable, progressively disclosed agent memory. It
+provides:
 
 Because this memory store works across providers, we recommend turning off
 provider-native memory under Settings → Providers while using it. That avoids
@@ -20,12 +20,12 @@ duplicated or conflicting memories split between Codex, Claude Code, and bb.
 - a Settings → Memory table for reviewing, editing, and deleting every stored
   global or project memory.
 
-## Enable
+## Install
 
-Memory ships with bb but is disabled by default. Enable it explicitly:
+Install Memory from the default BB Official marketplace:
 
 ```bash
-bb plugin enable memory
+bb plugin install memory@bb-official
 bb plugin list
 ```
 
@@ -66,5 +66,5 @@ next turn.
 
 ```bash
 pnpm exec turbo run test typecheck --filter=bb-plugin-memory
-bb plugin dev ./plugins/memory
+bb plugin dev ./marketplace/plugins/memory
 ```

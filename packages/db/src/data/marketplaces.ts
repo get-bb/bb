@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { marketplaces } from "../schema.js";
 
@@ -14,6 +14,7 @@ export interface MarketplaceRow {
   lastSuccessfulRefreshAt: number | null;
   lastAttemptedRefreshAt: number | null;
   lastError: string | null;
+  removedAt: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -24,10 +25,27 @@ export type UpsertMarketplaceInput = Omit<
 >;
 
 export function listMarketplaces(db: DbConnection): MarketplaceRow[] {
-  return db.select().from(marketplaces).orderBy(asc(marketplaces.id)).all();
+  return db
+    .select()
+    .from(marketplaces)
+    .where(isNull(marketplaces.removedAt))
+    .orderBy(asc(marketplaces.id))
+    .all();
 }
 
 export function getMarketplace(
+  db: DbConnection,
+  id: string,
+): MarketplaceRow | undefined {
+  return db
+    .select()
+    .from(marketplaces)
+    .where(and(eq(marketplaces.id, id), isNull(marketplaces.removedAt)))
+    .get();
+}
+
+/** Includes a removal tombstone; used only when reconciling defaults. */
+export function getMarketplaceIncludingRemoved(
   db: DbConnection,
   id: string,
 ): MarketplaceRow | undefined {
@@ -59,7 +77,14 @@ export function upsertMarketplace(
 }
 
 export function deleteMarketplace(db: DbConnection, id: string): boolean {
-  return db.delete(marketplaces).where(eq(marketplaces.id, id)).run().changes > 0;
+  const now = Date.now();
+  return (
+    db
+      .update(marketplaces)
+      .set({ removedAt: now, updatedAt: now })
+      .where(and(eq(marketplaces.id, id), isNull(marketplaces.removedAt)))
+      .run().changes > 0
+  );
 }
 
 export function updateMarketplaceRefreshFailure(

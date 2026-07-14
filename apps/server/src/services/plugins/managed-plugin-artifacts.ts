@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   createPluginArtifact,
@@ -27,6 +27,7 @@ import {
   readPluginManifest,
   type PluginManifest,
 } from "./manifest.js";
+import { parseGithubReleaseRegistryUrl } from "./github-release-source.js";
 import type {
   PluginListEntry,
   PluginServiceDeps,
@@ -96,6 +97,93 @@ export interface ManagedPluginArtifactsContext {
   ) => void;
   refuseBuiltinShadow: (pluginId: string) => void;
   activateManagedUpdate: (args: ActivateManagedUpdateArgs) => Promise<void>;
+}
+
+const MAX_RELEASE_ARCHIVE_BYTES = 64 * 1024 * 1024;
+
+async function installNpmCandidateTarball(args: {
+  stagingPrefix: string;
+  registry: string;
+  packageName: string;
+  candidate: NpmResolvedCandidate;
+  notFoundHint: string;
+}): Promise<void> {
+  const commonArgs = [
+    "install",
+    "--prefix",
+    args.stagingPrefix,
+    "--ignore-scripts",
+    "--omit=optional",
+    "--no-audit",
+    "--no-fund",
+  ];
+  const githubRelease = parseGithubReleaseRegistryUrl(args.registry) !== null;
+  if (!githubRelease) {
+    await runInstallCommand(
+      "npm",
+      [
+        ...commonArgs,
+        "--registry",
+        args.registry,
+        `${args.packageName}@${args.candidate.version}`,
+      ],
+      { notFoundHint: args.notFoundHint },
+    );
+    return;
+  }
+
+  const tarball = args.candidate.tarball;
+  if (tarball === undefined) {
+    throw new Error(
+      `install refused: GitHub Release metadata has no archive for ${args.candidate.display}`,
+    );
+  }
+  const expectedIntegrity = args.candidate.integrity.match(
+    /^sha256-([A-Za-z0-9+/]+={0,2})$/u,
+  )?.[1];
+  if (expectedIntegrity === undefined) {
+    throw new Error(
+      `install refused: GitHub Release metadata has an invalid SHA-256 digest for ${args.candidate.display}`,
+    );
+  }
+  const response = await fetch(tarball, {
+    headers: { accept: "application/octet-stream" },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `install failed: could not download ${args.candidate.display}: ${response.status} ${response.statusText}`,
+    );
+  }
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > MAX_RELEASE_ARCHIVE_BYTES
+  ) {
+    throw new Error(
+      `install refused: ${args.candidate.display} archive exceeds ${MAX_RELEASE_ARCHIVE_BYTES} bytes`,
+    );
+  }
+  const archive = Buffer.from(await response.arrayBuffer());
+  if (archive.byteLength > MAX_RELEASE_ARCHIVE_BYTES) {
+    throw new Error(
+      `install refused: ${args.candidate.display} archive exceeds ${MAX_RELEASE_ARCHIVE_BYTES} bytes`,
+    );
+  }
+  const actualIntegrity = createHash("sha256").update(archive).digest("base64");
+  if (actualIntegrity !== expectedIntegrity) {
+    throw new Error(
+      `install refused: SHA-256 digest for ${args.candidate.display} did not match GitHub Release metadata`,
+    );
+  }
+  const archivePath = join(args.stagingPrefix, ".bb-plugin-release.tgz");
+  await writeFile(archivePath, archive, { mode: 0o600 });
+  try {
+    await runInstallCommand("npm", [...commonArgs, archivePath], {
+      notFoundHint: args.notFoundHint,
+    });
+  } finally {
+    await rm(archivePath, { force: true });
+  }
 }
 
 export function createManagedPluginArtifacts(
@@ -578,25 +666,14 @@ export function createManagedPluginArtifacts(
       await mkdir(stagingPrefix, { recursive: true });
       try {
         deps.onArtifactMaterialize?.({ path: rootDir });
-        await runInstallCommand(
-          "npm",
-          [
-            "install",
-            "--prefix",
-            stagingPrefix,
-            "--ignore-scripts",
-            "--omit=optional",
-            "--no-audit",
-            "--no-fund",
-            "--registry",
-            registry,
-            `${parsed.name}@${candidate.version}`,
-          ],
-          {
-            notFoundHint:
-              '"npm" was not found on PATH — npm: plugin installs require npm',
-          },
-        );
+        await installNpmCandidateTarball({
+          stagingPrefix,
+          registry,
+          packageName: parsed.name,
+          candidate,
+          notFoundHint:
+            '"npm" was not found on PATH — npm: plugin installs require npm',
+        });
         await validateInstallDir({
           rootDir: join(
             stagingPrefix,
@@ -611,6 +688,7 @@ export function createManagedPluginArtifacts(
           parsed.name,
         );
         if (
+          parseGithubReleaseRegistryUrl(registry) === null &&
           installedIntegrity !== null &&
           installedIntegrity !== candidate.integrity
         ) {
@@ -1030,25 +1108,14 @@ export function createManagedPluginArtifacts(
       await mkdir(stagingPrefix, { recursive: true });
       try {
         deps.onArtifactMaterialize?.({ path: targetRoot });
-        await runInstallCommand(
-          "npm",
-          [
-            "install",
-            "--prefix",
-            stagingPrefix,
-            "--ignore-scripts",
-            "--omit=optional",
-            "--no-audit",
-            "--no-fund",
-            "--registry",
-            args.selectionIntent.registry,
-            `${args.selectionIntent.packageName}@${args.candidate.version}`,
-          ],
-          {
-            notFoundHint:
-              '"npm" was not found on PATH — npm plugin updates require npm',
-          },
-        );
+        await installNpmCandidateTarball({
+          stagingPrefix,
+          registry: args.selectionIntent.registry,
+          packageName: args.selectionIntent.packageName,
+          candidate: args.candidate,
+          notFoundHint:
+            '"npm" was not found on PATH — npm plugin updates require npm',
+        });
         const stagedRoot = join(
           stagingPrefix,
           "node_modules",
@@ -1069,6 +1136,8 @@ export function createManagedPluginArtifacts(
           args.selectionIntent.packageName,
         );
         if (
+          parseGithubReleaseRegistryUrl(args.selectionIntent.registry) ===
+            null &&
           installedIntegrity !== null &&
           installedIntegrity !== args.candidate.integrity
         ) {

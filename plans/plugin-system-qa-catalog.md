@@ -62,7 +62,7 @@ project picker on the homepage card or an issue→project mapping setting.
 A worker agent wrote `bb-plugin-github` end to end on a PACKAGED bb-app
 (`:41100`, fresh data dir — not the dev server), the user iterated on it,
 and a second agent migrated it to the stock-shadcn UI kit. Now checked in
-as `examples/plugins/github`. What that flow proved:
+as `marketplace/plugins/github`. What that flow proved:
 
 - [x] **Packaged-app author loop**: `bb plugin new github --app` (scaffold
       with bundled `types/*.d.ts`) → edit → `bb plugin install .` → edit →
@@ -657,7 +657,7 @@ server.
 The Linear hero example (`examples/plugins/linear`) and its dedicated tests
 (heroes-linear.test.ts, linear-example-bundle.test.ts) were deleted: the
 github hero — authored from scratch on a packaged instance and checked in
-as `examples/plugins/github` — took over the full-stack showcase role
+as `marketplace/plugins/github` — took over the full-stack showcase role
 without needing a third-party API key to exercise. Surfaces the linear
 example uniquely demonstrated live (mention provider + composer-menu logos,
 homepageSection, threadPanelTab with the sync visible() pattern, schedule →
@@ -683,7 +683,7 @@ confirms them with eyes on a real browser:
 1. `pnpm bb:dev plugin new hello --app` + install; run the P3.3 slot checks
    (homepage card, all four slots, ErrorBoundary chip) and the P3.4 dev
    loop (edit → in-place update, no duplicates, disable removes UI live).
-2. Install the github hero (`examples/plugins/github`; needs an authed
+2. Install the github plugin (`marketplace/plugins/github`; needs an authed
    `gh` CLI) and click through its panel: issues/PRs tabs, detail view,
    Send agent.
 3. Kill-switch with eyes: make hello's section component throw → chip only,

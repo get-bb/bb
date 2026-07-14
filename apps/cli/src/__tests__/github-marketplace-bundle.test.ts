@@ -6,19 +6,19 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The example now bundles real deps (hugeicons icon maps among them) —
+// The plugin bundles real deps (hugeicons icon maps among them) —
 // parsing that graph blows the 5s default on cold CI runners.
 vi.setConfig({ testTimeout: 60_000 });
 import { buildPluginApp } from "@bb/plugin-build";
 
 /**
- * Evaluates the GitHub hero example's built bundle against a stub runtime
+ * Evaluates the GitHub marketplace plugin's built bundle against a stub runtime
  * (the plugin-build.test.ts pattern) and asserts its default export
  * registers exactly the expected slots. Built from a temp copy so this test
- * never races the server suite over examples/plugins/github/dist.
+ * never races the server suite over marketplace/plugins/github/dist.
  */
 const GITHUB_DIR = fileURLToPath(
-  new URL("../../../../examples/plugins/github", import.meta.url),
+  new URL("../../../../marketplace/plugins/github", import.meta.url),
 );
 
 interface SlotRegistration {
@@ -30,7 +30,7 @@ interface SlotRegistration {
   headerContent?: unknown;
 }
 
-describe("github example frontend bundle", () => {
+describe("GitHub marketplace frontend bundle", () => {
   let root: string;
 
   beforeEach(async () => {

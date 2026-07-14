@@ -5,6 +5,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { EmptyState } from "@bb/shared-ui/empty-state";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   useMarketplaceSearch,
   useMarketplaces,
@@ -167,12 +168,17 @@ function BrowseCard({
   marketplaceName: string;
   onInstall: (initial: AddPluginInitial) => void;
 }) {
+  const sourceLabel = `${marketplaceName} · ${entry.source}`;
+
   return (
     <div
       className="flex items-start gap-3 rounded-lg border border-border bg-card p-3.5"
       data-testid={`browse-card-${entry.entryId}`}
     >
-      <PlaceholderBadge className="size-6" />
+      <PlaceholderBadge
+        className="size-6"
+        iconName={pluginIconName(entry.icon)}
+      />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">
           {entry.displayName}
@@ -182,15 +188,18 @@ function BrowseCard({
             {entry.description}
           </p>
         ) : null}
-        <p className="mt-1.5 text-2xs text-subtle-foreground">
-          {marketplaceName} · {entry.source}
-          {!entry.compatible && entry.incompatibleReason !== null ? (
-            <span className="text-warning-text">
-              {" · "}
-              {entry.incompatibleReason}
-            </span>
-          ) : null}
+        <p
+          className="mt-1.5 truncate text-2xs text-subtle-foreground"
+          title={sourceLabel}
+          data-testid={`browse-source-${entry.entryId}`}
+        >
+          {sourceLabel}
         </p>
+        {!entry.compatible && entry.incompatibleReason !== null ? (
+          <p className="text-2xs text-warning-text">
+            {entry.incompatibleReason}
+          </p>
+        ) : null}
       </div>
       {entry.installed ? (
         <span

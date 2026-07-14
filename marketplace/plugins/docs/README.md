@@ -7,8 +7,8 @@ mentions, and links that open inside a thread.
 
 The package and installed plugin ID remain `bb-plugin-simple-notes` and
 `simple-notes` for compatibility with existing settings and stored vaults. The
-user-facing product name, panel route, CLI, mention provider, and directive are
-all Docs.
+user-facing product name, marketplace listing, panel route, CLI, mention
+provider, and directive are all Docs.
 
 ## Features
 
@@ -112,7 +112,7 @@ service.
 ## Install
 
 ```sh
-bb plugin install examples/plugins/simple-notes
+bb plugin install simple-notes@bb-official
 bb plugin config simple-notes set directory "~/Notes"
 bb plugin reload simple-notes
 ```

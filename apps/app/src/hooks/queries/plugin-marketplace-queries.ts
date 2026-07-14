@@ -479,6 +479,8 @@ export interface MarketplaceSearchEntry {
   entryId: string;
   displayName: string;
   description: string;
+  /** Named icon hint from the marketplace, or null for the generic glyph. */
+  icon: string | null;
   category: string | null;
   /** Human source line for the catalog entry (npm package or git URL). */
   source: string;
@@ -495,6 +497,7 @@ const searchEntrySchema = z.object({
   entryId: z.string(),
   displayName: z.string(),
   description: z.string(),
+  icon: z.string().nullable(),
   category: z.string().optional(),
   source: z.string(),
   installed: z.boolean(),
@@ -522,6 +525,7 @@ export async function searchMarketplaces(
       entryId: data.entryId,
       displayName: data.displayName,
       description: data.description,
+      icon: data.icon,
       category: data.category ?? null,
       source: data.source,
       installed: data.installed,

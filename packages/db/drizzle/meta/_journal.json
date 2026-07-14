@@ -470,6 +470,13 @@
       "when": 1783917774403,
       "tag": "0066_smooth_shinko_yamashiro",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1783979475769,
+      "tag": "0067_early_warbird",
+      "breakpoints": true
     }
   ]
 }

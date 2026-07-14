@@ -208,6 +208,7 @@ export {
 export {
   deleteMarketplace,
   getMarketplace,
+  getMarketplaceIncludingRemoved,
   listMarketplaces,
   updateMarketplaceRefreshFailure,
   upsertMarketplace,

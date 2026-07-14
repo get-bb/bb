@@ -60,7 +60,8 @@ export function PluginLogo({
     theme === "dark" && plugin.logoDarkUrl !== null
       ? plugin.logoDarkUrl
       : plugin.logoUrl;
-  if (logoUrl === null) {
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
+  if (logoUrl === null || logoUrl === failedLogoUrl) {
     // No shipped image: use the manifest icon hint, falling back to the
     // generic plugin glyph (never a letter avatar).
     return (
@@ -77,6 +78,7 @@ export function PluginLogo({
       aria-hidden="true"
       data-testid={`plugin-settings-logo-${plugin.id}`}
       className={cn("rounded-sm object-contain", className)}
+      onError={() => setFailedLogoUrl(logoUrl)}
     />
   );
 }

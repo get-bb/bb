@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import { z } from "zod";
+import { githubReleaseRegistryUrl } from "../plugins/github-release-source.js";
 import { realPathInside } from "../plugins/install-sources.js";
 
 const semverRange = z
@@ -29,6 +30,27 @@ const gitSourceSchema = z
         url: z.string().min(1),
         subdir: z.string().min(1).optional(),
         ref: z.string().min(1),
+      })
+      .strict(),
+  })
+  .strict();
+
+const versionTemplate = z
+  .string()
+  .min(1)
+  .refine((value) => value.split("{version}").length === 2, {
+    message: "must contain {version} exactly once",
+  });
+
+const githubReleaseSourceSchema = z
+  .object({
+    githubRelease: z
+      .object({
+        repository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u),
+        package: z.string().min(1),
+        range: semverRange,
+        tagTemplate: versionTemplate,
+        assetTemplate: versionTemplate,
       })
       .strict(),
   })
@@ -63,9 +85,11 @@ const catalogSchema = z
             id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u),
             displayName: z.string().min(1),
             description: z.string(),
+            icon: z.string().min(1).optional(),
             source: z.union([
               npmSourceSchema,
               gitSourceSchema,
+              githubReleaseSourceSchema,
               pathSourceSchema,
             ]),
             installation: installationSchema.optional(),
@@ -207,6 +231,10 @@ export function catalogEntrySourceDisplay(
     const spec = entry.source.npm.range ?? "";
     return `npm:${entry.source.npm.package}${spec ? `@${spec}` : ""}`;
   }
+  if ("githubRelease" in entry.source) {
+    const release = entry.source.githubRelease;
+    return `github-release:${release.repository}/${release.assetTemplate}@${release.range}`;
+  }
   const subdir = entry.source.git.subdir ? `#${entry.source.git.subdir}` : "";
   return `git:${entry.source.git.url}@${entry.source.git.ref}${subdir}`;
 }
@@ -214,7 +242,11 @@ export function catalogEntrySourceDisplay(
 export function resolvedCatalogEntrySource(
   entry: MarketplaceCatalogEntry,
   marketplaceRoot: string,
-): { source: string; gitSubdirectory?: string } {
+): {
+  source: string;
+  gitSubdirectory?: string;
+  npmRegistry?: string;
+} {
   if ("path" in entry.source) {
     return { source: `path:${resolve(marketplaceRoot, entry.source.path)}` };
   }
@@ -222,6 +254,19 @@ export function resolvedCatalogEntrySource(
     const spec = entry.source.npm.range ?? "";
     return {
       source: `npm:${entry.source.npm.package}${spec ? `@${spec}` : ""}`,
+    };
+  }
+  if ("githubRelease" in entry.source) {
+    const release = entry.source.githubRelease;
+    return {
+      source: `npm:${release.package}@${release.range}`,
+      npmRegistry: githubReleaseRegistryUrl({
+        repository: release.repository,
+        tagTemplate: release.tagTemplate,
+        assetTemplate: release.assetTemplate,
+        bbEngineRange: entry.installation?.engines.bb,
+        pluginSdkEngineRange: entry.installation?.engines.bbPluginSdk,
+      }),
     };
   }
   return {

@@ -434,7 +434,9 @@ A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
-(packages are installed with `--ignore-scripts`). An omitted npm spec tracks
+(packages are installed with `--ignore-scripts`). Git plugins without prebuilt
+frontend artifacts also use npm with lifecycle scripts disabled, then discard
+their installed dependencies after bundling. An omitted npm spec tracks
 the newest compatible stable release, ranges track within the range, dist-tags
 track the tag, and exact versions are pinned. `git:<url>@<ref>` requires `git`;
 branches track their head while tags and commits are pinned. Local
@@ -445,7 +447,7 @@ refuse plugins whose optional `engines.bb` or `engines.bbPluginSdk` ranges
 do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
 does not match the package manifest; installing a non-builtin source whose
 derived id collides with a builtin name (automations, connect,
-custom-instructions, inline-vis, memory, secrets) is also refused.
+custom-instructions, inline-vis, secrets) is also refused.
 
 The same tracking intent drives updates: `bb plugin outdated` checks for
 compatible candidates (and reports blocked incompatible newer releases);

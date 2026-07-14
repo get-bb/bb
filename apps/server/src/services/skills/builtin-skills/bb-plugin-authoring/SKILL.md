@@ -41,7 +41,9 @@ The manifest is `package.json`:
   prefer when its SDK major matches, so consumers never need npm or
   node_modules. `bb.app` (optional) — frontend entry compiled by
   `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
-  and git installs build it automatically at install time.
+  installs and git installs without a prebuilt app build it automatically at
+  install time when their imported dependencies are already available. Git
+  plugins may instead ship a metadata-validated prebuilt app.
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.
@@ -92,7 +94,7 @@ The manifest is `package.json`:
 - The plugin id is the package name minus the `bb-plugin-` prefix
   (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
   and CLI commands. Ids reserved by builtins (`automations`, `connect`,
-  `custom-instructions`, `inline-vis`, `memory`, `secrets`) cannot be
+  `custom-instructions`, `inline-vis`, `secrets`) cannot be
   installed from a non-`builtin:` source — use `builtin:<name>` instead.
 
 The scaffold ships the full API as bundled type declarations in `types/`
@@ -126,7 +128,15 @@ A marketplace is a directory (local path or git repo) whose root has
       "id": "notes",
       "displayName": "Notes",
       "description": "Local notes",
-      "source": { "npm": { "package": "bb-plugin-notes", "range": "^1.0.0" } },
+      "source": {
+        "githubRelease": {
+          "repository": "acme/plugins",
+          "package": "bb-plugin-notes",
+          "range": "^1.0.0",
+          "tagTemplate": "plugin-notes-v{version}",
+          "assetTemplate": "bb-plugin-notes-{version}.tgz"
+        }
+      },
       "category": "productivity",
       "installation": { "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" } }
     }
@@ -134,9 +144,16 @@ A marketplace is a directory (local path or git repo) whose root has
 }
 ```
 
-- **source** — one of `npm` (`package`, optional `registry` / `range`), `git`
-  (`url`, `ref`, optional `subdir`), or `path` (relative path **only** for
-  local path marketplaces; remote/git catalogs cannot list path entries).
+- **source** — one of `npm` (`package`, optional `registry` / `range`),
+  `githubRelease` (`repository`, `package`, semver `range`, plus
+  `tagTemplate` and `assetTemplate` containing `{version}` exactly once),
+  `git` (`url`, `ref`, optional `subdir`), or `path` (relative path **only**
+  for local path marketplaces; remote/git catalogs cannot list path entries).
+  GitHub Release assets are npm-compatible `.tgz` archives produced after
+  `bb plugin build`; BB selects published, non-draft releases with
+  GitHub-provided SHA-256 digests and verifies the archive before installation.
+  Releases may be mutable, so replacing an asset under an existing tag changes
+  what a future install receives.
 - **category** (optional) — free-form string; `bb plugin search` matches it.
 - **installation.engines** (optional) — catalog-level `bb` / `bbPluginSdk`
   ranges. These **can narrow but never widen** the plugin package manifest's
@@ -760,7 +777,7 @@ only `definePluginApp` + the hooks):
   React context on every plugin surface; add `@pierre/diffs` to
   devDependencies for types). Synthesize a `diff --git a/<p> b/<p>` header
   when your patch source (e.g. the GitHub REST API) omits it — see
-  `examples/plugins/github/app.tsx`.
+  `marketplace/plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
   cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
@@ -772,7 +789,7 @@ only `definePluginApp` + the hooks):
   tokens, never hardcoded grays.
 - The old bb extras (`EmptyState`, `Markdown`, `PageBody`, `Spinner`) are
   gone — write your own (each is a few lines; see
-  `examples/plugins/github/components/` for reference implementations).
+  `marketplace/plugins/github/components/` for reference implementations).
 
 One deviation from stock shadcn: `Dialog` renders as a bottom drawer on
 compact viewports (the host's responsive behavior) — same API.
@@ -879,7 +896,7 @@ slot.composer.quotes; // recorded hook activity
 patterns, settingsSection optional title, navPanel path, chrome,
 fileOpener extensions) and returns them typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
-`thread.idle` reply), `examples/plugins/simple-notes/app.test.tsx` (nav
+`thread.idle` reply), `marketplace/plugins/docs/app.test.tsx` (nav
 panel list over rpc + create/open navigation assertions).
 
 ### Live loop against a running bb
@@ -896,18 +913,24 @@ application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
 - Keep pure logic in plain functions/modules so it is unit-testable without
   a bb server; the factory file should mostly wire registrations.
 
-Reference examples in `examples/plugins/` (a bb checkout):
+BB Official marketplace plugins in `marketplace/plugins/` (a bb checkout):
 
 - `github` — vendored-component showcase: a gh-CLI-backed issue/PR browser
   in a single navPanel (with `headerContent`), subPath-based sub-navigation,
   vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
   throughout, background sync service, rpc + realtime, project setting, a
   `bb github` CLI command, and agent-spawn buttons.
-- `simple-notes` — multi-host Docs vaults over `bb.sdk.files`, with a Tiptap
+- `docs` (stable plugin id `simple-notes`) — multi-host Docs vaults over
+  `bb.sdk.files`, with a Tiptap
   markdown WYSIWYG, nested navigation, images and sandboxed HTML, CLI/HTTP
   operations, autosave with CAS conflicts, native local-vault watching with
   remote polling fallback, a markdown `fileOpener`, message directives, and
   side-panel-only `useComposer()` quote/mention actions.
+- `memory` — provider-independent durable agent memory with global/project
+  scopes, progressive disclosure, CLI commands, and a Settings editor.
+
+Remaining reference examples in `examples/plugins/`:
+
 - `slack-bot` — headless webhook bot: `auth: "none"` route with signature
   verification, kv thread mapping, `thread.idle` handler, spawn/send,
   needsConfiguration.

@@ -9,6 +9,7 @@
   },
   "bb": {
     "displayName": "Inline visualizations",
+    "icon": "AppWindow",
     "server": "./server.ts",
     "app": "./app.tsx",
     "skills": [

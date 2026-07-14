@@ -268,6 +268,31 @@ describe("PluginSettingsDetail settings gating", () => {
 });
 
 describe("InstalledPluginRow", () => {
+  it("falls back to the manifest icon when a plugin logo fails to load", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ ok: true })),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <InstalledPluginRow
+          plugin={{
+            ...rowPlugin("running", "/missing-logo.svg"),
+            icon: "Smartphone",
+          }}
+          onUpdateClick={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.error(screen.getByTestId("plugin-settings-logo-linear"));
+
+    expect(document.querySelector('[data-icon="Smartphone"]')).not.toBeNull();
+    expect(screen.queryByTestId("plugin-settings-logo-linear")).toBeNull();
+  });
+
   it("POSTs disable when toggling an enabled plugin off", async () => {
     const requests: RecordedRequest[] = [];
     vi.stubGlobal(

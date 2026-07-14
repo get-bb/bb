@@ -22,8 +22,8 @@ both recall (`memories.use_memories`) and future generation
 (`memories.generate_memories`). Claude Code memory controls native auto-memory
 reads and writes (`autoMemoryEnabled`). Both preferences default on and apply
 when a provider thread is started, resumed, or forked; they do not interrupt
-an active turn. These settings are separate from bb's optional builtin Memory
-plugin.
+an active turn. These settings are separate from bb's optional Memory
+marketplace plugin.
 
 Provider-native subagents can also be disabled on those provider pages. For
 Codex, bb turns off the native multi-agent feature and caps V2 sessions at the

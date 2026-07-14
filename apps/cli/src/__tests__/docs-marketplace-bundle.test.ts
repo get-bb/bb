@@ -4,18 +4,18 @@ import { basename, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The Docs example bundles Tiptap (prosemirror) — a large graph that
+// The Docs plugin bundles Tiptap (prosemirror) — a large graph that
 // blows the 5s default on cold CI runners.
 vi.setConfig({ testTimeout: 120_000 });
 import { buildPluginApp } from "@bb/plugin-build";
 
 /**
- * Evaluates the Docs example's built bundle against a stub runtime (the
- * github-example-bundle.test.ts pattern) and asserts its default export
+ * Evaluates the Docs marketplace plugin's built bundle against a stub runtime (the
+ * github-marketplace-bundle.test.ts pattern) and asserts its default export
  * registers the installed plugin's nav panel surface.
  */
 const SIMPLE_NOTES_DIR = fileURLToPath(
-  new URL("../../../../examples/plugins/simple-notes", import.meta.url),
+  new URL("../../../../marketplace/plugins/docs", import.meta.url),
 );
 
 interface SlotRegistration {
@@ -28,7 +28,7 @@ interface SlotRegistration {
   component: unknown;
 }
 
-describe("Docs example frontend bundle", () => {
+describe("Docs marketplace frontend bundle", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -50,7 +50,7 @@ describe("Docs example frontend bundle", () => {
         return name !== "dist" && name !== "node_modules";
       },
     });
-    // The example's own node_modules already holds every bundled dep
+    // The plugin's own node_modules already holds every bundled dep
     // (Tiptap among them) — link it wholesale instead of per-package.
     await symlink(
       join(SIMPLE_NOTES_DIR, "node_modules"),

@@ -229,8 +229,8 @@ For review or fix pipelines, get the environment ID from
 
 ## Memory
 
-- The builtin `memory` plugin is disabled by default. Enable it with
-  `bb plugin enable memory` before using `bb memory ...`.
+- Memory is an opt-in plugin in the default BB Official marketplace. Install it
+  with `bb plugin install memory@bb-official` before using `bb memory ...`.
 - Use `bb memory catalog` to inspect the compact index, `bb memory search
 <query>` to find candidates, and `bb memory get <id>` to progressively
   disclose a full record.
@@ -352,6 +352,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   is off, except `connect`, which is gated by the **"bb connect"**
   experiment.
 - **Plugin marketplaces** (catalogs under `/api/v1/marketplaces`):
+  - BB starts with the removable **BB Official** catalog configured. It lists
+    the opt-in GitHub, Docs, and Memory plugins; removing it is remembered across
+    restarts.
   - `bb plugin marketplace add <source> [--name <n>] [--yes]` — register and
     refresh a catalog only (installs nothing). Sources: local path / `path:`,
     `owner/repo[@ref]`, or a git URL`[@ref]`. Every remote/git source requires
@@ -375,12 +378,15 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     marketplace resolution. To pin or range an npm package, install with
     `npm:<package>@…` (marketplace installs use the catalog entry's source).
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
-    track, while exact versions are pinned. Git branches track; tags and commits
-    are pinned. Installs prompt for confirmation (plugins are full-trust code);
+    track, while exact versions are pinned. Marketplace GitHub Release semver
+    ranges track published, SHA-256-verified `.tgz` assets. Git branches track;
+    tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
     refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
-    are built at install time for path/git sources; npm packages must publish a
-    prebuilt `dist/`. Managed git/npm installs refuse `engines.bb` /
+    are built at install time for path sources and git sources without a
+    prebuilt app when their imported dependencies are already available;
+    git/npm packages can also ship a metadata-validated prebuilt `dist/`, and
+    npm/GitHub Release packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
     and ids reserved by builtins.
   - `bb plugin outdated` — check installed plugins for compatible updates

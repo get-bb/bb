@@ -330,6 +330,8 @@ export const marketplaces = sqliteTable("marketplaces", {
   lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
   lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
   lastError: text("last_error"),
+  /** Removal tombstone so default catalogs are not restored after restart. */
+  removedAt: integer("removed_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
