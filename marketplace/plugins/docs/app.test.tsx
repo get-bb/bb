@@ -319,6 +319,61 @@ describe("Docs nav panel", () => {
     );
   });
 
+  it("renders and autosaves editable Markdown tables", async () => {
+    const saveNote = vi.fn((_input: unknown) => ({
+      outcome: "written",
+      sha256: "next-sha",
+    }));
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/status.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "status.md",
+                title: "Status",
+                preview: "Docs Ready",
+                modifiedAtMs: 1,
+              },
+            ]),
+          readNote: () => ({
+            content:
+              "# Status\n\n| Project | State |\n| --- | --- |\n| Docs | Ready |",
+            sha256: "sha",
+          }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "status.md" }),
+          saveNote,
+        },
+      },
+    );
+
+    await slot.findByText("Ready");
+    const table = slot.container.querySelector("table");
+    expect(table).toBeTruthy();
+    expect(table?.querySelector("th")?.textContent).toBe("Project");
+    expect(table?.querySelector("td")?.textContent).toBe("Docs");
+    expect(table?.closest(".tableWrapper")).toBeTruthy();
+    expect(table?.closest('[contenteditable="true"]')).toBeTruthy();
+
+    const styles = document.head.querySelector(
+      "style[data-bb-simple-notes-styles]",
+    );
+    expect(styles?.textContent).toContain("border-collapse: collapse");
+    expect(styles?.textContent).toContain("column-resize-handle");
+
+    const firstBodyCell = table?.querySelector("td p");
+    expect(firstBodyCell).toBeTruthy();
+    firstBodyCell!.textContent = "Plans";
+    fireEvent.input(firstBodyCell!);
+    await waitFor(() => expect(saveNote).toHaveBeenCalled(), { timeout: 2_000 });
+    expect(saveNote.mock.calls.at(-1)?.[0]).toMatchObject({
+      content: expect.stringContaining("| Plans | Ready |"),
+    });
+  });
+
   it("renders nested folders, images, and sandboxed HTML directives", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,

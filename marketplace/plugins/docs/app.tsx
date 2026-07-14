@@ -32,6 +32,10 @@ import Image from "@tiptap/extension-image";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
+import Table from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "tiptap-markdown";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { toast } from "sonner";
@@ -417,6 +421,16 @@ const EDITOR_CSS = `
 .bb-simple-notes-editor .tiptap hr { border: none; border-top: 1px solid var(--border); margin: 3em 0 0; }
 .bb-simple-notes-editor .tiptap hr + :is(h1, h2, h3, h4) { margin-top: 1.25em; }
 .bb-simple-notes-editor .tiptap img { display: block; max-width: 100%; max-height: 38rem; margin: 1.5em auto 0; border-radius: var(--radius); border: 1px solid var(--border); }
+.bb-simple-notes-editor .tiptap .tableWrapper { margin: 1.5em 0 0; overflow-x: auto; }
+.bb-simple-notes-editor .tiptap table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.bb-simple-notes-editor .tiptap th,
+.bb-simple-notes-editor .tiptap td { position: relative; min-width: 6rem; border: 1px solid var(--border); padding: 0.5em 0.65em; text-align: left; vertical-align: top; }
+.bb-simple-notes-editor .tiptap th { background: var(--muted); font-weight: 600; }
+.bb-simple-notes-editor .tiptap :is(th, td) > p { margin-top: 0; }
+.bb-simple-notes-editor .tiptap :is(th, td) > p + p { margin-top: 0.65em; }
+.bb-simple-notes-editor .tiptap .selectedCell::after { position: absolute; inset: 0; z-index: 2; pointer-events: none; content: ""; background: color-mix(in oklab, var(--primary) 14%, transparent); }
+.bb-simple-notes-editor .tiptap .column-resize-handle { position: absolute; top: 0; right: -2px; bottom: -1px; width: 4px; z-index: 3; pointer-events: none; background: var(--primary); }
+.bb-simple-notes-editor .tiptap.resize-cursor { cursor: col-resize; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0.25em; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0; }
 .bb-simple-notes-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin-top: 0.5em; padding-left: 0; }
@@ -510,6 +524,10 @@ function TiptapEditor({
         Image.configure({ allowBase64: false }),
         TaskList,
         TaskItem.configure({ nested: true }),
+        Table.configure({ resizable: true, lastColumnResizable: false }),
+        TableRow,
+        TableHeader,
+        TableCell,
         MarkdownTaskInput,
         HtmlEmbed.configure({ baseUrl: previewBaseUrl, notePath }),
         Placeholder.configure({ placeholder: "Start writing…" }),

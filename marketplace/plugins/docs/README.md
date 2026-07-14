@@ -28,6 +28,9 @@ provider, and directive are all Docs.
   `.markdown` files, so it can be selected under Settings → File openers or
   chosen from a file link's Open with menu. Workspace and absolute host files
   retain compare-and-swap saves even when they are outside a Docs vault.
+- **Tables:** GitHub-flavored Markdown tables render as editable cells. Use Tab
+  and Shift+Tab to move between cells (Tab from the final cell adds a row), and
+  drag column boundaries to resize them. Saves remain portable Markdown.
 - **Images:** paste or drop PNG, JPEG, GIF, WebP, or SVG files into a document.
   Attachments are stored beside it under `_attachments/` and serialized as
   portable relative Markdown image links.
