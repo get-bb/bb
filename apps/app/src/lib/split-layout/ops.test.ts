@@ -100,8 +100,8 @@ describe("split layout operations", () => {
 
     expect(replaced.focusedPaneId).toBe("pane-1");
     expect(findPane(swapped.root, "pane-2")?.content).toBe(replacement);
-    expect(findPane(swapped.root, "pane-1")?.content.threadId).toBe(
-      "thread-2",
+    expect(findPane(swapped.root, "pane-1")?.content).toEqual(
+      threadContent("thread-2"),
     );
     expect(swapped.focusedPaneId).toBe("pane-2");
   });

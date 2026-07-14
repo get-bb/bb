@@ -1,8 +1,18 @@
-export type PaneContent = {
-  kind: "thread";
-  projectId: string;
-  threadId: string;
-};
+export type PaneContent =
+  | {
+      kind: "thread";
+      projectId: string;
+      threadId: string;
+    }
+  | {
+      kind: "new-thread";
+    }
+  | {
+      kind: "plugin-panel";
+      pluginId: string;
+      panelPath: string;
+      subPath: string;
+    };
 
 export interface PaneNode {
   type: "pane";

@@ -172,6 +172,7 @@ import {
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
 import {
+  ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS,
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
@@ -393,6 +394,7 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
 
 type RootComposeViewProps =
   | {
+      isBoundedPane: boolean;
       surface: "page";
     }
   | {
@@ -834,7 +836,7 @@ export function buildRootComposeTerminalSessions({
   return undefined;
 }
 
-function LegacyProjectComposeRedirect({
+export function LegacyProjectComposeRedirect({
   projectId,
 }: LegacyProjectComposeRedirectProps) {
   const location = useLocation();
@@ -920,7 +922,7 @@ export function RootComposeRoute() {
       poolOptions={FILE_PREVIEW_WORKER_POOL_OPTIONS}
       highlighterOptions={FILE_PREVIEW_HIGHLIGHTER_OPTIONS}
     >
-      <RootComposeView surface="page" />
+      <RootComposeView isBoundedPane={false} surface="page" />
     </WorkerPoolContextProvider>
   );
 }
@@ -3128,18 +3130,23 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [openWorkspaceFile],
   );
-  // Keep the panel toggle pinned to the viewport corner in the wide layout so it
-  // stays mounted and fixed in place across open/close (the panel reserves a
-  // matching slot via inlinePanelToggle="reserved", and the pinned button lands
-  // centered over it). The drawer layout has no pinned slot, so there the toggle
-  // only opens the drawer and its close control lives inside the drawer.
+  // Keep the panel toggle pinned to the viewport corner on the full page and to
+  // the pane corner in a split. A bounded pane shifts it left by one action slot
+  // so its close button can own the outermost position. The panel reserves a
+  // matching slot via inlinePanelToggle="reserved". The drawer layout has no
+  // pinned slot, so there the toggle only opens the drawer and its close control
+  // lives inside the drawer.
   // The shared position class keeps this footprint paired with the no-drag
   // cutout the macOS window-drag strip carves for it while the panel is closed
   // (see RootComposeSecondaryContent).
+  const isBoundedPage = props.surface === "page" && props.isBoundedPane;
+  const panelTogglePositionClassName = isBoundedPage
+    ? ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS
+    : ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
   const rootPanelToggle =
     !renderSecondaryPanelAsDrawer || !isSecondaryPanelOpen ? (
       <div
-        className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
+        className={`${isBoundedPage ? "absolute" : "fixed"} z-40 ${panelTogglePositionClassName}`}
       >
         <RootComposeRightPanelToggle
           isOpen={isSecondaryPanelOpen}
@@ -3541,6 +3548,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
         }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
+        panelTogglePositionClassName={panelTogglePositionClassName}
         secondaryPanel={{
           activeTab: activeFixedSecondaryTab,
           canUseGitUi: false,

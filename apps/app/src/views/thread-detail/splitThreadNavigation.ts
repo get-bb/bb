@@ -3,6 +3,7 @@ import type { ThreadOpenSplit } from "@bb/server-contract";
 import {
   countPanes,
   findPane,
+  findPaneByContent,
   findPaneByThread,
   MAX_PANES,
   replacePaneContent,
@@ -11,6 +12,11 @@ import {
 } from "@/lib/split-layout";
 import { decideThreadDrop, type SplitZone } from "@/lib/split-drag";
 import type { PaneContent, SplitLayout } from "@/lib/split-layout";
+import {
+  getPluginPanelRoutePath,
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 
 const FIRST_PANE_ID = "pane-1";
 
@@ -33,6 +39,57 @@ export function createSinglePaneLayout(
     },
     focusedPaneId: FIRST_PANE_ID,
   };
+}
+
+export function createSinglePaneContentLayout(
+  content: PaneContent,
+): SplitLayout {
+  return {
+    root: { type: "pane", paneId: FIRST_PANE_ID, content },
+    focusedPaneId: FIRST_PANE_ID,
+  };
+}
+
+export function paneContentRoute(content: PaneContent): string {
+  if (content.kind === "thread") {
+    return getThreadRoutePath(content);
+  }
+  if (content.kind === "new-thread") {
+    return getRootComposeRoutePath();
+  }
+  return getPluginPanelRoutePath({
+    pluginId: content.pluginId,
+    path: content.panelPath,
+    subPath: content.subPath,
+  });
+}
+
+/** Reconciles any splittable page route into the focused pane. */
+export function reconcileLayoutForContent(
+  layout: SplitLayout | null,
+  content: PaneContent,
+): SplitLayout {
+  if (layout === null) {
+    return createSinglePaneContentLayout(content);
+  }
+  const existing = findPaneByContent(layout.root, content);
+  if (existing !== null) {
+    const withRouteState =
+      existing.content.kind === "plugin-panel" &&
+      content.kind === "plugin-panel" &&
+      existing.content.subPath !== content.subPath
+        ? replacePaneContent(layout, existing.paneId, content)
+        : layout;
+    return withRouteState.focusedPaneId === existing.paneId
+      ? withRouteState
+      : setFocus(withRouteState, existing.paneId);
+  }
+  return replacePaneContent(layout, layout.focusedPaneId, content);
+}
+
+export function focusedPaneRoute(layout: SplitLayout): string | null {
+  const focused = findPane(layout.root, layout.focusedPaneId);
+  return focused === null ? null : paneContentRoute(focused.content);
 }
 
 /**

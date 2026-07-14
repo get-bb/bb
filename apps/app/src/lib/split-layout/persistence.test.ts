@@ -45,6 +45,36 @@ describe("split layout persistence", () => {
     expect(deserializeSplitLayout(serialized)).toEqual(layout);
   });
 
+  it("round-trips mixed new-thread and plugin panel content", () => {
+    const mixed: SplitLayout = {
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-1",
+            content: { kind: "new-thread" },
+          },
+          {
+            type: "pane",
+            paneId: "pane-2",
+            content: {
+              kind: "plugin-panel",
+              pluginId: "notes",
+              panelPath: "notes",
+              subPath: "work/today.md",
+            },
+          },
+        ],
+      },
+      focusedPaneId: "pane-2",
+    };
+
+    expect(deserializeSplitLayout(serializeSplitLayout(mixed))).toEqual(mixed);
+  });
+
   it("rejects malformed JSON, unknown versions, and invalid layout invariants", () => {
     expect(deserializeSplitLayout(null)).toBeNull();
     expect(deserializeSplitLayout("not json")).toBeNull();

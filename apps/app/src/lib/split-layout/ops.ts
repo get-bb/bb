@@ -56,6 +56,35 @@ export function findPaneByThread(
   );
 }
 
+/** Finds the pane representing the same routable page as `content`. Plugin
+ * subpaths belong to one panel identity, so navigating within a panel updates
+ * that pane instead of opening duplicates. The compose page is a singleton in
+ * this prototype, matching its existing shared draft/project state. */
+export function findPaneByContent(
+  root: LayoutNode,
+  content: PaneContent,
+): PaneNode | null {
+  return (
+    listPanes(root).find((pane) => {
+      const candidate = pane.content;
+      if (candidate.kind !== content.kind) return false;
+      if (content.kind === "new-thread") return true;
+      if (content.kind === "thread") {
+        return (
+          candidate.kind === "thread" &&
+          candidate.projectId === content.projectId &&
+          candidate.threadId === content.threadId
+        );
+      }
+      return (
+        candidate.kind === "plugin-panel" &&
+        candidate.pluginId === content.pluginId &&
+        candidate.panelPath === content.panelPath
+      );
+    }) ?? null
+  );
+}
+
 function replacePaneNode(
   node: LayoutNode,
   paneId: string,
@@ -184,7 +213,7 @@ function detachPane(node: LayoutNode, paneId: string): DetachResult {
       node: {
         ...node,
         children: node.children.map((candidate, childIndex) =>
-          childIndex === index ? result.node ?? candidate : candidate,
+          childIndex === index ? (result.node ?? candidate) : candidate,
         ),
       },
       detached: result.detached,
@@ -204,7 +233,8 @@ export function removePane(layout: SplitLayout, paneId: string): SplitLayout {
     return layout;
   }
   const panesAfter = listPanes(result.node);
-  const fallbackPane = panesAfter[Math.min(removedIndex, panesAfter.length - 1)];
+  const fallbackPane =
+    panesAfter[Math.min(removedIndex, panesAfter.length - 1)];
   return {
     root: result.node,
     focusedPaneId:
@@ -270,7 +300,10 @@ function equalSizes(count: number): number[] {
   return Array.from({ length: count }, () => 1 / count);
 }
 
-function normalizeSizes(sizes: readonly number[], childCount: number): number[] {
+function normalizeSizes(
+  sizes: readonly number[],
+  childCount: number,
+): number[] {
   if (
     sizes.length !== childCount ||
     sizes.some((size) => !Number.isFinite(size) || size <= 0)
@@ -391,10 +424,7 @@ export function resizeSplit(
   return root === null ? layout : { ...layout, root };
 }
 
-export function setFocus(
-  layout: SplitLayout,
-  paneId: string,
-): SplitLayout {
+export function setFocus(layout: SplitLayout, paneId: string): SplitLayout {
   if (findPane(layout.root, paneId) === null) {
     return layout;
   }
@@ -435,9 +465,10 @@ function trimToPaneLimit(root: LayoutNode): LayoutNode {
 export function normalize(layout: SplitLayout): SplitLayout {
   const root = normalizeNode(trimToPaneLimit(layout.root));
   const panes = listPanes(root);
-  const focusedPaneId =
-    panes.some((pane) => pane.paneId === layout.focusedPaneId)
-      ? layout.focusedPaneId
-      : (panes[0]?.paneId ?? layout.focusedPaneId);
+  const focusedPaneId = panes.some(
+    (pane) => pane.paneId === layout.focusedPaneId,
+  )
+    ? layout.focusedPaneId
+    : (panes[0]?.paneId ?? layout.focusedPaneId);
   return { root, focusedPaneId };
 }

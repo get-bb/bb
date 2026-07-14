@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { findPaneByThread, listPanes, splitPane } from "@/lib/split-layout";
+import {
+  findPaneByContent,
+  findPaneByThread,
+  listPanes,
+  splitPane,
+} from "@/lib/split-layout";
 import type { SplitLayout } from "@/lib/split-layout";
 import {
   applyThreadOpenToLayout,
   createSinglePaneLayout,
+  focusedPaneRoute,
   focusedThreadRoute,
+  reconcileLayoutForContent,
   reconcileLayoutForRoute,
 } from "./splitThreadNavigation";
 
@@ -80,6 +87,46 @@ describe("reconcileLayoutForRoute", () => {
     });
 
     expect(after).toBe(before);
+  });
+});
+
+describe("mixed page navigation", () => {
+  it("keeps New Thread as a singleton and focuses its existing pane", () => {
+    const withCompose = splitPane(twoPaneLayout(), "pane-2", "bottom", {
+      kind: "new-thread",
+    });
+
+    const after = reconcileLayoutForContent(withCompose, {
+      kind: "new-thread",
+    });
+
+    expect(listPanes(after.root)).toHaveLength(3);
+    expect(after.focusedPaneId).toBe(
+      findPaneByContent(after.root, { kind: "new-thread" })?.paneId,
+    );
+    expect(focusedPaneRoute(after)).toBe("/");
+  });
+
+  it("updates a plugin pane's subpath without duplicating the panel", () => {
+    const plugin = {
+      kind: "plugin-panel",
+      pluginId: "notes",
+      panelPath: "notes",
+      subPath: "inbox.md",
+    } as const;
+    const before = splitPane(twoPaneLayout(), "pane-1", "bottom", plugin);
+
+    const after = reconcileLayoutForContent(before, {
+      ...plugin,
+      subPath: "work/today.md",
+    });
+
+    expect(listPanes(after.root)).toHaveLength(3);
+    expect(findPaneByContent(after.root, plugin)?.content).toEqual({
+      ...plugin,
+      subPath: "work/today.md",
+    });
+    expect(focusedPaneRoute(after)).toBe("/plugins/notes/notes/work/today.md");
   });
 });
 

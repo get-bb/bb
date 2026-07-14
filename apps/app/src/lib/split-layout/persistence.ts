@@ -5,13 +5,24 @@ import type { LayoutNode, PaneNode, SplitLayout, SplitNode } from "./types";
 export const SPLIT_LAYOUT_SCHEMA_VERSION = 1;
 export const SPLIT_LAYOUT_STORAGE_KEY = "bb.splitLayout";
 
-const paneContentSchema = z
-  .object({
-    kind: z.literal("thread"),
-    projectId: z.string().min(1),
-    threadId: z.string().min(1),
-  })
-  .strict();
+const paneContentSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("thread"),
+      projectId: z.string().min(1),
+      threadId: z.string().min(1),
+    })
+    .strict(),
+  z.object({ kind: z.literal("new-thread") }).strict(),
+  z
+    .object({
+      kind: z.literal("plugin-panel"),
+      pluginId: z.string().min(1),
+      panelPath: z.string().min(1),
+      subPath: z.string(),
+    })
+    .strict(),
+]);
 
 const paneNodeSchema: z.ZodType<PaneNode> = z
   .object({

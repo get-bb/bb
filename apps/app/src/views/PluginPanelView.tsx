@@ -11,7 +11,8 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 
 // Plugins can render `@pierre/diffs` FileDiff (the specifier is shimmed to
 // the host's copy); syntax highlighting needs a worker pool in React context.
-// Thread routes get theirs from ThreadDetailRoute — nav panels get one here.
+// Thread panes get theirs from the split workspace — standalone nav panels get
+// one here.
 const WORKER_POOL_OPTIONS = {
   workerFactory: createDiffWorker,
   poolSize: getDiffWorkerPoolSize(),
@@ -35,15 +36,22 @@ const HIGHLIGHTER_OPTIONS = {};
  * - "none": the plugin component owns the entire body region — no host
  *   padding — with only the error boundary remaining.
  */
-export function PluginPanelView() {
+interface PluginPanelViewProps {
+  pluginId?: string;
+  panelPath?: string;
+  subPath?: string;
+}
+
+export function PluginPanelView(props: PluginPanelViewProps = {}) {
   const params = useParams<{
     pluginId: string;
     panelPath: string;
     "*": string;
   }>();
-  const { pluginId, panelPath } = params;
+  const pluginId = props.pluginId ?? params.pluginId;
+  const panelPath = props.panelPath ?? params.panelPath;
   // The route's trailing splat: panel-internal location ("" at the root).
-  const subPath = params["*"] ?? "";
+  const subPath = props.subPath ?? params["*"] ?? "";
   const { navPanels } = usePluginSlots();
   const panel =
     navPanels.find(
@@ -55,8 +63,8 @@ export function PluginPanelView() {
     return (
       <PageShell contentClassName="pt-4 md:pt-5">
         <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This plugin panel is not available. The plugin may still be
-          loading, or it has been disabled or removed.
+          This plugin panel is not available. The plugin may still be loading,
+          or it has been disabled or removed.
         </EmptyStatePanel>
       </PageShell>
     );

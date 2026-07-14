@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
-import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
@@ -16,20 +15,15 @@ import {
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
-  APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
-  LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
-  PLUGIN_PANEL_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
-  PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PROVIDER_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
-  THREAD_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
@@ -38,9 +32,6 @@ import {
   POPOUT_SHADOW_MARGIN,
 } from "@bb/desktop-contract";
 
-const ThreadDetailRoute = lazy(
-  () => import("./views/thread-detail/ThreadDetailRoute"),
-);
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
     default: m.SettingsView,
@@ -61,11 +52,7 @@ const PopoutChatView = lazy(() =>
     default: m.PopoutChatView,
   })),
 );
-const PluginPanelView = lazy(() =>
-  import("./views/PluginPanelView").then((m) => ({
-    default: m.PluginPanelView,
-  })),
-);
+const SplitWorkspaceRoute = lazy(() => import("./views/SplitWorkspaceRoute"));
 
 function PopoutRouteFallback() {
   useEffect(() => {
@@ -98,7 +85,6 @@ function AppRoutes() {
     <AppLayout>
       <Suspense fallback={null}>
         <Routes>
-          <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route
             path={SETTINGS_SECTION_ROUTE_PATH}
@@ -108,10 +94,6 @@ function AppRoutes() {
           <Route
             path={SETTINGS_PROVIDER_ROUTE_PATH}
             element={<SettingsView />}
-          />
-          <Route
-            path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}
-            element={<RootComposeRoute />}
           />
           <Route
             path={PROJECT_SETTINGS_ROUTE_PATH}
@@ -125,19 +107,7 @@ function AppRoutes() {
             path={PROJECTLESS_ARCHIVED_ROUTE_PATH}
             element={<ArchivedThreadsView />}
           />
-          <Route
-            path={THREAD_DETAIL_ROUTE_PATH}
-            element={<ThreadDetailRoute />}
-          />
-          <Route
-            path={PROJECTLESS_THREAD_DETAIL_ROUTE_PATH}
-            element={<ThreadDetailRoute />}
-          />
-          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
-          <Route
-            path="*"
-            element={<Navigate to={APP_ROOT_ROUTE_PATH} replace />}
-          />
+          <Route path="*" element={<SplitWorkspaceRoute />} />
         </Routes>
       </Suspense>
     </AppLayout>

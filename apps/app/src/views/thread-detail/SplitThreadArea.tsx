@@ -51,16 +51,31 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadDetailView } from "./ThreadDetailView";
+import { RootComposeView } from "@/views/RootComposeView";
+import { PluginPanelView } from "@/views/PluginPanelView";
+import {
+  AppPageHeader,
+  HEADER_ICON_BUTTON_CLASS,
+} from "@/components/layout/AppPageHeader";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import {
+  PluginPanelHeaderActions,
+  PluginPanelHeaderCenter,
+} from "@/components/plugin/PluginPanelHeader";
 import {
   getAdjacentPaneId,
   getPaneIdAtReadingIndex,
 } from "./splitPaneCommands";
 import {
   createSinglePaneLayout,
-  focusedThreadRoute,
-  reconcileLayoutForRoute,
+  focusedPaneRoute,
+  paneContentRoute,
+  reconcileLayoutForContent,
   threadPaneContent,
 } from "./splitThreadNavigation";
+import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
 
 // A `pointerdown`-relative move threshold before a pane-header drag engages.
 const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
@@ -82,7 +97,19 @@ type NavigateInPane = (paneId: string, thread: ThreadRoutePathArgs) => void;
  * A single pane renders identically to the pre-split page surface (no wrapper,
  * no focus ring); compact viewports disable splits entirely.
  */
-export function SplitThreadArea() {
+interface SplitThreadAreaProps {
+  routeContent?: PaneContent;
+}
+
+export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
+  return (
+    <ThreadDetailWorkerPoolProvider>
+      <SplitThreadAreaContent {...props} />
+    </ThreadDetailWorkerPoolProvider>
+  );
+}
+
+function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const { projectId, threadId } = useRouteState();
   const isCompact = useIsCompactViewport();
   const threadSplitsEnabled = useThreadSplitsEnabled();
@@ -94,20 +121,31 @@ export function SplitThreadArea() {
     () => (projectId && threadId ? { projectId, threadId } : null),
     [projectId, threadId],
   );
+  const currentContent = useMemo<PaneContent | null>(
+    () => routeContent ?? (routeThread ? threadPaneContent(routeThread) : null),
+    [routeContent, routeThread],
+  );
 
   // Fold external navigation (initial load, sidebar click, deep link) into the
   // layout. The reconcile is idempotent, so a URL that already matches the
   // focused pane is a no-op — no history spam, no render loop.
   useEffect(() => {
-    if (!threadSplitsEnabled || routeThread === null) {
+    if (!threadSplitsEnabled || currentContent === null) {
       return;
     }
-    setLayout((previous) => reconcileLayoutForRoute(previous, routeThread));
-  }, [routeThread, setLayout, threadSplitsEnabled]);
+    setLayout((previous) =>
+      reconcileLayoutForContent(previous, currentContent),
+    );
+  }, [currentContent, setLayout, threadSplitsEnabled]);
 
   // Effective layout for render/handlers before the effect seeds the atom.
   const layout: SplitLayout | null =
-    storedLayout ?? (routeThread ? createSinglePaneLayout(routeThread) : null);
+    storedLayout ??
+    (currentContent?.kind === "thread" && routeThread
+      ? createSinglePaneLayout(routeThread)
+      : currentContent
+        ? reconcileLayoutForContent(null, currentContent)
+        : null);
   const panes = layout === null ? [] : listPanes(layout.root);
   const isSplitActive = threadSplitsEnabled && !isCompact && panes.length > 1;
 
@@ -134,14 +172,8 @@ export function SplitThreadArea() {
       }
       const pane = findPane(layout.root, paneId);
       setLayout(setFocus(layout, paneId));
-      if (pane !== null && pane.content.kind === "thread") {
-        navigate(
-          getThreadRoutePath({
-            projectId: pane.content.projectId,
-            threadId: pane.content.threadId,
-          }),
-          { replace: true },
-        );
+      if (pane !== null) {
+        navigate(paneContentRoute(pane.content), { replace: true });
       }
     },
     [layout, navigate, setLayout],
@@ -158,9 +190,9 @@ export function SplitThreadArea() {
       }
       setLayout(next);
       if (next.focusedPaneId !== layout.focusedPaneId) {
-        const route = focusedThreadRoute(next);
+        const route = focusedPaneRoute(next);
         if (route !== null) {
-          navigate(getThreadRoutePath(route), { replace: true });
+          navigate(route, { replace: true });
         }
       }
     },
@@ -196,9 +228,9 @@ export function SplitThreadArea() {
       }
       store.set(splitLayoutAtom, next);
       if (next.focusedPaneId !== current.focusedPaneId) {
-        const route = focusedThreadRoute(next);
+        const route = focusedPaneRoute(next);
         if (route !== null) {
-          navigate(getThreadRoutePath(route), { replace: true });
+          navigate(route, { replace: true });
         }
       }
     },
@@ -244,9 +276,9 @@ export function SplitThreadArea() {
             return;
           }
           store.set(splitLayoutAtom, next);
-          const route = focusedThreadRoute(next);
+          const route = focusedPaneRoute(next);
           if (route !== null) {
-            navigate(getThreadRoutePath(route), { replace: true });
+            navigate(route, { replace: true });
           }
         },
       });
@@ -257,8 +289,15 @@ export function SplitThreadArea() {
   // A disabled experiment and compact viewports both render the route thread as
   // single page surface (byte-identical to the pre-split page). The layout atom
   // is preserved so the arrangement returns when the gate opens again.
-  if (!threadSplitsEnabled || isCompact || layout === null) {
-    return <ThreadDetailView surface="page" />;
+  if (
+    !threadSplitsEnabled ||
+    isCompact ||
+    layout === null ||
+    currentContent === null
+  ) {
+    return currentContent ? (
+      <StandalonePaneContent content={currentContent} />
+    ) : null;
   }
 
   const commandHandlers = (
@@ -280,7 +319,7 @@ export function SplitThreadArea() {
     return (
       <>
         {commandHandlers}
-        <ThreadPaneContent
+        <WorkspacePaneContent
           content={firstPane.content}
           paneId={firstPane.paneId}
           isFocused
@@ -384,7 +423,6 @@ function SplitTree(props: SplitTreeProps) {
 
   if (node.type === "pane") {
     const isFocused = node.paneId === focusedPaneId;
-    const threadId = node.content.threadId;
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
@@ -397,11 +435,13 @@ function SplitTree(props: SplitTreeProps) {
       >
         {/* Only mounted in split mode, so single panes never pay for the extra
             thread subscription (and never prune the last pane). */}
-        <PaneStaleWatcher
-          threadId={threadId}
-          onStale={() => props.onPruneStalePane(node.paneId)}
-        />
-        <ThreadPaneContent
+        {node.content.kind === "thread" ? (
+          <PaneStaleWatcher
+            threadId={node.content.threadId}
+            onStale={() => props.onPruneStalePane(node.paneId)}
+          />
+        ) : null}
+        <WorkspacePaneContent
           content={node.content}
           paneId={node.paneId}
           isFocused={isFocused}
@@ -457,7 +497,7 @@ function SplitTree(props: SplitTreeProps) {
   );
 }
 
-interface ThreadPaneContentProps {
+interface WorkspacePaneContentProps {
   content: PaneContent;
   paneId: string;
   isFocused: boolean;
@@ -471,7 +511,7 @@ interface ThreadPaneContentProps {
   onBeginPaneDrag?: BeginPaneDrag;
 }
 
-function ThreadPaneContent({
+function WorkspacePaneContent({
   content,
   paneId,
   isFocused,
@@ -480,7 +520,7 @@ function ThreadPaneContent({
   isBoundedPane,
   onNavigateInPane,
   onBeginPaneDrag,
-}: ThreadPaneContentProps) {
+}: WorkspacePaneContentProps) {
   const navigateInPane = useCallback(
     (thread: ThreadRoutePathArgs) => onNavigateInPane(paneId, thread),
     [onNavigateInPane, paneId],
@@ -514,6 +554,17 @@ function ThreadPaneContent({
     ],
   );
 
+  if (content.kind !== "thread") {
+    return (
+      <NonThreadPaneContent
+        content={content}
+        onRequestClose={onRequestClose}
+        beginPaneDrag={beginPaneDrag}
+        isBoundedPane={isBoundedPane}
+      />
+    );
+  }
+
   return (
     <PaneContext.Provider value={value}>
       <ThreadDetailView
@@ -522,6 +573,113 @@ function ThreadPaneContent({
         threadId={content.threadId}
       />
     </PaneContext.Provider>
+  );
+}
+
+function StandalonePaneContent({ content }: { content: PaneContent }) {
+  if (content.kind === "thread") {
+    return <ThreadDetailView surface="page" />;
+  }
+  if (content.kind === "new-thread") {
+    return <RootComposeView isBoundedPane={false} surface="page" />;
+  }
+  return (
+    <PluginPanelView
+      pluginId={content.pluginId}
+      panelPath={content.panelPath}
+      subPath={content.subPath}
+    />
+  );
+}
+
+function NonThreadPaneContent({
+  content,
+  onRequestClose,
+  beginPaneDrag,
+  isBoundedPane,
+}: {
+  content: Exclude<PaneContent, { kind: "thread" }>;
+  onRequestClose: (() => void) | null;
+  beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
+  isBoundedPane: boolean;
+}) {
+  const { navPanels } = usePluginSlots();
+  const panel =
+    content.kind === "plugin-panel"
+      ? navPanels.find(
+          (candidate) =>
+            candidate.pluginId === content.pluginId &&
+            candidate.path === content.panelPath,
+        )
+      : undefined;
+  const label = panel?.title ?? "New thread";
+  const handlePointerDown = (event: ReactPointerEvent) => {
+    if (event.button === 0) beginPaneDrag?.(event, label);
+  };
+  const actions = (
+    <>
+      {panel ? (
+        <PluginPanelHeaderActions
+          panel={panel}
+          subPath={content.kind === "plugin-panel" ? content.subPath : ""}
+        />
+      ) : null}
+      {onRequestClose ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={HEADER_ICON_BUTTON_CLASS}
+          aria-label="Close pane"
+          onClick={onRequestClose}
+        >
+          <Icon name="X" />
+        </Button>
+      ) : null}
+    </>
+  );
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+        content.kind === "plugin-panel" && !isBoundedPane && "-m-4 md:-m-5",
+      )}
+    >
+      {isBoundedPane || panel ? (
+        <AppPageHeader
+          bordered={false}
+          className="border-b border-border-seam-vertical/60"
+          center={
+            <div
+              className={cn(
+                "flex min-w-0 flex-1 items-center",
+                beginPaneDrag && "cursor-grab touch-none select-none",
+              )}
+              onPointerDown={beginPaneDrag ? handlePointerDown : undefined}
+            >
+              {panel ? (
+                <PluginPanelHeaderCenter panel={panel} />
+              ) : (
+                <p className="truncate text-sm font-medium">New thread</p>
+              )}
+            </div>
+          }
+          actions={actions}
+        />
+      ) : null}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 md:p-5">
+        {content.kind === "new-thread" ? (
+          <RootComposeView isBoundedPane={isBoundedPane} surface="page" />
+        ) : (
+          <PluginPanelView
+            pluginId={content.pluginId}
+            panelPath={content.panelPath}
+            subPath={content.subPath}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
