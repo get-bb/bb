@@ -116,6 +116,11 @@ before bb receives them.
 
 `Mod` means Command on macOS and Control on Windows/Linux.
 
+The "Show keyboard hints when holding CMD / Control" preference defaults
+to on. Set it with
+`bb settings keyboard hints <true|false>`. Turning it off hides the
+delayed shortcut badges without disabling any shortcuts.
+
 | Area      | Command                       | Default                           | Availability             |
 | --------- | ----------------------------- | --------------------------------- | ------------------------ |
 | Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |

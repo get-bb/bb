@@ -167,6 +167,9 @@ export const appSettings = sqliteTable("app_settings", {
   caffeinate: integer("caffeinate", { mode: "boolean" })
     .notNull()
     .default(false),
+  showKeyboardHints: integer("show_keyboard_hints", { mode: "boolean" })
+    .notNull()
+    .default(true),
   codexMemoryEnabled: integer("codex_memory_enabled", { mode: "boolean" })
     .notNull()
     .default(true),

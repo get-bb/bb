@@ -10,7 +10,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppCommandId } from "@bb/domain";
+import { defaultAppSettings, type AppCommandId } from "@bb/domain";
 import {
   AppCommandProvider,
   useAppCommandContext,
@@ -21,6 +21,7 @@ import {
 
 const testState = vi.hoisted(() => ({
   calls: [] as string[],
+  showKeyboardHints: true,
   keybindings: [
     {
       command: "thread.new" as const,
@@ -123,7 +124,15 @@ const testState = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({ data: { keybindings: testState.keybindings } }),
+  useSystemConfig: () => ({
+    data: {
+      generalSettings: {
+        ...defaultAppSettings,
+        showKeyboardHints: testState.showKeyboardHints,
+      },
+      keybindings: testState.keybindings,
+    },
+  }),
 }));
 
 vi.mock("@/lib/bb-desktop", () => ({
@@ -209,6 +218,7 @@ function dispatchShortcut(): KeyboardEvent {
 afterEach(() => {
   cleanup();
   testState.calls.length = 0;
+  testState.showKeyboardHints = true;
 });
 
 describe("AppCommandProvider", () => {
@@ -228,6 +238,17 @@ describe("AppCommandProvider", () => {
     act(() => vi.advanceTimersByTime(700));
     expect(screen.getByText("held")).toBeDefined();
     fireEvent.blur(window);
+    expect(screen.getByText("released")).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it("does not share primary-modifier hold state when keyboard hints are disabled", () => {
+    vi.useFakeTimers();
+    testState.showKeyboardHints = false;
+    renderProvider(<ModifierState />);
+
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    act(() => vi.advanceTimersByTime(700));
     expect(screen.getByText("released")).toBeDefined();
     vi.useRealTimers();
   });

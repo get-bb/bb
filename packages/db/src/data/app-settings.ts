@@ -14,6 +14,7 @@ export function getAppSettings(db: DbConnection): AppSettings {
   const row = db
     .select({
       caffeinate: appSettings.caffeinate,
+      showKeyboardHints: appSettings.showKeyboardHints,
       codexMemoryEnabled: appSettings.codexMemoryEnabled,
       claudeCodeMemoryEnabled: appSettings.claudeCodeMemoryEnabled,
       codexSubagentsDisabled: appSettings.codexSubagentsDisabled,
@@ -36,6 +37,7 @@ export function setAppSettings(
     .values({
       id: APP_SETTINGS_ROW_ID,
       caffeinate: settings.caffeinate,
+      showKeyboardHints: settings.showKeyboardHints,
       codexMemoryEnabled: settings.codexMemoryEnabled,
       claudeCodeMemoryEnabled: settings.claudeCodeMemoryEnabled,
       codexSubagentsDisabled: settings.codexSubagentsDisabled,
@@ -47,6 +49,7 @@ export function setAppSettings(
       target: appSettings.id,
       set: {
         caffeinate: settings.caffeinate,
+        showKeyboardHints: settings.showKeyboardHints,
         codexMemoryEnabled: settings.codexMemoryEnabled,
         claudeCodeMemoryEnabled: settings.claudeCodeMemoryEnabled,
         codexSubagentsDisabled: settings.codexSubagentsDisabled,

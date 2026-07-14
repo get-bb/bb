@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `show_keyboard_hints` integer DEFAULT true NOT NULL;

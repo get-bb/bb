@@ -60,6 +60,7 @@ function updateGeneralSetting(
 ): AppSettings {
   switch (key) {
     case "caffeinate":
+    case "showKeyboardHints":
     case "codexMemoryEnabled":
     case "claudeCodeMemoryEnabled":
     case "codexSubagentsDisabled":
@@ -151,7 +152,26 @@ export function registerSettingsCommands(
 
   const keyboard = settings
     .command("keyboard")
-    .description("Manage keyboard shortcut overrides");
+    .description("Manage keyboard settings and shortcut overrides");
+  keyboard
+    .command("hints <value>")
+    .description("Show or hide held-modifier shortcut hints")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (value: string, opts: JsonOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const config = await sdk.system.config();
+        const result = await sdk.system.updateGeneralSettings(
+          updateGeneralSetting(
+            config.generalSettings,
+            "showKeyboardHints",
+            parseBoolean(value),
+          ),
+        );
+        if (outputJson(opts, result)) return;
+        console.log("Keyboard hint visibility updated");
+      }),
+    );
   keyboard
     .command("list")
     .description("List effective keybindings and overrides")

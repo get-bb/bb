@@ -11,11 +11,12 @@ import * as z from 'zod';
 import { z as z$1 } from 'zod';
 
 /**
- * App-wide Settings → General preferences that affect server/daemon behavior.
+ * App-wide server-backed preferences.
  * Client-local settings stay in the frontend localStorage helpers instead.
  */
 declare const appSettingsSchema: z$1.ZodObject<{
     caffeinate: z$1.ZodBoolean;
+    showKeyboardHints: z$1.ZodBoolean;
     codexMemoryEnabled: z$1.ZodBoolean;
     claudeCodeMemoryEnabled: z$1.ZodBoolean;
     codexSubagentsDisabled: z$1.ZodBoolean;
@@ -244,8 +245,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
+            pending: "pending";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -834,39 +835,39 @@ declare const environmentDiffFileQuerySchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
     target: z$1.ZodLiteral<"uncommitted">;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        new: "new";
         old: "old";
+        new: "new";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"branch_committed">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        new: "new";
         old: "old";
+        new: "new";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"all">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        new: "new";
         old: "old";
+        new: "new";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"commit">;
     sha: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        new: "new";
         old: "old";
+        new: "new";
     }>;
 }, z$1.core.$strip>], "target">;
 type EnvironmentDiffFileQuery = z$1.infer<typeof environmentDiffFileQuerySchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 /**

@@ -484,6 +484,13 @@
       "when": 1783990869150,
       "tag": "0068_productive_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "6",
+      "when": 1783996567564,
+      "tag": "0069_flashy_zaran",
+      "breakpoints": true
     }
   ]
 }

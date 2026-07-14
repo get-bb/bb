@@ -37,6 +37,10 @@ only blocks idle sleep: closing a laptop lid or choosing Sleep manually still
 sleeps the Mac. This setting is only shown when the connected primary host
 daemon reports macOS.
 
+Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
+Turn it off to hide the delayed shortcut badges shown while holding Command on
+macOS or Control on Windows/Linux. Shortcut commands continue to work.
+
   bb settings show
   bb settings general <key> <true|false>
   bb settings experiment <key> <value>
@@ -56,6 +60,7 @@ accelerators for New Thread, New Window, New Tab, Close, and Settings use the
 same resolved bindings. The complete default table is in docs/configuration.md.
 
   bb settings keyboard list
+  bb settings keyboard hints <true|false>
   bb settings keyboard set <command> <shortcut|disabled>
   bb settings keyboard reset [command]
 

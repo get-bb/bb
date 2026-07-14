@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * App-wide Settings → General preferences that affect server/daemon behavior.
+ * App-wide server-backed preferences.
  * Client-local settings stay in the frontend localStorage helpers instead.
  */
 export const appSettingsSchema = z
@@ -11,6 +11,8 @@ export const appSettingsSchema = z
      * asking the local host daemon to hold a caffeinate assertion.
      */
     caffeinate: z.boolean(),
+    /** Show shortcut hints after holding Command or Control. */
+    showKeyboardHints: z.boolean(),
     /** Enable Codex's native memory recall and generation for bb threads. */
     codexMemoryEnabled: z.boolean(),
     /** Enable Claude Code's native auto-memory reads and writes for bb threads. */
@@ -27,6 +29,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export const defaultAppSettings: AppSettings = {
   caffeinate: false,
+  showKeyboardHints: true,
   codexMemoryEnabled: true,
   claudeCodeMemoryEnabled: true,
   codexSubagentsDisabled: false,
