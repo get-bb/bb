@@ -463,7 +463,7 @@ function SplitTree(props: SplitTreeProps) {
           aria-hidden
           className={cn(
             "pointer-events-none absolute inset-0 z-20 transition-colors",
-            isFocused ? "ring-1 ring-inset ring-ring" : "bg-background/40",
+            isFocused ? "ring-1 ring-inset ring-ring" : "bg-background/30",
           )}
         />
       </div>
