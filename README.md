@@ -127,15 +127,16 @@ pnpm dev:restart-host-daemon
 
 These rebuild first, then restart only the targeted stateful services.
 
-To test the release-style package launcher from a source checkout:
+To run a production-mode build from a source checkout:
 
 ```bash
 pnpm start
 ```
 
-That builds the local `bb-app` package artifacts and runs
-`packages/bb-app/dist/bb-app.js`, matching the published `npx bb-app@latest` path
-without downloading from npm.
+That builds only the app, server, and host-daemon runtime artifacts, then runs
+the launcher directly against those workspace outputs. Use the `bb-app`
+tarball smoke task when validating the published `npx bb-app@latest` package
+layout.
 
 ```bash
 pnpm bb --help            # built CLI, targets the default/prod instance

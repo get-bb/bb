@@ -1135,6 +1135,8 @@ export function resolveBbAppStartContext(
 ): BbAppStartContext {
   const entrypointDir = dirname(fileURLToPath(args.entrypointUrl));
   const packageRoot = resolve(entrypointDir, "..");
+  const workspaceRoot = resolve(packageRoot, "..", "..");
+  const runsFromSourceCheckout = entrypointDir === resolve(packageRoot, "src");
   const dataDir = resolveDataDir({ env: args.env, homeDir: args.homeDir });
   const serverPort = resolvePort({
     defaultPort: BB_PROD_SERVER_PORT,
@@ -1146,10 +1148,18 @@ export function resolveBbAppStartContext(
     env: args.env,
     name: "BB_HOST_DAEMON_PORT",
   });
-  const daemonBundleDir = resolve(packageRoot, "host-daemon", "dist");
+  const appDistDir = runsFromSourceCheckout
+    ? resolve(workspaceRoot, "apps", "app", "dist")
+    : resolve(packageRoot, "app", "dist");
+  const daemonBundleDir = runsFromSourceCheckout
+    ? resolve(workspaceRoot, "apps", "host-daemon", "dist")
+    : resolve(packageRoot, "host-daemon", "dist");
+  const serverEntry = runsFromSourceCheckout
+    ? resolve(workspaceRoot, "apps", "server", "dist", "index.js")
+    : resolve(packageRoot, "server", "dist", "index.js");
 
   return {
-    appDistDir: resolve(packageRoot, "app", "dist"),
+    appDistDir,
     appVersion: readBbAppPackageVersion(packageRoot),
     configFile: formatBbAppConfigPath(dataDir),
     daemonBundleDir,
@@ -1162,7 +1172,7 @@ export function resolveBbAppStartContext(
     envFile: formatBbAppEnvPath(dataDir),
     logDir: join(dataDir, "logs"),
     packageRoot,
-    serverEntry: resolve(packageRoot, "server", "dist", "index.js"),
+    serverEntry,
     serverPort,
     serverUrl:
       trimToUndefined(args.env.BB_SERVER_URL) ??

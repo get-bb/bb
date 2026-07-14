@@ -525,10 +525,11 @@ database path is always derived from `BB_DATA_DIR`.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 
-Production startup from source goes through the packaged launcher path:
-`pnpm start` runs `packages/bb-app/dist/bb-app.js`, and
-`pnpm start:host-daemon` runs `packages/bb-app/dist/bb-app.js host-daemon`.
-Source-only scripts do not own production ports or data-dir defaults.
+Production startup from source uses the same launcher policy as the packaged
+app while reading build outputs directly from `apps/app`, `apps/server`, and
+`apps/host-daemon`. `pnpm start:host-daemon` continues to run the packaged
+`packages/bb-app/dist/bb-app.js host-daemon` entrypoint. Source-only scripts do
+not own production ports or data-dir defaults.
 
 Source checkout commands such as `pnpm bb`, `pnpm bb:dev`, and `pnpm reset`
 are thin wrappers around `@bb/scripts`. Those wrappers force `NODE_ENV` to the
