@@ -96,6 +96,7 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
@@ -357,7 +358,7 @@ function PopoutThreadHeader({
         <Icon name="X" />
       </button>
       <p className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">
-        {threadTitle}
+        <ThreadTitleMentions title={threadTitle} />
       </p>
       <button
         type="button"

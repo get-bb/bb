@@ -22,6 +22,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { usePaneContext } from "./PaneContext";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
@@ -99,7 +100,7 @@ export function ThreadDetailHeader({
         )}
         onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
       >
-        {threadTitle}
+        <ThreadTitleMentions title={threadTitle} />
       </p>
       {childPillLabel ? (
         <Pill variant="outline" size="sm">
