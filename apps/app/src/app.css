@@ -264,6 +264,19 @@
     container: promptbox-shell / inline-size;
   }
 
+  /*
+   * The thread pane (timeline + composer footer) is a size container so a
+   * short stacked split can compact the follow-up composer. Its dimensions
+   * are determined by the split track, making size containment safe here.
+   */
+  [data-thread-window] {
+    container: thread-pane / size;
+  }
+
+  [data-follow-up-composer] {
+    container-name: follow-up-composer;
+  }
+
   [data-scroll-overlay] {
     container: scroll-overlay / inline-size;
   }
@@ -333,14 +346,26 @@
 }
 
 /*
- * A split can make a thread narrow without making the browser viewport
- * compact. Reuse the follow-up composer's one-line presentation at the
- * prompt's existing compact-control breakpoint, then let focus expand it.
- * This is intentionally unlayered so it can override the prompt's utility
- * classes. The mobile path still owns its React state so software-keyboard
- * expansion remains synchronized with visualViewport changes.
+ * A narrow prompt shell or short thread pane sets the same custom-property
+ * flag on the follow-up composer. The style query below applies its one-line
+ * presentation once for either condition, then lets focus expand it. This is
+ * intentionally unlayered so it can override the prompt's utility classes.
+ * The mobile path still owns its React state so software-keyboard expansion
+ * remains synchronized with visualViewport changes.
  */
 @container promptbox-shell (max-width: 30rem) {
+  [data-follow-up-composer] {
+    --follow-up-composer-container-compact: true;
+  }
+}
+
+@container thread-pane ((min-height: 1px) and (max-height: 26rem)) {
+  [data-follow-up-composer] {
+    --follow-up-composer-container-compact: true;
+  }
+}
+
+@container follow-up-composer style(--follow-up-composer-container-compact: true) {
   [data-follow-up-composer] [data-promptbox-layout] {
     height: 100%;
   }
