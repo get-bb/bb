@@ -3,10 +3,8 @@ import {
   getHost,
   getSessionById,
   getThread,
-  setExperiments,
   updateHost,
 } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import {
   createHostJoinCodeResponseSchema,
   type CreateHostJoinCodeResponse,
@@ -25,10 +23,6 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1";
-
-function enableMultiMachine(db: Parameters<typeof setExperiments>[0]): void {
-  setExperiments(db, { ...defaultExperiments, multiMachine: true });
-}
 
 async function createJoinCode(
   app: Parameters<typeof requestJoinCode>[0],
@@ -53,7 +47,6 @@ function requestJoinCode(app: {
 describe("public host management", () => {
   it("mints a join code that enrolls through the existing internal route", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
 
       const issued = await createJoinCode(harness.app);
       expect(issued.joinCode).toMatch(/^bbde_/u);
@@ -119,44 +112,8 @@ describe("public host management", () => {
     });
   });
 
-  it("gates join-code minting when multi-machine is disabled", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await requestJoinCode(harness.app);
-
-      expect(response.status).toBe(400);
-      expect(await readJson(response)).toMatchObject({
-        code: "multi_machine_disabled",
-      });
-    });
-  });
-
-  it("rejects a public join code after multi-machine is disabled", async () => {
-    await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
-      const issued = await createJoinCode(harness.app);
-      setExperiments(harness.db, defaultExperiments);
-
-      const response = await harness.app.request("/internal/hosts/enroll", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${issued.joinCode}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          hostId: issued.hostId,
-          hostName: "Disabled Machine",
-          hostType: "persistent",
-        }),
-      });
-
-      expect(response.status).toBe(401);
-      expect(getHost(harness.db, issued.hostId)).toBeNull();
-    });
-  });
-
   it("rejects a forged connect machine id at enrollment", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
       const issued = await createJoinCode(harness.app);
       const response = await harness.app.request("/internal/hosts/enroll", {
         method: "POST",
@@ -183,7 +140,6 @@ describe("public host management", () => {
 
   it("rejects machine-gated host-management mutations", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
       const host = seedHost(harness.deps, { id: "host_machine_forbidden" });
       const requests = [
         harness.app.request(`${API}/hosts/join-codes`, {
@@ -222,7 +178,6 @@ describe("public host management", () => {
 
   it("allows session-gated join-code minting", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
       const response = await harness.app.request(`${API}/hosts/join-codes`, {
         method: "POST",
         headers: {
@@ -237,7 +192,6 @@ describe("public host management", () => {
 
   it("renames a host, broadcasts it, and rejects unknown or destroyed hosts", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
       const host = seedHost(harness.deps, { id: "host_rename" });
       const notifyHost = vi.spyOn(harness.hub, "notifyHost");
 
@@ -282,7 +236,6 @@ describe("public host management", () => {
 
   it("revokes host credentials, closes its live session, tombstones it, and preserves environments", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
       const primary = seedHost(harness.deps, { id: "host_primary" });
       seedPrimaryHost(harness.deps, primary.id);
       const host = seedHost(harness.deps, { id: "host_remove" });
@@ -368,7 +321,6 @@ describe("public host management", () => {
 
   it("refuses to remove the primary host", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
       const primary = seedHost(harness.deps, { id: "host_primary" });
       seedPrimaryHost(harness.deps, primary.id);
 
@@ -386,7 +338,6 @@ describe("public host management", () => {
 
   it("asks the connect plugin to revoke the removed host's cloud machine", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
       const primary = seedHost(harness.deps, { id: "host_primary" });
       seedPrimaryHost(harness.deps, primary.id);
       const host = seedHost(harness.deps, {

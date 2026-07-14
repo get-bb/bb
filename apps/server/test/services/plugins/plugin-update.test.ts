@@ -104,7 +104,6 @@ describe("plugin update service and routes", () => {
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       stabilizationWindowMs: 0,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
@@ -375,7 +374,6 @@ describe("plugin update service and routes", () => {
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       stabilizationWindowMs: 1,
       serviceRestartBaseMs: 1000,
@@ -477,7 +475,6 @@ describe("plugin update service and routes", () => {
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       stabilizationWindowMs: 0,
       afterPluginRollbackStateRestored: async () => {
         throw new Error("simulated process exit during rollback");
@@ -515,7 +512,6 @@ describe("plugin update service and routes", () => {
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       stabilizationWindowMs: 0,
     });
     await service.start();
@@ -564,7 +560,6 @@ describe("plugin update service and routes", () => {
         dataDir: join(workDir, "data"),
         appVersion: "1.0.0",
         isEnabled: () => true,
-        isConnectEnabled: () => false,
         stabilizationWindowMs: 0,
         artifactRetentionMs: 50,
         now: () => clock,

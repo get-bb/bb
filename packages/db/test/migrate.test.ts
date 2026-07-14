@@ -227,17 +227,29 @@ function dropRewindAddedTables(db: DbConnection): void {
     .run();
   dropThreadFolderSchema(db);
   // system_experiments predates thread search, so the table itself isn't
-  // rewound — but its plugins, bb_connect, multi_machine, and thread_splits
-  // columns are, so the forward re-migrate can re-add them.
+  // rewound. Later migrations add plugins, bb_connect, multi_machine, and
+  // thread_splits; the current schema has already removed bb_connect and
+  // multi_machine, so only drop those two when an older migration under test
+  // left them present.
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
     .run();
-  db.$client
-    .prepare("ALTER TABLE system_experiments DROP COLUMN bb_connect")
-    .run();
-  db.$client
-    .prepare("ALTER TABLE system_experiments DROP COLUMN multi_machine")
-    .run();
+  const experimentColumns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (experimentColumns.has("bb_connect")) {
+    db.$client
+      .prepare("ALTER TABLE system_experiments DROP COLUMN bb_connect")
+      .run();
+  }
+  if (experimentColumns.has("multi_machine")) {
+    db.$client
+      .prepare("ALTER TABLE system_experiments DROP COLUMN multi_machine")
+      .run();
+  }
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN thread_splits")
     .run();

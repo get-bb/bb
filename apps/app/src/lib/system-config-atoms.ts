@@ -14,9 +14,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   defaultKeybindings: [],
   keybindingOverrides: [],
   experiments: {
-    bbConnect: false,
     claudeCodeMockCliTraffic: false,
-    multiMachine: false,
     threadSplits: false,
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",

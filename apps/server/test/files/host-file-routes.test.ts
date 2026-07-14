@@ -1,7 +1,5 @@
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
@@ -282,7 +280,7 @@ describe("host file routes", () => {
     });
   });
 
-  it("gates a non-primary host target with the Multi-machine experiment", async () => {
+  it("allows a non-primary host target", async () => {
     await withTestHarness(async (harness) => {
       const { host: primary, session: primarySession } = seedHostSession(
         harness.deps,
@@ -293,19 +291,6 @@ describe("host file routes", () => {
         harness.deps,
         { id: "host-file-secondary" },
       );
-
-      const blocked = await harness.app.request(
-        ...postJson("/api/v1/files/write", {
-          hostId: secondary.id,
-          path: "/home/me/notes/note.md",
-          content: "hello",
-        }),
-      );
-      expect(blocked.status).toBe(400);
-      await expect(readJson(blocked)).resolves.toMatchObject({
-        code: "unsupported_host",
-        message: "Non-primary machines require the Multi-machine experiment",
-      });
 
       registerHostRpcResponder(harness, {
         hostId: primary.id,
@@ -321,10 +306,6 @@ describe("host file routes", () => {
       );
       expect(primaryOk.status).toBe(200);
 
-      setExperiments(harness.db, {
-        ...defaultExperiments,
-        multiMachine: true,
-      });
       registerHostRpcResponder(harness, {
         hostId: secondary.id,
         sessionId: secondarySession.id,

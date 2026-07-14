@@ -332,9 +332,7 @@ export function UsageLimitsSettingsSectionContent({
 
 export function UsageLimitsSettingsSection() {
   const systemConfigQuery = useSystemConfig();
-  const multiMachineEnabled =
-    systemConfigQuery.data?.experiments.multiMachine === true;
-  const hostsQuery = useHosts({ enabled: multiMachineEnabled });
+  const hostsQuery = useHosts();
   const hosts = hostsQuery.data ?? [];
   const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
   const primaryHost = selectPrimaryHost(
@@ -359,7 +357,7 @@ export function UsageLimitsSettingsSection() {
       onRefresh={() => {
         void usageQuery.refetch();
       }}
-      hosts={multiMachineEnabled ? hosts : []}
+      hosts={hosts}
       selectedHostId={selectedHost?.id ?? null}
       onSelectHost={setSelectedHostId}
     />

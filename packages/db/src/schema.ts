@@ -147,12 +147,6 @@ export const systemExperiments = sqliteTable("system_experiments", {
   claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {
     mode: "boolean",
   }).notNull(),
-  bbConnect: integer("bb_connect", { mode: "boolean" })
-    .notNull()
-    .default(false),
-  multiMachine: integer("multi_machine", { mode: "boolean" })
-    .notNull()
-    .default(false),
   threadSplits: integer("thread_splits", { mode: "boolean" })
     .notNull()
     .default(false),

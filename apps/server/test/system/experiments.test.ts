@@ -12,9 +12,7 @@ describe("experiments settings", () => {
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
-        bbConnect: false,
         claudeCodeMockCliTraffic: false,
-        multiMachine: false,
         threadSplits: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
@@ -29,9 +27,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          bbConnect: true,
           claudeCodeMockCliTraffic: true,
-          multiMachine: true,
           threadSplits: true,
           popoutChat: true,
           popoutChatHotkey: "CommandOrControl+Shift+P",
@@ -40,18 +36,14 @@ describe("experiments settings", () => {
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
-        bbConnect: true,
         claudeCodeMockCliTraffic: true,
-        multiMachine: true,
         threadSplits: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
       });
       expect(getExperiments(harness.db)).toEqual({
-        bbConnect: true,
         claudeCodeMockCliTraffic: true,
-        multiMachine: true,
         threadSplits: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
@@ -62,9 +54,7 @@ describe("experiments settings", () => {
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
-        bbConnect: true,
         claudeCodeMockCliTraffic: true,
-        multiMachine: true,
         threadSplits: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
@@ -82,9 +72,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          bbConnect: true,
           claudeCodeMockCliTraffic: false,
-          multiMachine: false,
           threadSplits: false,
           popoutChat: false,
           popoutChatHotkey: "Alt+Space",

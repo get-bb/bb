@@ -82,7 +82,6 @@ describe("plugin bb.sdk bind gate", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });

@@ -32,7 +32,6 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 
 function systemConfig(
   pluginsEnabled: boolean,
-  multiMachineEnabled = false,
 ): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
@@ -42,7 +41,6 @@ function systemConfig(
     experiments: {
       ...defaultExperiments,
       plugins: pluginsEnabled,
-      multiMachine: multiMachineEnabled,
     },
     appearance: defaultAppTheme,
     customThemes: [],
@@ -95,30 +93,17 @@ describe("useSettingsNavState", () => {
     ).toEqual(["codex", "claude-code"]);
   });
 
-  it("shows the Machines section only while the multiMachine experiment is on", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false, true));
+  it("shows the Machines section", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
 
-    const enabled = renderHook(() => useSettingsNavState(), {
+    const result = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/machines"),
     });
     await waitFor(() => {
       expect(
-        enabled.result.current.sections.map((section) => section.id),
+        result.result.current.sections.map((section) => section.id),
       ).toContain("machines");
     });
-
-    vi.mocked(api.getSystemConfig).mockResolvedValue(
-      systemConfig(false, false),
-    );
-    const disabled = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings/general"),
-    });
-    await waitFor(() => {
-      expect(disabled.result.current.activeSection).toBe("general");
-    });
-    expect(
-      disabled.result.current.sections.map((section) => section.id),
-    ).not.toContain("machines");
   });
 
   it("shows slot-backed plugin settings entries while the plugins experiment is off", async () => {

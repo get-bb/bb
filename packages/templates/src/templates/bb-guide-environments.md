@@ -73,8 +73,8 @@ Making your repo work with bb:
 Remote access (bb connect):
 
   Expose this bb server at <handle>.getbb.app so you can reach it from any
-  browser. Enable the "bb connect" experiment, claim a handle at
-  https://getbb.app, copy the connect command it generates, then run it here to
+  browser. Claim a handle at https://getbb.app, copy the connect command it
+  generates, then run it here to
   pair:
 
   bb connect --code <code> --server https://<handle>.getbb.app
@@ -109,6 +109,5 @@ Remote access (bb connect):
 
   Remote access is owned by the builtin "connect" plugin (Settings → Connect
   shows the URL, QR code, and shared ports). Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access; with the
-  bb connect experiment still enabled, re-enable with `bb plugin enable
-  connect`.
+  (`bb plugin disable connect`) cuts off all remote access; re-enable with
+  `bb plugin enable connect`.

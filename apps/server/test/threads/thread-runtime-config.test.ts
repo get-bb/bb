@@ -816,9 +816,7 @@ describe("thread runtime config", () => {
       });
 
       setExperiments(harness.db, {
-        bbConnect: false,
         claudeCodeMockCliTraffic: true,
-        multiMachine: false,
         threadSplits: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
@@ -1286,7 +1284,6 @@ describe("thread runtime config", () => {
       seedPrimaryHost(harness.deps, primary.id);
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const workspacePath = "/remote/runtime-agents-workspace";
       const agentInstructionsPath = path.join(
@@ -1354,7 +1351,6 @@ describe("thread runtime config", () => {
       seedPrimaryHost(harness.deps, primary.id);
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const workspacePath = "/remote/runtime-missing-agents-workspace";
       registerRemoteRuntimeFileResponder(harness, {
@@ -1398,7 +1394,6 @@ describe("thread runtime config", () => {
       seedPrimaryHost(harness.deps, primary.id);
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const workspacePath = "/remote/runtime-skills-workspace";
       const skillRootPath = path.join(

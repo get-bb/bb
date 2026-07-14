@@ -1882,7 +1882,7 @@ export async function listHosts(signal?: AbortSignal): Promise<Host[]> {
 
 /**
  * Mints a short-lived join code (and its pre-created host row) for pairing a
- * new machine to this server. Multi-machine experiment only.
+ * new machine to this server.
  */
 export async function createHostJoinCode(
   signal?: AbortSignal,

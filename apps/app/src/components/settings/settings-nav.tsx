@@ -121,10 +121,6 @@ export function useSettingsNavState(): SettingsNavState {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
     }
-    if (section.id === "machines") {
-      // Multi-machine experiment surface (Settings → Machines).
-      return systemConfig.data?.experiments.multiMachine === true;
-    }
     if (section.id === "plugins") {
       return pluginsEnabled;
     }

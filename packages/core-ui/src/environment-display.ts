@@ -13,7 +13,7 @@ export interface EnvironmentDisplayHostIdentity {
 export interface EnvironmentDisplayHostContext {
   locality: EnvironmentDisplayHostLocality;
   /** Null when the machine shouldn't be named — single-host setups or the
-   * multiMachine experiment being off. */
+   * only one machine being available. */
   identity: EnvironmentDisplayHostIdentity | null;
 }
 

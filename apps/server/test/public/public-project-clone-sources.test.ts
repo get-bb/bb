@@ -72,7 +72,6 @@ describe("project clone sources", () => {
       seedPrimaryHost(harness.deps, first.host.id);
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: first.host.id,
@@ -140,7 +139,6 @@ describe("project clone sources", () => {
       seedPrimaryHost(harness.deps, primary.host.id);
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: primary.host.id,

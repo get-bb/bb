@@ -75,17 +75,6 @@ export const experimentsSchema = z.object({
    */
   claudeCodeMockCliTraffic: z.boolean(),
   /**
-   * bb connect: enables the builtin connect plugin and its remote-access
-   * surfaces for reaching this bb server through getbb.app. Off by default.
-   */
-  bbConnect: z.boolean(),
-  /**
-   * Multi-machine: allows explicit execution targeting on public hosts other
-   * than the local primary. Off by default; default host resolution remains
-   * primary-first regardless of this setting.
-   */
-  multiMachine: z.boolean(),
-  /**
    * Thread splits: enables the multi-pane thread view and its split-opening
    * entry points in the app and public API.
    */
@@ -112,9 +101,7 @@ export const experimentsSchema = z.object({
 export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
-  bbConnect: false,
   claudeCodeMockCliTraffic: false,
-  multiMachine: false,
   threadSplits: false,
   popoutChat: false,
   popoutChatHotkey: "Alt+Space",

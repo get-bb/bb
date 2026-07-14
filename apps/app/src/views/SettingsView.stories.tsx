@@ -320,18 +320,6 @@ function ExperimentsStory({
           popoutChatHotkey,
         }))
       }
-      onBbConnectEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          bbConnect: enabled,
-        }))
-      }
-      onMultiMachineEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          multiMachine: enabled,
-        }))
-      }
       onThreadSplitsEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
@@ -344,8 +332,6 @@ function ExperimentsStory({
           plugins: enabled,
         }))
       }
-      bbConnectEnabled={state.experiments.bbConnect}
-      multiMachineEnabled={state.experiments.multiMachine}
       threadSplitsEnabled={state.experiments.threadSplits}
       pluginsEnabled={state.experiments.plugins}
       popoutChatEnabled={state.experiments.popoutChat}

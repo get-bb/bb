@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getExperiments, listPublicHosts, type DbConnection } from "@bb/db";
+import { listPublicHosts, type DbConnection } from "@bb/db";
 import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -27,7 +27,7 @@ function unsupportedHostError(): ApiError {
   return new ApiError(
     400,
     "unsupported_host",
-    "Non-primary machines require the Multi-machine experiment",
+    "This operation only supports the primary machine",
   );
 }
 
@@ -106,19 +106,13 @@ export function assertPrimaryHostId(
 }
 
 /**
- * Validates an explicit execution target. With Multi-machine disabled this is
- * exactly the primary-only assertion. With it enabled, any non-destroyed
- * public host is accepted; connectivity remains a dispatch-time concern.
+ * Validates an explicit execution target. Any non-destroyed persistent host is
+ * accepted; connectivity remains a dispatch-time concern.
  */
 export function assertUsableHostId(
   deps: PrimaryHostDeps,
   args: AssertUsableHostIdArgs,
 ): void {
-  if (!getExperiments(deps.db).multiMachine) {
-    assertPrimaryHostId(deps, args);
-    return;
-  }
-
   const host = requireNonDestroyedHostWithStatus(deps, args.hostId);
   if (host.type !== "persistent") {
     throw unusableHostError();

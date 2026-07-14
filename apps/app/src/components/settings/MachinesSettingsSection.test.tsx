@@ -57,13 +57,13 @@ const offlineHost = host({
   lastSeenAt: NOW - 2 * 60 * 60 * 1000,
 });
 
-function systemConfig(multiMachineEnabled: boolean): SystemConfigResponse {
+function systemConfig(): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
     defaultKeybindings: [],
     keybindingOverrides: [],
-    experiments: { ...defaultExperiments, multiMachine: multiMachineEnabled },
+    experiments: defaultExperiments,
     appearance: defaultAppTheme,
     customThemes: [],
     pluginThemes: [],
@@ -124,21 +124,8 @@ afterEach(() => {
 });
 
 describe("MachinesSettingsSection", () => {
-  it("renders nothing while the multiMachine experiment is off", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
-    stubSidebarBootstrapFetch();
-
-    renderSection();
-
-    await waitFor(() => {
-      expect(vi.mocked(api.getSystemConfig)).toHaveBeenCalled();
-    });
-    expect(screen.queryByText("Machines")).toBeNull();
-    expect(vi.mocked(api.listHosts)).not.toHaveBeenCalled();
-  });
-
   it("renders each machine with status, primary badge, and project counts", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
     vi.mocked(api.listHosts).mockResolvedValue([primaryHost, offlineHost]);
     stubSidebarBootstrapFetch();
 
@@ -156,7 +143,7 @@ describe("MachinesSettingsSection", () => {
   });
 
   it("shows protocol versions when a machine needs an update", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
     vi.mocked(api.listHosts).mockResolvedValue([
       primaryHost,
       {
@@ -176,7 +163,7 @@ describe("MachinesSettingsSection", () => {
   });
 
   it("renames a machine through the row menu", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
     vi.mocked(api.listHosts).mockResolvedValue([primaryHost, offlineHost]);
     vi.mocked(api.updateHost).mockResolvedValue({
       ...offlineHost,
@@ -203,7 +190,7 @@ describe("MachinesSettingsSection", () => {
   });
 
   it("removes a machine after confirmation", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
     vi.mocked(api.listHosts).mockResolvedValue([primaryHost, offlineHost]);
     vi.mocked(api.deleteHost).mockResolvedValue(undefined);
     stubSidebarBootstrapFetch();
@@ -226,7 +213,7 @@ describe("MachinesSettingsSection", () => {
   });
 
   it("disables removal of the primary machine", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
     vi.mocked(api.listHosts).mockResolvedValue([primaryHost, offlineHost]);
     stubSidebarBootstrapFetch();
 

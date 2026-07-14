@@ -410,10 +410,8 @@ interface BuildMobileRecentThreadsArgs {
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   environmentSelectionValue: string;
   isProjectless: boolean;
-  /** Ids of all hosts known to the server. A persisted selection may only
-   * keep a non-primary host (multiMachine experiment) when it's still here. */
+  /** Ids of all hosts known to the server. */
   knownHostIds: ReadonlySet<string>;
-  multiMachineEnabled: boolean;
   primaryHostId: string | null;
   projectSources: readonly ProjectSource[];
   reuseThreadOptions: readonly ReuseThreadOption[];
@@ -608,7 +606,7 @@ function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
 function buildReuseThreadOptions(
   threads: readonly ThreadListEntry[],
   /** Host id → machine name, provided only when worktree rows should carry a
-   * machine hint (multiMachine experiment with more than one host). */
+   * machine hint when more than one host exists. */
   hostNameById: ReadonlyMap<string, string> | null = null,
 ): ReuseThreadOption[] {
   // One option per worktree env. Threads within each env are sorted
@@ -677,7 +675,6 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   environmentSelectionValue,
   isProjectless,
   knownHostIds,
-  multiMachineEnabled,
   primaryHostId,
   projectSources,
   reuseThreadOptions,
@@ -689,11 +686,9 @@ export function resolveRootComposeEffectiveEnvironmentValue({
 
   const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
 
-  // With the multiMachine experiment on, a host selection survives as long as
-  // that machine still exists and has this project. Otherwise it falls through
-  // to the primary-host rewrite below, exactly as before the experiment.
+  // A host selection survives as long as that machine still exists and has
+  // this project. Otherwise it falls through to the primary-host rewrite.
   if (
-    multiMachineEnabled &&
     parsedSelection?.type === "host" &&
     knownHostIds.has(parsedSelection.hostId)
   ) {
@@ -993,19 +988,17 @@ export function RootComposeView(props: RootComposeViewProps) {
     [hostsQuery.data, serverPrimaryHostId],
   );
   const primaryHostId = primaryHost?.id ?? null;
-  const multiMachineEnabled =
-    systemConfigQuery.data?.experiments.multiMachine === true;
   const knownHostIds = useMemo(
     () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
     [hostsQuery.data],
   );
   // Worktree rows only carry a machine hint once there's more than one
-  // machine to tell apart (multiMachine experiment).
+  // machine to tell apart.
   const worktreeHostNameById = useMemo(() => {
     const hosts = hostsQuery.data ?? [];
-    if (!multiMachineEnabled || hosts.length <= 1) return null;
+    if (hosts.length <= 1) return null;
     return new Map(hosts.map((host) => [host.id, host.name]));
-  }, [hostsQuery.data, multiMachineEnabled]);
+  }, [hostsQuery.data]);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   // Plugin useComposer() writes (from nav panels / homepage sections) target
@@ -1329,7 +1322,6 @@ export function RootComposeView(props: RootComposeViewProps) {
         environmentSelectionValue,
         isProjectless,
         knownHostIds,
-        multiMachineEnabled,
         primaryHostId,
         projectSources,
         reuseThreadOptions,
@@ -1339,7 +1331,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       environmentSelectionValue,
       isProjectless,
       knownHostIds,
-      multiMachineEnabled,
       primaryHostId,
       projectSources,
       reuseThreadOptions,
@@ -1351,8 +1342,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     [effectiveEnvironmentValue],
   );
   // Provider-CLI eligibility follows the machine the thread will actually run
-  // on — the selected host when the (already primary-collapsed, multiMachine
-  // aware) effective selection names one, otherwise the primary. An outdated
+  // on — the selected host when the effective selection names one, otherwise
+  // the primary. An outdated
   // CLI on the primary must not block submission to a healthy remote machine,
   // nor the other way around.
   const composeHostId = resolveComposeHostId(parsedEnvironment, primaryHostId);

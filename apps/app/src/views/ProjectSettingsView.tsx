@@ -39,7 +39,6 @@ import {
   useHostPathExistence,
 } from "@/hooks/queries/host-path-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
@@ -61,14 +60,8 @@ export function ProjectSettingsView() {
   const [machineSetupTarget, setMachineSetupTarget] =
     useState<ProjectMachineSetupDialogTarget | null>(null);
 
-  const systemConfig = useSystemConfig();
-  const multiMachineEnabled =
-    systemConfig.data?.experiments.multiMachine === true;
-  const hostsQuery = useHosts({ enabled: multiMachineEnabled });
-  const hosts = useMemo(
-    () => (multiMachineEnabled ? (hostsQuery.data ?? []) : []),
-    [hostsQuery.data, multiMachineEnabled],
-  );
+  const hostsQuery = useHosts();
+  const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
 
   const deleteSource = useDeleteLocalProjectSource();
   const addLocalSource = useAddLocalProjectSource();
@@ -165,7 +158,7 @@ export function ProjectSettingsView() {
   // Machine surfaces (source-row chrome, the machine-aware add menu from
   // Mockup E) only appear once there's more than one machine to tell apart —
   // a single-host setup keeps the pre-experiment UI unchanged.
-  const multipleMachines = multiMachineEnabled && hosts.length > 1;
+  const multipleMachines = hosts.length > 1;
   const showAddLocalSourceButton =
     !multipleMachines &&
     pickerHostId != null &&

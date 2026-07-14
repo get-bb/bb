@@ -600,7 +600,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:worktree",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -615,7 +614,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:local",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -630,7 +628,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_current",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -643,7 +640,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_stale",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -658,7 +654,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_pending",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -673,7 +668,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:worktree",
         isProjectless: true,
         primaryHostId: "host_1",
@@ -684,11 +678,10 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_1:local");
   });
 
-  it("keeps a non-primary host selection with multiMachine on when that host has a source", () => {
+  it("keeps a non-primary host selection when that host has a source", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1", "host_2"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_2:worktree",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -702,29 +695,10 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_2:worktree");
   });
 
-  it("rewrites a non-primary host selection to the primary host with multiMachine off", () => {
-    expect(
-      resolveRootComposeEffectiveEnvironmentValue({
-        knownHostIds: new Set(["host_1", "host_2"]),
-        multiMachineEnabled: false,
-        environmentSelectionValue: "host:host_2:worktree",
-        isProjectless: false,
-        primaryHostId: "host_1",
-        projectSources: [
-          makeProjectSource("host_1"),
-          makeProjectSource("host_2"),
-        ],
-        reuseThreadOptions: [],
-        reuseThreadOptionsLoading: false,
-      }),
-    ).toBe("host:host_1:worktree");
-  });
-
-  it("falls back to the primary host with multiMachine on when the selected host is gone", () => {
+  it("falls back to the primary host when the selected host is gone", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_gone:worktree",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -735,11 +709,10 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_1:worktree");
   });
 
-  it("keeps a projectless machine selection with multiMachine on, normalized to local mode", () => {
+  it("keeps a projectless machine selection normalized to local mode", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1", "host_2"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_2:worktree",
         isProjectless: true,
         primaryHostId: "host_1",
@@ -754,7 +727,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_gone:local",
         isProjectless: true,
         primaryHostId: "host_1",
@@ -765,11 +737,10 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_1:local");
   });
 
-  it("falls back to the primary host with multiMachine on when the selected host lacks a source", () => {
+  it("falls back to the primary host when the selected host lacks a source", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1", "host_2"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_2:local",
         isProjectless: false,
         primaryHostId: "host_1",

@@ -332,7 +332,6 @@ export function createApp(
   app.onError((error) => errorToResponse(error, deps.logger));
   app.get("/health", (context) => context.json({ ok: true }));
   app.get("/install.sh", async (context) => {
-    if (!getExperiments(deps.db).multiMachine) return context.notFound();
     const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH);
     return new Response(script, {
       headers: {
@@ -342,7 +341,6 @@ export function createApp(
     });
   });
   app.get("/install/version", async (context) => {
-    if (!getExperiments(deps.db).multiMachine) return context.notFound();
     return context.json({
       version: await bbAppArtifactService.getVersion(),
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -352,7 +350,6 @@ export function createApp(
   // slightly before release; serving the exact server build is an accepted
   // tradeoff so remote daemons cannot be stranded by protocol skew.
   app.get("/install/bb-app.tgz", async (context) => {
-    if (!getExperiments(deps.db).multiMachine) return context.notFound();
     const tarball = await readFile(await bbAppArtifactService.getTarballPath());
     return new Response(tarball, {
       headers: {
@@ -420,7 +417,6 @@ export function createApp(
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     isEnabled: () => getExperiments(deps.db).plugins,
-    isConnectEnabled: () => getExperiments(deps.db).bbConnect,
     sharedPorts: deps.sharedPorts,
     ensureSharedPortTunnel: (hostId) =>
       deps.sharedPorts.ensureTunnelIdentity(hostId, () =>

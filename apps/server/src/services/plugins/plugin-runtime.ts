@@ -48,7 +48,6 @@ const DEFAULT_SERVICE_RESTART_BASE_MS = 1_000;
 const SERVICE_RESTART_MAX_MS = 60_000;
 /** A crash after this much healthy runtime resets the backoff sequence. */
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
-const CONNECT_BUILTIN_PLUGIN_NAME = "connect";
 
 export interface PluginRuntimeContext {
   deps: PluginServiceDeps;
@@ -609,21 +608,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return row?.sourceKind === "builtin";
   }
 
-  function isBuiltinPluginLoadEnabled(name: string): boolean {
-    if (name === CONNECT_BUILTIN_PLUGIN_NAME) {
-      return deps.isConnectEnabled();
-    }
-    return true;
-  }
-
   function experimentGateDisabledDetail(
     row: InstalledPluginRow,
   ): string | null {
-    const name = builtinName(row);
-    if (name === CONNECT_BUILTIN_PLUGIN_NAME) {
-      return 'disabled by the "bb connect" experiment';
-    }
-    if (name === null) {
+    if (builtinName(row) === null) {
       return 'disabled by the "Plugins" experiment';
     }
     return null;
@@ -631,15 +619,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   function shouldLoadRow(row: InstalledPluginRow): boolean {
     const name = builtinName(row);
-    if (name !== null) return isBuiltinPluginLoadEnabled(name);
+    if (name !== null) return true;
     return deps.isEnabled();
   }
 
   function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
-    if (plugin.builtinName !== null) {
-      return isBuiltinPluginLoadEnabled(plugin.builtinName);
-    }
-    return deps.isEnabled();
+    return plugin.builtinName !== null || deps.isEnabled();
   }
 
   function shouldExposePluginId(id: string): boolean {

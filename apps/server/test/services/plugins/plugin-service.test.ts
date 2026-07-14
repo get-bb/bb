@@ -59,7 +59,6 @@ describe("plugin service", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => experimentOn,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });
@@ -185,7 +184,6 @@ describe("plugin service", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
     const gated = await writePlugin(workDir, {
@@ -280,7 +278,6 @@ describe("plugins-changed broadcast", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });

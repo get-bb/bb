@@ -59,7 +59,6 @@ describe("plugin settings + storage", () => {
       dataDir,
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });

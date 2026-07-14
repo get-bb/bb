@@ -161,7 +161,7 @@ const machineHosts = [
   makeHost({ id: HOST_IDS.remote, name: HOST_NAMES.remote }),
 ];
 
-const multiMachineSources: readonly ProjectSource[] = [
+const machineSources: readonly ProjectSource[] = [
   makeSource("src_local", HOST_IDS.local, "/Users/michael/Projects/bb"),
   makeSource("src_remote", HOST_IDS.remote, "/home/michael/bb"),
 ];
@@ -176,7 +176,7 @@ export function MachineMenu() {
         <EnvironmentPickerUI
           value="reuse"
           onChange={noop}
-          sources={multiMachineSources}
+          sources={machineSources}
           host={machineHosts[0] ?? null}
           isLocal={false}
           machines={{

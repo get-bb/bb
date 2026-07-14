@@ -82,9 +82,7 @@ function updateExperiment(
   }
   const enabled = parseBoolean(value);
   switch (key) {
-    case "bbConnect":
     case "claudeCodeMockCliTraffic":
-    case "multiMachine":
     case "threadSplits":
     case "plugins":
     case "popoutChat":

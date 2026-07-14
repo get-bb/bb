@@ -252,16 +252,11 @@ function MachineRenameDialogContent({
 /**
  * Settings → Machines (multi-machine plan §4.3, Mockup C): the live host
  * list with rename/remove management and the add-a-machine pairing flow.
- * Renders nothing while the multiMachine experiment is off.
  */
 export function MachinesSettingsSection() {
   const systemConfig = useSystemConfig();
-  const multiMachineEnabled =
-    systemConfig.data?.experiments.multiMachine === true;
-  const hostsQuery = useHosts({ enabled: multiMachineEnabled });
-  const sidebarNavigationQuery = useSidebarNavigation({
-    enabled: multiMachineEnabled,
-  });
+  const hostsQuery = useHosts();
+  const sidebarNavigationQuery = useSidebarNavigation();
   const renameHost = useRenameHost();
   const removeHost = useRemoveHost();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -285,10 +280,6 @@ export function MachinesSettingsSection() {
     }
     return counts;
   }, [projects]);
-
-  if (!multiMachineEnabled) {
-    return null;
-  }
 
   const now = Date.now();
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;

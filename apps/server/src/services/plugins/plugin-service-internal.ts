@@ -180,8 +180,6 @@ export interface PluginServiceDeps {
   appVersion: string;
   /** The `plugins` experiment gate for user-installed plugins, read live. */
   isEnabled: () => boolean;
-  /** The `bbConnect` experiment gate for the builtin connect plugin, read live. */
-  isConnectEnabled: () => boolean;
   /** Declared first-party plugins installed by default; test-only override. */
   builtinPlugins?: readonly BuiltinPluginRegistration[];
   /** Managed source-development only: rebuild and reload builtin frontends. */

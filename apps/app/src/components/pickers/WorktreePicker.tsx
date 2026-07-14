@@ -34,7 +34,7 @@ export interface ReuseThreadOption {
   branchName: string | null;
   name: string | null;
   /** Name of the machine this worktree lives on. Only set when more than one
-   * machine exists (multiMachine experiment) — omitted, no hint renders. */
+   * machine exists — omitted, no hint renders. */
   hostName?: string | null;
   /** Threads in this worktree, ordered most-recently-active first. */
   threads: ReadonlyArray<{ id: string; title: string }>;

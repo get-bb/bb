@@ -1,6 +1,4 @@
-import { defaultExperiments } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
-import { setExperiments } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
@@ -43,10 +41,6 @@ describe("GET /api/v1/system/usage-limits", () => {
         id: "host-remote",
         name: "builder",
       });
-      setExperiments(harness.db, {
-        ...defaultExperiments,
-        multiMachine: true,
-      });
       const responder = registerHostRpcResponder(harness, {
         hostId: remote.host.id,
         sessionId: remote.session.id,
@@ -70,20 +64,4 @@ describe("GET /api/v1/system/usage-limits", () => {
     });
   });
 
-  it("keeps non-primary selection behind the multi-machine policy", async () => {
-    await withTestHarness(async (harness) => {
-      const primary = seedHost(harness.deps, { id: "host-primary" });
-      seedPrimaryHost(harness.deps, primary.id);
-      const remote = seedHost(harness.deps, { id: "host-remote" });
-
-      const response = await harness.app.request(
-        `/api/v1/system/usage-limits?hostId=${remote.id}`,
-      );
-
-      expect(response.status).toBe(400);
-      expect(await readJson(response)).toMatchObject({
-        code: "unsupported_host",
-      });
-    });
-  });
 });

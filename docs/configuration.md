@@ -330,24 +330,17 @@ in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
 
-## bb connect Experiment
+## Multi-machine
 
-The **bb connect** experiment (Settings → Experiments, off by default) gates
-remote access for reaching this bb server through getbb.app. It does not enable
-running threads on non-primary hosts.
-
-## Multi-machine Experiment
-
-The **Multi-machine** experiment (Settings → Experiments, off by default)
-enables remote execution hosts. When enabled, Settings → Machines can enroll,
+Settings → Machines can enroll,
 rename, and remove machines; project settings can add a path or clone source on
 each machine; and thread creation can target any enrolled machine with a usable
 source. The CLI equivalents are `bb machine list`, `bb project source add
 --machine <id-or-name> ...`, and `bb thread spawn --machine <id-or-name> ...`.
 
-The experiment is independent of browser access. Tailscale and bb connect let
-another browser reach the bb server; Multi-machine decides whether that server
-may dispatch work to non-primary host daemons. The Settings → Machines
+Multi-machine execution is independent of browser access. Tailscale and bb
+connect let another browser reach the bb server; multi-machine support lets
+that server dispatch work to non-primary host daemons. The Settings → Machines
 installer can use a paired bb connect account to route the daemon and its CLI
 back to the server. Machine credentials remain locally managed as described at
 the top of this document.
@@ -373,9 +366,7 @@ continue to work while the experiment is off.
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
 server for browser access at `<handle>.getbb.app` (claim a handle and copy the
-command at https://getbb.app). Enable the "bb connect" experiment first;
-while it is off, `bb connect` and Settings → Connect are unavailable because
-the plugin is not loaded. Remote access is owned by the builtin
+command at https://getbb.app). Remote access is owned by the builtin
 **connect plugin** (`plugins/connect/`): pairing redeems the code and stores
 the durable credential in the plugin's kv storage (in `bb.db`), and the
 plugin's background service holds the connect tunnel — dialing the gate,

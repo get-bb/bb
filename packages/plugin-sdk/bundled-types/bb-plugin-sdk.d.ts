@@ -180,8 +180,6 @@ type ChangedMessage = z$1.infer<typeof changedMessageSchema>;
  */
 declare const experimentsSchema: z$1.ZodObject<{
     claudeCodeMockCliTraffic: z$1.ZodBoolean;
-    bbConnect: z$1.ZodBoolean;
-    multiMachine: z$1.ZodBoolean;
     threadSplits: z$1.ZodBoolean;
     popoutChat: z$1.ZodBoolean;
     popoutChatHotkey: z$1.ZodString;
@@ -245,8 +243,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
+            pending: "pending";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -755,21 +753,11 @@ declare const updateProjectSourceRequestSchema: z$1.ZodObject<{
     isDefault: z$1.ZodOptional<z$1.ZodLiteral<true>>;
 }, z$1.core.$strict>;
 type UpdateProjectSourceRequest = z$1.infer<typeof updateProjectSourceRequestSchema>;
-/**
- * Command typeahead query. Extends the shared project file-search query
- * (`query`/`limit`/`environmentId`, including the empty-string→null wire
- * convention) with the `provider` whose skill/command surface to discover.
- * `query` here is a case-insensitive substring filter on command name/description.
- * Namespaced skills also match on their local name after `:` (for example,
- * `review` matches `ottonomous:review`).
- */
+/** Query for the complete command catalog available to a project and provider. */
 declare const projectCommandsQuerySchema: z$1.ZodObject<{
-    query: z$1.ZodOptional<z$1.ZodString>;
-    limit: z$1.ZodOptional<z$1.ZodString>;
     environmentId: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodNullable<z$1.ZodString>>;
     provider: z$1.ZodString;
-    offset: z$1.ZodOptional<z$1.ZodString>;
-}, z$1.core.$strip>;
+}, z$1.core.$strict>;
 type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 
 declare const updateEnvironmentRequestSchema: z$1.ZodObject<{
@@ -866,8 +854,8 @@ declare const environmentDiffFileQuerySchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
 type EnvironmentDiffFileQuery = z$1.infer<typeof environmentDiffFileQuerySchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    squash: "squash";
     rebase: "rebase";
+    squash: "squash";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 /**

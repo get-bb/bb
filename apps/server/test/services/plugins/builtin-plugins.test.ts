@@ -128,7 +128,6 @@ function createService(args: {
   builtinName?: string;
   defaultEnabled?: boolean;
   isEnabled?: () => boolean;
-  isConnectEnabled?: () => boolean;
   includeBuiltin?: boolean;
   rootDir?: string;
   watchBuiltinPluginSources?: boolean;
@@ -144,7 +143,6 @@ function createService(args: {
     dataDir: args.dataDir,
     appVersion: "0.9.0",
     isEnabled: args.isEnabled ?? (() => false),
-    isConnectEnabled: args.isConnectEnabled ?? (() => false),
     builtinPlugins:
       args.includeBuiltin === false
         ? []
@@ -352,13 +350,11 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("loads the builtin connect plugin only while the bb connect experiment is on", async () => {
-    let connectEnabled = false;
+  it("loads the builtin connect plugin like other builtins", async () => {
     service = createService({
       db,
       dataDir: join(workDir, "data"),
       builtinName: "connect",
-      isConnectEnabled: () => connectEnabled,
     });
 
     await service.start();
@@ -368,36 +364,10 @@ describe("builtin plugin reconciliation", () => {
         id: "builtin-fixture",
         source: "builtin:connect",
         enabled: true,
-        status: "disabled",
-        statusDetail: 'disabled by the "bb connect" experiment',
-      },
-    ]);
-    expect(loadCount()).toBe(0);
-
-    connectEnabled = true;
-    await service.onExperimentsChanged();
-
-    expect(service.list()).toMatchObject([
-      {
-        id: "builtin-fixture",
-        source: "builtin:connect",
         status: "running",
       },
     ]);
     expect(loadCount()).toBe(1);
-
-    connectEnabled = false;
-    await service.onExperimentsChanged();
-
-    expect(service.getApi("builtin-fixture")).toBeUndefined();
-    expect(service.list()).toMatchObject([
-      {
-        id: "builtin-fixture",
-        source: "builtin:connect",
-        status: "disabled",
-        statusDetail: 'disabled by the "bb connect" experiment',
-      },
-    ]);
   });
 
   it("keeps a builtin tombstoned after remove and restart", async () => {

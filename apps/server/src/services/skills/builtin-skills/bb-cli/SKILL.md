@@ -79,8 +79,7 @@ message agents, or inspect projects, providers, and environments.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
-  https://getbb.app). It requires the "bb connect" experiment; when off the
-  builtin connect plugin is not loaded. Pairing returns immediately — the
+  https://getbb.app). Pairing returns immediately — the
   server itself holds the tunnel and reconnects on restart, so there is no
   foreground process.
   `bb connect status` / `bb connect off` report and clear the pairing.

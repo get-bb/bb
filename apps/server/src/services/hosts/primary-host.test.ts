@@ -1,5 +1,3 @@
-import { setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   seedHostSession,
@@ -40,7 +38,7 @@ function expectApiError(
 }
 
 describe("assertUsableHostId", () => {
-  it("accepts a non-primary public host when Multi-machine is enabled", async () => {
+  it("accepts a non-primary public host", async () => {
     harness = await createTestAppHarness();
     const { host: primary } = seedHostSession(harness.deps, {
       name: "primary",
@@ -49,10 +47,6 @@ describe("assertUsableHostId", () => {
       name: "secondary",
     });
     seedPrimaryHost(harness.deps, primary.id);
-    setExperiments(harness.db, {
-      ...defaultExperiments,
-      multiMachine: true,
-    });
     const deps = harness.deps;
 
     expect(() =>
@@ -60,37 +54,12 @@ describe("assertUsableHostId", () => {
     ).not.toThrow();
   });
 
-  it("preserves the primary-only unsupported_host error when disabled", async () => {
-    harness = await createTestAppHarness();
-    const { host: primary } = seedHostSession(harness.deps, {
-      name: "primary",
-    });
-    const { host: secondary } = seedHostSession(harness.deps, {
-      name: "secondary",
-    });
-    seedPrimaryHost(harness.deps, primary.id);
-    const deps = harness.deps;
-
-    expect(() =>
-      assertUsableHostId(deps, { hostId: primary.id }),
-    ).not.toThrow();
-    expectApiError(() => assertUsableHostId(deps, { hostId: secondary.id }), {
-      code: "unsupported_host",
-      message: "Non-primary machines require the Multi-machine experiment",
-      status: 400,
-    });
-  });
-
-  it("returns 404 for an unknown host when Multi-machine is enabled", async () => {
+  it("returns 404 for an unknown host", async () => {
     harness = await createTestAppHarness();
     const { host: primary } = seedHostSession(harness.deps, {
       name: "primary",
     });
     seedPrimaryHost(harness.deps, primary.id);
-    setExperiments(harness.db, {
-      ...defaultExperiments,
-      multiMachine: true,
-    });
     const deps = harness.deps;
 
     expectApiError(
@@ -106,10 +75,6 @@ describe("assertUsableHostId", () => {
     });
     seedHostSession(harness.deps, { name: "secondary" });
     seedPrimaryHost(harness.deps, primary.id);
-    setExperiments(harness.db, {
-      ...defaultExperiments,
-      multiMachine: true,
-    });
 
     expect(resolvePrimaryHostId(harness.deps)).toBe(primary.id);
   });

@@ -115,7 +115,6 @@ describe("public thread default routes", () => {
       });
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: localHost.id,

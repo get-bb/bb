@@ -395,7 +395,7 @@ export interface ResolveHostFilePreviewLinkRootPathArgs {
 function buildHostConnectionNotice(
   thread: ThreadWithRuntime,
   /** Machine name to blame explicitly. Only passed when more than one
-   * machine exists (multiMachine experiment) — a bare "Host" is unambiguous
+   * machine exists — a bare "Host" is unambiguous
    * on a single-machine setup. */
   hostName: string | null,
 ): HostConnectionNotice | null {
@@ -912,17 +912,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     [hostsQuery.data],
   );
   const systemConfigQuery = useSystemConfig();
-  const multiMachineEnabled =
-    systemConfigQuery.data?.experiments.multiMachine === true;
   // Name the thread's machine on multi-machine setups so offline notices and
   // metadata say which computer is involved instead of a generic "host".
   const threadEnvironmentHost = useMemo(() => {
     const hosts = hostsQuery.data ?? [];
-    if (!multiMachineEnabled || hosts.length <= 1) return null;
+    if (hosts.length <= 1) return null;
     const environmentHostId = environment?.hostId;
     if (!environmentHostId) return null;
     return hosts.find((host) => host.id === environmentHostId) ?? null;
-  }, [environment?.hostId, hostsQuery.data, multiMachineEnabled]);
+  }, [environment?.hostId, hostsQuery.data]);
   const hostConnectionNotice = useMemo(
     () =>
       thread
