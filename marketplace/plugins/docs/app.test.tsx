@@ -150,10 +150,17 @@ describe("Docs nav panel", () => {
     const resizeHandle = slot.getByRole("separator", {
       name: "Resize notes sidebar",
     });
-    fireEvent.pointerDown(resizeHandle, { clientX: 288 });
-    fireEvent.pointerMove(window, { clientX: 176 });
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    resizeHandle.setPointerCapture = setPointerCapture;
+    resizeHandle.hasPointerCapture = () => true;
+    resizeHandle.releasePointerCapture = releasePointerCapture;
+    fireEvent.pointerDown(resizeHandle, { clientX: 288, pointerId: 7 });
+    expect(setPointerCapture).toHaveBeenCalledWith(7);
+    fireEvent.pointerMove(resizeHandle, { clientX: 176, pointerId: 7 });
     expect(slot.container.querySelector("aside")?.style.width).toBe("400px");
-    fireEvent.pointerUp(window);
+    fireEvent.pointerUp(resizeHandle, { pointerId: 7 });
+    expect(releasePointerCapture).toHaveBeenCalledWith(7);
   });
 
   it("only shows host status when the selected vault is unavailable", async () => {

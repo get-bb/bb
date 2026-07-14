@@ -1307,6 +1307,8 @@ function Tree({
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     resizeCleanupRef.current?.();
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
     const move = (moveEvent: PointerEvent) => {
@@ -1315,13 +1317,24 @@ function Tree({
       );
     };
     const cleanup = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", cleanup);
+      if (resizeCleanupRef.current !== cleanup) return;
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", cleanup);
+      handle.removeEventListener("pointercancel", cleanup);
+      handle.removeEventListener("lostpointercapture", cleanup);
+      window.removeEventListener("blur", cleanup);
       resizeCleanupRef.current = null;
+      if (handle.hasPointerCapture(pointerId)) {
+        handle.releasePointerCapture(pointerId);
+      }
     };
     resizeCleanupRef.current = cleanup;
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", cleanup);
+    handle.setPointerCapture(pointerId);
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", cleanup);
+    handle.addEventListener("pointercancel", cleanup);
+    handle.addEventListener("lostpointercapture", cleanup);
+    window.addEventListener("blur", cleanup);
   };
 
   if (sidebarCollapsed) {
