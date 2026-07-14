@@ -756,6 +756,108 @@ describe("0004 global label claims", () => {
   });
 });
 
+describe("0005 label-claim reconciliation", () => {
+  it("claims an old-worker row written after 0004 and prevents cross-tenant reuse", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0005")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+
+      // Simulate a claim-ignorant old web worker in the per-migration gap.
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "gap-label", now);
+      expect(
+        staged
+          .prepare("SELECT label FROM label_claim WHERE label = ?")
+          .get("gap-label"),
+      ).toBeUndefined();
+
+      // D1 applies one migration transactionally. The reconciliation completes
+      // before the triggers become the permanent write barrier.
+      staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      })();
+      expect(
+        staged
+          .prepare(
+            "SELECT label, kind, owner_id, user_id FROM label_claim WHERE label = ?",
+          )
+          .get("gap-label"),
+      ).toEqual({
+        label: "gap-label",
+        kind: "handle",
+        owner_id: "u1",
+        user_id: "u1",
+      });
+
+      expect(() =>
+        staged
+          .prepare(
+            "INSERT INTO machine (id, user_id, subdomain, credential_hash, created_at) VALUES (?,?,?,?,?)",
+          )
+          .run("m2", "u2", "gap-label", "hash", now),
+      ).toThrow(/unique constraint/iu);
+      expect(
+        staged.prepare("SELECT id FROM machine WHERE id = ?").get("m2"),
+      ).toBeUndefined();
+    } finally {
+      staged.close();
+    }
+  });
+
+  it("fails atomically when gap writes contain a genuine cross-source collision", () => {
+    const staged = new Database(":memory:");
+    staged.pragma("foreign_keys = ON");
+    try {
+      for (const file of migrationFiles().filter((name) => name < "0005")) {
+        applyMigration(staged, file);
+      }
+      const now = Date.now();
+      const insertUser = staged.prepare(
+        "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      );
+      insertUser.run("u1", "One", "u1@example.com", 1, now, now);
+      insertUser.run("u2", "Two", "u2@example.com", 1, now, now);
+      staged
+        .prepare(
+          "INSERT INTO profile (user_id, handle, created_at) VALUES (?,?,?)",
+        )
+        .run("u1", "conflict-label", now);
+      staged
+        .prepare(
+          "INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (?,?,?,?,?)",
+        )
+        .run("s2", "u2", "default", "conflict-label", now);
+
+      const apply = staged.transaction(() => {
+        applyMigration(staged, "0005_label_claim_triggers.sql");
+      });
+      expect(apply).toThrow(/label_claim_reconciliation_conflict/iu);
+      expect(staged.prepare("SELECT label FROM label_claim").all()).toEqual([]);
+      expect(
+        staged
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%_label_claim_%'",
+          )
+          .all(),
+      ).toEqual([]);
+    } finally {
+      staged.close();
+    }
+  });
+});
+
 describe("checkLabelAvailability (all routing namespaces)", () => {
   it("reports a free, well-formed label available", async () => {
     seedUser();

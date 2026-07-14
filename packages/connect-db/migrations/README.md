@@ -30,9 +30,11 @@ SQL file; never hand-edit `_journal.json` or snapshot JSON.
 Migration `0004_machine_labels.sql` creates `label_claim` and the nullable
 machine label column. Custom migration `0005_label_claim_triggers.sql` installs
 the insert/update/delete triggers that make every profile, server, and machine
-label mutation update `label_claim` in the same SQLite statement. Old web
-workers are therefore safe after the full migration chain: their source writes
-cannot bypass the global namespace.
+label mutation update `label_claim` in the same SQLite statement. Before
+installing them, 0005 reconciles any source rows written by an old worker after
+0004's backfill. A cross-source collision aborts the migration for manual
+resolution instead of choosing a claim owner. D1 runs the reconciliation and
+trigger installation as one migration transaction.
 
 Apply migrations through 0005 before deploying either worker version that
 relies on `label_claim`. After that database-first step, the gate and web workers

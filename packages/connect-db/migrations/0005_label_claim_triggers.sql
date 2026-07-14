@@ -1,7 +1,61 @@
 -- Custom SQL migration: Drizzle schema snapshots do not model SQLite triggers.
--- Every label-bearing source mutation reserves/releases label_claim inside the
--- same SQLite statement, including writes from claim-ignorant old workers.
+-- First reconcile source rows written by a claim-ignorant worker after 0004,
+-- then install the triggers. D1 applies this migration as one transaction.
 
+-- Fail rather than choose a winner if the source tables already disagree.
+CREATE TABLE `_label_claim_reconcile_guard` (
+	`ok` integer NOT NULL,
+	CONSTRAINT `label_claim_reconciliation_conflict` CHECK (`ok` = 1)
+);
+--> statement-breakpoint
+INSERT INTO `_label_claim_reconcile_guard` (`ok`)
+SELECT 0
+WHERE EXISTS (
+	SELECT 1
+	FROM `profile` p
+	INNER JOIN `server` s ON s.`subdomain` = p.`handle`
+	WHERE s.`user_id` <> p.`user_id`
+	UNION ALL
+	SELECT 1
+	FROM `profile` p
+	INNER JOIN `machine` m ON m.`subdomain` = p.`handle`
+	UNION ALL
+	SELECT 1
+	FROM `server` s
+	INNER JOIN `machine` m ON m.`subdomain` = s.`subdomain`
+);
+--> statement-breakpoint
+INSERT INTO `label_claim` (`label`, `kind`, `owner_id`, `user_id`, `generation`, `created_at`)
+SELECT p.`handle`, 'handle', p.`user_id`, p.`user_id`, lower(hex(randomblob(16))), p.`created_at`
+FROM `profile` p
+WHERE NOT EXISTS (
+	SELECT 1 FROM `label_claim` c WHERE c.`label` = p.`handle`
+);
+--> statement-breakpoint
+INSERT INTO `label_claim` (`label`, `kind`, `owner_id`, `user_id`, `generation`, `created_at`)
+SELECT s.`subdomain`, 'server', s.`id`, s.`user_id`, lower(hex(randomblob(16))), s.`created_at`
+FROM `server` s
+WHERE NOT EXISTS (
+	SELECT 1 FROM `profile` p
+	WHERE p.`user_id` = s.`user_id` AND p.`handle` = s.`subdomain`
+)
+AND NOT EXISTS (
+	SELECT 1 FROM `label_claim` c WHERE c.`label` = s.`subdomain`
+);
+--> statement-breakpoint
+INSERT INTO `label_claim` (`label`, `kind`, `owner_id`, `user_id`, `generation`, `created_at`)
+SELECT m.`subdomain`, 'machine', m.`id`, m.`user_id`, lower(hex(randomblob(16))), m.`created_at`
+FROM `machine` m
+WHERE m.`subdomain` IS NOT NULL
+AND NOT EXISTS (
+	SELECT 1 FROM `label_claim` c WHERE c.`label` = m.`subdomain`
+);
+--> statement-breakpoint
+DROP TABLE `_label_claim_reconcile_guard`;
+--> statement-breakpoint
+
+-- Every later label-bearing source mutation reserves/releases label_claim in
+-- the same SQLite statement, including writes from old web workers.
 CREATE TRIGGER `profile_label_claim_insert`
 AFTER INSERT ON `profile`
 BEGIN
