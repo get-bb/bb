@@ -24,6 +24,49 @@ import {
 import { CREDENTIAL_KV_KEY } from "./credential.js";
 import plugin from "./server.js";
 import type { ConnectStatus } from "./types.js";
+import { ShareHostResolver } from "./hosts.js";
+
+const SERVER_HOST_ID = "host-server";
+const SERVER_HOST_NAME = "Server";
+const REMOTE_HOST_ID = "host-air";
+const REMOTE_HOST_NAME = "Sawyer Air";
+
+function createConnectFakeHost(options?: {
+  remoteIdentity?: { label: string; baseDomain: string };
+}): FakePluginHost {
+  return createFakePluginHost({
+    pluginId: "connect",
+    sdk: {
+      system: {
+        config: async () => ({ primaryHostId: SERVER_HOST_ID }) as never,
+      },
+      hosts: {
+        get: async ({ hostId }: { hostId: string }) => {
+          const host =
+            hostId === SERVER_HOST_ID
+              ? { id: SERVER_HOST_ID, name: SERVER_HOST_NAME }
+              : hostId === REMOTE_HOST_ID
+                ? { id: REMOTE_HOST_ID, name: REMOTE_HOST_NAME }
+                : null;
+          if (!host) throw new Error(`host ${hostId} not found`);
+          return host as never;
+        },
+        list: async () =>
+          [
+            { id: SERVER_HOST_ID, name: SERVER_HOST_NAME },
+            { id: REMOTE_HOST_ID, name: REMOTE_HOST_NAME },
+          ] as never,
+      },
+    },
+    ...(options?.remoteIdentity
+      ? {
+          sharedPortTunnelIdentities: {
+            [REMOTE_HOST_ID]: options.remoteIdentity,
+          },
+        }
+      : {}),
+  });
+}
 
 describe("deriveConnectBaseUrl", () => {
   it("drops the handle label to reach the apex", () => {
@@ -151,39 +194,110 @@ describe("ShareRegistry", () => {
       handle: "sawyer",
       credential: "bbcred_x",
     };
+    const fakeHost = createFakePluginHost({
+      sdk: {
+        system: {
+          config: async () => ({ primaryHostId: "host-server" }) as never,
+        },
+        hosts: {
+          get: async () => ({ id: "host-server", name: "Server" }) as never,
+        },
+      },
+    });
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const hostResolver = new ShareHostResolver(() => pluginBb.sdk);
+    const serverHost = {
+      id: "host-server",
+      name: "Server",
+      isServer: true,
+    };
     const registry = new ShareRegistry({
       kv: store,
+      hosts: pluginBb.hosts,
+      hostResolver,
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
       getCredential: () => credential,
+      log: pluginBb.log,
     });
     await registry.load();
 
-    await expect(registry.add(38886)).rejects.toThrow(/own port/);
+    await expect(registry.add(38886, serverHost)).rejects.toThrow(/own port/);
 
-    const added = await registry.add(8000);
+    const added = await registry.add(8000, serverHost);
     expect(added.url).toBe("https://sawyer--8000.getbb.app");
-    expect(registry.has(8000)).toBe(true);
+    expect(registry.hasServerPort(8000)).toBe(true);
     expect(kv.get(SHARES_KV_KEY)).toMatchObject({
-      "8000": { port: 8000 },
+      "host-server:8000": { hostId: "host-server", port: 8000 },
     });
 
     const reloaded = new ShareRegistry({
       kv: store,
+      hosts: pluginBb.hosts,
+      hostResolver,
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
       getCredential: () => credential,
+      log: pluginBb.log,
     });
     await reloaded.load();
     expect(reloaded.list()).toEqual([
       {
+        hostId: "host-server",
+        hostName: "Server",
         port: 8000,
         url: "https://sawyer--8000.getbb.app",
         createdAt: expect.any(Number),
       },
     ]);
 
-    expect(await reloaded.remove(8000)).toBe(true);
-    expect(await reloaded.remove(8000)).toBe(false);
+    expect(await reloaded.remove(8000, "host-server")).toBe(true);
+    expect(await reloaded.remove(8000, "host-server")).toBe(false);
     expect(kv.has(SHARES_KV_KEY)).toBe(false);
+    await fakeHost.harness.dispose();
+  });
+
+  it("loads legacy entries without hostId as server-host shares", async () => {
+    const kv = new Map<string, unknown>([
+      [SHARES_KV_KEY, { "3000": { port: 3000, createdAt: 123 } }],
+    ]);
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const registry = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: pluginBb.hosts,
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => ({
+        serverUrl: "https://sawyer.getbb.app",
+        handle: "sawyer",
+        credential: "bbcred_x",
+      }),
+      log: pluginBb.log,
+    });
+
+    await registry.load();
+    expect(registry.list()).toEqual([
+      {
+        hostId: SERVER_HOST_ID,
+        hostName: SERVER_HOST_NAME,
+        port: 3000,
+        createdAt: 123,
+        url: "https://sawyer--3000.getbb.app",
+      },
+    ]);
+    expect(kv.get(SHARES_KV_KEY)).toEqual({
+      "3000": { port: 3000, createdAt: 123 },
+    });
+    await fakeHost.harness.dispose();
   });
 });
 
@@ -615,7 +729,7 @@ describe("connect plugin", () => {
   let host: FakePluginHost | undefined;
 
   async function loadPlugin(): Promise<FakePluginHost> {
-    host = createFakePluginHost({ pluginId: "connect" });
+    host = createConnectFakeHost();
     // The fake host is typed from src; the plugin compiles against the
     // bundled dts — same contract, nominally different modules.
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
@@ -891,23 +1005,181 @@ describe("connect plugin", () => {
       port: number;
       url: string;
     };
-    expect(exposed).toEqual({ port: 8000, url: shareUrl });
+    expect(exposed).toEqual({
+      hostId: SERVER_HOST_ID,
+      hostName: SERVER_HOST_NAME,
+      port: 8000,
+      url: shareUrl,
+    });
 
     const listed = (await harness.callRpc("listShares")) as Array<{
       port: number;
       url: string;
     }>;
-    expect(listed).toEqual([{ port: 8000, url: shareUrl }]);
+    expect(listed).toEqual([
+      {
+        hostId: SERVER_HOST_ID,
+        hostName: SERVER_HOST_NAME,
+        port: 8000,
+        url: shareUrl,
+      },
+    ]);
 
     const status = (await harness.callRpc("status")) as ConnectStatus;
-    expect(status.shares).toEqual([{ port: 8000, url: shareUrl }]);
+    expect(status.shares).toEqual([
+      {
+        hostId: SERVER_HOST_ID,
+        hostName: SERVER_HOST_NAME,
+        port: 8000,
+        url: shareUrl,
+      },
+    ]);
 
     const removed = (await harness.callRpc("unexpose", { port: 8000 })) as {
       removed: boolean;
       port: number;
     };
-    expect(removed).toEqual({ removed: true, port: 8000 });
+    expect(removed).toEqual({
+      removed: true,
+      hostId: SERVER_HOST_ID,
+      port: 8000,
+    });
     expect(await harness.callRpc("listShares")).toEqual([]);
+  });
+
+  it("uses machine tunnel identity and declares per-host port sets", async () => {
+    host = createConnectFakeHost({
+      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
+    });
+    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await host.harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.localhost:59333",
+      baseUrl: "https://getbb.app",
+    });
+
+    await expect(
+      host.harness.callRpc("expose", { hostId: REMOTE_HOST_ID, port: 3000 }),
+    ).resolves.toEqual({
+      hostId: REMOTE_HOST_ID,
+      hostName: REMOTE_HOST_NAME,
+      port: 3000,
+      url: "https://sawyer-air--3000.getbb.app",
+    });
+    expect(host.harness.sharedPortDeclarations).toEqual([
+      { hostId: REMOTE_HOST_ID, ports: [3000] },
+    ]);
+
+    await host.harness.callRpc("expose", {
+      hostId: REMOTE_HOST_ID,
+      port: 4000,
+    });
+    expect(host.harness.sharedPortDeclarations).toEqual([
+      { hostId: REMOTE_HOST_ID, ports: [3000, 4000] },
+    ]);
+
+    // The same port is valid on the server host and does not enter the
+    // daemon's machine-tunnel declaration.
+    await host.harness.callRpc("expose", { port: 3000 });
+    expect(host.harness.sharedPortDeclarations).toEqual([
+      { hostId: REMOTE_HOST_ID, ports: [3000, 4000] },
+    ]);
+    expect(
+      ((await host.harness.callRpc("status")) as ConnectStatus).shares,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ hostId: SERVER_HOST_ID, port: 3000 }),
+        expect.objectContaining({ hostId: REMOTE_HOST_ID, port: 3000 }),
+      ]),
+    );
+
+    await host.harness.callRpc("unexpose", {
+      hostId: REMOTE_HOST_ID,
+      port: 3000,
+    });
+    expect(host.harness.sharedPortDeclarations).toEqual([
+      { hostId: REMOTE_HOST_ID, ports: [4000] },
+    ]);
+    await host.harness.callRpc("unexpose", {
+      hostId: REMOTE_HOST_ID,
+      port: 4000,
+    });
+    expect(host.harness.sharedPortDeclarations).toEqual([
+      { hostId: REMOTE_HOST_ID, ports: [] },
+    ]);
+  });
+
+  it("fails fast with an actionable error when a machine cannot get a label", async () => {
+    const { harness } = await loadPlugin();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.localhost:59334",
+      baseUrl: "https://getbb.app",
+    });
+
+    await expect(
+      harness.callRpc("expose", { hostId: REMOTE_HOST_ID, port: 3000 }),
+    ).rejects.toThrow(
+      /Sawyer Air.*host-air.*Enroll the host via Connect.*Settings > Machines/,
+    );
+    expect(await harness.callRpc("listShares")).toEqual([]);
+    expect(harness.sharedPortDeclarations).toEqual([]);
+  });
+
+  it("empties machine declarations when the plugin service stops", async () => {
+    host = createConnectFakeHost({
+      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
+    });
+    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await host.harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.localhost:59335",
+      baseUrl: "https://getbb.app",
+    });
+    await host.harness.callRpc("expose", {
+      hostId: REMOTE_HOST_ID,
+      port: 5173,
+    });
+    expect(host.harness.sharedPortDeclarations).toEqual([
+      { hostId: REMOTE_HOST_ID, ports: [5173] },
+    ]);
+
+    await stopTunnel(host);
+    expect(host.harness.sharedPortDeclarations).toEqual([
+      { hostId: REMOTE_HOST_ID, ports: [] },
+    ]);
+    await host.harness.dispose();
+    host = undefined;
   });
 
   it("listAccountServers fetches the worker list and returns selfHandle", async () => {
@@ -1168,7 +1440,7 @@ describe("connect CLI", () => {
   });
 
   async function loadCli(): Promise<FakePluginHost> {
-    host = createFakePluginHost({ pluginId: "connect" });
+    host = createConnectFakeHost();
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     return host;
   }
@@ -1355,5 +1627,95 @@ describe("connect CLI", () => {
 
     const empty = await harness.runCli(["shares"]);
     expect(empty.stdout).toContain("No shared ports");
+  });
+
+  it("resolves the thread host, honors --host, and defaults no-context calls to the server host", async () => {
+    host = createConnectFakeHost({
+      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
+    });
+    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    host.harness.sdk.stub(
+      "threads.get",
+      async () => ({ environment: { hostId: REMOTE_HOST_ID } }) as never,
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await host.harness.runCli([
+      "--code",
+      "ABCD",
+      "--server",
+      "http://sawyer.localhost:59336",
+    ]);
+
+    const fromThread = await host.harness.runCli(["expose", "3000"], {
+      threadId: "thread-air",
+    });
+    expect(fromThread).toMatchObject({
+      exitCode: 0,
+      stdout: "https://sawyer-air--3000.getbb.app\n",
+    });
+
+    const overridden = await host.harness.runCli(
+      ["expose", "3000", "--host", SERVER_HOST_NAME],
+      { threadId: "thread-air" },
+    );
+    expect(overridden).toMatchObject({
+      exitCode: 0,
+      stdout: "http://sawyer--3000.localhost:59336\n",
+    });
+
+    const noContext = await host.harness.runCli(["expose", "3001"]);
+    expect(noContext).toMatchObject({
+      exitCode: 0,
+      stdout: "http://sawyer--3001.localhost:59336\n",
+    });
+
+    const threadShares = await host.harness.runCli(["shares", "--json"], {
+      threadId: "thread-air",
+    });
+    expect(JSON.parse(threadShares.stdout ?? "")).toEqual({
+      host: {
+        id: REMOTE_HOST_ID,
+        name: REMOTE_HOST_NAME,
+        isServer: false,
+      },
+      shares: [
+        {
+          hostId: REMOTE_HOST_ID,
+          hostName: REMOTE_HOST_NAME,
+          port: 3000,
+          url: "https://sawyer-air--3000.getbb.app",
+        },
+      ],
+    });
+    const serverShares = await host.harness.runCli(["shares"]);
+    expect(serverShares.stdout).toContain(
+      `${SERVER_HOST_NAME} (${SERVER_HOST_ID})  3000`,
+    );
+    expect(serverShares.stdout).toContain(
+      `${SERVER_HOST_NAME} (${SERVER_HOST_ID})  3001`,
+    );
+    const status = await host.harness.runCli(["status"]);
+    expect(status.stdout).toContain(
+      `${REMOTE_HOST_NAME} (${REMOTE_HOST_ID})  3000  https://sawyer-air--3000.getbb.app`,
+    );
+
+    const removed = await host.harness.runCli(["unexpose", "3000"], {
+      threadId: "thread-air",
+    });
+    expect(removed.stdout).toContain(
+      `Stopped sharing port 3000 on ${REMOTE_HOST_NAME} (${REMOTE_HOST_ID})`,
+    );
+    expect(host.harness.sharedPortDeclarations).toEqual([
+      { hostId: REMOTE_HOST_ID, ports: [] },
+    ]);
   });
 });

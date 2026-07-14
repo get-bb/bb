@@ -174,7 +174,12 @@ describe("connect settings section", () => {
           status: () =>
             connected({
               shares: [
-                { port: 3000, url: "https://workstation--3000.getbb.app" },
+                {
+                  hostId: "host-server",
+                  hostName: "Workstation",
+                  port: 3000,
+                  url: "https://workstation--3000.getbb.app",
+                },
               ],
             }),
           unexpose: () => ({ removed: true, port: 3000 }),
@@ -188,7 +193,7 @@ describe("connect settings section", () => {
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
         method: "unexpose",
-        input: { port: 3000 },
+        input: { hostId: "host-server", port: 3000 },
       }),
     );
   });

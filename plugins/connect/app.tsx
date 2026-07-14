@@ -132,10 +132,14 @@ function asStatus(payload: unknown): ConnectStatus | null {
       if (
         entry !== null &&
         typeof entry === "object" &&
+        typeof (entry as { hostId?: unknown }).hostId === "string" &&
+        typeof (entry as { hostName?: unknown }).hostName === "string" &&
         typeof (entry as { port?: unknown }).port === "number" &&
         typeof (entry as { url?: unknown }).url === "string"
       ) {
         shares.push({
+          hostId: (entry as { hostId: string }).hostId,
+          hostName: (entry as { hostName: string }).hostName,
           port: (entry as { port: number }).port,
           url: (entry as { url: string }).url,
         });
@@ -506,7 +510,7 @@ function SharedPortsSection({
   const [portInput, setPortInput] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [exposing, setExposing] = useState(false);
-  const [revokingPort, setRevokingPort] = useState<number | null>(null);
+  const [revokingShare, setRevokingShare] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const expose = useCallback(() => {
@@ -533,21 +537,22 @@ function SharedPortsSection({
   }, [portInput, exposing, rpc]);
 
   const unexpose = useCallback(
-    (port: number) => {
-      if (revokingPort !== null) return;
-      setRevokingPort(port);
+    (hostId: string, port: number) => {
+      if (revokingShare !== null) return;
+      const key = `${hostId}:${port}`;
+      setRevokingShare(key);
       setError(null);
-      rpc.call("unexpose", { port }).then(
+      rpc.call("unexpose", { hostId, port }).then(
         () => {
-          setRevokingPort(null);
+          setRevokingShare(null);
         },
         (rpcError: unknown) => {
-          setRevokingPort(null);
+          setRevokingShare(null);
           setError(errorText(rpcError));
         },
       );
     },
-    [revokingPort, rpc],
+    [revokingShare, rpc],
   );
 
   return (
@@ -577,7 +582,10 @@ function SharedPortsSection({
       {shares.length > 0 ? (
         <ul className="space-y-1">
           {shares.map((share) => (
-            <li key={share.port} className="flex items-center gap-2">
+            <li
+              key={`${share.hostId}:${share.port}`}
+              className="flex items-center gap-2"
+            >
               <span className="shrink-0 font-mono text-xs tabular-nums text-foreground">
                 :{share.port}
               </span>
@@ -598,10 +606,10 @@ function SharedPortsSection({
                 variant="ghost"
                 size="sm"
                 className={DANGER_QUIET_CLASS}
-                disabled={revokingPort === share.port}
-                onClick={() => unexpose(share.port)}
+                disabled={revokingShare === `${share.hostId}:${share.port}`}
+                onClick={() => unexpose(share.hostId, share.port)}
               >
-                {revokingPort === share.port ? (
+                {revokingShare === `${share.hostId}:${share.port}` ? (
                   <Icon name="Spinner" className="size-4 animate-spin" />
                 ) : null}
                 Revoke

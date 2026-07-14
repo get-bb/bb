@@ -6,6 +6,7 @@ import type { ConnectStatus } from "./types.js";
 import type { ListAccountServersResult } from "./list-servers.js";
 import type { DesktopSession } from "./desktop-session.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
+import type { ShareHostResolver } from "./hosts.js";
 
 // Panel-facing rpc surface. `server` is optional: the dashboard command
 // carries both --code and --server, but the panel's paste-a-code field only
@@ -20,6 +21,7 @@ const pairInputSchema = z.object({
 
 const portInputSchema = z.object({
   port: z.number().int().min(1).max(65535),
+  hostId: z.string().min(1).optional(),
 });
 const revokeMachineInputSchema = z.object({ machineId: z.string().min(1) });
 
@@ -27,16 +29,33 @@ export type ConnectRpcHandlers = {
   pair(input: unknown): Promise<ConnectStatus>;
   status(): ConnectStatus;
   disconnect(): Promise<ConnectStatus>;
-  expose(input: unknown): Promise<{ port: number; url: string }>;
-  unexpose(input: unknown): Promise<{ removed: boolean; port: number }>;
-  listShares(): Array<{ port: number; url: string }>;
+  expose(input: unknown): Promise<{
+    hostId: string;
+    hostName: string;
+    port: number;
+    url: string;
+  }>;
+  unexpose(input: unknown): Promise<{
+    removed: boolean;
+    hostId: string;
+    port: number;
+  }>;
+  listShares(): Array<{
+    hostId: string;
+    hostName: string;
+    port: number;
+    url: string;
+  }>;
   listAccountServers(): Promise<ListAccountServersResult>;
   createDesktopSession(): Promise<DesktopSession>;
   createMachineCode(): Promise<MachineCode>;
   revokeMachine(input: unknown): Promise<{ ok: true }>;
 };
 
-export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
+export function createRpcHandlers(
+  tunnel: ConnectTunnel,
+  hostResolver: ShareHostResolver,
+): ConnectRpcHandlers {
   return {
     async pair(input: unknown) {
       const args = pairInputSchema.parse(input);
@@ -63,11 +82,19 @@ export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
     },
     async expose(input: unknown) {
       const args = portInputSchema.parse(input);
-      return tunnel.expose(args.port);
+      const host =
+        args.hostId === undefined
+          ? await hostResolver.serverHost()
+          : await hostResolver.byId(args.hostId);
+      return tunnel.expose(args.port, host);
     },
     async unexpose(input: unknown) {
       const args = portInputSchema.parse(input);
-      return tunnel.unexpose(args.port);
+      const host =
+        args.hostId === undefined
+          ? await hostResolver.serverHost()
+          : await hostResolver.byId(args.hostId);
+      return tunnel.unexpose(args.port, host.id);
     },
     listShares() {
       return tunnel.listShares();

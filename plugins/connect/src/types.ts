@@ -9,6 +9,8 @@ export type ConnectStateName =
   | "reconnecting";
 
 export interface ConnectShareStatus {
+  hostId: string;
+  hostName: string;
   port: number;
   url: string;
 }

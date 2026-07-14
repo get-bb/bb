@@ -89,19 +89,23 @@ Remote access (bb connect):
 
   bb connect status                       Show the server's connect status
   bb connect off                          Disconnect and forget the pairing
-  bb connect expose <port>                Share a local HTTP port
-  bb connect unexpose <port>              Stop sharing a port
-  bb connect shares                       List shared ports and their URLs
+  bb connect expose <port> [--host <name-or-id>]    Share a host's HTTP port
+  bb connect unexpose <port> [--host <name-or-id>]  Stop sharing on that host
+  bb connect shares [--host <name-or-id>]           List that host's shares
   bb connect servers                      List every bb on this account (handle, url, live)
 
-  Port sharing: after pairing, `bb connect expose <port>` publishes a local
-  HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent host for
-  a self-hosted gate). Access is owner-session-gated — only viewers signed into
+  Port sharing works from threads on any enrolled host. In a thread,
+  `bb connect expose <port>` resolves the thread environment's host; outside a
+  thread it defaults to the server host. `--host <name-or-id>` overrides that
+  choice for expose, unexpose, and shares. Server-host URLs use
+  `https://<server-label>--<port>.getbb.app`; machine-host URLs use
+  `https://<machine-label>--<port>.getbb.app` and proxy directly through that
+  machine's daemon. Access is owner-session-gated — only viewers signed into
   the owner's getbb.app account can open the URL; it is not a public internet
-  link. Agents that start a local server for the user should run expose and
-  share that URL (especially when the user is remote); unexpose when the
-  server stops. `bb connect shares` lists active URLs; Settings → Connect
-  shows and manages them in the UI.
+  link. Agents should run expose from the thread that started the server, share
+  the returned URL, and unexpose from the same thread when it stops.
+  `bb connect status` shows all shares with host + URL. `shares --json` returns
+  the resolved `host` and rows with `hostId`, `hostName`, `port`, and `url`.
 
   Remote access is owned by the builtin "connect" plugin (Settings → Connect
   shows the URL, QR code, and shared ports). Disabling the plugin
