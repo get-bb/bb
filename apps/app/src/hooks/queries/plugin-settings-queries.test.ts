@@ -16,6 +16,7 @@ const ROW = {
   status: "running",
   statusDetail: null,
   provenance: "direct",
+  isOrphanedBuiltin: false,
   sourceDisplay: "npm · @bb-plugins/linear · pinned",
   updateState: {
     availableVersion: "1.7.0",
@@ -56,10 +57,17 @@ describe("fetchPluginList envelope", () => {
     const { updateState, ...noUpdateState } = ROW;
     const { provenance, ...noProvenance } = ROW;
     const { sourceDisplay, ...noSourceDisplay } = ROW;
+    const { isOrphanedBuiltin, ...noOrphanedBuiltin } = ROW;
     const result = await fetchPluginList(
       fetchReturning({
         enabled: true,
-        plugins: [noUpdateState, noProvenance, noSourceDisplay, ROW],
+        plugins: [
+          noUpdateState,
+          noProvenance,
+          noSourceDisplay,
+          noOrphanedBuiltin,
+          ROW,
+        ],
       }),
     );
     expect(result.plugins.map((plugin) => plugin.id)).toEqual(["linear"]);

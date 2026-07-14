@@ -497,15 +497,16 @@ export function PluginsSettingsSection() {
 }
 
 /**
- * Uninstall control on a plugin's detail page. Builtins can't be uninstalled
- * (they're managed by bb — disable them instead), so this only renders for
- * direct/marketplace installs. A path source keeps its local files; managed
- * (git/npm) sources have their downloaded files deleted.
+ * Uninstall control on a plugin's detail page. Orphaned builtins can be
+ * cleaned up by recording a tombstone while leaving any bundled files alone.
+ * A path source likewise keeps its local files; managed (git/npm) sources
+ * have their downloaded files deleted.
  */
 function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const isBuiltin = plugin.provenance === "builtin";
   const isPathSource = plugin.sourceDisplay.toLowerCase().startsWith("path");
   const name = plugin.displayName ?? plugin.id;
   const remove = useMutation({
@@ -527,7 +528,9 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">Remove plugin</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {isPathSource
+          {isBuiltin
+            ? "Removes the plugin from BB. Its bundled files are left in place."
+            : isPathSource
             ? "Uninstalls the plugin. Its local source files are left in place."
             : "Uninstalls the plugin and deletes its downloaded files."}
         </p>
@@ -546,7 +549,9 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
           <DialogHeader>
             <DialogTitle>Remove {name}?</DialogTitle>
             <DialogDescription>
-              {isPathSource
+              {isBuiltin
+                ? "This removes the plugin and its stored settings. BB remembers the removal so the plugin stays hidden after restart; its bundled files remain in place."
+                : isPathSource
                 ? "This uninstalls the plugin and removes its stored settings. Its local source files stay on disk, so you can reinstall it."
                 : "This uninstalls the plugin, deletes its downloaded files, and removes its stored settings."}
             </DialogDescription>
@@ -677,7 +682,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
       {settingsAvailable ? (
         <PluginSettingsSections pluginId={plugin.id} />
       ) : null}
-      {plugin.provenance !== "builtin" ? (
+      {plugin.provenance !== "builtin" || plugin.isOrphanedBuiltin ? (
         <RemovePluginSection plugin={plugin} />
       ) : null}
     </div>

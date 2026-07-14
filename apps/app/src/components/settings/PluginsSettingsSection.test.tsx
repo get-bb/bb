@@ -176,6 +176,7 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     logoDarkUrl: null,
     hasSettings: true,
     provenance: "builtin" as const,
+    isOrphanedBuiltin: false,
     marketplaceName: null,
     sourceDisplay: "builtin",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
@@ -189,9 +190,12 @@ describe("PluginSettingsDetail settings gating", () => {
       vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
     );
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginSettingsDetail plugin={rowPlugin("needs-configuration")} />, {
-      wrapper,
-    });
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail plugin={rowPlugin("needs-configuration")} />
+      </MemoryRouter>,
+      { wrapper },
+    );
     expect(await screen.findByLabelText("Greeting")).toBeTruthy();
   });
 
@@ -199,9 +203,51 @@ describe("PluginSettingsDetail settings gating", () => {
     const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
     vi.stubGlobal("fetch", fetchSpy);
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginSettingsDetail plugin={rowPlugin("error")} />, { wrapper });
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail plugin={rowPlugin("error")} />
+      </MemoryRouter>,
+      { wrapper },
+    );
     expect(screen.queryByLabelText("Greeting")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("removes a stale builtin plugin from its detail page", async () => {
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return jsonOk({ ok: true });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("disabled"),
+            isOrphanedBuiltin: true,
+          }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(
+      screen.getByText(/BB remembers the removal so the plugin stays hidden/),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Remove plugin" }));
+
+    await vi.waitFor(() => {
+      expect(requests).toContainEqual({
+        url: "/api/v1/plugins/linear",
+        init: { method: "DELETE" },
+      });
+    });
   });
 
   it("renders a slot-only settings page while the plugins experiment is off", async () => {
@@ -248,6 +294,7 @@ describe("PluginSettingsDetail settings gating", () => {
                 logoDarkUrl: null,
                 hasSettings: false,
                 provenance: "builtin",
+                isOrphanedBuiltin: false,
                 sourceDisplay: "builtin",
                 updateState: {},
               },
@@ -259,7 +306,12 @@ describe("PluginSettingsDetail settings gating", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginSettingsDetailSection pluginId="connect" />, { wrapper });
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetailSection pluginId="connect" />
+      </MemoryRouter>,
+      { wrapper },
+    );
 
     expect(await screen.findByText("Remote access")).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();

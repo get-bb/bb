@@ -62,6 +62,8 @@ export interface PluginListItem {
   /** True when the loaded plugin declared settings; drives its nav entry. */
   hasSettings: boolean;
   provenance: PluginProvenance;
+  /** Persisted builtin registration whose bundle is no longer shipped by BB. */
+  isOrphanedBuiltin: boolean;
   /** Marketplace display name when provenance is "marketplace". */
   marketplaceName: string | null;
   /** Human source line ("npm · @bb-plugins/linear · pinned"). */
@@ -127,6 +129,7 @@ const pluginListItemSchema = z.object({
   logoDarkUrl: z.string().nullish(),
   hasSettings: z.boolean().optional(),
   provenance: z.enum(["builtin", "direct", "marketplace"]),
+  isOrphanedBuiltin: z.boolean(),
   marketplaceName: z.string().nullish(),
   sourceDisplay: z.string(),
   updateState: updateStateSchema,
@@ -150,6 +153,7 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     logoDarkUrl: item.logoDarkUrl ?? null,
     hasSettings: item.hasSettings === true,
     provenance: item.provenance,
+    isOrphanedBuiltin: item.isOrphanedBuiltin,
     marketplaceName: item.marketplaceName ?? null,
     sourceDisplay: item.sourceDisplay,
     updateState: {

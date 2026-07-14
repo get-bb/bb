@@ -69,6 +69,8 @@ export interface PluginListEntry {
   rootDir: string;
   version: string;
   provenance: "builtin" | "direct" | "marketplace";
+  /** True when a persisted builtin registration no longer exists in BB's builtin registry. */
+  isOrphanedBuiltin: boolean;
   marketplaceName?: string;
   sourceDisplay: string;
   updateState: {

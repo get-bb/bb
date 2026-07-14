@@ -150,6 +150,7 @@ describe("useSettingsNavState", () => {
               logoDarkUrl: null,
               hasSettings: false,
               provenance: "builtin",
+              isOrphanedBuiltin: false,
               sourceDisplay: "builtin",
               updateState: {},
             },

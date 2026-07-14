@@ -129,6 +129,7 @@ function createService(args: {
   defaultEnabled?: boolean;
   isEnabled?: () => boolean;
   isConnectEnabled?: () => boolean;
+  includeBuiltin?: boolean;
   rootDir?: string;
   watchBuiltinPluginSources?: boolean;
 }): PluginService {
@@ -144,13 +145,16 @@ function createService(args: {
     appVersion: "0.9.0",
     isEnabled: args.isEnabled ?? (() => false),
     isConnectEnabled: args.isConnectEnabled ?? (() => false),
-    builtinPlugins: [
-      {
-        name: args.builtinName ?? "fixture",
-        rootDir: args.rootDir ?? fixtureRoot,
-        defaultEnabled: args.defaultEnabled ?? true,
-      },
-    ],
+    builtinPlugins:
+      args.includeBuiltin === false
+        ? []
+        : [
+            {
+              name: args.builtinName ?? "fixture",
+              rootDir: args.rootDir ?? fixtureRoot,
+              defaultEnabled: args.defaultEnabled ?? true,
+            },
+          ],
     watchBuiltinPluginSources: args.watchBuiltinPluginSources,
     loadTimeoutMs: 2000,
   });
@@ -210,6 +214,7 @@ describe("builtin plugin reconciliation", () => {
         source: "builtin:fixture",
         version: "0.1.0",
         provenance: "builtin",
+        isOrphanedBuiltin: false,
         sourceDisplay: "builtin · builtin-fixture",
         updateState: {},
         icon: "EditFile",
@@ -226,6 +231,24 @@ describe("builtin plugin reconciliation", () => {
         normalizationVersion: 1,
       },
     );
+  });
+
+  it("marks a persisted builtin as orphaned after it leaves the registry", async () => {
+    service = createService({ db, dataDir: join(workDir, "data") });
+    await service.start();
+    expect(service.list()[0]?.isOrphanedBuiltin).toBe(false);
+    await service.stop();
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      includeBuiltin: false,
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", isOrphanedBuiltin: true },
+    ]);
   });
 
   it("backfills every legacy source form once while preserving registration state", async () => {

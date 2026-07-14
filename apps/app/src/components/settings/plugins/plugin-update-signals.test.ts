@@ -23,6 +23,7 @@ function plugin(
     logoDarkUrl: null,
     hasSettings: false,
     provenance: "marketplace",
+    isOrphanedBuiltin: false,
     marketplaceName: "bb-official",
     sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },

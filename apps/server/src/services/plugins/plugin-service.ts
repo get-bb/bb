@@ -856,6 +856,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: row.rootDir,
           version: row.version,
           provenance: row.provenance,
+          isOrphanedBuiltin:
+            row.sourceKind === "builtin" &&
+            !builtinPlugins.some(
+              (builtin) => builtin.name === row.sourceBuiltinName,
+            ),
           ...(row.marketplaceId === null
             ? {}
             : {
