@@ -4,6 +4,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEventHandler,
+  type PointerEventHandler,
   type ReactNode,
 } from "react";
 import { useSetAtom } from "jotai";
@@ -59,6 +60,9 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
+import { ThreadRowMiniMap } from "./ThreadRowMiniMap";
+import { useThreadSplitIndicator } from "./threadSplitIndicator";
+import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -102,6 +106,9 @@ interface ThreadRowContainerArgs {
   className: string;
   dragBindings?: SidebarSortableDragBindings;
   onClickCapture?: ThreadRowClickCaptureHandler;
+  // Split-drag initiator; engages only when the pointer leaves the sidebar, so
+  // it coexists with the dnd-kit reorder listeners in `dragBindings`.
+  onSplitDragPointerDown?: PointerEventHandler<HTMLElement>;
   stickyLevel?: number;
   style: CSSProperties;
 }
@@ -127,6 +134,7 @@ function renderThreadRowContainer({
   className,
   dragBindings,
   onClickCapture,
+  onSplitDragPointerDown,
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
@@ -143,6 +151,7 @@ function renderThreadRowContainer({
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
         onClickCapture={onClickCapture}
+        onPointerDown={onSplitDragPointerDown}
       >
         {children}
       </SidebarStickyTier>
@@ -157,6 +166,7 @@ function renderThreadRowContainer({
       {...dragBindings?.attributes}
       {...(dragBindings?.listeners ?? {})}
       onClickCapture={onClickCapture}
+      onPointerDown={onSplitDragPointerDown}
     >
       {children}
     </div>
@@ -450,6 +460,16 @@ function ThreadRowComponent({
   // Inside a folder the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
   const labelTitle = accessibleTitle ?? threadTitle;
+  const splitIndicator = useThreadSplitIndicator(projectId, thread.id);
+  const { onPointerDown: onSplitDragPointerDown, openInSplit } =
+    useThreadRowSplitDrag({
+      projectId,
+      threadId: thread.id,
+      title: threadTitle,
+    });
+  // Splits are disabled on compact viewports; the drag hook signals that by
+  // withholding its pointer handler, so gate the click/menu entry points on it.
+  const splitAvailable = onSplitDragPointerDown !== undefined;
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
   const isParentCollapsed = parentOptions?.isCollapsed ?? false;
@@ -506,6 +526,10 @@ function ThreadRowComponent({
     showActive
       ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+    // Subtle open-in-split tint, weaker than the active-row treatment. The
+    // focused pane's thread is already the active row, so this only marks the
+    // other open panes; hover still wins over it.
+    !showActive && splitIndicator.isOpenInSplit && "bg-sidebar-accent/50",
     !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
   );
@@ -528,10 +552,18 @@ function ThreadRowComponent({
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
         data-sidebar-thread-shortcut-target=""
         data-sidebar-thread-id={thread.id}
-        onClick={() => {
+        onClick={(event) => {
           // Selecting a thread/agent row restores its conversation without
           // disturbing any other thread's collapsed conversation state.
           setConversationCollapsed(false);
+          // Cmd/Ctrl-click is the split feature's second entry point: open the
+          // thread in the split instead of replacing the focused pane. Match the
+          // drag rules (right split / focus if open / replace at the cap).
+          if (splitAvailable && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            openInSplit();
+            return;
+          }
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
@@ -553,6 +585,12 @@ function ThreadRowComponent({
         ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
+      {splitIndicator.miniMap ? (
+        <ThreadRowMiniMap
+          slots={splitIndicator.miniMap}
+          label={`${labelTitle} — open in split`}
+        />
+      ) : null}
       {shortcut ? (
         <kbd
           aria-hidden="true"
@@ -610,6 +648,7 @@ function ThreadRowComponent({
                   "text-subtle-foreground hover:bg-transparent hover:text-foreground",
                   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
                 )}
+                onOpenInSplit={splitAvailable ? openInSplit : undefined}
                 onOpenChange={setIsDropdownActionsOpen}
               />
             </div>
@@ -626,6 +665,7 @@ function ThreadRowComponent({
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,
+    onSplitDragPointerDown,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });
@@ -633,6 +673,7 @@ function ThreadRowComponent({
   return (
     <ThreadActionsContextMenu
       thread={thread}
+      onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
     >
       {row}

@@ -2,6 +2,7 @@ import {
   createQueuedThreadMessage,
   deleteQueuedThreadMessage,
   getEnvironment,
+  getExperiments,
   getQueuedThreadMessage,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   pinThread,
@@ -376,12 +377,20 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.open, (context, payload) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
-    parseSafeRelativeRoutePath(payload.path);
-    const delivered = deps.hub.notifyThreadOpenFile(publicThread.id, {
-      source: payload.source,
-      path: payload.path,
-      lineNumber: payload.lineNumber,
-    });
+    if (payload.split !== undefined && !getExperiments(deps.db).threadSplits) {
+      throw new ApiError(
+        403,
+        "experiment_disabled",
+        'Thread splits are disabled — enable the "Thread splits" experiment in Settings → Experiments.',
+      );
+    }
+    if (payload.file !== null) {
+      parseSafeRelativeRoutePath(payload.file.path);
+    }
+    const delivered = deps.hub.notifyThreadOpen(
+      { projectId: publicThread.projectId, threadId: publicThread.id },
+      { split: payload.split ?? "replace", file: payload.file },
+    );
     return context.json({ delivered });
   });
 

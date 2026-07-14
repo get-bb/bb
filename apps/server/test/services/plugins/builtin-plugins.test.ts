@@ -23,9 +23,11 @@ import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
+import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import {
   BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
+  resolveBuiltinPluginRootPath,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
 import { testLogger } from "../../helpers/test-app.js";
@@ -58,7 +60,6 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
   // source tree must carry one packaged plugin per BUILTIN_PLUGIN_NAMES
   // entry — a name added to the registry is covered here automatically.
   for (const name of BUILTIN_PLUGIN_NAMES) {
-    const hasApp = name !== "memory";
     const sourceRoot = join(sourceModuleDir, "builtin-plugins", name);
     await mkdir(join(sourceRoot, "dist"), { recursive: true });
     await mkdir(join(sourceRoot, "skills", name), { recursive: true });
@@ -71,11 +72,8 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
           version: "0.1.0",
           type: "module",
           bb: {
-            ...(name === "memory"
-              ? { displayName: "Memory", icon: "Brain" }
-              : {}),
             server: "./src/server.ts",
-            ...(hasApp ? { app: "./app.tsx" } : {}),
+            app: "./app.tsx",
             skills: ["skills"],
           },
         },
@@ -87,12 +85,10 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
       join(sourceRoot, "src", "server.ts"),
       `throw new Error("packaged builtin should not load source");\n`,
     );
-    if (hasApp) {
-      await writeFile(
-        join(sourceRoot, "app.tsx"),
-        `throw new Error("packaged builtin should not build app source");\n`,
-      );
-    }
+    await writeFile(
+      join(sourceRoot, "app.tsx"),
+      `throw new Error("packaged builtin should not build app source");\n`,
+    );
     await writeFile(
       join(sourceRoot, "dist", "server.js"),
       `export default function plugin() {
@@ -108,21 +104,16 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
         2,
       )}\n`,
     );
-    if (hasApp) {
-      await writeFile(
-        join(sourceRoot, "dist", "app.js"),
-        `export default {};\n`,
-      );
-      await writeFile(join(sourceRoot, "dist", "app.css"), `/* built */\n`);
-      await writeFile(
-        join(sourceRoot, "dist", "app.meta.json"),
-        `${JSON.stringify(
-          { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
-          null,
-          2,
-        )}\n`,
-      );
-    }
+    await writeFile(join(sourceRoot, "dist", "app.js"), `export default {};\n`);
+    await writeFile(join(sourceRoot, "dist", "app.css"), `/* built */\n`);
+    await writeFile(
+      join(sourceRoot, "dist", "app.meta.json"),
+      `${JSON.stringify(
+        { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
+        null,
+        2,
+      )}\n`,
+    );
     await writeFile(
       join(sourceRoot, "skills", name, "SKILL.md"),
       `---\nname: ${name}\n---\n`,
@@ -178,11 +169,28 @@ describe("builtin plugin reconciliation", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
   });
 
-  it("declares memory as builtin and disabled by default", () => {
-    expect(BUILTIN_PLUGINS).toContainEqual({
-      name: "memory",
-      defaultEnabled: false,
-    });
+  it("does not reserve the marketplace Memory plugin as a builtin", () => {
+    expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(
+      "memory",
+    );
+  });
+
+  it("gives every builtin plugin a deliberate settings icon", async () => {
+    const expectedIcons = new Map([
+      ["automations", "Clock"],
+      ["connect", "Smartphone"],
+      ["custom-instructions", "EditFile"],
+      ["inline-vis", "AppWindow"],
+      ["secrets", "Lock"],
+    ]);
+
+    expect(BUILTIN_PLUGINS).toHaveLength(expectedIcons.size);
+    for (const builtin of BUILTIN_PLUGINS) {
+      const manifest = await readPluginManifest(
+        resolveBuiltinPluginRootPath(builtin.name),
+      );
+      expect(manifest.icon, builtin.name).toBe(expectedIcons.get(builtin.name));
+    }
   });
 
   afterEach(async () => {
@@ -676,20 +684,6 @@ describe("builtin plugin packaging", () => {
     await expect(stat(join(connectRoot, "src"))).rejects.toThrow();
     await expect(stat(join(connectRoot, "node_modules"))).rejects.toThrow();
 
-    const memoryRoot = join(targetRoot, "memory");
-    const memoryPackageJson = JSON.parse(
-      await readFile(join(memoryRoot, "package.json"), "utf8"),
-    );
-    expect(memoryPackageJson.bb).toMatchObject({
-      displayName: "Memory",
-      icon: "Brain",
-      server: "./dist/server.js",
-      skills: ["skills"],
-    });
-    expect(memoryPackageJson.bb).not.toHaveProperty("app");
-    await expect(
-      stat(join(memoryRoot, "dist", "server.js")),
-    ).resolves.toBeTruthy();
-    await expect(stat(join(memoryRoot, "dist", "app.js"))).rejects.toThrow();
+    await expect(stat(join(targetRoot, "memory"))).rejects.toThrow();
   });
 });

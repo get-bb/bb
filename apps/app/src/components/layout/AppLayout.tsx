@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
@@ -60,6 +60,7 @@ import {
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
+  getThreadRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
@@ -75,6 +76,11 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
+import { wsManager } from "@/lib/ws";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { findPaneByThread } from "@/lib/split-layout";
+import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -433,10 +439,40 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const isCompactViewport = useIsCompactViewport();
+  const threadSplitsEnabled = useThreadSplitsEnabled();
+  const store = useStore();
   const contentShellRef = useRef<HTMLDivElement>(null);
   useMobileVisualViewportHeight(contentShellRef, isCompactViewport);
   const location = useLocation();
   const navigate = useNavigate();
+  useEffect(
+    () =>
+      wsManager.onThreadOpen((signal) => {
+        const route = getThreadRoutePath({
+          projectId: signal.projectId,
+          threadId: signal.threadId,
+        });
+        if (!threadSplitsEnabled) {
+          void navigate(route);
+          return;
+        }
+        const current = store.get(splitLayoutAtom);
+        const alreadyOpen =
+          current !== null &&
+          findPaneByThread(current.root, signal.projectId, signal.threadId) !==
+            null;
+        const next = applyThreadOpenToLayout(
+          current,
+          { projectId: signal.projectId, threadId: signal.threadId },
+          isCompactViewport ? "replace" : signal.split,
+        );
+        if (next !== current) {
+          store.set(splitLayoutAtom, next);
+        }
+        void navigate(route, alreadyOpen ? { replace: true } : undefined);
+      }),
+    [isCompactViewport, navigate, store, threadSplitsEnabled],
+  );
   useAppCommandHandler("thread.new", () => {
     void navigate(getRootComposeRoutePath(), {
       state: { focusPrompt: true },
@@ -508,7 +544,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(sidebarWidth);
   const animationFrameRef = useRef<number | null>(null);
-  const showHeader = !isThreadView && !isRootView;
+  const showHeader =
+    !isThreadView &&
+    !isRootView &&
+    !(threadSplitsEnabled && pluginPanelMatch !== null);
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);

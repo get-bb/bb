@@ -679,6 +679,29 @@ describe("PromptBoxInternal zen mode layout", () => {
 });
 
 describe("PromptBoxInternal compact layout", () => {
+  it("publishes the container-compact placeholder for CSS", () => {
+    const baseProps = createPromptBoxProps();
+    const view = render(
+      <PromptBoxInternal
+        {...baseProps}
+        containerCompactPlaceholder="Reconnecting..."
+      />,
+    );
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+
+    expect(
+      form.style.getPropertyValue("--promptbox-container-compact-placeholder"),
+    ).toBe('"Reconnecting..."');
+
+    view.rerender(<PromptBoxInternal {...baseProps} />);
+    expect(
+      form.style.getPropertyValue("--promptbox-container-compact-placeholder"),
+    ).toBe("");
+  });
+
   it("animates between compact and full layouts", async () => {
     const promptBoxRef = createRef<PromptBoxHandle>();
     const baseProps = createPromptBoxProps({ promptBoxRef });
@@ -708,8 +731,60 @@ describe("PromptBoxInternal compact layout", () => {
     await waitFor(() => {
       expect(form.style.transition).toContain("height 240ms");
       expect(form.style.height).toBe("144px");
+      expect(form.style.overflow).toBe("hidden");
     });
     fireEvent.transitionEnd(form, { propertyName: "height" });
+    expect(form.style.overflow).toBe("");
+  });
+
+  it("animates an externally driven layout change", async () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const baseProps = createPromptBoxProps({ promptBoxRef });
+    const view = render(
+      <PromptBoxInternal {...baseProps} heightAnimationKey="compact" />,
+    );
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+    vi.spyOn(form, "getBoundingClientRect")
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 48))
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 144))
+      .mockReturnValue(new DOMRect(0, 0, 320, 144));
+
+    act(() => promptBoxRef.current?.captureHeightForLayoutChange());
+    view.rerender(
+      <PromptBoxInternal {...baseProps} heightAnimationKey="expanded" />,
+    );
+
+    await waitFor(() => {
+      expect(form.style.transition).toContain("height 240ms");
+      expect(form.style.height).toBe("144px");
+    });
+    fireEvent.transitionEnd(form, { propertyName: "height" });
+  });
+
+  it("skips an external layout animation when the height did not change", () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const baseProps = createPromptBoxProps({ promptBoxRef });
+    const view = render(
+      <PromptBoxInternal {...baseProps} heightAnimationKey="compact" />,
+    );
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+    vi.spyOn(form, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 320, 144),
+    );
+
+    act(() => promptBoxRef.current?.captureHeightForLayoutChange());
+    view.rerender(
+      <PromptBoxInternal {...baseProps} heightAnimationKey="expanded" />,
+    );
+
+    expect(form.style.transition).toBe("");
+    expect(form.style.height).toBe("");
   });
 
   it("keeps only the one-line editor and primary action", () => {
@@ -818,6 +893,30 @@ describe("PromptBoxInternal compact layout", () => {
     expect(editor.querySelector("br")).toBeTruthy();
     expect(editor.children.length).toBeGreaterThan(1);
     expect(editor.textContent).toContain("A hidden paragraph after the quote");
+  });
+
+  it("anchors only the primary action during a container-driven reveal", () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          voice: {
+            state: "idle",
+            isSupported: true,
+            stream: null,
+            start: vi.fn(),
+            stop: vi.fn(),
+            cancel: vi.fn(),
+          },
+        })}
+      />,
+    );
+
+    const submitGroup = document.querySelector("[data-promptbox-submit-group]");
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+    const voice = screen.getByRole("button", { name: "Start voice input" });
+
+    expect(submitGroup?.contains(submit)).toBe(true);
+    expect(submitGroup?.contains(voice)).toBe(false);
   });
 
   it("does not expose zen controls in the full mobile layout", () => {

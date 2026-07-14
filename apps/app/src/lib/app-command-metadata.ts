@@ -1,5 +1,6 @@
 import {
   QUESTION_SELECT_APP_COMMAND_IDS,
+  PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
   type AppCommandId,
 } from "@bb/domain";
@@ -85,6 +86,28 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "panel.toggle",
         "Toggle panel",
         "Show or hide the secondary panel.",
+      ),
+      command(
+        "pane.focus.previous",
+        "Focus previous chat pane",
+        "Focus the previous chat pane in reading order.",
+      ),
+      command(
+        "pane.focus.next",
+        "Focus next chat pane",
+        "Focus the next chat pane in reading order.",
+      ),
+      ...PANE_FOCUS_APP_COMMAND_IDS.map((id, index) =>
+        command(
+          id,
+          `Focus chat pane ${index + 1}`,
+          `Focus chat pane ${index + 1} in reading order.`,
+        ),
+      ),
+      command(
+        "pane.close",
+        "Close focused chat pane",
+        "Close the focused chat pane when more than one is open.",
       ),
     ],
   },

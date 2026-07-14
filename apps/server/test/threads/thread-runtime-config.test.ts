@@ -819,6 +819,7 @@ describe("thread runtime config", () => {
         bbConnect: false,
         claudeCodeMockCliTraffic: true,
         multiMachine: false,
+        threadSplits: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
         plugins: false,

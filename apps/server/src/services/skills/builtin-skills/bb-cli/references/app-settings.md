@@ -17,6 +17,10 @@ every window and client sees the same value.
 
 ## Keyboard shortcuts
 
+- `showKeyboardHints` defaults to true. Set it with
+  `bb settings keyboard hints <true|false>` to control whether
+  delayed shortcut badges appear while holding Command or Control. It does not
+  disable the shortcuts themselves.
 - Settings → Keyboard records sparse per-command chord overrides. `Mod` means
   Command on macOS and Control on Windows/Linux.
 - Reset removes the override and follows bb's current default. Clear stores an

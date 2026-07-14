@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { ThreadOpenFileSignal } from "@bb/server-contract";
+import type { ThreadOpenFile } from "@bb/server-contract";
 import { createFilePreviewLineRange } from "@/lib/file-preview";
 import { wsManager } from "@/lib/ws";
 import type { OpenSecondaryPanelTabRequest } from "./useThreadFileTabs";
@@ -17,21 +17,21 @@ interface UseThreadOpenFileSignalParams {
 }
 
 function toOpenRequest(
-  signal: ThreadOpenFileSignal,
+  file: ThreadOpenFile,
 ): OpenSecondaryPanelTabRequest {
   const lineRange =
-    signal.lineNumber === null
+    file.lineNumber === null
       ? null
       : createFilePreviewLineRange({
-          startLineNumber: signal.lineNumber,
-          endLineNumber: signal.lineNumber,
+          startLineNumber: file.lineNumber,
+          endLineNumber: file.lineNumber,
         });
-  if (signal.source === "workspace") {
+  if (file.source === "workspace") {
     return {
       kind: "workspace-file-preview",
       tab: {
         lineRange,
-        path: signal.path,
+        path: file.path,
         source: { kind: "working-tree" },
         statusLabel: null,
       },
@@ -39,7 +39,7 @@ function toOpenRequest(
   }
   return {
     kind: "thread-storage-file-preview",
-    tab: { lineRange, path: signal.path },
+    tab: { lineRange, path: file.path },
   };
 }
 
@@ -62,13 +62,13 @@ export function useThreadOpenFileSignal({
       return;
     }
     const apply = () => {
-      const signal = wsManager.consumePendingOpen(threadId);
-      if (signal) {
-        openTab(toOpenRequest(signal));
+      const file = wsManager.consumePendingOpenFile(threadId);
+      if (file) {
+        openTab(toOpenRequest(file));
       }
     };
     apply();
-    return wsManager.onThreadOpenFile((signal) => {
+    return wsManager.onThreadOpen((signal) => {
       if (signal.threadId === threadId) {
         apply();
       }

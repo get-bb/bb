@@ -9,6 +9,7 @@
   },
   "bb": {
     "displayName": "Remote access",
+    "icon": "Smartphone",
     "server": "./src/server.ts",
     "app": "./app.tsx"
   },

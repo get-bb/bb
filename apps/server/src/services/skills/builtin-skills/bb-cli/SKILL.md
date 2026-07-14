@@ -41,6 +41,9 @@ message agents, or inspect projects, providers, and environments.
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).
 - Settings → Keyboard records server-backed per-command shortcut overrides.
+  The `showKeyboardHints` preference controls the delayed badges shown while
+  holding Command or Control and defaults to true; update it with
+  `bb settings keyboard hints <true|false>`.
   Reset returns to bb's current default; Clear disables the command. Non-native
   actions apply in browser and desktop clients, and desktop menu accelerators
   use the same resolved bindings. For details, read
@@ -187,11 +190,18 @@ For review or fix pipelines, get the environment ID from
 `bb thread show <thread-id> --json`, then spawn the follow-up with
 `--environment <environment-id>` so it sees the same files.
 
-## Opening Files In The Thread Panel
+## Opening Threads And Files In The App
 
 - Use `bb thread open <path>` inside a BB thread to open a Markdown, HTML, or
   other workspace file for the user in the BB IDE's thread panel.
-- Outside a BB thread, use `bb thread open <thread-id> <path>`.
+- Use `bb thread open <thread-id> --split right|down|left|top|replace` to open
+  or focus a thread in the current app split layout. `replace` is the default;
+  an already-open thread is focused, and an edge split at the four-pane cap
+  replaces the focused pane. Explicit `--split` placement requires the
+  **"Thread splits"** experiment in Settings → Experiments; ordinary opens
+  without `--split` continue to work while it is off.
+- A file path is optional when a thread ID is explicit:
+  `bb thread open <thread-id> [path] [--split <placement>]`.
 - Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace.
 - Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the
@@ -234,8 +244,8 @@ For review or fix pipelines, get the environment ID from
 
 ## Memory
 
-- The builtin `memory` plugin is disabled by default. Enable it with
-  `bb plugin enable memory` before using `bb memory ...`.
+- Memory is an opt-in plugin in the default BB Official marketplace. Install it
+  with `bb plugin install memory@bb-official` before using `bb memory ...`.
 - Use `bb memory catalog` to inspect the compact index, `bb memory search
 <query>` to find candidates, and `bb memory get <id>` to progressively
   disclose a full record.
@@ -357,6 +367,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   is off, except `connect`, which is gated by the **"bb connect"**
   experiment.
 - **Plugin marketplaces** (catalogs under `/api/v1/marketplaces`):
+  - BB starts with the removable **BB Official** catalog configured. It lists
+    the opt-in GitHub, Docs, and Memory plugins; removing it is remembered across
+    restarts.
   - `bb plugin marketplace add <source> [--name <n>] [--yes]` — register and
     refresh a catalog only (installs nothing). Sources: local path / `path:`,
     `owner/repo[@ref]`, or a git URL`[@ref]`. Every remote/git source requires
@@ -380,12 +393,15 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     marketplace resolution. To pin or range an npm package, install with
     `npm:<package>@…` (marketplace installs use the catalog entry's source).
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
-    track, while exact versions are pinned. Git branches track; tags and commits
-    are pinned. Installs prompt for confirmation (plugins are full-trust code);
+    track, while exact versions are pinned. Marketplace GitHub Release semver
+    ranges track published, SHA-256-verified `.tgz` assets. Git branches track;
+    tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
     refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
-    are built at install time for path/git sources; npm packages must publish a
-    prebuilt `dist/`. Managed git/npm installs refuse `engines.bb` /
+    are built at install time for path sources and git sources without a
+    prebuilt app when their imported dependencies are already available;
+    git/npm packages can also ship a metadata-validated prebuilt `dist/`, and
+    npm/GitHub Release packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
     and ids reserved by builtins.
   - `bb plugin outdated` — check installed plugins for compatible updates

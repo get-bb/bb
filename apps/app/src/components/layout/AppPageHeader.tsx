@@ -46,8 +46,7 @@ export function AppPageHeader({
     desktopInfo,
     windowState: desktopWindowState,
   });
-  const shouldReserveSidebarTrigger =
-    isCompactViewport || !isSidebarShowing;
+  const shouldReserveSidebarTrigger = isCompactViewport || !isSidebarShowing;
   return (
     <header
       className={cn(

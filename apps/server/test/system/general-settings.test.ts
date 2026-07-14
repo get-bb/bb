@@ -45,6 +45,7 @@ describe("general settings", () => {
         body: JSON.stringify({
           ...defaultAppSettings,
           caffeinate: true,
+          showKeyboardHints: false,
           codexMemoryEnabled: false,
         }),
       });
@@ -52,11 +53,13 @@ describe("general settings", () => {
       expect(appSettingsSchema.parse(await readJson(put))).toEqual({
         ...defaultAppSettings,
         caffeinate: true,
+        showKeyboardHints: false,
         codexMemoryEnabled: false,
       });
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
         caffeinate: true,
+        showKeyboardHints: false,
         codexMemoryEnabled: false,
       });
 
@@ -67,6 +70,7 @@ describe("general settings", () => {
       expect(parsedConfig.generalSettings).toEqual({
         ...defaultAppSettings,
         caffeinate: true,
+        showKeyboardHints: false,
         codexMemoryEnabled: false,
       });
       expect(parsedConfig.primaryHostId).toBe(host.id);

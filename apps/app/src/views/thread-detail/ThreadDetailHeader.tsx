@@ -1,4 +1,8 @@
-import { useState, type ReactNode } from "react";
+import {
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
@@ -18,6 +22,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { usePaneContext } from "./PaneContext";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
@@ -32,6 +37,8 @@ interface ThreadDetailHeaderProps {
   /** Pill shown beside the title for side chats and hierarchical child threads. */
   childPillLabel: "child" | "side chat" | null;
   isSecondaryPanelOpen: boolean;
+  /** Closes this pane; only provided when the layout is split (>1 pane). */
+  onClosePane?: () => void;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
   /** Plugin-contributed thread action buttons (design §4.9); optional. */
@@ -45,6 +52,7 @@ export function ThreadDetailHeader({
   actionsMenu,
   childPillLabel,
   isSecondaryPanelOpen,
+  onClosePane,
   onOpenThreadGitAction,
   onToggleSecondaryPanel,
   pluginActions,
@@ -57,6 +65,15 @@ export function ThreadDetailHeader({
   const [desktopInfo] = useState(getBbDesktopInfo);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  // The title doubles as the pane-reorder drag handle when the layout is split;
+  // beginPaneDrag is undefined on the single-pane, page, and popout surfaces.
+  const { beginPaneDrag } = usePaneContext();
+  const handleTitlePointerDown = (event: ReactPointerEvent) => {
+    if (!beginPaneDrag || event.button !== 0) {
+      return;
+    }
+    beginPaneDrag(event, threadTitle);
+  };
   const rightPanelLabel = isSecondaryPanelOpen
     ? "Hide right panel"
     : "Show right panel";
@@ -69,7 +86,21 @@ export function ThreadDetailHeader({
 
   const center = (
     <>
-      <p className="min-w-0 truncate text-sm font-medium">{threadTitle}</p>
+      <p
+        className={cn(
+          "min-w-0 truncate text-sm font-medium",
+          beginPaneDrag &&
+            cn(
+              "cursor-grab touch-none select-none",
+              // Opt the drag handle out of the macOS title-bar drag region so a
+              // pane-reorder gesture isn't swallowed as a window drag.
+              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+            ),
+        )}
+        onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
+      >
+        {threadTitle}
+      </p>
       {childPillLabel ? (
         <Pill variant="outline" size="sm">
           {childPillLabel}
@@ -143,6 +174,18 @@ export function ThreadDetailHeader({
             <Icon name={rightPanelIconName} />
           </Button>
         </span>
+      ) : null}
+      {onClosePane ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={HEADER_ICON_BUTTON_CLASS}
+          aria-label="Close pane"
+          onClick={onClosePane}
+        >
+          <Icon name="X" />
+        </Button>
       ) : null}
     </>
   );

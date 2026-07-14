@@ -421,7 +421,7 @@ bb.realtime.publish<Channels>("issues-updated", { count: 42 });
 This is a **contract addition**, not a ride-along: change kinds are closed enums with
 strict validation and no payload field (`packages/domain/src/change-kinds.ts`,
 `hub.ts:712`). V1 adds a new ephemeral WS message type (`plugin-signal`, precedent:
-`threadOpenFileSignalSchema` / `notifyThreadOpenFile`) plus a plugin subscription target
+`threadOpenSignalSchema` / `notifyThreadOpen`) plus a plugin subscription target
 in `@bb/domain` + `@bb/server-contract`. `plugin-reloaded` similarly joins
 `SYSTEM_CHANGE_KINDS`; plugin dev iterations reconcile frontend bundles in place instead
 of hard-reloading the page.
@@ -824,7 +824,7 @@ guide templates (plugin-commands chapter), the `bb-cli` builtin skill,
 ## 8. Hero plugin sketches (API validation)
 
 **Linear** *(built, then REMOVED 2026-07-02 — superseded by the GitHub hero,
-`examples/plugins/github`, which exercises the full stack without a third-party API
+`marketplace/plugins/github`, which exercises the full stack without a third-party API
 key)* — settings (`apiKey`, `teamKey`); sqlite issue cache; `background.schedule`
 sync; `bb.cli.register` (`bb linear issues|start`) so agents and humans share the surface;
 `registerMentionProvider` (@ENG-123 → issue context); rpc `listIssues/startWork`; slots:

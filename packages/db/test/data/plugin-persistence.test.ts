@@ -8,6 +8,7 @@ import {
   getInstalledPluginRegistration,
   getInstalledPlugin,
   getMarketplace,
+  getMarketplaceIncludingRemoved,
   listPluginArtifacts,
   listMarketplaces,
   migrate,
@@ -108,6 +109,7 @@ describe("normalized plugin persistence", () => {
       lastSuccessfulRefreshAt: null,
       lastAttemptedRefreshAt: null,
       lastError: null,
+      removedAt: null,
     });
 
     expect(listMarketplaces(db)).toMatchObject([
@@ -115,6 +117,10 @@ describe("normalized plugin persistence", () => {
     ]);
     expect(getMarketplace(db, "official")?.displayName).toBe("Official");
     expect(deleteMarketplace(db, "official")).toBe(true);
+    expect(getMarketplace(db, "official")).toBeUndefined();
+    expect(getMarketplaceIncludingRemoved(db, "official")?.removedAt).toEqual(
+      expect.any(Number),
+    );
   });
 
   it("rejects an npm artifact without registry integrity at runtime", () => {

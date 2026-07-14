@@ -9,6 +9,10 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import { PluginSidebarFooterActions } from "./PluginSidebarFooterActions";
 
 function registrationSet(
@@ -38,10 +42,44 @@ function renderWithProviders(ui: ReactNode) {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  resetPluginLogoStoreForTest();
   vi.restoreAllMocks();
 });
 
 describe("PluginSidebarFooterActions", () => {
+  it("prefers the plugin's canonical logo over the contribution icon", () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "remote",
+          {
+            icon: "Plug",
+            logoUrl: "/api/v1/plugins/remote/assets/logo?h=abc",
+            logoDarkUrl: null,
+          },
+        ],
+      ]),
+    );
+    setPluginSlotRegistrations(
+      "remote",
+      registrationSet({
+        sidebarFooterActions: [
+          {
+            id: "open",
+            title: "Remote",
+            icon: "Smartphone",
+            run: () => {},
+          },
+        ],
+      }),
+    );
+
+    renderWithProviders(<PluginSidebarFooterActions />);
+
+    expect(screen.getByTestId("plugin-logo-remote")).toBeTruthy();
+    expect(document.querySelector('[data-icon="Smartphone"]')).toBeNull();
+  });
+
   it("contains a throwing run without breaking the sidebar", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     setPluginSlotRegistrations(

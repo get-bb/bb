@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
 import { usePluginIconHint, usePluginLogoUrl } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -30,7 +31,8 @@ export function PluginIcon({
 }) {
   const logoUrl = usePluginLogoUrl(pluginId);
   const pluginIcon = usePluginIconHint(pluginId);
-  if (logoUrl !== null) {
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
+  if (logoUrl !== null && logoUrl !== failedLogoUrl) {
     return (
       <img
         src={logoUrl}
@@ -38,6 +40,7 @@ export function PluginIcon({
         aria-hidden="true"
         data-testid={`plugin-logo-${pluginId}`}
         className={cn("size-4 shrink-0 rounded-sm object-contain", className)}
+        onError={() => setFailedLogoUrl(logoUrl)}
       />
     );
   }

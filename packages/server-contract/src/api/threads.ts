@@ -391,42 +391,71 @@ export type ReorderPinnedThreadRequest = z.infer<
 export const panelFileSourceSchema = z.enum(["workspace", "thread-storage"]);
 export type PanelFileSource = z.infer<typeof panelFileSourceSchema>;
 
-/**
- * Ephemeral server→client WebSocket message asking connected clients to open a
- * file in the secondary panel of the given thread. Broadcast to every client;
- * each opens it immediately if it is viewing the thread, otherwise when the
- * thread is next viewed. Nothing is persisted. Strict schema guards the
- * server's outgoing boundary (mirrors {@link terminalServerMessageSchema}).
- */
-export const threadOpenFileSignalSchema = z
+/** Requested placement for a thread opened in the app's split layout. */
+export const threadOpenSplitSchema = z.enum([
+  "right",
+  "down",
+  "left",
+  "top",
+  "replace",
+]);
+export type ThreadOpenSplit = z.infer<typeof threadOpenSplitSchema>;
+
+/** Optional secondary-panel file to open with a thread. */
+export const threadOpenFileSchema = z
   .object({
-    type: z.literal("thread-open-file"),
-    threadId: z.string().min(1),
     source: panelFileSourceSchema,
     path: z.string().min(1),
     lineNumber: z.number().int().positive().nullable(),
   })
   .strict();
-export type ThreadOpenFileSignal = z.infer<typeof threadOpenFileSignalSchema>;
+export type ThreadOpenFile = z.infer<typeof threadOpenFileSchema>;
 
-/**
- * Lenient counterpart for INBOUND parsing on clients (the web app), tolerant of
- * a newer server. Output stays assignable to {@link ThreadOpenFileSignal}.
- */
-export const threadOpenFileSignalLenientSchema = z.object({
-  type: z.literal("thread-open-file"),
-  threadId: z.string(),
-  source: panelFileSourceSchema,
-  path: z.string(),
-  lineNumber: z.number().int().positive().nullable(),
-});
-
-/** Request body for POST /threads/:id/open (threadId comes from the path). */
-export const threadOpenRequestSchema = z.object({
+const threadOpenFileLenientSchema = z.object({
   source: panelFileSourceSchema,
   path: z.string().min(1),
   lineNumber: z.number().int().positive().nullable(),
 });
+
+/**
+ * Ephemeral server→client WebSocket message asking connected clients to open a
+ * thread in the current split layout and, optionally, a file in that thread's
+ * secondary panel. Broadcast to every client; nothing is persisted. Strict
+ * schema guards the server's outgoing boundary.
+ */
+export const threadOpenSignalSchema = z
+  .object({
+    type: z.literal("thread-open"),
+    projectId: z.string().min(1),
+    threadId: z.string().min(1),
+    split: threadOpenSplitSchema,
+    file: threadOpenFileSchema.nullable(),
+  })
+  .strict();
+export type ThreadOpenSignal = z.infer<typeof threadOpenSignalSchema>;
+
+/**
+ * Lenient counterpart for INBOUND parsing on clients (the web app), tolerant of
+ * a newer server. Output stays assignable to {@link ThreadOpenSignal}.
+ */
+export const threadOpenSignalLenientSchema = z.object({
+  type: z.literal("thread-open"),
+  projectId: z.string(),
+  threadId: z.string(),
+  split: threadOpenSplitSchema,
+  file: threadOpenFileLenientSchema.nullable(),
+});
+
+/** Request body for POST /threads/:id/open (threadId comes from the path). */
+export const threadOpenRequestSchema = z
+  .object({
+    // Omission is semantically distinct from an explicit placement: ordinary
+    // thread/file opens remain available while the Thread splits experiment is
+    // off, while any supplied split request is server-gated.
+    split: threadOpenSplitSchema.optional(),
+    file: threadOpenFileSchema.nullable(),
+  })
+  .strict();
 export type ThreadOpenRequest = z.infer<typeof threadOpenRequestSchema>;
 
 /** Response for POST /threads/:id/open: how many connected clients received it. */

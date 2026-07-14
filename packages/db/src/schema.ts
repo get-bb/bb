@@ -153,6 +153,9 @@ export const systemExperiments = sqliteTable("system_experiments", {
   multiMachine: integer("multi_machine", { mode: "boolean" })
     .notNull()
     .default(false),
+  threadSplits: integer("thread_splits", { mode: "boolean" })
+    .notNull()
+    .default(false),
   popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),
   popoutChatHotkey: text("popout_chat_hotkey").notNull(),
   plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
@@ -164,6 +167,9 @@ export const appSettings = sqliteTable("app_settings", {
   caffeinate: integer("caffeinate", { mode: "boolean" })
     .notNull()
     .default(false),
+  showKeyboardHints: integer("show_keyboard_hints", { mode: "boolean" })
+    .notNull()
+    .default(true),
   codexMemoryEnabled: integer("codex_memory_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
@@ -330,6 +336,8 @@ export const marketplaces = sqliteTable("marketplaces", {
   lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
   lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
   lastError: text("last_error"),
+  /** Removal tombstone so default catalogs are not restored after restart. */
+  removedAt: integer("removed_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

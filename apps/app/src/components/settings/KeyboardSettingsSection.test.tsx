@@ -8,7 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppKeybindings } from "@bb/domain";
+import { defaultAppSettings, type AppKeybindings } from "@bb/domain";
 import { KeyboardSettingsSection } from "./KeyboardSettingsSection";
 
 const testState = vi.hoisted(() => ({
@@ -40,6 +40,7 @@ const testState = vi.hoisted(() => ({
       when: { all: ["mainSurface"], none: ["modalOpen"] },
     },
   ] as AppKeybindings,
+  generalMutate: vi.fn(),
   mutate: vi.fn(),
 }));
 
@@ -47,12 +48,17 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       defaultKeybindings: testState.defaultKeybindings,
+      generalSettings: defaultAppSettings,
       keybindingOverrides: [],
     },
   }),
 }));
 
 vi.mock("@/hooks/mutations/settings-mutations", () => ({
+  useUpdateGeneralSettings: () => ({
+    isPending: false,
+    mutate: testState.generalMutate,
+  }),
   useUpdateKeyboardSettings: () => ({
     isPending: false,
     mutate: testState.mutate,
@@ -65,6 +71,21 @@ afterEach(() => {
 });
 
 describe("KeyboardSettingsSection", () => {
+  it("turns keyboard hints off while preserving the full settings contract", () => {
+    render(<KeyboardSettingsSection />);
+
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "Show keyboard hints when holding CMD / Control",
+      }),
+    );
+
+    expect(testState.generalMutate).toHaveBeenCalledWith({
+      ...defaultAppSettings,
+      showKeyboardHints: false,
+    });
+  });
+
   it("records, clears, and resets a command shortcut", () => {
     render(<KeyboardSettingsSection />);
     const defaults = screen.getByLabelText("Default shortcuts for New thread");

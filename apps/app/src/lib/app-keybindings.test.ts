@@ -32,6 +32,7 @@ const CONTEXT: AppCommandContext = {
   modelPickerOpen: false,
   questionOpen: false,
   promptAvailable: false,
+  splitActive: false,
 };
 
 describe("app keybindings", () => {

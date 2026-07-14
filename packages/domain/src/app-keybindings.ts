@@ -24,12 +24,23 @@ export const QUESTION_SELECT_APP_COMMAND_IDS = [
   "question.select.9",
 ] as const;
 
+export const PANE_FOCUS_APP_COMMAND_IDS = [
+  "pane.focus.1",
+  "pane.focus.2",
+  "pane.focus.3",
+  "pane.focus.4",
+] as const;
+
 export const APP_COMMAND_IDS = [
   "thread.new",
   "thread.search",
   "thread.previous",
   "thread.next",
   ...THREAD_JUMP_APP_COMMAND_IDS,
+  "pane.focus.previous",
+  "pane.focus.next",
+  ...PANE_FOCUS_APP_COMMAND_IDS,
+  "pane.close",
   "window.new",
   "settings.open",
   "settings.openServers",
@@ -60,6 +71,7 @@ export const APP_COMMAND_CONTEXT_KEYS = [
   "modelPickerOpen",
   "questionOpen",
   "promptAvailable",
+  "splitActive",
 ] as const;
 
 export const appCommandContextKeySchema = z.enum(APP_COMMAND_CONTEXT_KEYS);

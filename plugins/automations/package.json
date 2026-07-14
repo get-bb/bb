@@ -1,12 +1,15 @@
 {
   "name": "bb-plugin-automations",
   "version": "0.1.0",
+  "description": "Schedule recurring and one-shot agent or script work.",
   "private": true,
   "type": "module",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
+    "displayName": "Automations",
+    "icon": "Clock",
     "server": "./src/server.ts",
     "app": "./app.tsx",
     "skills": [

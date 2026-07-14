@@ -7,6 +7,7 @@ import type {
 } from "@bb/domain";
 import {
   QUESTION_SELECT_APP_COMMAND_IDS,
+  PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
 } from "@bb/domain";
 
@@ -57,6 +58,11 @@ const mainWithoutModal = {
   none: ["modalOpen"],
 } as const;
 
+const splitWithoutModal = {
+  all: ["mainSurface", "splitActive"],
+  none: ["modalOpen"],
+} as const;
+
 export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
   // Browsers reserve Mod+N before the page receives a key event. Keep the
   // t3code-style alias available in web clients while desktop retains Mod+N.
@@ -80,6 +86,27 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
   }),
   ...THREAD_JUMP_APP_COMMAND_IDS.map((command, index) =>
     binding(command, String(index + 1), { mod: true }, mainWithoutModal),
+  ),
+  binding(
+    "pane.focus.previous",
+    "[",
+    { mod: true, shift: true },
+    splitWithoutModal,
+  ),
+  binding(
+    "pane.focus.next",
+    "]",
+    { mod: true, shift: true },
+    splitWithoutModal,
+  ),
+  ...PANE_FOCUS_APP_COMMAND_IDS.map((command, index) =>
+    binding(command, String(index + 1), { mod: true }, splitWithoutModal),
+  ),
+  binding(
+    "pane.close",
+    "x",
+    { mod: true, shift: true },
+    splitWithoutModal,
   ),
   binding("panel.newTab", "t", { mod: true }, mainWithoutModal),
   binding("panel.close", "w", { mod: true }, mainWithoutModal),

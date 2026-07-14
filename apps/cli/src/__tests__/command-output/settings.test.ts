@@ -34,6 +34,23 @@ describe("bb settings commands", () => {
     });
   });
 
+  it("updates keyboard hint visibility while preserving the full contract", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(["settings", "keyboard", "hints", "false"], register);
+
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultAppSettings, showKeyboardHints: false },
+    });
+  });
+
   it("reads usage from a selected machine", async () => {
     const getUsage = vi.fn(async () => ({
       codex: { status: "unauthenticated" },

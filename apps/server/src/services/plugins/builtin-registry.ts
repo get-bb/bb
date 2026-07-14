@@ -19,7 +19,6 @@ export const BUILTIN_PLUGINS = [
   { name: "connect", defaultEnabled: true },
   { name: "custom-instructions", defaultEnabled: true },
   { name: "inline-vis", defaultEnabled: true },
-  { name: "memory", defaultEnabled: false },
   { name: "secrets", defaultEnabled: true },
 ] as const satisfies readonly {
   name: string;

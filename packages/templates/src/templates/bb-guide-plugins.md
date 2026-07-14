@@ -22,8 +22,8 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
-The builtin Memory plugin is disabled by default. Enable it with
-`bb plugin enable memory`. Once enabled, it injects a compact global and
+The Memory plugin is an opt-in install from the default BB Official marketplace:
+`bb plugin install memory@bb-official`. Once installed, it injects a compact global and
 current-project memory index into agent context and progressively discloses
 full records through CLI-only commands. Because its store works across
 providers, we recommend disabling provider-native memory under Settings →
@@ -124,6 +124,12 @@ only — it installs nothing. Catalog sources: a local directory (`path:` or a
 filesystem path), `owner/repo[@ref]` (GitHub shorthand), or a git URL with an
 optional `@ref`. Server routes live under `/api/v1/marketplaces`.
 
+BB starts with the removable `BB Official` marketplace configured. It includes
+GitHub, Docs, and Memory, which remain opt-in installs (`bb plugin install
+github@bb-official`, `bb plugin install simple-notes@bb-official`, or
+`bb plugin install memory@bb-official`). Removing the catalog is remembered
+across restarts.
+
 Trust model: every remote/git source requires an interactive trust confirmation
 before add (catalogs can introduce full-trust plugin code later). Pass `--yes`
 to skip; non-TTY refuses without `--yes`. Unmistakable local path forms
@@ -143,8 +149,11 @@ Updates are manual: `bb plugin outdated` checks tracking sources and
 already-installed managed plugin is refused — use `bb plugin update`. A failed
 activation restores the pre-update snapshot and leaves the latest failure
 visible as needing attention. Exact npm versions, git tags and commits, and path
-sources are pinned; npm ranges/omitted specs/dist-tags and git branches track
-compatible updates.
+sources are pinned; npm ranges/omitted specs/dist-tags, GitHub Release semver
+ranges, and git branches track compatible updates. GitHub Release entries use
+published `.tgz` assets and BB verifies GitHub's current SHA-256 digest before
+install. Release assets may be mutable, so replacing an asset under an existing
+tag changes what a future install receives.
 
 Removing a marketplace always keeps its installed plugins and converts them to
 direct provenance while preserving each plugin's source intent.
@@ -158,16 +167,17 @@ use a direct `npm:<package>@<version|tag|range>` install. Escape hatches that
 skip marketplace resolution: `path:`, `npm:`, `git:`, `builtin:` prefixes (and
 path-like syntax).
 
-Frontend builds are automatic once installed: path and git installs compile
-dist/ at install time (a build failure fails the install), and the server
-rebuilds them at load after a bb upgrade. npm packages must publish a
-prebuilt dist/ (app.js + app.meta.json) or the install is refused.
+Frontend builds are automatic once installed: path installs and git installs
+without a prebuilt app compile dist/ at install time (a build failure fails the
+install), provided their imported dependencies are already available. Git and
+npm plugins may also ship a metadata-validated prebuilt app; npm and GitHub
+Release packages must do so or the install is refused. The server rebuilds
+source-built apps after a bb upgrade.
 
-The backend half is prebuilt too: when a builtin/git/npm install ships a
-dist/server.js built for the running SDK major, the server loads it instead
-of the TypeScript source — consumers never need npm or node_modules. Path
-installs always load server.ts from source, so `bb plugin dev`/reload see
-edits immediately.
+The backend half is prebuilt too: when a builtin/git/npm or GitHub Release
+install ships a dist/server.js built for the running SDK major, the server
+loads it instead of the TypeScript source. Path installs always load server.ts
+from source, so `bb plugin dev`/reload see edits immediately.
 
 `bb plugin dev` is the edit loop: it requires the directory to already be
 installed as a plugin (`bb plugin install .` first), ignores dist/,
@@ -209,8 +219,8 @@ running BB via the pinned ref in components.json). `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
 sonner, vaul, and @pierre/diffs (the app's syntax-highlighted diff
 renderer) are runtime-shimmed (never bundled), everything else
-bundles from the plugin's node_modules (`npm install` for authors;
-consumers install prebuilt dist). A crashing slot collapses to a
+bundles from the plugin's node_modules (`npm install` for authors; BB installs
+release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
 (same data as `bb plugin config`) also appear under Settings → Plugins.
@@ -299,7 +309,7 @@ in a checkout). The builtin `inline-vis` plugin renders
 `::inline-vis{file="demo.html" height="480"}` through the sidebar's
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
-The `examples/plugins/` directory of a bb checkout also has
-reference plugins: github (full-stack: gh-CLI-backed issue/PR browser on
-vendored shadcn components), slack-bot (webhook bot), agent-enrichment
-(agent surfaces), and small-ux-pack (host-rendered UI).
+The `marketplace/plugins/` directory contains the BB Official GitHub, Docs, and
+Memory plugins. The remaining `examples/plugins/` reference plugins cover slack-bot
+(webhook bot), agent-enrichment (agent surfaces), and small-ux-pack
+(host-rendered UI).

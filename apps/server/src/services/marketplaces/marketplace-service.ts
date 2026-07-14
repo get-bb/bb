@@ -5,6 +5,7 @@ import {
   deleteMarketplace,
   getInstalledPlugin,
   getMarketplace,
+  getMarketplaceIncludingRemoved,
   listInstalledPluginsFromMarketplace,
   listMarketplaces,
   setInstalledPluginDirectProvenance,
@@ -28,6 +29,12 @@ import {
   type MarketplaceCatalogEntry,
   validateMarketplaceCatalogRealPaths,
 } from "./catalog.js";
+import {
+  OFFICIAL_MARKETPLACE_CATALOG,
+  OFFICIAL_MARKETPLACE_GIT_REF,
+  OFFICIAL_MARKETPLACE_GIT_URL,
+  OFFICIAL_MARKETPLACE_ID,
+} from "./official-marketplace.js";
 
 interface MarketplaceSource {
   kind: "path" | "git";
@@ -53,6 +60,7 @@ export interface MarketplaceSearchResult {
   entryId: string;
   displayName: string;
   description: string;
+  icon: string | null;
   category?: string;
   source: string;
   installed: boolean;
@@ -200,6 +208,30 @@ export function createMarketplaceService(deps: {
   const marketplaceChains = new Map<string, Promise<void>>();
   const addLockKey = "\0marketplace-add";
   const cacheRoot = resolve(deps.dataDir, "marketplaces", "cache");
+
+  // A bundled last-known-good snapshot makes the official catalog available
+  // immediately, without turning startup into a network operation. A removed
+  // row remains as a tombstone, so this reconciliation never overrides the
+  // user's choice to remove the default marketplace.
+  if (
+    getMarketplaceIncludingRemoved(deps.db, OFFICIAL_MARKETPLACE_ID) ===
+    undefined
+  ) {
+    upsertMarketplace(deps.db, {
+      id: OFFICIAL_MARKETPLACE_ID,
+      displayName: OFFICIAL_MARKETPLACE_CATALOG.displayName,
+      sourceKind: "git",
+      location: OFFICIAL_MARKETPLACE_GIT_URL,
+      requestedGitRef: OFFICIAL_MARKETPLACE_GIT_REF,
+      resolvedGitCommit: null,
+      cachePath: cacheRoot,
+      catalogJson: JSON.stringify(OFFICIAL_MARKETPLACE_CATALOG),
+      lastSuccessfulRefreshAt: null,
+      lastAttemptedRefreshAt: null,
+      lastError: null,
+      removedAt: null,
+    });
+  }
 
   async function withMarketplaceLock<T>(
     id: string,
@@ -380,6 +412,7 @@ export function createMarketplaceService(deps: {
             lastSuccessfulRefreshAt: now,
             lastAttemptedRefreshAt: now,
             lastError: null,
+            removedAt: null,
           }),
         );
       });
@@ -414,6 +447,7 @@ export function createMarketplaceService(deps: {
               lastSuccessfulRefreshAt: attemptedAt,
               lastAttemptedRefreshAt: attemptedAt,
               lastError: null,
+              removedAt: null,
             }),
           );
           return refreshed;
@@ -453,6 +487,7 @@ export function createMarketplaceService(deps: {
             entryId: entry.id,
             displayName: entry.displayName,
             description: entry.description,
+            icon: entry.icon ?? null,
             ...(entry.category === undefined
               ? {}
               : { category: entry.category }),
@@ -485,9 +520,13 @@ export function createMarketplaceService(deps: {
           throw new Error(
             `unknown marketplace entry "${entryId}" in "${marketplaceId}"`,
           );
-        if (version !== undefined && !("npm" in entry.source)) {
+        if (
+          version !== undefined &&
+          !("npm" in entry.source) &&
+          !("githubRelease" in entry.source)
+        ) {
           throw new Error(
-            "version is only supported for npm marketplace entries",
+            "version is only supported for npm and GitHub Release marketplace entries",
           );
         }
         const resolved = resolvedCatalogEntrySource(entry, row.cachePath);
@@ -499,16 +538,23 @@ export function createMarketplaceService(deps: {
           )}`;
         }
         let source = resolved.source;
-        if (version !== undefined && "npm" in entry.source)
-          source = `npm:${entry.source.npm.package}@${version}`;
+        if (version !== undefined) {
+          if ("npm" in entry.source) {
+            source = `npm:${entry.source.npm.package}@${version}`;
+          } else if ("githubRelease" in entry.source) {
+            source = `npm:${entry.source.githubRelease.package}@${version}`;
+          }
+        }
         return deps.plugins.installFromMarketplace({
           source,
           marketplaceId,
           entryId,
           installation: entry.installation,
-          ...("npm" in entry.source && entry.source.npm.registry !== undefined
-            ? { npmRegistry: entry.source.npm.registry }
-            : {}),
+          ...(resolved.npmRegistry === undefined
+            ? "npm" in entry.source && entry.source.npm.registry !== undefined
+              ? { npmRegistry: entry.source.npm.registry }
+              : {}
+            : { npmRegistry: resolved.npmRegistry }),
           ...(resolved.gitSubdirectory === undefined
             ? {}
             : { gitSubdirectory: resolved.gitSubdirectory }),

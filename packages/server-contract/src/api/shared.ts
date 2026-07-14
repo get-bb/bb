@@ -179,8 +179,8 @@ export const serverMessageLenientSchema = changedMessageLenientSchema;
  * consumption lands with the plugin frontend runtime). Nothing is persisted;
  * clients that predate this message type ignore it. `payload` is a
  * JSON-serializable value (publish normalizes `undefined` to `null`). Strict
- * schema guards the server's outgoing boundary (mirrors the thread-open-file
- * signal in threads.ts).
+ * schema guards the server's outgoing boundary (mirrors the thread-open signal
+ * in threads.ts).
  */
 export const pluginSignalSchema = z
   .object({
@@ -194,7 +194,7 @@ export type PluginSignal = z.infer<typeof pluginSignalSchema>;
 
 /**
  * Lenient counterpart of {@link pluginSignalSchema} for INBOUND parsing on
- * clients (mirrors threadOpenFileSignalLenientSchema): unknown fields from a
+ * clients (mirrors threadOpenSignalLenientSchema): unknown fields from a
  * newer server are stripped instead of dropping the whole signal.
  */
 export const pluginSignalLenientSchema = z.object({

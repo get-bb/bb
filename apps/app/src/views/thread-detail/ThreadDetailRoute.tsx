@@ -1,51 +1,31 @@
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
-import {
-  createDiffWorker,
-  getDiffWorkerPoolSize,
-} from "@/lib/diff-worker-pool";
 import { ThreadDetailView } from "./ThreadDetailView";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
+import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
 
-const WORKER_POOL_OPTIONS = {
-  workerFactory: createDiffWorker,
-  poolSize: getDiffWorkerPoolSize(),
-};
-const HIGHLIGHTER_OPTIONS = {};
-
-interface ThreadDetailRoutePageProps {
-  surface?: "page";
-}
-
-interface ThreadDetailRoutePopoutProps {
+interface ThreadDetailRouteProps {
   onPopoutHide: () => void;
   onPopoutNewQuickThread: () => void;
   onPopoutOpenInMain: (thread: ThreadRoutePathArgs) => void;
   surface: "popout";
 }
 
-type ThreadDetailRouteProps =
-  | ThreadDetailRoutePageProps
-  | ThreadDetailRoutePopoutProps;
+export function SingleThreadDetailRoute(props: ThreadDetailRouteProps) {
+  return (
+    <ThreadDetailView
+      surface="popout"
+      onPopoutHide={props.onPopoutHide}
+      onPopoutNewQuickThread={props.onPopoutNewQuickThread}
+      onPopoutOpenInMain={props.onPopoutOpenInMain}
+    />
+  );
+}
 
 export default function ThreadDetailRoute(props: ThreadDetailRouteProps) {
-  const view =
-    props.surface === "popout" ? (
-      <ThreadDetailView
-        surface="popout"
-        onPopoutHide={props.onPopoutHide}
-        onPopoutNewQuickThread={props.onPopoutNewQuickThread}
-        onPopoutOpenInMain={props.onPopoutOpenInMain}
-      />
-    ) : (
-      <ThreadDetailView surface="page" />
-    );
-
+  // Popout keeps its dedicated single-thread route. Page thread routes are
+  // owned by SplitWorkspaceRoute so focus changes never remount that workspace.
   return (
-    <WorkerPoolContextProvider
-      poolOptions={WORKER_POOL_OPTIONS}
-      highlighterOptions={HIGHLIGHTER_OPTIONS}
-    >
-      {view}
-    </WorkerPoolContextProvider>
+    <ThreadDetailWorkerPoolProvider>
+      <SingleThreadDetailRoute {...props} />
+    </ThreadDetailWorkerPoolProvider>
   );
 }

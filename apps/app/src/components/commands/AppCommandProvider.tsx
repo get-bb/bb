@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  defaultAppSettings,
   isMacKeyboardPlatform,
   matchesAppShortcut,
   type AppCommandContext,
@@ -72,6 +73,7 @@ const EMPTY_CONTEXT: AppCommandContext = {
   modelPickerOpen: false,
   questionOpen: false,
   promptAvailable: false,
+  splitActive: false,
 };
 
 function browserPlatform(): string {
@@ -90,6 +92,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const systemConfig = useSystemConfig();
   const keybindings = systemConfig.data?.keybindings ?? EMPTY_KEYBINDINGS;
+  const showKeyboardHints =
+    systemConfig.data?.generalSettings?.showKeyboardHints ??
+    defaultAppSettings.showKeyboardHints;
   const isDesktop = getBbDesktopInfo() !== null;
   const [isPrimaryModifierHeld, setIsPrimaryModifierHeld] = useState(false);
   const modifierHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -106,6 +111,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const sequenceRef = useRef(0);
 
   useEffect(() => {
+    if (!showKeyboardHints) return;
     const primaryModifier = isMacKeyboardPlatform(browserPlatform())
       ? "Meta"
       : "Control";
@@ -142,7 +148,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, []);
+  }, [showKeyboardHints]);
 
   useEffect(() => {
     keybindingsRef.current = keybindings;

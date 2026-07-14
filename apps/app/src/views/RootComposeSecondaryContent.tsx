@@ -37,7 +37,8 @@ const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 
 // Where root compose pins its right-panel toggle in the viewport corner (see
-// rootPanelToggle in RootComposeView, which shares this constant). The window
+// rootPanelToggle in RootComposeView, which passes its selected position here).
+// The window
 // drag strip below must carve this same footprint back out of the macOS drag
 // region while the panel is closed: Electron resolves app-regions in DOM order
 // (later wins), and the strip renders after the fixed toggle, so a no-drag on
@@ -46,6 +47,8 @@ const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 // from drifting apart.
 export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-4 top-2.5";
+export const ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS =
+  "right-12 top-2.5";
 
 type RootSecondaryPanelProps = Omit<
   ComponentProps<typeof ThreadSecondaryPanel>,
@@ -63,6 +66,7 @@ interface RootComposeSecondaryContentProps {
   children: ReactNode;
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
+  panelTogglePositionClassName: string;
   secondaryPanel: RootSecondaryPanelProps;
 }
 
@@ -72,6 +76,7 @@ export function RootComposeSecondaryContent({
   children,
   contentClassName,
   isSecondaryPanelOpen,
+  panelTogglePositionClassName,
   secondaryPanel,
 }: RootComposeSecondaryContentProps) {
   const renderAsDrawer = useIsCompactViewport();
@@ -269,7 +274,7 @@ export function RootComposeSecondaryContent({
                       data-testid="root-compose-drag-strip-toggle-cutout"
                       className={cn(
                         "absolute",
-                        ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
+                        panelTogglePositionClassName,
                         COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
                         MACOS_APP_REGION_NO_DRAG_CLASS,
                       )}

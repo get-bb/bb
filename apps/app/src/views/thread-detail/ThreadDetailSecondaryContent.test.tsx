@@ -91,52 +91,61 @@ vi.mock("@bb/shared-ui/responsive-overlay", async () => {
   return { ResponsiveDrawerShell };
 });
 
-vi.mock("@/components/secondary-panel/ThreadMetadataContent", async (importOriginal) => {
-  const React = await import("react");
-  const actual =
-    await importOriginal<
-      typeof import("@/components/secondary-panel/ThreadMetadataContent")
-    >();
+vi.mock(
+  "@/components/secondary-panel/ThreadMetadataContent",
+  async (importOriginal) => {
+    const React = await import("react");
+    const actual =
+      await importOriginal<
+        typeof import("@/components/secondary-panel/ThreadMetadataContent")
+      >();
 
-  return {
-    ...actual,
-    ThreadMetadataCard: ({
-      children,
-    }: ComponentProps<typeof actual.ThreadMetadataCard>) =>
-      React.createElement("div", { "data-testid": "metadata-card" }, children),
-    ThreadMetadataContent: (
-      _props: ComponentProps<typeof actual.ThreadMetadataContent>,
-    ) =>
-      React.createElement("div", { "data-testid": "metadata-content" }),
-    hasAnyThreadMetadata: () => false,
-  };
-});
+    return {
+      ...actual,
+      ThreadMetadataCard: ({
+        children,
+      }: ComponentProps<typeof actual.ThreadMetadataCard>) =>
+        React.createElement(
+          "div",
+          { "data-testid": "metadata-card" },
+          children,
+        ),
+      ThreadMetadataContent: (
+        _props: ComponentProps<typeof actual.ThreadMetadataContent>,
+      ) => React.createElement("div", { "data-testid": "metadata-content" }),
+      hasAnyThreadMetadata: () => false,
+    };
+  },
+);
 
-vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async (importOriginal) => {
-  const React = await import("react");
-  const actual =
-    await importOriginal<
-      typeof import("@/components/secondary-panel/ThreadSecondaryPanel")
-    >();
+vi.mock(
+  "@/components/secondary-panel/ThreadSecondaryPanel",
+  async (importOriginal) => {
+    const React = await import("react");
+    const actual =
+      await importOriginal<
+        typeof import("@/components/secondary-panel/ThreadSecondaryPanel")
+      >();
 
-  const ThreadSecondaryPanel = ({
-    browserDeck,
-    isOpen,
-    renderAsDrawer,
-  }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
-    React.createElement(
-      "section",
-      {
-        "data-open": String(isOpen),
-        "data-testid": renderAsDrawer
-          ? "drawer-secondary-panel"
-          : "inline-secondary-panel",
-      },
+    const ThreadSecondaryPanel = ({
       browserDeck,
-    );
+      isOpen,
+      renderAsDrawer,
+    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
+      React.createElement(
+        "section",
+        {
+          "data-open": String(isOpen),
+          "data-testid": renderAsDrawer
+            ? "drawer-secondary-panel"
+            : "inline-secondary-panel",
+        },
+        browserDeck,
+      );
 
-  return { ...actual, ThreadSecondaryPanel };
-});
+    return { ...actual, ThreadSecondaryPanel };
+  },
+);
 
 vi.mock("@/components/secondary-panel/ConversationCollapsedRail", async () => {
   const React = await import("react");
@@ -151,8 +160,7 @@ vi.mock("@/components/secondary-panel/ConversationCollapsedRail", async () => {
 
 vi.mock("./ThreadTimelinePane", async (importOriginal) => {
   const React = await import("react");
-  const actual =
-    await importOriginal<typeof import("./ThreadTimelinePane")>();
+  const actual = await importOriginal<typeof import("./ThreadTimelinePane")>();
 
   const ThreadTimelinePane = ({
     threadId,
@@ -274,6 +282,7 @@ function createProps({
   return {
     footer: <div data-testid="footer" />,
     header: <div data-testid="header" />,
+    isBoundedPane: false,
     isConversationCollapsed: false,
     isMetadataLoading: false,
     isSecondaryPanelOpen,

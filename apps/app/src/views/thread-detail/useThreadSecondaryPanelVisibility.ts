@@ -8,7 +8,7 @@ import type { ThreadSecondaryPanel } from "@/lib/thread-secondary-panel";
 import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
 
 type ThreadSecondaryPanelThreadId = string | undefined;
-type ThreadDetailSurface = "page" | "popout";
+type ThreadDetailSurface = "page" | "pane" | "popout";
 
 export type ThreadSecondaryPanelOpenHandler = (
   panel: ThreadSecondaryPanel,
@@ -62,7 +62,9 @@ export interface ThreadSecondaryPanelVisibility {
   togglePanel: () => void;
 }
 
-function hasThreadId(threadId: ThreadSecondaryPanelThreadId): threadId is string {
+function hasThreadId(
+  threadId: ThreadSecondaryPanelThreadId,
+): threadId is string {
   return threadId !== undefined && threadId.length > 0;
 }
 

@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   defaultExperiments,
@@ -29,6 +30,11 @@ import {
   type TestAppHarness,
 } from "../../helpers/test-app.js";
 import { createMarketplaceService } from "../../../src/services/marketplaces/marketplace-service.js";
+import {
+  OFFICIAL_MARKETPLACE_CATALOG,
+  OFFICIAL_MARKETPLACE_ID,
+} from "../../../src/services/marketplaces/official-marketplace.js";
+import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 
 const run = promisify(execFile);
 
@@ -50,6 +56,20 @@ async function commit(root: string, message: string): Promise<string> {
 
 async function json(response: Response): Promise<unknown> {
   return response.json();
+}
+
+const officialPluginDirectories = new Map([
+  ["github", "marketplace/plugins/github"],
+  ["simple-notes", "marketplace/plugins/docs"],
+  ["memory", "marketplace/plugins/memory"],
+]);
+
+function officialPluginRoot(repositoryRoot: string, pluginId: string): string {
+  const directory = officialPluginDirectories.get(pluginId);
+  if (directory === undefined) {
+    throw new Error(`missing local directory for official plugin ${pluginId}`);
+  }
+  return join(repositoryRoot, directory);
 }
 
 async function writePlugin(
@@ -154,6 +174,58 @@ describe("marketplace HTTP routes", () => {
     await rm(marketplaceRoot, { recursive: true, force: true });
   });
 
+  it("configures the Git-hosted BB Official catalog by default and remembers removal", async () => {
+    expect(
+      JSON.parse(
+        await readFile(
+          new URL("../../../../../marketplace.json", import.meta.url),
+          "utf8",
+        ),
+      ),
+    ).toEqual(OFFICIAL_MARKETPLACE_CATALOG);
+    expect(harness.marketplaceService.list()).toMatchObject([
+      {
+        id: OFFICIAL_MARKETPLACE_ID,
+        displayName: "BB Official",
+        pluginCount: 3,
+      },
+    ]);
+    const repositoryRoot = fileURLToPath(
+      new URL("../../../../../", import.meta.url),
+    );
+    for (const entry of OFFICIAL_MARKETPLACE_CATALOG.plugins) {
+      expect(entry.icon).toEqual(expect.any(String));
+      expect("githubRelease" in entry.source).toBe(true);
+      const pluginRoot = officialPluginRoot(repositoryRoot, entry.id);
+      const manifest = await readPluginManifest(pluginRoot);
+      expect(manifest.id).toBe(entry.id);
+      expect(manifest.displayName).toBe(entry.displayName);
+      expect(manifest.icon).toBe(entry.icon);
+      await expect(stat(join(pluginRoot, "dist"))).rejects.toThrow();
+    }
+
+    expect(harness.marketplaceService.search("")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entryId: "github", icon: "Github" }),
+        expect.objectContaining({ entryId: "simple-notes", icon: "FileText" }),
+        expect.objectContaining({ entryId: "memory", icon: "Brain" }),
+      ]),
+    );
+
+    await expect(
+      harness.marketplaceService.remove(OFFICIAL_MARKETPLACE_ID),
+    ).resolves.toEqual({ convertedPluginIds: [] });
+    expect(harness.marketplaceService.list()).toEqual([]);
+
+    const restarted = createMarketplaceService({
+      db: harness.db,
+      dataDir: harness.config.dataDir,
+      appVersion: harness.config.appVersion,
+      plugins: harness.pluginService,
+    });
+    expect(restarted.list()).toEqual([]);
+  });
+
   it("refreshes without loading code, retains last-known-good, searches, installs, and removes safely", async () => {
     const added = await harness.app.request("/api/v1/marketplaces", {
       method: "POST",
@@ -172,7 +244,7 @@ describe("marketplace HTTP routes", () => {
     ).rejects.toThrow();
 
     const search = await harness.app.request(
-      "/api/v1/marketplaces/search?q=productivity",
+      "/api/v1/marketplaces/search?q=searchable",
     );
     expect(await json(search)).toMatchObject({
       results: [{ entryId: "notes", installed: false, compatible: true }],
@@ -197,7 +269,10 @@ describe("marketplace HTTP routes", () => {
     expect(
       await json(await harness.app.request("/api/v1/marketplaces")),
     ).toMatchObject({
-      marketplaces: [{ id: "local-test", pluginCount: 3 }],
+      marketplaces: [
+        { id: "bb-official", pluginCount: 3 },
+        { id: "local-test", pluginCount: 3 },
+      ],
     });
 
     const shadow = await harness.app.request("/api/v1/plugins/install", {

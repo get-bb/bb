@@ -1,13 +1,15 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
-import type {
-  AppCommandId,
-  AppKeybindingOverrides,
-  AppKeybindings,
-  AppShortcut,
+import {
+  defaultAppSettings,
+  type AppCommandId,
+  type AppKeybindingOverrides,
+  type AppKeybindings,
+  type AppShortcut,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import { Switch } from "@bb/shared-ui/switch";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   APP_COMMAND_GROUPS,
@@ -22,11 +24,15 @@ import {
   setCommandShortcutOverride,
 } from "@/lib/keyboard-shortcut-settings";
 import { formatAppShortcut } from "@/lib/app-keybindings";
-import { useUpdateKeyboardSettings } from "@/hooks/mutations/settings-mutations";
+import {
+  useUpdateGeneralSettings,
+  useUpdateKeyboardSettings,
+} from "@/hooks/mutations/settings-mutations";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   SettingsBadge,
   SettingsSection,
+  SettingsWithControl,
 } from "@/components/ui/settings-section";
 
 const EMPTY_KEYBINDINGS: AppKeybindings = [];
@@ -245,7 +251,10 @@ function KeyboardCommandRow({
 
 export function KeyboardSettingsSection() {
   const systemConfig = useSystemConfig();
+  const updateGeneralSettings = useUpdateGeneralSettings();
   const updateKeyboardSettings = useUpdateKeyboardSettings();
+  const generalSettings =
+    systemConfig.data?.generalSettings ?? defaultAppSettings;
   const defaults = systemConfig.data?.defaultKeybindings ?? EMPTY_KEYBINDINGS;
   const serverOverrides =
     systemConfig.data?.keybindingOverrides ?? EMPTY_OVERRIDES;
@@ -318,6 +327,24 @@ export function KeyboardSettingsSection() {
       title="Keyboard shortcuts"
     >
       <div className="space-y-5">
+        <SettingsWithControl
+          description="Show shortcut badges after holding Command or Control."
+          label="Show keyboard hints when holding CMD / Control"
+        >
+          <Switch
+            aria-label="Show keyboard hints when holding CMD / Control"
+            checked={generalSettings.showKeyboardHints}
+            disabled={
+              systemConfig.data === undefined || updateGeneralSettings.isPending
+            }
+            onCheckedChange={(showKeyboardHints) =>
+              updateGeneralSettings.mutate({
+                ...generalSettings,
+                showKeyboardHints,
+              })
+            }
+          />
+        </SettingsWithControl>
         <Input
           aria-label="Search keyboard shortcuts"
           onChange={(event) => setSearch(event.target.value)}

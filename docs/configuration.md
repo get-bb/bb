@@ -116,12 +116,20 @@ before bb receives them.
 
 `Mod` means Command on macOS and Control on Windows/Linux.
 
+The "Show keyboard hints when holding CMD / Control" preference defaults
+to on. Set it with
+`bb settings keyboard hints <true|false>`. Turning it off hides the
+delayed shortcut badges without disabling any shortcuts.
+
 | Area      | Command                       | Default                           | Availability             |
 | --------- | ----------------------------- | --------------------------------- | ------------------------ |
 | Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
 | Threads   | Search threads                | `Mod+K`                           | All clients              |
 | Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
 | Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`                 | All clients              |
+| Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
+| Layout    | Focus chat pane 1–4           | `Mod+1` … `Mod+4`                 | While split              |
+| Layout    | Close focused chat pane       | `Mod+Shift+X`                     | While split              |
 | Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
 | Window    | Settings                      | `Mod+,`                           | All clients              |
 | Layout    | Toggle sidebar                | `Mod+\`                           | All clients              |
@@ -352,6 +360,15 @@ back to npm only when the package route returns 404. Installed services enable
 and reload the service to opt out. Updates only move to a newer server protocol,
 are limited to one attempt per 15 minutes, and never downgrade a daemon.
 
+## Thread splits Experiment
+
+The **Thread splits** experiment (Settings → Experiments, off by default)
+enables the app's multi-pane thread view and its sidebar, menu, and keyboard
+split controls. It also enables explicit split placement through
+`bb thread open <thread-id> --split right|down|left|top|replace` and the matching
+SDK request. Ordinary thread and file opens without an explicit split placement
+continue to work while the experiment is off.
+
 ## bb connect
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
@@ -442,7 +459,9 @@ A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
-(packages are installed with `--ignore-scripts`). An omitted npm spec tracks
+(packages are installed with `--ignore-scripts`). Git plugins without prebuilt
+frontend artifacts also use npm with lifecycle scripts disabled, then discard
+their installed dependencies after bundling. An omitted npm spec tracks
 the newest compatible stable release, ranges track within the range, dist-tags
 track the tag, and exact versions are pinned. `git:<url>@<ref>` requires `git`;
 branches track their head while tags and commits are pinned. Local
@@ -453,7 +472,7 @@ refuse plugins whose optional `engines.bb` or `engines.bbPluginSdk` ranges
 do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
 does not match the package manifest; installing a non-builtin source whose
 derived id collides with a builtin name (automations, connect,
-custom-instructions, inline-vis, memory, secrets) is also refused.
+custom-instructions, inline-vis, secrets) is also refused.
 
 The same tracking intent drives updates: `bb plugin outdated` checks for
 compatible candidates (and reports blocked incompatible newer releases);

@@ -1,0 +1,174 @@
+name: Publish official plugin releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: Official plugin release to publish.
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - github
+          - docs
+          - memory
+      dry_run:
+        description: Build and validate release archives without creating releases.
+        required: true
+        type: boolean
+        default: true
+
+run-name: Publish official plugin releases (${{ inputs.plugin }}${{ inputs.dry_run && ', dry run' || '' }})
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-official-plugins-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish official plugin releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Require main branch
+        if: ${{ github.ref_name != 'main' }}
+        run: |
+          echo "::error::Official plugins must be released from main, got ${GITHUB_REF_NAME}."
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Select and validate releases
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const { readFileSync, writeFileSync } = require("node:fs");
+
+          const plugins = {
+            github: { directory: "marketplace/plugins/github", release: "github" },
+            docs: { directory: "marketplace/plugins/docs", release: "docs" },
+            memory: { directory: "marketplace/plugins/memory", release: "memory" },
+          };
+          const selected = process.env.PLUGIN === "all"
+            ? Object.values(plugins)
+            : [plugins[process.env.PLUGIN]];
+
+          function fail(message) {
+            console.error(`::error::${message}`);
+            process.exit(1);
+          }
+
+          const rows = [];
+          for (const plugin of selected) {
+            if (plugin === undefined) fail(`Unknown plugin ${process.env.PLUGIN}.`);
+            const pkg = JSON.parse(readFileSync(`${plugin.directory}/package.json`, "utf8"));
+            const tag = `plugin-${plugin.release}-v${pkg.version}`;
+            const asset = `${pkg.name}-${pkg.version}.tgz`;
+            try {
+              execFileSync("gh", ["release", "view", tag, "--repo", process.env.GITHUB_REPOSITORY], {
+                stdio: "pipe",
+              });
+              fail(`GitHub Release ${tag} already exists.`);
+            } catch (error) {
+              if (error.status !== 1) throw error;
+            }
+            rows.push([plugin.directory, plugin.release, pkg.name, pkg.version, tag, asset].join("\t"));
+          }
+          writeFileSync("/tmp/official-plugin-releases", `${rows.join("\n")}\n`);
+          NODE
+
+      - name: Typecheck official plugins
+        run: pnpm exec turbo run typecheck --filter=bb-plugin-github --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --output-logs=new-only
+
+      - name: Test official plugin packages and release contract
+        run: |
+          pnpm exec turbo run test --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --filter=@bb/server --force --output-logs=new-only > /tmp/official-plugin-test.log 2>&1 || {
+            cat /tmp/official-plugin-test.log
+            exit 1
+          }
+          cat /tmp/official-plugin-test.log
+
+      - name: Build release artifacts
+        run: pnpm exec turbo run build --filter=bb-plugin-github --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --force --output-logs=new-only
+
+      - name: Pack release archives
+        run: |
+          mkdir -p release-artifacts
+          while IFS=$'\t' read -r directory release_name package_name package_version tag asset; do
+            packed="$(cd "$directory" && npm pack --silent --pack-destination "$GITHUB_WORKSPACE/release-artifacts")"
+            if [ "$packed" != "$asset" ]; then
+              echo "::error::Expected archive $asset, npm produced $packed."
+              exit 1
+            fi
+            tar -tzf "release-artifacts/$asset" | grep -q '^package/dist/server.js$'
+            tar -tzf "release-artifacts/$asset" | grep -q '^package/dist/server.meta.json$'
+            tar -tzf "release-artifacts/$asset" | grep -q '^package/dist/app.js$'
+            tar -tzf "release-artifacts/$asset" | grep -q '^package/dist/app.meta.json$'
+            sha256sum "release-artifacts/$asset"
+          done < /tmp/official-plugin-releases
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Create GitHub Releases
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while IFS=$'\t' read -r directory release_name package_name package_version tag asset; do
+            gh release create "$tag" "release-artifacts/$asset#$asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --draft \
+              --title "$package_name $package_version" \
+              --notes "BB Official plugin release for $package_name@$package_version."
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false
+          done < /tmp/official-plugin-releases
+
+      - name: Verify GitHub Release assets
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while IFS=$'\t' read -r directory release_name package_name package_version tag asset; do
+            release="$(gh api -H 'X-GitHub-Api-Version: 2026-03-10' "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+            digest="$(printf '%s' "$release" | jq -r ".assets[] | select(.name == \"$asset\") | .digest")"
+            if ! printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+              echo "::error::GitHub did not expose a SHA-256 digest for $tag/$asset."
+              exit 1
+            fi
+            echo "$tag: $asset ($digest)"
+          done < /tmp/official-plugin-releases
+
+      - name: Summarize release
+        run: |
+          {
+            echo "## Official plugin releases"
+            echo
+            echo "- selection: \`${{ inputs.plugin }}\`"
+            echo "- dry run: \`${{ inputs.dry_run }}\`"
+            echo "- commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,6 +1,10 @@
 import path from "node:path";
 import { Command } from "commander";
-import type { PanelFileSource } from "@bb/server-contract";
+import {
+  threadOpenSplitSchema,
+  type PanelFileSource,
+  type ThreadOpenFile,
+} from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -12,11 +16,12 @@ import { outputJson, printContextLabel, type ResolvedId } from "../helpers.js";
 interface ThreadOpenCommandOptions {
   line?: string;
   json?: boolean;
+  split?: string;
 }
 
 interface ThreadOpenTarget {
   threadId: string;
-  inputPath: string;
+  inputPath: string | null;
   resolved: ResolvedId;
 }
 
@@ -33,11 +38,15 @@ export function registerOpenCommand(
 ): void {
   parent
     .command("open")
-    .description("Open a file in a BB thread panel")
-    .usage("[id] <path> [options]")
+    .description("Open a BB thread, optionally with a file in its panel")
+    .usage("[id] [path] [options]")
     .argument("[id]", "Thread ID. Omit inside a BB thread.")
     .argument("[path]", "Thread-relative or absolute file path to open")
     .option("--line <number>", "Line number to focus")
+    .option(
+      "--split <placement>",
+      "Open in right, down, left, top, or replace placement (requires the Thread splits experiment)",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
@@ -46,27 +55,43 @@ export function registerOpenCommand(
           second: string | undefined,
           opts: ThreadOpenCommandOptions,
         ) => {
-          const target = resolveThreadOpenTarget(first, second);
+          const target = resolveThreadOpenTarget(
+            first,
+            second,
+            opts.split !== undefined,
+          );
           const lineNumber = parseLineNumber(opts.line);
+          const requestedSplit =
+            opts.split === undefined
+              ? undefined
+              : threadOpenSplitSchema.parse(opts.split);
+          const split = requestedSplit ?? "replace";
+          if (target.inputPath === null && lineNumber !== null) {
+            throw new Error("--line requires a file path.");
+          }
           const sdk = createCliBbSdk(getUrl());
-          const file = await resolveThreadOpenFileRequest({
-            inputPath: target.inputPath,
-            sdk,
-            threadId: target.threadId,
-          });
+          const file: ThreadOpenFile | null =
+            target.inputPath === null
+              ? null
+              : {
+                  ...(await resolveThreadOpenFileRequest({
+                    inputPath: target.inputPath,
+                    sdk,
+                    threadId: target.threadId,
+                  })),
+                  lineNumber,
+                };
           const result = await sdk.threads.open({
             threadId: target.threadId,
-            source: file.source,
-            path: file.path,
-            lineNumber,
+            ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
+            file,
           });
 
           if (
             outputJson(opts, {
               threadId: target.threadId,
-              source: file.source,
-              path: file.path,
-              lineNumber,
+              split,
+              file,
               delivered: result.delivered,
               inputPath: target.inputPath,
             })
@@ -76,10 +101,13 @@ export function registerOpenCommand(
 
           printContextLabel(target.resolved, "Thread", "BB_THREAD_ID", opts);
           console.log(`Thread: ${target.threadId}`);
-          console.log(`Source: ${file.source}`);
-          console.log(`Path: ${file.path}`);
-          if (lineNumber !== null) {
-            console.log(`Line: ${lineNumber}`);
+          console.log(`Split: ${split}`);
+          if (file !== null) {
+            console.log(`Source: ${file.source}`);
+            console.log(`Path: ${file.path}`);
+            if (file.lineNumber !== null) {
+              console.log(`Line: ${file.lineNumber}`);
+            }
           }
           console.log(`Delivered: ${result.delivered}`);
         },
@@ -90,11 +118,16 @@ export function registerOpenCommand(
 function resolveThreadOpenTarget(
   first: string | undefined,
   second: string | undefined,
+  hasExplicitSplit: boolean,
 ): ThreadOpenTarget {
   const contextThreadId = resolveContextThreadId();
   if (contextThreadId) {
     if (first === undefined) {
-      throw new Error("Missing path. Pass <path>.");
+      return {
+        threadId: contextThreadId,
+        inputPath: null,
+        resolved: { id: contextThreadId, source: "env" },
+      };
     }
 
     if (second !== undefined) {
@@ -102,15 +135,35 @@ function resolveThreadOpenTarget(
         flagName: "<threadId> argument",
         value: first,
       });
-      if (explicitThreadId !== contextThreadId) {
+      if (!explicitThreadId) {
+        throw new Error("Missing thread ID. Pass <threadId>.");
+      }
+      if (explicitThreadId !== contextThreadId && !hasExplicitSplit) {
         throw new Error(
           "BB_THREAD_ID is set, so bb thread open targets the current thread. Omit the thread ID.",
         );
       }
       return {
-        threadId: contextThreadId,
+        threadId: hasExplicitSplit ? explicitThreadId : contextThreadId,
         inputPath: second,
-        resolved: { id: contextThreadId, source: "env" },
+        resolved: hasExplicitSplit
+          ? { id: explicitThreadId, source: "arg" }
+          : { id: contextThreadId, source: "env" },
+      };
+    }
+
+    if (hasExplicitSplit) {
+      const threadId = resolveExplicitIdFlag({
+        flagName: "<threadId> argument",
+        value: first,
+      });
+      if (!threadId) {
+        throw new Error("Missing thread ID. Pass <threadId>.");
+      }
+      return {
+        threadId,
+        inputPath: null,
+        resolved: { id: threadId, source: "arg" },
       };
     }
 
@@ -121,9 +174,9 @@ function resolveThreadOpenTarget(
     };
   }
 
-  if (first === undefined || second === undefined) {
+  if (first === undefined) {
     throw new Error(
-      "Missing thread ID. Pass <threadId> <path>, or run inside a BB thread.",
+      "Missing thread ID. Pass <threadId> [path], or run inside a BB thread.",
     );
   }
 
@@ -136,7 +189,7 @@ function resolveThreadOpenTarget(
   }
   return {
     threadId,
-    inputPath: second,
+    inputPath: second ?? null,
     resolved: { id: threadId, source: "arg" },
   };
 }

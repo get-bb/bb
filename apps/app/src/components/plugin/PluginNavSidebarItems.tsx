@@ -5,6 +5,8 @@ import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectLi
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
+import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
+import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSplitDrag";
 
 /**
  * Sidebar entries for plugin `navPanel` slots (plugin design §5.2): one row
@@ -13,7 +15,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
  * while no plugin contributes a panel. Only host chrome renders here — the
  * plugin's component mounts on the route (PluginPanelView).
  */
-export function PluginNavSidebarItems(props: { onNavigate?: () => void }) {
+export function PluginNavSidebarItems(props: {
+  onNavigate?: () => void;
+  splitEnabled?: boolean;
+}) {
   const { navPanels } = usePluginSlots();
   // Router hooks live in the inner component so hosts without a Router
   // (isolated sidebar tests/stories) can render the empty state.
@@ -24,11 +29,12 @@ export function PluginNavSidebarItems(props: { onNavigate?: () => void }) {
 function PluginNavSidebarItemList({
   onNavigate,
   navPanels,
+  splitEnabled = false,
 }: {
   onNavigate?: () => void;
   navPanels: ReturnType<typeof usePluginSlots>["navPanels"];
+  splitEnabled?: boolean;
 }) {
-  const navigate = useNavigate();
   const location = useLocation();
   return (
     <div
@@ -38,36 +44,71 @@ function PluginNavSidebarItemList({
       data-testid="plugin-nav-sidebar-items"
     >
       {navPanels.map((panel) => {
-        const path = getPluginPanelRoutePath({
-          pluginId: panel.pluginId,
-          path: panel.path,
-        });
-        const isActive =
-          location.pathname === path || location.pathname.startsWith(`${path}/`);
         return (
-          <Button
+          <PluginNavSidebarItem
             key={`${panel.pluginId}/${panel.id}`}
-            type="button"
-            size="sm"
-            variant="ghost"
-            className={cn(
-              PROJECT_LIST_ACTION_BUTTON_CLASS,
-              "w-full",
-              isActive && "bg-sidebar-accent text-sidebar-foreground",
-            )}
-            aria-current={isActive ? "page" : undefined}
-            onClick={() => {
-              onNavigate?.();
-              void navigate(path);
-            }}
-          >
-            <PluginIcon pluginId={panel.pluginId} icon={panel.icon} />
-            <span className="min-w-0 flex-1 truncate text-left">
-              {panel.title}
-            </span>
-          </Button>
+            panel={panel}
+            pathname={location.pathname}
+            onNavigate={onNavigate}
+            splitEnabled={splitEnabled}
+          />
         );
       })}
     </div>
+  );
+}
+
+function PluginNavSidebarItem({
+  panel,
+  pathname,
+  onNavigate,
+  splitEnabled,
+}: {
+  panel: PluginNavPanelSlot;
+  pathname: string;
+  onNavigate?: () => void;
+  splitEnabled: boolean;
+}) {
+  const navigate = useNavigate();
+  const path = getPluginPanelRoutePath({
+    pluginId: panel.pluginId,
+    path: panel.path,
+  });
+  const isActive = pathname === path || pathname.startsWith(`${path}/`);
+  const content = {
+    kind: "plugin-panel",
+    pluginId: panel.pluginId,
+    panelPath: panel.path,
+    subPath: "",
+  } as const;
+  const { onPointerDown, openInSplit } = usePaneContentSplitDrag({
+    content,
+    enabled: splitEnabled,
+    label: panel.title,
+  });
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn(
+        PROJECT_LIST_ACTION_BUTTON_CLASS,
+        "w-full",
+        isActive && "bg-sidebar-accent text-sidebar-foreground",
+      )}
+      aria-current={isActive ? "page" : undefined}
+      onPointerDown={onPointerDown}
+      onClick={(event) => {
+        onNavigate?.();
+        if (event.metaKey || event.ctrlKey) {
+          openInSplit();
+          return;
+        }
+        void navigate(path);
+      }}
+    >
+      <PluginIcon pluginId={panel.pluginId} icon={panel.icon} />
+      <span className="min-w-0 flex-1 truncate text-left">{panel.title}</span>
+    </Button>
   );
 }

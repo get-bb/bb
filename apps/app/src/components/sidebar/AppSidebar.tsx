@@ -35,6 +35,8 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   haveSameSidebarThreadSearchNavigationItems,
@@ -56,6 +58,8 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+
+const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -90,6 +94,12 @@ export function AppSidebar({
   const quickCreateProject = useQuickCreateProjectController();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
+  const threadSplitsEnabled = useThreadSplitsEnabled();
+  const newThreadSplit = usePaneContentSplitDrag({
+    content: NEW_THREAD_PANE_CONTENT,
+    enabled: threadSplitsEnabled,
+    label: "New thread",
+  });
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -370,6 +380,7 @@ export function AppSidebar({
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
         >
           <ProjectListActionButtons
+            newThreadSplit={newThreadSplit}
             onNewChat={handleNewChat}
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
@@ -382,7 +393,10 @@ export function AppSidebar({
             }}
           />
         </div>
-        <PluginNavSidebarItems onNavigate={closeOnMobile} />
+        <PluginNavSidebarItems
+          onNavigate={closeOnMobile}
+          splitEnabled={threadSplitsEnabled}
+        />
         <SidebarContent>
           <ProjectList
             onNewProject={

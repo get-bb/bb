@@ -1,0 +1,1 @@
+ALTER TABLE `system_experiments` ADD `thread_splits` integer DEFAULT false NOT NULL;

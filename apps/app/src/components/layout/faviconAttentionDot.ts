@@ -23,10 +23,10 @@ function isUnreadSidebarThread(thread: FaviconSidebarThread): boolean {
 }
 
 // A thread blocked on the user (an agent question or a permission approval)
-// stays `active`, so it never bumps its unread marker. Surface it globally
-// regardless of which thread is in view, since a blocked agent needs input now.
-// Side chats are excluded here to match the unread sidebar scan; a side chat you
-// are actively viewing is still covered via `currentThreadHasPendingInteraction`.
+// stays `active`, so it never bumps its unread marker. Surface it from the
+// sidebar only when no thread is focused. While viewing a thread, the focused
+// route pane exclusively owns favicon attention, just as it owns the title.
+// Side chats are excluded here to match the unread sidebar scan.
 function isPendingSidebarThread(thread: FaviconSidebarThread): boolean {
   return isSidebarProjectThread(thread) && thread.hasPendingInteraction;
 }
@@ -37,10 +37,6 @@ export function shouldShowFaviconAttentionDot({
   sidebarThreads,
   thread,
 }: ShouldShowFaviconAttentionDotArgs): boolean {
-  if (sidebarThreads.some(isPendingSidebarThread)) {
-    return true;
-  }
-
   if (isThreadView) {
     return (
       currentThreadHasPendingInteraction ||
@@ -48,5 +44,8 @@ export function shouldShowFaviconAttentionDot({
     );
   }
 
-  return sidebarThreads.some(isUnreadSidebarThread);
+  return sidebarThreads.some(
+    (candidate) =>
+      isPendingSidebarThread(candidate) || isUnreadSidebarThread(candidate),
+  );
 }
