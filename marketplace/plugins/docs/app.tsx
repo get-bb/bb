@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1232,6 +1233,8 @@ function orderEntries(entries: VaultEntry[]): VaultEntry[] {
   return ordered;
 }
 
+const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
+
 function Tree({
   data,
   selectedPath,
@@ -1252,8 +1255,29 @@ function Tree({
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // null = follow the responsive default (collapsed in narrow panes) until
+  // the user toggles the sidebar explicitly.
+  const [sidebarUserCollapsed, setSidebarUserCollapsed] = useState<
+    boolean | null
+  >(null);
+  const [paneNarrow, setPaneNarrow] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(288);
+  const asideRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const pane = asideRef.current?.parentElement;
+    if (!pane || typeof ResizeObserver === "undefined") return;
+    const update = () => {
+      const width = pane.clientWidth;
+      // Width 0 means the pane is hidden or not yet laid out — keep the
+      // wide-pane default rather than collapsing.
+      setPaneNarrow(width > 0 && width < SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, []);
+  const sidebarCollapsed = sidebarUserCollapsed ?? paneNarrow;
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   useEffect(
     () => () => {
@@ -1340,6 +1364,7 @@ function Tree({
   if (sidebarCollapsed) {
     return (
       <aside
+        ref={asideRef}
         className="order-2 flex w-10 shrink-0 flex-col items-center border-l border-border bg-muted/20 py-2"
         style={{ width: 40 }}
       >
@@ -1348,7 +1373,7 @@ function Tree({
           size="icon"
           variant="ghost"
           aria-label="Expand notes sidebar"
-          onClick={() => setSidebarCollapsed(false)}
+          onClick={() => setSidebarUserCollapsed(false)}
         >
           <HugeiconsIcon icon={SidebarRightIcon} />
         </Button>
@@ -1358,6 +1383,7 @@ function Tree({
 
   return (
     <aside
+      ref={asideRef}
       className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
       style={{ width: sidebarWidth }}
     >
@@ -1432,7 +1458,7 @@ function Tree({
           size="icon"
           variant="ghost"
           aria-label="Collapse notes sidebar"
-          onClick={() => setSidebarCollapsed(true)}
+          onClick={() => setSidebarUserCollapsed(true)}
         >
           <HugeiconsIcon icon={SidebarRightIcon} />
         </Button>

@@ -163,6 +163,49 @@ describe("Docs nav panel", () => {
     expect(releasePointerCapture).toHaveBeenCalledWith(7);
   });
 
+  it("defaults the sidebar to collapsed in a narrow pane but allows expanding", async () => {
+    class FakeResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    const clientWidth = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      "clientWidth",
+    );
+    Object.defineProperty(Element.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 400,
+    });
+    try {
+      const slot = renderSlot(
+        app.navPanels[0]!,
+        { subPath: "personal" },
+        {
+          rpc: {
+            listNotes: () =>
+              listNotesResult([
+                { path: "note.md", title: "Note", preview: "", modifiedAtMs: 1 },
+              ]),
+          },
+        },
+      );
+
+      const expand = await slot.findByLabelText("Expand notes sidebar");
+      expect(slot.container.querySelector("aside")?.style.width).toBe("40px");
+
+      fireEvent.click(expand);
+      expect(slot.getByLabelText("Collapse notes sidebar")).toBeTruthy();
+      expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
+    } finally {
+      if (clientWidth) {
+        Object.defineProperty(Element.prototype, "clientWidth", clientWidth);
+      }
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("only shows host status when the selected vault is unavailable", async () => {
     const available = listNotesResult([]);
     const unavailable = {
