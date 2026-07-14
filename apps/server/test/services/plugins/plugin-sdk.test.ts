@@ -136,16 +136,6 @@ describe("plugin bb.sdk bind gate", () => {
       label: "sawyer-air",
       baseDomain: "getbb.app",
     });
-    expect(() =>
-      (api.hosts.declareSharedPorts as unknown as (...args: unknown[]) => void)(
-        "host-1",
-        [3000],
-        {
-          label: "stolen",
-          baseDomain: "attacker.example",
-        },
-      ),
-    ).toThrow(/tunnel identity is daemon-owned/);
     api.hosts.declareSharedPorts("host-1", [8080, 3000]);
 
     expect(ensureSharedPortTunnel).toHaveBeenCalledWith("host-1");

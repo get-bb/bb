@@ -311,6 +311,54 @@ describe("ShareRegistry", () => {
     await fakeHost.harness.dispose();
   });
 
+  it("normalizes legacy entries to the server host id at activation", async () => {
+    const kv = new Map<string, unknown>([
+      [SHARES_KV_KEY, { "3000": { port: 3000, createdAt: 123 } }],
+    ]);
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const registry = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: pluginBb.hosts,
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => ({
+        serverUrl: "https://sawyer.getbb.app",
+        handle: "sawyer",
+        credential: "bbcred_x",
+      }),
+      log: pluginBb.log,
+    });
+
+    await registry.load();
+    expect(registry.hasServerPort(3000)).toBe(true);
+    await registry.declareMachineShares(() => true);
+    // The stored entry gains the concrete server host id and canonical key.
+    expect(kv.get(SHARES_KV_KEY)).toEqual({
+      [`${SERVER_HOST_ID}:3000`]: {
+        hostId: SERVER_HOST_ID,
+        port: 3000,
+        createdAt: 123,
+      },
+    });
+    expect(registry.hasServerPort(3000)).toBe(true);
+    expect(await registry.remove(3000, SERVER_HOST_ID)).toMatchObject({
+      removed: true,
+      hostId: SERVER_HOST_ID,
+    });
+    await fakeHost.harness.dispose();
+  });
+
   it("loads valid entries when another kv entry is malformed", async () => {
     const kv = new Map<string, unknown>([
       [
@@ -1251,6 +1299,7 @@ describe("connect plugin", () => {
       hostName: SERVER_HOST_NAME,
       port: 8000,
       url: shareUrl,
+      createdAt: expect.any(Number),
     });
 
     const listed = (await harness.callRpc("listShares")) as Array<{
@@ -1263,6 +1312,7 @@ describe("connect plugin", () => {
         hostName: SERVER_HOST_NAME,
         port: 8000,
         url: shareUrl,
+        createdAt: expect.any(Number),
       },
     ]);
 
@@ -1273,6 +1323,7 @@ describe("connect plugin", () => {
         hostName: SERVER_HOST_NAME,
         port: 8000,
         url: shareUrl,
+        createdAt: expect.any(Number),
       },
     ]);
 
@@ -1283,6 +1334,7 @@ describe("connect plugin", () => {
     expect(removed).toEqual({
       removed: true,
       hostId: SERVER_HOST_ID,
+      hostName: SERVER_HOST_NAME,
       port: 8000,
     });
     expect(await harness.callRpc("listShares")).toEqual([]);
@@ -1330,6 +1382,7 @@ describe("connect plugin", () => {
     ).resolves.toEqual({
       removed: true,
       hostId: "host-deleted",
+      hostName: "removed host",
       port: 3000,
     });
     expect(await harness.callRpc("listShares")).toEqual(
@@ -1339,6 +1392,7 @@ describe("connect plugin", () => {
           hostName: SERVER_HOST_NAME,
           port: 8000,
           url: "http://127.0.0.1:8000",
+          createdAt: 1,
         },
         expect.objectContaining({
           hostId: "host-deleted",
@@ -1398,6 +1452,7 @@ describe("connect plugin", () => {
     ).resolves.toEqual({
       removed: true,
       hostId: REMOTE_HOST_ID,
+      hostName: REMOTE_HOST_NAME,
       port: 3000,
     });
     expect(declarations).toHaveBeenCalledWith(REMOTE_HOST_ID, []);
@@ -1448,6 +1503,7 @@ describe("connect plugin", () => {
       hostName: REMOTE_HOST_NAME,
       port: 3000,
       url: "https://sawyer-air--3000.getbb.app",
+      createdAt: expect.any(Number),
     });
     expect(host.harness.sharedPortDeclarations).toEqual([
       { hostId: REMOTE_HOST_ID, ports: [3000] },
@@ -1571,7 +1627,7 @@ describe("connect plugin", () => {
     expect(message).not.toMatch(/Enroll|remove and re-add/);
   });
 
-  it("empties machine declarations when the plugin service stops", async () => {
+  it("empties machine declarations when the pairing is disconnected", async () => {
     host = createConnectFakeHost({
       remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
@@ -1599,10 +1655,13 @@ describe("connect plugin", () => {
       { hostId: REMOTE_HOST_ID, ports: [5173] },
     ]);
 
-    await stopTunnel(host);
+    // Unpairing must drop the daemon's desired ports; a plain service stop
+    // relies on plugin dispose (load-scoped server-side clearing) instead.
+    await host.harness.callRpc("disconnect");
     expect(host.harness.sharedPortDeclarations).toEqual([
       { hostId: REMOTE_HOST_ID, ports: [] },
     ]);
+    await stopTunnel(host);
     await host.harness.dispose();
     host = undefined;
   });
@@ -2118,6 +2177,7 @@ describe("connect CLI", () => {
           hostName: REMOTE_HOST_NAME,
           port: 3000,
           url: "https://sawyer-air--3000.getbb.app",
+          createdAt: expect.any(Number),
         },
       ],
     });

@@ -105,8 +105,7 @@ export class ConnectTunnelClient {
   private readonly fetchFn: ConnectTunnelFetch;
   private readonly backoff: ReconnectBackoff;
   private readonly machineCredential: string | undefined;
-  private shares: HostDaemonConnectShares = { generation: 0, ports: [] };
-  private latestGeneration = -1;
+  private generation = -1;
   private ports = new Set<number>();
   private identity: HostDaemonConnectTunnelIdentity | undefined;
   private identityPromise: Promise<HostDaemonConnectTunnelIdentity> | undefined;
@@ -138,14 +137,14 @@ export class ConnectTunnelClient {
       state: this.state,
       lastError: this.lastError,
       credentialRejected: this.credentialRejected,
-      generation: this.shares.generation,
+      generation: Math.max(this.generation, 0),
       ports: [...this.ports].sort((a, b) => a - b),
     };
   }
 
   /** Apply a pushed replacement only when it advances the host generation. */
   replaceShareSet(shares: HostDaemonConnectShares): boolean {
-    if (shares.generation <= this.latestGeneration) {
+    if (shares.generation <= this.generation) {
       return false;
     }
     this.applyShareSet(shares);
@@ -244,11 +243,7 @@ export class ConnectTunnelClient {
 
   private applyShareSet(shares: HostDaemonConnectShares): void {
     const previousPorts = this.ports;
-    this.latestGeneration = shares.generation;
-    this.shares = {
-      generation: shares.generation,
-      ports: [...shares.ports],
-    };
+    this.generation = shares.generation;
     this.ports = new Set(shares.ports);
 
     if (!this.hasConnectIntent()) {

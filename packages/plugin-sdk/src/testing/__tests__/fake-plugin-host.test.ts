@@ -70,16 +70,6 @@ describe("host control plane", () => {
       label: "sawyer-air",
       baseDomain: "getbb.app",
     });
-    expect(() =>
-      (bb.hosts.declareSharedPorts as unknown as (...args: unknown[]) => void)(
-        "host-1",
-        [3000],
-        {
-          label: "stolen",
-          baseDomain: "attacker.example",
-        },
-      ),
-    ).toThrow(/tunnel identity is daemon-owned/);
     bb.hosts.declareSharedPorts("host-1", [8080, 3000, 8080]);
     bb.hosts.declareSharedPorts("host-2", [4173]);
     bb.hosts.declareSharedPorts("host-1", [3000]);

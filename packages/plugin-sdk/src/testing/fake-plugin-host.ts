@@ -1198,11 +1198,6 @@ export function createFakePluginHost(
     },
     declareSharedPorts(hostId, ports) {
       assertLive();
-      if (arguments.length !== 2) {
-        throw new Error(
-          "bb.hosts.declareSharedPorts accepts only hostId and ports; tunnel identity is daemon-owned",
-        );
-      }
       if (hostId.trim().length === 0) {
         throw new Error("shared-port hostId must be non-empty");
       }

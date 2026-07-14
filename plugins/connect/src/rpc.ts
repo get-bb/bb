@@ -7,6 +7,7 @@ import type { ListAccountServersResult } from "./list-servers.js";
 import type { DesktopSession } from "./desktop-session.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
 import type { ShareHostResolver } from "./hosts.js";
+import type { ShareListing, ShareRemoval } from "./shares.js";
 
 // Panel-facing rpc surface. `server` is optional: the dashboard command
 // carries both --code and --server, but the panel's paste-a-code field only
@@ -31,26 +32,9 @@ export type ConnectRpcHandlers = {
   pair(input: unknown): Promise<ConnectStatus>;
   status(): Promise<ConnectStatus>;
   disconnect(): Promise<ConnectStatus>;
-  expose(input: unknown): Promise<{
-    hostId: string;
-    hostName: string;
-    port: number;
-    url: string;
-  }>;
-  unexpose(input: unknown): Promise<{
-    removed: boolean;
-    hostId: string;
-    port: number;
-  }>;
-  listShares(): Promise<
-    Array<{
-      hostId: string;
-      hostName: string;
-      port: number;
-      url: string;
-      unavailableReason?: string;
-    }>
-  >;
+  expose(input: unknown): Promise<ShareListing>;
+  unexpose(input: unknown): Promise<ShareRemoval & { port: number }>;
+  listShares(): Promise<ShareListing[]>;
   listAccountServers(): Promise<ListAccountServersResult>;
   createDesktopSession(): Promise<DesktopSession>;
   createMachineCode(): Promise<MachineCode>;
@@ -95,15 +79,10 @@ export function createRpcHandlers(
     },
     async unexpose(input: unknown) {
       const args = portInputSchema.parse(input);
-      const result = await tunnel.unexpose(
+      return tunnel.unexpose(
         args.port,
         args.hostId ?? (await hostResolver.serverHostId()),
       );
-      return {
-        removed: result.removed,
-        hostId: result.hostId,
-        port: result.port,
-      };
     },
     async listShares() {
       return tunnel.listShares();

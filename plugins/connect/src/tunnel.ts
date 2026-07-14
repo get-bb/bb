@@ -40,6 +40,8 @@ import {
   shareLoopbackHost,
   shareLoopbackOrigin,
   sharePublicUrl,
+  type ShareListing,
+  type ShareRemoval,
 } from "./shares.js";
 import type { ShareHost } from "./hosts.js";
 import type { ConnectStateName, ConnectStatus } from "./types.js";
@@ -161,58 +163,24 @@ export class ConnectTunnel {
     return this.status();
   }
 
-  async expose(
-    port: number,
-    host: ShareHost,
-  ): Promise<{
-    hostId: string;
-    hostName: string;
-    port: number;
-    url: string;
-  }> {
+  async expose(port: number, host: ShareHost): Promise<ShareListing> {
     const listing = await this.options.shares.add(port, host);
     // shares.onChange already publishes; ensure status is fresh if it didn't.
     this.publish();
-    return {
-      hostId: listing.hostId,
-      hostName: listing.hostName,
-      port: listing.port,
-      url: listing.url,
-    };
+    return listing;
   }
 
   async unexpose(
     port: number,
     hostSelector: string,
-  ): Promise<{
-    removed: boolean;
-    hostId: string;
-    hostName: string;
-    port: number;
-  }> {
+  ): Promise<ShareRemoval & { port: number }> {
     const result = await this.options.shares.remove(port, hostSelector);
     this.publish();
     return { ...result, port };
   }
 
-  async listShares(hostId?: string): Promise<
-    Array<{
-      hostId: string;
-      hostName: string;
-      port: number;
-      url: string;
-      unavailableReason?: string;
-    }>
-  > {
-    return (await this.options.shares.list(hostId)).map(
-      ({ hostId: id, hostName, port, url, unavailableReason }) => ({
-        hostId: id,
-        hostName,
-        port,
-        url,
-        ...(unavailableReason === undefined ? {} : { unavailableReason }),
-      }),
-    );
+  async listShares(hostId?: string): Promise<ShareListing[]> {
+    return this.options.shares.list(hostId);
   }
 
   /**
@@ -256,17 +224,7 @@ export class ConnectTunnel {
   }
 
   status(): ConnectStatus {
-    return this.statusWithShares(
-      this.options.shares
-        .snapshot()
-        .map(({ hostId, hostName, port, url, unavailableReason }) => ({
-          hostId,
-          hostName,
-          port,
-          url,
-          ...(unavailableReason === undefined ? {} : { unavailableReason }),
-        })),
-    );
+    return this.statusWithShares(this.options.shares.snapshot());
   }
 
   async refreshStatus(): Promise<ConnectStatus> {
@@ -299,10 +257,10 @@ export class ConnectTunnel {
     return `${base.replace(/\/$/, "")}/dashboard`;
   }
 
-  /** Stop the tunnel without clearing the credential (service abort). */
+  /** Stop the tunnel without clearing the credential (service abort). Plugin
+   * dispose clears server-side declarations via the load-scoped hook. */
   stop(): void {
     this.teardown();
-    this.options.shares.clearMachineDeclarations();
     this.publish();
   }
 
@@ -374,6 +332,13 @@ export class ConnectTunnel {
         this.isShareActivationCurrent(epoch),
       );
       if (!this.isShareActivationCurrent(epoch)) return;
+      if (this.credential !== null) {
+        // Warm the sync status snapshot so realtime consumers see persisted
+        // shares without waiting for a status rpc. list() never rejects on an
+        // unavailable host — it lists that share as unavailable instead.
+        await this.options.shares.list();
+        if (!this.isShareActivationCurrent(epoch)) return;
+      }
       this.publish();
     } catch (error) {
       this.options.log.warn(

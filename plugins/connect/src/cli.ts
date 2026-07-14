@@ -223,14 +223,7 @@ export function registerConnectCli(args: {
             targetHost,
           );
           if (parsed.flags.has("json")) {
-            return {
-              exitCode: 0,
-              stdout: asJson({
-                removed: result.removed,
-                hostId: result.hostId,
-                port: result.port,
-              }),
-            };
+            return { exitCode: 0, stdout: asJson(result) };
           }
           if (!result.removed) {
             return {
