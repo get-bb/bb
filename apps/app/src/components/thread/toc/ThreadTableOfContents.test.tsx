@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import {
   cleanup,
   fireEvent,
@@ -11,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
+  SidebarBootstrapResponse,
   TimelineRow,
 } from "@bb/server-contract";
 
@@ -27,6 +30,7 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
+import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
 import {
   findActiveItemIds,
   selectTocRailItems,
@@ -165,6 +169,90 @@ function timelineRowElement(id: string): HTMLElement {
   const el = document.createElement("div");
   el.setAttribute("data-timeline-row-id", id);
   return el;
+}
+
+function threadWithRuntime(
+  thread: Partial<ThreadWithRuntime> = {},
+): ThreadWithRuntime {
+  return {
+    id: "thr_worker",
+    projectId: "proj_toc",
+    environmentId: "env_toc",
+    providerId: "codex",
+    title: null,
+    titleFallback: null,
+    folderId: null,
+    status: "idle",
+    parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    originPluginId: null,
+    childOrigin: null,
+    archivedAt: null,
+    pinnedAt: null,
+    deletedAt: null,
+    lastReadAt: null,
+    latestAttentionAt: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    runtime: {
+      displayStatus: "idle",
+      hostReconnectGraceExpiresAt: null,
+    },
+    ...thread,
+  };
+}
+
+function threadListEntry(
+  thread: Partial<ThreadListEntry> = {},
+): ThreadListEntry {
+  return {
+    ...threadWithRuntime(thread),
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
+    pinSortKey: null,
+    hasPendingInteraction: false,
+    environmentHostId: "host_toc",
+    environmentName: "ToC environment",
+    environmentBranchName: "main",
+    environmentWorkspaceDisplayKind: "managed-worktree",
+    ...thread,
+  };
+}
+
+function sidebarNavigation(
+  threads: ThreadListEntry[],
+): SidebarBootstrapResponse {
+  return {
+    folders: [],
+    projects: [
+      {
+        id: "proj_toc",
+        kind: "standard",
+        name: "ToC project",
+        createdAt: 1,
+        updatedAt: 1,
+        sources: [],
+        threads,
+        defaultExecutionOptions: null,
+      },
+    ],
+    personalProject: {
+      id: "proj_personal",
+      kind: "personal",
+      name: "Personal",
+      createdAt: 1,
+      updatedAt: 1,
+      sources: [],
+      threads: [],
+      defaultExecutionOptions: null,
+    },
+  };
 }
 
 const userItems: TocItem[] = [
@@ -328,6 +416,88 @@ describe("ThreadTableOfContents", () => {
     expect(screen.getByText("Image attachment")).not.toBeNull();
     // The agent tab is offered because the outline has assistant messages.
     expect(screen.getByText("Agent messages")).not.toBeNull();
+  });
+
+  it("renders an agent-to-agent message source as a thread mention", async () => {
+    setOutline([
+      {
+        id: "u1",
+        role: "user",
+        preview: "First question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u2",
+        role: "user",
+        preview:
+          "[bb message from thread:thr_worker] Release bug report: the calendar is stale.",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(<TocHost timelineRows={[]} />);
+
+    expect(await screen.findByText("Agent")).not.toBeNull();
+    expect(
+      screen.getByText("Release bug report: the calendar is stale."),
+    ).not.toBeNull();
+    expect(
+      screen.queryByText(/\[bb message from thread:thr_worker\]/),
+    ).toBeNull();
+  });
+
+  it("uses and refreshes the sender thread title in a ToC mention", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarNavigation([threadListEntry({ title: "Calendar worker" })]),
+    );
+    setOutline([
+      {
+        id: "u1",
+        role: "user",
+        preview: "First question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u2",
+        role: "user",
+        preview:
+          "[bb message from thread:thr_worker] Release bug report: the calendar is stale.",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TocHost timelineRows={[]} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Calendar worker")).not.toBeNull();
+
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarNavigation([
+        threadListEntry({ title: "Updated calendar worker" }),
+      ]),
+    );
+
+    expect(await screen.findByText("Updated calendar worker")).not.toBeNull();
   });
 
   it("scrolls straight to a message already loaded in the window", async () => {
