@@ -365,12 +365,16 @@ function SplitTree(props: SplitTreeProps) {
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
-        // Flush tiles: no gaps, no rounding, no per-pane chrome — the
-        // hairline dividers are the only lines in the split area. Focus is
-        // conveyed by the sidebar mini-map accent and the URL. Bounded panes
+        // Flush tiles: no rounding, outer edges flush; a straight recessed
+        // gutter separates panes (see SplitDivider). The focused pane carries
+        // a single inset outline — with real gutters between tiles there is
+        // no adjacent hairline for it to double up against. Bounded panes
         // suppress the content's page-bleed negative margins (see
         // PaneContextValue.isBoundedPane) so content fills the tile exactly.
-        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
+          isFocused && "ring-1 ring-inset ring-ring",
+        )}
         data-split-pane-id={node.paneId}
       >
         {/* Only mounted in split mode, so single panes never pay for the extra
@@ -544,12 +548,15 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       onPointerDown={handlePointerDown}
       className={cn(
-        // A 1px hairline is the only visible separation between flush tiles;
-        // the absolutely-positioned child widens the grab target to 8px
-        // without consuming layout space.
-        "group relative z-[5] flex-shrink-0 bg-border transition-colors",
-        "hover:bg-ring/50 data-[dragging]:bg-ring/50",
-        horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
+        // A straight 6px gutter between flush tiles — squared ends, no
+        // rounding, only BETWEEN splits (outer edges stay flush). The gutter
+        // is softly recessed so it reads against the identical pane
+        // backgrounds; hover/drag warms it as the resize affordance. The
+        // absolutely-positioned child widens the grab target without
+        // consuming layout space.
+        "group relative z-[5] flex-shrink-0 bg-muted/60 transition-colors",
+        "hover:bg-ring/40 data-[dragging]:bg-ring/40",
+        horizontal ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize",
       )}
     >
       <div
