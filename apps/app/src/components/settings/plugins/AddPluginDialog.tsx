@@ -11,6 +11,7 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { appToast } from "@/components/ui/app-toast.js";
 import {
   invalidateMarketplaces,
@@ -32,6 +33,7 @@ export type AddPluginInitial = {
   marketplaceName: string;
   entryId: string;
   displayName: string;
+  icon: string | null;
 };
 
 export interface AddPluginDialogProps {
@@ -124,7 +126,10 @@ function AddPluginDialogContent({
       <div className="space-y-3">
         {initial !== null ? (
           <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/30 px-3 py-2">
-            <PlaceholderBadge className="size-6" />
+            <PlaceholderBadge
+              className="size-6"
+              iconName={pluginIconName(initial.icon)}
+            />
             <span className="text-sm font-medium text-foreground">
               {initial.displayName}
             </span>
@@ -151,7 +156,11 @@ function AddPluginDialogContent({
         <FullTrustWarning />
       </div>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+        >
           Cancel
         </Button>
         <Button

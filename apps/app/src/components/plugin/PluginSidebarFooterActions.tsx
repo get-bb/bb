@@ -1,12 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import {
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar.js";
-import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   usePluginSlots,
   type PluginSidebarFooterActionSlot,
@@ -24,9 +20,7 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
  * one runs the plugin's `run` with `{ openSettings }` — throws/rejections
  * are logged and never break the sidebar.
  */
-export function PluginSidebarFooterActions(props: {
-  onNavigate?: () => void;
-}) {
+export function PluginSidebarFooterActions(props: { onNavigate?: () => void }) {
   const { sidebarFooterActions } = usePluginSlots();
   if (sidebarFooterActions.length === 0) return null;
   return (
@@ -66,7 +60,7 @@ function PluginSidebarFooterActionList({
               runSidebarFooterAction({ action, navigate });
             }}
           >
-            <Icon name={pluginIconName(action.icon)} />
+            <PluginIcon pluginId={action.pluginId} icon={action.icon} />
             <span className="sr-only">{action.title}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>

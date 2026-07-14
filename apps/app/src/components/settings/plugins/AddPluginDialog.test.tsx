@@ -44,7 +44,9 @@ function stubFetch(
   return requests;
 }
 
-function renderDialog(initial?: Parameters<typeof AddPluginDialog>[0]["initial"]) {
+function renderDialog(
+  initial?: Parameters<typeof AddPluginDialog>[0]["initial"],
+) {
   const { wrapper } = createQueryClientTestHarness();
   return render(
     <AddPluginDialog open onOpenChange={() => {}} initial={initial} />,
@@ -89,7 +91,11 @@ describe("AddPluginDialog", () => {
       marketplaceName: "bb-official",
       entryId: "linear",
       displayName: "Linear",
+      icon: "Github",
     });
+
+    expect(document.querySelector('[data-icon="Github"]')).not.toBeNull();
+    expect(document.querySelector('[data-icon="Zap"]')).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
@@ -59,8 +59,9 @@ describe("BrowsePluginsTab", () => {
       }),
     );
 
+    const onInstall = vi.fn();
     const { wrapper } = createQueryClientTestHarness();
-    render(<BrowsePluginsTab onInstall={() => {}} />, { wrapper });
+    render(<BrowsePluginsTab onInstall={onInstall} />, { wrapper });
 
     const card = await screen.findByTestId("browse-card-memory");
     expect(card.querySelector('[data-icon="Brain"]')).not.toBeNull();
@@ -69,5 +70,10 @@ describe("BrowsePluginsTab", () => {
     expect(sourceLine.classList.contains("truncate")).toBe(true);
     expect(sourceLine.getAttribute("title")).toBe(`BB Official · ${source}`);
     expect(sourceLine.textContent).toBe(`BB Official · ${source}`);
+
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+    expect(onInstall).toHaveBeenCalledWith(
+      expect.objectContaining({ icon: "Brain" }),
+    );
   });
 });
