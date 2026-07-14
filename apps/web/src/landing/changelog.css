@@ -1,0 +1,274 @@
+/* bb changelog — loads alongside landing.css and reuses its tokens (--ink,
+   --border-soft, …) plus the hero mock's sidebar classes (.side-label, .trow,
+   .thread-kids, .tstatus, .trun) for the release visuals. Layout follows the
+   Cursor-changelog shape: a sticky version rail beside each release body. */
+
+/* ── Page header ─────────────────────────────────────────────────── */
+
+.page-head {
+  padding: 72px 0 40px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.page-head h1 {
+  font-size: clamp(34px, 5vw, 46px);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  color: oklch(0.21 0 0);
+}
+
+.page-head .sub {
+  margin-top: 14px;
+  color: var(--dim);
+  font-size: 17px;
+  max-width: 540px;
+}
+
+.page-head .meta-row {
+  margin-top: 22px;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  font-size: 13.5px;
+}
+
+.meta-row a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim);
+}
+
+.meta-row a:hover {
+  color: var(--ink);
+}
+
+.meta-row .ri {
+  width: 15px;
+  height: 15px;
+}
+
+/* Current-page link in the shared nav. */
+.nav-links .nav-current {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* ── Releases ────────────────────────────────────────────────────── */
+
+.release {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 48px;
+  padding: 64px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* The subscribe strip below draws its own border-top. */
+.release:last-of-type {
+  border-bottom: none;
+}
+
+/* Left rail: version + date stay pinned while the entry scrolls. */
+.rail-sticky {
+  position: sticky;
+  top: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.version {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.version:hover {
+  border-color: color-mix(in oklab, var(--ink) 28%, var(--bg));
+}
+
+.release-date {
+  font-size: 13.5px;
+  color: var(--subtle);
+}
+
+/* Right column: entry body. */
+.release-body h2 {
+  font-size: clamp(24px, 3.2vw, 32px);
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  color: oklch(0.21 0 0);
+}
+
+.release-body .lede {
+  margin-top: 14px;
+  color: var(--dim);
+  font-size: 16.5px;
+  max-width: 38em;
+}
+
+.release-body h3 {
+  margin-top: 40px;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: oklch(0.24 0 0);
+}
+
+.release-body h3 + p,
+.release-body ul + p {
+  margin-top: 12px;
+  color: var(--dim);
+  font-size: 15px;
+  max-width: 44em;
+}
+
+.release-body ul {
+  margin-top: 12px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.release-body li {
+  position: relative;
+  padding-left: 20px;
+  color: var(--dim);
+  font-size: 15px;
+  max-width: 44em;
+}
+
+/* Small square tick — quieter than a round bullet, matching the app's
+   utilitarian feel. */
+.release-body li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--ink) 26%, var(--bg));
+}
+
+/* "Beta" chip next to the Experiments section heading. */
+.h-chip {
+  display: inline-block;
+  vertical-align: 2px;
+  margin-left: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--spark);
+  border: 1px solid color-mix(in oklab, var(--spark) 35%, var(--bg));
+  background: color-mix(in oklab, var(--spark) 7%, var(--bg));
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.release-body code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface-recessed);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ── Feature media: sidebar recreation on a dot-grid stage ───────── */
+
+.feature-media {
+  margin-top: 28px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--ink) 4%, transparent),
+    0 24px 54px -30px color-mix(in oklab, var(--ink) 30%, transparent);
+}
+
+.media-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--ink) 12%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+
+/* The media card holds app-mock markup, not prose — undo the release-body
+   list styling so .threads/.trow render exactly as they do in landing.css. */
+.release-body .feature-media ul {
+  margin-top: 0;
+  display: block;
+  gap: 0;
+}
+
+.release-body .feature-media li {
+  padding-left: 0;
+  max-width: none;
+  font-size: inherit;
+  color: inherit;
+}
+
+.release-body .feature-media li::before {
+  content: none;
+}
+
+/* A floating slice of the app sidebar. Row styles come from landing.css. */
+.sidebar-card {
+  width: min(320px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 8px 10px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--ink) 4%, transparent),
+    0 22px 44px -24px color-mix(in oklab, var(--ink) 32%, transparent);
+}
+
+.sidebar-card .side-label:first-child {
+  padding-top: 5px;
+}
+
+/* Rows are decorative here, not clickable like the hero mock's. */
+.sidebar-card .trow {
+  cursor: default;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .release {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 48px 0;
+  }
+
+  .rail-sticky {
+    position: static;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .media-stage {
+    padding: 28px 16px;
+  }
+}
