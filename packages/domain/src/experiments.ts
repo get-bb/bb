@@ -48,7 +48,9 @@ export function isValidElectronAccelerator(accelerator: string): boolean {
     return false;
   }
   const modifiers = parts.slice(0, -1);
-  if (!modifiers.every((modifier) => ELECTRON_ACCELERATOR_MODIFIERS.has(modifier))) {
+  if (
+    !modifiers.every((modifier) => ELECTRON_ACCELERATOR_MODIFIERS.has(modifier))
+  ) {
     return false;
   }
   return (
@@ -84,6 +86,11 @@ export const experimentsSchema = z.object({
    */
   multiMachine: z.boolean(),
   /**
+   * Thread splits: enables the multi-pane thread view and its split-opening
+   * entry points in the app and public API.
+   */
+  threadSplits: z.boolean(),
+  /**
    * Popout chat: enables the desktop-only compact always-on-top chat window.
    */
   popoutChat: z.boolean(),
@@ -108,6 +115,7 @@ export const defaultExperiments: Experiments = {
   bbConnect: false,
   claudeCodeMockCliTraffic: false,
   multiMachine: false,
+  threadSplits: false,
   popoutChat: false,
   popoutChatHotkey: "Alt+Space",
   plugins: false,

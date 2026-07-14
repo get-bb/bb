@@ -270,7 +270,7 @@ export interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
 
 export interface ThreadOpenArgs {
   threadId: string;
-  split: ThreadOpenSplit;
+  split?: ThreadOpenSplit;
   file: ThreadOpenFile | null;
 }
 
@@ -1019,7 +1019,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].open.$post({
           param: { id: input.threadId },
           json: {
-            split: input.split,
+            ...(input.split === undefined ? {} : { split: input.split }),
             file: input.file,
           },
         }),

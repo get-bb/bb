@@ -45,7 +45,7 @@ export function registerOpenCommand(
     .option("--line <number>", "Line number to focus")
     .option(
       "--split <placement>",
-      "Open in right, down, left, top, or replace placement",
+      "Open in right, down, left, top, or replace placement (requires the Thread splits experiment)",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -61,7 +61,11 @@ export function registerOpenCommand(
             opts.split !== undefined,
           );
           const lineNumber = parseLineNumber(opts.line);
-          const split = threadOpenSplitSchema.parse(opts.split ?? "replace");
+          const requestedSplit =
+            opts.split === undefined
+              ? undefined
+              : threadOpenSplitSchema.parse(opts.split);
+          const split = requestedSplit ?? "replace";
           if (target.inputPath === null && lineNumber !== null) {
             throw new Error("--line requires a file path.");
           }
@@ -79,7 +83,7 @@ export function registerOpenCommand(
                 };
           const result = await sdk.threads.open({
             threadId: target.threadId,
-            split,
+            ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
             file,
           });
 

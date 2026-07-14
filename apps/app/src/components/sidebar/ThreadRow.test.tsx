@@ -12,6 +12,10 @@ import {
   SidebarThreadShortcutKeysContext,
 } from "./sidebarThreadShortcuts";
 
+vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
+  useThreadSplitsEnabled: () => true,
+}));
+
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>

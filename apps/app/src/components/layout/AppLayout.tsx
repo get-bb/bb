@@ -80,6 +80,7 @@ import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -438,6 +439,7 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const isCompactViewport = useIsCompactViewport();
+  const threadSplitsEnabled = useThreadSplitsEnabled();
   const store = useStore();
   const contentShellRef = useRef<HTMLDivElement>(null);
   useMobileVisualViewportHeight(contentShellRef, isCompactViewport);
@@ -446,14 +448,19 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(
     () =>
       wsManager.onThreadOpen((signal) => {
+        const route = getThreadRoutePath({
+          projectId: signal.projectId,
+          threadId: signal.threadId,
+        });
+        if (!threadSplitsEnabled) {
+          void navigate(route);
+          return;
+        }
         const current = store.get(splitLayoutAtom);
         const alreadyOpen =
           current !== null &&
-          findPaneByThread(
-            current.root,
-            signal.projectId,
-            signal.threadId,
-          ) !== null;
+          findPaneByThread(current.root, signal.projectId, signal.threadId) !==
+            null;
         const next = applyThreadOpenToLayout(
           current,
           { projectId: signal.projectId, threadId: signal.threadId },
@@ -462,15 +469,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         if (next !== current) {
           store.set(splitLayoutAtom, next);
         }
-        void navigate(
-          getThreadRoutePath({
-            projectId: signal.projectId,
-            threadId: signal.threadId,
-          }),
-          alreadyOpen ? { replace: true } : undefined,
-        );
+        void navigate(route, alreadyOpen ? { replace: true } : undefined);
       }),
-    [isCompactViewport, navigate, store],
+    [isCompactViewport, navigate, store, threadSplitsEnabled],
   );
   useAppCommandHandler("thread.new", () => {
     void navigate(getRootComposeRoutePath(), {

@@ -449,7 +449,10 @@ export const threadOpenSignalLenientSchema = z.object({
 /** Request body for POST /threads/:id/open (threadId comes from the path). */
 export const threadOpenRequestSchema = z
   .object({
-    split: threadOpenSplitSchema.default("replace"),
+    // Omission is semantically distinct from an explicit placement: ordinary
+    // thread/file opens remain available while the Thread splits experiment is
+    // off, while any supplied split request is server-gated.
+    split: threadOpenSplitSchema.optional(),
     file: threadOpenFileSchema.nullable(),
   })
   .strict();

@@ -15,6 +15,10 @@ vi.mock("@/components/sidebar/AppSidebar", () => ({
   AppSidebar: () => <aside data-testid="app-sidebar" />,
 }));
 
+vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
+  useThreadSplitsEnabled: () => false,
+}));
+
 vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
@@ -169,8 +173,8 @@ describe("AppLayout root compose project preference", () => {
       expect(document.title).toBe("Opened Thread");
     });
 
-    expect(window.localStorage.getItem(ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY)).toBe(
-      "proj_last_run",
-    );
+    expect(
+      window.localStorage.getItem(ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY),
+    ).toBe("proj_last_run");
   });
 });

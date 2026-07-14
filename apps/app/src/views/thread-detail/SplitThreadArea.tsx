@@ -19,6 +19,7 @@ import {
 import { useIsMutating } from "@tanstack/react-query";
 import { HttpError } from "@/lib/api";
 import { useThread } from "@/hooks/queries/thread-queries";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   countPanes,
@@ -34,6 +35,7 @@ import {
 import type {
   LayoutNode,
   PaneContent,
+  PaneNode,
   SplitLayout,
   SplitPath,
 } from "@/lib/split-layout";
@@ -83,6 +85,7 @@ type NavigateInPane = (paneId: string, thread: ThreadRoutePathArgs) => void;
 export function SplitThreadArea() {
   const { projectId, threadId } = useRouteState();
   const isCompact = useIsCompactViewport();
+  const threadSplitsEnabled = useThreadSplitsEnabled();
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
@@ -96,17 +99,17 @@ export function SplitThreadArea() {
   // layout. The reconcile is idempotent, so a URL that already matches the
   // focused pane is a no-op — no history spam, no render loop.
   useEffect(() => {
-    if (routeThread === null) {
+    if (!threadSplitsEnabled || routeThread === null) {
       return;
     }
     setLayout((previous) => reconcileLayoutForRoute(previous, routeThread));
-  }, [routeThread, setLayout]);
+  }, [routeThread, setLayout, threadSplitsEnabled]);
 
   // Effective layout for render/handlers before the effect seeds the atom.
   const layout: SplitLayout | null =
     storedLayout ?? (routeThread ? createSinglePaneLayout(routeThread) : null);
   const panes = layout === null ? [] : listPanes(layout.root);
-  const isSplitActive = !isCompact && panes.length > 1;
+  const isSplitActive = threadSplitsEnabled && !isCompact && panes.length > 1;
 
   // Content navigation inside a pane pushes history like the page surface does
   // today. replacePaneContent focuses the pane, so the pushed URL matches it.
@@ -251,51 +254,22 @@ export function SplitThreadArea() {
     [navigate, store],
   );
 
-  useAppCommandContext("splitActive", isSplitActive);
-  useAppCommandHandler("pane.focus.previous", () => {
-    if (!isSplitActive || layout === null) {
-      return false;
-    }
-    const paneId = getAdjacentPaneId(panes, layout.focusedPaneId, -1);
-    if (paneId !== null) {
-      focusPane(paneId);
-    }
-    return true;
-  });
-  useAppCommandHandler("pane.focus.next", () => {
-    if (!isSplitActive || layout === null) {
-      return false;
-    }
-    const paneId = getAdjacentPaneId(panes, layout.focusedPaneId, 1);
-    if (paneId !== null) {
-      focusPane(paneId);
-    }
-    return true;
-  });
-  useIndexedAppCommandHandlers(PANE_FOCUS_APP_COMMAND_IDS, (index) => {
-    if (!isSplitActive) {
-      return false;
-    }
-    const paneId = getPaneIdAtReadingIndex(panes, index);
-    if (paneId !== null) {
-      focusPane(paneId);
-    }
-    return true;
-  });
-  useAppCommandHandler("pane.close", () => {
-    if (!isSplitActive || layout === null) {
-      return false;
-    }
-    closePane(layout.focusedPaneId);
-    return true;
-  });
-
-  // Compact viewport disables splits entirely — render the route thread as the
+  // A disabled experiment and compact viewports both render the route thread as
   // single page surface (byte-identical to the pre-split page). The layout atom
-  // is preserved so the arrangement returns when the viewport widens again.
-  if (isCompact || layout === null) {
+  // is preserved so the arrangement returns when the gate opens again.
+  if (!threadSplitsEnabled || isCompact || layout === null) {
     return <ThreadDetailView surface="page" />;
   }
+
+  const commandHandlers = (
+    <SplitPaneCommandHandlers
+      closePane={closePane}
+      focusPane={focusPane}
+      isSplitActive={isSplitActive}
+      layout={layout}
+      panes={panes}
+    />
+  );
 
   const firstPane = panes[0];
   if (panes.length === 1 && firstPane !== undefined) {
@@ -304,39 +278,88 @@ export function SplitThreadArea() {
     // hit-testing the main content region (see useThreadRowSplitDrag's
     // single-pane fallback), so no wrapper element is needed here.
     return (
-      <ThreadPaneContent
-        content={firstPane.content}
-        paneId={firstPane.paneId}
-        isFocused
-        canShowSecondaryPanel
-        onRequestClose={null}
-        isBoundedPane={false}
-        onNavigateInPane={navigateInPane}
-      />
+      <>
+        {commandHandlers}
+        <ThreadPaneContent
+          content={firstPane.content}
+          paneId={firstPane.paneId}
+          isFocused
+          canShowSecondaryPanel
+          onRequestClose={null}
+          isBoundedPane={false}
+          onNavigateInPane={navigateInPane}
+        />
+      </>
     );
   }
 
   return (
-    // Full-bleed like the single-pane page surface: outer edges stay flush,
-    // so the top pane headers share the chrome axis with the pinned sidebar
-    // trigger exactly like the unsplit page. overflow-hidden keeps short
-    // windows from scrolling the whole split when stacked panes hit their min
-    // content height.
-    <div className="-m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
-      <SplitTree
-        node={layout.root}
-        path={EMPTY_PATH}
-        focusedPaneId={layout.focusedPaneId}
-        paneCount={panes.length}
-        onFocusPane={focusPane}
-        onClosePane={closePane}
-        onResize={resize}
-        onNavigateInPane={navigateInPane}
-        onBeginPaneDrag={beginPaneDrag}
-        onPruneStalePane={pruneStalePane}
-      />
-    </div>
+    <>
+      {commandHandlers}
+      {/* Full-bleed like the single-pane page surface: outer edges stay flush,
+          so the top pane headers share the chrome axis with the pinned sidebar
+          trigger exactly like the unsplit page. overflow-hidden keeps short
+          windows from scrolling the whole split when stacked panes hit their
+          min content height. */}
+      <div className="-m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
+        <SplitTree
+          node={layout.root}
+          path={EMPTY_PATH}
+          focusedPaneId={layout.focusedPaneId}
+          paneCount={panes.length}
+          onFocusPane={focusPane}
+          onClosePane={closePane}
+          onResize={resize}
+          onNavigateInPane={navigateInPane}
+          onBeginPaneDrag={beginPaneDrag}
+          onPruneStalePane={pruneStalePane}
+        />
+      </div>
+    </>
   );
+}
+
+interface SplitPaneCommandHandlersProps {
+  closePane: (paneId: string) => void;
+  focusPane: (paneId: string) => void;
+  isSplitActive: boolean;
+  layout: SplitLayout;
+  panes: readonly PaneNode[];
+}
+
+/** Mounted only while the experiment is enabled, so OFF unregisters commands. */
+function SplitPaneCommandHandlers({
+  closePane,
+  focusPane,
+  isSplitActive,
+  layout,
+  panes,
+}: SplitPaneCommandHandlersProps) {
+  useAppCommandContext("splitActive", isSplitActive);
+  useAppCommandHandler("pane.focus.previous", () => {
+    if (!isSplitActive) return false;
+    const paneId = getAdjacentPaneId(panes, layout.focusedPaneId, -1);
+    if (paneId !== null) focusPane(paneId);
+    return true;
+  });
+  useAppCommandHandler("pane.focus.next", () => {
+    if (!isSplitActive) return false;
+    const paneId = getAdjacentPaneId(panes, layout.focusedPaneId, 1);
+    if (paneId !== null) focusPane(paneId);
+    return true;
+  });
+  useIndexedAppCommandHandlers(PANE_FOCUS_APP_COMMAND_IDS, (index) => {
+    if (!isSplitActive) return false;
+    const paneId = getPaneIdAtReadingIndex(panes, index);
+    if (paneId !== null) focusPane(paneId);
+    return true;
+  });
+  useAppCommandHandler("pane.close", () => {
+    if (!isSplitActive) return false;
+    closePane(layout.focusedPaneId);
+    return true;
+  });
+  return null;
 }
 
 interface SplitTreeProps {

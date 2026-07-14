@@ -27,6 +27,11 @@ const threadStore = vi.hoisted(
   () =>
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
+const experimentState = vi.hoisted(() => ({ enabled: true }));
+
+vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
+  useThreadSplitsEnabled: () => experimentState.enabled,
+}));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
   useThread: (id: string) => {
@@ -164,6 +169,7 @@ function renderSplitArea(options: {
 }
 
 beforeEach(() => {
+  experimentState.enabled = true;
   threadStore.set("thr-a", { archivedAt: null, deletedAt: null });
   threadStore.set("thr-b", { archivedAt: null, deletedAt: null });
 });

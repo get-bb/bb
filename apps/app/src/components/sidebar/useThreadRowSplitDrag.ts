@@ -2,6 +2,7 @@ import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { useStore } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
@@ -60,17 +61,17 @@ export function useThreadRowSplitDrag({
   const store = useStore();
   const navigate = useNavigate();
   const isCompact = useIsCompactViewport();
+  const threadSplitsEnabled = useThreadSplitsEnabled();
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
-      if (event.button !== 0) {
+      if (!threadSplitsEnabled || event.button !== 0) {
         return;
       }
       const rowEl = event.currentTarget;
       const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
-      const sidebarRightEdge = (
-        sidebarEl ?? rowEl
-      ).getBoundingClientRect().right;
+      const sidebarRightEdge = (sidebarEl ?? rowEl).getBoundingClientRect()
+        .right;
       const startX = event.clientX;
       const startY = event.clientY;
       const content: PaneContent = { kind: "thread", projectId, threadId };
@@ -127,7 +128,7 @@ export function useThreadRowSplitDrag({
         },
       });
     },
-    [navigate, projectId, store, threadId, title],
+    [navigate, projectId, store, threadId, threadSplitsEnabled, title],
   );
 
   const openInSplit = useCallback(() => {
@@ -135,7 +136,7 @@ export function useThreadRowSplitDrag({
     const layout = store.get(splitLayoutAtom);
     // No split to grow (compact viewport, or a non-thread route with no layout):
     // behave like an ordinary open.
-    if (isCompact || layout === null) {
+    if (!threadSplitsEnabled || isCompact || layout === null) {
       navigate(route);
       return;
     }
@@ -163,9 +164,13 @@ export function useThreadRowSplitDrag({
       store.set(splitLayoutAtom, next);
     }
     navigate(route);
-  }, [isCompact, navigate, projectId, store, threadId]);
+  }, [isCompact, navigate, projectId, store, threadId, threadSplitsEnabled]);
 
-  return { onPointerDown: isCompact ? undefined : onPointerDown, openInSplit };
+  return {
+    onPointerDown:
+      threadSplitsEnabled && !isCompact ? onPointerDown : undefined,
+    openInSplit,
+  };
 }
 
 // The single-pane surface renders no `[data-split-pane-id]` wrapper, so drops

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useAtomValue } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   computePaneRects,
@@ -47,9 +48,10 @@ export function useThreadSplitIndicator(
 ): ThreadSplitIndicator {
   const layout = useAtomValue(splitLayoutAtom);
   const isCompact = useIsCompactViewport();
+  const threadSplitsEnabled = useThreadSplitsEnabled();
 
   return useMemo<ThreadSplitIndicator>(() => {
-    if (layout === null || isCompact) {
+    if (!threadSplitsEnabled || layout === null || isCompact) {
       return NO_INDICATOR;
     }
     const paneCount = countPanes(layout.root);
@@ -82,5 +84,5 @@ export function useThreadSplitIndicator(
       isFocusedPaneThread: pane.paneId === layout.focusedPaneId,
       miniMap,
     };
-  }, [isCompact, layout, projectId, threadId]);
+  }, [isCompact, layout, projectId, threadId, threadSplitsEnabled]);
 }

@@ -63,7 +63,6 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-current" },
       json: {
-        split: "replace",
         file: {
           source: "workspace",
           path: "reports/status.md",
@@ -93,7 +92,6 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-explicit" },
       json: {
-        split: "replace",
         file: {
           source: "workspace",
           path: "reports/status.md",
@@ -150,7 +148,6 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-workspace" },
       json: {
-        split: "replace",
         file: {
           source: "workspace",
           path: "reports/status.md",
@@ -189,7 +186,6 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-storage" },
       json: {
-        split: "replace",
         file: {
           source: "thread-storage",
           path: "reports/preview.html",
@@ -209,9 +205,9 @@ describe("bb thread open command output", () => {
   it("requires an explicit thread id outside a BB thread", async () => {
     stubThreadOpenApi({});
 
-    await expect(
-      runCommand(["thread", "open"], register),
-    ).rejects.toThrow("process.exit:1");
+    await expect(runCommand(["thread", "open"], register)).rejects.toThrow(
+      "process.exit:1",
+    );
   });
 
   it("rejects a different explicit thread id when BB_THREAD_ID is set", async () => {
@@ -239,7 +235,6 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-explicit" },
       json: {
-        split: "replace",
         file: {
           source: "workspace",
           path: "reports/status.md",
@@ -260,7 +255,9 @@ describe("bb thread open command output", () => {
 
     expect(help).toContain("Usage:");
     expect(help).toContain("[id] [path]");
-    expect(help).toContain("Open a BB thread, optionally with a file in its panel");
+    expect(help).toContain(
+      "Open a BB thread, optionally with a file in its panel",
+    );
     expect(help).toContain("--line");
     expect(help).toContain("--split <placement>");
     expect(help).toContain("right, down, left, top, or replace");

@@ -197,10 +197,12 @@ export interface ExperimentsSettingsSectionProps {
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
+  onThreadSplitsEnabledChange: (enabled: boolean) => void;
   pluginsEnabled: boolean;
   multiMachineEnabled: boolean;
   popoutChatEnabled: boolean;
   popoutChatHotkey: string;
+  threadSplitsEnabled: boolean;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -677,7 +679,9 @@ export function AppearanceSettingsSection({
                   onSelect={() => onAppearanceThemeChange(theme.id)}
                 >
                   {theme.name}
-                  <span className="text-muted-foreground">({theme.pluginId})</span>
+                  <span className="text-muted-foreground">
+                    ({theme.pluginId})
+                  </span>
                   <Icon
                     name="Check"
                     className={cn(
@@ -838,6 +842,7 @@ export function ProviderSettingsSection({
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const BB_CONNECT_EXPERIMENT_LABEL = "bb connect";
 const MULTI_MACHINE_EXPERIMENT_LABEL = "Multi-machine";
+const THREAD_SPLITS_EXPERIMENT_LABEL = "Thread splits";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
@@ -1026,12 +1031,14 @@ export function ExperimentsSettingsSection({
   onClaudeCodeMockCliTrafficEnabledChange,
   onMultiMachineEnabledChange,
   onPluginsEnabledChange,
+  onThreadSplitsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
   pluginsEnabled,
   multiMachineEnabled,
   popoutChatEnabled,
   popoutChatHotkey,
+  threadSplitsEnabled,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -1073,6 +1080,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onMultiMachineEnabledChange}
             aria-label={MULTI_MACHINE_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={THREAD_SPLITS_EXPERIMENT_LABEL}
+          description="Split the thread view into up to 4 panes; drag threads from the sidebar to split."
+        >
+          <Switch
+            checked={threadSplitsEnabled}
+            disabled={disabled}
+            onCheckedChange={onThreadSplitsEnabledChange}
+            aria-label={THREAD_SPLITS_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1299,6 +1318,12 @@ export function SettingsView() {
             multiMachine: enabled,
           })
         }
+        onThreadSplitsEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            threadSplits: enabled,
+          })
+        }
         onPluginsEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
@@ -1307,6 +1332,7 @@ export function SettingsView() {
         }
         bbConnectEnabled={experiments.bbConnect}
         multiMachineEnabled={experiments.multiMachine}
+        threadSplitsEnabled={experiments.threadSplits}
         pluginsEnabled={experiments.plugins}
         popoutChatEnabled={experiments.popoutChat}
         popoutChatHotkey={experiments.popoutChatHotkey}

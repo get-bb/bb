@@ -181,6 +181,7 @@ declare const experimentsSchema: z$1.ZodObject<{
     claudeCodeMockCliTraffic: z$1.ZodBoolean;
     bbConnect: z$1.ZodBoolean;
     multiMachine: z$1.ZodBoolean;
+    threadSplits: z$1.ZodBoolean;
     popoutChat: z$1.ZodBoolean;
     popoutChatHotkey: z$1.ZodString;
     plugins: z$1.ZodBoolean;
@@ -243,8 +244,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -2392,7 +2393,7 @@ interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
 }
 interface ThreadOpenArgs {
     threadId: string;
-    split: ThreadOpenSplit;
+    split?: ThreadOpenSplit;
     file: ThreadOpenFile | null;
 }
 interface ThreadEventsListArgs {

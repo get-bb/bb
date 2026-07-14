@@ -95,13 +95,15 @@ Opening threads and files in the app:
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
     --line <number>                        Line number to focus
-    --split <placement>                    right, down, left, top, or replace (default)
+    --split <placement>                    right, down, left, top, or replace (requires Thread splits)
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
   the thread ID argument is omitted for file-only opens. Pass an explicit thread
   ID with --split to open another thread. Outside a BB thread, pass the thread ID
   as the first argument. A thread already open in a pane is focused instead of
   duplicated. At four panes, edge placement replaces the focused pane.
+  Enable the "Thread splits" experiment in Settings → Experiments before using
+  --split; ordinary thread/file opens without --split remain available while off.
 
   Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
