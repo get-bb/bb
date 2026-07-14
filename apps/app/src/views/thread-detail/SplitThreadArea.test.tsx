@@ -12,12 +12,18 @@ import { useContext } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout";
-import type { SplitLayout } from "@/lib/split-layout";
+import type { PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import { PaneContext } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
 
@@ -52,6 +58,10 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandContext: () => undefined,
   useAppCommandHandler: () => undefined,
   useIndexedAppCommandHandlers: () => undefined,
+}));
+
+vi.mock("@/components/ui/sidebar.js", () => ({
+  useIsSidebarShowing: () => true,
 }));
 
 // Lightweight stand-in for the heavyweight thread view. It surfaces the pane's
@@ -121,6 +131,28 @@ function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
   };
 }
 
+const docsContent: PaneContent = {
+  kind: "plugin-panel",
+  pluginId: "docs",
+  panelPath: "docs",
+  subPath: "",
+};
+
+function pluginSplitLayout(): SplitLayout {
+  return {
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        { type: "pane", paneId: "pane-1", content: threadContent("thr-a") },
+        { type: "pane", paneId: "pane-2", content: docsContent },
+      ],
+    },
+    focusedPaneId: "pane-2",
+  };
+}
+
 function threadPath(threadId: string): string {
   return `/threads/${threadId}`;
 }
@@ -147,6 +179,7 @@ function renderSplitArea(options: {
   path: string;
   layout?: SplitLayout;
   externalTo?: string;
+  routeContent?: PaneContent;
 }) {
   const store = createStore();
   if (options.layout !== undefined) {
@@ -156,7 +189,7 @@ function renderSplitArea(options: {
     <JotaiProvider store={store}>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[options.path]}>
-          <SplitThreadArea />
+          <SplitThreadArea routeContent={options.routeContent} />
           <LocationProbe />
           {options.externalTo !== undefined ? (
             <ExternalNav to={options.externalTo} />
@@ -177,6 +210,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   threadStore.clear();
+  resetPluginSlotStoreForTest();
+  delete window.bbDesktop;
   window.localStorage.clear();
 });
 
@@ -245,6 +280,50 @@ describe("SplitThreadArea", () => {
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
+  });
+
+  it("carves a plugin pane drag handle out of the macOS window-drag region", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      lastCheckedAt: null,
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.0-test",
+    };
+    window.bbDesktop = createBbDesktopApi(desktopInfo);
+    setPluginSlotRegistrations("docs", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText",
+          path: "docs",
+          component: () => <div>Docs panel</div>,
+        },
+      ],
+      threadPanelActions: [],
+      composerAccessories: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    const title = await screen.findByText("Docs");
+    const dragHandle = title.parentElement?.parentElement;
+    expect(dragHandle?.className).toContain("cursor-grab");
+    expect(dragHandle?.className).toContain("[app-region:no-drag]");
+    expect(dragHandle?.className).toContain("[-webkit-app-region:no-drag]");
   });
 
   it("falls back to a single pane from the route when persisted state is malformed", async () => {

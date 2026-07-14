@@ -8,6 +8,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -76,6 +77,11 @@ import {
   threadPaneContent,
 } from "./splitThreadNavigation";
 import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
+import {
+  getBbDesktopInfo,
+  MACOS_WINDOW_NO_DRAG_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 
 // A `pointerdown`-relative move threshold before a pane-header drag engages.
 const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
@@ -601,6 +607,8 @@ function NonThreadPaneContent({
   isBoundedPane: boolean;
 }) {
   const { navPanels } = usePluginSlots();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const panel =
     content.kind === "plugin-panel"
       ? navPanels.find(
@@ -651,7 +659,15 @@ function NonThreadPaneContent({
             <div
               className={cn(
                 "flex min-w-0 flex-1 items-center",
-                beginPaneDrag && "cursor-grab touch-none select-none",
+                beginPaneDrag &&
+                  cn(
+                    "cursor-grab touch-none select-none",
+                    // AppPageHeader is an OS window-drag region on macOS.
+                    // Carve this pane-reorder handle out so Electron routes
+                    // the pointer gesture to the split drag layer, matching
+                    // the thread-title handle in ThreadDetailHeader.
+                    usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                  ),
               )}
               onPointerDown={beginPaneDrag ? handlePointerDown : undefined}
             >
