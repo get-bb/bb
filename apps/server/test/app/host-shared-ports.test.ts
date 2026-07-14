@@ -3,6 +3,7 @@ import {
   migrate,
   noopNotifier,
   openSession,
+  updateHost,
   upsertHost,
 } from "@bb/db";
 import {
@@ -165,6 +166,58 @@ describe("HostSharedPortCoordinator", () => {
       throw new Error("expected an ApiError for the offline host");
     }
     expect(offlineError.body.message).not.toMatch(/remove and re-add|enroll/i);
+  });
+
+  it("always accepts empty declarations for offline, unenrolled, and removed hosts", () => {
+    const offline = setup();
+    if (!offline.session) throw new Error("expected an online host session");
+    offline.sharedPorts.declareSharedPorts({
+      ownerId: "connect",
+      hostId: offline.host.id,
+      ports: [3000],
+    });
+    offline.sharedPorts.clearHostConnectCapability(offline.session.id);
+    expect(
+      offline.sharedPorts.declareSharedPorts({
+        ownerId: "connect",
+        hostId: offline.host.id,
+        ports: [],
+      }),
+    ).toEqual({ generation: 2, ports: [] });
+
+    const unenrolled = setup({ enrolled: false });
+    expect(
+      unenrolled.sharedPorts.declareSharedPorts({
+        ownerId: "connect",
+        hostId: unenrolled.host.id,
+        ports: [],
+      }),
+    ).toEqual({ generation: 0, ports: [] });
+
+    const removed = setup();
+    removed.sharedPorts.declareSharedPorts({
+      ownerId: "connect",
+      hostId: removed.host.id,
+      ports: [4000],
+    });
+    updateHost(removed.db, noopNotifier, removed.host.id, {
+      destroyedAt: Date.now(),
+    });
+    expect(
+      removed.sharedPorts.declareSharedPorts({
+        ownerId: "connect",
+        hostId: removed.host.id,
+        ports: [],
+      }),
+    ).toEqual({ generation: 2, ports: [] });
+
+    expect(
+      removed.sharedPorts.declareSharedPorts({
+        ownerId: "connect",
+        hostId: "missing-host",
+        ports: [],
+      }),
+    ).toEqual({ generation: 0, ports: [] });
   });
 
   it("stores only daemon-reported tunnel identity", () => {

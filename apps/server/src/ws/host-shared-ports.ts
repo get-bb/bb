@@ -93,11 +93,21 @@ export class HostSharedPortCoordinator {
     if (args.ownerId.trim().length === 0) {
       throw new Error("shared-port declaration ownerId must be non-empty");
     }
-    this.requireEnrolledHost(args.hostId);
+    if (args.hostId.trim().length === 0) {
+      throw new Error("shared-port declaration hostId must be non-empty");
+    }
+    const ports = normalizePorts(args.ports);
+    // Clearing server-owned desired state is always safe. In particular, it
+    // must remain possible after a host goes offline, loses enrollment, or is
+    // removed. Only an active request to share ports requires a live enrolled
+    // daemon with its own machine credential.
+    if (ports.length > 0) {
+      this.requireEnrolledHost(args.hostId);
+    }
 
     const current = this.declarationsByHost.get(args.hostId);
     const candidate = new Map(current ?? []);
-    candidate.set(args.ownerId, { ports: normalizePorts(args.ports) });
+    candidate.set(args.ownerId, { ports });
     this.declarationsByHost.set(args.hostId, candidate);
     return this.publishIfChanged(args.hostId);
   }

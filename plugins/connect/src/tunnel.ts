@@ -80,6 +80,7 @@ export class ConnectTunnel {
   private remoteClients = 0;
   private nextRetryAt: number | null = null;
   private shareRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private shareActivationEpoch = 0;
 
   constructor(private readonly options: ConnectTunnelOptions) {}
 
@@ -100,7 +101,7 @@ export class ConnectTunnel {
       this.stopped = false;
       this.openTunnel();
     }
-    void this.activateShares();
+    this.startShareActivation();
     this.publish();
   }
 
@@ -141,7 +142,7 @@ export class ConnectTunnel {
       this.credential = credential;
       this.lastError = null;
       this.reconnect();
-      void this.activateShares();
+      this.startShareActivation();
     } finally {
       this.pairing = false;
       this.publish();
@@ -150,6 +151,7 @@ export class ConnectTunnel {
   }
 
   async disconnect(): Promise<ConnectStatus> {
+    this.shareActivationEpoch += 1;
     await this.options.store.clear();
     this.options.shares.clearMachineDeclarations();
     this.credential = null;
@@ -299,8 +301,8 @@ export class ConnectTunnel {
 
   /** Stop the tunnel without clearing the credential (service abort). */
   stop(): void {
-    this.options.shares.clearMachineDeclarations();
     this.teardown();
+    this.options.shares.clearMachineDeclarations();
     this.publish();
   }
 
@@ -321,6 +323,7 @@ export class ConnectTunnel {
   }
 
   private teardown(): void {
+    this.shareActivationEpoch += 1;
     this.stopped = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -354,15 +357,23 @@ export class ConnectTunnel {
    * A disconnected enrolled host must not block this server's own tunnel.
    * Keep retrying persisted machine-share hydration/declaration separately.
    */
-  private async activateShares(): Promise<void> {
+  private startShareActivation(): void {
+    const epoch = ++this.shareActivationEpoch;
+    void this.activateShares(epoch);
+  }
+
+  private isShareActivationCurrent(epoch: number): boolean {
+    return !this.stopped && epoch === this.shareActivationEpoch;
+  }
+
+  private async activateShares(epoch: number): Promise<void> {
     try {
       await this.options.shares.load();
-      if (this.stopped) return;
-      await this.options.shares.declareMachineShares();
-      if (this.stopped) {
-        this.options.shares.clearMachineDeclarations();
-        return;
-      }
+      if (!this.isShareActivationCurrent(epoch)) return;
+      await this.options.shares.declareMachineShares(() =>
+        this.isShareActivationCurrent(epoch),
+      );
+      if (!this.isShareActivationCurrent(epoch)) return;
       this.publish();
     } catch (error) {
       this.options.log.warn(
@@ -370,12 +381,12 @@ export class ConnectTunnel {
       );
       if (
         this.credential !== null &&
-        !this.stopped &&
+        this.isShareActivationCurrent(epoch) &&
         this.shareRetryTimer === undefined
       ) {
         this.shareRetryTimer = setTimeout(() => {
           this.shareRetryTimer = undefined;
-          void this.activateShares();
+          this.startShareActivation();
         }, 5_000);
       }
     }

@@ -350,12 +350,28 @@ export class ShareRegistry {
     const hostName = host?.name ?? "removed host";
     this.shares.delete(key);
     try {
-      if (host && !host.isServer) this.declare(host.id);
       await this.persist();
     } catch (error) {
       this.shares.set(key, share);
-      if (host && !host.isServer) this.restoreDeclaration(host.id);
       throw error;
+    }
+    const declarationHostId =
+      host?.isServer === false
+        ? host.id
+        : host === undefined && share.hostId !== null
+          ? share.hostId
+          : undefined;
+    // Removal is local durable state first. A daemon declaration failure must
+    // never resurrect a share; activation/reconnect will reconcile the latest
+    // desired set, and the server always accepts an empty clearing declaration.
+    if (declarationHostId !== undefined) {
+      try {
+        this.declare(declarationHostId);
+      } catch (error) {
+        this.options.log.warn(
+          `failed to update shared ports after removing port ${validated} from host ${declarationHostId}: ${errorMessage(error)}`,
+        );
+      }
     }
     this.options.onChange?.();
     return { removed: true, hostId: publicHostId, hostName };
@@ -376,11 +392,16 @@ export class ShareRegistry {
   }
 
   /** Restore daemon declarations after service start or re-pairing. */
-  async declareMachineShares(): Promise<void> {
-    if (this.options.getCredential() === null) return;
-    this.serverHostId = await this.options.hostResolver.serverHostId();
+  async declareMachineShares(
+    isActivationCurrent: () => boolean,
+  ): Promise<void> {
+    if (!isActivationCurrent() || this.options.getCredential() === null) return;
+    const serverHostId = await this.options.hostResolver.serverHostId();
+    if (!isActivationCurrent()) return;
+    this.serverHostId = serverHostId;
     let firstError: unknown;
     for (const hostId of this.machineHostIds()) {
+      if (!isActivationCurrent()) return;
       try {
         this.declare(hostId);
       } catch (error) {

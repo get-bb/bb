@@ -23,6 +23,7 @@ import {
 } from "./shares.js";
 import { CREDENTIAL_KV_KEY } from "./credential.js";
 import plugin from "./server.js";
+import { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
 import { ShareHostResolver } from "./hosts.js";
 
@@ -450,6 +451,93 @@ describe("ShareRegistry", () => {
       },
     ]);
     expect(ensureIdentity).toHaveBeenCalledTimes(1);
+    await fakeHost.harness.dispose();
+  });
+});
+
+describe("ConnectTunnel share activation", () => {
+  it("does not declare non-empty ports when serverHostId resolves after stop", async () => {
+    let resolveServerHostId!: (hostId: string) => void;
+    const serverHostId = new Promise<string>((resolve) => {
+      resolveServerHostId = resolve;
+    });
+    let markLookupStarted!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => {
+      markLookupStarted = resolve;
+    });
+    const fakeHost = createFakePluginHost({
+      pluginId: "connect",
+      sdk: {
+        system: {
+          config: async () => {
+            markLookupStarted();
+            return { primaryHostId: await serverHostId } as never;
+          },
+        },
+        hosts: {
+          get: async ({ hostId }: { hostId: string }) =>
+            ({ id: hostId, name: hostId }) as never,
+        },
+      },
+    });
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const credential = {
+      serverUrl: "http://127.0.0.1:1",
+      handle: "sawyer",
+      credential: "bbcred_x",
+    };
+    const kv = new Map<string, unknown>([
+      [
+        SHARES_KV_KEY,
+        {
+          [`${REMOTE_HOST_ID}:3000`]: {
+            hostId: REMOTE_HOST_ID,
+            port: 3000,
+            createdAt: 1,
+          },
+        },
+      ],
+    ]);
+    const shares = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: pluginBb.hosts,
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => credential,
+      log: pluginBb.log,
+    });
+    const tunnel = new ConnectTunnel({
+      store: {
+        read: async () => credential,
+        write: async () => {},
+        clear: async () => {},
+      },
+      shares,
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      log: pluginBb.log,
+    });
+
+    await tunnel.start();
+    await lookupStarted;
+    tunnel.stop();
+    resolveServerHostId(SERVER_HOST_ID);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(
+      fakeHost.harness.sharedPortDeclarations.filter(
+        (declaration) => declaration.ports.length > 0,
+      ),
+    ).toEqual([]);
     await fakeHost.harness.dispose();
   });
 });
@@ -1278,6 +1366,58 @@ describe("connect plugin", () => {
         createdAt: 1,
       },
     });
+    expect(harness.sharedPortDeclarations).toEqual([
+      { hostId: "host-deleted", ports: [] },
+    ]);
+  });
+
+  it("unexposes a persisted machine share when its declaration push fails offline", async () => {
+    host = createConnectFakeHost();
+    const declarations = vi.fn((_hostId: string, _ports: readonly number[]) => {
+      throw Object.assign(new Error("host is offline"), {
+        body: { code: "connect_host_offline" },
+      });
+    });
+    Object.defineProperty(host.bb.hosts, "declareSharedPorts", {
+      value: declarations,
+    });
+    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    await host.bb.storage.kv.set(SHARES_KV_KEY, {
+      [`${REMOTE_HOST_ID}:3000`]: {
+        hostId: REMOTE_HOST_ID,
+        port: 3000,
+        createdAt: 1,
+      },
+    });
+
+    await expect(
+      host.harness.callRpc("unexpose", {
+        hostId: REMOTE_HOST_ID,
+        port: 3000,
+      }),
+    ).resolves.toEqual({
+      removed: true,
+      hostId: REMOTE_HOST_ID,
+      port: 3000,
+    });
+    expect(declarations).toHaveBeenCalledWith(REMOTE_HOST_ID, []);
+    expect(await host.bb.storage.kv.get(SHARES_KV_KEY)).toBeUndefined();
+    expect(await host.harness.callRpc("listShares")).toEqual([]);
+    expect(host.harness.sdk.callsTo("hosts.get")).toEqual(
+      expect.arrayContaining([
+        [expect.objectContaining({ hostId: REMOTE_HOST_ID })],
+      ]),
+    );
+    expect(host.harness.logEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          message: expect.stringContaining(
+            "failed to update shared ports after removing port 3000",
+          ),
+        }),
+      ]),
+    );
   });
 
   it("uses machine tunnel identity and declares per-host port sets", async () => {
