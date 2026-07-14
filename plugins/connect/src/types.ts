@@ -9,8 +9,12 @@ export type ConnectStateName =
   | "reconnecting";
 
 export interface ConnectShareStatus {
+  hostId: string;
+  hostName: string;
   port: number;
   url: string;
+  /** Present only when url is empty because this share cannot resolve now. */
+  unavailableReason?: string;
 }
 
 export interface ConnectStatus {

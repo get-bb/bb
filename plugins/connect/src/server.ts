@@ -4,6 +4,7 @@ import { createKvCredentialStore } from "./credential.js";
 import { createRpcHandlers } from "./rpc.js";
 import { ShareRegistry } from "./shares.js";
 import { ConnectTunnel } from "./tunnel.js";
+import { ShareHostResolver } from "./hosts.js";
 import {
   CONNECT_REALTIME_CHANNEL,
   REMOTE_ACTIVITY_INSTRUCTIONS_MS,
@@ -13,11 +14,15 @@ export default async function plugin(bb: BbPluginApi) {
   const store = createKvCredentialStore(bb.storage.kv);
   // Tunnel is assigned below; ShareRegistry reads the live credential via this.
   let tunnel!: ConnectTunnel;
+  const hostResolver = new ShareHostResolver(() => bb.sdk);
 
   const shares = new ShareRegistry({
     kv: bb.storage.kv,
+    hosts: bb.hosts,
+    hostResolver,
     getLoopbackBaseUrl: () => bb.server.loopbackBaseUrl,
     getCredential: () => tunnel.getCredential(),
+    log: bb.log,
     onChange: () => {
       bb.realtime.publish(CONNECT_REALTIME_CHANNEL, tunnel.status());
     },
@@ -32,8 +37,8 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status),
   });
 
-  bb.rpc.register(createRpcHandlers(tunnel));
-  registerConnectCli({ bb, tunnel });
+  bb.rpc.register(createRpcHandlers(tunnel, hostResolver));
+  registerConnectCli({ bb, tunnel, hostResolver });
 
   bb.agents.contributeInstructions(() => {
     const status = tunnel.status();
@@ -46,8 +51,8 @@ export default async function plugin(bb: BbPluginApi) {
     if (!recent) return null;
     return (
       `The user is currently viewing this bb remotely at ${status.url}. ` +
-      "When you start a local HTTP server they should see, run `bb connect expose <port>` " +
-      "and give them the printed share URL as a markdown link — a localhost URL will not work for them."
+      "Port shares work from a thread on any enrolled host: when you start an HTTP server they should see, run `bb connect expose <port>` from that thread. " +
+      "The command returns the correct public URL for the thread's host; give it to them as a markdown link because a localhost URL will not work remotely."
     );
   });
 

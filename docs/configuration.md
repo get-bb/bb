@@ -368,12 +368,20 @@ proxying relayed requests to the server's own loopback (which serves the SPA
   lives as long as the bb server runs (with the plugin enabled) and
   re-establishes on restart; there is no foreground client. Pair from a machine
   without an installed bb via `npx -p bb-app@latest bb connect …`.
-  `bb connect status` shows the connect state and `bb connect off` disconnects
-  and clears the pairing. After pairing, `bb connect expose <port>` shares a
-  local HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent
-  host for a self-hosted gate); access requires the owner's getbb.app session
-  (not a public link). `bb connect unexpose <port>` stops sharing and
-  `bb connect shares` lists active URLs. Disabling the plugin
+  `bb connect status` shows the connect state and every share's host and URL;
+  `bb connect off` disconnects and clears the pairing. After pairing,
+  `bb connect expose <port>` run from a thread shares that thread environment's
+  enrolled host. Server-host URLs remain
+  `https://<server-label>--<port>.getbb.app`; other machines use
+  `https://<machine-label>--<port>.getbb.app` and proxy directly through the
+  owning daemon. Outside a thread the command defaults to the server host;
+  `--host <name-or-id>` overrides host resolution. Access requires the owner's
+  getbb.app session (not a public link). `bb connect unexpose <port>` and
+  `bb connect shares` use the same host resolution and accept the same
+  `--host` override. Their JSON rows include `hostId`, `hostName`, `port`, and
+  `url`; `shares --json` also includes the resolved `host`. A machine without
+  a live Connect enrollment fails fast with instructions to remove and re-add
+  it in Settings → Machines. Disabling the plugin
   (`bb plugin disable connect`) cuts off all remote access; with the bb connect
   experiment still enabled, `bb plugin enable connect` restores it.
 
