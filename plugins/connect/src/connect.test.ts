@@ -243,7 +243,7 @@ describe("ShareRegistry", () => {
       log: pluginBb.log,
     });
     await reloaded.load();
-    expect(reloaded.list()).toEqual([
+    expect(await reloaded.list()).toEqual([
       {
         hostId: "host-server",
         hostName: "Server",
@@ -295,7 +295,7 @@ describe("ShareRegistry", () => {
     });
 
     await registry.load();
-    expect(registry.list()).toEqual([
+    expect(await registry.list()).toEqual([
       {
         hostId: SERVER_HOST_ID,
         hostName: SERVER_HOST_NAME,
@@ -307,6 +307,149 @@ describe("ShareRegistry", () => {
     expect(kv.get(SHARES_KV_KEY)).toEqual({
       "3000": { port: 3000, createdAt: 123 },
     });
+    await fakeHost.harness.dispose();
+  });
+
+  it("loads valid entries when another kv entry is malformed", async () => {
+    const kv = new Map<string, unknown>([
+      [
+        SHARES_KV_KEY,
+        {
+          [`${SERVER_HOST_ID}:8000`]: {
+            hostId: SERVER_HOST_ID,
+            port: 8000,
+            createdAt: 1,
+          },
+          malformed: { hostId: REMOTE_HOST_ID, port: "nope", createdAt: 2 },
+        },
+      ],
+    ]);
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const registry = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: pluginBb.hosts,
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => ({
+        serverUrl: "https://sawyer.getbb.app",
+        handle: "sawyer",
+        credential: "bbcred_x",
+      }),
+      log: pluginBb.log,
+    });
+
+    await registry.load();
+    expect(registry.isLoaded).toBe(true);
+    expect(fakeHost.harness.sdk.callsTo("hosts.get")).toEqual([]);
+    expect(fakeHost.harness.sdk.callsTo("system.config")).toEqual([]);
+    expect(await registry.list()).toEqual([
+      {
+        hostId: SERVER_HOST_ID,
+        hostName: SERVER_HOST_NAME,
+        port: 8000,
+        createdAt: 1,
+        url: "https://sawyer--8000.getbb.app",
+      },
+    ]);
+    expect(fakeHost.harness.logEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          message: expect.stringContaining(
+            'malformed shared-port entry "malformed"',
+          ),
+        }),
+      ]),
+    );
+    await fakeHost.harness.dispose();
+  });
+
+  it("hydrates offline machine shares without resolving their URLs", async () => {
+    const kv = new Map<string, unknown>([
+      [
+        SHARES_KV_KEY,
+        {
+          [`${SERVER_HOST_ID}:8000`]: {
+            hostId: SERVER_HOST_ID,
+            port: 8000,
+            createdAt: 1,
+          },
+          [`${REMOTE_HOST_ID}:3000`]: {
+            hostId: REMOTE_HOST_ID,
+            port: 3000,
+            createdAt: 2,
+          },
+        },
+      ],
+    ]);
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const ensureIdentity = vi.fn(async () => {
+      throw Object.assign(new Error("host is offline"), {
+        body: { code: "connect_host_offline" },
+      });
+    });
+    const registry = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: {
+        ensureSharedPortTunnel: ensureIdentity,
+        declareSharedPorts: pluginBb.hosts.declareSharedPorts,
+      },
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => ({
+        serverUrl: "https://sawyer.getbb.app",
+        handle: "sawyer",
+        credential: "bbcred_x",
+      }),
+      log: pluginBb.log,
+    });
+
+    await registry.load();
+    expect(registry.isLoaded).toBe(true);
+    expect(ensureIdentity).not.toHaveBeenCalled();
+    expect(fakeHost.harness.sdk.callsTo("hosts.get")).toEqual([]);
+    expect(await registry.list()).toEqual([
+      {
+        hostId: REMOTE_HOST_ID,
+        hostName: REMOTE_HOST_NAME,
+        port: 3000,
+        createdAt: 2,
+        url: "",
+        unavailableReason: expect.stringMatching(
+          /not connected right now.*Bring the host online/,
+        ),
+      },
+      {
+        hostId: SERVER_HOST_ID,
+        hostName: SERVER_HOST_NAME,
+        port: 8000,
+        createdAt: 1,
+        url: "https://sawyer--8000.getbb.app",
+      },
+    ]);
+    expect(ensureIdentity).toHaveBeenCalledTimes(1);
     await fakeHost.harness.dispose();
   });
 });
@@ -1101,14 +1244,23 @@ describe("connect plugin", () => {
       hostId: "host-deleted",
       port: 3000,
     });
-    expect(await harness.callRpc("listShares")).toEqual([
-      {
-        hostId: SERVER_HOST_ID,
-        hostName: SERVER_HOST_NAME,
-        port: 8000,
-        url: "http://127.0.0.1:8000",
-      },
-    ]);
+    expect(await harness.callRpc("listShares")).toEqual(
+      expect.arrayContaining([
+        {
+          hostId: SERVER_HOST_ID,
+          hostName: SERVER_HOST_NAME,
+          port: 8000,
+          url: "http://127.0.0.1:8000",
+        },
+        expect.objectContaining({
+          hostId: "host-deleted",
+          hostName: "removed host",
+          port: 4000,
+          url: "",
+          unavailableReason: expect.stringContaining("was removed"),
+        }),
+      ]),
+    );
     const cliRemoval = await harness.runCli([
       "unexpose",
       "4000",
@@ -1126,14 +1278,6 @@ describe("connect plugin", () => {
         createdAt: 1,
       },
     });
-    expect(harness.logEntries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          level: "warn",
-          message: expect.stringContaining("removed host host-deleted"),
-        }),
-      ]),
-    );
   });
 
   it("uses machine tunnel identity and declares per-host port sets", async () => {

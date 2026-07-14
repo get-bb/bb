@@ -193,20 +193,24 @@ export class ConnectTunnel {
     return { ...result, port };
   }
 
-  listShares(hostId?: string): Array<{
-    hostId: string;
-    hostName: string;
-    port: number;
-    url: string;
-  }> {
-    return this.options.shares
-      .list(hostId)
-      .map(({ hostId: id, hostName, port, url }) => ({
+  async listShares(hostId?: string): Promise<
+    Array<{
+      hostId: string;
+      hostName: string;
+      port: number;
+      url: string;
+      unavailableReason?: string;
+    }>
+  > {
+    return (await this.options.shares.list(hostId)).map(
+      ({ hostId: id, hostName, port, url, unavailableReason }) => ({
         hostId: id,
         hostName,
         port,
         url,
-      }));
+        ...(unavailableReason === undefined ? {} : { unavailableReason }),
+      }),
+    );
   }
 
   /**
@@ -250,6 +254,24 @@ export class ConnectTunnel {
   }
 
   status(): ConnectStatus {
+    return this.statusWithShares(
+      this.options.shares
+        .snapshot()
+        .map(({ hostId, hostName, port, url, unavailableReason }) => ({
+          hostId,
+          hostName,
+          port,
+          url,
+          ...(unavailableReason === undefined ? {} : { unavailableReason }),
+        })),
+    );
+  }
+
+  async refreshStatus(): Promise<ConnectStatus> {
+    return this.statusWithShares(await this.listShares());
+  }
+
+  private statusWithShares(shares: ConnectStatus["shares"]): ConnectStatus {
     const state = this.computeState();
     return {
       state,
@@ -262,7 +284,7 @@ export class ConnectTunnel {
       since: this.stateSince,
       remoteClients: this.remoteClients,
       lastRemoteActivityAt: this.lastRemoteActivityAt,
-      shares: this.listShares(),
+      shares,
     };
   }
 
@@ -336,7 +358,11 @@ export class ConnectTunnel {
     try {
       await this.options.shares.load();
       if (this.stopped) return;
-      this.options.shares.declareMachineShares();
+      await this.options.shares.declareMachineShares();
+      if (this.stopped) {
+        this.options.shares.clearMachineDeclarations();
+        return;
+      }
       this.publish();
     } catch (error) {
       this.options.log.warn(

@@ -142,6 +142,13 @@ function asStatus(payload: unknown): ConnectStatus | null {
           hostName: (entry as { hostName: string }).hostName,
           port: (entry as { port: number }).port,
           url: (entry as { url: string }).url,
+          ...(typeof (entry as { unavailableReason?: unknown })
+            .unavailableReason === "string"
+            ? {
+                unavailableReason: (entry as { unavailableReason: string })
+                  .unavailableReason,
+              }
+            : {}),
         });
       }
     }
@@ -589,18 +596,29 @@ function SharedPortsSection({
               <span className="shrink-0 font-mono text-xs tabular-nums text-foreground">
                 :{share.port}
               </span>
-              <a
-                href={share.url}
-                target="_blank"
-                rel="noreferrer"
-                className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline"
-              >
-                {hostOf(share.url)}
-              </a>
-              <QuietCopyButton
-                url={share.url}
-                label={`Copy share URL for port ${share.port}`}
-              />
+              {share.url ? (
+                <>
+                  <a
+                    href={share.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  >
+                    {hostOf(share.url)}
+                  </a>
+                  <QuietCopyButton
+                    url={share.url}
+                    label={`Copy share URL for port ${share.port}`}
+                  />
+                </>
+              ) : (
+                <span
+                  className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+                  title={share.unavailableReason}
+                >
+                  Unavailable — {share.unavailableReason ?? "unknown reason"}
+                </span>
+              )}
               <Button
                 type="button"
                 variant="ghost"

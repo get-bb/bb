@@ -198,6 +198,43 @@ describe("connect settings section", () => {
     );
   });
 
+  it("renders an unavailable share reason and keeps it revocable", async () => {
+    const reason = "This host is not connected right now.";
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            connected({
+              shares: [
+                {
+                  hostId: "host-air",
+                  hostName: "Sawyer Air",
+                  port: 3000,
+                  url: "",
+                  unavailableReason: reason,
+                },
+              ],
+            }),
+          unexpose: () => ({ removed: true, port: 3000 }),
+        },
+      },
+    );
+
+    await slot.findByText(`Unavailable — ${reason}`);
+    expect(
+      slot.queryByRole("button", { name: "Copy share URL for port 3000" }),
+    ).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Revoke" }));
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "unexpose",
+        input: { hostId: "host-air", port: 3000 },
+      }),
+    );
+  });
+
   it("exposes a port through the disclosure form and surfaces errors", async () => {
     const slot = renderSlot(
       app.settingsSections[0]!,

@@ -29,7 +29,7 @@ const revokeMachineInputSchema = z.object({ machineId: z.string().min(1) });
 
 export type ConnectRpcHandlers = {
   pair(input: unknown): Promise<ConnectStatus>;
-  status(): ConnectStatus;
+  status(): Promise<ConnectStatus>;
   disconnect(): Promise<ConnectStatus>;
   expose(input: unknown): Promise<{
     hostId: string;
@@ -42,12 +42,15 @@ export type ConnectRpcHandlers = {
     hostId: string;
     port: number;
   }>;
-  listShares(): Array<{
-    hostId: string;
-    hostName: string;
-    port: number;
-    url: string;
-  }>;
+  listShares(): Promise<
+    Array<{
+      hostId: string;
+      hostName: string;
+      port: number;
+      url: string;
+      unavailableReason?: string;
+    }>
+  >;
   listAccountServers(): Promise<ListAccountServersResult>;
   createDesktopSession(): Promise<DesktopSession>;
   createMachineCode(): Promise<MachineCode>;
@@ -76,8 +79,8 @@ export function createRpcHandlers(
         throw error;
       }
     },
-    status() {
-      return tunnel.status();
+    async status() {
+      return tunnel.refreshStatus();
     },
     async disconnect() {
       return tunnel.disconnect();
@@ -102,7 +105,7 @@ export function createRpcHandlers(
         port: result.port,
       };
     },
-    listShares() {
+    async listShares() {
       return tunnel.listShares();
     },
     async listAccountServers() {

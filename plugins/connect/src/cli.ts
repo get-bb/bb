@@ -93,7 +93,7 @@ function formatStatus(status: ConnectStatus): string {
     lines.push("  shares:");
     for (const share of status.shares) {
       lines.push(
-        `    ${share.hostName} (${share.hostId})  ${share.port}  ${share.url}`,
+        `    ${share.hostName} (${share.hostId})  ${share.port}  ${share.url || `unavailable: ${share.unavailableReason ?? "unknown reason"}`}`,
       );
     }
   }
@@ -156,7 +156,7 @@ export function registerConnectCli(args: {
         if (first === "status") {
           const parsed = parseFlags(argv.slice(1));
           validateFlags(parsed, { boolean: ["json"] });
-          const status = tunnel.status();
+          const status = await tunnel.refreshStatus();
           return {
             exitCode: 0,
             stdout: parsed.flags.has("json")
@@ -250,7 +250,7 @@ export function registerConnectCli(args: {
             ctx,
             stringFlag(parsed, "host"),
           );
-          const shares = tunnel.listShares(targetHost.id);
+          const shares = await tunnel.listShares(targetHost.id);
           if (parsed.flags.has("json")) {
             return {
               exitCode: 0,
@@ -262,7 +262,7 @@ export function registerConnectCli(args: {
           }
           const lines = shares.map(
             (share) =>
-              `${share.hostName} (${share.hostId})  ${share.port}  ${share.url}`,
+              `${share.hostName} (${share.hostId})  ${share.port}  ${share.url || `unavailable: ${share.unavailableReason ?? "unknown reason"}`}`,
           );
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
         }
