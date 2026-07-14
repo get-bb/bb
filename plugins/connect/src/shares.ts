@@ -36,7 +36,9 @@ const persistedShareSchema = z
     createdAt: z.number(),
   })
   .strict();
-const sharesRecordSchema = z.record(z.string(), z.unknown());
+// Validate only the container here. Each unknown value is parsed independently
+// below so one corrupt persisted share cannot invalidate its siblings.
+const sharesContainerSchema = z.record(z.string(), z.unknown());
 
 interface RestoredShare {
   /** Preserve legacy keys until a user mutation naturally rewrites the map. */
@@ -192,28 +194,34 @@ export class ShareRegistry {
       this.shares = next;
       return;
     }
-    const record = sharesRecordSchema.safeParse(raw);
+    const record = sharesContainerSchema.safeParse(raw);
     if (!record.success) {
       this.options.log.warn("ignoring malformed shared-port registry");
       this.shares = next;
       return;
     }
     for (const [storageKey, rawEntry] of Object.entries(record.data)) {
-      const parsed = persistedShareSchema.safeParse(rawEntry);
-      if (!parsed.success) {
+      try {
+        const parsed = persistedShareSchema.safeParse(rawEntry);
+        if (!parsed.success) {
+          this.options.log.warn(
+            `skipping malformed shared-port entry "${storageKey}": ${z.prettifyError(parsed.error)}`,
+          );
+          continue;
+        }
+        const hostId = parsed.data.hostId ?? null;
+        const share: RestoredShare = {
+          storageKey,
+          hostId,
+          port: parsed.data.port,
+          createdAt: parsed.data.createdAt,
+        };
+        next.set(restoredShareKey(hostId, share.port), share);
+      } catch (error) {
         this.options.log.warn(
-          `skipping malformed shared-port entry "${storageKey}": ${z.prettifyError(parsed.error)}`,
+          `skipping shared-port entry "${storageKey}" after an unexpected hydration error: ${errorMessage(error)}`,
         );
-        continue;
       }
-      const hostId = parsed.data.hostId ?? null;
-      const share: RestoredShare = {
-        storageKey,
-        hostId,
-        port: parsed.data.port,
-        createdAt: parsed.data.createdAt,
-      };
-      next.set(restoredShareKey(hostId, share.port), share);
     }
     this.shares = next;
   }
