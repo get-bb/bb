@@ -4,6 +4,7 @@ import {
   type HostDaemonConnectShares,
   type HostDaemonConnectTunnelIdentity,
 } from "@bb/host-daemon-contract";
+import { ApiError } from "../errors.js";
 import type { NotificationHub } from "./hub.js";
 
 interface HostSharedPortCoordinatorDeps {
@@ -182,19 +183,37 @@ export class HostSharedPortCoordinator {
 
   private requireEnrolledHost(hostId: string) {
     const host = this.requireShareCapableHost(hostId);
+    if (host.connectMachineId === null) {
+      throw new ApiError(
+        409,
+        "connect_host_unenrolled",
+        `cannot share ports from host "${host.name}" (${host.id}) because it has no bb connect machine credential; enroll it via Connect in Settings > Machines`,
+        false,
+      );
+    }
     const capability = this.connectCapabilityByHost.get(hostId);
     const session = capability
       ? getSessionById(this.deps.db, { sessionId: capability.sessionId })
       : null;
     if (
-      host.connectMachineId === null ||
-      capability?.hasMachineCredential !== true ||
+      capability === undefined ||
       session?.hostId !== host.id ||
       session.status !== "active" ||
       session.leaseExpiresAt <= Date.now()
     ) {
-      throw new Error(
-        `cannot share ports from host "${host.name}" (${host.id}) because it has no bb connect machine credential; remove and re-add the machine from Settings > Machines`,
+      throw new ApiError(
+        503,
+        "connect_host_offline",
+        `cannot share ports from host "${host.name}" (${host.id}) because it is not connected right now; bring the host online and try again`,
+        true,
+      );
+    }
+    if (!capability.hasMachineCredential) {
+      throw new ApiError(
+        409,
+        "connect_host_unenrolled",
+        `cannot share ports from host "${host.name}" (${host.id}) because it has no bb connect machine credential; enroll it via Connect in Settings > Machines`,
+        false,
       );
     }
     return host;

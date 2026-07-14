@@ -216,26 +216,31 @@ export function registerConnectCli(args: {
           }
           const parsed = parseFlags(argv.slice(2));
           validateFlags(parsed, { boolean: ["json"], value: ["host"] });
-          const targetHost = await hostResolver.resolve(
-            ctx,
-            stringFlag(parsed, "host"),
-          );
+          const targetHost =
+            stringFlag(parsed, "host") ?? (await hostResolver.resolveId(ctx));
           const result = await tunnel.unexpose(
             parseSharePort(portArg),
-            targetHost.id,
+            targetHost,
           );
           if (parsed.flags.has("json")) {
-            return { exitCode: 0, stdout: asJson(result) };
+            return {
+              exitCode: 0,
+              stdout: asJson({
+                removed: result.removed,
+                hostId: result.hostId,
+                port: result.port,
+              }),
+            };
           }
           if (!result.removed) {
             return {
               exitCode: 0,
-              stdout: `Port ${result.port} was not shared on ${targetHost.name} (${targetHost.id}) (idempotent).\n`,
+              stdout: `Port ${result.port} was not shared on ${result.hostName} (${result.hostId}) (idempotent).\n`,
             };
           }
           return {
             exitCode: 0,
-            stdout: `Stopped sharing port ${result.port} on ${targetHost.name} (${targetHost.id})\n`,
+            stdout: `Stopped sharing port ${result.port} on ${result.hostName} (${result.hostId})\n`,
           };
         }
         if (first === "shares") {

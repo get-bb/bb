@@ -19,30 +19,53 @@ export interface ShareHost {
   isServer: boolean;
 }
 
+export class ShareHostNotFoundError extends Error {
+  constructor(readonly hostId: string) {
+    super(`host ${hostId} not found`);
+    this.name = "ShareHostNotFoundError";
+  }
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    error.status === 404
+  );
+}
+
 /** Resolves share ownership from trusted bb server state. */
 export class ShareHostResolver {
   constructor(private readonly getSdk: () => BbPluginApi["sdk"]) {}
 
   async serverHost(): Promise<ShareHost> {
-    const sdk = this.getSdk();
-    const config = serverHostConfigSchema.parse(await sdk.system.config());
-    if (config.primaryHostId === null) {
-      throw new Error(
-        "this bb has no primary host yet — connect a machine before sharing ports",
-      );
-    }
-    return this.byId(config.primaryHostId, true);
+    return this.byId(await this.serverHostId(), true);
+  }
+
+  async serverHostId(): Promise<string> {
+    const config = serverHostConfigSchema.parse(
+      await this.getSdk().system.config(),
+    );
+    if (config.primaryHostId !== null) return config.primaryHostId;
+    throw new Error(
+      "this bb has no primary host yet — connect a machine before sharing ports",
+    );
   }
 
   async byId(hostId: string, knownServerHost = false): Promise<ShareHost> {
     const normalized = hostId.trim();
     if (normalized.length === 0) throw new Error("host id must be non-empty");
-    const [host, server] = await Promise.all([
-      this.getSdk()
-        .hosts.get({ hostId: normalized })
-        .then((value) => hostSchema.parse(value)),
-      knownServerHost ? Promise.resolve(null) : this.serverHost(),
-    ]);
+    let host;
+    try {
+      host = hostSchema.parse(
+        await this.getSdk().hosts.get({ hostId: normalized }),
+      );
+    } catch (error) {
+      if (isNotFoundError(error)) throw new ShareHostNotFoundError(normalized);
+      throw error;
+    }
+    const server = knownServerHost ? null : await this.serverHost();
     return {
       id: host.id,
       name: host.name,
@@ -69,6 +92,23 @@ export class ShareHostResolver {
       );
     }
     return this.byId(thread.environment.hostId);
+  }
+
+  /** Resolve only the durable owner id; removal must not require a live host. */
+  async resolveId(ctx: Pick<PluginCliContext, "threadId">): Promise<string> {
+    if (ctx.threadId === undefined) return this.serverHostId();
+    const thread = threadEnvironmentSchema.parse(
+      await this.getSdk().threads.get({
+        threadId: ctx.threadId,
+        include: "environment",
+      }),
+    );
+    if (!thread.environment) {
+      throw new Error(
+        `thread ${ctx.threadId} has no environment, so its share host cannot be resolved; pass --host <name-or-id>`,
+      );
+    }
+    return thread.environment.hostId;
   }
 
   async byNameOrId(nameOrId: string): Promise<ShareHost> {

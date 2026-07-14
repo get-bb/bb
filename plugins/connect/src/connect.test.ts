@@ -48,7 +48,11 @@ function createConnectFakeHost(options?: {
               : hostId === REMOTE_HOST_ID
                 ? { id: REMOTE_HOST_ID, name: REMOTE_HOST_NAME }
                 : null;
-          if (!host) throw new Error(`host ${hostId} not found`);
+          if (!host) {
+            throw Object.assign(new Error(`host ${hostId} not found`), {
+              status: 404,
+            });
+          }
           return host as never;
         },
         list: async () =>
@@ -249,8 +253,14 @@ describe("ShareRegistry", () => {
       },
     ]);
 
-    expect(await reloaded.remove(8000, "host-server")).toBe(true);
-    expect(await reloaded.remove(8000, "host-server")).toBe(false);
+    expect(await reloaded.remove(8000, "host-server")).toMatchObject({
+      removed: true,
+      hostId: "host-server",
+    });
+    expect(await reloaded.remove(8000, "host-server")).toMatchObject({
+      removed: false,
+      hostId: "host-server",
+    });
     expect(kv.has(SHARES_KV_KEY)).toBe(false);
     await fakeHost.harness.dispose();
   });
@@ -1047,6 +1057,85 @@ describe("connect plugin", () => {
     expect(await harness.callRpc("listShares")).toEqual([]);
   });
 
+  it("rejects tunnel identity fields on expose and unexpose rpc inputs", async () => {
+    const { harness } = await loadPlugin();
+    const redirected = {
+      port: 3000,
+      hostId: REMOTE_HOST_ID,
+      label: "attacker",
+      baseDomain: "attacker.example",
+    };
+
+    await expect(harness.callRpc("expose", redirected)).rejects.toThrow(
+      /Unrecognized keys.*label.*baseDomain/,
+    );
+    await expect(harness.callRpc("unexpose", redirected)).rejects.toThrow(
+      /Unrecognized keys.*label.*baseDomain/,
+    );
+  });
+
+  it("keeps valid shares loaded when a host was removed and prunes orphaned shares without a host lookup", async () => {
+    const { bb, harness } = await loadPlugin();
+    await bb.storage.kv.set(SHARES_KV_KEY, {
+      [`${SERVER_HOST_ID}:8000`]: {
+        hostId: SERVER_HOST_ID,
+        port: 8000,
+        createdAt: 1,
+      },
+      "host-deleted:3000": {
+        hostId: "host-deleted",
+        port: 3000,
+        createdAt: 2,
+      },
+      "host-deleted:4000": {
+        hostId: "host-deleted",
+        port: 4000,
+        createdAt: 3,
+      },
+    });
+
+    await expect(
+      harness.callRpc("unexpose", { hostId: "host-deleted", port: 3000 }),
+    ).resolves.toEqual({
+      removed: true,
+      hostId: "host-deleted",
+      port: 3000,
+    });
+    expect(await harness.callRpc("listShares")).toEqual([
+      {
+        hostId: SERVER_HOST_ID,
+        hostName: SERVER_HOST_NAME,
+        port: 8000,
+        url: "http://127.0.0.1:8000",
+      },
+    ]);
+    const cliRemoval = await harness.runCli([
+      "unexpose",
+      "4000",
+      "--host",
+      "host-deleted",
+    ]);
+    expect(cliRemoval).toMatchObject({
+      exitCode: 0,
+      stdout: "Stopped sharing port 4000 on removed host (host-deleted)\n",
+    });
+    expect(await bb.storage.kv.get(SHARES_KV_KEY)).toEqual({
+      [`${SERVER_HOST_ID}:8000`]: {
+        hostId: SERVER_HOST_ID,
+        port: 8000,
+        createdAt: 1,
+      },
+    });
+    expect(harness.logEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          message: expect.stringContaining("removed host host-deleted"),
+        }),
+      ]),
+    );
+  });
+
   it("uses machine tunnel identity and declares per-host port sets", async () => {
     host = createConnectFakeHost({
       remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
@@ -1119,8 +1208,16 @@ describe("connect plugin", () => {
     ]);
   });
 
-  it("fails fast with an actionable error when a machine cannot get a label", async () => {
-    const { harness } = await loadPlugin();
+  it("tells users to enroll a genuinely credentialless machine", async () => {
+    host = createConnectFakeHost();
+    Object.defineProperty(host.bb.hosts, "ensureSharedPortTunnel", {
+      value: async () => {
+        throw Object.assign(new Error("machine credential missing"), {
+          body: { code: "connect_host_unenrolled" },
+        });
+      },
+    });
+    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -1131,19 +1228,63 @@ describe("connect plugin", () => {
           ),
       ),
     );
-    await harness.callRpc("pair", {
+    await host.harness.callRpc("pair", {
       code: "ABCD",
       server: "http://sawyer.localhost:59334",
       baseUrl: "https://getbb.app",
     });
 
     await expect(
-      harness.callRpc("expose", { hostId: REMOTE_HOST_ID, port: 3000 }),
+      host.harness.callRpc("expose", {
+        hostId: REMOTE_HOST_ID,
+        port: 3000,
+      }),
     ).rejects.toThrow(
-      /Sawyer Air.*host-air.*Enroll the host via Connect.*Settings > Machines/,
+      /Sawyer Air.*host-air.*Enroll it via Connect.*Settings > Machines/,
     );
-    expect(await harness.callRpc("listShares")).toEqual([]);
-    expect(harness.sharedPortDeclarations).toEqual([]);
+    expect(await host.harness.callRpc("listShares")).toEqual([]);
+    expect(host.harness.sharedPortDeclarations).toEqual([]);
+  });
+
+  it("tells users to bring an enrolled but offline machine online", async () => {
+    host = createConnectFakeHost();
+    Object.defineProperty(host.bb.hosts, "ensureSharedPortTunnel", {
+      value: async () => {
+        throw Object.assign(new Error("host is offline"), {
+          body: { code: "connect_host_offline" },
+        });
+      },
+    });
+    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await host.harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.localhost:59335",
+      baseUrl: "https://getbb.app",
+    });
+
+    let message = "";
+    try {
+      await host.harness.callRpc("expose", {
+        hostId: REMOTE_HOST_ID,
+        port: 3000,
+      });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toMatch(
+      /Sawyer Air.*host-air.*not connected right now.*Bring the host online/,
+    );
+    expect(message).not.toMatch(/Enroll|remove and re-add/);
   });
 
   it("empties machine declarations when the plugin service stops", async () => {

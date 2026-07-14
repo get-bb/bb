@@ -181,11 +181,16 @@ export class ConnectTunnel {
 
   async unexpose(
     port: number,
-    hostId: string,
-  ): Promise<{ removed: boolean; hostId: string; port: number }> {
-    const removed = await this.options.shares.remove(port, hostId);
+    hostSelector: string,
+  ): Promise<{
+    removed: boolean;
+    hostId: string;
+    hostName: string;
+    port: number;
+  }> {
+    const result = await this.options.shares.remove(port, hostSelector);
     this.publish();
-    return { removed, hostId, port };
+    return { ...result, port };
   }
 
   listShares(hostId?: string): Array<{

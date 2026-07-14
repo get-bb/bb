@@ -11,6 +11,7 @@ import {
   hostDaemonSessionOpenResponseSchema,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
+import { ApiError } from "../../src/errors.js";
 import { HostSharedPortCoordinator } from "../../src/ws/host-shared-ports.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 import {
@@ -24,7 +25,7 @@ import {
   withTestHarness,
 } from "../helpers/test-app.js";
 
-function setup(args: { enrolled?: boolean } = {}) {
+function setup(args: { enrolled?: boolean; online?: boolean } = {}) {
   const db = createConnection(":memory:");
   migrate(db);
   const hub = new NotificationHub();
@@ -35,7 +36,7 @@ function setup(args: { enrolled?: boolean } = {}) {
     type: "persistent",
     ...(args.enrolled === false ? {} : { connectMachineId: "machine-1" }),
   });
-  if (args.enrolled !== false) {
+  if (args.enrolled !== false && args.online !== false) {
     const session = openSession(db, noopNotifier, {
       hostId: host.id,
       instanceId: "instance-1",
@@ -113,7 +114,7 @@ describe("HostSharedPortCoordinator", () => {
     });
   });
 
-  it("fails fast for unknown or credential-less hosts", () => {
+  it("distinguishes unknown, unenrolled, and enrolled-but-offline hosts", () => {
     const { sharedPorts } = setup();
     expect(() =>
       sharedPorts.declareSharedPorts({
@@ -124,15 +125,46 @@ describe("HostSharedPortCoordinator", () => {
     ).toThrow(/unknown host missing-host/);
 
     const credentialless = setup({ enrolled: false });
-    expect(() =>
+    let unenrolledError: unknown;
+    try {
       credentialless.sharedPorts.declareSharedPorts({
         ownerId: "connect",
         hostId: credentialless.host.id,
         ports: [3000],
-      }),
-    ).toThrow(
-      'cannot share ports from host "test-host" (host-1) because it has no bb connect machine credential; remove and re-add the machine from Settings > Machines',
-    );
+      });
+    } catch (error) {
+      unenrolledError = error;
+    }
+    expect(unenrolledError).toBeInstanceOf(ApiError);
+    expect(unenrolledError).toMatchObject({
+      body: {
+        code: "connect_host_unenrolled",
+        message: expect.stringContaining("enroll it via Connect"),
+      },
+    });
+
+    const offline = setup({ online: false });
+    let offlineError: unknown;
+    try {
+      offline.sharedPorts.declareSharedPorts({
+        ownerId: "connect",
+        hostId: offline.host.id,
+        ports: [3000],
+      });
+    } catch (error) {
+      offlineError = error;
+    }
+    expect(offlineError).toBeInstanceOf(ApiError);
+    expect(offlineError).toMatchObject({
+      body: {
+        code: "connect_host_offline",
+        message: expect.stringContaining("bring the host online"),
+      },
+    });
+    if (!(offlineError instanceof ApiError)) {
+      throw new Error("expected an ApiError for the offline host");
+    }
+    expect(offlineError.body.message).not.toMatch(/remove and re-add|enroll/i);
   });
 
   it("stores only daemon-reported tunnel identity", () => {
@@ -321,7 +353,7 @@ describe("daemon session connect shares", () => {
           ports: [4173],
         }),
       ).toThrow(
-        'cannot share ports from host "Host" (host-1) because it has no bb connect machine credential; remove and re-add the machine from Settings > Machines',
+        'cannot share ports from host "Host" (host-1) because it has no bb connect machine credential; enroll it via Connect in Settings > Machines',
       );
       expect(daemonSocket.messages).toEqual(messagesBeforeDeclaration);
       expect(

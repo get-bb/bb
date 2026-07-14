@@ -7,7 +7,11 @@ import type {
   PluginLogger,
 } from "@bb/plugin-sdk";
 import type { ConnectCredential } from "./credential.js";
-import type { ShareHost, ShareHostResolver } from "./hosts.js";
+import {
+  ShareHostNotFoundError,
+  type ShareHost,
+  type ShareHostResolver,
+} from "./hosts.js";
 import { deriveConnectBaseUrl } from "./redeem.js";
 
 export const SHARES_KV_KEY = "shares";
@@ -33,6 +37,12 @@ const sharesMapSchema = z.record(z.string(), persistedShareSchema);
 interface LoadedShare extends Share {
   hostName: string;
   url: string;
+}
+
+export interface ShareRemoval {
+  removed: boolean;
+  hostId: string;
+  hostName: string;
 }
 
 export class SharePortError extends Error {
@@ -118,8 +128,25 @@ function shareKey(hostId: string, port: number): string {
   return `${hostId}:${port}`;
 }
 
+function sharedPortErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  if ("code" in error && typeof error.code === "string") return error.code;
+  if (
+    "body" in error &&
+    typeof error.body === "object" &&
+    error.body !== null &&
+    "code" in error.body &&
+    typeof error.body.code === "string"
+  ) {
+    return error.body.code;
+  }
+  return undefined;
+}
+
 export class ShareRegistry {
   private shares = new Map<string, LoadedShare>();
+  /** Persisted shares whose owning host was removed; retained for pruning. */
+  private orphanedShares = new Map<string, Share>();
   private loaded = false;
   private loading: Promise<void> | null = null;
   private serverHostId: string | null = null;
@@ -143,15 +170,31 @@ export class ShareRegistry {
     this.serverHostId = serverHost.id;
     const raw = await this.options.kv.get<unknown>(SHARES_KV_KEY);
     const next = new Map<string, LoadedShare>();
+    const nextOrphans = new Map<string, Share>();
     if (raw !== undefined) {
       const parsed = sharesMapSchema.safeParse(raw);
       if (parsed.success) {
         for (const entry of Object.values(parsed.data)) {
           const hostId = entry.hostId ?? serverHost.id;
-          const host =
-            hostId === serverHost.id
-              ? serverHost
-              : await this.options.hostResolver.byId(hostId);
+          let host: ShareHost;
+          try {
+            host =
+              hostId === serverHost.id
+                ? serverHost
+                : await this.options.hostResolver.byId(hostId);
+          } catch (error) {
+            if (!(error instanceof ShareHostNotFoundError)) throw error;
+            const orphan = {
+              hostId,
+              port: entry.port,
+              createdAt: entry.createdAt,
+            };
+            nextOrphans.set(shareKey(hostId, entry.port), orphan);
+            this.options.log.warn(
+              `skipping shared port ${entry.port} for removed host ${hostId}; run \`bb connect unexpose ${entry.port} --host ${hostId}\` to prune it`,
+            );
+            continue;
+          }
           const url = await this.urlFor(host, entry.port);
           const share = {
             hostId,
@@ -165,6 +208,7 @@ export class ShareRegistry {
       }
     }
     this.shares = next;
+    this.orphanedShares = nextOrphans;
   }
 
   hasServerPort(port: number): boolean {
@@ -207,6 +251,7 @@ export class ShareRegistry {
     const key = shareKey(host.id, validated);
     const existing = this.shares.get(key);
     if (existing) return this.toListing(existing);
+    const orphan = this.orphanedShares.get(key);
 
     const url = await this.urlFor(host, validated);
     const share: LoadedShare = {
@@ -216,12 +261,14 @@ export class ShareRegistry {
       createdAt: Date.now(),
       url,
     };
+    this.orphanedShares.delete(key);
     this.shares.set(key, share);
     try {
       if (!host.isServer) this.declare(host.id);
       await this.persist();
     } catch (error) {
       this.shares.delete(key);
+      if (orphan) this.orphanedShares.set(key, orphan);
       if (!host.isServer) this.restoreDeclaration(host.id);
       throw error;
     }
@@ -229,24 +276,32 @@ export class ShareRegistry {
     return { ...share };
   }
 
-  async remove(port: number, hostId: string): Promise<boolean> {
+  async remove(port: number, hostSelector: string): Promise<ShareRemoval> {
     await this.load();
     const validated = parseSharePort(port);
-    const key = shareKey(hostId, validated);
-    const existing = this.shares.get(key);
-    if (!existing) return false;
-    this.shares.delete(key);
+    const selector = hostSelector.trim();
+    if (selector.length === 0) {
+      throw new SharePortError("--host requires a name or id");
+    }
+    const resolved = this.findForRemoval(validated, selector);
+    if (!resolved) {
+      return { removed: false, hostId: selector, hostName: selector };
+    }
+    const { hostId, hostName, key, loaded, orphan } = resolved;
+    if (loaded) this.shares.delete(key);
+    if (orphan) this.orphanedShares.delete(key);
     const isServer = hostId === this.serverHostId;
     try {
-      if (!isServer) this.declare(hostId);
+      if (!isServer && loaded) this.declare(hostId);
       await this.persist();
     } catch (error) {
-      this.shares.set(key, existing);
-      if (!isServer) this.restoreDeclaration(hostId);
+      if (loaded) this.shares.set(key, loaded);
+      if (orphan) this.orphanedShares.set(key, orphan);
+      if (!isServer && loaded) this.restoreDeclaration(hostId);
       throw error;
     }
     this.options.onChange?.();
-    return true;
+    return { removed: true, hostId, hostName };
   }
 
   /** Explicitly empty every daemon declaration before plugin shutdown. */
@@ -279,8 +334,20 @@ export class ShareRegistry {
       const identity = await this.options.hosts.ensureSharedPortTunnel(host.id);
       return machineSharePublicUrl(identity, port);
     } catch (error) {
+      const prefix = `Cannot share port ${port} from host "${host.name}" (${host.id})`;
+      const code = sharedPortErrorCode(error);
+      if (code === "connect_host_unenrolled") {
+        throw new SharePortError(
+          `${prefix}: this host has no bb connect machine credential. Enroll it via Connect in Settings > Machines.`,
+        );
+      }
+      if (code === "connect_host_offline" || code === "host_unavailable") {
+        throw new SharePortError(
+          `${prefix}: this host is not connected right now. Bring the host online and try again.`,
+        );
+      }
       throw new SharePortError(
-        `Cannot share port ${port} from host "${host.name}" (${host.id}): ${error instanceof Error ? error.message : String(error)}. Enroll the host via Connect by removing and re-adding it in Settings > Machines.`,
+        `${prefix}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -293,6 +360,61 @@ export class ShareRegistry {
           .map((share) => share.hostId),
       ),
     ];
+  }
+
+  private findForRemoval(
+    port: number,
+    selector: string,
+  ):
+    | {
+        hostId: string;
+        hostName: string;
+        key: string;
+        loaded: LoadedShare | undefined;
+        orphan: Share | undefined;
+      }
+    | undefined {
+    const exactKey = shareKey(selector, port);
+    const exactLoaded = this.shares.get(exactKey);
+    if (exactLoaded) {
+      return {
+        hostId: exactLoaded.hostId,
+        hostName: exactLoaded.hostName,
+        key: exactKey,
+        loaded: exactLoaded,
+        orphan: undefined,
+      };
+    }
+    const exactOrphan = this.orphanedShares.get(exactKey);
+    if (exactOrphan) {
+      return {
+        hostId: exactOrphan.hostId,
+        hostName: "removed host",
+        key: exactKey,
+        loaded: undefined,
+        orphan: exactOrphan,
+      };
+    }
+    const matches = [...this.shares.entries()].filter(
+      ([, share]) =>
+        share.port === port &&
+        share.hostName.toLocaleLowerCase() === selector.toLocaleLowerCase(),
+    );
+    if (matches.length > 1) {
+      throw new SharePortError(
+        `host name "${selector}" is ambiguous; pass a host id`,
+      );
+    }
+    const match = matches[0];
+    if (!match) return undefined;
+    const [key, loaded] = match;
+    return {
+      hostId: loaded.hostId,
+      hostName: loaded.hostName,
+      key,
+      loaded,
+      orphan: undefined,
+    };
   }
 
   private toListing(share: LoadedShare): ShareListing {
@@ -324,7 +446,7 @@ export class ShareRegistry {
   }
 
   private async persist(): Promise<void> {
-    if (this.shares.size === 0) {
+    if (this.shares.size === 0 && this.orphanedShares.size === 0) {
       await this.options.kv.delete(SHARES_KV_KEY);
       return;
     }
@@ -335,6 +457,9 @@ export class ShareRegistry {
         port: share.port,
         createdAt: share.createdAt,
       };
+    }
+    for (const share of this.orphanedShares.values()) {
+      map[shareKey(share.hostId, share.port)] = { ...share };
     }
     await this.options.kv.set(SHARES_KV_KEY, map);
   }

@@ -19,10 +19,12 @@ const pairInputSchema = z.object({
   baseUrl: z.string().url().optional(),
 });
 
-const portInputSchema = z.object({
-  port: z.number().int().min(1).max(65535),
-  hostId: z.string().min(1).optional(),
-});
+const portInputSchema = z
+  .object({
+    port: z.number().int().min(1).max(65535),
+    hostId: z.string().min(1).optional(),
+  })
+  .strict();
 const revokeMachineInputSchema = z.object({ machineId: z.string().min(1) });
 
 export type ConnectRpcHandlers = {
@@ -90,11 +92,15 @@ export function createRpcHandlers(
     },
     async unexpose(input: unknown) {
       const args = portInputSchema.parse(input);
-      const host =
-        args.hostId === undefined
-          ? await hostResolver.serverHost()
-          : await hostResolver.byId(args.hostId);
-      return tunnel.unexpose(args.port, host.id);
+      const result = await tunnel.unexpose(
+        args.port,
+        args.hostId ?? (await hostResolver.serverHostId()),
+      );
+      return {
+        removed: result.removed,
+        hostId: result.hostId,
+        port: result.port,
+      };
     },
     listShares() {
       return tunnel.listShares();
