@@ -369,6 +369,9 @@
   }
 
   [data-follow-up-composer] [data-promptbox-action-row] {
+    /* The submit group owns the edge inset in this mode. Neutralize the
+     * compact React layout's matching right inset so the two do not stack. */
+    right: 0;
     padding-right: 3rem;
   }
 
@@ -384,6 +387,14 @@
     height: 2rem;
     margin-left: 0;
     padding: 0;
+  }
+
+  [data-follow-up-composer] [data-follow-up-composer-footer] {
+    min-height: 0;
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    pointer-events: none;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])

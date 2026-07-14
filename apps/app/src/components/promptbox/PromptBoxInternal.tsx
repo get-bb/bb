@@ -2888,6 +2888,11 @@ export function PromptBoxInternal({
                       showCompactLayout
                         ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
                         : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
+                      // Container-driven compact layouts change the button's
+                      // width, padding, and margin at the breakpoint. Keep
+                      // those geometry changes instantaneous so the action
+                      // stays pinned while the prompt height animates.
+                      "transition-colors",
                     )}
                   >
                     {isSubmitting ? (

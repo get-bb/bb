@@ -822,6 +822,8 @@ describe("PromptBoxInternal compact layout", () => {
     expect(submitButton.classList.contains("size-8")).toBe(true);
     expect(submitButton.classList.contains("p-0")).toBe(true);
     expect(submitButton.classList.contains("ml-1")).toBe(false);
+    expect(submitButton.classList.contains("transition-colors")).toBe(true);
+    expect(submitButton.classList.contains("transition-all")).toBe(false);
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
