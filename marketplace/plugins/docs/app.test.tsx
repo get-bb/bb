@@ -423,17 +423,8 @@ describe("Docs nav panel", () => {
     expect(slot.getByRole("textbox").getAttribute("contenteditable")).toBe(
       "true",
     );
-    fireEvent.click(slot.getByRole("button", { name: "Add to chat" }));
-    fireEvent.click(slot.getByRole("button", { name: "Mention in chat" }));
-    expect(slot.composer.quotes).toEqual(["# Release plan\n\nShip it."]);
-    expect(slot.composer.mentions).toEqual([
-      {
-        provider: "note",
-        id: "personal:plans/release.md",
-        label: "Release plan",
-      },
-    ]);
-    expect(slot.composer.focusCount).toBe(2);
+    expect(slot.queryByRole("button", { name: "Add to chat" })).toBeNull();
+    expect(slot.queryByRole("button", { name: "Mention in chat" })).toBeNull();
     fireEvent.click(slot.getByRole("button", { name: "Open in Docs" }));
     expect(slot.navigateCalls).toContainEqual({
       method: "toPluginPanel",

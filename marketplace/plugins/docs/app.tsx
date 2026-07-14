@@ -10,7 +10,6 @@ import {
 import {
   definePluginApp,
   useBbNavigate,
-  useComposer,
   useRpc,
   useRealtime,
   type PluginFileOpenerProps,
@@ -782,48 +781,8 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
           onChanged={() => undefined}
           onRenamed={() => undefined}
           renameToTitle={false}
-          composerDocument={document}
         />
       )}
-    </div>
-  );
-}
-
-function DocumentComposerActions({
-  document,
-  getMarkdown,
-}: {
-  document: DocumentRef;
-  getMarkdown(): string;
-}) {
-  const composer = useComposer();
-  return (
-    <div className="flex shrink-0 items-center justify-end gap-2 border-b border-border px-3 py-1.5">
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => {
-          const selection = window.getSelection()?.toString().trim();
-          composer.addQuote(selection || getMarkdown());
-          composer.focus();
-        }}
-      >
-        Add to chat
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => {
-          composer.insertMention({
-            provider: "note",
-            id: `${document.vaultId}:${document.path}`,
-            label: document.title,
-          });
-          composer.focus();
-        }}
-      >
-        Mention in chat
-      </Button>
     </div>
   );
 }
@@ -834,14 +793,12 @@ function NotePane({
   onChanged,
   onRenamed,
   renameToTitle = true,
-  composerDocument,
 }: {
   vaultId: string;
   notePath: string;
   onChanged(): void;
   onRenamed(path: string): void;
   renameToTitle?: boolean;
-  composerDocument?: DocumentRef;
 }) {
   const rpc = useRpc();
   const [state, setState] = useState<
@@ -962,12 +919,6 @@ function NotePane({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {composerDocument ? (
-        <DocumentComposerActions
-          document={composerDocument}
-          getMarkdown={() => markdownRef.current}
-        />
-      ) : null}
       {conflict ? (
         <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
           Changed on disk.
