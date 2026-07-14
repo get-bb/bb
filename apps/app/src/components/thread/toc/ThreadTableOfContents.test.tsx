@@ -238,6 +238,7 @@ function sidebarNavigation(
         id: "proj_toc",
         kind: "standard",
         name: "ToC project",
+        gitRemoteUrl: null,
         createdAt: 1,
         updatedAt: 1,
         sources: [],
@@ -249,6 +250,7 @@ function sidebarNavigation(
       id: "proj_personal",
       kind: "personal",
       name: "Personal",
+      gitRemoteUrl: null,
       createdAt: 1,
       updatedAt: 1,
       sources: [],
@@ -463,10 +465,9 @@ describe("ThreadTableOfContents", () => {
       sidebarNavigationQueryKey(),
       sidebarNavigation([threadListEntry({ title: "Calendar worker" })]),
     );
-    queryClient.setQueryData(
-      threadListQueryKey({ archived: false }),
-      [threadListEntry({ title: "Calendar worker" })],
-    );
+    queryClient.setQueryData(threadListQueryKey({ archived: false }), [
+      threadListEntry({ title: "Calendar worker" }),
+    ]);
     setOutline([
       {
         id: "u1",

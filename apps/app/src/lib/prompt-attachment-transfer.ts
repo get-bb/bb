@@ -17,6 +17,48 @@ export interface PromptAttachmentTransferResult {
   transferredAttachments: TransferredPromptAttachment[];
 }
 
+export type PromptAttachmentTransferKeyRegistry = Map<string, Set<string>>;
+
+interface ClaimPromptAttachmentTransfersArgs {
+  attachments: readonly PromptDraftAttachment[];
+  completedTransfers: PromptAttachmentTransferKeyRegistry;
+  failedTransfers: PromptAttachmentTransferKeyRegistry;
+  inFlightTransfers: PromptAttachmentTransferKeyRegistry;
+  retryFailed: boolean;
+  targetProjectId: string;
+}
+
+interface PruneCompletedPromptAttachmentTransfersArgs {
+  attachments: readonly PromptDraftAttachment[];
+  completedTransfers: PromptAttachmentTransferKeyRegistry;
+  targetProjectId: string;
+}
+
+interface PruneFailedPromptAttachmentTransfersArgs {
+  attachments: readonly PromptDraftAttachment[];
+  failedTransfers: PromptAttachmentTransferKeyRegistry;
+  targetProjectId: string;
+}
+
+interface RecordCompletedPromptAttachmentTransfersArgs {
+  completedTransfers: PromptAttachmentTransferKeyRegistry;
+  targetProjectId: string;
+  transferredAttachments: readonly TransferredPromptAttachment[];
+}
+
+interface ReleasePromptAttachmentTransfersArgs {
+  attachments: readonly PromptDraftAttachment[];
+  inFlightTransfers: PromptAttachmentTransferKeyRegistry;
+  targetProjectId: string;
+}
+
+interface RecordPromptAttachmentTransferFailuresArgs {
+  attemptedAttachments: readonly PromptDraftAttachment[];
+  failedAttachments: readonly FailedPromptAttachmentTransfer[];
+  failedTransfers: PromptAttachmentTransferKeyRegistry;
+  targetProjectId: string;
+}
+
 interface TransferPromptAttachmentsArgs {
   attachments: readonly PromptDraftAttachment[];
   targetProjectId: string;
@@ -28,12 +70,14 @@ interface TransferPromptAttachmentsArgs {
 }
 
 interface CleanupStalePromptAttachmentCopiesArgs {
-  currentAttachments: readonly PromptDraftAttachment[];
-  currentProjectId: string;
   deleteAttachment: (args: {
     path: string;
     projectId: string;
   }) => Promise<void>;
+  getCurrentState: () => {
+    attachments: readonly PromptDraftAttachment[];
+    projectId: string;
+  };
   targetProjectId: string;
   transferredAttachments: readonly TransferredPromptAttachment[];
 }
@@ -55,6 +99,166 @@ interface HasPromptDraftAttachmentsOutsideProjectArgs {
   projectId: string;
 }
 
+interface ShouldSchedulePromptAttachmentTransferArgs {
+  attachments: readonly PromptDraftAttachment[];
+  currentProjectId: string;
+  releasedTargetProjectId: string;
+}
+
+function promptAttachmentTransferKey(
+  attachment: PromptDraftAttachment,
+): string | null {
+  return attachment.sourceProjectId
+    ? `${attachment.sourceProjectId}:${attachment.path}`
+    : null;
+}
+
+/** Claims destination copies synchronously so concurrent transfer paths dedupe. */
+export function claimPromptAttachmentTransfers({
+  attachments,
+  completedTransfers,
+  failedTransfers,
+  inFlightTransfers,
+  retryFailed,
+  targetProjectId,
+}: ClaimPromptAttachmentTransfersArgs): PromptDraftAttachment[] {
+  let inFlightKeys = inFlightTransfers.get(targetProjectId);
+  if (!inFlightKeys) {
+    inFlightKeys = new Set();
+    inFlightTransfers.set(targetProjectId, inFlightKeys);
+  }
+  const completedKeys = completedTransfers.get(targetProjectId);
+  const failedKeys = failedTransfers.get(targetProjectId);
+  const claimed = attachments.filter((attachment) => {
+    if (attachment.sourceProjectId === targetProjectId) return false;
+    const key = promptAttachmentTransferKey(attachment);
+    if (
+      key === null ||
+      inFlightKeys.has(key) ||
+      completedKeys?.has(key) === true ||
+      (!retryFailed && failedKeys?.has(key) === true)
+    ) {
+      return false;
+    }
+    inFlightKeys.add(key);
+    return true;
+  });
+
+  if (inFlightKeys.size === 0) {
+    inFlightTransfers.delete(targetProjectId);
+  }
+  return claimed;
+}
+
+export function pruneCompletedPromptAttachmentTransfers({
+  attachments,
+  completedTransfers,
+  targetProjectId,
+}: PruneCompletedPromptAttachmentTransfersArgs): void {
+  const completedKeys = completedTransfers.get(targetProjectId);
+  if (!completedKeys) return;
+  const liveForeignKeys = new Set(
+    attachments.flatMap((attachment) => {
+      if (attachment.sourceProjectId === targetProjectId) return [];
+      const key = promptAttachmentTransferKey(attachment);
+      return key ? [key] : [];
+    }),
+  );
+  for (const key of completedKeys) {
+    if (!liveForeignKeys.has(key)) completedKeys.delete(key);
+  }
+  if (completedKeys.size === 0) {
+    completedTransfers.delete(targetProjectId);
+  }
+}
+
+export function pruneFailedPromptAttachmentTransfers({
+  attachments,
+  failedTransfers,
+  targetProjectId,
+}: PruneFailedPromptAttachmentTransfersArgs): void {
+  const failedKeys = failedTransfers.get(targetProjectId);
+  if (!failedKeys) return;
+  const liveForeignKeys = new Set(
+    attachments.flatMap((attachment) => {
+      if (attachment.sourceProjectId === targetProjectId) return [];
+      const key = promptAttachmentTransferKey(attachment);
+      return key ? [key] : [];
+    }),
+  );
+  for (const key of failedKeys) {
+    if (!liveForeignKeys.has(key)) failedKeys.delete(key);
+  }
+  if (failedKeys.size === 0) {
+    failedTransfers.delete(targetProjectId);
+  }
+}
+
+export function recordCompletedPromptAttachmentTransfers({
+  completedTransfers,
+  targetProjectId,
+  transferredAttachments,
+}: RecordCompletedPromptAttachmentTransfersArgs): void {
+  if (transferredAttachments.length === 0) return;
+  let completedKeys = completedTransfers.get(targetProjectId);
+  if (!completedKeys) {
+    completedKeys = new Set();
+    completedTransfers.set(targetProjectId, completedKeys);
+  }
+  for (const transferred of transferredAttachments) {
+    completedKeys.add(
+      `${transferred.sourceProjectId}:${transferred.sourcePath}`,
+    );
+  }
+}
+
+export function releasePromptAttachmentTransfers({
+  attachments,
+  inFlightTransfers,
+  targetProjectId,
+}: ReleasePromptAttachmentTransfersArgs): void {
+  const inFlightKeys = inFlightTransfers.get(targetProjectId);
+  if (!inFlightKeys) return;
+  for (const attachment of attachments) {
+    const key = promptAttachmentTransferKey(attachment);
+    if (key) inFlightKeys.delete(key);
+  }
+  if (inFlightKeys.size === 0) {
+    inFlightTransfers.delete(targetProjectId);
+  }
+}
+
+export function recordPromptAttachmentTransferFailures({
+  attemptedAttachments,
+  failedAttachments,
+  failedTransfers,
+  targetProjectId,
+}: RecordPromptAttachmentTransferFailuresArgs): void {
+  let failedKeys = failedTransfers.get(targetProjectId);
+  if (!failedKeys) {
+    failedKeys = new Set();
+    failedTransfers.set(targetProjectId, failedKeys);
+  }
+  const currentFailureKeys = new Set(
+    failedAttachments.flatMap((failure) => {
+      const key = promptAttachmentTransferKey(failure.attachment);
+      return key ? [key] : [];
+    }),
+  );
+  for (const attachment of attemptedAttachments) {
+    const key = promptAttachmentTransferKey(attachment);
+    if (!key) continue;
+    if (currentFailureKeys.has(key)) {
+      failedKeys.add(key);
+    } else {
+      failedKeys.delete(key);
+    }
+  }
+  if (failedKeys.size === 0) {
+    failedTransfers.delete(targetProjectId);
+  }
+}
+
 export function hasPromptDraftAttachmentsOutsideProject({
   attachments,
   projectId,
@@ -63,6 +267,20 @@ export function hasPromptDraftAttachmentsOutsideProject({
     (attachment) =>
       attachment.sourceProjectId !== undefined &&
       attachment.sourceProjectId !== projectId,
+  );
+}
+
+export function shouldSchedulePromptAttachmentTransfer({
+  attachments,
+  currentProjectId,
+  releasedTargetProjectId,
+}: ShouldSchedulePromptAttachmentTransferArgs): boolean {
+  return (
+    currentProjectId === releasedTargetProjectId &&
+    hasPromptDraftAttachmentsOutsideProject({
+      attachments,
+      projectId: currentProjectId,
+    })
   );
 }
 
@@ -132,25 +350,24 @@ export async function transferPromptAttachments({
  * sequential for the same bounded-resource behavior as transfer.
  */
 export async function cleanupStalePromptAttachmentCopies({
-  currentAttachments,
-  currentProjectId,
   deleteAttachment,
+  getCurrentState,
   targetProjectId,
   transferredAttachments,
 }: CleanupStalePromptAttachmentCopiesArgs): Promise<CleanupStalePromptAttachmentCopiesResult> {
-  if (currentProjectId === targetProjectId) {
-    return { deletedAttachments: [], failedAttachments: [] };
-  }
-
-  const liveDestinationPaths = new Set(
-    currentAttachments
-      .filter((attachment) => attachment.sourceProjectId === targetProjectId)
-      .map((attachment) => attachment.path),
-  );
   const deletedAttachments: TransferredPromptAttachment[] = [];
   const failedAttachments: FailedPromptAttachmentTransfer[] = [];
 
   for (const transferredAttachment of transferredAttachments) {
+    const currentState = getCurrentState();
+    if (currentState.projectId === targetProjectId) {
+      break;
+    }
+    const liveDestinationPaths = new Set(
+      currentState.attachments
+        .filter((attachment) => attachment.sourceProjectId === targetProjectId)
+        .map((attachment) => attachment.path),
+    );
     const targetAttachment = transferredAttachment.targetAttachment;
     if (liveDestinationPaths.has(targetAttachment.path)) {
       continue;

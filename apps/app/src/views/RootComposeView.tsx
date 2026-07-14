@@ -116,9 +116,16 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { fetchWithAppSurface } from "@/lib/app-surface";
 import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
 import {
+  claimPromptAttachmentTransfers,
   cleanupStalePromptAttachmentCopies,
   hasPromptDraftAttachmentsOutsideProject,
+  pruneCompletedPromptAttachmentTransfers,
+  pruneFailedPromptAttachmentTransfers,
   reconcileTransferredPromptAttachments,
+  recordCompletedPromptAttachmentTransfers,
+  recordPromptAttachmentTransferFailures,
+  releasePromptAttachmentTransfers,
+  shouldSchedulePromptAttachmentTransfer,
   transferPromptAttachments,
 } from "@/lib/prompt-attachment-transfer";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
@@ -870,7 +877,9 @@ export function buildRootComposeTerminalSessions({
   environmentTerminalSessions,
   globalTerminalSessions,
   terminalTarget,
-}: BuildRootComposeTerminalSessionsArgs): readonly TerminalSession[] | undefined {
+}: BuildRootComposeTerminalSessionsArgs):
+  | readonly TerminalSession[]
+  | undefined {
   if (terminalTarget?.kind === "environment") {
     return environmentTerminalSessions;
   }
@@ -1063,12 +1072,20 @@ export function RootComposeView(props: RootComposeViewProps) {
   const currentProjectIdRef = useRef(projectId);
   currentProjectIdRef.current = projectId;
   const previousProjectIdRef = useRef(projectId);
-  const attemptedAttachmentTransfersByProjectRef = useRef(
+  const inFlightAttachmentTransfersByProjectRef = useRef(
+    new Map<string, Set<string>>(),
+  );
+  const completedAttachmentTransfersByProjectRef = useRef(
+    new Map<string, Set<string>>(),
+  );
+  const failedAttachmentTransfersByProjectRef = useRef(
     new Map<string, Set<string>>(),
   );
   const attachmentTransferCountRef = useRef(0);
   const [isTransferringAttachments, setIsTransferringAttachments] =
     useState(false);
+  const [attachmentTransferRevision, setAttachmentTransferRevision] =
+    useState(0);
   // Plugin useComposer() writes (from nav panels / homepage sections) target
   // the new-thread draft; surface + focus the composer when they ask.
   useEffect(
@@ -1094,7 +1111,12 @@ export function RootComposeView(props: RootComposeViewProps) {
   const promptOptionDraftSnapshotRef = useRef<PromptDraftState | null>(null);
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
-  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [attachmentUploadError, setAttachmentUploadError] = useState<
+    string | null
+  >(null);
+  const [attachmentTransferError, setAttachmentTransferError] = useState<
+    string | null
+  >(null);
   const prompt = promptDraft.text;
   const hasAttachmentsFromAnotherProject = useMemo(
     () =>
@@ -1104,6 +1126,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       }),
     [projectId, promptDraft.attachments],
   );
+  const attachmentError = attachmentTransferError ?? attachmentUploadError;
   const promptInput = useMemo(
     () =>
       promptDraftToInput({
@@ -1192,21 +1215,33 @@ export function RootComposeView(props: RootComposeViewProps) {
   const transferPromptAttachmentsToProject = useCallback(
     async ({
       attachments,
+      retryFailed = false,
       targetProjectId,
     }: {
       attachments: readonly PromptDraftAttachment[];
+      retryFailed?: boolean;
       targetProjectId: string;
     }) => {
-      const attachmentsToTransfer = attachments.filter(
-        (attachment) => attachment.sourceProjectId !== targetProjectId,
-      );
+      const attachmentsToTransfer = claimPromptAttachmentTransfers({
+        attachments,
+        completedTransfers: completedAttachmentTransfersByProjectRef.current,
+        failedTransfers: failedAttachmentTransfersByProjectRef.current,
+        inFlightTransfers: inFlightAttachmentTransfersByProjectRef.current,
+        retryFailed,
+        targetProjectId,
+      });
       if (attachmentsToTransfer.length === 0) {
         return;
       }
 
       attachmentTransferCountRef.current += 1;
       setIsTransferringAttachments(true);
-      setAttachmentError(null);
+      if (
+        currentProjectIdRef.current === targetProjectId &&
+        !failedAttachmentTransfersByProjectRef.current.has(targetProjectId)
+      ) {
+        setAttachmentTransferError(null);
+      }
       try {
         const transferResult = await transferPromptAttachments({
           attachments: attachmentsToTransfer,
@@ -1224,36 +1259,76 @@ export function RootComposeView(props: RootComposeViewProps) {
             uploadPromptAttachment.mutateAsync({ projectId, file }),
         });
 
+        recordPromptAttachmentTransferFailures({
+          attemptedAttachments: attachmentsToTransfer,
+          failedAttachments: transferResult.failedAttachments,
+          failedTransfers: failedAttachmentTransfersByProjectRef.current,
+          targetProjectId,
+        });
+
         const nextAttachments = reconcileTransferredPromptAttachments({
           currentProjectId: currentProjectIdRef.current,
           currentAttachments: promptDraft.getCurrent().attachments,
           targetProjectId,
           transferredAttachments: transferResult.transferredAttachments,
         });
+        if (nextAttachments !== null) {
+          recordCompletedPromptAttachmentTransfers({
+            completedTransfers:
+              completedAttachmentTransfersByProjectRef.current,
+            targetProjectId,
+            transferredAttachments: transferResult.transferredAttachments,
+          });
+        }
         if (nextAttachments === null) {
           await cleanupStalePromptAttachmentCopies({
-            currentAttachments: promptDraft.getCurrent().attachments,
-            currentProjectId: currentProjectIdRef.current,
             deleteAttachment: ({ projectId, path }) =>
               deletePromptAttachment.mutateAsync({ projectId, path }),
+            getCurrentState: () => ({
+              attachments: promptDraft.getCurrent().attachments,
+              projectId: currentProjectIdRef.current,
+            }),
             targetProjectId,
             transferredAttachments: transferResult.transferredAttachments,
           });
           return;
         }
         promptDraft.setAttachments(nextAttachments);
-        if (transferResult.failedAttachments.length > 0) {
-          setAttachmentError(
+        if (
+          transferResult.failedAttachments.length > 0 &&
+          currentProjectIdRef.current === targetProjectId
+        ) {
+          setAttachmentTransferError(
             getMutationErrorMessage({
               error: transferResult.failedAttachments[0]!.error,
               fallbackMessage:
                 "Attachment could not be moved to the selected project",
             }),
           );
+        } else if (
+          currentProjectIdRef.current === targetProjectId &&
+          !failedAttachmentTransfersByProjectRef.current.has(targetProjectId)
+        ) {
+          setAttachmentTransferError(null);
         }
       } finally {
+        releasePromptAttachmentTransfers({
+          attachments: attachmentsToTransfer,
+          inFlightTransfers: inFlightAttachmentTransfersByProjectRef.current,
+          targetProjectId,
+        });
         attachmentTransferCountRef.current -= 1;
         setIsTransferringAttachments(attachmentTransferCountRef.current > 0);
+        const currentDraft = promptDraft.getCurrent();
+        if (
+          shouldSchedulePromptAttachmentTransfer({
+            attachments: currentDraft.attachments,
+            currentProjectId: currentProjectIdRef.current,
+            releasedTargetProjectId: targetProjectId,
+          })
+        ) {
+          setAttachmentTransferRevision((revision) => revision + 1);
+        }
       }
     },
     [deletePromptAttachment, promptDraft, uploadPromptAttachment],
@@ -1271,37 +1346,43 @@ export function RootComposeView(props: RootComposeViewProps) {
 
     previousProjectIdRef.current = projectId;
     if (projectChanged) {
-      attemptedAttachmentTransfersByProjectRef.current.delete(projectId);
-      setAttachmentError(null);
+      setAttachmentUploadError(null);
     }
     if (migration.shouldPersistAnnotations) {
       promptDraft.setAttachments(migration.attachments);
     }
-    if (!migration.shouldTransfer) return;
-
-    let attemptedSourceAttachments =
-      attemptedAttachmentTransfersByProjectRef.current.get(projectId);
-    if (!attemptedSourceAttachments) {
-      attemptedSourceAttachments = new Set();
-      attemptedAttachmentTransfersByProjectRef.current.set(
-        projectId,
-        attemptedSourceAttachments,
-      );
-    }
-    const attachmentsToTransfer = migration.attachments.filter((attachment) => {
-      const sourceProjectId = attachment.sourceProjectId;
-      if (!sourceProjectId || sourceProjectId === projectId) return false;
-      const key = `${sourceProjectId}:${attachment.path}`;
-      if (attemptedSourceAttachments.has(key)) return false;
-      attemptedSourceAttachments.add(key);
-      return true;
-    });
-    if (attachmentsToTransfer.length === 0) return;
-    void transferPromptAttachmentsToProject({
-      attachments: attachmentsToTransfer,
+    pruneCompletedPromptAttachmentTransfers({
+      attachments: migration.attachments,
+      completedTransfers: completedAttachmentTransfersByProjectRef.current,
       targetProjectId: projectId,
     });
-  }, [projectId, promptDraft, transferPromptAttachmentsToProject]);
+    pruneFailedPromptAttachmentTransfers({
+      attachments: migration.attachments,
+      failedTransfers: failedAttachmentTransfersByProjectRef.current,
+      targetProjectId: projectId,
+    });
+    if (failedAttachmentTransfersByProjectRef.current.has(projectId)) {
+      if (projectChanged) {
+        setAttachmentTransferError(
+          "Attachment could not be moved to the selected project",
+        );
+      }
+    } else {
+      setAttachmentTransferError(null);
+    }
+    if (!migration.shouldTransfer) return;
+
+    void transferPromptAttachmentsToProject({
+      attachments: migration.attachments,
+      targetProjectId: projectId,
+    });
+  }, [
+    attachmentTransferRevision,
+    projectId,
+    promptDraft,
+    promptDraft.attachments,
+    transferPromptAttachmentsToProject,
+  ]);
   const snapshotPromptDraftBeforeOptionChange = useCallback(() => {
     const currentDraft = promptDraft.getCurrent();
     promptOptionDraftSnapshotRef.current = isPromptDraftEmpty(currentDraft)
@@ -1492,7 +1573,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     { enabled: Boolean(projectId) },
   );
   const reuseThreadOptions = useMemo(
-    () => buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
+    () =>
+      buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
     [threadsQuery.data, worktreeHostNameById],
   );
   const mobileRecentThreads = useMemo(
@@ -1855,6 +1937,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const handleRetryAttachmentTransfer = useCallback(() => {
     void transferPromptAttachmentsToProject({
       attachments: promptDraft.getCurrent().attachments,
+      retryFailed: true,
       targetProjectId: projectId,
     });
   }, [projectId, promptDraft, transferPromptAttachmentsToProject]);
@@ -1877,7 +1960,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     async (files: File[]) => {
       if (!projectId || files.length === 0) return;
 
-      setAttachmentError(null);
+      setAttachmentUploadError(null);
       for (const file of files) {
         try {
           const uploaded = await uploadPromptAttachment.mutateAsync({
@@ -1889,15 +1972,8 @@ export function RootComposeView(props: RootComposeViewProps) {
             sourceProjectId: projectId,
           } satisfies PromptDraftAttachment;
           promptDraft.addAttachment(attachment);
-          const selectedProjectId = currentProjectIdRef.current;
-          if (selectedProjectId !== projectId) {
-            void transferPromptAttachmentsToProject({
-              attachments: [attachment],
-              targetProjectId: selectedProjectId,
-            });
-          }
         } catch (err) {
-          setAttachmentError(
+          setAttachmentUploadError(
             getMutationErrorMessage({
               error: err,
               fallbackMessage: "Attachment upload failed",
@@ -1907,133 +1983,132 @@ export function RootComposeView(props: RootComposeViewProps) {
         }
       }
     },
-    [
-      projectId,
-      promptDraft,
-      transferPromptAttachmentsToProject,
-      uploadPromptAttachment,
-    ],
+    [projectId, promptDraft, uploadPromptAttachment],
   );
 
   // `inputsOverride` bypasses the draft: plugin slash-command `{ send }`
   // results (design §4.9) submit through the same thread-creation path
   // without touching what the user has typed.
-  const submitPromptInternal = useCallback(async (
-    inputsOverride: PromptInput[] | null,
-  ) => {
-    const submittedDraft =
-      inputsOverride === null
-        ? {
-            text: promptDraft.text,
-            mentions: promptDraft.mentions,
-            attachments: promptDraft.attachments,
-          }
-        : null;
-    const submittedInput =
-      submittedDraft !== null
-        ? promptDraftToInput(submittedDraft)
-        : (inputsOverride ?? []);
-    if (!projectId || !selectedProviderId || !selectedThreadModel) {
-      return;
-    }
-
-    setAttachmentError(null);
-
-    if (
-      submittedInput.length === 0 ||
-      createThread.isPending ||
-      isCodexCliVersionBlocked ||
-      managedWorktreeAvailabilityPending ||
-      managedWorktreeUnavailable ||
-      isTransferringAttachments ||
-      hasAttachmentsFromAnotherProject ||
-      (forkSeed === null && !selectedEnvironment)
-    ) {
-      return;
-    }
-
-    try {
-      const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
-        isForkDraft: forkSeed !== null,
-        navigateToThreadAfterCreate,
-      });
-      const request =
-        forkSeed !== null
-          ? buildForkThreadRequest({
-              ...forkSeed,
-              input: submittedInput,
-              model: selectedThreadModel,
-              permissionMode,
-              reasoningLevel,
-              serviceTier: supportsServiceTier ? serviceTier : undefined,
-            })
-          : selectedEnvironment !== null
-            ? {
-                input: submittedInput,
-                projectId,
-                providerId: selectedProviderId,
-                model: selectedThreadModel,
-                ...(rootComposeFolderId
-                  ? { folderId: rootComposeFolderId }
-                  : {}),
-                ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-                reasoningLevel,
-                permissionMode,
-                executionInputSources,
-                environment: selectedEnvironment,
-              }
-            : null;
-      if (request === null) {
+  const submitPromptInternal = useCallback(
+    async (inputsOverride: PromptInput[] | null) => {
+      const submittedDraft =
+        inputsOverride === null
+          ? {
+              text: promptDraft.text,
+              mentions: promptDraft.mentions,
+              attachments: promptDraft.attachments,
+            }
+          : null;
+      const submittedInput =
+        submittedDraft !== null
+          ? promptDraftToInput(submittedDraft)
+          : (inputsOverride ?? []);
+      if (!projectId || !selectedProviderId || !selectedThreadModel) {
         return;
       }
-      const thread = await createThread.mutateAsync(request);
-      setLastCreatedThreadId(thread.id);
-      clearReuseEnvironment();
-      setForkSeed(null);
-      setRootComposeFolderId(null);
-      if (submittedDraft !== null) {
-        promptDraft.clearIfCurrentMatches(submittedDraft);
+
+      setAttachmentTransferError(null);
+      setAttachmentUploadError(null);
+
+      if (
+        submittedInput.length === 0 ||
+        createThread.isPending ||
+        isCodexCliVersionBlocked ||
+        managedWorktreeAvailabilityPending ||
+        managedWorktreeUnavailable ||
+        isTransferringAttachments ||
+        hasAttachmentsFromAnotherProject ||
+        (forkSeed === null && !selectedEnvironment)
+      ) {
+        return;
       }
-      if (props.surface === "popout") {
-        props.onThreadCreated({
-          projectId: thread.projectId,
-          threadId: thread.id,
+
+      try {
+        const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
+          isForkDraft: forkSeed !== null,
+          navigateToThreadAfterCreate,
         });
-      } else if (shouldNavigateToCreatedThread) {
-        navigate(
-          getThreadRoutePath({
+        const request =
+          forkSeed !== null
+            ? buildForkThreadRequest({
+                ...forkSeed,
+                input: submittedInput,
+                model: selectedThreadModel,
+                permissionMode,
+                reasoningLevel,
+                serviceTier: supportsServiceTier ? serviceTier : undefined,
+              })
+            : selectedEnvironment !== null
+              ? {
+                  input: submittedInput,
+                  projectId,
+                  providerId: selectedProviderId,
+                  model: selectedThreadModel,
+                  ...(rootComposeFolderId
+                    ? { folderId: rootComposeFolderId }
+                    : {}),
+                  ...(supportsServiceTier && serviceTier
+                    ? { serviceTier }
+                    : {}),
+                  reasoningLevel,
+                  permissionMode,
+                  executionInputSources,
+                  environment: selectedEnvironment,
+                }
+              : null;
+        if (request === null) {
+          return;
+        }
+        const thread = await createThread.mutateAsync(request);
+        setLastCreatedThreadId(thread.id);
+        clearReuseEnvironment();
+        setForkSeed(null);
+        setRootComposeFolderId(null);
+        if (submittedDraft !== null) {
+          promptDraft.clearIfCurrentMatches(submittedDraft);
+        }
+        if (props.surface === "popout") {
+          props.onThreadCreated({
             projectId: thread.projectId,
             threadId: thread.id,
-          }),
-        );
+          });
+        } else if (shouldNavigateToCreatedThread) {
+          navigate(
+            getThreadRoutePath({
+              projectId: thread.projectId,
+              threadId: thread.id,
+            }),
+          );
+        }
+      } catch {
+        // Global mutation error handling already surfaced the failure.
       }
-    } catch {
-      // Global mutation error handling already surfaced the failure.
-    }
-  }, [
-    clearReuseEnvironment,
-    createThread,
-    executionInputSources,
-    forkSeed,
-    hasAttachmentsFromAnotherProject,
-    isCodexCliVersionBlocked,
-    isTransferringAttachments,
-    managedWorktreeAvailabilityPending,
-    managedWorktreeUnavailable,
-    navigate,
-    navigateToThreadAfterCreate,
-    permissionMode,
-    projectId,
-    props,
-    promptDraft,
-    reasoningLevel,
-    rootComposeFolderId,
-    selectedEnvironment,
-    selectedProviderId,
-    selectedThreadModel,
-    serviceTier,
-    supportsServiceTier,
-  ]);
+    },
+    [
+      clearReuseEnvironment,
+      createThread,
+      executionInputSources,
+      forkSeed,
+      hasAttachmentsFromAnotherProject,
+      isCodexCliVersionBlocked,
+      isTransferringAttachments,
+      managedWorktreeAvailabilityPending,
+      managedWorktreeUnavailable,
+      navigate,
+      navigateToThreadAfterCreate,
+      permissionMode,
+      projectId,
+      props,
+      promptDraft,
+      reasoningLevel,
+      rootComposeFolderId,
+      selectedEnvironment,
+      selectedProviderId,
+      selectedThreadModel,
+      serviceTier,
+      supportsServiceTier,
+    ],
+  );
 
   const submitPrompt = useCallback(
     () => submitPromptInternal(null),
@@ -2248,21 +2323,20 @@ export function RootComposeView(props: RootComposeViewProps) {
   const shouldUseRootStorageViewerForActiveTab =
     rawActiveRootStorageFileThreadId !== null &&
     rawActiveRootStorageFileThreadId === rootPanelThreadId;
-  const {
-    threadStorageRootPath: activeStorageThreadStorageRootPath,
-  } = useThreadStorageViewer({
-    activePath: null,
-    fileListEnabled:
-      props.surface === "page" &&
-      rawActiveRootStorageFileThreadId !== null &&
-      !shouldUseRootStorageViewerForActiveTab,
-    filePreviewEnabled: false,
-    threadId:
-      rawActiveRootStorageFileThreadId !== null &&
-      !shouldUseRootStorageViewerForActiveTab
-        ? rawActiveRootStorageFileThreadId
-        : undefined,
-  });
+  const { threadStorageRootPath: activeStorageThreadStorageRootPath } =
+    useThreadStorageViewer({
+      activePath: null,
+      fileListEnabled:
+        props.surface === "page" &&
+        rawActiveRootStorageFileThreadId !== null &&
+        !shouldUseRootStorageViewerForActiveTab,
+      filePreviewEnabled: false,
+      threadId:
+        rawActiveRootStorageFileThreadId !== null &&
+        !shouldUseRootStorageViewerForActiveTab
+          ? rawActiveRootStorageFileThreadId
+          : undefined,
+    });
   const activeStorageFileRootPath = shouldUseRootStorageViewerForActiveTab
     ? rootThreadStorageRootPath
     : activeStorageThreadStorageRootPath;
@@ -2293,7 +2367,8 @@ export function RootComposeView(props: RootComposeViewProps) {
   const loadedTerminalSessions = useMemo(
     () =>
       buildRootComposeTerminalSessions({
-        environmentTerminalSessions: environmentTerminalsListQuery.data?.sessions,
+        environmentTerminalSessions:
+          environmentTerminalsListQuery.data?.sessions,
         globalTerminalSessions: globalTerminalsListQuery.data?.sessions,
         terminalTarget: rootPanelTerminalTarget,
       }),
@@ -2303,8 +2378,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       rootPanelTerminalTarget,
     ],
   );
-  const terminalSessions =
-    loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
+  const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsListLoaded = loadedTerminalSessions !== undefined;
   const terminalsById = useMemo(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
@@ -2421,13 +2495,12 @@ export function RootComposeView(props: RootComposeViewProps) {
   const closeRootSecondaryPanel = useCallback(() => {
     setRootSecondaryPanelForSurface(null);
   }, [setRootSecondaryPanelForSurface]);
-  const openRootSecondaryPanel =
-    useCallback<SecondaryPanelChangeHandler>(
-      (panel) => {
-        setRootSecondaryPanelForSurface(panel);
-      },
-      [setRootSecondaryPanelForSurface],
-    );
+  const openRootSecondaryPanel = useCallback<SecondaryPanelChangeHandler>(
+    (panel) => {
+      setRootSecondaryPanelForSurface(panel);
+    },
+    [setRootSecondaryPanelForSurface],
+  );
   const toggleRootPersistedSecondaryPanel = useCallback(() => {
     if (isPersistedSecondaryPanelOpen) {
       closeRootSecondaryPanel();
@@ -2620,11 +2693,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
   }, [browserTabIds, openBrowserTabAndReveal]);
   const renderBrowserDeck = useCallback(
-    ({
-      canShowNativeBrowserView,
-    }: {
-      canShowNativeBrowserView: boolean;
-    }) => {
+    ({ canShowNativeBrowserView }: { canShowNativeBrowserView: boolean }) => {
       if (rootPanelThreadId === null) {
         return null;
       }
@@ -2689,14 +2758,13 @@ export function RootComposeView(props: RootComposeViewProps) {
     }
     handleOpenNewTab();
   }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
-  const handleSecondaryPanelChange =
-    useCallback<SecondaryPanelChangeHandler>(
-      (panel) => {
-        clearActiveFileTabs();
-        openSecondaryPanel(panel);
-      },
-      [clearActiveFileTabs, openSecondaryPanel],
-    );
+  const handleSecondaryPanelChange = useCallback<SecondaryPanelChangeHandler>(
+    (panel) => {
+      clearActiveFileTabs();
+      openSecondaryPanel(panel);
+    },
+    [clearActiveFileTabs, openSecondaryPanel],
+  );
   const handleSecondaryPanelFocus = useCallback(() => {
     touchFixedPanelTabsState();
   }, [touchFixedPanelTabsState]);
@@ -3370,7 +3438,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       projectId: projectId ?? "",
       onAttachFiles: handleAttachFiles,
       onRemove: promptDraft.removeAttachment,
-      isAttaching: uploadPromptAttachment.isPending || isTransferringAttachments,
+      isAttaching:
+        uploadPromptAttachment.isPending || isTransferringAttachments,
       error: attachmentError,
       onRetryTransfer: hasAttachmentsFromAnotherProject
         ? handleRetryAttachmentTransfer

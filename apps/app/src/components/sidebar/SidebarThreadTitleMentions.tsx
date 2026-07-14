@@ -21,7 +21,7 @@ const SidebarThreadTitleMentionResourcesContext =
   );
 
 const SERIALIZED_TITLE_MENTION_PATTERN =
-  /@(?:thread:[A-Za-z0-9_-]+|project:[A-Za-z0-9_-]+|folder:[A-Za-z0-9_-]+|(?:thread-storage:)?(?:[A-Za-z0-9._-]+\/)+[A-Za-z0-9._-]*|(?:thread-storage:)?[A-Za-z0-9._-]+\.[A-Za-z0-9_-]+)/gu;
+  /@(?:thread:[A-Za-z0-9_-]+|project:[A-Za-z0-9_-]+|folder:[A-Za-z0-9_-]+|(?:thread-storage:)?(?:(?:[\p{L}\p{N}._-]+\/)+(?:[\p{L}\p{N}._-]*\.[\p{L}\p{N}_-]+)?|[\p{L}\p{N}._-]*\.[\p{L}\p{N}_-]+))/gu;
 
 export interface SidebarThreadTitleMentionResourcesProviderProps {
   children: ReactNode;
@@ -51,6 +51,26 @@ export function SidebarThreadTitleMentionResourcesProvider({
 function isMentionBoundary(text: string, index: number): boolean {
   const previous = text[index - 1];
   return previous === undefined || !/[\p{L}\p{N}_.+-]/u.test(previous);
+}
+
+function isMentionEndBoundary(text: string, index: number): boolean {
+  const next = text[index];
+  if (next === undefined) return true;
+  if (next === ".") {
+    const afterPeriod = text[index + 1];
+    return afterPeriod === undefined || /[\s,;:!?)}\]]/u.test(afterPeriod);
+  }
+  return !/[\p{L}\p{N}_.+\/-]/u.test(next);
+}
+
+function hasUnsupportedPathContinuation(text: string, index: number): boolean {
+  return /^\s+(?:[\p{L}\p{N}._-]+(?:\s+|\/))*[\p{L}\p{N}_-]+(?:\/|\.[\p{L}\p{N}_-]+)(?=$|[\s,;:!?)}\]])/u.test(
+    text.slice(index),
+  );
+}
+
+function isPathMentionToken(token: string): boolean {
+  return !/^@(?:thread|project|folder):/u.test(token);
 }
 
 function pathMentionResource(token: string): PromptMentionResource {
@@ -122,7 +142,13 @@ export function SidebarThreadTitle({ title }: { title: string }) {
   SERIALIZED_TITLE_MENTION_PATTERN.lastIndex = 0;
   while ((match = SERIALIZED_TITLE_MENTION_PATTERN.exec(title)) !== null) {
     const token = match[0];
-    if (!isMentionBoundary(title, match.index)) {
+    const matchEnd = match.index + token.length;
+    if (
+      !isMentionBoundary(title, match.index) ||
+      !isMentionEndBoundary(title, matchEnd) ||
+      (isPathMentionToken(token) &&
+        hasUnsupportedPathContinuation(title, matchEnd))
+    ) {
       continue;
     }
     if (match.index > cursor) {
@@ -137,7 +163,7 @@ export function SidebarThreadTitle({ title }: { title: string }) {
         />
       </span>,
     );
-    cursor = match.index + token.length;
+    cursor = matchEnd;
   }
 
   if (nodes.length === 0) {

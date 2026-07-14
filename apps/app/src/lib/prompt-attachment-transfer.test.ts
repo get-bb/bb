@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  claimPromptAttachmentTransfers,
   cleanupStalePromptAttachmentCopies,
   hasPromptDraftAttachmentsOutsideProject,
+  pruneCompletedPromptAttachmentTransfers,
+  pruneFailedPromptAttachmentTransfers,
   reconcileTransferredPromptAttachments,
+  recordCompletedPromptAttachmentTransfers,
+  recordPromptAttachmentTransferFailures,
+  releasePromptAttachmentTransfers,
+  shouldSchedulePromptAttachmentTransfer,
   transferPromptAttachments,
 } from "./prompt-attachment-transfer";
 
@@ -14,6 +21,198 @@ const SOURCE_IMAGE = {
   sizeBytes: 4,
   sourceProjectId: "proj_source",
 };
+
+describe("prompt attachment transfer claims", () => {
+  it("deduplicates a destination transfer while the first claim is in flight", () => {
+    const completedTransfers = new Map<string, Set<string>>();
+    const failedTransfers = new Map<string, Set<string>>();
+    const inFlightTransfers = new Map<string, Set<string>>();
+    const claim = () =>
+      claimPromptAttachmentTransfers({
+        attachments: [SOURCE_IMAGE],
+        completedTransfers,
+        failedTransfers,
+        inFlightTransfers,
+        retryFailed: false,
+        targetProjectId: "proj_destination",
+      });
+
+    expect(claim()).toEqual([SOURCE_IMAGE]);
+    expect(claim()).toEqual([]);
+
+    // Leaving and re-entering a project must not clear its active claim.
+    claimPromptAttachmentTransfers({
+      attachments: [SOURCE_IMAGE],
+      completedTransfers,
+      failedTransfers,
+      inFlightTransfers,
+      retryFailed: false,
+      targetProjectId: "proj_later_selection",
+    });
+    expect(claim()).toEqual([]);
+
+    releasePromptAttachmentTransfers({
+      attachments: [SOURCE_IMAGE],
+      inFlightTransfers,
+      targetProjectId: "proj_destination",
+    });
+    expect(claim()).toEqual([SOURCE_IMAGE]);
+  });
+
+  it("retains failed claims for explicit retry instead of hiding recovery", () => {
+    const completedTransfers = new Map<string, Set<string>>();
+    const failedTransfers = new Map<string, Set<string>>();
+    const inFlightTransfers = new Map<string, Set<string>>();
+    const error = new Error("Destination full");
+
+    const firstClaim = claimPromptAttachmentTransfers({
+      attachments: [SOURCE_IMAGE],
+      completedTransfers,
+      failedTransfers,
+      inFlightTransfers,
+      retryFailed: false,
+      targetProjectId: "proj_destination",
+    });
+    recordPromptAttachmentTransferFailures({
+      attemptedAttachments: firstClaim,
+      failedAttachments: [{ attachment: SOURCE_IMAGE, error }],
+      failedTransfers,
+      targetProjectId: "proj_destination",
+    });
+    releasePromptAttachmentTransfers({
+      attachments: firstClaim,
+      inFlightTransfers,
+      targetProjectId: "proj_destination",
+    });
+
+    expect(
+      claimPromptAttachmentTransfers({
+        attachments: [SOURCE_IMAGE],
+        completedTransfers,
+        failedTransfers,
+        inFlightTransfers,
+        retryFailed: false,
+        targetProjectId: "proj_destination",
+      }),
+    ).toEqual([]);
+    expect(
+      claimPromptAttachmentTransfers({
+        attachments: [SOURCE_IMAGE],
+        completedTransfers,
+        failedTransfers,
+        inFlightTransfers,
+        retryFailed: true,
+        targetProjectId: "proj_destination",
+      }),
+    ).toEqual([SOURCE_IMAGE]);
+  });
+
+  it("holds a completed claim until the live draft reflects its destination copy", () => {
+    const completedTransfers = new Map<string, Set<string>>();
+    const failedTransfers = new Map<string, Set<string>>();
+    const inFlightTransfers = new Map<string, Set<string>>();
+    const targetAttachment = {
+      ...SOURCE_IMAGE,
+      path: "screenshot-destination.png",
+      sourceProjectId: "proj_destination",
+    };
+
+    recordCompletedPromptAttachmentTransfers({
+      completedTransfers,
+      targetProjectId: "proj_destination",
+      transferredAttachments: [
+        {
+          sourcePath: SOURCE_IMAGE.path,
+          sourceProjectId: SOURCE_IMAGE.sourceProjectId,
+          targetAttachment,
+        },
+      ],
+    });
+    expect(
+      claimPromptAttachmentTransfers({
+        attachments: [SOURCE_IMAGE],
+        completedTransfers,
+        failedTransfers,
+        inFlightTransfers,
+        retryFailed: false,
+        targetProjectId: "proj_destination",
+      }),
+    ).toEqual([]);
+
+    pruneCompletedPromptAttachmentTransfers({
+      attachments: [targetAttachment],
+      completedTransfers,
+      targetProjectId: "proj_destination",
+    });
+    expect(
+      claimPromptAttachmentTransfers({
+        attachments: [SOURCE_IMAGE],
+        completedTransfers,
+        failedTransfers,
+        inFlightTransfers,
+        retryFailed: false,
+        targetProjectId: "proj_destination",
+      }),
+    ).toEqual([SOURCE_IMAGE]);
+  });
+
+  it("keeps an older failed claim visible when a newer claim succeeds", () => {
+    const failedAttachment = {
+      ...SOURCE_IMAGE,
+      path: "failed-source.png",
+    };
+    const successfulAttachment = {
+      ...SOURCE_IMAGE,
+      path: "successful-source.png",
+    };
+    const failedTransfers = new Map<string, Set<string>>();
+
+    recordPromptAttachmentTransferFailures({
+      attemptedAttachments: [failedAttachment],
+      failedAttachments: [
+        {
+          attachment: failedAttachment,
+          error: new Error("Destination full"),
+        },
+      ],
+      failedTransfers,
+      targetProjectId: "proj_destination",
+    });
+    recordPromptAttachmentTransferFailures({
+      attemptedAttachments: [successfulAttachment],
+      failedAttachments: [],
+      failedTransfers,
+      targetProjectId: "proj_destination",
+    });
+
+    expect(failedTransfers.get("proj_destination")).toEqual(
+      new Set(["proj_source:failed-source.png"]),
+    );
+    pruneFailedPromptAttachmentTransfers({
+      attachments: [successfulAttachment],
+      failedTransfers,
+      targetProjectId: "proj_destination",
+    });
+    expect(failedTransfers.has("proj_destination")).toBe(false);
+  });
+
+  it("schedules another claim when a released destination is current again", () => {
+    expect(
+      shouldSchedulePromptAttachmentTransfer({
+        attachments: [SOURCE_IMAGE],
+        currentProjectId: "proj_destination",
+        releasedTargetProjectId: "proj_destination",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSchedulePromptAttachmentTransfer({
+        attachments: [SOURCE_IMAGE],
+        currentProjectId: "proj_later_selection",
+        releasedTargetProjectId: "proj_destination",
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("transferPromptAttachments", () => {
   it("copies an attachment from its source project and marks the copy as destination-owned", async () => {
@@ -261,9 +460,11 @@ describe("cleanupStalePromptAttachmentCopies", () => {
     const deleteAttachment = vi.fn().mockResolvedValue(undefined);
 
     const result = await cleanupStalePromptAttachmentCopies({
-      currentAttachments: [SOURCE_IMAGE],
-      currentProjectId: "proj_later_selection",
       deleteAttachment,
+      getCurrentState: () => ({
+        attachments: [SOURCE_IMAGE],
+        projectId: "proj_later_selection",
+      }),
       targetProjectId: "proj_destination",
       transferredAttachments: [transferredAttachment],
     });
@@ -282,16 +483,20 @@ describe("cleanupStalePromptAttachmentCopies", () => {
     const deleteAttachment = vi.fn();
 
     await cleanupStalePromptAttachmentCopies({
-      currentAttachments: [transferredAttachment.targetAttachment],
-      currentProjectId: "proj_later_selection",
       deleteAttachment,
+      getCurrentState: () => ({
+        attachments: [transferredAttachment.targetAttachment],
+        projectId: "proj_later_selection",
+      }),
       targetProjectId: "proj_destination",
       transferredAttachments: [transferredAttachment],
     });
     await cleanupStalePromptAttachmentCopies({
-      currentAttachments: [],
-      currentProjectId: "proj_destination",
       deleteAttachment,
+      getCurrentState: () => ({
+        attachments: [],
+        projectId: "proj_destination",
+      }),
       targetProjectId: "proj_destination",
       transferredAttachments: [transferredAttachment],
     });
@@ -317,9 +522,11 @@ describe("cleanupStalePromptAttachmentCopies", () => {
       .mockResolvedValueOnce(undefined);
 
     const cleanup = cleanupStalePromptAttachmentCopies({
-      currentAttachments: [],
-      currentProjectId: "proj_later_selection",
       deleteAttachment,
+      getCurrentState: () => ({
+        attachments: [],
+        projectId: "proj_later_selection",
+      }),
       targetProjectId: "proj_destination",
       transferredAttachments: [
         transferredAttachment,
@@ -331,6 +538,44 @@ describe("cleanupStalePromptAttachmentCopies", () => {
     resolveFirstDelete?.();
     await cleanup;
     expect(deleteAttachment).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops stale cleanup when its destination becomes current again", async () => {
+    let currentProjectId = "proj_later_selection";
+    let resolveFirstDelete: (() => void) | undefined;
+    const firstDelete = new Promise<void>((resolve) => {
+      resolveFirstDelete = resolve;
+    });
+    const secondTransferredAttachment = {
+      ...transferredAttachment,
+      targetAttachment: {
+        ...transferredAttachment.targetAttachment,
+        path: "second-destination.png",
+      },
+    };
+    const deleteAttachment = vi
+      .fn()
+      .mockImplementation(async () => firstDelete);
+
+    const cleanup = cleanupStalePromptAttachmentCopies({
+      deleteAttachment,
+      getCurrentState: () => ({
+        attachments: [SOURCE_IMAGE],
+        projectId: currentProjectId,
+      }),
+      targetProjectId: "proj_destination",
+      transferredAttachments: [
+        transferredAttachment,
+        secondTransferredAttachment,
+      ],
+    });
+
+    await vi.waitFor(() => expect(deleteAttachment).toHaveBeenCalledOnce());
+    currentProjectId = "proj_destination";
+    resolveFirstDelete?.();
+    await cleanup;
+
+    expect(deleteAttachment).toHaveBeenCalledOnce();
   });
 });
 

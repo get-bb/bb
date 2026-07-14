@@ -179,6 +179,69 @@ describe("ThreadRow", () => {
     expect(screen.queryByText("@thread:thr_mentioned")).toBeNull();
   });
 
+  it("renders a complete Unicode path mention instead of an ASCII prefix", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        title: "Review @src/café.ts",
+        titleFallback: "Review @src/café.ts",
+      }),
+    });
+
+    expect(screen.getByTitle("src/café.ts")).not.toBeNull();
+    expect(
+      container.querySelectorAll('[data-prompt-mention="true"]'),
+    ).toHaveLength(1);
+    expect(screen.queryByText("é.ts")).toBeNull();
+  });
+
+  it.each([
+    "Review @docs/My File.md",
+    "Review @docs/My Project File.md",
+    "Review @docs/My Cool Project/",
+    "Review @thread-storage:Release Notes/todo.md",
+    "Ask @Release Notes",
+    "Ask @owner/repo",
+  ])("leaves an ambiguous flattened mention literal: %s", (title) => {
+    const { container } = renderThreadRow({
+      thread: createThread({ title, titleFallback: title }),
+    });
+
+    expect(screen.getByText(title)).not.toBeNull();
+    expect(container.querySelector('[data-prompt-mention="true"]')).toBeNull();
+  });
+
+  it("renders an entity mention before terminal punctuation", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        title: "Ask @thread:thr_worker. Next",
+        titleFallback: "Ask @thread:thr_worker. Next",
+      }),
+    });
+
+    expect(screen.getByText("thr_worker")).not.toBeNull();
+    expect(
+      container.querySelectorAll('[data-prompt-mention="true"]'),
+    ).toHaveLength(1);
+    expect(screen.queryByText("@thread:thr_worker")).toBeNull();
+  });
+
+  it("keeps sentence punctuation outside a multi-segment path mention", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        title: "Review @docs/foo.test.ts.",
+        titleFallback: "Review @docs/foo.test.ts.",
+      }),
+    });
+
+    expect(screen.getByTitle("docs/foo.test.ts")).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-prompt-mention="true"]')
+        ?.getAttribute("data-prompt-mention-serialized-text"),
+    ).toBe("@docs/foo.test.ts");
+    expect(container.textContent).toBe("Review foo.test.ts.");
+  });
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread" }),
