@@ -285,17 +285,12 @@ function FollowUpPromptBoxWithComposer({
       isMobilePromptBoxCompact,
     ],
   );
-  const setInteractionExpanded = useCallback(
-    (nextExpanded: boolean) => {
-      if (interactionExpandedRef.current === nextExpanded) return;
-      interactionExpandedRef.current = nextExpanded;
-      if (isCompactViewport) {
-        promptBoxRef.current?.captureHeightForLayoutChange();
-      }
-      setIsInteractionExpanded(nextExpanded);
-    },
-    [isCompactViewport],
-  );
+  const setInteractionExpanded = useCallback((nextExpanded: boolean) => {
+    if (interactionExpandedRef.current === nextExpanded) return;
+    interactionExpandedRef.current = nextExpanded;
+    promptBoxRef.current?.captureHeightForLayoutChange();
+    setIsInteractionExpanded(nextExpanded);
+  }, []);
   const cancelPendingFocusExpansion = useCallback(() => {
     pendingFocusExpansionCleanupRef.current?.();
     pendingFocusExpansionCleanupRef.current = null;
@@ -496,7 +491,14 @@ function FollowUpPromptBoxWithComposer({
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>
-        <div ref={composerInteractionRef} onFocusCapture={handleComposerFocus}>
+        <div
+          ref={composerInteractionRef}
+          data-follow-up-composer=""
+          data-follow-up-composer-expanded={
+            isInteractionExpanded ? "" : undefined
+          }
+          onFocusCapture={handleComposerFocus}
+        >
           <PromptBoxWithScrollAnchor
             id={id}
             promptBoxRef={promptBoxRef}
@@ -510,6 +512,8 @@ function FollowUpPromptBoxWithComposer({
             history={composer.history}
             focusEndKey={focusEndKey}
             placeholder={composer.promptPlaceholder}
+            containerCompactPlaceholder={composer.compactPromptPlaceholder}
+            heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
             mentionMenuPlacement="top"
             submission={{
               onStop: onStopRuntime,
@@ -546,7 +550,10 @@ function FollowUpPromptBoxWithComposer({
             footerStart={footerStart}
           />
           {!isMobilePromptBoxCompact ? (
-            <div className="mt-1 flex min-h-6 items-center justify-between gap-2 pl-[15px] pr-3.5">
+            <div
+              data-follow-up-composer-footer=""
+              className="mt-1 flex min-h-6 items-center justify-between gap-2 pl-[15px] pr-3.5"
+            >
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
                 {environmentSummary}
               </div>

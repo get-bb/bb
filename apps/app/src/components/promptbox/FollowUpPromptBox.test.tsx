@@ -50,6 +50,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     onSubmit,
     submission,
     zenMode,
+    heightAnimationKey,
   }: {
     footerStart?: ReactNode;
     compact?: {
@@ -59,11 +60,13 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     onSubmit: () => void;
     submission?: { onModifierSubmit?: () => void };
     zenMode?: { resetKey: string | number };
+    heightAnimationKey?: string | number;
   }) => (
     <div
       data-testid="prompt-box"
       data-compact={compact?.isCompact}
       data-zen-reset-key={zenMode?.resetKey}
+      data-height-animation-key={heightAnimationKey}
     >
       {footerStart}
       <input aria-label="Follow-up prompt" />
@@ -466,6 +469,44 @@ describe("FollowUpPromptBox", () => {
       null,
     );
     expect(screen.getByText("Local environment")).toBeTruthy();
+  });
+
+  it("exposes focus state so narrow prompt containers can expand", () => {
+    render(
+      <>
+        <FollowUpPromptBox
+          {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        />
+        <button type="button">Outside composer</button>
+      </>,
+    );
+    const composer = document.querySelector("[data-follow-up-composer]");
+    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+
+    expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
+      false,
+    );
+    expect(screen.getByTestId("prompt-box").dataset.heightAnimationKey).toBe(
+      "compact",
+    );
+
+    fireEvent.focus(input);
+    expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
+      true,
+    );
+    expect(screen.getByTestId("prompt-box").dataset.heightAnimationKey).toBe(
+      "expanded",
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Outside composer" }),
+    );
+    expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
+      false,
+    );
+    expect(screen.getByTestId("prompt-box").dataset.heightAnimationKey).toBe(
+      "compact",
+    );
   });
 
   it("keeps the composer mounted across compact breakpoint changes", () => {
