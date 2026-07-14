@@ -11,6 +11,7 @@ import type {
   HostDaemonAcpLaunchSpec,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
+  HostDaemonConnectTunnelIdentity,
   ProviderCliStatus,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
@@ -60,6 +61,7 @@ export interface CommandDispatchOptions {
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
   caffeinateManager?: CaffeinateManager;
+  ensureConnectTunnelIdentity?: () => Promise<HostDaemonConnectTunnelIdentity>;
   threadStorageRootPath: string;
 }
 

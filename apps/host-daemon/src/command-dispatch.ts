@@ -361,6 +361,12 @@ const commandHandlers: CommandHandlerMap = {
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
+  "connect-tunnel.ensure-identity": async (_command, options) => {
+    if (!options.ensureConnectTunnelIdentity) {
+      throw new Error("bb connect tunnel identity is unavailable");
+    }
+    return options.ensureConnectTunnelIdentity();
+  },
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
   "host.mkdir": mkdirHostPath,

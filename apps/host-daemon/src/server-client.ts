@@ -347,6 +347,9 @@ export function createServerClient(
         ...(args.connectMachineId !== undefined
           ? { connectMachineId: args.connectMachineId }
           : {}),
+        hasMachineCredential:
+          options.machineCredential !== undefined &&
+          options.machineCredential.trim().length > 0,
         platform: resolveHostPlatform(),
         dataDir: args.dataDir,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,

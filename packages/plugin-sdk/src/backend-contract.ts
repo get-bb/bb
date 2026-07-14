@@ -507,6 +507,36 @@ export interface PluginServerApi {
 }
 
 // ---------------------------------------------------------------------------
+// Host control plane.
+// ---------------------------------------------------------------------------
+
+export interface PluginSharedPortTunnelIdentity {
+  /** Gate routing label assigned to this machine. */
+  label: string;
+  /** Gate apex without a scheme, e.g. "getbb.app". */
+  baseDomain: string;
+}
+
+export interface PluginHosts {
+  /**
+   * Ensure this enrolled host has a gate label and return its read-only public
+   * identity. The daemon chooses the trusted gate and desired label; plugins
+   * cannot influence either credential-bearing destination.
+   */
+  ensureSharedPortTunnel(
+    hostId: string,
+  ): Promise<PluginSharedPortTunnelIdentity>;
+
+  /**
+   * Replace this plugin's desired shared-loopback ports for one host. The
+   * server aggregates declarations, owns generations, and delivers the
+   * resulting set to that host's daemon. Tunnel identity is deliberately not
+   * accepted here: it is owned by the daemon's trusted enrollment.
+   */
+  declareSharedPorts(hostId: string, ports: readonly number[]): void;
+}
+
+// ---------------------------------------------------------------------------
 // Status + the API root.
 // ---------------------------------------------------------------------------
 
@@ -555,6 +585,8 @@ export interface BbPluginApi {
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */
   readonly server: PluginServerApi;
+  /** Server-to-daemon host control-plane declarations. */
+  readonly hosts: PluginHosts;
   /**
    * The full BB SDK, bound to this server over loopback (design §4.1).
    * Bind-gated: reading this before the host binds the SDK throws. The real

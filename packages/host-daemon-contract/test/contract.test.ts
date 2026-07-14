@@ -167,6 +167,10 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 };
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
+  "connect-tunnel.ensure-identity": {
+    label: "sawyer-air",
+    baseDomain: "getbb.app",
+  },
   "host.list_files": {
     files: [
       {
@@ -1899,6 +1903,8 @@ describe("host-daemon command schemas", () => {
         contract.hostDaemonInteractiveRequestResponseSchema,
       hostDaemonOnlineRpcCommandSchema:
         contract.hostDaemonOnlineRpcCommandSchema,
+      hostDaemonSessionOpenResponseSchema:
+        contract.hostDaemonSessionOpenResponseSchema,
       workspaceCommitResultSchema:
         contract.hostDaemonCommandResultSchemaByType["workspace.commit"],
       workspaceSquashMergeResultSchema:
@@ -2487,6 +2493,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -2499,6 +2506,7 @@ describe("host-daemon session schemas", () => {
     ).toMatchObject({
       hostId: "host_123",
       hostType: "persistent",
+      hasMachineCredential: true,
       loadedEnvironments: [],
     });
 
@@ -2508,6 +2516,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: false,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -2532,6 +2541,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -2549,6 +2559,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
@@ -2564,6 +2575,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: 0,
@@ -2576,9 +2588,17 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
+        connectShares: {
+          generation: 2,
+          ports: [3000, 8080],
+        },
       }),
     ).toMatchObject({
       sessionId: "session_123",
+      connectShares: {
+        generation: 2,
+        ports: [3000, 8080],
+      },
       retiredEnvironmentIds: [],
       watchSet: {
         generation: 0,
@@ -2586,6 +2606,14 @@ describe("host-daemon session schemas", () => {
         threadStorageTargets: [],
       },
     });
+
+    expect(
+      hostDaemonSessionOpenResponseSchema.parse({
+        sessionId: "session_default_shares",
+        heartbeatIntervalMs: 5_000,
+        leaseTimeoutMs: 30_000,
+      }).connectShares,
+    ).toEqual({ generation: 0, ports: [] });
 
     expect(() =>
       hostDaemonSessionOpenResponseSchema.parse({
@@ -2920,6 +2948,40 @@ describe("host-daemon session schemas", () => {
           threadId: "thr_123",
         },
       ],
+    });
+
+    expect(
+      hostDaemonServerWsMessageSchema.parse({
+        type: "connect-shares.replace",
+        generation: 3,
+        ports: [3000, 8080],
+      }),
+    ).toEqual({
+      type: "connect-shares.replace",
+      generation: 3,
+      ports: [3000, 8080],
+    });
+
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "connect-shares.replace",
+        generation: 4,
+        ports: [3000],
+        tunnel: {
+          label: "sawyer-air",
+          baseDomain: "getbb.app",
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "connect-tunnel.identity",
+        identity: { label: "sawyer-air", baseDomain: "getbb.app" },
+      }),
+    ).toEqual({
+      type: "connect-tunnel.identity",
+      identity: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
 
     expect(

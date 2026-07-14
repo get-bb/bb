@@ -49,6 +49,7 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     heartbeatIntervalMs: args.heartbeatIntervalMs,
     leaseTimeoutMs: args.leaseTimeoutMs,
     retiredEnvironmentIds: [],
+    connectShares: { generation: 0, ports: [] },
     sessionId: args.sessionId,
     watchSet: {
       generation: 0,

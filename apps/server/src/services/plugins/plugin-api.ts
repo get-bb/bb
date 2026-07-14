@@ -27,6 +27,7 @@ import type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginHosts,
   PluginInteractions,
   PluginKvStorage,
   PluginLogger,
@@ -76,6 +77,7 @@ export type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginHosts,
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
@@ -469,6 +471,9 @@ export function createPluginApi(options: {
     timeoutMs: number;
     signal?: AbortSignal;
   }) => Promise<PluginInteractionResult>;
+  ensureSharedPortTunnel: PluginHosts["ensureSharedPortTunnel"];
+  declareSharedPorts: PluginHosts["declareSharedPorts"];
+  clearDeclaredSharedPorts: () => void;
 }): PluginApiHandle {
   const {
     pluginId,
@@ -482,6 +487,9 @@ export function createPluginApi(options: {
     isAgentToolNameTaken,
     reportAgentToolProblem,
     requestInteraction,
+    ensureSharedPortTunnel,
+    declareSharedPorts,
+    clearDeclaredSharedPorts,
   } = options;
   let invalidated = false;
   let wrappedSdk: BbSdk | undefined;
@@ -1116,6 +1124,25 @@ export function createPluginApi(options: {
     },
   };
 
+  const hosts: PluginHosts = {
+    ensureSharedPortTunnel(hostId) {
+      assertLive();
+      return ensureSharedPortTunnel(hostId);
+    },
+    declareSharedPorts(hostId, ports) {
+      assertLive();
+      if (arguments.length !== 2) {
+        throw new Error(
+          "bb.hosts.declareSharedPorts accepts only hostId and ports; tunnel identity is daemon-owned",
+        );
+      }
+      declareSharedPorts(hostId, ports);
+    },
+  };
+  // Host declarations are load-scoped like routes and services. A plugin
+  // reload or disable cannot leave remote access policy behind.
+  disposeHooks.push(clearDeclaredSharedPorts);
+
   const api: BbPluginApi = {
     pluginId,
     log,
@@ -1131,6 +1158,7 @@ export function createPluginApi(options: {
     ui,
     status,
     server,
+    hosts,
     get sdk(): BbSdk {
       assertLive();
       const sdk = getSdk();
