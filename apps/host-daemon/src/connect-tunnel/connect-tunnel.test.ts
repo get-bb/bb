@@ -321,8 +321,17 @@ describe("ConnectTunnelClient", () => {
     });
     client.replaceShareSet({ generation: 1, ports: [3000] });
 
-    await waitFor(() => sockets.length === 1, "successful third upgrade");
+    // Wait on the client's own connected state, not the gate accepting the
+    // socket: the server's "connection" event (sockets.length === 1) fires just
+    // before the client WebSocket "open" handler flips status to "connected",
+    // so asserting status right after the server-side wait raced with that
+    // transition and intermittently observed "reconnecting".
+    await waitFor(
+      () => client.status().state === "connected",
+      "client connected after retried handshakes",
+    );
     expect(attempts).toBe(3);
+    expect(sockets).toHaveLength(1);
     expect(client.status()).toMatchObject({
       state: "connected",
       credentialRejected: false,
