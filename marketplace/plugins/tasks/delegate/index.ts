@@ -39,33 +39,6 @@ const presetExecutionSchema = z
   })
   .strict();
 
-export const BUILTIN_PRESETS = [
-  {
-    name: "Sonnet · high",
-    providerId: "claude-code",
-    modelId: "claude-sonnet-5",
-    reasoningLevel: "high",
-    permissionMode: "full",
-    instructions: "",
-  },
-  {
-    name: "Fable · medium",
-    providerId: "claude-code",
-    modelId: "claude-fable-5",
-    reasoningLevel: "medium",
-    permissionMode: "full",
-    instructions: "",
-  },
-  {
-    name: "GPT-5.6 · high",
-    providerId: "codex",
-    modelId: "gpt-5.6-sol",
-    reasoningLevel: "high",
-    permissionMode: "full",
-    instructions: "",
-  },
-] as const;
-
 export type DelegationErrorCode = "project_not_linked";
 
 export class DelegationError extends Error {
@@ -157,13 +130,6 @@ export function buildSeedPrompt(input: SeedPromptInput): string {
   }
 
   return `${sections.join("\n\n")}\n`;
-}
-
-export function seedBuiltinPresets(store: TasksStore): void {
-  if (store.listPresets().length > 0) return;
-  for (const preset of BUILTIN_PRESETS) {
-    store.createPreset({ ...preset, builtin: true });
-  }
 }
 
 function delegatedThreadTitle(task: Task): string {
@@ -388,6 +354,5 @@ export function registerDelegation(
   bb: BbPluginApi,
   store: TasksApiStore,
 ): void {
-  seedBuiltinPresets(store.tasks);
   bb.rpc.register(delegationRpcContract, handlers(bb, store));
 }

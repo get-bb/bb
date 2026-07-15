@@ -6,12 +6,19 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import type { Comment, Project, Task } from "../db";
 import { delegationRpcContract } from "./contract";
-import {
-  buildSeedPrompt,
-  BUILTIN_PRESETS,
-  registerDelegation,
-  seedBuiltinPresets,
-} from ".";
+import { buildSeedPrompt, registerDelegation } from ".";
+
+function createTestPreset(store: ReturnType<typeof createStore>) {
+  return store.tasks.createPreset({
+    name: "Test worker",
+    providerId: "claude-code",
+    modelId: "claude-sonnet-5",
+    reasoningLevel: "high",
+    permissionMode: "full",
+    instructions: "",
+    builtin: false,
+  });
+}
 
 describe("task delegation", () => {
   it("spawns from a preset, attaches the thread, advances status, comments, and invalidates", async () => {
@@ -39,10 +46,7 @@ describe("task delegation", () => {
       status: "todo",
     });
     registerDelegation(bb, store);
-    const preset = store.tasks
-      .listPresets()
-      .find((candidate) => candidate.name === "Sonnet · high");
-    if (!preset) throw new Error("built-in preset was not seeded");
+    const preset = createTestPreset(store);
 
     const result = delegationRpcContract.delegate.output.parse(
       await harness.callRpc("delegate", {
@@ -75,7 +79,7 @@ describe("task delegation", () => {
       expect.objectContaining({
         taskId: task.id,
         threadId: "thr_delegated",
-        presetName: "Sonnet · high",
+        presetName: "Test worker",
         title: "TASK-1 · Implement delegation",
         liveStatus: "starting",
       }),
@@ -86,16 +90,16 @@ describe("task delegation", () => {
         expect.objectContaining({
           kind: "system",
           authorName: "Tasks",
-          presetName: "Sonnet · high",
+          presetName: "Test worker",
           threadId: "thr_delegated",
-          body: "Status changed to In Progress · dispatched to Sonnet · high",
+          body: "Status changed to In Progress · dispatched to Test worker",
         }),
         expect.objectContaining({
           kind: "system",
           authorName: "Tasks",
-          presetName: "Sonnet · high",
+          presetName: "Test worker",
           threadId: "thr_delegated",
-          body: "Dispatched to Sonnet · high",
+          body: "Dispatched to Test worker",
         }),
       ]),
     );
@@ -134,8 +138,7 @@ describe("task delegation", () => {
       title: "Transition during spawn",
     });
     registerDelegation(bb, store);
-    const preset = store.tasks.listPresets()[0];
-    if (!preset) throw new Error("built-in preset was not seeded");
+    const preset = createTestPreset(store);
 
     await harness.callRpc("delegate", {
       taskId: task.id,
@@ -171,8 +174,7 @@ describe("task delegation", () => {
       title: "Cannot delegate yet",
     });
     registerDelegation(bb, store);
-    const preset = store.tasks.listPresets()[0];
-    if (!preset) throw new Error("built-in preset was not seeded");
+    const preset = createTestPreset(store);
 
     await expect(
       harness.callRpc("delegate", { taskId: task.id, presetId: preset.id }),
@@ -235,25 +237,6 @@ describe("task delegation", () => {
         payload: { taskId: task.id, projectId: project.id },
       },
     ]);
-
-    await harness.dispose();
-  });
-
-  it("seeds built-in presets only when the preset table is empty", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
-    const store = createStore(bb);
-
-    seedBuiltinPresets(store.tasks);
-    seedBuiltinPresets(store.tasks);
-
-    expect(store.tasks.listPresets()).toHaveLength(BUILTIN_PRESETS.length);
-    expect(store.tasks.listPresets()).toEqual(
-      expect.arrayContaining(
-        BUILTIN_PRESETS.map((preset) =>
-          expect.objectContaining({ ...preset, builtin: true }),
-        ),
-      ),
-    );
 
     await harness.dispose();
   });

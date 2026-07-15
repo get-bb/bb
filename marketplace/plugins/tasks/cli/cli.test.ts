@@ -368,19 +368,10 @@ describe("bb tasks CLI", () => {
     const listed = JSON.parse(
       stdout(await harness.runCli(["preset", "list", "--json"])),
     ).presets;
-    expect(listed).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: created.id, name: "CLI reviewer" }),
-        expect.objectContaining({ builtin: true }),
-      ]),
-    );
+    expect(listed).toEqual([
+      expect.objectContaining({ id: created.id, name: "CLI reviewer" }),
+    ]);
 
-    expect(
-      await harness.runCli(["preset", "delete", "Sonnet · high"]),
-    ).toMatchObject({
-      exitCode: 1,
-      stderr: "builtin preset cannot be deleted: Sonnet · high",
-    });
     expect(
       JSON.parse(
         stdout(
@@ -653,12 +644,28 @@ describe("bb tasks CLI", () => {
         "Cannot dispatch yet",
       ]),
     );
+    stdout(
+      await harness.runCli([
+        "preset",
+        "create",
+        "--name",
+        "CLI worker",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5.6-sol",
+        "--reasoning",
+        "high",
+        "--permission",
+        "full",
+      ]),
+    );
 
     const result = await harness.runCli([
       "dispatch",
       "UNL-1",
       "--preset",
-      "Sonnet · high",
+      "CLI worker",
     ]);
     expect(result).toEqual({
       exitCode: 1,
@@ -670,7 +677,7 @@ describe("bb tasks CLI", () => {
       "delegate",
       "UNL-1",
       "--preset",
-      "Sonnet · high",
+      "CLI worker",
     ]);
     expect(aliased.stderr).toBe(
       'Task project "Unlinked CLI" is not linked to a bb project',

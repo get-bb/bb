@@ -84,8 +84,8 @@ Statuses are `backlog`, `todo`, `in_progress`, `in_review`, `done`, and
 Linking a Tasks project to a bb project enables delegation. Open a task, choose
 **Delegate**, select a preset, and optionally add instructions. A preset
 defines the provider, model, reasoning level, permission mode, and reusable
-instructions. Tasks includes starter presets, and custom presets can encode the
-worker profile your team uses repeatedly.
+instructions. Presets are user-defined, so create the worker profiles your team
+uses repeatedly before dispatching work.
 
 Delegation creates a worker thread in the linked bb project, attaches that
 thread to the task, and advances a `backlog` or `todo` task to `in_progress`.

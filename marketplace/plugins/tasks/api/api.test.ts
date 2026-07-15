@@ -88,6 +88,161 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("lists providers and provider models from the BB SDK", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        providers: {
+          list: async () => [
+            { id: "codex", displayName: "Codex" },
+            { id: "claude-code", displayName: "Claude Code" },
+          ],
+          models: async () => ({
+            models: [
+              {
+                model: "gpt-5.6-sol",
+                displayName: "GPT-5.6",
+                isDefault: true,
+                supportedReasoningEfforts: [
+                  { reasoningEffort: "medium" },
+                  { reasoningEffort: "high" },
+                ],
+              },
+              {
+                model: "gpt-5.5",
+                displayName: "GPT-5.5",
+                isDefault: false,
+                supportedReasoningEfforts: [
+                  { reasoningEffort: "low" },
+                  { reasoningEffort: "high" },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    });
+    registerTasksApi(bb, createStore(bb));
+
+    await expect(harness.callRpc("listProviders", {})).resolves.toEqual({
+      providers: [
+        { id: "codex", name: "Codex" },
+        { id: "claude-code", name: "Claude Code" },
+      ],
+    });
+    await expect(
+      harness.callRpc("listProviderModels", { providerId: "codex" }),
+    ).resolves.toEqual({
+      models: [
+        { id: "gpt-5.6-sol", name: "GPT-5.6", isDefault: true },
+        { id: "gpt-5.5", name: "GPT-5.5", isDefault: false },
+      ],
+      reasoningLevels: ["low", "medium", "high"],
+    });
+    expect(harness.sdk.callsTo("providers.list")).toEqual([[]]);
+    expect(harness.sdk.callsTo("providers.models")).toEqual([
+      [{ providerId: "codex" }],
+    ]);
+    await harness.dispose();
+  });
+
+  it("falls back to the standard reasoning levels when models omit metadata", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        providers: {
+          models: async () => ({
+            models: [
+              {
+                model: "model-without-efforts",
+                displayName: "Model without efforts",
+                isDefault: true,
+                supportedReasoningEfforts: [],
+              },
+            ],
+          }),
+        },
+      },
+    });
+    registerTasksApi(bb, createStore(bb));
+
+    await expect(
+      harness.callRpc("listProviderModels", { providerId: "test" }),
+    ).resolves.toMatchObject({
+      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+    });
+    await harness.dispose();
+  });
+
+  it("searches threads and returns recent threads in updated order", async () => {
+    const thread = (
+      id: string,
+      title: string | null,
+      titleFallback: string | null,
+      updatedAt: number,
+      status: string,
+    ) => ({ id, title, titleFallback, updatedAt, status });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          search: async () => ({
+            active: {
+              results: [
+                {
+                  thread: thread("thr_old", "Old match", null, 10, "idle"),
+                },
+                {
+                  thread: thread("thr_new", null, "New fallback", 30, "active"),
+                },
+              ],
+            },
+            archived: {
+              results: [
+                {
+                  thread: thread(
+                    "thr_middle",
+                    "Middle match",
+                    null,
+                    20,
+                    "error",
+                  ),
+                },
+              ],
+            },
+          }),
+          list: async () => [
+            thread("thr_recent_old", "Recent old", null, 40, "idle"),
+            thread("thr_recent_new", null, "Recent new", 50, "starting"),
+          ],
+        },
+      },
+    });
+    registerTasksApi(bb, createStore(bb));
+
+    await expect(
+      harness.callRpc("searchThreads", { query: "match", limit: 2 }),
+    ).resolves.toEqual({
+      threads: [
+        { id: "thr_new", title: "New fallback", status: "active" },
+        { id: "thr_middle", title: "Middle match", status: "error" },
+      ],
+    });
+    await expect(
+      harness.callRpc("searchThreads", { query: "" }),
+    ).resolves.toEqual({
+      threads: [
+        { id: "thr_recent_new", title: "Recent new", status: "starting" },
+        { id: "thr_recent_old", title: "Recent old", status: "idle" },
+      ],
+    });
+    expect(harness.sdk.callsTo("threads.search")).toEqual([
+      [{ query: "match", limitPerGroup: "10" }],
+    ]);
+    expect(harness.sdk.callsTo("threads.list")).toEqual([[{ limit: 10 }]]);
+    await harness.dispose();
+  });
+
   it("does not send for notify=false or agent comments", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
@@ -564,7 +719,7 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
-  it("lets built-in presets be edited but never renamed or deleted", async () => {
+  it("allows legacy built-in rows to be renamed and deleted", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);
     registerTasksApi(bb, store);
@@ -580,27 +735,20 @@ describe("Tasks RPC domain API", () => {
 
     const updated = await harness.callRpc("updatePreset", {
       presetId: preset.id,
+      name: "Renamed",
       modelId: "claude-sonnet-6",
       permissionMode: "workspace-write",
     });
     expect(updated.preset).toMatchObject({
-      name: "Sonnet · high",
+      name: "Renamed",
       modelId: "claude-sonnet-6",
       permissionMode: "workspace-write",
       builtin: true,
     });
-
-    await expect(
-      harness.callRpc("updatePreset", {
-        presetId: preset.id,
-        name: "Renamed",
-      }),
-    ).rejects.toThrow('Built-in preset "Sonnet · high" cannot be renamed');
-
     await expect(
       harness.callRpc("deletePreset", { presetId: preset.id }),
-    ).rejects.toThrow('Built-in preset "Sonnet · high" cannot be deleted');
-    expect(store.tasks.getPreset(preset.id)).not.toBeNull();
+    ).resolves.toEqual({ deleted: true });
+    expect(store.tasks.getPreset(preset.id)).toBeUndefined();
 
     await harness.dispose();
   });

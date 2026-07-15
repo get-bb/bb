@@ -62,6 +62,13 @@ const dueDateSchema = z
   }, "must be a valid calendar date in YYYY-MM-DD format");
 const taskStatusSchema = z.enum(TASK_STATUSES);
 const taskPrioritySchema = z.enum(TASK_PRIORITIES);
+const threadSearchStatusSchema = z.enum([
+  "idle",
+  "starting",
+  "active",
+  "stopping",
+  "error",
+]);
 
 export const folderSchema = z
   .object({
@@ -477,6 +484,54 @@ export const tasksRpcContract = defineRpcContract({
   listPresets: {
     input: z.null(),
     output: z.object({ presets: z.array(presetSchema) }).strict(),
+  },
+  listProviders: {
+    input: z.object({}).strict(),
+    output: z
+      .object({
+        providers: z.array(
+          z.object({ id: z.string(), name: z.string() }).strict(),
+        ),
+      })
+      .strict(),
+  },
+  listProviderModels: {
+    input: z.object({ providerId: nonBlankStringSchema }).strict(),
+    output: z
+      .object({
+        models: z.array(
+          z
+            .object({
+              id: z.string(),
+              name: z.string(),
+              isDefault: z.boolean(),
+            })
+            .strict(),
+        ),
+        reasoningLevels: z.array(z.string()),
+      })
+      .strict(),
+  },
+  searchThreads: {
+    input: z
+      .object({
+        query: z.string(),
+        limit: z.number().int().positive().optional(),
+      })
+      .strict(),
+    output: z
+      .object({
+        threads: z.array(
+          z
+            .object({
+              id: z.string(),
+              title: z.string(),
+              status: threadSearchStatusSchema,
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
   },
   // BB workspace projects (proj_…) for the linked-project picker; distinct
   // from this plugin's own task projects.

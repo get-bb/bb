@@ -1295,9 +1295,6 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       "bb tasks preset delete <name-or-id> [--json]",
     );
     const preset = resolvePreset(await listPresets(domain), address!);
-    if (preset.builtin) {
-      throw new CliError(`builtin preset cannot be deleted: ${preset.name}`);
-    }
     const result = tasksRpcContract.deletePreset.output.parse(
       await domain.deletePreset(
         tasksRpcContract.deletePreset.input.parse({ presetId: preset.id }),

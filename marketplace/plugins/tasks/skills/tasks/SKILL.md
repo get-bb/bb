@@ -8,6 +8,10 @@ description: Use when asked to work on or track a task in the Tasks plugin, when
 Use the `bb tasks` CLI to understand the assigned task, keep its record useful,
 and report the outcome where the work is tracked.
 
+Delegation presets are user-defined; Tasks ships with none. Before dispatching
+work, use `bb tasks preset list` and create a preset if the required one does
+not already exist. Dispatch requires an existing preset.
+
 ## Work a task
 
 1. Find and read the task before acting:

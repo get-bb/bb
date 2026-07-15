@@ -41,6 +41,16 @@ interface SummaryRow {
   active_agent_count: number;
 }
 
+const PRESET_REASONING_LEVELS = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+const MAX_THREAD_SEARCH_RESULTS = 10;
+
 export interface TasksApiStore {
   readonly tasks: TasksStore;
   transaction<T>(operation: () => T): T;
@@ -663,31 +673,90 @@ export function registerHandlers(
     },
     updatePreset(input) {
       const { presetId, ...changes } = input;
-      // Built-in presets are fully editable except their name, which stays
-      // stable as their identity in menus and docs.
-      const current = store.tasks.getPreset(presetId);
-      if (
-        current?.builtin &&
-        changes.name !== undefined &&
-        changes.name !== current.name
-      ) {
-        throw new Error(`Built-in preset "${current.name}" cannot be renamed`);
-      }
       const preset = store.tasks.updatePreset(presetId, changes);
       publishProjectsChanged(bb, null);
       return { preset };
     },
     deletePreset(input) {
-      const current = store.tasks.getPreset(input.presetId);
-      if (current?.builtin) {
-        throw new Error(`Built-in preset "${current.name}" cannot be deleted`);
-      }
       const deleted = store.tasks.deletePreset(input.presetId);
       if (deleted) publishProjectsChanged(bb, null);
       return { deleted };
     },
     listPresets() {
       return { presets: store.tasks.listPresets() };
+    },
+    async listProviders() {
+      const providers = await bb.sdk.providers.list();
+      return {
+        providers: providers.map((provider) => ({
+          id: provider.id,
+          name: provider.displayName,
+        })),
+      };
+    },
+    async listProviderModels(input) {
+      const result = await bb.sdk.providers.models({
+        providerId: input.providerId,
+      });
+      const supportedReasoningLevels = new Set(
+        result.models.flatMap((model) =>
+          model.supportedReasoningEfforts.map(
+            (effort) => effort.reasoningEffort,
+          ),
+        ),
+      );
+      const reasoningLevels = PRESET_REASONING_LEVELS.filter((level) =>
+        supportedReasoningLevels.has(level),
+      );
+      return {
+        models: result.models.map((model) => ({
+          id: model.model,
+          name: model.displayName,
+          isDefault: model.isDefault,
+        })),
+        // The SDK has model-level reasoning metadata but no provider-level
+        // list. Fall back to the standard picker levels when models omit it.
+        reasoningLevels:
+          reasoningLevels.length > 0
+            ? reasoningLevels
+            : [...PRESET_REASONING_LEVELS],
+      };
+    },
+    async searchThreads(input) {
+      const query = input.query.trim();
+      const limit = Math.min(input.limit ?? MAX_THREAD_SEARCH_RESULTS, 10);
+      const candidates =
+        query.length >= 2
+          ? await bb.sdk.threads.search({
+              query,
+              limitPerGroup: String(MAX_THREAD_SEARCH_RESULTS),
+            })
+          : null;
+      const threads = candidates
+        ? [...candidates.active.results, ...candidates.archived.results].map(
+            (result) => result.thread,
+          )
+        : (
+            await bb.sdk.threads.list({
+              limit: MAX_THREAD_SEARCH_RESULTS,
+            })
+          ).filter((thread) => {
+            if (query.length === 0) return true;
+            const title = thread.title ?? thread.titleFallback ?? "";
+            return title
+              .toLocaleLowerCase()
+              .includes(query.toLocaleLowerCase());
+          });
+      return {
+        threads: threads
+          .sort((left, right) => right.updatedAt - left.updatedAt)
+          .slice(0, limit)
+          .map((thread) => ({
+            id: thread.id,
+            title: thread.title ?? thread.titleFallback ?? "Untitled thread",
+            status: thread.status,
+          })),
+      };
     },
     async listBbProjects() {
       const projects = await bb.sdk.projects.list();
