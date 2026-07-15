@@ -1,6 +1,9 @@
 import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import { z } from "zod";
 
+import { createStore, registerTasksApi } from "./api";
+import { registerAttachments } from "./attachments";
+
 export const TASKS_PLUGIN_NAME = "Tasks";
 export const TASKS_PLUGIN_VERSION = "0.1.0";
 
@@ -18,8 +21,9 @@ function statusPayload() {
 export default async function plugin(bb: BbPluginApi) {
   bb.log.info(`${TASKS_PLUGIN_NAME} ${TASKS_PLUGIN_VERSION} loaded`);
 
-  const db = bb.storage.database();
-  db.prepare("SELECT 1").get();
+  const store = createStore(bb);
+  registerTasksApi(bb, store);
+  registerAttachments(bb, store.tasks);
 
   bb.rpc.register(tasksRpcContract, {
     ping(): { ok: true; version: string } {
