@@ -291,7 +291,7 @@ interface AppHeaderProps {
   projectId?: string;
   project?: ProjectResponse;
   /** Registered navPanel when this is a plugin panel route (design §5.2):
-   * the shared header shows plugin logo + title, plus the registration's
+   * the shared header shows plugin icon + title, plus the registration's
    * `headerContent` as the actions. */
   pluginPanel?: PluginNavPanelSlot;
   /** The panel route's splat remainder ("" at the panel root). */
@@ -484,7 +484,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const archivedFolderId = isArchivedView
     ? new URLSearchParams(location.search).get("folderId")
     : null;
-  // Plugin panel routes ride the shared header (design §5.2): logo + panel
+  // Plugin panel routes ride the shared header (design §5.2): icon + panel
   // title in the center, the registration's headerContent as the actions.
   const { navPanels } = usePluginSlots();
   // Global settings routes swap the app sidebar for the settings sidebar.

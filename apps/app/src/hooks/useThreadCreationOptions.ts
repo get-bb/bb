@@ -18,6 +18,7 @@ import type {
   CreateExecutionInputSources,
   ExistingThreadExecutionInputSources,
   SystemExecutionOptionsModelLoadError,
+  SystemProvidersQuery,
 } from "@bb/server-contract";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
@@ -88,6 +89,7 @@ type PermissionModeSelectionSetter = (value: PermissionMode) => void;
 type ClearSelectionHandler = () => void;
 
 interface UseThreadCreationOptionsResult<TExecutionInputSources> {
+  executionOptionsRouting: SystemProvidersQuery;
   selectedProviderId: string;
   setSelectedProviderId: StringSelectionSetter;
   providerOptions: PickerOption<string>[];
@@ -117,6 +119,30 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   supportsServiceTier: boolean;
   serviceTierSupportByProvider: Record<string, boolean>;
   executionInputSources: TExecutionInputSources;
+}
+
+interface ResolveThreadCreationProviderRoutingArgs {
+  environmentId?: string;
+  environmentSelectionValue: string;
+  scope: "component-local" | "new-thread";
+}
+
+export function resolveThreadCreationProviderRouting({
+  environmentId,
+  environmentSelectionValue,
+  scope,
+}: ResolveThreadCreationProviderRoutingArgs): SystemProvidersQuery {
+  if (scope === "component-local") {
+    return environmentId === undefined ? {} : { environmentId };
+  }
+  const parsed = parseEnvironmentValue(environmentSelectionValue);
+  if (parsed?.type === "host") {
+    return { hostId: parsed.hostId };
+  }
+  if (parsed?.type === "reuse" && parsed.environmentId !== null) {
+    return { environmentId: parsed.environmentId };
+  }
+  return {};
 }
 
 const NO_MODEL_LOAD_ERROR: SystemExecutionOptionsModelLoadError | null = null;
@@ -150,6 +176,7 @@ export function useThreadCreationOptions(
     initialReasoningLevel,
     initialServiceTier,
     preferenceProjectId,
+    resolveProviderRouting,
     resetKey,
     scope = "new-thread",
   } = options ?? {};
@@ -254,16 +281,19 @@ export function useThreadCreationOptions(
 
   // --- Provider selection ---
   const executionOptionsQueryEnabled = enabled;
-  const executionOptionsEnvironmentId =
-    scope === "component-local" && executionOptionsQueryEnabled
-      ? environmentId
-      : undefined;
+  const executionOptionsRouting = resolveProviderRouting
+    ? resolveProviderRouting(rawEnvironmentSelectionValue)
+    : resolveThreadCreationProviderRouting({
+        environmentId,
+        environmentSelectionValue: rawEnvironmentSelectionValue,
+        scope,
+      });
   const executionOptionsProviderId = executionOptionsQueryEnabled
     ? rawSelectedProviderId || PRODUCT_DEFAULT_PROVIDER_ID
     : undefined;
   const executionOptionsQuery = useSystemExecutionOptions({
     enabled: executionOptionsQueryEnabled,
-    environmentId: executionOptionsEnvironmentId,
+    ...executionOptionsRouting,
     providerId: executionOptionsProviderId,
   });
   const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
@@ -617,6 +647,7 @@ export function useThreadCreationOptions(
   }, [setRootComposeReuseValue]);
 
   return {
+    executionOptionsRouting,
     selectedProviderId: effectiveProviderId,
     setSelectedProviderId,
     providerOptions,

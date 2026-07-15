@@ -10,6 +10,7 @@ import {
   allHostQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
+  allSystemProvidersQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
   allThreadConversationOutlineQueryKeyPrefix,
   allThreadDetailBootstrapQueryKeyPrefix,
@@ -28,7 +29,6 @@ import {
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
-  systemProvidersQueryKey,
   threadPromptHistoryQueryKeyPrefix,
   threadSearchQueryKeyPrefix,
   threadsQueryKey,
@@ -44,17 +44,19 @@ import {
 interface SystemExecutionOptionsCacheArgs extends QueryClientArg {
   environmentId: string | null;
   executionOptions: SystemExecutionOptionsResponse;
+  hostId: string | null;
   providerId: string | null;
 }
 
 export function seedSystemExecutionOptionsCache({
   environmentId,
   executionOptions,
+  hostId,
   providerId,
   queryClient,
 }: SystemExecutionOptionsCacheArgs): void {
   queryClient.setQueryData<SystemExecutionOptionsResponse>(
-    systemExecutionOptionsQueryKey({ environmentId, providerId }),
+    systemExecutionOptionsQueryKey({ environmentId, hostId, providerId }),
     executionOptions,
   );
 }
@@ -160,7 +162,7 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     allEnvironmentDiffFilesQueryKeyPrefix(),
     allEnvironmentFilePreviewQueryKeyPrefix(),
     hostPathExistenceQueryKeyPrefix(),
-    systemProvidersQueryKey(),
+    allSystemProvidersQueryKeyPrefix(),
     allSystemExecutionOptionsQueryKeyPrefix(),
   ];
 }

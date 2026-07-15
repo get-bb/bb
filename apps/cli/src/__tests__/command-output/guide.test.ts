@@ -17,7 +17,16 @@ describe("bb guide command output", () => {
     const errorOutput = collectLogLines(vi.mocked(console.error)).join("\n");
     expect(errorOutput).toContain("Unknown guide chapter 'missing'");
     expect(errorOutput).toContain(
-      "Available: threads, environments, agent-configuration, providers, projects, machines, customization, plugins.",
+      "Available: threads, environments, agent-configuration, providers, projects, machines, terminals, customization, plugins.",
     );
+  });
+
+  it("bb guide terminals documents explicit scopes and ID-only mutations", async () => {
+    await runCommand(["guide", "terminals"], registerGuideCommand);
+
+    const output = collectLogLines(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("exactly one explicit scope");
+    expect(output).toContain("bb terminal list --thread <thread-id>");
+    expect(output).toContain("bb terminal rename <terminal-id> <title>");
   });
 });

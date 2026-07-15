@@ -23,6 +23,7 @@ export interface UseFileSearchSuggestionsArgs {
   query: string | null;
   limit?: number;
   environmentId: string | null;
+  hostId?: string | null;
   currentThreadId?: string;
 }
 
@@ -67,6 +68,7 @@ export function useFileSearchSuggestions(
     query: args.query,
     limit,
     environmentId: args.environmentId,
+    hostId: args.hostId,
     currentThreadId: args.currentThreadId,
     includeDirectories: false,
   });

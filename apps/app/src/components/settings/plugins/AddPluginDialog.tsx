@@ -13,6 +13,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   invalidateMarketplaces,
   invalidatePluginList,
@@ -106,7 +107,7 @@ function AddPluginDialogContent({
     },
     onError: (error) => {
       appToast.error("Installing the plugin failed", {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });

@@ -46,7 +46,7 @@ describe("appearance settings", () => {
       const put = await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "nord" }),
+        body: JSON.stringify({ themeId: "nord", faviconColor: "default" }),
       });
       expect(put.status).toBe(200);
       expect(appThemeSchema.parse(await readJson(put))).toEqual({
@@ -71,7 +71,7 @@ describe("appearance settings", () => {
       const put = await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "midnight" }),
+        body: JSON.stringify({ themeId: "midnight", faviconColor: "default" }),
       });
       expect(put.status).toBe(200);
       expect(appThemeSchema.parse(await readJson(put))).toEqual({
@@ -114,7 +114,7 @@ describe("appearance settings", () => {
     });
   });
 
-  it("leaves the favicon color unchanged on a theme-only change", async () => {
+  it("persists a complete selection when changing the theme", async () => {
     await withTestHarness(async (harness) => {
       await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
@@ -122,11 +122,10 @@ describe("appearance settings", () => {
         body: JSON.stringify({ themeId: "default", faviconColor: "purple" }),
       });
 
-      // A theme-only write omits faviconColor and must not reset it.
       const put = await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "nord" }),
+        body: JSON.stringify({ themeId: "nord", faviconColor: "purple" }),
       });
       expect(appThemeSchema.parse(await readJson(put))).toEqual({
         themeId: "nord",
@@ -143,6 +142,17 @@ describe("appearance settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ themeId: "default", faviconColor: "chartreuse" }),
+      });
+      expect(response.status).toBe(400);
+    });
+  });
+
+  it("rejects an incomplete appearance selection", async () => {
+    await withTestHarness(async (harness) => {
+      const response = await harness.app.request("/api/v1/settings/appearance", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ themeId: "nord" }),
       });
       expect(response.status).toBe(400);
     });
@@ -184,6 +194,9 @@ describe("appearance settings", () => {
           name: "bb-plugin-palette",
           version: "0.1.0",
           bb: {
+            name: "Palette fixture",
+            description: "Plugin palette fixture.",
+            branding: { icon: "Zap" },
             server: "./server.ts",
             themes: [
               {
@@ -215,7 +228,7 @@ describe("appearance settings", () => {
       const response = await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId }),
+        body: JSON.stringify({ themeId, faviconColor: "default" }),
       });
       expect(response.status).toBe(200);
       expect(appThemeSchema.parse(await readJson(response))).toEqual({
@@ -232,7 +245,7 @@ describe("appearance settings", () => {
       await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "ghost" }),
+        body: JSON.stringify({ themeId: "ghost", faviconColor: "default" }),
       });
 
       await rm(join(harness.config.dataDir, "theme", "ghost"), {
@@ -259,7 +272,10 @@ describe("appearance settings", () => {
       const response = await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "nonexistent" }),
+        body: JSON.stringify({
+          themeId: "nonexistent",
+          faviconColor: "default",
+        }),
       });
       expect(response.status).toBe(404);
     });
@@ -270,7 +286,7 @@ describe("appearance settings", () => {
       const response = await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "../evil" }),
+        body: JSON.stringify({ themeId: "../evil", faviconColor: "default" }),
       });
       expect(response.status).toBe(400);
     });

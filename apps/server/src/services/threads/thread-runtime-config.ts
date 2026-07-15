@@ -1,4 +1,4 @@
-import { getProject } from "@bb/db";
+import { getEnvironment, getHost, getProject } from "@bb/db";
 import type {
   DynamicTool,
   InstructionMode,
@@ -25,8 +25,11 @@ import {
 import {
   listPluginAgentTools,
   listPluginInstructionContributions,
+  getPluginSkillRootContributions,
+  resolvePluginAgentConfiguration,
 } from "../plugins/plugin-agent-contributions.js";
 import { resolveSkillCatalogSources } from "../skills/skill-catalog.js";
+import { discoverPluginSkillIds } from "../skills/injected-skills.js";
 import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
 import { isSideChatThread } from "./side-chat-thread.js";
@@ -68,6 +71,7 @@ export interface RequestedExecutionOptions extends ThreadExecutionOptions {
 
 export interface ResolveThreadRuntimeCommandConfigArgs {
   environment: ThreadRuntimeCommandEnvironment;
+  model: string;
   thread: Thread;
 }
 
@@ -110,11 +114,19 @@ interface DynamicToolContribution {
  * The session's dynamic tool set: built-ins first, then native plugin tools
  * (bb.agents.registerTool), resolved live at thread.start/turn.submit — so
  * tool-set changes apply on the next session start, never mid-session.
- * Side-chat threads get no dynamic tools.
+ * Side-chat threads keep the independent built-in-tool exclusion, while
+ * conditionally selected plugin tools follow configure() like any thread.
  */
-function resolveDynamicTools(thread: Thread): DynamicToolContribution[] {
+function resolveDynamicTools(
+  thread: Thread,
+  pluginTools: ReturnType<typeof listPluginAgentTools>,
+): DynamicToolContribution[] {
   if (isSideChatThread(thread)) {
-    return [];
+    return pluginTools.map((contribution) => ({
+      tool: contribution.tool,
+      instructions: contribution.instructions,
+      pluginId: contribution.pluginId,
+    }));
   }
   return [
     {
@@ -122,7 +134,7 @@ function resolveDynamicTools(thread: Thread): DynamicToolContribution[] {
       instructions: UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS,
       pluginId: null,
     },
-    ...listPluginAgentTools().map((contribution) => ({
+    ...pluginTools.map((contribution) => ({
       tool: contribution.tool,
       instructions: contribution.instructions,
       pluginId: contribution.pluginId,
@@ -164,8 +176,17 @@ export async function resolveThreadRuntimeCommandConfig(
   args: ResolveThreadRuntimeCommandConfigArgs,
 ): Promise<ResolvedThreadRuntimeCommandConfig> {
   const workspacePath = requireWorkspacePath(args.environment);
-  if (!getProject(deps.db, args.thread.projectId)) {
+  const project = getProject(deps.db, args.thread.projectId);
+  if (!project) {
     throw new ApiError(404, "project_not_found", "Project not found");
+  }
+  const environment = getEnvironment(deps.db, args.environment.id);
+  if (!environment) {
+    throw new ApiError(404, "environment_not_found", "Environment not found");
+  }
+  const host = getHost(deps.db, args.environment.hostId);
+  if (!host) {
+    throw new ApiError(404, "host_not_found", "Host not found");
   }
 
   const { workspaceProvisionType } = args.environment;
@@ -179,14 +200,55 @@ export async function resolveThreadRuntimeCommandConfig(
       workspacePath,
     }),
   ]);
+  const pluginSkillRoots = getPluginSkillRootContributions();
+  const skillIdsByPlugin = discoverPluginSkillIds(deps.logger, {
+    pluginSkillRoots,
+    skillTreeRegistry: deps.skillTreeRegistry,
+  });
+  const sideChat = isSideChatThread(args.thread);
+  const conditionalConfiguration = await resolvePluginAgentConfiguration({
+    context: {
+      thread: {
+        id: args.thread.id,
+        title: args.thread.title,
+        parentThreadId: args.thread.parentThreadId,
+        sourceThreadId: args.thread.sourceThreadId,
+      },
+      project: {
+        id: project.id,
+        kind: project.kind,
+        name: project.name,
+        gitRemoteUrl: project.gitRemoteUrl,
+      },
+      environment: {
+        id: environment.id,
+        name: environment.name,
+        path: environment.path,
+        workspaceProvisionType: environment.workspaceProvisionType,
+        branchName: environment.branchName,
+      },
+      host: { id: host.id, name: host.name },
+      provider: { id: args.thread.providerId, model: args.model },
+      sideChat,
+      origin: {
+        kind: args.thread.originKind ?? args.thread.childOrigin,
+        pluginId: args.thread.originPluginId,
+      },
+    },
+    skillIdsByPlugin,
+  });
   const injectedSkillSources = resolveSkillCatalogSources(deps, {
     projectSkillSources,
+    pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
   });
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,
     deps.config.dataDir,
   );
-  const dynamicToolContributions = resolveDynamicTools(args.thread);
+  const dynamicToolContributions = resolveDynamicTools(
+    args.thread,
+    conditionalConfiguration.tools,
+  );
   const dynamicTools = dynamicToolContributions.map(
     (contribution) => contribution.tool,
   );
@@ -205,9 +267,9 @@ export async function resolveThreadRuntimeCommandConfig(
       );
     }
   }
-  // Plugin-level contributeInstructions providers (after per-tool snippets,
-  // before data-dir user instructions). Side chats get no plugin tools and
-  // no plugin instructions.
+  // Legacy plugin-level contributeInstructions providers (after per-tool
+  // snippets, before configure dynamic instructions). Their established
+  // side-chat exclusion remains independent of configure().
   if (!isSideChatThread(args.thread)) {
     for (const contribution of listPluginInstructionContributions()) {
       let text: string | null;
@@ -236,6 +298,16 @@ export async function resolveThreadRuntimeCommandConfig(
         text,
       );
     }
+  }
+  // Conditional dynamic instructions follow the legacy/static plugin-level
+  // providers on every thread, including side chats. Each configure output
+  // was already validated and capped by the plugin service;
+  // user/data-dir/workspace instructions still follow.
+  for (const contribution of conditionalConfiguration.dynamicInstructions) {
+    instructionSections.push(
+      `The following dynamic instructions come from the BB plugin "${contribution.pluginId}":`,
+      contribution.text,
+    );
   }
   if (dataDirAgentInstructions) {
     instructionSections.push(

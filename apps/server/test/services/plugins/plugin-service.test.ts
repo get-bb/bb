@@ -30,7 +30,12 @@ async function writePlugin(
       name: options.name,
       version: options.version ?? "0.1.0",
       ...(options.engines ? { engines: { bb: options.engines } } : {}),
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Service fixture",
+        description: "Plugin service fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -149,7 +154,7 @@ describe("plugin service", () => {
     expect(() => captured.onDispose(() => {})).toThrowError(/stale API handle/);
   });
 
-  it("marks engine mismatches incompatible and missing dirs missing", async () => {
+  it("marks initial engine mismatches incompatible and preserves a live plugin when reload finds its directory missing", async () => {
     const tooNew = await writePlugin(workDir, {
       name: "bb-plugin-too-new",
       engines: ">=99.0.0",
@@ -168,8 +173,10 @@ describe("plugin service", () => {
     await rm(vanishing, { recursive: true, force: true });
     await service.reload("vanishing");
     const entry = service.list().find((p) => p.id === "vanishing");
-    expect(entry?.status).toBe("missing");
+    expect(entry?.status).toBe("running");
+    expect(entry?.statusDetail).toContain("reload failed");
     expect(entry?.statusDetail).toContain("reinstall");
+    expect(service.getApi("vanishing")).toBeDefined();
   });
 
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {

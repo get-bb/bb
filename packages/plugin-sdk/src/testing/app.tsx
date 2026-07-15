@@ -2,15 +2,15 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
+  useSyncExternalStore,
   type ComponentType,
   type ReactElement,
   type ReactNode,
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
 import {
-  PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN,
-  PLUGIN_SLOT_ID_PATTERN,
   type BbContext,
   type BbNavigate,
   type PluginAppDefinition,
@@ -30,6 +30,12 @@ import {
   type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "../app-contract.js";
+import type {
+  PluginRpcContract,
+  PluginRpcResult,
+  StandardSchemaV1InferInput,
+} from "../rpc-contract.js";
+import type { JsonValue } from "../json-value.js";
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -49,7 +55,9 @@ import {
  * - {@link renderSlot} mounts one registration's component with mock hook
  *   backends: rpc as a method→handler map with a call log, realtime as a
  *   channel you can push events into, settings/context as plain values, and
- *   navigate/composer as recorders.
+ *   navigate/composer as recorders. Its `behavior`, `inspection`, and
+ *   `lifecycle` views separate host inputs, assertions, and mount controls;
+ *   the existing direct members remain aliases.
  *
  * Add `// @vitest-environment jsdom` to test files using renderSlot.
  */
@@ -77,9 +85,17 @@ export type NavigateCall =
     };
 
 export interface ComposerLog {
+  /** Latest plain text in this isolated composer scope. */
+  readonly text: string;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
+}
+
+interface TestComposerStore {
+  api: Omit<PluginComposerApi, "text">;
+  getSnapshot(): string;
+  subscribe(listener: () => void): () => void;
 }
 
 interface SlotEnv {
@@ -90,7 +106,7 @@ interface SlotEnv {
   bbContext: BbContext;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
-  composer: PluginComposerApi;
+  composer: TestComposerStore;
   composerLog: ComposerLog;
 }
 
@@ -127,10 +143,15 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
   );
 }
 
+const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+
 const testPluginSdkApp = {
   definePluginApp,
-  useRpc(): PluginRpcClient {
-    return useSlotEnv("useRpc").rpcClient;
+  useRpc<
+    Contract extends PluginRpcContract = PluginRpcContract,
+  >(): PluginRpcClient<Contract> {
+    return useSlotEnv("useRpc").rpcClient as PluginRpcClient<Contract>;
   },
   useRealtime(channel: string, handler: (payload: unknown) => void): void {
     const env = useSlotEnv("useRealtime");
@@ -162,7 +183,13 @@ const testPluginSdkApp = {
     return useSlotEnv("useBbNavigate").navigate;
   },
   useComposer(): PluginComposerApi {
-    return useSlotEnv("useComposer").composer;
+    const composer = useSlotEnv("useComposer").composer;
+    const text = useSyncExternalStore(
+      composer.subscribe,
+      composer.getSnapshot,
+      composer.getSnapshot,
+    );
+    return useMemo(() => ({ ...composer.api, text }), [composer, text]);
   },
 } satisfies PluginSdkApp;
 
@@ -190,7 +217,7 @@ export function installTestPluginRuntime(): void {
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
-  navPanels: Array<PluginNavPanelRegistration & { chrome: "page" | "none" }>;
+  navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   composerAccessories: PluginComposerAccessoryRegistration[];
   pendingInteractions: PluginPendingInteractionRegistration[];
@@ -333,12 +360,6 @@ function collectRegistrations(
             `${kind}: "path" must match ${String(PLUGIN_SLOT_ID_PATTERN)} (it becomes a URL segment), got ${JSON.stringify(path)}`,
           );
         }
-        const chrome = registration.chrome ?? "page";
-        if (chrome !== "page" && chrome !== "none") {
-          throw new Error(
-            `${kind}: "chrome" must be "page" or "none" when set, got ${JSON.stringify(registration.chrome)}`,
-          );
-        }
         if (
           registration.headerContent !== undefined &&
           typeof registration.headerContent !== "function"
@@ -353,7 +374,6 @@ function collectRegistrations(
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
           component: requireComponent(kind, registration.component),
-          chrome,
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }
             : {}),
@@ -477,45 +497,136 @@ export async function loadPluginApp(
 // renderSlot — mount one registration's component with mock hook backends.
 // ---------------------------------------------------------------------------
 
-export interface RenderSlotOptions {
+export type PluginRpcTestHandlers<Contract extends PluginRpcContract> = {
+  [Method in keyof Contract]: (
+    input: StandardSchemaV1InferInput<Contract[Method]["input"]>,
+  ) =>
+    | PluginRpcResult<Contract[Method]>
+    | Promise<PluginRpcResult<Contract[Method]>>;
+};
+
+export interface RenderSlotOptions<
+  Contract extends PluginRpcContract = PluginRpcContract,
+> {
   /**
    * Backing handlers for `useRpc().call`: method name → implementation.
    * Inputs and results are JSON-round-tripped like the wire; a method
    * without a handler rejects, and a throwing handler rejects with its
    * message (what the real rpc client surfaces).
    */
-  rpc?: Record<string, (input: unknown) => unknown>;
+  rpc?: PluginRpcTestHandlers<Contract>;
   /** `useSettings()` values; omitted → `{ values: undefined, isLoading: false }`. */
   settings?: Record<string, string | boolean>;
   /** `useBbContext()` selection; both default to null. */
   context?: { projectId?: string | null; threadId?: string | null };
+  /** Initial plain text for this render's isolated `useComposer()` scope. */
+  composer?: { text?: string };
 }
 
-export interface RenderedSlot extends RenderResult {
-  /** Every `useRpc().call`, in order. */
-  rpcCalls: RpcCall[];
+/** Host-originated inputs a slot test can drive deterministically. */
+export interface RenderedSlotBehaviorDrivers {
   /**
    * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
    * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
    */
   emitRealtime(channel: string, payload: unknown): Promise<void>;
-  /** Every `useBbNavigate()` call, in order. */
-  navigateCalls: NavigateCall[];
-  /** Everything written through `useComposer()`. */
-  composer: ComposerLog;
 }
 
-export function renderSlot<Props extends object>(
+/** Read-only call/write logs produced while the slot is mounted. */
+export interface RenderedSlotInspectionState {
+  /** Every `useRpc().call`, in order. */
+  readonly rpcCalls: RpcCall[];
+  /** Every `useBbNavigate()` call, in order. */
+  readonly navigateCalls: NavigateCall[];
+  /** Everything written through `useComposer()`. */
+  readonly composer: ComposerLog;
+}
+
+/** Explicit mount controls, separate from behavior inputs and call logs. */
+export interface RenderedSlotLifecycleControls {
+  rerender(ui: ReactNode): void;
+  unmount(): void;
+}
+
+/**
+ * Testing Library result plus BB-specific helpers. Direct members are
+ * retained for compatibility; named views make intent explicit in new tests.
+ */
+export interface RenderedSlot
+  extends
+    RenderResult,
+    RenderedSlotBehaviorDrivers,
+    RenderedSlotInspectionState {
+  readonly behavior: RenderedSlotBehaviorDrivers;
+  readonly inspection: RenderedSlotInspectionState;
+  readonly lifecycle: RenderedSlotLifecycleControls;
+}
+
+function strictJsonRoundTrip(value: unknown, label: string): JsonValue {
+  const ancestors = new Set<object>();
+  function visit(current: unknown, path: string): void {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        throw new Error(`${label} at ${path} contains a non-finite number`);
+      }
+      return;
+    }
+    if (typeof current !== "object") {
+      throw new Error(`${label} at ${path} is not a JSON value`);
+    }
+    if (ancestors.has(current)) {
+      throw new Error(`${label} at ${path} is cyclic`);
+    }
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        current.forEach((item, index) => visit(item, `${path}[${index}]`));
+        return;
+      }
+      const prototype = Object.getPrototypeOf(current) as object | null;
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error(`${label} at ${path} must be a plain JSON object`);
+      }
+      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+        throw new Error(`${label} at ${path} contains a symbol key`);
+      }
+      for (const [key, child] of Object.entries(current)) {
+        visit(child, `${path}.${key}`);
+      }
+    } finally {
+      ancestors.delete(current);
+    }
+  }
+  visit(value, "$");
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
+export function renderSlot<
+  Props extends object,
+  Contract extends PluginRpcContract = PluginRpcContract,
+>(
   registration: { component: ComponentType<Props> },
   props: Props,
-  options: RenderSlotOptions = {},
+  options: RenderSlotOptions<Contract> = {},
 ): RenderedSlot {
   const rpcCalls: RpcCall[] = [];
-  const rpcHandlers = options.rpc ?? {};
+  const rpcHandlers = (options.rpc ?? {}) as Record<
+    string,
+    (input: unknown) => unknown
+  >;
   const rpcClient: PluginRpcClient = {
     async call(method, input) {
       const normalizedInput =
-        input === undefined ? null : JSON.parse(JSON.stringify(input));
+        input === undefined
+          ? null
+          : strictJsonRoundTrip(input, `rpc "${method}" input`);
       rpcCalls.push({ method, input: normalizedInput });
       const handler = rpcHandlers[method];
       if (!handler) {
@@ -524,8 +635,7 @@ export function renderSlot<Props extends object>(
         );
       }
       const result = await handler(normalizedInput);
-      const json = JSON.stringify(result);
-      return json === undefined ? undefined : (JSON.parse(json) as unknown);
+      return strictJsonRoundTrip(result, `rpc "${method}" result`);
     },
   };
 
@@ -557,24 +667,66 @@ export function renderSlot<Props extends object>(
   const projectId = options.context?.projectId ?? null;
   const threadId = options.context?.threadId ?? null;
 
+  let composerText = options.composer?.text ?? "";
+  const composerListeners = new Set<() => void>();
+  const commitComposerText = (next: string) => {
+    if (next === composerText) return;
+    composerText = next;
+    for (const listener of composerListeners) listener();
+  };
   const composerLog: ComposerLog = {
+    get text() {
+      return composerText;
+    },
     quotes: [],
     mentions: [],
     focusCount: 0,
   };
-  const composer: PluginComposerApi = {
-    scope:
-      threadId !== null
-        ? { kind: "thread", threadId }
-        : { kind: "new-thread", projectId },
-    addQuote(text) {
-      composerLog.quotes.push(text);
+  const composer: TestComposerStore = {
+    getSnapshot: () => composerText,
+    subscribe(listener) {
+      composerListeners.add(listener);
+      return () => composerListeners.delete(listener);
     },
-    insertMention(mention) {
-      composerLog.mentions.push(mention);
-    },
-    focus() {
-      composerLog.focusCount += 1;
+    api: {
+      scope:
+        threadId !== null
+          ? { kind: "thread", threadId }
+          : { kind: "new-thread", projectId },
+      setText(next) {
+        commitComposerText(next);
+      },
+      updateText(updater) {
+        commitComposerText(updater(composerText));
+      },
+      clear() {
+        commitComposerText("");
+      },
+      addQuote(text) {
+        const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
+        if (trimmed !== "") {
+          const block = trimmed
+            .split("\n")
+            .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+            .join("\n");
+          commitComposerText(
+            composerText === "" ? `${block}\n` : `${composerText}\n${block}\n`,
+          );
+          composerLog.quotes.push(text);
+        }
+        composerLog.focusCount += 1;
+      },
+      insertMention(mention) {
+        const label = mention.label.trim() || mention.id;
+        const separator =
+          composerText.length === 0 || /\s$/u.test(composerText) ? "" : " ";
+        commitComposerText(`${composerText}${separator}${label} `);
+        composerLog.mentions.push(mention);
+        composerLog.focusCount += 1;
+      },
+      focus() {
+        composerLog.focusCount += 1;
+      },
     },
   };
 
@@ -598,25 +750,36 @@ export function renderSlot<Props extends object>(
   );
   const result = render(element);
 
+  const rerenderSlot = (ui: ReactNode): void => {
+    result.rerender(
+      <SlotEnvContext.Provider value={env}>{ui}</SlotEnvContext.Provider>,
+    );
+  };
+  const emitRealtime = async (
+    channel: string,
+    payload: unknown,
+  ): Promise<void> => {
+    const normalized =
+      payload === undefined
+        ? null
+        : strictJsonRoundTrip(payload, `realtime "${channel}" payload`);
+    const listeners = realtimeHandlers.get(channel);
+    await act(async () => {
+      for (const listener of [...(listeners ?? [])]) {
+        listener(normalized);
+      }
+    });
+  };
+
   return {
     ...result,
-    rerender(ui: ReactNode) {
-      result.rerender(
-        <SlotEnvContext.Provider value={env}>{ui}</SlotEnvContext.Provider>,
-      );
-    },
+    rerender: rerenderSlot,
     rpcCalls,
-    async emitRealtime(channel, payload) {
-      const normalized =
-        payload === undefined ? null : JSON.parse(JSON.stringify(payload));
-      const listeners = realtimeHandlers.get(channel);
-      await act(async () => {
-        for (const listener of [...(listeners ?? [])]) {
-          listener(normalized);
-        }
-      });
-    },
+    emitRealtime,
     navigateCalls,
     composer: composerLog,
+    behavior: { emitRealtime },
+    inspection: { rpcCalls, navigateCalls, composer: composerLog },
+    lifecycle: { rerender: rerenderSlot, unmount: result.unmount },
   };
 }

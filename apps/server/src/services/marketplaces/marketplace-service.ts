@@ -15,6 +15,12 @@ import {
   type MarketplaceRow,
 } from "@bb/db";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import type {
+  InstalledPlugin,
+  MarketplaceRemoveResponse,
+  MarketplaceSearchResult,
+  MarketplaceView,
+} from "@bb/server-contract";
 import semver from "semver";
 import type { PluginService } from "../plugins/plugin-service.js";
 import {
@@ -43,31 +49,6 @@ interface MarketplaceSource {
   display: string;
 }
 
-export interface MarketplaceView {
-  id: string;
-  name: string;
-  displayName: string;
-  source: string;
-  resolvedCommit?: string;
-  pluginCount: number;
-  lastRefreshAt?: number;
-  lastAttemptAt?: number;
-  lastError?: string;
-}
-
-export interface MarketplaceSearchResult {
-  marketplaceId: string;
-  entryId: string;
-  displayName: string;
-  description: string;
-  icon: string | null;
-  category?: string;
-  source: string;
-  installed: boolean;
-  compatible: boolean;
-  incompatibleReason?: string;
-}
-
 export interface MarketplaceService {
   add(source: string, name?: string): Promise<MarketplaceView>;
   list(): MarketplaceView[];
@@ -77,8 +58,8 @@ export interface MarketplaceService {
     marketplaceId: string,
     entryId: string,
     version?: string,
-  ): Promise<unknown>;
-  remove(id: string): Promise<{ convertedPluginIds: string[] }>;
+  ): Promise<InstalledPlugin>;
+  remove(id: string): Promise<MarketplaceRemoveResponse>;
 }
 
 function catalogFromRow(row: MarketplaceRow): MarketplaceCatalog | null {

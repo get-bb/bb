@@ -90,9 +90,8 @@ action, settings, rpc/realtime, and mention providers all exist today.</p>
 <!-- ================================================================ -->
 <h2 id="composer">1. <code>useComposer()</code> <span class="badge new">new — small</span></h2>
 
-<p>Lets a plugin component push content into the chat composer draft: quote a selection,
-attach a file, or insert an @-mention pill. This is the "highlight text → reference in
-chat" affordance.</p>
+<p>Lets a plugin component inspect and replace scoped chat composer text, quote a
+selection, or insert an @-mention pill.</p>
 
 <pre><code>// @bb/plugin-sdk/app
 export interface PluginComposerApi {
@@ -101,11 +100,13 @@ export interface PluginComposerApi {
     | { kind: "thread"; threadId: string }        // thread detail / side panel
     | { kind: "new-thread"; projectId: string | null }; // compose view, nav panels
 
+  readonly text: string;
+  setText(next: string): void;
+  updateText(updater: (current: string) =&gt; string): void;
+  clear(): void;
+
   /** Append text as a `&gt; ` blockquote block and focus the composer. */
   addQuote(text: string): void;
-
-  /** Attach a file reference (deduped by path). */
-  addAttachment(attachment: { path: string }): void;
 
   /**
    * Insert an @-mention pill bound to one of THIS plugin's mention
@@ -126,10 +127,13 @@ export function useComposer(): PluginComposerApi;</code></pre>
       panel seeds the composer you land on next. Never null; always writable.</li>
   <li><strong>Implementation is a thin wrapper</strong> over the existing shared draft
       store: <code>usePromptDraftStorage</code> is already a module-level
-      localStorage-backed store, and its <code>addQuote</code>/<code>addAttachment</code>
-      are exactly what the built-in add-to-chat affordances (file preview line selection,
-      diff, terminal) already call. This API exposes the same funnel to plugins, plus the
-      focus nonce.</li>
+      localStorage-backed store used by the built-in add-to-chat affordances.</li>
+  <li><strong>Plain-text edits preserve structured state:</strong> attachments remain
+      attached. Offset-based mentions wholly outside the minimal changed range are
+      preserved and rebased; mentions overlapped by replaced text are removed because
+      their inline representation changed. Text edits do not focus the composer.</li>
+  <li><strong>Stable updates:</strong> mutation methods keep stable React identities and
+      <code>updateText</code> receives the latest committed text for its scope.</li>
   <li><strong>insertMention</strong> appends the pill's replacement text and an
       offset-based mention record (the existing <code>PromptTextMention</code> model,
       mention kind <code>plugin</code> already exists). Provider must belong to the
@@ -311,7 +315,7 @@ navigate.toPluginPanel(path: string, options?: {
 <table>
   <tr><th>Feature</th><th>Surface</th><th>Status</th></tr>
   <tr><td>Notes view in main nav (tree + editor)</td>
-      <td><code>navPanel</code> slot, <code>chrome: "none"</code></td>
+      <td><code>navPanel</code> slot with a full-bleed body</td>
       <td><span class="badge exists">exists</span></td></tr>
   <tr><td>Mounted directories</td>
       <td><code>bb.settings.define</code> (+ KV for UI-driven mounts); files via

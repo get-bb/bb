@@ -12,6 +12,10 @@ its entire surface is agent-facing. It demonstrates:
   bad arguments become a tool error, not a plugin error) and converted to the
   JSON schema providers see. The tool rides the session's `dynamicTools`, so
   it appears on the next thread/turn start.
+- **`bb.agents.configure`** — selects `docs_search` and the
+  `repo-conventions` skill for standard projects at session resolution time,
+  and adds short project/host-specific instructions. Personal-project
+  sessions select neither registration.
 - **`bb.ui.registerMentionProvider`** — type `@` in the composer and search
   the bundled docs by title; picking one inserts a pill, and the doc's full
   body is resolved at send time and attached as agent-only context.
@@ -19,8 +23,8 @@ its entire surface is agent-facing. It demonstrates:
   settings UI and editable with `bb plugin config agent-enrichment`.
 - **`bb.storage.kv`** — caches the last search (`bb docs last` prints it;
   the CLI command and the native tool share the cache).
-- **`skills/repo-conventions/`** — the conventional plugin skills directory,
-  auto-imported into every thread's skills through the plugin skills tier.
+- **`skills/repo-conventions/`** — the conventional plugin skills directory;
+  its static definition is conditionally selected by `bb.agents.configure`.
 
 Dependencies: only `zod`, for the tool parameters. When BB runs from a
 source checkout the import resolves from BB's own dependencies, so the

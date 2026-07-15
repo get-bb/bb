@@ -1,17 +1,25 @@
 import { Command } from "commander";
 import type { AvailableModel } from "@bb/domain";
+import type { ProviderHostRoutingArgs } from "@bb/sdk";
 import type { SystemProviderInfo } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
+import { resolveMachineEnvironmentRouting } from "./machine.js";
 
 interface ProviderListCommandOptions {
+  environment?: string;
+  host?: string;
   json?: boolean;
+  machine?: string;
 }
 
 interface ProviderModelsCommandOptions {
+  environment?: string;
+  host?: string;
   json?: boolean;
+  machine?: string;
   selectedModel?: string;
 }
 
@@ -19,6 +27,23 @@ interface IncludeSelectedOnlyModelArgs {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
   selectedModel?: string;
+}
+
+async function resolveProviderRouting(
+  opts: ProviderListCommandOptions,
+  serverUrl: string,
+): Promise<ProviderHostRoutingArgs> {
+  return resolveMachineEnvironmentRouting(opts, serverUrl);
+}
+
+function addProviderRoutingOptions(command: Command): Command {
+  return command
+    .option("--machine <id-or-name>", "Machine whose providers should be used")
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option(
+      "--environment <id>",
+      "Environment whose machine providers should be used",
+    );
 }
 
 export function registerProviderCommands(
@@ -29,14 +54,16 @@ export function registerProviderCommands(
     .command("provider")
     .description("Inspect available providers and models");
 
-  provider
-    .command("list")
+  addProviderRoutingOptions(provider.command("list"))
     .description("List available providers")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProviderListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const providers = await sdk.providers.list();
+        const serverUrl = getUrl();
+        const sdk = createCliBbSdk(serverUrl);
+        const providers = await sdk.providers.list(
+          await resolveProviderRouting(opts, serverUrl),
+        );
         if (outputJson(opts, providers)) return;
         if (providers.length === 0) {
           console.log("No providers available");
@@ -46,8 +73,7 @@ export function registerProviderCommands(
       }),
     );
 
-  provider
-    .command("models [providerId]")
+  addProviderRoutingOptions(provider.command("models [providerId]"))
     .description("List available models for a provider")
     .option("--json", "Print machine-readable JSON output")
     .option(
@@ -60,8 +86,10 @@ export function registerProviderCommands(
           providerId: string | undefined,
           opts: ProviderModelsCommandOptions,
         ) => {
-          const sdk = createCliBbSdk(getUrl());
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
           const executionOptions = await sdk.providers.models({
+            ...(await resolveProviderRouting(opts, serverUrl)),
             ...(providerId ? { providerId } : {}),
           });
           const models = includeSelectedOnlyModel({

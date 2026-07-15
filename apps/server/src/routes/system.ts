@@ -177,8 +177,7 @@ export function registerSystemRoutes(
         );
       }
     }
-    // Favicon tint is omitted for theme-only changes; keep the current value.
-    const faviconColor = payload.faviconColor ?? getStoredFaviconColor(deps.db);
+    const { faviconColor } = payload;
     setStoredAppearance(deps.db, { themeId, faviconColor });
     // Broadcast like experiments: every window re-reads /system/config and
     // re-applies the active palette.
@@ -212,8 +211,8 @@ export function registerSystemRoutes(
     return context.json({ ok: true });
   });
 
-  get(routes.providers, async (context) =>
-    context.json(await listSystemProviderInfos(deps)),
+  get(routes.providers, async (context, query) =>
+    context.json(await listSystemProviderInfos(deps, query)),
   );
 
   get(routes.providerLogo, async (context) => {

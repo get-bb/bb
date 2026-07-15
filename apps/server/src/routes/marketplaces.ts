@@ -1,13 +1,6 @@
 import type { Hono } from "hono";
-import { z } from "zod";
 import type { MarketplaceService } from "../services/marketplaces/marketplace-service.js";
-
-const addSchema = z
-  .object({
-    source: z.string().min(1),
-    name: z.string().min(1).optional(),
-  })
-  .strict();
+import { marketplaceAddRequestSchema } from "@bb/server-contract";
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -19,7 +12,7 @@ export function registerMarketplaceRoutes(
 ): void {
   app.post("/marketplaces", async (context) => {
     const json: unknown = await context.req.json().catch(() => null);
-    const body = addSchema.safeParse(json);
+    const body = marketplaceAddRequestSchema.safeParse(json);
     if (!body.success)
       return context.json(
         { error: 'expected { "source": string, "name"?: string }' },

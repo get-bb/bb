@@ -19,6 +19,7 @@ import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   invalidateMarketplaces,
   invalidatePluginList,
@@ -110,7 +111,7 @@ function MarketplaceRow({
     },
     onError: (error) => {
       appToast.error(`Refreshing ${marketplace.displayName} failed`, {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
@@ -230,7 +231,7 @@ function AddMarketplaceDialog({
     },
     onError: (error) => {
       appToast.error("Adding the marketplace failed", {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
@@ -332,7 +333,7 @@ export function RemoveMarketplaceDialog({
     },
     onError: (error) => {
       appToast.error(`Removing ${marketplace.displayName} failed`, {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
@@ -343,9 +344,9 @@ export function RemoveMarketplaceDialog({
         <DialogHeader>
           <DialogTitle>Remove {marketplace.displayName}?</DialogTitle>
           <DialogDescription>
-            Removing a marketplace uninstalls nothing: plugins installed from
-            it stay and become &ldquo;direct&rdquo; installs, keeping their
-            current source.
+            Removing a marketplace uninstalls nothing: plugins installed from it
+            stay and become &ldquo;direct&rdquo; installs, keeping their current
+            source.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

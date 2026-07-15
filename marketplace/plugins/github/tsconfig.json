@@ -10,10 +10,16 @@
     "skipLibCheck": true,
     "types": ["node"],
     "paths": {
-      "@/*": ["./*"],
-      "@bb/plugin-sdk": ["../../../packages/plugin-sdk/src/index.ts"],
-      "@bb/plugin-sdk/*": ["../../../packages/plugin-sdk/src/*"]
+      "@/*": ["./*"]
     }
   },
-  "include": ["server.ts", "app.tsx", "components", "lib", "hooks"]
+  "include": [
+    "server.ts",
+    "server.test.ts",
+    "app.tsx",
+    "vitest.config.ts",
+    "components",
+    "lib",
+    "hooks"
+  ]
 }

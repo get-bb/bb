@@ -7,7 +7,7 @@
 // Surfaces demonstrated: secret + project settings, bb.http webhook with
 // Slack signature verification, bb.sdk.threads.spawn/send with plugin
 // attribution, bb.storage.kv mapping Slack threads to BB threads,
-// bb.on("thread.idle"), and bb.status.needsConfiguration.
+// bb.events.on("thread.idle"), and bb.status.needsConfiguration.
 //
 // The type-only import is erased at load time; this file runs as-is.
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -186,7 +186,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   // When a BB thread this plugin spawned goes idle, post the agent's last
   // message back into the originating Slack thread.
-  bb.on("thread.idle", async ({ thread, lastAssistantText }) => {
+  bb.events.on("thread.idle", async ({ thread, lastAssistantText }) => {
     const target = await bb.storage.kv.get<SlackTarget>(`bb:${thread.id}`);
     if (target === undefined || lastAssistantText === null) return;
     const { botToken } = await settings.get();

@@ -257,7 +257,7 @@ function acknowledgeTerminalOpen(
   });
 }
 
-describe("public thread terminal routes", () => {
+describe("public terminal routes", () => {
   let harnesses: TestAppHarness[] = [];
 
   beforeEach(() => {
@@ -314,6 +314,80 @@ describe("public thread terminal routes", () => {
         title: "Terminal 1",
       }),
     ]);
+  });
+
+  it("gets and renames a terminal by ID without a redundant scope", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 100,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: fixture.environment.path ?? "/tmp/terminal-workspace",
+      rows: 30,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+
+    const getResponse = await fixture.harness.app.request(
+      `/api/v1/terminals/${stored.id}`,
+    );
+    expect(getResponse.status).toBe(200);
+    expect(
+      terminalSessionSchema.parse(await readJson(getResponse)),
+    ).toMatchObject({
+      id: stored.id,
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+
+    const renameResponse = await fixture.harness.app.request(
+      `/api/v1/terminals/${stored.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "Dev server" }),
+      },
+    );
+    expect(renameResponse.status).toBe(200);
+    expect(
+      terminalSessionSchema.parse(await readJson(renameResponse)),
+    ).toMatchObject({
+      id: stored.id,
+      title: "Dev server",
+    });
+  });
+
+  it.each([
+    ["no scope", "/api/v1/terminals"],
+    ["dual scope", "/api/v1/terminals?threadId=thr_one&environmentId=env_two"],
+    ["cwd outside host scope", "/api/v1/terminals?threadId=thr_one&cwd=%2Ftmp"],
+  ])("rejects terminal list requests with %s", async (_label, path) => {
+    const harness = await createTestAppHarness();
+    harnesses.push(harness);
+
+    const response = await harness.app.request(path);
+
+    expect(response.status).toBe(400);
+    expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+      code: "invalid_request",
+    });
+  });
+
+  it("rejects an unknown explicit terminal host instead of falling back", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+
+    const response = await fixture.harness.app.request(
+      "/api/v1/terminals?hostId=host_wrong",
+    );
+
+    expect(response.status).toBe(404);
+    expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+      code: "host_not_found",
+    });
   });
 
   it("creates and lists threadless terminal sessions for an environment", async () => {

@@ -17,11 +17,10 @@ interface RecordedRequest {
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
@@ -32,7 +31,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     status: "running",
     statusDetail: null,
     description: null,
-    displayName: "Linear",
+    name: "Linear",
     icon: null,
     logoUrl: null,
     logoDarkUrl: null,
@@ -96,9 +95,7 @@ describe("PluginUpdatesSourceCard check now", () => {
     const errorToast = vi.spyOn(appToast, "error").mockReturnValue("toast");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        jsonResponse({ error: "registry unreachable" }, 422),
-      ),
+      vi.fn(async () => jsonResponse({ error: "registry unreachable" }, 422)),
     );
 
     const { wrapper } = createQueryClientTestHarness();

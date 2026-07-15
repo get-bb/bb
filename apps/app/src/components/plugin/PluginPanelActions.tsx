@@ -1,10 +1,15 @@
 import { useMemo } from "react";
+import type { JsonValue } from "@bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   usePluginSlots,
   type PluginThreadPanelActionSlot,
 } from "@/lib/plugin-slots";
 import type { PluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  parsePersistedPluginPanelParams,
+  serializePluginPanelParams,
+} from "@/lib/plugin-json-value";
 import {
   fileOpenerIdFromActionId,
   parseFileOpenerParams,
@@ -51,19 +56,8 @@ function runPluginPanelAction({
   openPluginPanel,
   threadId,
 }: RunPluginPanelActionArgs): void {
-  const openPanel = (options?: { title?: string; params?: unknown }) => {
-    let paramsJson: string | null = null;
-    if (options?.params !== undefined) {
-      try {
-        paramsJson = JSON.stringify(options.params) ?? null;
-      } catch (error) {
-        throw new Error(
-          `openPanel "params" must be JSON-serializable: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
+  const openPanel = (options?: { title?: string; params?: JsonValue }) => {
+    const paramsJson = serializePluginPanelParams(options?.params);
     openPluginPanel({
       pluginId: action.pluginId,
       actionId: action.id,
@@ -151,20 +145,16 @@ function ActionTabContent({
     ) ?? null;
   // Parsed once per persisted payload, so the component sees a stable params
   // identity across unrelated re-renders.
-  const params = useMemo(() => {
-    if (tab.paramsJson === null) return null;
-    try {
-      return JSON.parse(tab.paramsJson) as unknown;
-    } catch {
-      return null;
-    }
-  }, [tab.paramsJson]);
+  const params = useMemo(
+    () => parsePersistedPluginPanelParams(tab.paramsJson),
+    [tab.paramsJson],
+  );
   if (action === null || !threadId) {
     return (
       <div className="p-4">
         <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This plugin tab is not available. The plugin may still be loading,
-          or it has been disabled or removed.
+          This plugin tab is not available. The plugin may still be loading, or
+          it has been disabled or removed.
         </EmptyStatePanel>
       </div>
     );
@@ -214,9 +204,9 @@ function FileOpenerTabContent({
     return (
       <div className="p-4">
         <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This file opener is not available. The plugin may still be loading,
-          or it has been disabled or removed — reopen the file to use the
-          built-in preview.
+          This file opener is not available. The plugin may still be loading, or
+          it has been disabled or removed — reopen the file to use the built-in
+          preview.
         </EmptyStatePanel>
       </div>
     );

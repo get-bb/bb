@@ -115,6 +115,32 @@ describe("HostSharedPortCoordinator", () => {
     });
   });
 
+  it("replaces one owner's complete declaration set only after validation", () => {
+    const { host, sharedPorts } = setup();
+    sharedPorts.declareSharedPorts({
+      ownerId: "connect",
+      hostId: host.id,
+      ports: [3000],
+    });
+
+    expect(() =>
+      sharedPorts.replaceDeclarationsForOwner("connect", [
+        { hostId: host.id, ports: [4173] },
+        { hostId: "missing-host", ports: [8080] },
+      ]),
+    ).toThrow(/unknown host missing-host/);
+    expect(sharedPorts.reconcileSharedPortsForHost(host.id).ports).toEqual([
+      3000,
+    ]);
+
+    sharedPorts.replaceDeclarationsForOwner("connect", [
+      { hostId: host.id, ports: [4173] },
+    ]);
+    expect(sharedPorts.reconcileSharedPortsForHost(host.id).ports).toEqual([
+      4173,
+    ]);
+  });
+
   it("distinguishes unknown, unenrolled, and enrolled-but-offline hosts", () => {
     const { sharedPorts } = setup();
     expect(() =>

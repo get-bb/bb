@@ -76,10 +76,9 @@ export function useUpdateKeyboardSettings() {
 }
 
 /**
- * Set the app-wide appearance: the palette id (built-in id or custom theme name)
- * and optionally the favicon tint (omit to leave it unchanged). Like
- * experiments, the server broadcasts `config-changed` for other windows; the
- * local invalidation refreshes this one.
+ * Set the complete app-wide appearance: the palette id (built-in id or custom
+ * theme name) and favicon tint. Like experiments, the server broadcasts
+ * `config-changed` for other windows; the local invalidation refreshes this one.
  */
 export function useUpdateAppearance() {
   const queryClient = useQueryClient();

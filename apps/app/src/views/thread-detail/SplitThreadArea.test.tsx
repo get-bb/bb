@@ -326,7 +326,7 @@ describe("SplitThreadArea", () => {
     expect(dragHandle?.className).toContain("[-webkit-app-region:no-drag]");
   });
 
-  it("places full-bleed plugin header actions before the pane close button", async () => {
+  it("places plugin header actions before the pane close button", async () => {
     setPluginSlotRegistrations("docs", {
       homepageSections: [],
       settingsSections: [],
@@ -336,7 +336,6 @@ describe("SplitThreadArea", () => {
           title: "Docs",
           icon: "FileText",
           path: "docs",
-          chrome: "none",
           component: () => <div>Docs panel</div>,
           headerContent: () => (
             <button type="button">Toggle docs sidebar</button>

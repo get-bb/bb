@@ -19,13 +19,14 @@ const pluginList = (id: string, source: string) => ({
       rootDir: `/plugins/${id}`,
       version: "1.0.0",
       provenance: "direct",
+      isOrphanedBuiltin: false,
       sourceDisplay: `npm · ${id} · tracks compatible`,
       updateState: {},
       enabled: true,
       description: null,
-      displayName: null,
+      name: null,
       icon: null,
-      status: "active",
+      status: "running",
       statusDetail: null,
       handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
       services: [],
@@ -112,6 +113,48 @@ describe("bb plugin update commands", () => {
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       JSON.stringify(results, null, 2),
+    ]);
+  });
+
+  it("source renders resolved source and activation history", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        requested: "npm:notes@^1",
+        resolved: "1.2.0",
+        integrity: "sha512-test",
+        registry: "https://registry.npmjs.org",
+        engines: { bb: ">=0.9", bbPluginSdk: "^0.2.0" },
+        installedAt: 1_752_300_000_000,
+        history: [
+          { version: "1.2.0", activatedAt: 1_752_300_000_000 },
+          { version: "1.1.0", activatedAt: 1_752_200_000_000 },
+        ],
+      }),
+    );
+
+    await runCommand(["plugin", "source", "notes"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("requested: npm:notes@^1");
+    expect(output).toContain("resolved: 1.2.0");
+    expect(output).toContain("engines.bbPluginSdk: ^0.2.0");
+    expect(output).toContain("1.1.0");
+  });
+
+  it("source --json prints the shared source contract", async () => {
+    const source = {
+      requested: "path:/plugins/notes",
+      resolved: "path:/plugins/notes",
+      engines: {},
+      installedAt: 1_752_300_000_000,
+      history: [{ version: "1.0.0", activatedAt: 1_752_300_000_000 }],
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(source));
+
+    await runCommand(["plugin", "source", "notes", "--json"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify(source, null, 2),
     ]);
   });
 

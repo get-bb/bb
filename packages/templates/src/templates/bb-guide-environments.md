@@ -54,9 +54,43 @@ Making your repo work with bb:
 
   bb environment show <id>                Show environment details (path, branch, status)
 
+  bb environment status <id>              Show workspace status
+    --merge-base-branch <branch>          Include merge-base status
+
+  bb environment branches <id>            List local and remote branches
+    --query <query>                       Filter branch names
+    --limit <count>                       Limit local and remote results
+
+  bb environment paths <id>               Search workspace paths
+    --query <query>                       Fuzzy path query
+    --limit <count>                       Maximum results
+    --files                               Include only files unless combined with --directories
+    --directories                         Include only directories unless combined with --files
+
+  bb environment diff <id>                Show file summary and full git diff
+  bb environment diff-files <id>          List changed-file metadata
+    --target <target>                     uncommitted, branch_committed, all, or commit (required)
+    --merge-base-branch <branch>          Required for branch_committed and all
+    --sha <sha>                           Required for commit
+
+  bb environment diff-file <id>           Read one side of a changed file
+    --target <target>                     Diff target (required)
+    --path <path>                         Repository-relative path (required)
+    --side <old|new>                      File side (required)
+    --merge-base-ref <sha>                Required for branch_committed and all
+    --sha <sha>                           Required for commit
+
+  bb environment diff-patch <id>          Fetch selected file patches
+    --target <target>                     Diff target (required)
+    --path <path>                         Changed path; repeat for multiple files (required)
+    --merge-base-branch <branch>          Required for branch_committed and all
+    --sha <sha>                           Required for commit
+
   bb environment update <id>              Update environment metadata
     --merge-base-branch <branch>          Set merge-base branch override
     --clear-merge-base-branch             Clear merge-base override
+    --name <name>                         Set display name
+    --clear-name                          Clear display name
 
   bb environment commit <id>              Create a commit in the environment
 
@@ -65,10 +99,16 @@ Making your repo work with bb:
 
   bb environment archive-threads <id>     Archive all threads in an environment
 
+  bb environment pull-request show <id>   Inspect a pull request
   bb environment pull-request ready <id>  Mark a pull request ready
   bb environment pull-request draft <id>  Convert a pull request to draft
   bb environment pull-request merge <id>  Merge a pull request
     --method <method>                     merge, squash, or rebase
+
+Every inspection command accepts an arbitrary environment ID and supports
+`--json`. Non-git status/diff responses are reported explicitly. `diff-file`
+prints UTF-8 content directly and labels base64 binary content; diff and patch
+truncation markers are preserved.
 
 Remote access (bb connect):
 

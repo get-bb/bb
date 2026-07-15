@@ -17,7 +17,7 @@ function plugin(
     status: "running",
     statusDetail: null,
     description: null,
-    displayName: null,
+    name: null,
     icon: null,
     logoUrl: null,
     logoDarkUrl: null,

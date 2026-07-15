@@ -23,10 +23,10 @@ async function writeLogoPluginFixture(
   options: {
     name: string;
     files?: Record<string, string | Buffer>;
-    bbLogo?: string;
-    bbLogoDark?: string;
-    bbDisplayName?: string;
-    bbIcon?: string;
+    logoLight?: string;
+    logoDark?: string;
+    pluginName?: string;
+    brandingIcon?: string | null;
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
@@ -36,15 +36,26 @@ async function writeLogoPluginFixture(
       name: options.name,
       version: "0.1.0",
       bb: {
+        name: options.pluginName ?? "Logo fixture",
+        description: "Plugin branding fixture.",
+        branding: {
+          ...(options.brandingIcon === null
+            ? {}
+            : { icon: options.brandingIcon ?? "Zap" }),
+          ...(options.logoLight === undefined && options.logoDark === undefined
+            ? {}
+            : {
+                logo: {
+                  ...(options.logoLight === undefined
+                    ? {}
+                    : { light: options.logoLight }),
+                  ...(options.logoDark === undefined
+                    ? {}
+                    : { dark: options.logoDark }),
+                },
+              }),
+        },
         server: "./server.ts",
-        ...(options.bbDisplayName !== undefined
-          ? { displayName: options.bbDisplayName }
-          : {}),
-        ...(options.bbIcon !== undefined ? { icon: options.bbIcon } : {}),
-        ...(options.bbLogo !== undefined ? { logo: options.bbLogo } : {}),
-        ...(options.bbLogoDark !== undefined
-          ? { logoDark: options.bbLogoDark }
-          : {}),
       },
     }),
   );
@@ -56,7 +67,7 @@ async function writeLogoPluginFixture(
   }
 }
 
-describe("plugin logos (detection, manifest override, asset route, inventory)", () => {
+describe("plugin branding logos (manifest, asset route, inventory)", () => {
   let harness: TestAppHarness;
 
   beforeEach(async () => {
@@ -69,10 +80,11 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     await harness.cleanup();
   });
 
-  it("detects logo.svg over logo.png and serves it hash-cached as image/svg+xml", async () => {
+  it("serves an explicit light SVG hash-cached as image/svg+xml", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logoa");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-logoa",
+      logoLight: "./logo.svg",
       files: { "logo.svg": SVG_LOGO, "logo.png": PNG_STUB },
     });
 
@@ -82,7 +94,7 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
       /^\/api\/v1\/plugins\/logoa\/assets\/logo\?h=[0-9a-f]{16}$/,
     );
 
-    // svg beat png: correct content type + bytes.
+    // The explicitly declared SVG determines the content type and bytes.
     const logo = await harness.app.request(`${BASE}${entry.logoUrl}`);
     expect(logo.status).toBe(200);
     expect(logo.headers.get("content-type")).toBe("image/svg+xml");
@@ -99,10 +111,11 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     expect(noHash.headers.get("cache-control")).toBe("no-store");
   });
 
-  it("serves logo.png as image/png when no svg exists", async () => {
+  it("serves an explicit PNG as image/png", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logob");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-logob",
+      logoLight: "./logo.png",
       files: { "logo.png": PNG_STUB },
     });
     const entry = await harness.pluginService.installPath(rootDir);
@@ -111,11 +124,11 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     expect(logo.headers.get("content-type")).toBe("image/png");
   });
 
-  it("honors the bb.logo manifest override (relocated webp)", async () => {
+  it("honors a relocated bb.branding.logo.light webp", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logoc");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-logoc",
-      bbLogo: "./assets/mark.webp",
+      logoLight: "./assets/mark.webp",
       files: {
         // The convention file is present but the override wins.
         "logo.svg": SVG_LOGO,
@@ -129,32 +142,39 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     expect(logo.headers.get("content-type")).toBe("image/webp");
   });
 
-  it("rejects a bb.logo that escapes the plugin directory (install fails)", async () => {
+  it("rejects a light logo that escapes the plugin directory", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logod");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-logod",
-      bbLogo: "../outside.svg",
+      logoLight: "../outside.svg",
     });
     await expect(
       harness.pluginService.installPath(rootDir),
-    ).rejects.toThrowError(/bb\.logo escapes the plugin directory/);
+    ).rejects.toThrowError(
+      /bb\.branding\.logo\.light escapes the plugin directory/,
+    );
   });
 
-  it("rejects a bb.logo with an unsupported extension (install fails)", async () => {
+  it("rejects a light logo with an unsupported extension", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logoe");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-logoe",
-      bbLogo: "./logo.gif",
+      logoLight: "./logo.gif",
       files: { "logo.gif": PNG_STUB },
     });
     await expect(
       harness.pluginService.installPath(rootDir),
-    ).rejects.toThrowError(/bb\.logo must point at a \.svg, \.png, or \.webp file/);
+    ).rejects.toThrowError(
+      /bb\.branding\.logo\.light must point at a \.svg, \.png, or \.webp file/,
+    );
   });
 
-  it("reports logoUrl null and 404s the asset for logo-less plugins", async () => {
+  it("does not auto-detect an undeclared root logo", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logof");
-    await writeLogoPluginFixture(rootDir, { name: "bb-plugin-logof" });
+    await writeLogoPluginFixture(rootDir, {
+      name: "bb-plugin-logof",
+      files: { "logo.svg": SVG_LOGO },
+    });
     const entry = await harness.pluginService.installPath(rootDir);
     expect(entry.status).toBe("running");
     expect(entry.logoUrl).toBeNull();
@@ -168,6 +188,8 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logog");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-logog",
+      logoLight: "./logo.svg",
+      logoDark: "./logo-dark.svg",
       files: { "logo.svg": SVG_LOGO, "logo-dark.svg": DARK_SVG_LOGO },
     });
     const entry = await harness.pluginService.installPath(rootDir);
@@ -200,18 +222,17 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-ident");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-ident",
-      bbDisplayName: "Identity Demo",
-      bbIcon: "Brain",
-      files: { "logo.svg": SVG_LOGO },
+      pluginName: "Identity Demo",
+      brandingIcon: "Brain",
     });
     const entry = await harness.pluginService.installPath(rootDir);
-    expect(entry.displayName).toBe("Identity Demo");
+    expect(entry.name).toBe("Identity Demo");
     expect(entry.icon).toBe("Brain");
 
     const disabled = await harness.pluginService.setEnabled("ident", false);
     expect(disabled?.enabled).toBe(false);
     // Identity survives the runtime going away.
-    expect(disabled?.displayName).toBe("Identity Demo");
+    expect(disabled?.name).toBe("Identity Demo");
     expect(disabled?.icon).toBe("Brain");
     expect(disabled?.logoUrl).toBe(entry.logoUrl);
   });
@@ -220,6 +241,7 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-gone");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-gone",
+      logoLight: "./logo.svg",
       files: { "logo.svg": SVG_LOGO },
     });
     const entry = await harness.pluginService.installPath(rootDir);
@@ -235,6 +257,7 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logoh");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-logoh",
+      logoLight: "./logo.svg",
       files: { "logo.svg": SVG_LOGO },
     });
     const entry = await harness.pluginService.installPath(rootDir);
@@ -259,10 +282,12 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     );
   });
 
-  it("detects logo-dark.svg over logo-dark.png and serves it as image/svg+xml", async () => {
+  it("serves an explicit dark SVG as image/svg+xml", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darka");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-darka",
+      logoLight: "./logo.svg",
+      logoDark: "./logo-dark.svg",
       files: {
         "logo.svg": SVG_LOGO,
         "logo-dark.svg": DARK_SVG_LOGO,
@@ -279,7 +304,7 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
       /^\/api\/v1\/plugins\/darka\/assets\/logo-dark\?h=[0-9a-f]{16}$/,
     );
 
-    // svg beat png: correct content type + bytes, hash-cached.
+    // The explicitly declared SVG determines the content type and bytes.
     const dark = await harness.app.request(`${BASE}${entry.logoDarkUrl}`);
     expect(dark.status).toBe(200);
     expect(dark.headers.get("content-type")).toBe("image/svg+xml");
@@ -296,27 +321,30 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     expect(noHash.headers.get("cache-control")).toBe("no-store");
   });
 
-  it("serves logo-dark.png as image/png when no dark svg exists", async () => {
+  it("serves an explicit dark PNG as image/png", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkb");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-darkb",
-      files: { "logo-dark.png": PNG_STUB },
+      logoLight: "./logo.svg",
+      logoDark: "./logo-dark.png",
+      files: { "logo.svg": SVG_LOGO, "logo-dark.png": PNG_STUB },
     });
     const entry = await harness.pluginService.installPath(rootDir);
-    // A dark-only plugin advertises no light logoUrl.
-    expect(entry.logoUrl).toBeNull();
+    expect(entry.logoUrl).not.toBeNull();
     const dark = await harness.app.request(`${BASE}${entry.logoDarkUrl}`);
     expect(dark.status).toBe(200);
     expect(dark.headers.get("content-type")).toBe("image/png");
   });
 
-  it("honors the bb.logoDark manifest override (relocated webp)", async () => {
+  it("honors a relocated bb.branding.logo.dark webp", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkc");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-darkc",
-      bbLogoDark: "./assets/mark-dark.webp",
+      logoLight: "./logo.svg",
+      logoDark: "./assets/mark-dark.webp",
       files: {
-        // The convention file is present but the override wins.
+        "logo.svg": SVG_LOGO,
+        // An undeclared root file is ignored.
         "logo-dark.svg": DARK_SVG_LOGO,
         "assets/mark-dark.webp": WEBP_STUB,
       },
@@ -328,28 +356,33 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     expect(dark.headers.get("content-type")).toBe("image/webp");
   });
 
-  it("rejects a bb.logoDark that escapes the plugin directory (install fails)", async () => {
+  it("rejects a dark logo that escapes the plugin directory", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkd");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-darkd",
-      bbLogoDark: "../outside-dark.svg",
-    });
-    await expect(
-      harness.pluginService.installPath(rootDir),
-    ).rejects.toThrowError(/bb\.logoDark escapes the plugin directory/);
-  });
-
-  it("rejects a bb.logoDark with an unsupported extension (install fails)", async () => {
-    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darke");
-    await writeLogoPluginFixture(rootDir, {
-      name: "bb-plugin-darke",
-      bbLogoDark: "./logo-dark.gif",
-      files: { "logo-dark.gif": PNG_STUB },
+      logoLight: "./logo.svg",
+      logoDark: "../outside-dark.svg",
+      files: { "logo.svg": SVG_LOGO },
     });
     await expect(
       harness.pluginService.installPath(rootDir),
     ).rejects.toThrowError(
-      /bb\.logoDark must point at a \.svg, \.png, or \.webp file/,
+      /bb\.branding\.logo\.dark escapes the plugin directory/,
+    );
+  });
+
+  it("rejects a dark logo with an unsupported extension", async () => {
+    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darke");
+    await writeLogoPluginFixture(rootDir, {
+      name: "bb-plugin-darke",
+      logoLight: "./logo.svg",
+      logoDark: "./logo-dark.gif",
+      files: { "logo.svg": SVG_LOGO, "logo-dark.gif": PNG_STUB },
+    });
+    await expect(
+      harness.pluginService.installPath(rootDir),
+    ).rejects.toThrowError(
+      /bb\.branding\.logo\.dark must point at a \.svg, \.png, or \.webp file/,
     );
   });
 
@@ -357,6 +390,7 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkf");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-darkf",
+      logoLight: "./logo.svg",
       files: { "logo.svg": SVG_LOGO },
     });
     const entry = await harness.pluginService.installPath(rootDir);
@@ -373,6 +407,8 @@ describe("plugin logos (detection, manifest override, asset route, inventory)", 
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkg");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-darkg",
+      logoLight: "./logo.svg",
+      logoDark: "./logo-dark.svg",
       files: { "logo.svg": SVG_LOGO, "logo-dark.svg": DARK_SVG_LOGO },
     });
     const entry = await harness.pluginService.installPath(rootDir);

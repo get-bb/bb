@@ -9,10 +9,15 @@ Provider commands
 
 Providers are agent backends (e.g., codex, claude-code). Each supports different models.
 
-  bb provider list                        List available providers
-  bb provider models [providerId]         List models for a provider
+  bb provider list [--machine <id-or-name> | --environment <id>]
+                                          List available providers
+  bb provider models [providerId] [--machine <id-or-name> | --environment <id>]
+                                          List models for a provider
 
 Use these before spawning threads if you are unsure which provider or model to use.
+`--host` is an alias for `--machine`. Machine and environment selectors are
+mutually exclusive because an environment already selects its machine. When no
+selector is supplied, both commands intentionally inspect the primary machine.
 When provider and model are omitted from bb thread spawn, the project's remembered
 defaults apply.
 

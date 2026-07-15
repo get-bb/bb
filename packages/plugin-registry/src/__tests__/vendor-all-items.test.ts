@@ -92,11 +92,22 @@ describe("plugin component registry", () => {
           name: "bb-plugin-registry-fixture",
           version: "0.0.0",
           type: "module",
-          bb: { app: "./app.tsx" },
+          bb: {
+            name: "Registry vendor fixture",
+            description:
+              "Verify every registry item can be vendored and bundled.",
+            branding: { icon: "Package" },
+            server: "./server.ts",
+            app: "./app.tsx",
+          },
         },
         null,
         2,
       ),
+    );
+    await writeFile(
+      path.join(fixtureDir, "server.ts"),
+      "export default function plugin() {}\n",
     );
     // esbuild reads tsconfig paths for the "@/*" alias the vendored source
     // uses — the same file `bb plugin new` scaffolds.

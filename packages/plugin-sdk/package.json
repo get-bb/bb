@@ -1,34 +1,43 @@
 {
   "name": "@bb/plugin-sdk",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "type": "module",
-  "private": true,
+  "files": [
+    "bundled-types",
+    "dist",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "source": "./src/index.ts",
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./bundled-types/bb-plugin-sdk.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./app": {
       "source": "./src/app.ts",
-      "types": "./src/app.ts",
-      "default": "./src/app.ts"
+      "types": "./bundled-types/bb-plugin-sdk-app.d.ts",
+      "import": "./dist/app.js",
+      "default": "./dist/app.js"
     },
     "./testing": {
       "source": "./src/testing/index.ts",
-      "types": "./src/testing/index.ts",
-      "default": "./src/testing/index.ts"
+      "types": "./bundled-types/bb-plugin-sdk-testing.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
     },
     "./testing/app": {
       "source": "./src/testing/app.tsx",
-      "types": "./src/testing/app.tsx",
-      "default": "./src/testing/app.tsx"
+      "types": "./bundled-types/bb-plugin-sdk-testing-app.d.ts",
+      "import": "./dist/testing/app.js",
+      "default": "./dist/testing/app.js"
     }
   },
-  "types": "./src/index.ts",
+  "types": "./bundled-types/bb-plugin-sdk.d.ts",
   "scripts": {
-    "build": "node scripts/build-bundled-dts.mjs",
+    "build": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "prepack": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "node scripts/build-bundled-dts.mjs --check && tsc --noEmit"
   },
@@ -43,6 +52,7 @@
     "@types/react": "^19.0.0",
     "better-sqlite3": "12.10.0",
     "cron-parser": "^5.5.0",
+    "esbuild": "^0.28.0",
     "hono": "4.11.9",
     "jsdom": "^29.0.1",
     "react": "^19.0.0",

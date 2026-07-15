@@ -13,12 +13,39 @@ interface RecordedRequest {
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
+
+const INSTALLED_PLUGIN_RESPONSE = {
+  ok: true,
+  plugin: {
+    id: "linear",
+    source: "npm:@bb-plugins/linear",
+    rootDir: "/plugins/linear",
+    version: "1.6.2",
+    provenance: "direct",
+    isOrphanedBuiltin: false,
+    sourceDisplay: "npm · @bb-plugins/linear · pinned",
+    updateState: {},
+    enabled: true,
+    description: "Linear integration",
+    name: "Linear",
+    icon: null,
+    status: "running",
+    statusDetail: null,
+    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+    services: [],
+    schedules: [],
+    cliCommand: null,
+    hasSettings: false,
+    app: { hasApp: false, bundle: null },
+    logoUrl: null,
+    logoDarkUrl: null,
+  },
+};
 
 afterEach(() => {
   cleanup();
@@ -27,7 +54,7 @@ afterEach(() => {
 });
 
 function stubFetch(
-  installBody: unknown = { ok: true },
+  installBody: unknown = INSTALLED_PLUGIN_RESPONSE,
   installStatus = 200,
 ): RecordedRequest[] {
   const requests: RecordedRequest[] = [];

@@ -1,16 +1,28 @@
 import type {
+  CommandListResponse,
   CreateProjectRequest,
   CreateProjectSourceRequest,
+  ProjectBranchesResponse,
   ProjectBranchesQuery,
   ProjectCommandsQuery,
+  ProjectFileContentQuery,
+  ProjectFilesQuery,
+  ProjectResponse,
+  ProjectWithThreadsResponse,
   ProjectListQuery,
   ProjectPathsQuery,
+  PromptHistoryResponse,
   PromptHistoryQuery,
   ReorderProjectRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
+  UploadedPromptAttachment,
+  WorkspacePathListResponse,
+  WorkspaceFileListResponse,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
+import type { ProjectExecutionDefaults, ProjectSource } from "@bb/domain";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface ProjectListArgs extends ProjectListQuery {}
 
@@ -36,19 +48,76 @@ export interface ProjectPromptHistoryArgs extends PromptHistoryQuery {
   projectId: string;
 }
 
-export interface ProjectPathsArgs extends ProjectPathsQuery {
-  projectId: string;
-}
+/** Select one project workspace source, or omit both for the primary host. */
+export type ProjectWorkspaceRoutingArgs =
+  | { environmentId: string; hostId?: never }
+  | { environmentId?: never; hostId: string }
+  | { environmentId?: never; hostId?: never };
 
-export interface ProjectCommandsArgs extends ProjectCommandsQuery {
-  projectId: string;
-}
+export type ProjectFilesArgs = ProjectWorkspaceRoutingArgs &
+  Omit<ProjectFilesQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+  };
+
+export type ProjectPathsArgs = ProjectWorkspaceRoutingArgs &
+  Omit<ProjectPathsQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+  };
+
+export type ProjectCommandsArgs = ProjectWorkspaceRoutingArgs &
+  Omit<ProjectCommandsQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+  };
+
+export type ProjectFileContentArgs = ProjectWorkspaceRoutingArgs &
+  Omit<ProjectFileContentQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+  };
 
 export interface ProjectBranchesArgs extends ProjectBranchesQuery {
   projectId: string;
 }
 
 export interface ProjectDefaultExecutionOptionsArgs {
+  projectId: string;
+}
+
+export interface ProjectAttachmentFileLike {
+  arrayBuffer(): Promise<ArrayBuffer>;
+  readonly name: string;
+  readonly type?: string;
+}
+
+export type ProjectAttachmentUploadFile =
+  | ArrayBuffer
+  | Blob
+  | ProjectAttachmentFileLike
+  | Uint8Array;
+
+interface ProjectAttachmentUploadArgsBase {
+  /** MIME override. Omit to use the File/Blob type, when available. */
+  mimeType?: string;
+  projectId: string;
+}
+
+/**
+ * Upload bytes owned by this SDK client. A bare Blob/byte buffer needs an
+ * explicit filename; File-like values can supply their own name.
+ */
+export type ProjectAttachmentUploadArgs = ProjectAttachmentUploadArgsBase &
+  (
+    | {
+        clientFile: ProjectAttachmentFileLike;
+        filename?: string;
+      }
+    | {
+        clientFile: ArrayBuffer | Blob | Uint8Array;
+        filename: string;
+      }
+  );
+
+export interface ProjectAttachmentReadArgs {
+  path: string;
   projectId: string;
 }
 
@@ -66,44 +135,37 @@ export interface ProjectSourceDeleteArgs {
   sourceId: string;
 }
 
-export type ProjectCreateResult = PublicApiOutput<"/projects", "$post">;
-export type ProjectDeleteResult = PublicApiOutput<"/projects/:id", "$delete">;
-export type ProjectGetResult = PublicApiOutput<"/projects/:id", "$get">;
-export type ProjectListResult = PublicApiOutput<"/projects", "$get">;
-export type ProjectUpdateResult = PublicApiOutput<"/projects/:id", "$patch">;
-export type ProjectReorderResult = PublicApiOutput<
-  "/projects/:id/order",
-  "$patch"
->;
-export type ProjectPromptHistoryResult = PublicApiOutput<
-  "/projects/:id/prompt-history",
-  "$get"
->;
-export type ProjectPathsResult = PublicApiOutput<"/projects/:id/paths", "$get">;
-export type ProjectCommandsResult = PublicApiOutput<
-  "/projects/:id/commands",
-  "$get"
->;
-export type ProjectBranchesResult = PublicApiOutput<
-  "/projects/:id/branches",
-  "$get"
->;
-export type ProjectDefaultExecutionOptionsResult = PublicApiOutput<
-  "/projects/:id/default-execution-options",
-  "$get"
->;
-export type ProjectSourceAddResult = PublicApiOutput<
-  "/projects/:id/sources",
-  "$post"
->;
-export type ProjectSourceUpdateResult = PublicApiOutput<
-  "/projects/:id/sources/:sourceId",
-  "$patch"
->;
-export type ProjectSourceDeleteResult = PublicApiOutput<
-  "/projects/:id/sources/:sourceId",
-  "$delete"
->;
+export type ProjectBranchesResult = ProjectBranchesResponse;
+export interface ProjectAttachmentReadResult {
+  bytes: Uint8Array;
+  mimeType: string;
+  sizeBytes: number;
+}
+export type ProjectAttachmentUploadResult = UploadedPromptAttachment;
+export type ProjectCommandsResult = CommandListResponse;
+export type ProjectCreateResult = ProjectResponse;
+export type ProjectDefaultExecutionOptionsResult =
+  ProjectExecutionDefaults | null;
+export type ProjectDeleteResult = { ok: true };
+export interface ProjectFileContentResult {
+  /** UTF-8 text or base64, as selected by `contentEncoding`. */
+  content: string;
+  contentEncoding: "utf8" | "base64";
+  mimeType: string;
+  sizeBytes: number;
+}
+export type ProjectFilesResult = WorkspaceFileListResponse;
+export type ProjectGetResult = ProjectResponse;
+export type ProjectListResult =
+  | ProjectResponse[]
+  | ProjectWithThreadsResponse[];
+export type ProjectPathsResult = WorkspacePathListResponse;
+export type ProjectPromptHistoryResult = PromptHistoryResponse;
+export type ProjectReorderResult = ProjectResponse[];
+export type ProjectSourceAddResult = ProjectSource;
+export type ProjectSourceDeleteResult = { ok: true };
+export type ProjectSourceUpdateResult = ProjectSource;
+export type ProjectUpdateResult = ProjectResponse;
 
 export interface ProjectSourcesArea {
   add(args: ProjectSourceAddArgs): Promise<ProjectSourceAddResult>;
@@ -111,7 +173,15 @@ export interface ProjectSourcesArea {
   update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
 
+export interface ProjectAttachmentsArea {
+  read(args: ProjectAttachmentReadArgs): Promise<ProjectAttachmentReadResult>;
+  upload(
+    args: ProjectAttachmentUploadArgs,
+  ): Promise<ProjectAttachmentUploadResult>;
+}
+
 export interface ProjectsArea {
+  attachments: ProjectAttachmentsArea;
   branches(args: ProjectBranchesArgs): Promise<ProjectBranchesResult>;
   commands(args: ProjectCommandsArgs): Promise<ProjectCommandsResult>;
   create(args: ProjectCreateArgs): Promise<ProjectCreateResult>;
@@ -119,6 +189,8 @@ export interface ProjectsArea {
     args: ProjectDefaultExecutionOptionsArgs,
   ): Promise<ProjectDefaultExecutionOptionsResult>;
   delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
+  fileContent(args: ProjectFileContentArgs): Promise<ProjectFileContentResult>;
+  files(args: ProjectFilesArgs): Promise<ProjectFilesResult>;
   get(args: ProjectGetArgs): Promise<ProjectGetResult>;
   list(args?: ProjectListArgs): Promise<ProjectListResult>;
   paths(args: ProjectPathsArgs): Promise<ProjectPathsResult>;
@@ -160,8 +232,111 @@ function projectSourceUpdateJson(
   };
 }
 
+function embeddedAttachmentFilename(
+  clientFile: ProjectAttachmentUploadFile,
+): string | undefined {
+  if ("name" in clientFile && typeof clientFile.name === "string") {
+    return clientFile.name;
+  }
+  return undefined;
+}
+
+function embeddedAttachmentMimeType(
+  clientFile: ProjectAttachmentUploadFile,
+): string | undefined {
+  if ("type" in clientFile && typeof clientFile.type === "string") {
+    return clientFile.type;
+  }
+  return undefined;
+}
+
+function hasAttachmentArrayBuffer(
+  clientFile: ProjectAttachmentUploadFile,
+): clientFile is Blob | ProjectAttachmentFileLike {
+  return "arrayBuffer" in clientFile;
+}
+
+async function attachmentBytes(
+  clientFile: ProjectAttachmentUploadFile,
+): Promise<ArrayBuffer> {
+  if (hasAttachmentArrayBuffer(clientFile)) {
+    return clientFile.arrayBuffer();
+  }
+  if (ArrayBuffer.isView(clientFile)) {
+    return Uint8Array.from(clientFile).buffer;
+  }
+  return clientFile.slice(0);
+}
+
+function resolveAttachmentFilename(input: ProjectAttachmentUploadArgs): string {
+  const filename =
+    input.filename ?? embeddedAttachmentFilename(input.clientFile);
+  if (!filename || filename.trim().length === 0) {
+    throw new Error("Project attachment filename must not be empty");
+  }
+  return filename;
+}
+
+const BASE64_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function encodeBase64(bytes: Uint8Array): string {
+  let encoded = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index] ?? 0;
+    const second = bytes[index + 1];
+    const third = bytes[index + 2];
+    const block =
+      (first << 16) | ((second ?? 0) << 8) | (third === undefined ? 0 : third);
+    encoded += BASE64_ALPHABET.charAt((block >> 18) & 63);
+    encoded += BASE64_ALPHABET.charAt((block >> 12) & 63);
+    encoded +=
+      second === undefined ? "=" : BASE64_ALPHABET.charAt((block >> 6) & 63);
+    encoded += third === undefined ? "=" : BASE64_ALPHABET.charAt(block & 63);
+  }
+  return encoded;
+}
+
 export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
   const { transport } = args;
+  const attachments: ProjectAttachmentsArea = {
+    async read(input) {
+      const response = await transport.resolve(
+        transport.api.v1.projects[":id"].attachments.content.$get({
+          param: { id: input.projectId },
+          query: { path: input.path },
+        }),
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return {
+        bytes,
+        mimeType:
+          response.headers.get("content-type") ?? "application/octet-stream",
+        sizeBytes: bytes.byteLength,
+      };
+    },
+    async upload(input) {
+      const filename = resolveAttachmentFilename(input);
+      const mimeType =
+        input.mimeType ?? embeddedAttachmentMimeType(input.clientFile) ?? "";
+      const file = new Blob([await attachmentBytes(input.clientFile)], {
+        type: mimeType,
+      });
+      const form = new FormData();
+      form.set("file", file, filename);
+      const baseUrl = transport.baseUrl.replace(/\/$/u, "");
+      const response = await transport.resolve(
+        transport.fetch(
+          `${baseUrl}/api/v1/projects/${encodeURIComponent(input.projectId)}/attachments`,
+          {
+            body: form,
+            method: "POST",
+          },
+        ),
+      );
+      return uploadedPromptAttachmentSchema.parse(await response.json());
+    },
+  };
   const sources: ProjectSourcesArea = {
     async add(input) {
       return transport.readJson(
@@ -190,6 +365,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
   };
 
   return {
+    attachments,
     async branches(input) {
       const { projectId, ...query } = input;
       return transport.readJson(
@@ -228,6 +404,41 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
         transport.api.v1.projects[":id"]["default-execution-options"].$get({
           param: { id: input.projectId },
           query: {},
+        }),
+      );
+    },
+    async fileContent(input) {
+      const { projectId, ...query } = input;
+      const response = await transport.resolve(
+        transport.api.v1.projects[":id"].files.content.$get({
+          param: { id: projectId },
+          query,
+        }),
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const contentEncoding = response.headers.get("x-bb-content-encoding");
+      if (contentEncoding !== "utf8" && contentEncoding !== "base64") {
+        throw new Error(
+          "Project file response is missing its content encoding",
+        );
+      }
+      return {
+        content:
+          contentEncoding === "utf8"
+            ? new TextDecoder().decode(bytes)
+            : encodeBase64(bytes),
+        contentEncoding,
+        mimeType:
+          response.headers.get("content-type") ?? "application/octet-stream",
+        sizeBytes: bytes.byteLength,
+      };
+    },
+    async files(input) {
+      const { projectId, ...query } = input;
+      return transport.readJson(
+        transport.api.v1.projects[":id"].files.$get({
+          param: { id: projectId },
+          query,
         }),
       );
     },

@@ -39,6 +39,8 @@ interface BranchQueryOptions extends QueryOptions {
 
 interface UseProjectPathSuggestionsArgs {
   projectId: string | undefined;
+  environmentId: string | null;
+  hostId: string | null;
   query: string | null;
   limit?: number;
   includeFiles: boolean;
@@ -49,6 +51,7 @@ interface UseProjectCommandsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   environmentId: string | null;
+  hostId: string | null;
 }
 
 const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
@@ -164,6 +167,8 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
   return useQuery<WorkspacePathListResponse>({
     queryKey: projectPathsQueryKey(
       projectId,
+      args.environmentId,
+      args.hostId,
       trimmedQuery,
       limit,
       includeFiles,
@@ -176,6 +181,11 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
         limit,
         includeFiles,
         includeDirectories,
+        ...(args.environmentId !== null
+          ? { environmentId: args.environmentId }
+          : args.hostId !== null
+            ? { hostId: args.hostId }
+            : {}),
         signal,
       }),
     enabled,
@@ -187,6 +197,7 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
 export function useProjectFilePreview(
   projectId: string | undefined,
   path: string | null,
+  routing: { environmentId: string | null; hostId: string | null },
   options?: QueryOptions,
 ) {
   const enabled =
@@ -194,7 +205,12 @@ export function useProjectFilePreview(
   useProjectDetailRealtimeSubscription(projectId, { enabled });
 
   return useQuery<FilePreview>({
-    queryKey: projectFilePreviewQueryKey(projectId, path),
+    queryKey: projectFilePreviewQueryKey(
+      projectId,
+      routing.environmentId,
+      routing.hostId,
+      path,
+    ),
     queryFn: ({ signal }) =>
       api.getProjectFilePreview({
         projectId: requireProjectId(projectId, "useProjectFilePreview"),
@@ -203,6 +219,11 @@ export function useProjectFilePreview(
           hookName: "useProjectFilePreview",
           argName: "path",
         }),
+        ...(routing.environmentId !== null
+          ? { environmentId: routing.environmentId }
+          : routing.hostId !== null
+            ? { hostId: routing.hostId }
+            : {}),
         signal,
       }),
     enabled,
@@ -233,12 +254,17 @@ export function useProjectCommands(
       args.projectId,
       args.providerId,
       args.environmentId,
+      args.hostId,
     ),
     queryFn: ({ signal }) =>
       api.listProjectCommands({
         projectId: requireProjectId(args.projectId, "useProjectCommands"),
         providerId: requireProviderId(args.providerId, "useProjectCommands"),
-        environmentId: args.environmentId,
+        ...(args.environmentId !== null
+          ? { environmentId: args.environmentId }
+          : args.hostId !== null
+            ? { hostId: args.hostId }
+            : {}),
         signal,
       }),
     enabled,

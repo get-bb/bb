@@ -81,6 +81,9 @@ async function writePluginFixture(
           }
         : {}),
       bb: {
+        name: "Install fixture",
+        description: "Plugin installation fixture.",
+        branding: { icon: "Zap" },
         server: "./server.ts",
         ...(options.appSource === undefined ? {} : { app: "./app.tsx" }),
       },

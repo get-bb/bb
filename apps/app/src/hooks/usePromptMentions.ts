@@ -30,6 +30,7 @@ const PROMPT_MENTION_SOURCE_LIMIT = 8;
 export interface UsePromptMentionsOptions {
   currentThreadId?: string;
   environmentId: string | null;
+  hostId?: string | null;
 }
 
 export interface UsePromptMentionsResult {
@@ -150,6 +151,7 @@ export function usePromptMentions(
     query: includeBuiltInSources ? query : null,
     limit: PROMPT_MENTION_SOURCE_LIMIT,
     environmentId: options.environmentId,
+    hostId: options.hostId,
     currentThreadId: options.currentThreadId,
     includeDirectories: true,
   });

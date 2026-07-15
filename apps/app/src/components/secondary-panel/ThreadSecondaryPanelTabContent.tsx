@@ -72,6 +72,8 @@ export interface WorkspaceFilePreviewTabContentProps {
 export interface ProjectFilePreviewTabContentProps {
   activePath: string;
   copyPath?: string | null;
+  environmentId: string | null;
+  hostId: string | null;
   lineRange: FilePreviewLineRange | null;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
@@ -349,6 +351,8 @@ export function WorkspaceFilePreviewTabContent({
 export function ProjectFilePreviewTabContent({
   activePath,
   copyPath = null,
+  environmentId,
+  hostId,
   lineRange,
   onSelectionAddToChat,
   onOpenInEditor,
@@ -360,7 +364,7 @@ export function ProjectFilePreviewTabContent({
     isFetching: isProjectFilePreviewFetching,
     isLoading: isProjectFilePreviewLoading,
     refetch: refetchProjectFilePreview,
-  } = useProjectFilePreview(projectId, activePath);
+  } = useProjectFilePreview(projectId, activePath, { environmentId, hostId });
 
   return (
     <SecondaryPanelFilePreview

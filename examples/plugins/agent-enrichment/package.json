@@ -8,6 +8,11 @@
     "bbPluginSdk": "^0.2.0"
   },
   "bb": {
+    "name": "Agent enrichment",
+    "description": "Demonstrate plugin-provided agent tools, skills, settings, and mentions.",
+    "branding": {
+      "icon": "Zap"
+    },
     "server": "./server.ts"
   },
   "keywords": [

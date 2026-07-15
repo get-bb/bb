@@ -8,8 +8,11 @@
     "bb": ">=0.0"
   },
   "bb": {
-    "displayName": "Custom instructions",
-    "icon": "EditFile",
+    "name": "Custom instructions",
+    "description": "Add persistent custom instructions to agent tasks on this bb host.",
+    "branding": {
+      "icon": "EditFile"
+    },
     "server": "./server.ts",
     "app": "./app.tsx"
   },
@@ -21,7 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bb/shared-ui": "workspace:*"
+    "@bb/shared-ui": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/plugin-sdk": "workspace:*",

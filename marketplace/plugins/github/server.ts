@@ -8,7 +8,8 @@
 // mutations (comment, create, close/reopen, assign, label) and detail views go
 // straight through `gh`.
 import { execFile } from "node:child_process";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
 
 const SYNC_INTERVAL_MS = 5 * 60_000;
 const ISSUE_PAGE = 100;
@@ -19,6 +20,239 @@ const CLOSED_PR_PAGE = 30;
 const GH_HINT =
   "Install the GitHub CLI (https://cli.github.com) and run `gh auth login`, " +
   "then `bb plugin reload github`.";
+
+const repoNameSchema = z.string().regex(/^[\w.-]+\/[\w.-]+$/);
+const itemNumberSchema = z.number().int().positive();
+const itemInputSchema = z
+  .object({ repo: repoNameSchema, number: itemNumberSchema })
+  .strict();
+const nonBlankStringSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0, "must not be blank");
+const repoInfoSchema = z
+  .object({ repo: repoNameSchema, projectId: z.string().nullable() })
+  .strict();
+const itemSchema = z
+  .object({
+    repo: repoNameSchema,
+    number: itemNumberSchema,
+    kind: z.enum(["issue", "pr"]),
+    title: z.string(),
+    state: z.string(),
+    author: z.string(),
+    labels: z.array(z.string()),
+    assignees: z.array(z.string()),
+    url: z.string(),
+    body: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict();
+const syncResultSchema = z
+  .object({
+    repos: z.number().int().nonnegative(),
+    items: z.number().int().nonnegative(),
+  })
+  .strict();
+const okResultSchema = z.object({ ok: z.literal(true) }).strict();
+const commentSchema = z
+  .object({ author: z.string(), body: z.string(), createdAt: z.string() })
+  .strict();
+const threadLinkSchema = z
+  .object({
+    kind: z.enum(["issue", "pr"]),
+    repo: repoNameSchema,
+    number: itemNumberSchema,
+    threadId: z.string().min(1),
+    createdAt: z.string(),
+  })
+  .strict();
+const pullSchema = z
+  .object({
+    repo: repoNameSchema,
+    number: itemNumberSchema,
+    title: z.string(),
+    state: z.string(),
+    author: z.string(),
+    body: z.string(),
+    url: z.string(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    baseRefName: z.string(),
+    headRefName: z.string(),
+    additions: z.number().nonnegative(),
+    deletions: z.number().nonnegative(),
+    changedFiles: z.number().int().nonnegative(),
+    labels: z.array(z.string()),
+    assignees: z.array(z.string()),
+    reviewDecision: z.string(),
+    mergeStateStatus: z.string(),
+    reviewRequests: z.array(z.string()),
+    checks: z.array(
+      z
+        .object({
+          name: z.string(),
+          status: z.enum(["success", "failure", "pending", "neutral"]),
+          url: z.string(),
+        })
+        .strict(),
+    ),
+    comments: z.array(commentSchema),
+    reviews: z.array(
+      z
+        .object({
+          author: z.string(),
+          state: z.string(),
+          body: z.string(),
+          createdAt: z.string(),
+        })
+        .strict(),
+    ),
+    reviewThreads: z.array(
+      z
+        .object({
+          path: z.string(),
+          line: z.number().int().nonnegative().nullable(),
+          diffHunk: z.string(),
+          comments: z.array(commentSchema),
+        })
+        .strict(),
+    ),
+    files: z.array(
+      z
+        .object({
+          path: z.string(),
+          status: z.string(),
+          additions: z.number().nonnegative(),
+          deletions: z.number().nonnegative(),
+          patch: z.string().nullable(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export const githubRpcContract = defineRpcContract({
+  status: {
+    input: z.null(),
+    output: z
+      .object({
+        ghOk: z.boolean(),
+        ghError: z.string().nullable(),
+        repos: z.array(repoInfoSchema),
+        lastSyncedAt: z.string().nullable(),
+      })
+      .strict(),
+  },
+  refresh: { input: z.null(), output: syncResultSchema },
+  listItems: {
+    input: z
+      .object({
+        kind: z.enum(["issue", "pr"]).optional(),
+        repo: repoNameSchema.optional(),
+        query: z.string().optional(),
+        state: z.enum(["open", "closed"]).optional(),
+        mine: z.boolean().optional(),
+      })
+      .strict(),
+    output: z.object({ items: z.array(itemSchema) }).strict(),
+  },
+  viewer: {
+    input: z.null(),
+    output: z.object({ login: z.string().min(1) }).strict(),
+  },
+  assignableUsers: {
+    input: z.object({ repo: repoNameSchema }).strict(),
+    output: z.object({ users: z.array(z.string().min(1)) }).strict(),
+  },
+  repositoryLabels: {
+    input: z.object({ repo: repoNameSchema }).strict(),
+    output: z.object({ labels: z.array(z.string().min(1)) }).strict(),
+  },
+  setIssueState: {
+    input: itemInputSchema
+      .extend({ state: z.enum(["open", "closed"]) })
+      .strict(),
+    output: okResultSchema,
+  },
+  setAssignees: {
+    input: itemInputSchema
+      .extend({ assignees: z.array(z.string().min(1)) })
+      .strict(),
+    output: z
+      .object({ ok: z.literal(true), assignees: z.array(z.string().min(1)) })
+      .strict(),
+  },
+  setLabels: {
+    input: itemInputSchema.extend({ labels: z.array(z.string()) }).strict(),
+    output: z
+      .object({ ok: z.literal(true), labels: z.array(z.string().min(1)) })
+      .strict(),
+  },
+  getIssue: {
+    input: itemInputSchema,
+    output: z
+      .object({
+        issue: z
+          .object({
+            repo: repoNameSchema,
+            number: itemNumberSchema,
+            title: z.string(),
+            state: z.string(),
+            author: z.string(),
+            body: z.string(),
+            labels: z.array(z.string()),
+            assignees: z.array(z.string()),
+            url: z.string(),
+            updatedAt: z.string(),
+            comments: z.array(commentSchema),
+          })
+          .strict(),
+      })
+      .strict(),
+  },
+  getPull: {
+    input: itemInputSchema,
+    output: z.object({ pull: pullSchema }).strict(),
+  },
+  commentPull: {
+    input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
+    output: okResultSchema,
+  },
+  pullForThread: {
+    input: z.object({ threadId: z.string().min(1) }).strict(),
+    output: z.object({ pull: itemInputSchema.nullable() }).strict(),
+  },
+  commentIssue: {
+    input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
+    output: okResultSchema,
+  },
+  createIssue: {
+    input: z
+      .object({
+        repo: repoNameSchema,
+        title: nonBlankStringSchema,
+        body: z.string().optional(),
+      })
+      .strict(),
+    output: z
+      .object({ number: itemNumberSchema.nullable(), url: z.string() })
+      .strict(),
+  },
+  startWork: {
+    input: itemInputSchema,
+    output: z.object({ threadId: z.string().min(1) }).strict(),
+  },
+  startReview: {
+    input: itemInputSchema,
+    output: z.object({ threadId: z.string().min(1) }).strict(),
+  },
+  listLinks: {
+    input: z.null(),
+    output: z
+      .object({ links: z.record(z.string(), z.array(threadLinkSchema)) })
+      .strict(),
+  },
+});
 
 interface RepoInfo {
   repo: string; // "owner/name"
@@ -206,7 +440,7 @@ export default async function plugin(bb: BbPluginApi) {
   // ------------------------------------------------------------------
   // SQLite cache of open issues + PRs across tracked repos.
   // ------------------------------------------------------------------
-  const db = bb.storage.sqlite();
+  const db = bb.storage.database();
   bb.storage.migrate(db, [
     `CREATE TABLE IF NOT EXISTS items (
        repo TEXT NOT NULL,
@@ -615,15 +849,7 @@ export default async function plugin(bb: BbPluginApi) {
   // ------------------------------------------------------------------
   // rpc — the frontend data plane.
   // ------------------------------------------------------------------
-  function requireItemInput(input: unknown): { repo: string; number: number } {
-    const args = input as { repo?: unknown; number?: unknown };
-    if (!isRepoName(args?.repo) || typeof args?.number !== "number") {
-      throw new Error("expected { repo: \"owner/name\", number: number }");
-    }
-    return { repo: args.repo, number: args.number };
-  }
-
-  bb.rpc.register({
+  bb.rpc.register(githubRpcContract, {
     /** () → auth/sync status for the panel banner. */
     async status() {
       const cursor = await bb.storage.kv.get<{
@@ -646,21 +872,14 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     /** { kind?, repo?, query?, state?, mine? } → cached items, newest first. */
-    async listItems(input: unknown) {
-      const args = input as {
-        kind?: unknown;
-        repo?: unknown;
-        query?: unknown;
-        state?: unknown;
-        mine?: unknown;
-      };
+    async listItems(input) {
       return {
         items: listCachedItems({
-          kind: args?.kind === "issue" || args?.kind === "pr" ? args.kind : undefined,
-          repo: isRepoName(args?.repo) ? args.repo : undefined,
-          query: typeof args?.query === "string" ? args.query : undefined,
-          state: args?.state === "open" || args?.state === "closed" ? args.state : undefined,
-          assignee: args?.mine === true ? await getViewer() : undefined,
+          kind: input.kind,
+          repo: input.repo,
+          query: input.query,
+          state: input.state,
+          assignee: input.mine === true ? await getViewer() : undefined,
         }),
       };
     },
@@ -671,26 +890,17 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     /** { repo } → logins that can be assigned to issues in that repo. */
-    async assignableUsers(input: unknown) {
-      const repo = (input as { repo?: unknown })?.repo;
-      if (!isRepoName(repo)) throw new Error('expected { repo: "owner/name" }');
-      return { users: await getAssignableUsers(repo) };
+    async assignableUsers(input) {
+      return { users: await getAssignableUsers(input.repo) };
     },
 
     /** { repo } → labels available in that repo. */
-    async repositoryLabels(input: unknown) {
-      const repo = (input as { repo?: unknown })?.repo;
-      if (!isRepoName(repo)) throw new Error('expected { repo: "owner/name" }');
-      return { labels: await getRepoLabels(repo) };
+    async repositoryLabels(input) {
+      return { labels: await getRepoLabels(input.repo) };
     },
 
     /** { repo, number, state: "open"|"closed" } → close or reopen an issue. */
-    async setIssueState(input: unknown) {
-      const { repo, number } = requireItemInput(input);
-      const state = (input as { state?: unknown })?.state;
-      if (state !== "open" && state !== "closed") {
-        throw new Error('expected state to be "open" or "closed"');
-      }
+    async setIssueState({ repo, number, state }): Promise<{ ok: true }> {
       await gh([
         "issue", state === "closed" ? "close" : "reopen", String(number), "-R", repo,
       ]);
@@ -701,13 +911,12 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     /** { repo, number, assignees: string[] } → set the exact assignee list. */
-    async setAssignees(input: unknown) {
-      const { repo, number } = requireItemInput(input);
-      const raw = (input as { assignees?: unknown })?.assignees;
-      if (!Array.isArray(raw) || raw.some((login) => typeof login !== "string")) {
-        throw new Error("expected { assignees: string[] }");
-      }
-      const next = [...new Set(raw as string[])];
+    async setAssignees({
+      repo,
+      number,
+      assignees,
+    }): Promise<{ ok: true; assignees: string[] }> {
+      const next = [...new Set(assignees)];
       const current = getCachedItem("issue", repo, number)?.assignees ?? [];
       const add = next.filter((login) => !current.includes(login));
       const remove = current.filter((login) => !next.includes(login));
@@ -721,14 +930,13 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     /** { repo, number, labels: string[] } → set the exact issue label list. */
-    async setLabels(input: unknown) {
-      const { repo, number } = requireItemInput(input);
-      const raw = (input as { labels?: unknown })?.labels;
-      if (!Array.isArray(raw) || raw.some((label) => typeof label !== "string")) {
-        throw new Error("expected { labels: string[] }");
-      }
+    async setLabels({
+      repo,
+      number,
+      labels,
+    }): Promise<{ ok: true; labels: string[] }> {
       const next = [
-        ...new Set((raw as string[]).map((label) => label.trim()).filter(Boolean)),
+        ...new Set(labels.map((label) => label.trim()).filter(Boolean)),
       ];
       const currentRaw = await gh([
         "issue", "view", String(number), "-R", repo, "--json", "labels",
@@ -751,8 +959,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     /** { repo, number } → live issue detail incl. comments. */
-    async getIssue(input: unknown) {
-      const { repo, number } = requireItemInput(input);
+    async getIssue({ repo, number }) {
       const raw = await gh([
         "issue", "view", String(number), "-R", repo,
         "--json", "number,title,body,state,author,createdAt,updatedAt,labels,assignees,url,comments",
@@ -790,8 +997,7 @@ export default async function plugin(bb: BbPluginApi) {
         patches. Three live calls in parallel: `gh pr view` covers the
         overview + reviews + issue-style comments, the REST pulls API covers
         what it cannot — inline review comments and file patches. */
-    async getPull(input: unknown) {
-      const { repo, number } = requireItemInput(input);
+    async getPull({ repo, number }) {
       const prFields =
         "number,title,body,state,isDraft,author,createdAt,updatedAt,labels," +
         "assignees,url,baseRefName,headRefName,additions,deletions," +
@@ -847,7 +1053,7 @@ export default async function plugin(bb: BbPluginApi) {
           ["IN_PROGRESS", "QUEUED", "PENDING", "EXPECTED", "WAITING"].includes(
             String(entry.status ?? entry.state ?? "").toUpperCase(),
           );
-        const status =
+        const status: "success" | "failure" | "pending" | "neutral" =
           conclusion === "SUCCESS"
             ? "success"
             : conclusion === "FAILURE" || conclusion === "ERROR" || conclusion === "TIMED_OUT"
@@ -971,12 +1177,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     /** { repo, number, body } → add a PR conversation comment. */
-    async commentPull(input: unknown) {
-      const { repo, number } = requireItemInput(input);
-      const body = (input as { body?: unknown })?.body;
-      if (typeof body !== "string" || body.trim().length === 0) {
-        throw new Error("comment body must be a non-empty string");
-      }
+    async commentPull({ repo, number, body }): Promise<{ ok: true }> {
       await gh(["pr", "comment", String(number), "-R", repo, "--body", body]);
       return { ok: true };
     },
@@ -984,11 +1185,7 @@ export default async function plugin(bb: BbPluginApi) {
     /** { threadId } → the PR most relevant to a BB thread: the thread's own
         environment PR (the branch the agent pushed) first, else a PR this
         thread was spawned to review. Null when neither exists. */
-    async pullForThread(input: unknown) {
-      const threadId = (input as { threadId?: unknown })?.threadId;
-      if (typeof threadId !== "string" || threadId.length === 0) {
-        throw new Error("expected { threadId: string }");
-      }
+    async pullForThread({ threadId }) {
       try {
         const thread = (await bb.sdk.threads.get({ threadId })) as unknown as {
           environmentId?: string | null;
@@ -1021,31 +1218,22 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     /** { repo, number, body } → add an issue comment. */
-    async commentIssue(input: unknown) {
-      const { repo, number } = requireItemInput(input);
-      const body = (input as { body?: unknown })?.body;
-      if (typeof body !== "string" || body.trim().length === 0) {
-        throw new Error("comment body must be a non-empty string");
-      }
+    async commentIssue({ repo, number, body }): Promise<{ ok: true }> {
       await gh(["issue", "comment", String(number), "-R", repo, "--body", body]);
       return { ok: true };
     },
 
     /** { repo, title, body? } → create an issue, sync, return number+url. */
-    async createIssue(input: unknown) {
-      const args = input as { repo?: unknown; title?: unknown; body?: unknown };
-      if (!isRepoName(args?.repo) || typeof args?.title !== "string" || args.title.trim().length === 0) {
-        throw new Error("expected { repo: \"owner/name\", title: string, body?: string }");
-      }
-      const body = typeof args.body === "string" ? args.body : "";
+    async createIssue(input) {
+      const body = input.body ?? "";
       const stdout = await gh([
-        "issue", "create", "-R", args.repo,
-        "--title", args.title, "--body", body,
+        "issue", "create", "-R", input.repo,
+        "--title", input.title, "--body", body,
       ]);
       const match = stdout.trim().match(/\/issues\/(\d+)\s*$/);
       const number = match !== null ? Number(match[1]) : null;
       try {
-        replaceRepoRows(args.repo, await syncRepo(args.repo));
+        replaceRepoRows(input.repo, await syncRepo(input.repo));
         bb.realtime.publish("data-changed", {});
       } catch {
         // creation succeeded; the next scheduled sync will pick it up
@@ -1054,14 +1242,12 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     /** { repo, number } → spawn a worker thread on an issue. */
-    async startWork(input: unknown) {
-      const { repo, number } = requireItemInput(input);
+    async startWork({ repo, number }) {
       return await spawnOnItem("issue", repo, number);
     },
 
     /** { repo, number } → spawn a review thread on a PR. */
-    async startReview(input: unknown) {
-      const { repo, number } = requireItemInput(input);
+    async startReview({ repo, number }) {
       return await spawnOnItem("pr", repo, number);
     },
 

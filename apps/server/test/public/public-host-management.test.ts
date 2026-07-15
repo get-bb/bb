@@ -11,6 +11,7 @@ import {
 } from "@bb/server-contract";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -47,7 +48,6 @@ function requestJoinCode(app: {
 describe("public host management", () => {
   it("mints a join code that enrolls through the existing internal route", async () => {
     await withTestHarness(async (harness) => {
-
       const issued = await createJoinCode(harness.app);
       expect(issued.joinCode).toMatch(/^bbde_/u);
       expect(issued.expiresAt).toBeGreaterThan(Date.now());
@@ -351,9 +351,14 @@ describe("public host management", () => {
       expect(connectPlugin).toBeDefined();
       if (!connectPlugin) throw new Error("connect plugin was not installed");
       const revokeHandler = vi.fn(async () => ({ ok: true }));
+      const revokeRecord = {
+        inputSchema: z.object({ machineId: z.string() }),
+        outputSchema: z.object({ ok: z.literal(true) }),
+        handler: revokeHandler,
+      };
       vi.spyOn(harness.pluginService, "getRpcHandler").mockReturnValue({
         outcome: "found",
-        value: revokeHandler,
+        value: revokeRecord,
       });
       const invoke = vi
         .spyOn(harness.pluginService, "invokeRpcHandler")
@@ -367,7 +372,7 @@ describe("public host management", () => {
         expect(invoke).toHaveBeenCalledWith(
           connectPlugin.id,
           "revokeMachine",
-          revokeHandler,
+          revokeRecord,
           { machineId: "machine-cloud-remove" },
         );
       } finally {

@@ -18,6 +18,7 @@ import {
   useRealtime,
   useRpc,
 } from "@bb/plugin-sdk/app";
+import type { connectRpcContract } from "./src/rpc.js";
 import QRCode from "qrcode";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -135,12 +136,14 @@ function asStatus(payload: unknown): ConnectStatus | null {
         typeof (entry as { hostId?: unknown }).hostId === "string" &&
         typeof (entry as { hostName?: unknown }).hostName === "string" &&
         typeof (entry as { port?: unknown }).port === "number" &&
+        typeof (entry as { createdAt?: unknown }).createdAt === "number" &&
         typeof (entry as { url?: unknown }).url === "string"
       ) {
         shares.push({
           hostId: (entry as { hostId: string }).hostId,
           hostName: (entry as { hostName: string }).hostName,
           port: (entry as { port: number }).port,
+          createdAt: (entry as { createdAt: number }).createdAt,
           url: (entry as { url: string }).url,
           ...(typeof (entry as { unavailableReason?: unknown })
             .unavailableReason === "string"
@@ -405,7 +408,7 @@ function PairForm({
   dashboardUrl: string;
   onPaired: () => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof connectRpcContract>();
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [errorCode, setErrorCode] = useState<PairErrorCode | null>(null);
@@ -535,7 +538,7 @@ function SharedPortsSection({
   shares: ConnectStatus["shares"];
   dimmed: boolean;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof connectRpcContract>();
   const [portInput, setPortInput] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [exposing, setExposing] = useState(false);
@@ -861,7 +864,7 @@ function ConnectedContent({
   onChanged: () => void;
   onDisconnected: () => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof connectRpcContract>();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
@@ -984,7 +987,7 @@ function ReconnectingContent({
   onChanged: () => void;
   onDisconnected: () => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof connectRpcContract>();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
@@ -1072,7 +1075,7 @@ function ReconnectingContent({
 // ---------------------------------------------------------------------------
 
 function ConnectSettingsSection() {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof connectRpcContract>();
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);

@@ -210,7 +210,7 @@ export function SettingsSidebar({
                   <SettingsSidebarRow
                     key={plugin.id}
                     active={activePluginId === plugin.id}
-                    label={plugin.displayName ?? plugin.id}
+                    label={plugin.name ?? plugin.id}
                     onNavigate={closeOnMobile}
                     to={getSettingsPluginRoutePath(plugin.id)}
                   >

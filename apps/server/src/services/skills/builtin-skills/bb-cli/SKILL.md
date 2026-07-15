@@ -75,7 +75,9 @@ message agents, or inspect projects, providers, and environments.
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
-  attachments, and `--folder <id>` to file the new thread immediately.
+  attachments, and `--folder <id>` to file the new thread immediately. These
+  flags pass host-readable absolute paths (or relative server-upload tokens)
+  through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
@@ -117,11 +119,36 @@ message agents, or inspect projects, providers, and environments.
 - `bb machine show`, `join-code`, `rename`, and `remove` cover the Settings →
   Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
   or install provider CLIs on a selected machine.
+- Use `bb project create --name <name> --root <path> --machine <id-or-name>`
+  to bind a new project's local path to a connected enrolled machine. Use
+  `--host` as an alias. Omitting both selectors preserves the existing local
+  CLI machine fallback (normally the primary machine).
 - Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
-  to register a path on another machine. Use `--clone` instead of `--path` to
-  clone the project's remote there; `--remote-url` and `--target-path` are
+  to register a path on another connected machine. It uses the same selector
+  resolution and fallback as project create. Use `--clone` instead of `--path`
+  to clone the project's remote there; `--remote-url` and `--target-path` are
   optional clone overrides.
+- `bb project paths|files|content|commands` accept `--machine <id-or-name>`
+  (`--host` alias) or `--environment <id>`, but not both. An environment uses
+  its owning machine and workspace; an explicit machine uses that machine's
+  project source; omitting both intentionally uses the primary machine source.
+  `bb project content --json` returns UTF-8 text or base64 binary content with
+  an explicit `contentEncoding`.
+- Use `bb project attachment upload <project-id> --client-file <path>` when the
+  bytes live on the CLI machine, including when the CLI and bb server are on
+  different hosts. It reads locally and sends multipart bytes through the
+  configured `BB_SERVER_URL` (and its enrolled-machine authentication proxy),
+  returning the stable server attachment DTO. Optional `--filename` and
+  `--mime-type` override inferred metadata. Pass the returned relative `path`
+  to thread `--file` or `--image`; image MIME types are capped at 10MB and
+  other files at 25MB. `bb project attachment download <project-id>
+<attachment-path> --client-file <path>` writes existing attachment bytes on
+  the CLI machine. There is no project-attachment list or per-file remove API.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
+- Direct environment inspection accepts any environment ID: use `bb environment
+status|branches|paths|diff|diff-files|diff-file|diff-patch <id>` and `bb
+environment pull-request show <id>`. Diff commands require an explicit target
+  and the matching merge-base or commit flags; all support `--json`.
 - `bb environment pull-request ready|draft|merge` manages pull-request state;
   `bb environment archive-threads` bulk-archives an environment's threads.
 - Spawned child threads inherit permission from explicit flags, then the
@@ -132,7 +159,10 @@ message agents, or inspect projects, providers, and environments.
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
-  and `bb provider models <provider-id>`.
+  and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
+  (alias `--host`) or `--environment <id>` to inspect the machine where work
+  will run; the selectors cannot be combined. With neither selector they
+  intentionally inspect the primary machine.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
@@ -215,22 +245,26 @@ For review or fix pipelines, get the environment ID from
 
 ## Long-Running Commands
 
-- Use `bb thread terminal ...` for long-running commands the user may need to
-  inspect or stop later: dev servers, watch tasks, REPLs, database consoles, and
-  similar processes.
-- Prefer a thread terminal over a one-off foreground command for dev servers.
-  The terminal is a real PTY scoped to the thread's environment and appears in
-  the bb UI as a terminal tab.
+- Use `bb terminal ...` for long-running commands the user may need to inspect
+  or stop later: dev servers, watch tasks, REPLs, database consoles, and similar
+  processes. The terminal is a real persistent PTY shown in the bb UI.
+- `list` and `create` require exactly one explicit scope: `--thread <id>`,
+  `--environment <id>`, or `--machine <id-or-name>` (`--host` is an alias).
+  Add `--cwd <path>` only to a machine scope. Machine targets resolve to an
+  explicit host ID; terminal commands never silently fall back to primary.
 - Start a server with
-  `bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"`.
-- Use `bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120`
-  to wait for readiness from new output. Pass `--from-start` only when matching
-  existing scrollback is intentional.
-- Use `bb thread terminal output <terminal-id> <thread-id> --json` to read
-  bounded output, then continue with `--since-seq <nextSeq>` when polling.
-- Use `bb thread terminal send <terminal-id> <thread-id> --text "..." --enter`
-  for interactive input, and `bb thread terminal stop <terminal-id> <thread-id>`
-  when the process is no longer needed.
+  `bb terminal create --thread <thread-id> --title "pnpm dev" --command "pnpm dev"`.
+- All existing-session operations need only the terminal ID. Use
+  `bb terminal wait <terminal-id> --contains "Local:" --timeout 120` to wait
+  for readiness from new output. Pass `--from-start` only when matching existing
+  scrollback is intentional.
+- Use `bb terminal output <terminal-id> --json` to read bounded output, then
+  continue with `--since-seq <nextSeq>` when polling. Use
+  `bb terminal send <terminal-id> --text "..." --enter` for interactive input,
+  `bb terminal rename <terminal-id> <title>` to rename, and
+  `bb terminal close <terminal-id>` when the process is no longer needed.
+- `bb terminal restart <terminal-id>` replaces the session with a shell in the
+  same scope, size, and title. It does not replay the original launch command.
 
 ## Failures And Interruptions
 
@@ -327,11 +361,18 @@ For review or fix pipelines, get the environment ID from
   - `bb theme list` — built-in and custom themes and which palette is active.
   - `bb theme dir` — print the absolute custom-theme directory (where to create
     `<name>/theme.css`). Use this instead of guessing the path.
-  - `bb theme set <id>` — activate a built-in (`default`, `nord`, `dracula`,
-    `solarized`, `gruvbox`, `catppuccin`) or a custom theme by its folder name.
+  - `bb theme set <id> [--favicon-color <color>]` — activate a built-in
+    (`default`, `nord`, `dracula`, `solarized`, `gruvbox`, `catppuccin`), custom,
+    or plugin-contributed theme. Without the flag it preserves the favicon
+    color; with the flag it updates the complete appearance selection.
   - `bb theme show [--css]` — print the active palette; `--css` dumps the active
     theme's CSS.
-  - `bb theme reset` — back to `default`.
+  - `bb theme reset` — back to `default` while preserving the favicon color.
+  - `bb theme favicon set <color>` — set the favicon color while preserving the
+    active theme. Colors: `default`, `red`, `orange`, `yellow`, `green`, `teal`,
+    `blue`, `purple`, `pink`.
+  - `bb theme favicon reset` — reset the favicon color to `default` while
+    preserving the active theme.
 
 ### Creating or editing a custom theme
 
@@ -414,6 +455,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     it after removal.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
+  - `bb plugin source <id> [--json]` — requested and resolved source, engine
+    ranges, install time, integrity/registry details, and recent activation
+    history.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
     `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
@@ -435,7 +479,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `@bb/plugin-sdk/app` and register UI slots (homepageSection,
     settingsSection, navPanel, threadPanelAction, composerAccessory,
     fileOpener) with hooks (useRpc, useRealtime, useSettings, useBbContext,
-    useBbNavigate, useComposer); components are vendored shadcn source the
+    useBbNavigate, useComposer for scoped text editing / quote / mention /
+    focus access); components are vendored shadcn source the
     plugin owns. Installed
     plugins and their settings also appear under Settings → Plugins.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run

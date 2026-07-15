@@ -113,7 +113,13 @@ describe("loadPluginFrontends", () => {
     const warn = vi.fn();
 
     const records = await loadPluginFrontends(
-      [candidate("stale", { compatible: false, sdkMajor: 9, sdkVersion: "9.2.0" })],
+      [
+        candidate("stale", {
+          compatible: false,
+          sdkMajor: 9,
+          sdkVersion: "9.2.0",
+        }),
+      ],
       { importModule, injectCss: vi.fn(), warn },
     );
 
@@ -174,7 +180,7 @@ describe("installPluginRuntime", () => {
     );
     expect((runtime.jsxRuntime as { jsx: unknown }).jsx).toBe(jsxRuntime.jsx);
     // The SDK slot carries the real implementation surface (kept in sync
-    // with the facade's export names by plugin-sdk-app-impl.test.ts).
+    // with the facade contract by `satisfies PluginSdkApp`).
     expect(runtime.pluginSdkApp).toBe(pluginSdkAppImplementation);
 
     // A second call never replaces an installed runtime.

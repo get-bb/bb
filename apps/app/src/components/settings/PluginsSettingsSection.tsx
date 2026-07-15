@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
@@ -265,7 +266,7 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
     },
     onError: (error) => {
       appToast.error("Saving plugin settings failed", {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
@@ -508,7 +509,7 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const isBuiltin = plugin.provenance === "builtin";
   const isPathSource = plugin.sourceDisplay.toLowerCase().startsWith("path");
-  const name = plugin.displayName ?? plugin.id;
+  const name = plugin.name ?? plugin.id;
   const remove = useMutation({
     mutationFn: () => removePlugin(fetch, plugin.id),
     onSuccess: () => {
@@ -518,7 +519,7 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
     },
     onError: (error) => {
       appToast.error(`Removing ${name} failed`, {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
@@ -531,8 +532,8 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
           {isBuiltin
             ? "Removes the plugin from BB. Its bundled files are left in place."
             : isPathSource
-            ? "Uninstalls the plugin. Its local source files are left in place."
-            : "Uninstalls the plugin and deletes its downloaded files."}
+              ? "Uninstalls the plugin. Its local source files are left in place."
+              : "Uninstalls the plugin and deletes its downloaded files."}
         </p>
       </div>
       <Button
@@ -552,8 +553,8 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
               {isBuiltin
                 ? "This removes the plugin and its stored settings. BB remembers the removal so the plugin stays hidden after restart; its bundled files remain in place."
                 : isPathSource
-                ? "This uninstalls the plugin and removes its stored settings. Its local source files stay on disk, so you can reinstall it."
-                : "This uninstalls the plugin, deletes its downloaded files, and removes its stored settings."}
+                  ? "This uninstalls the plugin and removes its stored settings. Its local source files stay on disk, so you can reinstall it."
+                  : "This uninstalls the plugin, deletes its downloaded files, and removes its stored settings."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -594,7 +595,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
   const showDeclarativeSettingsCard =
     plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
-  const displayName = plugin.displayName ?? plugin.id;
+  const name = plugin.name ?? plugin.id;
   const isRunning = plugin.status === "running";
   const hasUpdateSurfaces = pluginHasUpdateSurfaces(plugin);
   // A running plugin whose only surface is a settingsSection lets that
@@ -603,7 +604,10 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   // doesn't stack a second heading above it — unless the marketplace update
   // surfaces render here too, which need the header for context.
   const sectionOwnsHeader =
-    isRunning && hasSettingsSections && !plugin.hasSettings && !hasUpdateSurfaces;
+    isRunning &&
+    hasSettingsSections &&
+    !plugin.hasSettings &&
+    !hasUpdateSurfaces;
   const provenanceLine =
     plugin.marketplaceName !== null
       ? `v${plugin.version} · from ${plugin.marketplaceName} marketplace`
@@ -617,9 +621,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
           <div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
-              <h2 className="text-sm font-semibold text-foreground">
-                {displayName}
-              </h2>
+              <h2 className="text-sm font-semibold text-foreground">{name}</h2>
               {/* The version + status pills read as diagnostics; a running,
                   configurable plugin doesn't need them on its settings page. */}
               {!isRunning ? (

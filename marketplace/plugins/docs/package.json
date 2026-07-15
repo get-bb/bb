@@ -28,8 +28,11 @@
     "bbPluginSdk": "^0.2.0"
   },
   "bb": {
-    "displayName": "Docs",
-    "icon": "FileText",
+    "name": "Docs",
+    "description": "Create and edit Markdown documents across local and connected-host vaults.",
+    "branding": {
+      "icon": "FileText"
+    },
     "server": "./server.ts",
     "app": "./app.tsx",
     "skills": [
@@ -45,6 +48,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "devDependencies": {
+    "@bb/plugin-sdk": "workspace:*",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
@@ -78,6 +82,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.4.0",
+    "zod": "^4.3.6",
     "tiptap-markdown": "^0.8.10"
   }
 }

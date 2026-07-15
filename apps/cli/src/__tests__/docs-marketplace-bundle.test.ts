@@ -23,7 +23,6 @@ interface SlotRegistration {
   title?: string;
   icon?: string;
   path?: string;
-  chrome?: string;
   extensions?: string[];
   component: unknown;
 }
@@ -129,7 +128,6 @@ describe("Docs marketplace frontend bundle", () => {
       id: "docs",
       title: "Docs",
       path: "docs",
-      chrome: "none",
     });
     expect(typeof registered.navPanel[0]?.component).toBe("function");
 

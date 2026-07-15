@@ -20,6 +20,7 @@ import {
   type TimelineTitleActionResolver,
   useThreadTimelineController,
 } from "@/components/thread/timeline";
+import { serializePluginPanelParams } from "@/lib/plugin-json-value";
 import {
   resolveEnvironmentMergeBaseBranch,
   type ThreadListEntry,
@@ -984,18 +985,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             candidate.pluginId === pluginId && candidate.id === actionId,
         );
         if (action === undefined) return false;
-        let paramsJson: string | null = null;
-        if (params !== undefined) {
-          try {
-            paramsJson = JSON.stringify(params) ?? null;
-          } catch (error) {
-            console.warn(
-              `[plugin:${pluginId}] messageDirective openThreadPanel params are not JSON-serializable: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-            return false;
-          }
+        let paramsJson: string | null;
+        try {
+          paramsJson = serializePluginPanelParams(params);
+        } catch (error) {
+          console.warn(
+            `[plugin:${pluginId}] messageDirective openThreadPanel params are invalid: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          return false;
         }
         openPluginPanel({
           pluginId,

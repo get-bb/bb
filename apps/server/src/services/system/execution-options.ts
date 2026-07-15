@@ -1,7 +1,9 @@
 import type {
   SystemExecutionOptionsModelLoadErrorCode,
   SystemExecutionOptionsModelLoadError,
+  SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemProvidersQuery,
 } from "@bb/server-contract";
 import {
   buildAcpProviderInfo,
@@ -31,11 +33,7 @@ import {
   type KnownAcpAgent,
 } from "./known-acp-agents.js";
 
-export interface SystemExecutionOptionsRequest {
-  environmentId?: string;
-  hostId?: string;
-  providerId?: string;
-}
+export type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
 
 interface BuildModelLoadErrorArgs {
   error: ApiError;
@@ -67,10 +65,7 @@ type AppendCustomModelsResult = Pick<
   "models" | "selectedOnlyModels"
 >;
 
-interface ListSystemProviderInfosRequest {
-  environmentId?: string;
-  hostId?: string;
-}
+type ListSystemProviderInfosRequest = SystemProvidersQuery;
 
 interface ListSystemProviderInfosResult {
   hostId: string | null;

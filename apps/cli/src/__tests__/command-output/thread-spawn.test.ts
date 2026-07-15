@@ -57,7 +57,7 @@ describe("bb thread spawn command output", () => {
     });
   });
 
-  it("bb thread spawn forwards repeatable file and image attachments", async () => {
+  it("bb thread spawn forwards host-readable paths without reading them on the CLI machine", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-attachments",
       projectId: "proj-1",

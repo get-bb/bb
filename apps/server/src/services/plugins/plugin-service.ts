@@ -7,9 +7,17 @@ import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
   formatPluginThemeId,
+  type JsonValue,
   type PluginThemeMeta,
   type ToolCallResponse,
 } from "@bb/domain";
+import type {
+  PluginRpcError,
+  PluginRpcValidationIssue,
+  StandardSchemaV1,
+  StandardSchemaV1Issue,
+  StandardSchemaV1Result,
+} from "@bb/plugin-sdk";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
@@ -45,6 +53,7 @@ import { listBuiltinPluginRegistrations } from "./builtin-registry.js";
 import {
   RESERVED_AGENT_TOOL_NAMES,
   type BbPluginApi,
+  type PluginAgentConfigurationContext,
   type PluginAgentToolContext,
   type PluginAgentToolRecord,
   type PluginCliContext,
@@ -95,6 +104,7 @@ import type {
   PluginThreadEventEmitter,
   PluginUpdateCheckEntry,
   PluginWireLookup,
+  PluginResolvedAgentConfiguration,
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
@@ -102,6 +112,7 @@ export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
   PluginInstructionContribution,
+  PluginResolvedAgentConfiguration,
   PluginListEntry,
   PluginMentionProviderContribution,
   PluginMentionResolveResult,
@@ -231,15 +242,17 @@ export interface PluginService {
     context: Context,
   ): Promise<Response>;
   /**
-   * Run an rpc handler (same wrapping). The result is JSON round-tripped so
-   * non-serializable outputs surface as a handler error, not a broken wire.
+   * Validate RPC input, run the handler with failure isolation, validate its
+   * output, then normalize it as strict JSON for the response envelope.
    */
   invokeRpcHandler(
     id: string,
     method: string,
     handler: PluginRpcHandler,
     input: unknown,
-  ): Promise<{ ok: true; result: unknown } | { ok: false; error: string }>;
+  ): Promise<
+    { ok: true; result: JsonValue } | { ok: false; error: PluginRpcError }
+  >;
   /**
    * Per-plugin secret for auth "token" routes, generated on first use and
    * stored under <dataDir>/plugins/<id>/secrets/. `rotate` replaces it.
@@ -282,10 +295,19 @@ export interface PluginService {
    */
   listAgentTools(): PluginAgentToolContribution[];
   /**
+   * Evaluate each plugin's optional `bb.agents.configure` callback for one
+   * server-owned thread/session boundary. Registrations stay static; invalid
+   * or throwing callbacks fail closed for that plugin and cannot affect peers.
+   */
+  resolveAgentConfiguration(args: {
+    context: PluginAgentConfigurationContext;
+    skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
+  }): Promise<PluginResolvedAgentConfiguration>;
+  /**
    * Dynamic instruction providers from bb.agents.contributeInstructions,
    * ordered by plugin id. Resolved live at thread.start/turn.submit;
    * empty when the experiment is off or no plugin registered a provider.
-   * At most one provider per plugin (re-register replaces).
+   * At most one provider per plugin (duplicate registration is rejected).
    */
   listInstructionContributions(): PluginInstructionContribution[];
   /** Resolve one registered native tool by name (same view as listAgentTools). */
@@ -409,6 +431,146 @@ async function settledWithin(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+class PluginRpcBoundaryError extends Error {
+  constructor(readonly rpcError: PluginRpcError) {
+    super(rpcError.message);
+    this.name = "PluginRpcBoundaryError";
+  }
+}
+
+function normalizeRpcIssuePath(
+  path: StandardSchemaV1Issue["path"],
+): Array<string | number> | undefined {
+  if (path === undefined) return undefined;
+  const segments = Array.isArray(path) ? path : [path];
+  const normalized = segments.map((segment) => {
+    const key =
+      typeof segment === "object" && segment !== null
+        ? Reflect.get(segment, "key")
+        : segment;
+    return typeof key === "number" ? key : String(key);
+  });
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeRpcIssues(
+  issues: readonly StandardSchemaV1Issue[],
+): PluginRpcValidationIssue[] {
+  return issues.map((issue) => {
+    const path = normalizeRpcIssuePath(issue.path);
+    return {
+      message: issue.message,
+      ...(path !== undefined ? { path } : {}),
+    };
+  });
+}
+
+function rpcBoundaryFailure(
+  code: PluginRpcError["code"],
+  message: string,
+  issues?: PluginRpcValidationIssue[],
+): PluginRpcBoundaryError {
+  return new PluginRpcBoundaryError({
+    code,
+    message,
+    ...(issues !== undefined ? { issues } : {}),
+  });
+}
+
+async function validateRpcValue(
+  schema: StandardSchemaV1,
+  value: unknown,
+  phase: "input" | "output",
+): Promise<unknown> {
+  let result: StandardSchemaV1Result<unknown>;
+  try {
+    result = await schema["~standard"].validate(value);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw rpcBoundaryFailure(
+      phase === "input" ? "invalid_input" : "invalid_output",
+      `rpc ${phase} validator failed: ${detail}`,
+      [{ message: detail }],
+    );
+  }
+  if (result.issues !== undefined) {
+    const issues = normalizeRpcIssues(result.issues);
+    throw rpcBoundaryFailure(
+      phase === "input" ? "invalid_input" : "invalid_output",
+      `rpc ${phase} validation failed`,
+      issues,
+    );
+  }
+  return result.value;
+}
+
+/** Strict JsonValue normalization: no coercion, elision, or toJSON hooks. */
+function normalizeRpcJsonResult(value: unknown): JsonValue {
+  const ancestors = new Set<object>();
+
+  function visit(current: unknown, path: string): JsonValue {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return current;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        throw rpcBoundaryFailure(
+          "non_json_result",
+          `rpc result at ${path} contains a non-finite number`,
+        );
+      }
+      return current;
+    }
+    if (typeof current !== "object") {
+      throw rpcBoundaryFailure(
+        "non_json_result",
+        `rpc result at ${path} is not a JSON value (${typeof current})`,
+      );
+    }
+    if (ancestors.has(current)) {
+      throw rpcBoundaryFailure(
+        "non_json_result",
+        `rpc result at ${path} is cyclic`,
+      );
+    }
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        return current.map((item, index) => visit(item, `${path}[${index}]`));
+      }
+      const prototype = Object.getPrototypeOf(current) as object | null;
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw rpcBoundaryFailure(
+          "non_json_result",
+          `rpc result at ${path} must be a plain JSON object`,
+        );
+      }
+      const symbolKey = Reflect.ownKeys(current).find(
+        (key) => typeof key === "symbol",
+      );
+      if (symbolKey !== undefined) {
+        throw rpcBoundaryFailure(
+          "non_json_result",
+          `rpc result at ${path} contains a symbol key`,
+        );
+      }
+      const normalized: Record<string, JsonValue> = {};
+      for (const [key, child] of Object.entries(current)) {
+        normalized[key] = visit(child, `${path}.${key}`);
+      }
+      return normalized;
+    } finally {
+      ancestors.delete(current);
+    }
+  }
+
+  return visit(value, "$result");
 }
 
 /**
@@ -546,6 +708,109 @@ function normalizeMentionSearchItems(
           : null,
     };
   });
+}
+
+const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
+const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
+
+interface NormalizedPluginAgentConfiguration {
+  toolIds: string[];
+  skillIds: string[];
+  instructions: string | null;
+}
+
+function normalizePluginAgentSelectionIds(args: {
+  field: "tools" | "skills";
+  knownIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): string[] {
+  if (!Array.isArray(args.value)) {
+    throw new Error(`configure() output.${args.field} must be an array`);
+  }
+  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+    throw new Error(
+      `configure() output.${args.field} exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+    );
+  }
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < args.value.length; index += 1) {
+    const id = args.value[index];
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error(
+        `configure() output.${args.field}[${index}] must be a non-empty string`,
+      );
+    }
+    if (seen.has(id)) {
+      throw new Error(
+        `configure() output.${args.field} contains duplicate id ${JSON.stringify(id)}`,
+      );
+    }
+    if (!args.knownIds.has(id)) {
+      throw new Error(
+        `configure() selected unknown ${args.field === "tools" ? "tool" : "skill"} id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+      );
+    }
+    seen.add(id);
+    selected.push(id);
+  }
+  return selected;
+}
+
+function normalizePluginAgentConfiguration(args: {
+  knownSkillIds: ReadonlySet<string>;
+  knownToolIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): NormalizedPluginAgentConfiguration {
+  if (
+    typeof args.value !== "object" ||
+    args.value === null ||
+    Array.isArray(args.value)
+  ) {
+    throw new Error(
+      "configure() must return { tools: string[], skills: string[], instructions?: string }",
+    );
+  }
+  const output = args.value as Record<string, unknown>;
+  const unknownKeys = Object.keys(output)
+    .filter((key) => !["tools", "skills", "instructions"].includes(key))
+    .sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `configure() output contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+    );
+  }
+  if (
+    output.instructions !== undefined &&
+    typeof output.instructions !== "string"
+  ) {
+    throw new Error("configure() output.instructions must be a string");
+  }
+  const instructions =
+    typeof output.instructions === "string" &&
+    output.instructions.trim().length > 0
+      ? output.instructions.slice(
+          0,
+          PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+        )
+      : null;
+  return {
+    toolIds: normalizePluginAgentSelectionIds({
+      field: "tools",
+      knownIds: args.knownToolIds,
+      pluginId: args.pluginId,
+      value: output.tools,
+    }),
+    skillIds: normalizePluginAgentSelectionIds({
+      field: "skills",
+      knownIds: args.knownSkillIds,
+      pluginId: args.pluginId,
+      value: output.skills,
+    }),
+    instructions,
+  };
 }
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
@@ -875,11 +1140,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             exposedPlugin?.manifest.description ??
             identity?.manifest.description ??
             null,
-          displayName:
-            exposedPlugin?.manifest.displayName ??
-            identity?.manifest.displayName ??
+          name: exposedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          icon:
+            exposedPlugin?.manifest.branding.icon ??
+            identity?.manifest.branding.icon ??
             null,
-          icon: exposedPlugin?.manifest.icon ?? identity?.manifest.icon ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -1192,10 +1457,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         (row) => (id === undefined || row.id === id) && shouldLoadRow(row),
       );
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
-        await withLifecycleLock(row.id, async () => {
-          await disposeOne(row.id);
-          await loadOne(row);
-        });
+        await withLifecycleLock(row.id, () => loadOne(row));
       }
       await syncCliSkill();
       notifyPluginsChanged();
@@ -1335,15 +1597,27 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async invokeRpcHandler(id, method, handler, input) {
       const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
-        const result = await handler(input);
-        // JSON round-trip: the rpc contract is JSON-serializable outputs
-        // only, and a bigint/circular result should be this handler's clear
-        // 500, not a serializer crash in the response path.
-        const json = JSON.stringify(result);
-        return json === undefined ? undefined : (JSON.parse(json) as unknown);
+        const parsedInput = await validateRpcValue(
+          handler.inputSchema,
+          input,
+          "input",
+        );
+        const result = await handler.handler(parsedInput as never);
+        const parsedOutput = await validateRpcValue(
+          handler.outputSchema,
+          result,
+          "output",
+        );
+        return normalizeRpcJsonResult(parsedOutput);
       });
       if (outcome.ok) return { ok: true, result: outcome.value };
-      return { ok: false, error: outcome.error };
+      if (outcome.cause instanceof PluginRpcBoundaryError) {
+        return { ok: false, error: outcome.cause.rpcError };
+      }
+      return {
+        ok: false,
+        error: { code: "handler_error", message: outcome.error },
+      };
     },
 
     async httpToken(id, options) {
@@ -1428,6 +1702,77 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         },
         instructions: record.instructions,
       }));
+    },
+
+    async resolveAgentConfiguration({ context, skillIdsByPlugin }) {
+      const allTools = collectAgentTools();
+      const tools: PluginAgentToolContribution[] = [];
+      const selectedSkillIdsByPlugin = new Map<string, ReadonlySet<string>>();
+      const dynamicInstructions: Array<{ pluginId: string; text: string }> = [];
+
+      for (const [pluginId, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        const pluginTools = allTools.filter(
+          (entry) => entry.pluginId === pluginId,
+        );
+        const provider = plugin.handle.agentConfigurationProvider;
+        if (provider === null) {
+          tools.push(
+            ...pluginTools.map(({ record }) => ({
+              pluginId,
+              tool: {
+                name: record.name,
+                description: record.description,
+                inputSchema: record.inputSchema,
+              },
+              instructions: record.instructions,
+            })),
+          );
+          continue;
+        }
+
+        const knownSkillIds = new Set(skillIdsByPlugin.get(pluginId) ?? []);
+        const knownToolIds = new Set(
+          pluginTools.map(({ record }) => record.name),
+        );
+        const outcome = await invokeWrapped(pluginId, "agent configure", () =>
+          normalizePluginAgentConfiguration({
+            knownSkillIds,
+            knownToolIds,
+            pluginId,
+            value: provider(context),
+          }),
+        );
+        if (!outcome.ok) {
+          selectedSkillIdsByPlugin.set(pluginId, new Set());
+          continue;
+        }
+
+        const selectedTools = new Set(outcome.value.toolIds);
+        tools.push(
+          ...pluginTools
+            .filter(({ record }) => selectedTools.has(record.name))
+            .map(({ record }) => ({
+              pluginId,
+              tool: {
+                name: record.name,
+                description: record.description,
+                inputSchema: record.inputSchema,
+              },
+              instructions: record.instructions,
+            })),
+        );
+        selectedSkillIdsByPlugin.set(pluginId, new Set(outcome.value.skillIds));
+        if (outcome.value.instructions !== null) {
+          dynamicInstructions.push({
+            pluginId,
+            text: outcome.value.instructions,
+          });
+        }
+      }
+
+      return { tools, selectedSkillIdsByPlugin, dynamicInstructions };
     },
 
     listInstructionContributions() {

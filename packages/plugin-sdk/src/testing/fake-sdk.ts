@@ -26,11 +26,13 @@ type LooseStub<F> = F extends (...args: infer A) => unknown
  * Stub implementations keyed like `BbSdk`: an object per area with a subset
  * of its methods, or a function for the root-level members (`on`).
  */
-export type FakeSdkOverrides = {
-  [K in keyof BbSdk]?: BbSdk[K] extends (...args: never[]) => unknown
-    ? LooseStub<BbSdk[K]>
-    : { [M in keyof BbSdk[K]]?: LooseStub<BbSdk[K][M]> };
+type FakeSdkOverrideTree<T> = {
+  [K in keyof T]?: T[K] extends (...args: never[]) => unknown
+    ? LooseStub<T[K]>
+    : FakeSdkOverrideTree<T[K]>;
 };
+
+export type FakeSdkOverrides = FakeSdkOverrideTree<BbSdk>;
 
 export interface FakeSdkHarness {
   /** Every `bb.sdk` call in order, including ones whose stub threw. */
@@ -70,22 +72,17 @@ export function createFakeSdk(options: {
   const calls: FakeSdkCall[] = [];
   const stubs = new Map<string, (...args: unknown[]) => unknown>();
 
-  for (const [key, value] of Object.entries(options.overrides ?? {})) {
+  function addOverrides(prefix: string, value: unknown): void {
     if (typeof value === "function") {
-      stubs.set(key, value as (...args: unknown[]) => unknown);
-      continue;
+      stubs.set(prefix, value as (...args: unknown[]) => unknown);
+      return;
     }
-    for (const [method, implementation] of Object.entries(
-      value as Record<string, unknown>,
-    )) {
-      if (typeof implementation === "function") {
-        stubs.set(
-          `${key}.${method}`,
-          implementation as (...args: unknown[]) => unknown,
-        );
-      }
+    if (typeof value !== "object" || value === null) return;
+    for (const [key, child] of Object.entries(value)) {
+      addOverrides(prefix.length === 0 ? key : `${prefix}.${key}`, child);
     }
   }
+  addOverrides("", options.overrides ?? {});
 
   function invoke(path: string, rawArgs: unknown[]): unknown {
     const args =
@@ -104,7 +101,7 @@ export function createFakeSdk(options: {
   }
 
   const nodes = new Map<string, unknown>();
-  /** Callable-and-traversable proxy: `sdk.threads.spawn(...)` and `sdk.on(...)` both work. */
+  /** Callable-and-traversable proxy: `sdk.threads.spawn(...)` and `sdk.subscribe(...)` both work. */
   function node(path: string): unknown {
     const cached = nodes.get(path);
     if (cached) return cached;
@@ -125,7 +122,9 @@ export function createFakeSdk(options: {
   const harness: FakeSdkHarness = {
     calls,
     callsTo(path) {
-      return calls.filter((call) => call.path === path).map((call) => call.args);
+      return calls
+        .filter((call) => call.path === path)
+        .map((call) => call.args);
     },
     stub(path, implementation) {
       stubs.set(path, implementation as (...args: unknown[]) => unknown);

@@ -20,7 +20,7 @@ What it demonstrates:
   spawned threads are attributed in the thread list.
 - **`bb.storage.kv`** — maps Slack `thread_ts` → BB thread id (and back), so
   follow-up mentions land in the same BB thread.
-- **`bb.on("thread.idle")`** — posts `lastAssistantText` to Slack via
+- **`bb.events.on("thread.idle")`** — posts `lastAssistantText` to Slack via
   `chat.postMessage`.
 - **`bb.status.needsConfiguration`** — the plugin loads without tokens and
   reports "needs configuration" instead of crash-looping.

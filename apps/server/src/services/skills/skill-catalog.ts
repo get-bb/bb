@@ -9,6 +9,7 @@ import {
 } from "./injected-skills.js";
 
 interface ResolveSkillCatalogSourcesArgs {
+  pluginSkillSelections?: ReadonlyMap<string, ReadonlySet<string>>;
   projectSkillSources?: readonly ProjectInjectedSkillSource[];
 }
 
@@ -36,6 +37,9 @@ export function resolveSkillCatalog(
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
     pluginSkillRoots: getPluginSkillRootContributions(),
+    ...(args.pluginSkillSelections !== undefined
+      ? { pluginSkillSelections: args.pluginSkillSelections }
+      : {}),
     ...(args.projectSkillSources !== undefined
       ? { projectSkillSources: args.projectSkillSources }
       : {}),

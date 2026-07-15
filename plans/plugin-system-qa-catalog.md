@@ -73,9 +73,10 @@ as `marketplace/plugins/github`. What that flow proved:
       `dist/` itself; inventory shows `app.hasApp: true`, hash-busted
       `jsUrl`/`cssUrl`, `compatible: true`; the app loads the bundle and
       renders the panel.
-- [x] **navPanel + headerContent + logos**: sidebar entry renders the
-      plugin's `logo.svg` (dark variant shipped too), panel title bar shows
-      logo + title with the plugin's `headerContent` on the right.
+- [x] **navPanel + headerContent + branding**: sidebar entry and panel title
+      bar render the compact plugin icon + title, with the plugin's
+      `headerContent` on the right; rich light/dark logos remain available
+      for roomy surfaces.
 - [x] **rpc under real load**: 328 handler calls / 0 errors in
       `bb plugin list --json` after an evening of browsing issues/PRs.
 - [x] **Realtime + background service**: `sync` service `running`; panel
@@ -231,7 +232,9 @@ tool registered or reloaded mid-session is not hot-added).
 
 - [ ] **Install a tool plugin**: `mkdir -p /tmp/bb-plugin-fruit`, write
       `package.json` with `{ "name": "bb-plugin-fruit", "version": "0.1.0",
-      "bb": { "server": "./server.ts" } }` and `server.ts` with:
+      "bb": { "name": "Fruit", "description": "Featured fruit tool.",
+      "branding": { "icon": "Apple" }, "server": "./server.ts" } }` and
+      `server.ts` with:
       `export default (bb: any) => { bb.agents.registerTool({ name:
       "fruit_lookup", description: "Look up today's featured fruit.",
       instructions: "When asked about the featured fruit, call fruit_lookup
@@ -285,7 +288,9 @@ small-ux-pack example instead of the scratch plugin below.
 
 - [ ] **Install an actions plugin**: `mkdir -p /tmp/bb-plugin-acts`, write
       `package.json` with `{ "name": "bb-plugin-acts", "version": "0.1.0",
-      "bb": { "server": "./server.ts" } }` and `server.ts` with:
+      "bb": { "name": "Actions", "description": "Thread action examples.",
+      "branding": { "icon": "Zap" }, "server": "./server.ts" } }` and
+      `server.ts` with:
       `export default (bb: any) => {
         bb.ui.registerThreadAction({ id: "ping", title: "Ping",
           icon: "Zap",
@@ -339,7 +344,9 @@ Prereq: `plugins` experiment on; dev server via `scripts/bb-dev-app` with
 
 - [ ] **Install a mention plugin**: `mkdir -p /tmp/bb-plugin-mentions`, write
       `package.json` with `{ "name": "bb-plugin-mentions", "version":
-      "0.1.0", "bb": { "server": "./server.ts" } }` and `server.ts` with:
+      "0.1.0", "bb": { "name": "Mentions", "description": "Mention
+      provider examples.", "branding": { "icon": "AtSign" }, "server":
+      "./server.ts" } }` and `server.ts` with:
       `export default (bb: any) => {
         bb.ui.registerMentionProvider({ id: "issues",
           label: "Acme issues",
@@ -469,11 +476,12 @@ No server required for any of these (`bb plugin new` / `bb plugin build` are
 local commands).
 
 - [x] **Scaffold with a frontend entry**: `pnpm bb:dev plugin new hello --app`
-      → `bb-plugin-hello/` contains `app.tsx`, and its `package.json` has
-      `"bb": { "server": "./server.ts", "app": "./app.tsx" }`. Without
-      `--app`, no `app.tsx` and no `bb.app` field (headless scaffold
-      unchanged). (Verified 2026-07-02: github hero scaffolded with --app on
-      a packaged instance, incl. the new bundled `types/` dir.)
+      → `bb-plugin-hello/` contains `app.tsx`, and its `package.json` has the
+      required `bb.name`, `bb.description`, and `bb.branding` identity plus
+      `"server": "./server.ts"` and `"app": "./app.tsx"`. Without `--app`,
+      no `app.tsx` and no `bb.app` field (headless scaffold unchanged).
+      (Verified 2026-07-02: github hero scaffolded with --app on a packaged
+      instance, incl. the new bundled `types/` dir.)
 - [ ] **Build**: `pnpm bb:dev plugin build bb-plugin-hello` prints the three
       output paths. Check the outputs:
       - `dist/app.js` is a single ESM file with
@@ -565,8 +573,8 @@ scaffolded with `bb plugin new hello --app` (the scaffold now default-exports
       the sidebar shows the nav entry above the project list (active state
       when on the route) → clicking it lands on `/plugins/hello/board`
       rendering the panel component; a thread's right panel "+" new-tab
-      page lists the action under Actions (plugin logo icon) and selecting
-      it opens a closable tab (plugin logo + title) rendering the component
+      page lists the action under Actions (compact plugin icon) and selecting
+      it opens a closable tab (plugin icon + title) rendering the component
       with `{ threadId, params }` — the tab persists per thread across
       reloads (params round-trip), re-selecting with identical params
       focuses the existing tab, and `run` errors only log a warning;
@@ -704,7 +712,7 @@ confirms them with eyes on a real browser:
 
 Automated coverage: the skill is pinned to the API by
 `apps/server/test/services/plugins/plugin-authoring-docs.test.ts` (every
-`BbPluginApi` key and every `PLUGIN_SDK_APP_EXPORT_NAMES` entry must appear
+`BbPluginApi` key and every actual `@bb/plugin-sdk/app` runtime export must appear
 in the SKILL.md) and the guide chapter by
 `apps/cli/src/__tests__/plugin-guide-docs.test.ts` (every `bb plugin`
 subcommand must appear in `bb guide plugins`).
@@ -770,44 +778,41 @@ regression coverage, listed here because a manual tester would notice:
 - [ ] `bb plugin token --rotate` is documented in `bb guide plugins` and
       the authoring skill.
 
-### Panel chrome + plugin logos
+### Plugin panel layout + density-aware branding
 
-navPanel chrome control, panel title-bar `headerContent`, plugin logos on
-every contribution surface, and the plugin-CSS containment fix. Automated
-coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
+Always-on panel title-bar `headerContent`, full-bleed bodies, compact icons on
+contribution chrome, roomy logos in Settings, and the plugin-CSS containment
+fix. Automated coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
 `plugin-app-bundle.test.ts` (@scope regression), and the app's
 `plugin-slot-mounts` / `PluginThreadActions` / `MentionMenu` /
 `PluginsSettingsSection` tests.
 
-- [x] **Page chrome (default)**: a navPanel shows a host title bar —
-      plugin logo + title left, the plugin's `headerContent` right — above
-      a FULL-WIDTH body (no prose max-width cap). (Verified 2026-07-02 via
-      the github hero: logo + "GitHub" title bar, live headerContent,
+- [x] **Shared title bar**: every navPanel shows a host title bar —
+      plugin icon + title left, the plugin's `headerContent` right — above
+      a zero-padding FULL-BLEED body. The component owns padding and scrolling.
+      (Verified 2026-07-02 via
+      the github hero: branded "GitHub" title bar, live headerContent,
       full-width issues/PRs table, in daily use on the packaged instance.)
 - [ ] **headerContent containment**: a throwing `headerContent` disappears
       (console warning only); the title bar and panel body keep rendering,
       no "plugin crashed" chip for the accessory.
-- [ ] **`chrome: "none"`**: a panel registered with `chrome: "none"` gets
-      the entire panel area (no host padding, no title bar, headerContent
-      ignored) and a crash inside it still collapses to the "plugin <id>
-      crashed" chip.
-- [ ] **Logos everywhere**: with a logo-shipping plugin installed, its logo
-      replaces the bolt/named icon on: the sidebar row, the panel title
-      bar, the `@`-mention menu's provider rows (agent-enrichment's docs
-      provider after adding a logo, since linear was removed),
-      thread-header action buttons (small-ux-pack + logo), and Settings →
-      Plugins next to the plugin id. A logo-less plugin falls back to its
-      named `icon` / the generic bolt on every surface. (Sidebar row +
-      panel title bar verified live 2026-07-02 via the github hero's
-      logo.)
+- [ ] **Full-bleed containment**: every panel component gets the entire body
+      below the shared title bar with no host padding, and a crash inside it
+      still collapses to the "plugin <id> crashed" chip.
+- [ ] **Density-aware branding**: a plugin with both icon and logo uses its
+      manifest icon on sidebar rows, panel title bars, mention/provider rows,
+      and thread action buttons, while roomy Settings rows/cards use its logo.
+      Without a manifest icon, compact surfaces use the contribution icon and
+      then Zap; without a logo, roomy surfaces use the manifest icon and then
+      Zap.
 - [ ] **Logo plumbing**: `GET /api/v1/plugins` entries carry
       `logoUrl` (hash-busted, null when no logo or plugin not running);
       `GET /api/v1/plugins/<id>/assets/logo?h=…` serves the file with the
       right image content-type, immutable when the hash matches, `no-store`
-      otherwise, 404 when absent or the plugin is disabled. `logo.svg`
-      beats `logo.png` beats `logo.webp`; manifest `bb.logo` relocates it
-      (svg/png/webp only — anything else fails install/load with a clear
-      error); `bb plugin reload` picks up a changed logo (new hash).
+      otherwise, 404 when absent or the plugin is disabled. The manifest's
+      explicit `bb.branding.logo.light` path accepts svg/png/webp only;
+      missing, escaping, and unsupported assets fail install/load clearly.
+      `bb plugin reload` picks up a changed logo (new hash).
 - [ ] **Plugin CSS can no longer break host layout** (regression fix): with
       the linear plugin loaded, a host `flex-col sm:flex-row` element (e.g.
       the Settings rows for Theme / Markdown formatting) still computes
@@ -820,12 +825,12 @@ coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
 ### Theme-aware logos + PageBody
 
 Dark-logo variant + the PageBody UI-kit export. Automated coverage:
-`plugin-logo.test.ts` (logo-dark detection/override/escape/inventory/
+`plugin-logo.test.ts` (explicit dark path/escape/inventory/
 reload), the app's `PluginIcon.test.tsx` (theme picks the variant) and
 `plugin-sdk-app-impl.test.tsx` (PageBody render + export sync).
 
-- [ ] **Dark logo variant**: `logo-dark.(svg|png|webp)` at the plugin root
-      (or manifest `bb.logoDark`, same svg>png>webp precedence and rules)
+- [ ] **Dark logo variant**: manifest `bb.branding.logo.dark` (with required
+      `bb.branding.logo.light`, svg/png/webp only)
       is served at `GET /plugins/<id>/assets/logo-dark` and rides the
       inventory as `logoDarkUrl`. With the app in dark mode every logo
       surface (sidebar, panel title bar, composer menus, thread actions,
@@ -895,8 +900,8 @@ authoring-docs pins (`threadPanelAction: ["threadId", "params"]`).
 
 - [ ] **Action row live**: install a plugin registering a
       threadPanelAction → open a thread → "+" new tab → the action lists
-      under Actions with the plugin logo; selecting it replaces the
-      new-tab with a closable tab (logo + title) rendering the component.
+      under Actions with the compact plugin icon; selecting it replaces the
+      new-tab with a closable tab (icon + title) rendering the component.
 - [ ] **Params + dedupe**: `openPanel({ title, params })` twice with the
       same params focuses one tab; different params open a second tab;
       both restore after a page reload with their params.

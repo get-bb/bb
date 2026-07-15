@@ -75,7 +75,7 @@ import {
   hostsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
-  systemProvidersQueryKey,
+  allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
   threadTabsQueryKey,
@@ -867,7 +867,7 @@ function dirtySystemConfigQueries(): QueryKey[] {
 }
 
 function dirtySystemProviderQueries(): QueryKey[] {
-  return [systemProvidersQueryKey()];
+  return [allSystemProvidersQueryKeyPrefix()];
 }
 
 function dirtySystemExecutionOptionQueries(): QueryKey[] {

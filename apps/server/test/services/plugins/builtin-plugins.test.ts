@@ -72,6 +72,9 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
           version: "0.1.0",
           type: "module",
           bb: {
+            name,
+            description: `${name} builtin plugin fixture.`,
+            branding: { icon: "Zap" },
             server: "./src/server.ts",
             app: "./app.tsx",
             skills: ["skills"],
@@ -191,7 +194,9 @@ describe("builtin plugin reconciliation", () => {
       const manifest = await readPluginManifest(
         resolveBuiltinPluginRootPath(builtin.name),
       );
-      expect(manifest.icon, builtin.name).toBe(expectedIcons.get(builtin.name));
+      expect(manifest.branding.icon, builtin.name).toBe(
+        expectedIcons.get(builtin.name),
+      );
     }
   });
 
@@ -402,7 +407,12 @@ describe("builtin plugin reconciliation", () => {
         name: "bb-plugin-builtin-fixture",
         version: "0.2.0",
         type: "module",
-        bb: { server: "./server.ts" },
+        bb: {
+          name: "Builtin fixture",
+          description: "Builtin plugin fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
       }),
     );
 
@@ -462,7 +472,13 @@ describe("builtin plugin reconciliation", () => {
         name: "bb-plugin-hot-builtin",
         version: "0.1.0",
         type: "module",
-        bb: { server: "./server.ts", app: "./app.tsx" },
+        bb: {
+          name: "Hot builtin",
+          description: "Hot builtin plugin fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+          app: "./app.tsx",
+        },
       }),
     );
     await writeFile(

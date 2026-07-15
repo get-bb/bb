@@ -138,19 +138,32 @@ describe("useSettingsNavState", () => {
           plugins: [
             {
               id: "connect",
+              source: "builtin:connect",
+              rootDir: "/tmp/bb-test/plugins/connect",
               version: "0.1.0",
-              enabled: true,
-              status: "running",
-              statusDetail: null,
-              description: null,
-              icon: "EditFile",
-              logoUrl: null,
-              logoDarkUrl: null,
-              hasSettings: false,
               provenance: "builtin",
               isOrphanedBuiltin: false,
               sourceDisplay: "builtin",
               updateState: {},
+              enabled: true,
+              description: null,
+              name: "Connect",
+              icon: "EditFile",
+              status: "running",
+              statusDetail: null,
+              handlerStats: {
+                count: 0,
+                totalMs: 0,
+                maxMs: 0,
+                errorCount: 0,
+              },
+              services: [],
+              schedules: [],
+              cliCommand: null,
+              hasSettings: false,
+              app: { hasApp: true, bundle: null },
+              logoUrl: null,
+              logoDarkUrl: null,
             },
           ],
         }),
@@ -171,7 +184,7 @@ describe("useSettingsNavState", () => {
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins");
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins", undefined);
 
     const icon = render(
       <PluginNavIcon plugin={result.current.pluginEntries[0]!} />,

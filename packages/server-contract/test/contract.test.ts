@@ -172,11 +172,21 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "System execution-option lookups may target a host indirectly or directly and may omit provider id to use the host default.",
+      "Pre-environment project workspace queries may omit both routing selectors to use the project's primary source.",
+    fields: [
+      "projectFilesQuerySchema.environmentId",
+      "projectFilesQuerySchema.hostId",
+    ],
+  },
+  {
+    reason:
+      "System provider lookups may target a host indirectly or directly and may omit provider id to use the host default.",
     fields: [
       "systemExecutionOptionsQuerySchema.environmentId",
       "systemExecutionOptionsQuerySchema.hostId",
       "systemExecutionOptionsQuerySchema.providerId",
+      "systemProvidersQuerySchema.environmentId",
+      "systemProvidersQuerySchema.hostId",
     ],
   },
   {
@@ -1480,7 +1490,7 @@ describe("server-contract clients", () => {
         query: maxQuery,
         environmentId: "",
       }),
-    ).toMatchObject({ query: maxQuery, environmentId: null });
+    ).toEqual({ query: maxQuery, environmentId: undefined });
     expect(() =>
       contract.projectFilesQuerySchema.parse({
         query: longQuery,
@@ -1506,7 +1516,7 @@ describe("server-contract clients", () => {
         provider: "codex",
         environmentId: "",
       }),
-    ).toEqual({ provider: "codex", environmentId: null });
+    ).toEqual({ provider: "codex", environmentId: undefined });
     expect(() =>
       contract.projectCommandsQuerySchema.parse({
         provider: "codex",
@@ -1608,6 +1618,7 @@ describe("server-contract clients", () => {
       squashMergeActionResponseSchema: contract.squashMergeActionResponseSchema,
       systemExecutionOptionsQuerySchema:
         contract.systemExecutionOptionsQuerySchema,
+      systemProvidersQuerySchema: contract.systemProvidersQuerySchema,
       threadEventsQuerySchema: contract.threadEventsQuerySchema,
       threadListQuerySchema: contract.threadListQuerySchema,
       threadPendingInteractionsResponseSchema:

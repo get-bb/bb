@@ -12,7 +12,12 @@ const FIXTURE_PACKAGE_JSON = JSON.stringify(
     name: "bb-plugin-server-fixture",
     version: "0.1.0",
     type: "module",
-    bb: { server: "./server.ts" },
+    bb: {
+      name: "Server fixture",
+      description: "Plugin server build fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+    },
   },
   null,
   2,
@@ -103,6 +108,21 @@ describe("buildPluginServer", () => {
     );
     await expect(buildPluginServer(root, TEST_BB_VERSION)).rejects.toThrowError(
       /no server entry/,
+    );
+  });
+
+  it("rejects a legacy manifest without required identity and branding", async () => {
+    await writeFixture();
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-legacy",
+        version: "0.1.0",
+        bb: { server: "./server.ts" },
+      }),
+    );
+    await expect(buildPluginServer(root, TEST_BB_VERSION)).rejects.toThrowError(
+      /bb\.name/,
     );
   });
 

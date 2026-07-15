@@ -45,7 +45,7 @@ export function wrapNodeWsWebsocket(url: string): BbRealtimeSocket {
 
 /**
  * Node 22+ ships a global WebSocket; older supported Node versions (20.x)
- * fall back to the `ws` package so bb.on works out of the box everywhere.
+ * fall back to the `ws` package so bb.subscribe works out of the box everywhere.
  */
 export function createNodeWebsocketFactory(): BbRealtimeSocketFactory {
   return (url) => {

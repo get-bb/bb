@@ -165,6 +165,7 @@ function createStoryQueryClient(): QueryClient {
     queryClient.setQueryData<SystemExecutionOptionsResponse>(
       systemExecutionOptionsQueryKey({
         environmentId: null,
+        hostId: null,
         providerId,
       }),
       executionOptions,

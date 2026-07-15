@@ -31,6 +31,7 @@ export interface UsePathSuggestionsArgs {
   query: string | null;
   limit?: number;
   environmentId: string | null;
+  hostId?: string | null;
   currentThreadId?: string;
   includeDirectories: boolean;
 }
@@ -156,7 +157,7 @@ export function usePathSuggestions(
   const isDebouncing = hasQuery && trimmedQuery !== debouncedTrimmedQuery;
   const hasDebouncedQuery = debouncedTrimmedQuery.length > 0;
   // The workspace source for an existing thread is its environment; the
-  // project's default source is only used by the new-thread compose box before
+  // selected project source is only used by the new-thread compose box before
   // an environment exists. Projectless (personal) threads have no project
   // source, so without an environment there is no workspace to search.
   const workspaceSource: WorkspaceSource = args.environmentId
@@ -181,6 +182,8 @@ export function usePathSuggestions(
 
   const projectWorkspaceQuery = useProjectPathSuggestions({
     projectId: workspaceSource === "project" ? args.projectId : undefined,
+    environmentId: null,
+    hostId: args.hostId ?? null,
     query: debouncedQuery,
     limit: oversampleLimit,
     includeFiles: true,

@@ -21,6 +21,7 @@ import {
   useRpc,
   type PluginNavPanelProps,
 } from "@bb/plugin-sdk/app";
+import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
   AutomationExecution,
@@ -121,7 +122,7 @@ function useOverview(): {
   entries: OverviewEntry[] | null;
   error: string | null;
 } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof automationRpcContract>();
   const [state, setState] = useState<{
     entries: OverviewEntry[] | null;
     error: string | null;
@@ -169,7 +170,7 @@ function useAutomation(route: DetailRoute): {
   error: string | null;
   missing: boolean;
 } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<{
     automation: AutomationResponse | null;
@@ -212,7 +213,7 @@ interface RunsState {
 }
 
 function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<RunsState>({
     runs: [],
@@ -310,10 +311,14 @@ function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
 // ---------------------------------------------------------------------------
 
 function useMutations() {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof automationRpcContract>();
+  type MutationMethod =
+    | "automations_pause"
+    | "automations_resume"
+    | "automations_run"
+    | "automations_delete";
   const call = useCallback(
-    (method: string, route: DetailRoute) =>
-      rpc.call(method, route),
+    (method: MutationMethod, route: DetailRoute) => rpc.call(method, route),
     [rpc],
   );
   return {
@@ -1023,10 +1028,15 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
     navigate.toPluginPanel(PANEL_PATH, { subPath: "" });
   }, [navigate]);
 
-  if (route !== null) {
-    return <DetailView route={route} onBack={backToList} />;
-  }
-  return <OverviewView onOpenDetail={openDetail} />;
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
+      {route !== null ? (
+        <DetailView route={route} onBack={backToList} />
+      ) : (
+        <OverviewView onOpenDetail={openDetail} />
+      )}
+    </div>
+  );
 }
 
 export default definePluginApp((app) => {

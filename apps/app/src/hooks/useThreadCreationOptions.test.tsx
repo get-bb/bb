@@ -111,7 +111,7 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
-  it("uses global execution defaults and project-scoped environment for new-thread prompt boxes", async () => {
+  it("routes root-composer provider discovery through the selected project host", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
     window.localStorage.setItem("bb.promptbox.model", "global-model");
     window.localStorage.setItem("bb.promptbox.service-tier", "default");
@@ -156,12 +156,14 @@ describe("useThreadCreationOptions", () => {
       expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
+          hostId: "project-host",
           providerId: GLOBAL_PROVIDER_ID,
         }),
       );
       expect(api.getSystemExecutionOptions).not.toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
+          hostId: "project-host",
           providerId: PROJECT_PROVIDER_ID,
         }),
       );
@@ -180,6 +182,9 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.environmentSelectionValue).toBe(
         "host:project-host:local",
       );
+      expect(result.current.executionOptionsRouting).toEqual({
+        hostId: "project-host",
+      });
     });
   });
 
@@ -252,15 +257,46 @@ describe("useThreadCreationOptions", () => {
       expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
+          hostId: undefined,
           providerId: "codex",
         }),
       );
       expect(api.getSystemExecutionOptions).not.toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
+          hostId: undefined,
           providerId: undefined,
         }),
       );
+    });
+  });
+
+  it("routes reusable root-composer worktrees through their environment", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+        }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.setEnvironmentSelectionValue("reuse:env-remote");
+    });
+
+    await waitFor(() => {
+      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: "env-remote",
+          hostId: undefined,
+          providerId: "codex",
+        }),
+      );
+      expect(result.current.executionOptionsRouting).toEqual({
+        environmentId: "env-remote",
+      });
     });
   });
 });

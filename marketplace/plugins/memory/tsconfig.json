@@ -10,9 +10,7 @@
     "skipLibCheck": true,
     "types": ["node", "vitest/globals"],
     "paths": {
-      "@/*": ["./*"],
-      "@bb/plugin-sdk": ["../../../packages/plugin-sdk/src/index.ts"],
-      "@bb/plugin-sdk/*": ["../../../packages/plugin-sdk/src/*"]
+      "@/*": ["./*"]
     }
   },
   "include": ["*.ts", "*.tsx", "components", "lib", "skills"]

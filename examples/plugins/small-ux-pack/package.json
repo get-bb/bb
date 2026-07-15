@@ -8,6 +8,11 @@
     "bbPluginSdk": "^0.2.0"
   },
   "bb": {
+    "name": "Small UX pack",
+    "description": "Demonstrate dependency-free host-rendered plugin actions.",
+    "branding": {
+      "icon": "Zap"
+    },
     "server": "./server.ts"
   },
   "keywords": [

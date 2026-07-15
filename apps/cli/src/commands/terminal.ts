@@ -1,15 +1,21 @@
 import { Buffer } from "node:buffer";
 import { Command } from "commander";
-import { BbHttpError } from "@bb/sdk";
+import {
+  BbHttpError,
+  type BbSdk,
+  type TerminalCreateScope,
+  type TerminalListScope,
+} from "@bb/sdk";
 import { createNodeWebsocketFactory } from "@bb/sdk/node-websocket";
 import {
   terminalServerMessageSchema,
   type TerminalSession,
 } from "@bb/server-contract";
-import { action, CliExitError } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
-import { renderBorderlessTable } from "../../table.js";
-import { outputJson, requireThreadId } from "../helpers.js";
+import { action, CliExitError } from "../action.js";
+import { createCliBbSdk } from "../client.js";
+import { renderBorderlessTable } from "../table.js";
+import { outputJson } from "./helpers.js";
+import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
@@ -19,9 +25,19 @@ interface TerminalJsonOptions {
   json?: boolean;
 }
 
-interface TerminalListOptions extends TerminalJsonOptions {}
+interface TerminalScopeOptions {
+  cwd?: string;
+  environment?: string;
+  host?: string;
+  machine?: string;
+  thread?: string;
+}
 
-interface TerminalStartOptions extends TerminalJsonOptions {
+interface TerminalListOptions
+  extends TerminalJsonOptions, TerminalScopeOptions {}
+
+interface TerminalStartOptions
+  extends TerminalJsonOptions, TerminalScopeOptions {
   attach?: boolean;
   command?: string;
   cols?: string;
@@ -57,214 +73,178 @@ interface TerminalWaitOptions extends TerminalOutputOptions {
   timeout?: string;
 }
 
-interface TerminalStopOptions extends TerminalJsonOptions {
+interface TerminalCloseOptions extends TerminalJsonOptions {
   ifClean?: boolean;
 }
 
 interface TerminalStartResolution {
   command: string | null;
-  threadId: string;
 }
 
 export function registerTerminalCommands(
-  parent: Command,
+  program: Command,
   getUrl: () => string,
 ): void {
-  const terminal = parent
+  const terminal = program
     .command("terminal")
-    .description("Manage terminal sessions scoped to a thread");
+    .description(
+      "Manage terminal sessions across threads, environments, and machines",
+    );
+
+  addTerminalScopeOptions(
+    terminal
+      .command("list")
+      .description("List terminal sessions in exactly one scope")
+      .option("--json", "Print machine-readable JSON output"),
+  ).action(
+    action(async (opts: TerminalListOptions) => {
+      const sdk = createCliBbSdk(getUrl());
+      const result = await sdk.terminals.list({
+        scope: await resolveTerminalListScope(opts, getUrl()),
+      });
+      if (outputJson(opts, result)) return;
+      printTerminalTable(result.sessions);
+    }),
+  );
+
+  addTerminalScopeOptions(
+    terminal
+      .command("create [command...]")
+      .alias("start")
+      .description("Create a terminal session in exactly one scope")
+      .option("--title <title>", "Terminal title")
+      .option(
+        "--command <command>",
+        "Command to run instead of an interactive shell",
+      )
+      .option("--cols <n>", "Initial terminal columns")
+      .option("--rows <n>", "Initial terminal rows")
+      .option("--attach", "Attach after creating")
+      .option("--json", "Print machine-readable JSON output"),
+  ).action(
+    action(async (commandParts: string[], opts: TerminalStartOptions) => {
+      const sdk = createCliBbSdk(getUrl());
+      const resolvedStart = resolveTerminalStart({
+        commandOption: opts.command,
+        commandParts,
+      });
+      const session = await sdk.terminals.create({
+        cols: parsePositiveInteger(opts.cols, DEFAULT_COLS, "--cols"),
+        rows: parsePositiveInteger(opts.rows, DEFAULT_ROWS, "--rows"),
+        scope: await resolveTerminalCreateScope(opts, getUrl()),
+        title: opts.title,
+        start:
+          resolvedStart.command === null
+            ? { mode: "shell" }
+            : { mode: "command", command: resolvedStart.command },
+      });
+      if (outputJson(opts, session)) return;
+      console.log(`Created terminal ${session.id} (${session.title})`);
+      if (opts.attach) {
+        await attachTerminal({
+          baseUrl: getUrl(),
+          terminalId: session.id,
+        });
+      }
+    }),
+  );
 
   terminal
-    .command("list <threadId>")
-    .description("List terminal sessions for a thread")
+    .command("show <terminalId>")
+    .description("Show a terminal session")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (threadId: string | undefined, opts: TerminalListOptions) => {
-          const resolvedThreadId = requireThreadId(threadId);
-          const sdk = createCliBbSdk(getUrl());
-          const result = await sdk.threads.terminals.list({
-            threadId: resolvedThreadId,
-          });
-          if (outputJson(opts, result)) return;
-          printTerminalTable(result.sessions);
-        },
-      ),
+      action(async (terminalId: string, opts: TerminalJsonOptions) => {
+        const session = await createCliBbSdk(getUrl()).terminals.get({
+          terminalId,
+        });
+        if (outputJson(opts, session)) return;
+        console.log(JSON.stringify(session, null, 2));
+      }),
     );
 
   terminal
-    .command("start <threadId> [command...]")
-    .description("Start a thread-scoped terminal session")
-    .allowUnknownOption(true)
-    .option("--title <title>", "Terminal title")
-    .option(
-      "--command <command>",
-      "Command to run instead of an interactive shell",
-    )
-    .option("--cols <n>", "Initial terminal columns")
-    .option("--rows <n>", "Initial terminal rows")
-    .option("--attach", "Attach after starting")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          threadId: string | undefined,
-          commandParts: string[],
-          opts: TerminalStartOptions,
-        ) => {
-          const sdk = createCliBbSdk(getUrl());
-          const resolvedStart = resolveTerminalStart({
-            commandOption: opts.command,
-            commandParts,
-            threadId,
-          });
-          const resolvedThreadId = requireThreadId(resolvedStart.threadId);
-          const session = await sdk.threads.terminals.create({
-            threadId: resolvedThreadId,
-            cols: parsePositiveInteger(opts.cols, DEFAULT_COLS, "--cols"),
-            rows: parsePositiveInteger(opts.rows, DEFAULT_ROWS, "--rows"),
-            title: opts.title,
-            start:
-              resolvedStart.command === null
-                ? { mode: "shell" }
-                : { mode: "command", command: resolvedStart.command },
-          });
-          if (outputJson(opts, session)) return;
-          console.log(`Started terminal ${session.id} (${session.title})`);
-          if (opts.attach) {
-            await attachTerminal({
-              baseUrl: getUrl(),
-              terminalId: session.id,
-              threadId: resolvedThreadId,
-            });
-          }
-        },
-      ),
-    );
-
-  terminal
-    .command("attach <terminalId> <threadId>")
+    .command("attach <terminalId>")
     .description("Attach to a running terminal session")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          terminalId: string,
-          threadId: string | undefined,
-          opts: TerminalAttachOptions,
-        ) => {
-          const resolvedThreadId = requireThreadId(threadId);
-          if (opts.json) {
-            const sdk = createCliBbSdk(getUrl());
-            const result = await sdk.threads.terminals.list({
-              threadId: resolvedThreadId,
-            });
-            const session = result.sessions.find(
-              (candidate) => candidate.id === terminalId,
-            );
-            if (session === undefined) {
-              throw new Error(
-                `Terminal ${terminalId} was not found in thread ${resolvedThreadId}`,
-              );
-            }
-            outputJson(opts, session);
-            return;
-          }
-          await attachTerminal({
-            baseUrl: getUrl(),
+      action(async (terminalId: string, opts: TerminalAttachOptions) => {
+        if (opts.json) {
+          const session = await createCliBbSdk(getUrl()).terminals.get({
             terminalId,
-            threadId: resolvedThreadId,
           });
-        },
-      ),
+          outputJson(opts, session);
+          return;
+        }
+        await attachTerminal({
+          baseUrl: getUrl(),
+          terminalId,
+        });
+      }),
     );
 
   terminal
-    .command("send <terminalId> <threadId>")
+    .command("send <terminalId>")
     .description("Send input to a terminal session")
     .option("--text <text>", "Text to send")
     .option("--stdin", "Read bytes from stdin")
     .option("--enter", "Append a newline")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          terminalId: string,
-          threadId: string | undefined,
-          opts: TerminalSendOptions,
-        ) => {
-          const text = await resolveSendText(opts);
-          const resolvedThreadId = requireThreadId(threadId);
-          const sdk = createCliBbSdk(getUrl());
-          const session = await sdk.threads.terminals.input({
-            threadId: resolvedThreadId,
-            terminalId,
-            dataBase64: Buffer.from(text, "utf8").toString("base64"),
-          });
-          if (outputJson(opts, session)) return;
-          console.log(`Sent input to terminal ${terminalId}`);
-        },
-      ),
+      action(async (terminalId: string, opts: TerminalSendOptions) => {
+        const text = await resolveSendText(opts);
+        const sdk = createCliBbSdk(getUrl());
+        const session = await sdk.terminals.input({
+          terminalId,
+          dataBase64: Buffer.from(text, "utf8").toString("base64"),
+        });
+        if (outputJson(opts, session)) return;
+        console.log(`Sent input to terminal ${terminalId}`);
+      }),
     );
 
   terminal
-    .command("resize <terminalId> <threadId>")
+    .command("resize <terminalId>")
     .description("Resize a terminal session")
     .requiredOption("--cols <n>", "Terminal columns")
     .requiredOption("--rows <n>", "Terminal rows")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          terminalId: string,
-          threadId: string | undefined,
-          opts: TerminalResizeOptions,
-        ) => {
-          const resolvedThreadId = requireThreadId(threadId);
-          const sdk = createCliBbSdk(getUrl());
-          const session = await sdk.threads.terminals.resize({
-            threadId: resolvedThreadId,
-            terminalId,
-            cols: parseRequiredPositiveInteger(opts.cols, "--cols"),
-            rows: parseRequiredPositiveInteger(opts.rows, "--rows"),
-          });
-          if (outputJson(opts, session)) return;
-          console.log(
-            `Resized terminal ${terminalId} to ${session.cols}x${session.rows}`,
-          );
-        },
-      ),
+      action(async (terminalId: string, opts: TerminalResizeOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const session = await sdk.terminals.resize({
+          terminalId,
+          cols: parseRequiredPositiveInteger(opts.cols, "--cols"),
+          rows: parseRequiredPositiveInteger(opts.rows, "--rows"),
+        });
+        if (outputJson(opts, session)) return;
+        console.log(
+          `Resized terminal ${terminalId} to ${session.cols}x${session.rows}`,
+        );
+      }),
     );
 
   terminal
-    .command("output <terminalId> <threadId>")
+    .command("output <terminalId>")
     .description("Print terminal output from daemon scrollback")
     .option("--since-seq <n>", "Only output chunks from this sequence")
     .option("--tail-bytes <n>", "Bound output to the latest N bytes")
     .option("--limit-chunks <n>", "Bound output to the latest N chunks")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          terminalId: string,
-          threadId: string | undefined,
-          opts: TerminalOutputOptions,
-        ) => {
-          const resolvedThreadId = requireThreadId(threadId);
-          const sdk = createCliBbSdk(getUrl());
-          const output = await sdk.threads.terminals.output({
-            threadId: resolvedThreadId,
-            terminalId,
-            ...terminalOutputQuery(opts),
-          });
-          if (outputJson(opts, output)) return;
-          writeOutputChunks(output.chunks);
-        },
-      ),
+      action(async (terminalId: string, opts: TerminalOutputOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const output = await sdk.terminals.output({
+          terminalId,
+          ...terminalOutputQuery(opts),
+        });
+        if (outputJson(opts, output)) return;
+        writeOutputChunks(output.chunks);
+      }),
     );
 
   terminal
-    .command("wait <terminalId> <threadId>")
+    .command("wait <terminalId>")
     .description("Wait for terminal output or exit")
     .option("--contains <text>", "Wait until output contains text")
     .option(
@@ -279,55 +259,144 @@ export function registerTerminalCommands(
     .option("--limit-chunks <n>", "Bound each output poll to N chunks")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          terminalId: string,
-          threadId: string | undefined,
-          opts: TerminalWaitOptions,
-        ) => {
-          const result = await waitForTerminal({
-            baseUrl: getUrl(),
-            opts,
-            terminalId,
-            threadId: requireThreadId(threadId),
-          });
-          if (outputJson(opts, result)) return;
-          console.log(`Terminal ${terminalId} matched ${result.matched}`);
-        },
-      ),
+      action(async (terminalId: string, opts: TerminalWaitOptions) => {
+        const result = await waitForTerminal({
+          baseUrl: getUrl(),
+          opts,
+          terminalId,
+        });
+        if (outputJson(opts, result)) return;
+        console.log(`Terminal ${terminalId} matched ${result.matched}`);
+      }),
     );
 
   terminal
-    .command("stop <terminalId> <threadId>")
-    .description("Stop a terminal session")
-    .option("--if-clean", "Only stop if no user input was sent")
+    .command("rename <terminalId> <title>")
+    .description("Rename a terminal session")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
         async (
           terminalId: string,
-          threadId: string | undefined,
-          opts: TerminalStopOptions,
+          title: string,
+          opts: TerminalJsonOptions,
         ) => {
-          const resolvedThreadId = requireThreadId(threadId);
-          const sdk = createCliBbSdk(getUrl());
-          const session = await sdk.threads.terminals.close({
-            threadId: resolvedThreadId,
+          const session = await createCliBbSdk(getUrl()).terminals.rename({
             terminalId,
-            mode: opts.ifClean ? "if-clean" : "force",
-            reason: "user",
+            title,
           });
           if (outputJson(opts, session)) return;
-          console.log(`Stopped terminal ${terminalId}`);
+          console.log(`Renamed terminal ${terminalId} to ${session.title}`);
         },
       ),
     );
+
+  terminal
+    .command("restart <terminalId>")
+    .description("Replace a terminal with a shell in the same scope")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (terminalId: string, opts: TerminalJsonOptions) => {
+        const session = await createCliBbSdk(getUrl()).terminals.restart({
+          terminalId,
+        });
+        if (outputJson(opts, session)) return;
+        console.log(`Restarted terminal ${terminalId} as ${session.id}`);
+      }),
+    );
+
+  terminal
+    .command("close <terminalId>")
+    .alias("stop")
+    .description("Close a terminal session")
+    .option("--if-clean", "Only close if no user input was sent")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (terminalId: string, opts: TerminalCloseOptions) => {
+        const session = await createCliBbSdk(getUrl()).terminals.close({
+          terminalId,
+          mode: opts.ifClean ? "if-clean" : "force",
+        });
+        if (outputJson(opts, session)) return;
+        console.log(`Closed terminal ${terminalId}`);
+      }),
+    );
+}
+
+function addTerminalScopeOptions(command: Command): Command {
+  return command
+    .option("--thread <id>", "Thread-scoped terminal")
+    .option("--environment <id>", "Environment-scoped terminal")
+    .option("--machine <id-or-name>", "Machine-scoped terminal")
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--cwd <path>", "Working directory for --machine or --host");
+}
+
+async function resolveTerminalListScope(
+  opts: TerminalScopeOptions,
+  serverUrl: string,
+): Promise<TerminalListScope> {
+  const machine = resolveTerminalMachineSelector(opts);
+  assertExactlyOneTerminalScope({
+    environment: opts.environment,
+    machine,
+    thread: opts.thread,
+  });
+  if (opts.cwd !== undefined && machine === undefined) {
+    throw new Error("--cwd can only be used with --machine or --host.");
+  }
+  if (opts.thread !== undefined) {
+    return { kind: "thread", threadId: opts.thread };
+  }
+  if (opts.environment !== undefined) {
+    return { kind: "environment", environmentId: opts.environment };
+  }
+  return {
+    kind: "host_path",
+    hostId: await resolveMachineHostId({
+      serverUrl,
+      target: machine ?? "",
+    }),
+    ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }),
+  };
+}
+
+async function resolveTerminalCreateScope(
+  opts: TerminalScopeOptions,
+  serverUrl: string,
+): Promise<TerminalCreateScope> {
+  const scope = await resolveTerminalListScope(opts, serverUrl);
+  if (scope.kind !== "host_path") return scope;
+  return { ...scope, cwd: scope.cwd ?? null };
+}
+
+function resolveTerminalMachineSelector(
+  opts: TerminalScopeOptions,
+): string | undefined {
+  return resolveMachineTargetOption({
+    machine: opts.machine,
+    host: opts.host,
+  });
+}
+
+function assertExactlyOneTerminalScope(args: {
+  environment?: string;
+  machine?: string;
+  thread?: string;
+}): void {
+  const count = [args.thread, args.environment, args.machine].filter(
+    (value) => value !== undefined,
+  ).length;
+  if (count !== 1) {
+    throw new Error(
+      "Provide exactly one terminal scope: --thread, --environment, or --machine/--host.",
+    );
+  }
 }
 
 function resolveTerminalStart(args: {
   commandOption?: string;
   commandParts: readonly string[];
-  threadId: string | undefined;
 }): TerminalStartResolution {
   if (args.commandOption !== undefined && args.commandParts.length > 0) {
     throw new Error(
@@ -339,15 +408,14 @@ function resolveTerminalStart(args: {
     if (command.length === 0) {
       throw new Error("--command must not be empty");
     }
-    return { threadId: args.threadId ?? "", command };
+    return { command };
   }
   if (args.commandParts.length > 0) {
     return {
-      threadId: args.threadId ?? "",
       command: args.commandParts.map(shellQuoteArg).join(" "),
     };
   }
-  return { threadId: args.threadId ?? "", command: null };
+  return { command: null };
 }
 
 function shellQuoteArg(value: string): string {
@@ -463,13 +531,12 @@ function writeOutputChunks(
 function terminalWebsocketUrl(args: {
   baseUrl: string;
   terminalId: string;
-  threadId: string;
 }): string {
   const url = new URL(args.baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = `${url.pathname.replace(/\/+$/u, "")}/ws/threads/${encodeURIComponent(
-    args.threadId,
-  )}/terminals/${encodeURIComponent(args.terminalId)}`;
+  url.pathname = `${url.pathname.replace(/\/+$/u, "")}/ws/terminals/${encodeURIComponent(
+    args.terminalId,
+  )}`;
   url.search = "";
   url.hash = "";
   return url.href;
@@ -478,7 +545,6 @@ function terminalWebsocketUrl(args: {
 async function attachTerminal(args: {
   baseUrl: string;
   terminalId: string;
-  threadId: string;
 }): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error("Attach requires an interactive terminal");
@@ -488,7 +554,6 @@ async function attachTerminal(args: {
     terminalWebsocketUrl({
       baseUrl: args.baseUrl,
       terminalId: args.terminalId,
-      threadId: args.threadId,
     }),
   );
   let detachPrefix = false;
@@ -571,7 +636,6 @@ async function waitForTerminal(args: {
   baseUrl: string;
   opts: TerminalWaitOptions;
   terminalId: string;
-  threadId: string;
 }): Promise<{ matched: string; nextSeq: number; terminalId: string }> {
   const hasContains = args.opts.contains !== undefined;
   const hasRegex = args.opts.regex !== undefined;
@@ -596,7 +660,6 @@ async function waitForTerminal(args: {
     const currentOutput = await readTerminalOutputForWait({
       sdk,
       terminalId: args.terminalId,
-      threadId: args.threadId,
       query: { limitChunks: 1, tailBytes: 1 },
     });
     nextSeq = currentOutput.nextSeq;
@@ -604,13 +667,8 @@ async function waitForTerminal(args: {
 
   while (Date.now() <= deadline) {
     if (hasExit) {
-      const sessions = await sdk.threads.terminals.list({
-        threadId: args.threadId,
-      });
-      const session = sessions.sessions.find(
-        (candidate) => candidate.id === args.terminalId,
-      );
-      if (!session || session.status === "exited") {
+      const session = await sdk.terminals.get({ terminalId: args.terminalId });
+      if (session.status === "exited") {
         return {
           matched: "exit",
           nextSeq: nextSeq ?? 0,
@@ -624,7 +682,6 @@ async function waitForTerminal(args: {
     const output = await readTerminalOutputForWait({
       sdk,
       terminalId: args.terminalId,
-      threadId: args.threadId,
       query: {
         ...terminalOutputQuery(args.opts),
         ...(nextSeq !== undefined ? { sinceSeq: nextSeq } : {}),
@@ -658,13 +715,11 @@ async function waitForTerminal(args: {
 
 async function readTerminalOutputForWait(args: {
   query: ReturnType<typeof terminalOutputQuery>;
-  sdk: ReturnType<typeof createCliBbSdk>;
+  sdk: BbSdk;
   terminalId: string;
-  threadId: string;
 }) {
-  return args.sdk.threads.terminals
+  return args.sdk.terminals
     .output({
-      threadId: args.threadId,
       terminalId: args.terminalId,
       ...args.query,
     })

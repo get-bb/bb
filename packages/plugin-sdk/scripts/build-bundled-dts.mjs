@@ -20,20 +20,26 @@ import { dts } from "rollup-plugin-dts";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
 const pkgsDir = path.resolve(pkgRoot, "..");
-const publicApiModule = path.join(
-  pkgsDir,
-  "server-contract/src/public-api.ts",
-);
+const publicApiModule = path.join(pkgsDir, "server-contract/src/public-api.ts");
 const publicApiStub = path.join(here, "public-api-stub.d.ts");
 const outDir = path.join(pkgRoot, "bundled-types");
 const outputs = {
   "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
   "bb-plugin-sdk-app.d.ts": path.join(pkgRoot, "src/app.ts"),
+  "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
+  "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
 };
 
 // Real npm packages the bundle imports from — kept external so they resolve
 // from the scaffold's devDependencies rather than being inlined.
-const EXTERNAL = [/^better-sqlite3/, /^hono($|\/)/, /^zod($|\/)/, /^react($|\/|-)/];
+const EXTERNAL = [
+  /^@testing-library\/react($|\/)/,
+  /^better-sqlite3/,
+  /^hono($|\/)/,
+  /^react($|\/|-)/,
+  /^react-dom($|\/)/,
+  /^zod($|\/)/,
+];
 
 /** Resolve any `@bb/<pkg>[/<sub>]` to its `source` export target on disk. */
 function resolveBbSource(id) {
@@ -87,8 +93,8 @@ async function bundle(input) {
 }
 
 const HEADER = [
-  "// Bundled type declarations for `@bb/plugin-sdk`, shipped into scaffolded",
-  "// plugins so they typecheck without the @bb/* workspace on disk.",
+  "// Portable type declarations for `@bb/plugin-sdk`, with BB workspace",
+  "// contracts flattened so external consumers resolve no @bb/* packages.",
   "//",
   "// Confused by the API, or need a symbol that isn't here? Clone the BB repo",
   "// and read the real source: https://github.com/ymichael/bb",

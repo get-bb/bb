@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { fetchPluginList, removePlugin } from "./plugin-settings-queries";
 
-function fetchReturning(body: unknown, status = 200) {
-  return async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(body),
-  });
+function fetchReturning(body: unknown, status = 200): typeof fetch {
+  return async () =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
 }
 
 const ROW = {
   id: "linear",
+  source: "npm:@bb-plugins/linear@^1",
+  rootDir: "/tmp/linear",
   version: "1.6.2",
   enabled: true,
   status: "running",
@@ -23,6 +25,17 @@ const ROW = {
     lastCheckAt: 1752300000000,
     lastFailure: { version: "1.7.0", at: 1752300000000, detail: "boom" },
   },
+  description: "Linear integration",
+  name: "Linear",
+  icon: null,
+  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+  services: [],
+  schedules: [],
+  cliCommand: null,
+  hasSettings: true,
+  app: { hasApp: false, bundle: null },
+  logoUrl: null,
+  logoDarkUrl: null,
 };
 
 describe("fetchPluginList envelope", () => {
@@ -53,7 +66,7 @@ describe("fetchPluginList envelope", () => {
     });
   });
 
-  it("drops rows missing the server-mandated fields instead of defaulting them", async () => {
+  it("rejects a list containing rows missing server-mandated fields", async () => {
     const { updateState, ...noUpdateState } = ROW;
     const { provenance, ...noProvenance } = ROW;
     const { sourceDisplay, ...noSourceDisplay } = ROW;
@@ -70,7 +83,7 @@ describe("fetchPluginList envelope", () => {
         ],
       }),
     );
-    expect(result.plugins.map((plugin) => plugin.id)).toEqual(["linear"]);
+    expect(result.plugins).toEqual([]);
   });
 
   it("drops a row with a partial lastFailure rather than showing the quiet state", async () => {
@@ -109,13 +122,8 @@ describe("removePlugin", () => {
   });
 
   it("throws the server's error message on failure", async () => {
-    const fetchImpl = (async () => ({
-      ok: false,
-      status: 404,
-      json: async () => ({ error: "unknown plugin" }),
-    })) as unknown as typeof fetch;
-    await expect(removePlugin(fetchImpl, "gone")).rejects.toThrow(
-      "unknown plugin",
-    );
+    await expect(
+      removePlugin(fetchReturning({ error: "unknown plugin" }, 404), "gone"),
+    ).rejects.toThrow("unknown plugin");
   });
 });

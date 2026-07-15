@@ -32,7 +32,12 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Background fixture",
+        description: "Background plugin fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -161,7 +166,7 @@ describe("plugin background services", () => {
               start(signal: any) {
                 return new Promise<void>((resolve) => {
                   signal.addEventListener("abort", () => {
-                    void bb.interactions.request({
+                    void bb.ui.requestInput({
                       threadId: "thread-test",
                       rendererId: "form",
                       title: "Form",

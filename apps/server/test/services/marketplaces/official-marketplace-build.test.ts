@@ -73,7 +73,7 @@ it("builds every BB Official plugin with authoritative artifact metadata", async
       const manifest = await readPluginManifest(buildRoot);
       expect(manifest).toMatchObject({
         id: entry.id,
-        displayName: entry.displayName,
+        name: entry.displayName,
       });
       const packageJsonInput: unknown = JSON.parse(
         await readFile(join(buildRoot, "package.json"), "utf8"),

@@ -9,7 +9,10 @@ import {
   type PointerEventHandler,
   type ReactNode,
 } from "react";
-import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
+import type {
+  SystemExecutionOptionsModelLoadError,
+  SystemProvidersQuery,
+} from "@bb/server-contract";
 import { type ReasoningLevel } from "@bb/domain";
 import { stripModelBrandPrefix } from "./model-brand-prefix";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
@@ -171,6 +174,7 @@ export function buildModelNavRows({
 
 interface ModelReasoningPickerProps {
   // Provider state
+  providerRouting?: SystemProvidersQuery;
   providerOptions: readonly PickerOption<string>[];
   selectedProviderId: string;
   /** Omit to render the provider as locked (tabs hidden, can't preview). */
@@ -229,6 +233,7 @@ export interface ModelReasoningPickerFooterAction {
 
 export function ModelReasoningPicker({
   providerOptions,
+  providerRouting,
   selectedProviderId,
   onSelectedProviderChange,
   hasMultipleProviders,
@@ -343,6 +348,7 @@ export function ModelReasoningPicker({
     previewProviderId !== null && previewProviderId !== selectedProviderId;
   const previewQuery = useSystemExecutionOptions({
     enabled: isPreviewing,
+    ...providerRouting,
     providerId: isPreviewing ? previewProviderId : undefined,
   });
 

@@ -1049,12 +1049,9 @@ describe("PromptBoxInternal mention triggers", () => {
         },
       },
     ]);
-    const logo = within(getPromptEditorElement()).getByTestId(
-      "plugin-logo-github",
-    );
-    expect(logo.getAttribute("src")).toBe(
-      "/api/v1/plugins/github/assets/logo?h=abc",
-    );
+    const promptEditor = getPromptEditorElement();
+    expect(promptEditor.querySelector('[data-icon="Zap"]')).toBeTruthy();
+    expect(promptEditor.querySelector("img")).toBeNull();
   });
 
   it("keeps path-first mention results in keyboard navigation order", async () => {

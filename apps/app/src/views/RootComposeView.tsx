@@ -24,6 +24,7 @@ import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type {
   ProjectBranchesResponse,
   SidebarBootstrapResponse,
+  SystemProvidersQuery,
   TerminalSession,
 } from "@bb/server-contract";
 import {
@@ -770,6 +771,34 @@ export function resolveComposeHostId(
     : primaryHostId;
 }
 
+export function resolveRootComposeProjectRouting(
+  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
+  primaryHostId: string | null,
+): { environmentId?: string; hostId?: string } {
+  if (parsedEnvironment?.type === "reuse") {
+    return parsedEnvironment.environmentId === null
+      ? {}
+      : { environmentId: parsedEnvironment.environmentId };
+  }
+  const hostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
+  return hostId === null ? {} : { hostId };
+}
+
+export function resolveRootComposeProviderRouting(
+  args: ResolveRootComposeEffectiveEnvironmentValueArgs,
+): SystemProvidersQuery {
+  const parsed = parseEnvironmentValue(
+    resolveRootComposeEffectiveEnvironmentValue(args),
+  );
+  if (parsed?.type === "host") {
+    return { hostId: parsed.hostId };
+  }
+  if (parsed?.type === "reuse" && parsed.environmentId !== null) {
+    return { environmentId: parsed.environmentId };
+  }
+  return {};
+}
+
 export function buildMobileRecentThreads({
   sidebarNavigation,
 }: BuildMobileRecentThreadsArgs): ThreadListEntry[] {
@@ -1069,6 +1098,38 @@ export function RootComposeView(props: RootComposeViewProps) {
     () => currentProject?.sources ?? [],
     [currentProject?.sources],
   );
+  // Worktree picker options come from the project's unarchived threads.
+  // Threads on managed or unmanaged worktrees with a non-null environmentId
+  // contribute; envs with only archived threads disappear naturally.
+  const threadsQuery = useThreads(
+    { projectId, archived: false },
+    { enabled: Boolean(projectId) },
+  );
+  const reuseThreadOptions = useMemo(
+    () =>
+      buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
+    [threadsQuery.data, worktreeHostNameById],
+  );
+  const resolveProviderRouting = useCallback(
+    (environmentSelectionValue: string) =>
+      resolveRootComposeProviderRouting({
+        environmentSelectionValue,
+        isProjectless,
+        knownHostIds,
+        primaryHostId,
+        projectSources,
+        reuseThreadOptions,
+        reuseThreadOptionsLoading: threadsQuery.isLoading,
+      }),
+    [
+      isProjectless,
+      knownHostIds,
+      primaryHostId,
+      projectSources,
+      reuseThreadOptions,
+      threadsQuery.isLoading,
+    ],
+  );
   // Seed the picker from the server-resolved project defaults so the visible
   // default matches what create-thread will use when the user submits without
   // touching execution controls. Values normally ride along with sidebar
@@ -1089,6 +1150,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     preferenceProjectId: projectId,
+    resolveProviderRouting,
     initialProviderId: projectDefaultExecutionOptions?.providerId,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
@@ -1096,6 +1158,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
   });
   const {
+    executionOptionsRouting,
     selectedProviderId,
     setSelectedProviderId,
     providerOptions,
@@ -1307,18 +1370,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
   }, [location.search, location.state, navigate, seedInitialPrompt]);
 
-  // Worktree picker options come from the project's unarchived threads.
-  // Threads on managed or unmanaged worktrees with a non-null environmentId
-  // contribute; envs with only archived threads disappear naturally.
-  const threadsQuery = useThreads(
-    { projectId, archived: false },
-    { enabled: Boolean(projectId) },
-  );
-  const reuseThreadOptions = useMemo(
-    () =>
-      buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
-    [threadsQuery.data, worktreeHostNameById],
-  );
   const mobileRecentThreads = useMemo(
     () =>
       buildMobileRecentThreads({
@@ -1925,12 +1976,18 @@ export function RootComposeView(props: RootComposeViewProps) {
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
+  const rootProjectRouting = resolveRootComposeProjectRouting(
+    parsedEnvironment,
+    primaryHostId,
+  );
+  const rootProjectHostId = rootProjectRouting.hostId ?? null;
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions: providerPromptActionProps.promptActions,
     environmentId: reuseEnvironmentId,
+    hostId: rootProjectHostId,
     query: commandQuery,
   });
   const rootPanelEnvironmentId = reuseEnvironmentId;
@@ -1945,6 +2002,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     {
       currentThreadId: rootPanelThreadId ?? undefined,
       environmentId: rootPanelEnvironmentId,
+      hostId: rootProjectHostId,
     },
   );
   useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
@@ -2849,14 +2907,23 @@ export function RootComposeView(props: RootComposeViewProps) {
           )?.sources ?? []);
   const projectSourcePreviewRootPath =
     activeWorkspaceFileEnvironmentId === null &&
-    activeWorkspaceFileProjectPreviewId !== null &&
-    primaryHostId !== null
-      ? (findLocalPathProjectSourceForHost(activeProjectSources, primaryHostId)
-          ?.path ?? null)
+    activeWorkspaceFileProjectPreviewId !== null
+      ? rootPanelEnvironmentId !== null
+        ? (rootPanelEnvironment?.path ?? null)
+        : rootProjectHostId !== null
+          ? (findLocalPathProjectSourceForHost(
+              activeProjectSources,
+              rootProjectHostId,
+            )?.path ?? null)
+          : null
       : null;
+  const projectSourcePreviewHostId =
+    projectSourcePreviewRootPath === null
+      ? null
+      : (rootPanelEnvironment?.hostId ?? rootProjectHostId);
   const projectSourceOpenContext = resolveHostOpenContext({
-    hostId: projectSourcePreviewRootPath === null ? null : primaryHostId,
-    isLocal: isLocalDaemonHost(primaryHostId),
+    hostId: projectSourcePreviewHostId,
+    isLocal: isLocalDaemonHost(projectSourcePreviewHostId),
     serverOrigin,
   });
   const activeHostOpenContext = resolveEnvironmentOpenContext({
@@ -3022,6 +3089,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       <NewTabPage
         projectId={isProjectless ? undefined : projectId}
         environmentId={rootPanelEnvironmentId}
+        hostId={rootProjectHostId}
         currentThreadId={rootPanelThreadId ?? ""}
         focusRequest={newTabFocusRequest}
         onSelect={handleSelectFileSearchResult}
@@ -3050,6 +3118,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       <ProjectFilePreviewTabContent
         activePath={activeWorkspaceFilePath}
         copyPath={projectFileCopyPath}
+        environmentId={rootPanelEnvironmentId}
+        hostId={rootProjectHostId}
         lineRange={activeWorkspaceFileLineRange}
         onOpenInEditor={handleOpenProjectFileInEditor}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -3166,6 +3236,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const executionConfig = useMemo(
     () => ({
+      providerRouting: executionOptionsRouting,
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
@@ -3197,6 +3268,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     }),
     [
       activeModel,
+      executionOptionsRouting,
       forkSeed,
       hasMultipleProviders,
       handleSelectedProviderIdChange,

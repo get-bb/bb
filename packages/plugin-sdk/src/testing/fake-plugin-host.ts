@@ -7,6 +7,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type {
   BbPluginApi,
+  PluginAgentConfiguration,
+  PluginAgentConfigurationContext,
   PluginAgentToolContext,
   PluginAgentToolResult,
   PluginAgents,
@@ -15,12 +17,12 @@ import type {
   PluginCliCommandInfo,
   PluginCliContext,
   PluginCliResult,
+  PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
   PluginHosts,
   PluginSharedPortTunnelIdentity,
-  PluginInteractions,
   PluginInteractionRequest,
   PluginInteractionResult,
   PluginKvStorage,
@@ -45,7 +47,15 @@ import type {
   PluginThreadEventPayloads,
   PluginUi,
 } from "../backend-contract.js";
-import type { JsonValue } from "@bb/domain";
+import type {
+  PluginRpcError,
+  PluginRpcMethodContract,
+  PluginRpcValidationIssue,
+  StandardSchemaV1,
+  StandardSchemaV1Issue,
+  StandardSchemaV1Result,
+} from "../rpc-contract.js";
+import type { JsonValue } from "../json-value.js";
 import {
   createFakeSdk,
   type FakeSdkHarness,
@@ -59,14 +69,16 @@ import {
  * `harness` drives and inspects it.
  *
  * Faithful where a plugin can observe it: registration name validation and
- * error messages, the kv 256KB cap, append-only sqlite migrations, settings
- * read/update semantics (including onChange), rpc/cli invocation shapes
- * (JSON round-tripping, exit-code normalization), `threads.spawn`
- * attribution, and dispose order (services aborted, hooks LIFO, sqlite
- * closed, stale handles throw).
+ * error messages, the kv 256KB cap, append-only database migrations, settings
+ * read/update semantics (including onChange), schema-validated rpc/cli
+ * invocation shapes (strict JSON boundaries, exit-code normalization), `threads.spawn`
+ * attribution, atomic reload, and dispose order (services aborted, hooks LIFO,
+ * database closed, stale handles throw). New tests can keep host inputs,
+ * assertions, and shutdown explicit through `harness.behavior`,
+ * `harness.inspection`, and `harness.lifecycle`; direct members remain aliases.
  *
  * Deliberately different from the real host:
- * - storage is process-local: kv in a Map, `storage.sqlite()` one shared
+ * - storage is process-local: kv in a Map, `storage.database()` one shared
  *   better-sqlite3 handle in a temp directory (same data across calls, like
  *   the host's shared file), secret settings alongside plain values (no files).
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
@@ -90,6 +102,8 @@ export class PluginContextStaleError extends Error {
 
 /** JSON values ≤256KB; larger writes are rejected with a clear error. */
 const KV_VALUE_MAX_BYTES = 256 * 1024;
+/** Mirrors the server's pending-interaction title schema. */
+const PLUGIN_INTERACTION_MAX_TITLE_LENGTH = 160;
 
 const PLUGIN_HTTP_METHODS = new Set([
   "GET",
@@ -105,6 +119,9 @@ const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
+const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
+const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
 const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MENTION_TRIGGER_VALUES = [
@@ -272,6 +289,10 @@ export interface FakePluginRegistrations {
   schedules: FakeScheduleRecord[];
   cli: FakeCliRecord | null;
   agentTools: FakeAgentToolRecord[];
+  /** Provider from bb.agents.configure, or null when none registered. */
+  agentConfigurationProvider:
+    | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)
+    | null;
   /** Provider from contributeInstructions, or null when none registered. */
   instructionProvider:
     | ((ctx: { threadId: string; projectId: string }) => string | null)
@@ -281,7 +302,8 @@ export interface FakePluginRegistrations {
   mentionProviders: FakeMentionProviderRecord[];
 }
 
-export interface FakePluginHarness {
+/** Read-only state for assertions after a plugin registers or handles work. */
+export interface FakePluginInspectionState {
   readonly pluginId: string;
   /** Every `bb.log` line, in order. */
   readonly logEntries: FakeLogEntry[];
@@ -299,6 +321,10 @@ export interface FakePluginHarness {
   readonly pendingInteractions: readonly (PluginInteractionRequest & {
     id: string;
   })[];
+}
+
+/** Deterministic inputs that stand in for behavior normally driven by BB. */
+export interface FakePluginBehaviorDrivers {
   submitInteraction(id: string, value: JsonValue): void;
   cancelInteraction(id: string): void;
   /**
@@ -309,10 +335,9 @@ export interface FakePluginHarness {
    */
   setSettings(values: Record<string, PluginSettingValue | null>): Promise<void>;
   /**
-   * Invoke a registered rpc method with host semantics: the input and the
-   * result are JSON-round-tripped, and a handler failure rejects with an
-   * `Error` carrying the handler's message (what the frontend rpc client
-   * would surface). Throws for unregistered methods.
+   * Invoke a registered rpc method with host semantics: input/output schemas,
+   * strict JSON result normalization, and structured failure codes. Rejects
+   * with the same message/code/issues the frontend client surfaces.
    */
   callRpc(method: string, input?: unknown): Promise<unknown>;
   /**
@@ -346,7 +371,7 @@ export interface FakePluginHarness {
   /** Run a registered schedule's function once (no timers, no cron sweep). */
   runSchedule(name: string): Promise<void>;
   /**
-   * Deliver a thread lifecycle event to every `bb.on` handler. Handlers run
+   * Deliver a thread lifecycle event to every `bb.events.on` handler. Handlers run
    * sequentially; errors are caught and logged like the host's
    * fire-and-forget dispatch, and returned for assertions.
    */
@@ -365,13 +390,47 @@ export interface FakePluginHarness {
     input: unknown,
     ctx?: Partial<PluginAgentToolContext>,
   ): Promise<PluginAgentToolResult>;
+  /** Evaluate `bb.agents.configure` with production validation/fail-closed
+   * semantics. With no callback, every registered tool/declared test skill is
+   * selected. Callback failures are logged and return empty selections. */
+  resolveAgentConfiguration(context: PluginAgentConfigurationContext): Promise<{
+    tools: FakeAgentToolRecord[];
+    skills: string[];
+    instructions: string | null;
+  }>;
+}
+
+/** Reload/shutdown controls, kept separate from behavior and inspection. */
+export interface FakePluginLifecycleControls {
+  /**
+   * Load a replacement against the same persisted settings, kv, and database.
+   * The current host remains live when the factory throws; on success its
+   * services/hooks are disposed and the returned host becomes current.
+   */
+  reload(
+    factory: (bb: BbPluginApi) => void | Promise<void>,
+  ): Promise<FakePluginHost>;
   /**
    * Dispose like a host reload/disable: abort services started via
-   * runService, run onDispose hooks LIFO (isolated), close sqlite handles,
+   * runService, run onDispose hooks LIFO (isolated), close database handles,
    * then poison the `bb` handle (further use throws
    * PluginContextStaleError). Idempotent.
    */
   dispose(): Promise<void>;
+}
+
+/**
+ * Complete fake-host harness. Direct members are retained for compatibility;
+ * the named views make intent explicit in new tests.
+ */
+export interface FakePluginHarness
+  extends
+    FakePluginInspectionState,
+    FakePluginBehaviorDrivers,
+    FakePluginLifecycleControls {
+  readonly behavior: FakePluginBehaviorDrivers;
+  readonly inspection: FakePluginInspectionState;
+  readonly lifecycle: FakePluginLifecycleControls;
 }
 
 export interface CreateFakePluginHostOptions {
@@ -391,6 +450,8 @@ export interface CreateFakePluginHostOptions {
   settings?: Record<string, PluginSettingValue>;
   /** Initial `bb.sdk` stubs; extend later via `harness.sdk.stub`. */
   sdk?: FakeSdkOverrides;
+  /** Static manifest skill ids available to configure() in this fake host. */
+  agentSkillIds?: readonly string[];
   /** Read-only identities returned by bb.hosts.ensureSharedPortTunnel. */
   sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
 }
@@ -585,10 +646,291 @@ function jsonRoundTrip(value: unknown, what: string): unknown {
   return JSON.parse(json);
 }
 
+interface FakeRpcRecord {
+  inputSchema: StandardSchemaV1;
+  outputSchema: StandardSchemaV1;
+  handler: (input: never) => unknown;
+}
+
+function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  if (typeof value !== "object" || value === null) return false;
+  const standard = Reflect.get(value, "~standard");
+  return (
+    typeof standard === "object" &&
+    standard !== null &&
+    Reflect.get(standard, "version") === 1 &&
+    typeof Reflect.get(standard, "vendor") === "string" &&
+    typeof Reflect.get(standard, "validate") === "function"
+  );
+}
+
+function readRpcMethodContract(
+  method: string,
+  value: unknown,
+): PluginRpcMethodContract {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `rpc method "${method}" contract must provide input and output Standard Schemas`,
+    );
+  }
+  const input = Reflect.get(value, "input");
+  const output = Reflect.get(value, "output");
+  if (!isStandardSchema(input)) {
+    throw new Error(
+      `rpc method "${method}" input must be a Standard Schema v1 validator`,
+    );
+  }
+  if (!isStandardSchema(output)) {
+    throw new Error(
+      `rpc method "${method}" output must be a Standard Schema v1 validator`,
+    );
+  }
+  return { input, output };
+}
+
+function normalizeRpcIssues(
+  issues: readonly StandardSchemaV1Issue[],
+): PluginRpcValidationIssue[] {
+  return issues.map((issue) => {
+    const rawPath = issue.path;
+    const segments =
+      rawPath === undefined ? [] : Array.isArray(rawPath) ? rawPath : [rawPath];
+    const path = segments.map((segment) => {
+      const key =
+        typeof segment === "object" && segment !== null
+          ? Reflect.get(segment, "key")
+          : segment;
+      return typeof key === "number" ? key : String(key);
+    });
+    return {
+      message: issue.message,
+      ...(path.length > 0 ? { path } : {}),
+    };
+  });
+}
+
+function throwRpcError(error: PluginRpcError): never {
+  const thrown = new Error(error.message);
+  Reflect.set(thrown, "code", error.code);
+  if (error.issues !== undefined) Reflect.set(thrown, "issues", error.issues);
+  throw thrown;
+}
+
+async function validateRpcValue(
+  schema: StandardSchemaV1,
+  value: unknown,
+  phase: "input" | "output",
+): Promise<unknown> {
+  let result: StandardSchemaV1Result<unknown>;
+  try {
+    result = await schema["~standard"].validate(value);
+  } catch (error) {
+    const message = errorMessage(error);
+    return throwRpcError({
+      code: phase === "input" ? "invalid_input" : "invalid_output",
+      message: `rpc ${phase} validator failed: ${message}`,
+      issues: [{ message }],
+    });
+  }
+  if (result.issues !== undefined) {
+    return throwRpcError({
+      code: phase === "input" ? "invalid_input" : "invalid_output",
+      message: `rpc ${phase} validation failed`,
+      issues: normalizeRpcIssues(result.issues),
+    });
+  }
+  return result.value;
+}
+
+function normalizeRpcJsonResult(value: unknown): JsonValue {
+  const ancestors = new Set<object>();
+  function visit(current: unknown, path: string): JsonValue {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return current;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        return throwRpcError({
+          code: "non_json_result",
+          message: `rpc result at ${path} contains a non-finite number`,
+        });
+      }
+      return current;
+    }
+    if (typeof current !== "object") {
+      return throwRpcError({
+        code: "non_json_result",
+        message: `rpc result at ${path} is not a JSON value (${typeof current})`,
+      });
+    }
+    if (ancestors.has(current)) {
+      return throwRpcError({
+        code: "non_json_result",
+        message: `rpc result at ${path} is cyclic`,
+      });
+    }
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        return current.map((item, index) => visit(item, `${path}[${index}]`));
+      }
+      const prototype = Object.getPrototypeOf(current) as object | null;
+      if (prototype !== Object.prototype && prototype !== null) {
+        return throwRpcError({
+          code: "non_json_result",
+          message: `rpc result at ${path} must be a plain JSON object`,
+        });
+      }
+      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+        return throwRpcError({
+          code: "non_json_result",
+          message: `rpc result at ${path} contains a symbol key`,
+        });
+      }
+      const normalized: Record<string, JsonValue> = {};
+      for (const [key, child] of Object.entries(current)) {
+        normalized[key] = visit(child, `${path}.${key}`);
+      }
+      return normalized;
+    } finally {
+      ancestors.delete(current);
+    }
+  }
+  return visit(value, "$result");
+}
+
+function normalizeAgentConfigurationIds(args: {
+  field: "tools" | "skills";
+  knownIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): string[] {
+  if (!Array.isArray(args.value)) {
+    throw new Error(`configure() output.${args.field} must be an array`);
+  }
+  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+    throw new Error(
+      `configure() output.${args.field} exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+    );
+  }
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < args.value.length; index += 1) {
+    const id = args.value[index];
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error(
+        `configure() output.${args.field}[${index}] must be a non-empty string`,
+      );
+    }
+    if (seen.has(id)) {
+      throw new Error(
+        `configure() output.${args.field} contains duplicate id ${JSON.stringify(id)}`,
+      );
+    }
+    if (!args.knownIds.has(id)) {
+      throw new Error(
+        `configure() selected unknown ${args.field === "tools" ? "tool" : "skill"} id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+      );
+    }
+    seen.add(id);
+    selected.push(id);
+  }
+  return selected;
+}
+
+function normalizeAgentConfiguration(args: {
+  knownSkillIds: ReadonlySet<string>;
+  knownToolIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): { toolIds: string[]; skillIds: string[]; instructions: string | null } {
+  if (
+    typeof args.value !== "object" ||
+    args.value === null ||
+    Array.isArray(args.value)
+  ) {
+    throw new Error(
+      "configure() must return { tools: string[], skills: string[], instructions?: string }",
+    );
+  }
+  const output = args.value as Record<string, unknown>;
+  const unknownKeys = Object.keys(output)
+    .filter((key) => !["tools", "skills", "instructions"].includes(key))
+    .sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `configure() output contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+    );
+  }
+  if (
+    output.instructions !== undefined &&
+    typeof output.instructions !== "string"
+  ) {
+    throw new Error("configure() output.instructions must be a string");
+  }
+  return {
+    toolIds: normalizeAgentConfigurationIds({
+      field: "tools",
+      knownIds: args.knownToolIds,
+      pluginId: args.pluginId,
+      value: output.tools,
+    }),
+    skillIds: normalizeAgentConfigurationIds({
+      field: "skills",
+      knownIds: args.knownSkillIds,
+      pluginId: args.pluginId,
+      value: output.skills,
+    }),
+    instructions:
+      typeof output.instructions === "string" &&
+      output.instructions.trim().length > 0
+        ? output.instructions.slice(
+            0,
+            PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+          )
+        : null,
+  };
+}
+
+interface FakePluginPersistentState {
+  kvRows: Map<string, string>;
+  storageRoot: string;
+  storedSettings: Map<string, PluginSettingValue>;
+}
+
+const fakeHostDisposers = new WeakMap<
+  FakePluginHarness,
+  (cleanupStorage: boolean) => Promise<void>
+>();
+
 export function createFakePluginHost(
   options: CreateFakePluginHostOptions = {},
 ): FakePluginHost {
+  return createFakePluginHostInternal(options);
+}
+
+function createFakePluginHostInternal(
+  options: CreateFakePluginHostOptions,
+  sharedState?: FakePluginPersistentState,
+): FakePluginHost {
+  const persistentState =
+    sharedState ??
+    ({
+      kvRows: new Map<string, string>(),
+      storageRoot: mkdtempSync(join(tmpdir(), "bb-fake-plugin-host-")),
+      storedSettings: new Map<string, PluginSettingValue>(
+        Object.entries(options.settings ?? {}),
+      ),
+    } satisfies FakePluginPersistentState);
   const pluginId = options.pluginId ?? "test-plugin";
+  const agentSkillIds = [...(options.agentSkillIds ?? [])];
+  if (new Set(agentSkillIds).size !== agentSkillIds.length) {
+    throw new Error("agentSkillIds must not contain duplicates");
+  }
   let invalidated = false;
   let disposed = false;
 
@@ -609,7 +951,7 @@ export function createFakePluginHost(
   };
 
   // --- storage ---
-  const kvRows = new Map<string, string>();
+  const kvRows = persistentState.kvRows;
   const kv: PluginKvStorage = {
     async get(key) {
       assertLive();
@@ -627,7 +969,7 @@ export function createFakePluginHost(
       if (bytes > KV_VALUE_MAX_BYTES) {
         throw new Error(
           `kv value for "${key}" is ${bytes} bytes; the limit is ${KV_VALUE_MAX_BYTES} (256KB). ` +
-            `Store large data in storage.sqlite() instead.`,
+            `Store large data in storage.database() instead.`,
         );
       }
       kvRows.set(key, json);
@@ -644,20 +986,20 @@ export function createFakePluginHost(
     },
   };
 
-  const storageRoot = mkdtempSync(join(tmpdir(), "bb-fake-plugin-host-"));
+  const storageRoot = persistentState.storageRoot;
 
-  // One shared temp-file handle: every sqlite() call sees the same data,
+  // One shared temp-file handle: every database() call sees the same data,
   // like the host's handles over one on-disk file.
-  let sqliteHandle: Database.Database | undefined;
+  let databaseHandle: Database.Database | undefined;
   const storage: PluginStorage = {
     kv,
-    sqlite() {
+    database() {
       assertLive();
-      if (!sqliteHandle) {
-        sqliteHandle = new Database(join(storageRoot, "data.db"));
-        sqliteHandle.pragma("busy_timeout = 5000");
+      if (!databaseHandle) {
+        databaseHandle = new Database(join(storageRoot, "data.db"));
+        databaseHandle.pragma("busy_timeout = 5000");
       }
-      return sqliteHandle;
+      return databaseHandle;
     },
     migrate(database, statements) {
       assertLive();
@@ -692,9 +1034,7 @@ export function createFakePluginHost(
       prev: Record<string, PluginSettingValue | undefined>,
     ) => void
   > = [];
-  const storedSettings = new Map<string, PluginSettingValue>(
-    Object.entries(options.settings ?? {}),
-  );
+  const storedSettings = persistentState.storedSettings;
 
   const settings: PluginSettings = {
     define(descriptors) {
@@ -763,23 +1103,61 @@ export function createFakePluginHost(
   };
 
   // --- rpc ---
-  const rpcHandlers = new Map<string, (input: unknown) => unknown>();
+  const rpcHandlers = new Map<string, FakeRpcRecord>();
   const rpc: PluginRpc = {
-    register(handlers) {
+    register(contract, handlers) {
       assertLive();
-      for (const [name, handler] of Object.entries(handlers)) {
+      if (
+        typeof contract !== "object" ||
+        contract === null ||
+        Array.isArray(contract)
+      ) {
+        throw new Error("rpc.register contract must be an object");
+      }
+      if (
+        typeof handlers !== "object" ||
+        handlers === null ||
+        Array.isArray(handlers)
+      ) {
+        throw new Error("rpc.register handlers must be an object");
+      }
+      const pending: Array<[string, FakeRpcRecord]> = [];
+      const contractEntries = Object.entries(contract);
+      const contractNames = new Set(contractEntries.map(([name]) => name));
+      for (const extraName of Object.keys(handlers)) {
+        if (!contractNames.has(extraName)) {
+          throw new Error(
+            `rpc handler "${extraName}" has no matching contract method`,
+          );
+        }
+      }
+      for (const [name, contractValue] of contractEntries) {
         if (!RPC_METHOD_PATTERN.test(name)) {
           throw new Error(
             `invalid rpc method name "${name}" — use letters, digits, "-" and "_"`,
           );
         }
+        const methodContract = readRpcMethodContract(name, contractValue);
+        const handler = Reflect.get(handlers, name);
         if (typeof handler !== "function") {
-          throw new Error(`rpc method "${name}" must be a function`);
+          throw new Error(
+            `rpc method "${name}" must provide a handler function`,
+          );
         }
         if (rpcHandlers.has(name)) {
           throw new Error(`rpc method "${name}" is already registered`);
         }
-        rpcHandlers.set(name, handler as (input: unknown) => unknown);
+        pending.push([
+          name,
+          {
+            inputSchema: methodContract.input,
+            outputSchema: methodContract.output,
+            handler: handler as (input: never) => unknown,
+          },
+        ]);
+      }
+      for (const [name, record] of pending) {
+        rpcHandlers.set(name, record);
       }
     },
   };
@@ -855,6 +1233,9 @@ export function createFakePluginHost(
   const cli: PluginCli = {
     register(registration) {
       assertLive();
+      if (cliRecord.registration !== null) {
+        throw new Error("cli command is already registered");
+      }
       const name = registration?.name;
       if (typeof name !== "string" || !CLI_COMMAND_NAME_PATTERN.test(name)) {
         throw new Error(
@@ -909,12 +1290,30 @@ export function createFakePluginHost(
 
   // --- agents ---
   const agentTools: FakeAgentToolRecord[] = [];
+  let agentConfigurationProvider:
+    | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)
+    | null = null;
   let instructionProvider:
     | ((ctx: { threadId: string; projectId: string }) => string | null)
     | null = null;
   const agents: PluginAgents = {
+    configure(provider) {
+      assertLive();
+      if (agentConfigurationProvider !== null) {
+        throw new Error("agent configuration is already registered");
+      }
+      if (typeof provider !== "function") {
+        throw new Error(
+          "configure requires a provider function (context) => ({ tools, skills, instructions? })",
+        );
+      }
+      agentConfigurationProvider = provider;
+    },
     contributeInstructions(provider) {
       assertLive();
+      if (instructionProvider !== null) {
+        throw new Error("agent instructions are already registered");
+      }
       if (typeof provider !== "function") {
         throw new Error(
           "contributeInstructions requires a provider function (ctx) => string | null",
@@ -955,6 +1354,14 @@ export function createFakePluginHost(
         typeof tool.instructions !== "string"
       ) {
         throw new Error(`tool "${name}" instructions must be a string`);
+      }
+      if (
+        typeof tool.instructions === "string" &&
+        tool.instructions.length > PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS
+      ) {
+        throw new Error(
+          `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
+        );
       }
       if (typeof tool.execute !== "function") {
         throw new Error(
@@ -1013,14 +1420,10 @@ export function createFakePluginHost(
           ) => PluginAgentToolResult | Promise<PluginAgentToolResult>
         ).bind(tool),
       };
-      const existingIndex = agentTools.findIndex(
-        (existing) => existing.name === name,
-      );
-      if (existingIndex >= 0) {
-        agentTools[existingIndex] = record;
-      } else {
-        agentTools.push(record);
+      if (agentTools.some((existing) => existing.name === name)) {
+        throw new Error(`tool "${name}" is already registered`);
       }
+      agentTools.push(record);
     },
   };
 
@@ -1028,6 +1431,7 @@ export function createFakePluginHost(
   const threadActions: FakeThreadActionRecord[] = [];
   const mentionProviders: FakeMentionProviderRecord[] = [];
   const ui: PluginUi = {
+    requestInput,
     registerThreadAction(action) {
       assertLive();
       const id = action?.id;
@@ -1155,32 +1559,87 @@ export function createFakePluginHost(
       timer: ReturnType<typeof setTimeout>;
     }
   >();
-  const interactions: PluginInteractions = {
-    request(request, requestOptions) {
-      assertLive();
-      const id = `fake-interaction-${nextInteractionId++}`;
-      return new Promise((resolve) => {
-        const settleAborted = () => {
-          const pending = pendingInteractions.get(id);
-          if (!pending) return;
-          clearTimeout(pending.timer);
-          pendingInteractions.delete(id);
-          resolve({ outcome: "cancelled", reason: "request-aborted" });
-        };
-        requestOptions?.signal?.addEventListener("abort", settleAborted, {
-          once: true,
-        });
-        const timer = setTimeout(
-          () => {
-            pendingInteractions.delete(id);
-            resolve({ outcome: "cancelled", reason: "timeout" });
-          },
-          request.timeoutMs ?? 10 * 60 * 1000,
-        );
-        pendingInteractions.set(id, { request, resolve, timer });
+  function requestInput(
+    request: Parameters<PluginUi["requestInput"]>[0],
+    requestOptions?: Parameters<PluginUi["requestInput"]>[1],
+  ) {
+    assertLive();
+    if (!request || typeof request !== "object") {
+      throw new Error("ui.requestInput requires an options object");
+    }
+    if (typeof request.threadId !== "string" || request.threadId.length === 0) {
+      throw new Error("ui.requestInput threadId must be a non-empty string");
+    }
+    if (
+      typeof request.rendererId !== "string" ||
+      !/^[a-zA-Z0-9_-]+$/.test(request.rendererId)
+    ) {
+      throw new Error(
+        "ui.requestInput rendererId must use letters, digits, '-' or '_'",
+      );
+    }
+    if (
+      typeof request.title !== "string" ||
+      request.title.trim().length === 0 ||
+      request.title.trim().length > PLUGIN_INTERACTION_MAX_TITLE_LENGTH
+    ) {
+      throw new Error(
+        `ui.requestInput title must be 1-${PLUGIN_INTERACTION_MAX_TITLE_LENGTH} characters`,
+      );
+    }
+    let payload: JsonValue;
+    try {
+      const json = JSON.stringify(request.payload);
+      if (json === undefined) throw new Error();
+      if (Buffer.byteLength(json, "utf8") > 64 * 1024) {
+        throw new Error("ui.requestInput payload exceeds 64 KiB");
+      }
+      payload = JSON.parse(json) as JsonValue;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("64 KiB")) {
+        throw error;
+      }
+      throw new Error("ui.requestInput payload must be JSON-serializable");
+    }
+    const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
+    if (
+      !Number.isInteger(timeoutMs) ||
+      timeoutMs <= 0 ||
+      timeoutMs > 60 * 60 * 1000
+    ) {
+      throw new Error(
+        "ui.requestInput timeoutMs must be between 1 and 3600000",
+      );
+    }
+    const normalizedRequest: PluginInteractionRequest = {
+      ...request,
+      title: request.title.trim(),
+      payload,
+      timeoutMs,
+    };
+    const id = `fake-interaction-${nextInteractionId++}`;
+    return new Promise<PluginInteractionResult>((resolve) => {
+      const settleAborted = () => {
+        const pending = pendingInteractions.get(id);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingInteractions.delete(id);
+        resolve({ outcome: "cancelled", reason: "request-aborted" });
+      };
+      requestOptions?.signal?.addEventListener("abort", settleAborted, {
+        once: true,
       });
-    },
-  };
+      const timer = setTimeout(() => {
+        pendingInteractions.delete(id);
+        resolve({ outcome: "cancelled", reason: "timeout" });
+      }, timeoutMs);
+      pendingInteractions.set(id, {
+        request: normalizedRequest,
+        resolve,
+        timer,
+      });
+    });
+  }
 
   const sharedPortDeclarations: FakePluginHarness["sharedPortDeclarations"] =
     [];
@@ -1227,26 +1686,7 @@ export function createFakePluginHost(
     sharedPortDeclarations.length = 0;
   });
 
-  const bb: BbPluginApi = {
-    pluginId,
-    log,
-    settings,
-    storage,
-    http,
-    rpc,
-    realtime,
-    background,
-    cli,
-    interactions,
-    agents,
-    ui,
-    status,
-    server,
-    hosts,
-    get sdk() {
-      assertLive();
-      return sdk;
-    },
+  const events: PluginEvents = {
     on(event, handler) {
       assertLive();
       const handlers = threadEventHandlers[event];
@@ -1259,13 +1699,75 @@ export function createFakePluginHost(
       }
       handlers.push(handler);
     },
+  };
+
+  const bb: BbPluginApi = {
+    pluginId,
+    log,
+    settings,
+    storage,
+    http,
+    rpc,
+    realtime,
+    background,
+    cli,
+    agents,
+    ui,
+    events,
+    status,
+    server,
+    hosts,
+    get sdk() {
+      assertLive();
+      return sdk;
+    },
     onDispose(hook) {
       assertLive();
       disposeHooks.push(hook);
     },
   };
 
+  async function disposeHost(cleanupStorage: boolean): Promise<void> {
+    if (disposed) return;
+    disposed = true;
+    for (const [id, pending] of pendingInteractions) {
+      clearTimeout(pending.timer);
+      pendingInteractions.delete(id);
+      pending.resolve({ outcome: "cancelled", reason: "plugin-disposed" });
+    }
+    // Host order (§3): services first, then hooks LIFO (isolated), then
+    // vended database handles, then handle invalidation.
+    for (const controller of serviceControllers) controller.abort();
+    for (const hook of [...disposeHooks].reverse()) {
+      try {
+        await hook();
+      } catch (error) {
+        emitLog("warn", `dispose hook failed: ${errorMessage(error)}`);
+      }
+    }
+    if (databaseHandle) {
+      try {
+        databaseHandle.close();
+      } catch (error) {
+        emitLog("warn", `database close failed: ${errorMessage(error)}`);
+      }
+    }
+    if (cleanupStorage) {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+    invalidated = true;
+  }
+
   const harness: FakePluginHarness = {
+    get behavior() {
+      return this;
+    },
+    get inspection() {
+      return this;
+    },
+    get lifecycle() {
+      return this;
+    },
     pluginId,
     logEntries,
     realtimeSignals,
@@ -1284,6 +1786,9 @@ export function createFakePluginHost(
         return cliRecord.registration;
       },
       agentTools,
+      get agentConfigurationProvider() {
+        return agentConfigurationProvider;
+      },
       get instructionProvider() {
         return instructionProvider;
       },
@@ -1344,19 +1849,37 @@ export function createFakePluginHost(
     },
 
     async callRpc(method, input) {
-      const handler = rpcHandlers.get(method);
-      if (!handler) {
-        throw new Error(`plugin "${pluginId}" has no rpc method "${method}"`);
+      const record = rpcHandlers.get(method);
+      if (!record) {
+        return throwRpcError({
+          code: "unknown_method",
+          message: `plugin "${pluginId}" has no rpc method "${method}"`,
+        });
       }
       const parsedInput =
         input === undefined
-          ? undefined
+          ? null
           : jsonRoundTrip(input, `rpc "${method}" input`);
-      const result = await handler(parsedInput);
-      // Same round-trip as the dispatcher: a bigint/circular result is this
-      // call's clear error, not a serializer crash later.
-      const json = JSON.stringify(result);
-      return json === undefined ? undefined : (JSON.parse(json) as unknown);
+      const validatedInput = await validateRpcValue(
+        record.inputSchema,
+        parsedInput,
+        "input",
+      );
+      let result: unknown;
+      try {
+        result = await record.handler(validatedInput as never);
+      } catch (error) {
+        return throwRpcError({
+          code: "handler_error",
+          message: errorMessage(error),
+        });
+      }
+      const validatedOutput = await validateRpcValue(
+        record.outputSchema,
+        result,
+        "output",
+      );
+      return normalizeRpcJsonResult(validatedOutput);
     },
 
     async runCli(argv, ctx = {}) {
@@ -1490,35 +2013,54 @@ export function createFakePluginHost(
       });
     },
 
+    async resolveAgentConfiguration(context) {
+      if (agentConfigurationProvider === null) {
+        return {
+          tools: [...agentTools],
+          skills: [...agentSkillIds],
+          instructions: null,
+        };
+      }
+      try {
+        const normalized = normalizeAgentConfiguration({
+          knownSkillIds: new Set(agentSkillIds),
+          knownToolIds: new Set(agentTools.map((tool) => tool.name)),
+          pluginId,
+          value: agentConfigurationProvider(context),
+        });
+        const selectedTools = new Set(normalized.toolIds);
+        return {
+          tools: agentTools.filter((tool) => selectedTools.has(tool.name)),
+          skills: normalized.skillIds,
+          instructions: normalized.instructions,
+        };
+      } catch (error) {
+        emitLog("warn", `agent configure failed: ${errorMessage(error)}`);
+        return { tools: [], skills: [], instructions: null };
+      }
+    },
+
+    async reload(factory) {
+      assertLive();
+      const replacement = createFakePluginHostInternal(
+        options,
+        persistentState,
+      );
+      try {
+        await factory(replacement.bb);
+      } catch (error) {
+        await fakeHostDisposers.get(replacement.harness)?.(false);
+        throw error;
+      }
+      await disposeHost(false);
+      return replacement;
+    },
+
     async dispose() {
-      if (disposed) return;
-      disposed = true;
-      for (const [id, pending] of pendingInteractions) {
-        clearTimeout(pending.timer);
-        pendingInteractions.delete(id);
-        pending.resolve({ outcome: "cancelled", reason: "plugin-disposed" });
-      }
-      // Host order (§3): services first, then hooks LIFO (isolated), then
-      // vended sqlite handles, then handle invalidation.
-      for (const controller of serviceControllers) controller.abort();
-      for (const hook of [...disposeHooks].reverse()) {
-        try {
-          await hook();
-        } catch (error) {
-          emitLog("warn", `dispose hook failed: ${errorMessage(error)}`);
-        }
-      }
-      if (sqliteHandle) {
-        try {
-          sqliteHandle.close();
-        } catch (error) {
-          emitLog("warn", `sqlite close failed: ${errorMessage(error)}`);
-        }
-      }
-      rmSync(storageRoot, { recursive: true, force: true });
-      invalidated = true;
+      await disposeHost(true);
     },
   };
 
+  fakeHostDisposers.set(harness, disposeHost);
   return { bb, harness };
 }

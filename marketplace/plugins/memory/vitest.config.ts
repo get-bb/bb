@@ -5,10 +5,6 @@ export default defineWorkspaceTestConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "."),
-      "@bb/plugin-sdk": path.resolve(
-        import.meta.dirname,
-        "../../../packages/plugin-sdk/src",
-      ),
     },
   },
   test: {

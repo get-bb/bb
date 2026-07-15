@@ -187,7 +187,7 @@ async function runRequest(
   let snapshot = await readSnapshot(bb, fileArgs);
   assertNoDuplicateAssignments(snapshot.content, parsed.names);
 
-  const result = await bb.interactions.request(
+  const result = await bb.ui.requestInput(
     {
       threadId: ctx.threadId,
       rendererId: "secret-request",

@@ -24,6 +24,7 @@ const searchResult = {
   entryId: "linear",
   displayName: "Linear",
   description: "Linear issue tools",
+  icon: null,
   source: "npm:@example/linear@1.4.2",
   installed: false,
   compatible: true,
@@ -35,14 +36,15 @@ const installedPlugin = {
   rootDir: "/plugins/linear",
   version: "1.4.2",
   provenance: "marketplace",
+  isOrphanedBuiltin: false,
   marketplaceName: "BB Official",
   sourceDisplay: "npm · @example/linear · tracks compatible",
   updateState: {},
   enabled: true,
   description: "Linear issue tools",
-  displayName: "Linear",
+  name: "Linear",
   icon: null,
-  status: "active",
+  status: "running",
   statusDetail: null,
   handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
   services: [],
@@ -252,7 +254,7 @@ describe("bb plugin marketplaces", () => {
   it("does not advertise removed marketplace and automatic-update surfaces", async () => {
     const pluginHelp = await getHelpOutput(["plugin"], register);
     expect(pluginHelp).not.toContain("auto-apply");
-    expect(pluginHelp).not.toContain("history");
+    expect(pluginHelp).toContain("source [options] <id>");
 
     const marketplaceHelp = await getHelpOutput(
       ["plugin", "marketplace"],

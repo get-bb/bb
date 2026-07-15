@@ -307,6 +307,10 @@ interface CreateTerminalArgs {
   payload: CreateTerminalRequest;
 }
 
+interface GetTerminalArgs {
+  terminalId: string;
+}
+
 interface TerminalCreatePayload {
   cols: number;
   rows: number;
@@ -513,6 +517,14 @@ export class TerminalSessionLifecycle {
     if (hostId === undefined) {
       return [];
     }
+    assertUsableHostId(
+      {
+        config: this.options.config,
+        db: this.options.db,
+        hub: this.options.hub,
+      },
+      { hostId },
+    );
     return listVisibleTerminalSessions(this.options.db)
       .filter(
         (session) =>
@@ -522,6 +534,20 @@ export class TerminalSessionLifecycle {
           (query.cwd === undefined || session.initialCwd === query.cwd),
       )
       .map(toTerminalSession);
+  }
+
+  getTerminal(args: GetTerminalArgs): TerminalSession {
+    const session = getTerminalSession(this.options.db, {
+      terminalId: args.terminalId,
+    });
+    if (!session) {
+      throw new ApiError(
+        404,
+        "terminal_not_found",
+        "Terminal session not found",
+      );
+    }
+    return toTerminalSession(session);
   }
 
   async createTerminal(args: CreateTerminalArgs): Promise<TerminalSession> {

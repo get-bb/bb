@@ -17,13 +17,21 @@ app uses ~/.bb/theme/…). The folder name is the theme id.
 
   bb theme list                  Built-in and custom themes; shows the active one
   bb theme dir                   Print the custom-theme directory (where to author)
-  bb theme set <id>              Activate a built-in or custom theme; applies live
+  bb theme set <id> [--favicon-color <color>]
+                                 Activate a theme, preserving the favicon color
+                                 unless the flag supplies the complete selection
   bb theme show [--css]          Print the active palette; --css dumps the CSS
-  bb theme reset                 Back to the default theme
+  bb theme reset                 Back to the default theme; preserve favicon color
+  bb theme favicon set <color>   Set favicon color; preserve the active theme
+  bb theme favicon reset         Reset favicon color; preserve the active theme
 
 To author a custom theme, run `bb theme dir`, write <that-dir>/<name>/theme.css,
 then `bb theme set <name>`. The full design-token reference is in the bb-cli
 skill (references/theming.md).
+
+Favicon colors are `default`, `red`, `orange`, `yellow`, `green`, `teal`,
+`blue`, `purple`, and `pink`. Theme and favicon-only commands carry the other
+appearance value forward explicitly.
 
 Add --json to any theme command for machine-readable output.
 

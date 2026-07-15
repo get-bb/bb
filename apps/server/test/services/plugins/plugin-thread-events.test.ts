@@ -46,7 +46,12 @@ async function setUpPluginHarness(serverSource: string): Promise<{
     JSON.stringify({
       name: "bb-plugin-observer",
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Observer fixture",
+        description: "Thread events plugin fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), serverSource);
@@ -72,7 +77,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__idleEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.idle", (payload: any) => {
+        bb.events.on("thread.idle", (payload: any) => {
           (globalThis as any).__idleEvents.push(payload);
         });
       }
@@ -120,7 +125,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__failedEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.failed", (payload: any) => {
+        bb.events.on("thread.failed", (payload: any) => {
           (globalThis as any).__failedEvents.push(payload);
         });
       }
@@ -159,7 +164,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__createdEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.created", (payload: any) => {
+        bb.events.on("thread.created", (payload: any) => {
           (globalThis as any).__createdEvents.push(payload);
         });
       }
@@ -194,7 +199,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__rollbackDeletedEvents = deleted;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.deleted", (payload: any) => {
+        bb.events.on("thread.deleted", (payload: any) => {
           (globalThis as any).__rollbackDeletedEvents.push(payload);
         });
       }
@@ -234,7 +239,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__deletedEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.deleted", (payload: any) => {
+        bb.events.on("thread.deleted", (payload: any) => {
           (globalThis as any).__deletedEvents.push(payload);
         });
       }
@@ -264,7 +269,7 @@ describe("plugin thread lifecycle events", () => {
   it("isolates a throwing thread.deleted handler and still deletes", async () => {
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.deleted", () => {
+        bb.events.on("thread.deleted", () => {
           throw new Error("delete handler boom");
         });
       }
@@ -302,10 +307,10 @@ describe("plugin thread lifecycle events", () => {
     globals.__survivorEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.idle", () => {
+        bb.events.on("thread.idle", () => {
           throw new Error("handler boom");
         });
-        bb.on("thread.idle", (payload: any) => {
+        bb.events.on("thread.idle", (payload: any) => {
           (globalThis as any).__survivorEvents.push(payload);
         });
       }
@@ -357,7 +362,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__disabledEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.idle", (payload: any) => {
+        bb.events.on("thread.idle", (payload: any) => {
           (globalThis as any).__disabledEvents.push(payload);
         });
       }

@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
+import { validatePluginBuildManifest } from "./plugin-manifest.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.server` entry into a
@@ -64,18 +65,17 @@ async function readPluginServerConfig(
   } catch {
     throw new Error(`package.json is not valid JSON at ${packageJsonPath}`);
   }
-  if (!isRecord(json)) {
-    throw new Error(
-      `package.json must contain a JSON object at ${packageJsonPath}`,
-    );
-  }
-  const bb = isRecord(json.bb) ? json.bb : undefined;
-  const server = bb?.server;
-  if (typeof server !== "string" || server.length === 0) {
+  if (!isRecord(json) || !isRecord(json.bb) || json.bb.server === undefined) {
     throw new Error(
       `no server entry: ${packageJsonPath} has no "bb": { "server": "./server.ts" } field`,
     );
   }
+  const manifest = await validatePluginBuildManifest(
+    json,
+    rootDir,
+    packageJsonPath,
+  );
+  const server = manifest.bb.server;
   if (isAbsolute(server)) {
     throw new Error(`manifest bb.server must be relative, got "${server}"`);
   }
@@ -90,20 +90,10 @@ async function readPluginServerConfig(
   } catch {
     throw new Error(`manifest bb.server points at a missing file: ${server}`);
   }
-  if (typeof json.name !== "string" || json.name.length === 0) {
-    throw new Error(
-      `plugin package.json has no non-empty name at ${packageJsonPath}`,
-    );
-  }
-  if (typeof json.version !== "string" || json.version.length === 0) {
-    throw new Error(
-      `plugin package.json has no non-empty version at ${packageJsonPath}`,
-    );
-  }
   return {
     serverEntry,
-    packageName: json.name,
-    pluginVersion: json.version,
+    packageName: manifest.name,
+    pluginVersion: manifest.version,
   };
 }
 

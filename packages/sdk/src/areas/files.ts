@@ -1,4 +1,14 @@
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type {
+  CreateFilePreviewResponse,
+  HostFileListResponse,
+  HostFileReadResponse,
+  HostFileWriteResponse,
+  HostMkdirResponse,
+  HostMovePathResponse,
+  HostPathListResponse,
+  HostRemovePathResponse,
+} from "@bb/server-contract";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 /**
  * Host file primitives. `hostId` may be omitted to target the server's
@@ -69,14 +79,14 @@ export interface FilePreviewArgs {
   ttlMs?: number;
 }
 
-export type FileReadResult = PublicApiOutput<"/files/read", "$post">;
-export type FileWriteResult = PublicApiOutput<"/files/write", "$post">;
-export type FileListResult = PublicApiOutput<"/files/list", "$post">;
-export type PathListResult = PublicApiOutput<"/files/paths", "$post">;
-export type FileMkdirResult = PublicApiOutput<"/files/mkdir", "$post">;
-export type FileMoveResult = PublicApiOutput<"/files/move", "$post">;
-export type FileRemoveResult = PublicApiOutput<"/files/remove", "$post">;
-export type FilePreviewResult = PublicApiOutput<"/files/previews", "$post">;
+export type FileReadResult = HostFileReadResponse;
+export type FileWriteResult = HostFileWriteResponse;
+export type FileListResult = HostFileListResponse;
+export type PathListResult = HostPathListResponse;
+export type FileMkdirResult = HostMkdirResponse;
+export type FileMoveResult = HostMovePathResponse;
+export type FileRemoveResult = HostRemovePathResponse;
+export type FilePreviewResult = CreateFilePreviewResponse;
 
 export interface FilesArea {
   read(args: FileReadArgs): Promise<FileReadResult>;

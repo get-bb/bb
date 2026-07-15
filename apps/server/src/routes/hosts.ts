@@ -74,7 +74,7 @@ async function revokeConnectMachineCredential(
       handler.value,
       { machineId },
     );
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(result.error.message);
   } catch (error) {
     deps.logger.error(
       { err: error, machineId },

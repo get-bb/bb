@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -12,7 +13,11 @@ import {
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { pluginUpdateAvailableVersion } from "./plugin-update-signals";
-import { KeyValueGrid, SUCCESS_BANNER_STYLE, formatAbsoluteDate } from "./plugin-ui";
+import {
+  KeyValueGrid,
+  SUCCESS_BANNER_STYLE,
+  formatAbsoluteDate,
+} from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 /**
@@ -91,7 +96,11 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
-export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) {
+export function PluginUpdatesSourceCard({
+  plugin,
+}: {
+  plugin: PluginListItem;
+}) {
   const queryClient = useQueryClient();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
@@ -102,7 +111,7 @@ export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) 
     onSuccess: () => invalidatePluginList({ queryClient }),
     onError: (error) => {
       appToast.error("The update check failed", {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
@@ -122,7 +131,10 @@ export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) 
       <div className="rounded-lg border border-border bg-card px-4 py-3.5">
         <div className="divide-y divide-border">
           <div className="pb-3">
-            <SettingsWithControl label="Source" description={plugin.sourceDisplay}>
+            <SettingsWithControl
+              label="Source"
+              description={plugin.sourceDisplay}
+            >
               <Button
                 type="button"
                 variant="ghost"
@@ -175,9 +187,7 @@ export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) 
                                   ? `sdk ${source.engines.bbPluginSdk}`
                                   : null,
                               ]
-                                .filter(
-                                  (part): part is string => part !== null,
-                                )
+                                .filter((part): part is string => part !== null)
                                 .join(" · "),
                             },
                           ]

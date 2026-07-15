@@ -1,18 +1,17 @@
 import { useSyncExternalStore } from "react";
-import { usePreferredTheme } from "@/hooks/useTheme";
 
 /**
- * Client-side plugin logo map: pluginId → hash-busted logo asset URLs (light
- * + optional dark variant), taken from the GET /api/v1/plugins inventory each
- * time the plugin frontends reconcile (boot + the realtime `plugins-changed`
- * broadcast). A tiny external store — not a query — so leaf components
- * (sidebar rows, menu rows, thread-action buttons) can resolve a plugin's
- * logo without needing a QueryClient in scope.
+ * Client-side plugin branding map taken from the GET /api/v1/plugins inventory
+ * each time plugin frontends reconcile (boot + the realtime `plugins-changed`
+ * broadcast). A tiny external store — not a query — lets compact leaf
+ * components resolve `bb.branding.icon` without a QueryClient in scope. The
+ * stored entries retain the full branding inventory shape; roomy Settings
+ * consumers read the same logo URLs through their query model.
  */
 
 /** One plugin's logo asset URLs; either is null when that variant is absent. */
 export interface PluginLogoUrls {
-  /** Canonical manifest icon used when the plugin has no image logo. */
+  /** Compact identity and the fallback when a roomy image logo is unavailable. */
   icon: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;
@@ -38,20 +37,6 @@ export function subscribePluginLogos(listener: () => void): () => void {
 
 export function getPluginLogoUrls(): ReadonlyMap<string, PluginLogoUrls> {
   return logoUrls;
-}
-
-/**
- * The plugin's logo asset URL for the app's current effective theme, or null
- * when it ships no usable logo. Dark mode prefers the dark variant and falls
- * back to the light one; re-renders when the resolved theme flips.
- */
-export function usePluginLogoUrl(pluginId: string): string | null {
-  const urls = useSyncExternalStore(subscribePluginLogos, getPluginLogoUrls);
-  const theme = usePreferredTheme();
-  const entry = urls.get(pluginId);
-  if (entry === undefined) return null;
-  if (theme === "dark" && entry.logoDarkUrl !== null) return entry.logoDarkUrl;
-  return entry.logoUrl;
 }
 
 /** Canonical manifest icon hint, or null when the plugin did not declare one. */

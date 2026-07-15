@@ -84,7 +84,7 @@ describe("bb thread tell command output", () => {
     });
   });
 
-  it("bb thread tell forwards structured file and image attachments", async () => {
+  it("bb thread tell forwards host-readable paths without reading them on the CLI machine", async () => {
     const post = vi.fn(async () => ({ ok: true }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 

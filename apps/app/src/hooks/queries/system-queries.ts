@@ -26,6 +26,7 @@ import {
 export interface UseSystemExecutionOptionsArgs {
   enabled?: boolean;
   environmentId?: string;
+  hostId?: string;
   providerId?: string;
 }
 
@@ -63,15 +64,21 @@ export function useSystemExecutionOptions(
   args: UseSystemExecutionOptionsArgs = {},
 ) {
   const environmentId = args.environmentId ?? null;
+  const hostId = args.hostId ?? null;
   const providerId = args.providerId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
 
   return useQuery<SystemExecutionOptionsResponse>({
-    queryKey: systemExecutionOptionsQueryKey({ environmentId, providerId }),
+    queryKey: systemExecutionOptionsQueryKey({
+      environmentId,
+      hostId,
+      providerId,
+    }),
     queryFn: ({ signal }) =>
       api.getSystemExecutionOptions({
         environmentId: args.environmentId,
+        hostId: args.hostId,
         providerId: args.providerId,
         signal,
       }),

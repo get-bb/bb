@@ -37,6 +37,15 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("hooks/pre-commit exited with status 1");
   });
 
+  it("documents project creation machine routing", () => {
+    const guide = renderTemplate("bbGuideProjects", {});
+
+    expect(guide).toContain("bb project create --name");
+    expect(guide).toContain("--machine <id-or-name>");
+    expect(guide).toContain("--host <id-or-name>");
+    expect(guide).toContain("local CLI machine fallback");
+  });
+
   it("renders agent thread messages without inline reply guidance", () => {
     const rendered = renderTemplate("agentThreadMessage", {
       senderThreadId: "thr_sender",

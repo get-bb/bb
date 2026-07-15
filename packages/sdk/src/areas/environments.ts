@@ -1,4 +1,4 @@
-import { environmentSchema } from "@bb/domain";
+import { environmentSchema, type Environment } from "@bb/domain";
 import {
   commitActionResponseSchema,
   pullRequestDraftActionResponseSchema,
@@ -8,16 +8,30 @@ import {
   updateEnvironmentRequestSchema,
 } from "@bb/server-contract";
 import type {
+  CommitActionResponse,
+  EnvironmentArchiveThreadsResponse,
   EnvironmentDiffBranchesQuery,
+  EnvironmentDiffBranchesResponse,
   EnvironmentDiffFileQuery,
+  EnvironmentDiffFileResponse,
   EnvironmentDiffPatchRequest,
+  EnvironmentDiffPatchResponse,
   EnvironmentDiffQuery,
+  EnvironmentDiffResponse,
+  EnvironmentDiffFilesResponse,
   EnvironmentPathsQuery,
+  EnvironmentPullRequestResponse,
+  EnvironmentStatusResponse,
   PullRequestMergeMethod,
+  PullRequestDraftActionResponse,
+  PullRequestMergeActionResponse,
+  PullRequestReadyActionResponse,
+  SquashMergeActionResponse,
   EnvironmentStatusQuery,
   UpdateEnvironmentRequest,
+  WorkspacePathListResponse,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface EnvironmentGetArgs {
   environmentId: string;
@@ -89,59 +103,24 @@ export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
   environmentId: string;
 }
 
-type EnvironmentActionResult = PublicApiOutput<
-  "/environments/:id/actions",
-  "$post"
->;
-export type EnvironmentCommitResult = Extract<
-  EnvironmentActionResult,
-  { action: "commit" }
->;
-export type EnvironmentDiffResult = PublicApiOutput<
-  "/environments/:id/diff",
-  "$get"
->;
-export type EnvironmentDiffBranchesResult = PublicApiOutput<
-  "/environments/:id/diff/branches",
-  "$get"
->;
-export type EnvironmentDiffFileResult = PublicApiOutput<
-  "/environments/:id/diff/file",
-  "$get"
->;
-export type EnvironmentDiffFilesResult = PublicApiOutput<
-  "/environments/:id/diff/files",
-  "$get"
->;
-export type EnvironmentDiffPatchResult = PublicApiOutput<
-  "/environments/:id/diff/patch",
-  "$post"
->;
-export type EnvironmentPathsResult = PublicApiOutput<
-  "/environments/:id/paths",
-  "$get"
->;
-export type EnvironmentArchiveThreadsResult = PublicApiOutput<
-  "/environments/:id/archive-threads",
-  "$post"
->;
-export type EnvironmentGetResult = PublicApiOutput<"/environments/:id", "$get">;
-export type EnvironmentPullRequestResult = PublicApiOutput<
-  "/environments/:id/pull-request",
-  "$get"
->;
-export type EnvironmentSquashMergeResult = Extract<
-  EnvironmentActionResult,
-  { action: "squash_merge" }
->;
-export type EnvironmentStatusResult = PublicApiOutput<
-  "/environments/:id/status",
-  "$get"
->;
-export type EnvironmentUpdateResult = PublicApiOutput<
-  "/environments/:id",
-  "$patch"
->;
+export type EnvironmentArchiveThreadsResult = EnvironmentArchiveThreadsResponse;
+export type EnvironmentCommitResult = CommitActionResponse;
+export type EnvironmentDiffResult = EnvironmentDiffResponse;
+export type EnvironmentDiffBranchesResult = EnvironmentDiffBranchesResponse;
+export type EnvironmentDiffFileResult = EnvironmentDiffFileResponse;
+export type EnvironmentDiffFilesResult = EnvironmentDiffFilesResponse;
+export type EnvironmentDiffPatchResult = EnvironmentDiffPatchResponse;
+export type EnvironmentGetResult = Environment;
+export type EnvironmentMarkPullRequestDraftResult =
+  PullRequestDraftActionResponse;
+export type EnvironmentMarkPullRequestReadyResult =
+  PullRequestReadyActionResponse;
+export type EnvironmentMergePullRequestResult = PullRequestMergeActionResponse;
+export type EnvironmentPathsResult = WorkspacePathListResponse;
+export type EnvironmentPullRequestResult = EnvironmentPullRequestResponse;
+export type EnvironmentSquashMergeResult = SquashMergeActionResponse;
+export type EnvironmentStatusResult = EnvironmentStatusResponse;
+export type EnvironmentUpdateResult = Environment;
 
 export interface EnvironmentsArea {
   archiveThreads(
@@ -161,19 +140,13 @@ export interface EnvironmentsArea {
   pullRequest(args: EnvironmentGetArgs): Promise<EnvironmentPullRequestResult>;
   markPullRequestDraft(
     args: EnvironmentGetArgs,
-  ): Promise<
-    Extract<EnvironmentActionResult, { action: "pull_request_draft" }>
-  >;
+  ): Promise<EnvironmentMarkPullRequestDraftResult>;
   markPullRequestReady(
     args: EnvironmentGetArgs,
-  ): Promise<
-    Extract<EnvironmentActionResult, { action: "pull_request_ready" }>
-  >;
+  ): Promise<EnvironmentMarkPullRequestReadyResult>;
   mergePullRequest(
     args: EnvironmentPullRequestMergeArgs,
-  ): Promise<
-    Extract<EnvironmentActionResult, { action: "pull_request_merge" }>
-  >;
+  ): Promise<EnvironmentMergePullRequestResult>;
   paths(args: EnvironmentPathsArgs): Promise<EnvironmentPathsResult>;
   squashMerge(
     args: EnvironmentSquashMergeArgs,

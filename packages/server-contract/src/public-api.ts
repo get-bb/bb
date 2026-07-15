@@ -131,6 +131,7 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProvidersQuery,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -240,6 +241,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
   threadEventWaitQuerySchema,
@@ -603,6 +605,12 @@ export const publicApiRoutes = {
         createTerminalRequestSchema,
       ),
       response: jsonResponse<TerminalSession>({ status: 201 }),
+    }),
+    get: defineRoute({
+      path: "/terminals/:terminalId",
+      method: "get",
+      request: noRequest<PathTerminal>(),
+      response: jsonResponse<TerminalSession>(),
     }),
     update: defineRoute({
       path: "/terminals/:terminalId",
@@ -1209,7 +1217,9 @@ export const publicApiRoutes = {
     providers: defineRoute({
       path: "/system/providers",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, SystemProvidersQuery>(
+        systemProvidersQuerySchema,
+      ),
       response: jsonResponse<SystemProviderInfo[]>(),
     }),
     providerLogo: defineRoute({

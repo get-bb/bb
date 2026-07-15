@@ -31,7 +31,14 @@ The manifest is `package.json`:
   "version": "0.1.0",
   "type": "module",
   "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" },
-  "bb": { "server": "./server.ts", "app": "./app.tsx", "skills": ["skills"] }
+  "bb": {
+    "name": "Hello",
+    "description": "A friendly example plugin.",
+    "branding": { "icon": "Zap" },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": ["skills"]
+  }
 }
 ```
 
@@ -51,24 +58,25 @@ The manifest is `package.json`:
   `bb theme list`. Each entry is
   `{ id, name, description?, css: "./themes/name.css" }`; bb namespaces its
   selectable id as `plugin:<plugin-id>:<id>`. Only loaded plugins contribute.
-- Logo (optional, convention over configuration) — a `logo.svg`, `logo.png`,
-  or `logo.webp` at the plugin root (that precedence) is auto-detected and
-  shown wherever bb renders your plugin's contributions: the sidebar entry,
-  the panel title bar, composer command/mention menus, thread action
-  buttons, and Settings → Plugins. `bb.logo: "./assets/mark.svg"` relocates
-  it (svg/png/webp only; anything else fails the manifest). An optional
-  dark-theme variant — `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp`
-  at the root (same precedence), or `bb.logoDark` (same rules) — is
-  preferred whenever the app is in dark mode, falling back to the light
-  logo. Without a logo, manifest-level `bb.icon` is the plugin's canonical app
-  icon across every host-rendered plugin surface; a contribution's own `icon`
-  hint is the fallback when the manifest omits one. Unknown hints use a generic
-  icon. Picked up on `bb plugin reload`. Inline icons
-  must use `currentColor` for their stroke/fill and take their color from semantic
-  text-token classes; never hardcode gray or palette values. An SVG loaded
+- `bb.name` and `bb.description` (required) — non-empty human-facing plugin
+  identity. The top-level package `name` remains the package identity and
+  source of the plugin id.
+- `bb.branding` (required) — declare at least `icon` or `logo.light`. `icon`
+  is the compact host icon-name identity. `logo.light` is the rich/full-size
+  identity artwork; optional `logo.dark` is preferred in dark mode. Logo paths
+  are explicit plugin-relative `.svg`, `.png`, or `.webp` files: nulls, empty
+  strings, missing/escaping files, unsupported extensions, and a dark logo
+  without a light logo fail the manifest. There is no root logo auto-detection.
+  BB uses the logo where space permits, such as roomy Settings rows and cards.
+  Compact sidebar, menu, action, mention, and panel-title surfaces use the
+  manifest icon, then a contribution's distinct local `icon` hint, then the
+  generic Zap icon. Branding changes are picked up on `bb plugin reload`.
+  Inline icons must use `currentColor` for their stroke/fill and take their
+  color from semantic text-token classes; never hardcode gray or palette
+  values. An SVG loaded
   through `<img>` cannot inherit `currentColor`, so omit the logo and use a
-  named `icon` hint when a monochrome glyph should match the surrounding bb
-  chrome. Reserve logo assets for intentionally branded artwork (and provide
+  named `branding.icon` hint when a monochrome glyph should match the surrounding
+  bb chrome. Reserve logo assets for intentionally branded artwork (and provide
   a dark variant when needed).
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
@@ -103,10 +111,11 @@ The scaffold ships the full API as bundled type declarations in `types/`
 --noEmit` typechecks anywhere — no bb checkout required. Those `.d.ts` files
 are the authoritative, exhaustive surface: read them (or the source at
 <https://github.com/ymichael/bb>, cloned) when you need an exact signature or
-a symbol this skill doesn't cover. Backend imports from `@bb/plugin-sdk` MUST
-be type-only (`import type { BbPluginApi } from "@bb/plugin-sdk"`); they are
-erased when the server loads the file, so `server.ts` runs as-is with zero
-runtime dependencies.
+a symbol this skill doesn't cover. Backend API imports stay type-only; the one
+root runtime helper is `defineRpcContract`, supplied by BB for shared schema
+contracts: `import { defineRpcContract, type BbPluginApi } from
+"@bb/plugin-sdk"`. Validator imports such as Zod are normal plugin runtime
+dependencies (and are bundled by `bb plugin build`).
 
 On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
 `secrets/` (secret settings + HTTP token), `logs/plugin.log` (JSONL,
@@ -171,15 +180,22 @@ import type { BbPluginApi } from "@bb/plugin-sdk";
 
 export default async function plugin(bb: BbPluginApi) {
   // Register surfaces here. Load-safe: settings, storage, http, rpc,
-  // realtime, background, cli, agents, ui, status, on, onDispose.
+  // realtime, background, cli, agents, ui, events, status, onDispose.
   // bb.sdk works here in the real server, but prefer it in handlers/services
   // (bind-gated — see below).
 }
 ```
 
-The factory runs at load/reload/enable (time-boxed 30s). A throwing factory
-puts the plugin in `error` status with the message as the detail. `bb.pluginId`
-is the plugin's own id.
+The factory runs at load/reload/enable (time-boxed 30s). A throwing initial
+factory puts the plugin in `error` status with the message as the detail; a
+throwing reload candidate leaves the prior registration set running and
+reports the reload failure in its detail. `bb.pluginId` is the plugin's own id.
+
+Keyed registrations must be unique within one factory execution: duplicate
+settings, routes, rpc methods, services, schedules, CLI registrations, tools,
+instruction providers, thread actions, or mention providers are rejected.
+Listeners are different: `bb.events.on`, settings `onChange`, and `onDispose`
+are additive, so registering multiple listeners is supported.
 
 ### bb.log
 
@@ -221,8 +237,8 @@ give non-secrets defaults and handle missing secrets explicitly.
 - `bb.storage.kv` — namespaced JSON key-value rows in bb.db:
   `get<T>(key)`, `set(key, value)`, `delete(key)`, `list(prefix?)`. Values
   are capped at **256KB each** — kv is for cursors, links, and small state;
-  caches and datasets go in sqlite.
-- `bb.storage.sqlite()` — the plugin's own better-sqlite3 database at
+  caches and datasets go in the plugin database.
+- `bb.storage.database()` — the plugin's own better-sqlite3 database at
   `<dataDir>/plugins/<id>/data.db` (WAL, busy_timeout 5000). Handles are
   host-tracked and closed on reload; a closed handle throws.
 - `bb.storage.migrate(db, statements)` — statement index = migration id;
@@ -230,7 +246,7 @@ give non-secrets defaults and handle missing secrets explicitly.
   reorder or edit shipped statements, only push new ones.
 
 ```ts
-const db = bb.storage.sqlite();
+const db = bb.storage.database();
 bb.storage.migrate(db, [
   `CREATE TABLE IF NOT EXISTS issues (id TEXT PRIMARY KEY, title TEXT NOT NULL)`,
 ]);
@@ -293,6 +309,19 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 
+SDK realtime observation stays separate from plugin lifecycle events:
+`bb.sdk.subscribe({ event, callback, ...selector })` returns an unsubscribe
+function. Do not use `bb.events.on` for SDK entity-change subscriptions.
+
+`bb.sdk.terminals` is the canonical terminal area. `list` and `create` take an
+explicit discriminated `scope`: `{ kind: "thread", threadId }`,
+`{ kind: "environment", environmentId }`, or
+`{ kind: "host_path", hostId, cwd }`. The host is always explicit; there is no
+primary-host default. Existing-session operations are terminal-ID-only:
+`get`, `input`, `resize`, `output`, `rename`, `restart`, and `close`.
+`restart` closes the old session and creates a shell with the same scope, size,
+and title; it returns a new terminal ID and does not replay the original command.
+
 `bb.sdk.files` reads and writes files on a connected host (not just the
 server machine — this is the right primitive when the user's files may live
 on another host, and its `rootPath` confinement + compare-and-swap guard make
@@ -320,6 +349,17 @@ if (saved.outcome === "conflict") {
 listing under a directory. Writes cap at 25 MB and return
 `{ outcome: "written", sha256, sizeBytes }`.
 
+Project prompt attachments use a separate server-managed byte surface. Upload
+bytes available to the SDK caller with
+`bb.sdk.projects.attachments.upload({ projectId, clientFile, filename?,
+mimeType? })`; `clientFile` accepts `Uint8Array`, `ArrayBuffer`, `Blob`, or a
+File-like value (bare bytes/Blob require `filename`). The SDK sends multipart
+bytes and returns the stable uploaded-attachment DTO whose relative `path` can
+be used in `localFile`/`localImage` prompt input. Read an existing attachment
+with `bb.sdk.projects.attachments.read({ projectId, path })`. Image MIME types
+cap at 10 MB and other files at 25 MB. There is no attachment list or
+per-attachment remove operation.
+
 For filesystem-backed products that need a tree or mutations,
 `bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`
 returns recursive relative paths with their kind. `mkdir`, `move`, and `remove`
@@ -334,13 +374,13 @@ serve browser assets from that confined host root. This is the preferred
 transport for plugin images and sandboxed HTML with sibling-relative assets;
 preview URLs expire and never reveal the host id or absolute root.
 
-### bb.on — thread lifecycle events
+### bb.events.on — thread lifecycle events
 
 ```ts
-bb.on("thread.created", ({ thread }) => { ... });
-bb.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
-bb.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
-bb.on("thread.deleted", ({ thread }) => { ... });
+bb.events.on("thread.created", ({ thread }) => { ... });
+bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
+bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
+bb.events.on("thread.deleted", ({ thread }) => { ... });
 ```
 
 Exactly four events. Observe-only: handlers run fire-and-forget after the
@@ -366,26 +406,66 @@ Auth modes:
 
 ### bb.rpc — the frontend data plane
 
-`bb.rpc.register({ methodName(input) { ... } })` serves POST
-`/api/v1/plugins/<id>/rpc/<method>` with local-auth semantics. The JSON body
-is the input; the return value is wrapped as `{ ok: true, result }` (or
-`{ ok: false, error }` when the handler throws). Inputs and outputs must
-survive a JSON round-trip. Inputs arrive untyped — declare handler
-parameters as `unknown` and narrow at the top (hoist a `function
-makeHandlers()` returning the record if you want shared types between
-handlers):
+Define method names plus runtime input/output schemas once, then register
+handlers against that contract. Schemas use validator-neutral Standard Schema
+v1, which Zod 4 implements directly. The host validates input before invoking
+the handler and output before serialization; handler parameters and return
+values are inferred from the schemas.
 
 ```ts
-bb.rpc.register({
-  listIssues(input: unknown) {
-    const filter =
-      typeof (input as { filter?: unknown })?.filter === "string"
-        ? (input as { filter: string }).filter
-        : undefined;
-    return { issues: listCachedIssues(filter) };
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
+
+export const rpcContract = defineRpcContract({
+  listIssues: {
+    input: z.object({ filter: z.string().optional() }).strict(),
+    output: z.object({ issues: z.array(z.object({ id: z.string() })) }),
+  },
+  status: {
+    input: z.null(), // null input lets the frontend omit the argument
+    output: z.object({ ready: z.boolean() }),
   },
 });
+
+export default function plugin(bb: BbPluginApi) {
+  bb.rpc.register(rpcContract, {
+    listIssues({ filter }) {
+      return { issues: listCachedIssues(filter) };
+    },
+    status() {
+      return { ready: true };
+    },
+  });
+}
 ```
+
+In `app.tsx`, import only the backend contract's type. The backend module and
+its dependencies are erased from the frontend bundle:
+
+```tsx
+import { useRpc } from "@bb/plugin-sdk/app";
+import type { rpcContract } from "./server";
+
+function IssuesButton() {
+  const rpc = useRpc<typeof rpcContract>();
+
+  async function loadIssues() {
+    const { issues } = await rpc.call("listIssues", { filter: "open" });
+    return issues;
+  }
+
+  return <button onClick={() => void loadIssues()}>Load issues</button>;
+}
+```
+
+The wire envelope is `{ ok: true, result }` or `{ ok: false, error }`.
+Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
+`invalid_output`, `non_json_result`, and `unknown_method`; validation failures
+also carry normalized `{ message, path? }[]` issues. Unknown methods return
+404, invalid JSON/input returns 400, and handler/output/serialization failures
+return 500. Results must be strict JSON values: cyclic objects, bigint,
+undefined/functions, class instances, symbol keys, and non-finite numbers are
+rejected rather than coerced or silently dropped.
 
 ### bb.realtime
 
@@ -438,7 +518,8 @@ if (!initial.apiKey)
 
 ### bb.cli — an agent-facing `bb` subcommand
 
-One top-level command per plugin (a second `register` replaces the first).
+One top-level command per plugin; a second `register` in one factory
+execution is rejected.
 Users and agents run `bb <name> …` like any core command; the bb CLI
 proxies it to the server, where `run` executes.
 
@@ -469,9 +550,9 @@ thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
 
-### bb.interactions — replace the composer with a blocking plugin form
+### bb.ui.requestInput — replace the composer with a blocking plugin form
 
-Use `bb.interactions.request({ threadId, rendererId, title, payload, timeoutMs? },
+Use `bb.ui.requestInput({ threadId, rendererId, title, payload, timeoutMs? },
 { signal? })` when plugin backend code must wait for sensitive or structured
 user input. The promise resolves to `{ outcome: "submitted", value }` or
 `{ outcome: "cancelled", reason }`. Payloads and responses are JSON values
@@ -480,7 +561,7 @@ invocation and are never persisted. Pair `rendererId` with a frontend
 `pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
 the caller cancels the request.
 
-### bb.agents — native tools and dynamic instructions
+### bb.agents — native tools and conditional session configuration
 
 To give agents standing knowledge (conventions, workflows), ship a
 `skills/` directory. For schema'd capabilities, register a native tool.
@@ -499,9 +580,17 @@ bb.agents.registerTool({
   },
 });
 
+// All tools and manifest skills are static registrations. configure() only
+// selects this plugin's own ids when BB resolves a thread/session config.
+bb.agents.configure((context) => ({
+  tools: context.provider.id === "codex" ? ["docs_search"] : [],
+  skills: context.project.kind === "standard" ? ["repo-conventions"] : [],
+  instructions: `Docs selection resolved for ${context.project.name}.`,
+}));
+
 // Dynamic section evaluated at thread.start / turn.submit (sync, fast).
-// Return null to contribute nothing for that resolution. Re-registering
-// replaces this plugin's previous provider. Output is capped at 4096
+// Return null to contribute nothing for that resolution. Duplicate factory
+// registrations are rejected. Output is capped at 4096
 // characters; a throw is logged and contributes nothing. Side-chat
 // threads never receive plugin instructions.
 bb.agents.contributeInstructions(({ threadId, projectId }) => {
@@ -513,13 +602,39 @@ bb.agents.contributeInstructions(({ threadId, projectId }) => {
 `parameters` is a zod schema (zod 4; validated per call — bad model args
 become a tool error, not a plugin crash) or a plain JSON-schema object
 (execute then receives raw `unknown`). Tool-set changes apply on the NEXT
-session start, not mid-session. Name collisions: within a plugin the later
-registration replaces the earlier; across plugins the earlier plugin wins
+session start, not mid-session. Name collisions: within one factory execution
+duplicate registrations are rejected; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
 
 `contributeInstructions` is **synchronous** and runs on the thread-start
 path — keep it cheap. Prefer `skills/` for standing knowledge; use this
 only when the text must reflect live plugin state at resolution time.
+
+Ordering is standard BB instructions, selected tools' static snippets,
+`contributeInstructions` output, `configure` dynamic instructions, data-dir
+user instructions, then workspace instructions. Tool snippets are rejected at
+registration above 4096 characters; each legacy/dynamic callback contribution
+is truncated to 4096 characters.
+
+`configure` is also synchronous and may be registered only once per factory
+execution. Its context has required, plain-data `thread`, `project`,
+`environment`, `host`, and `provider: { id, model }` objects, plus `sideChat`
+and `origin: { kind, pluginId }`; genuinely absent values are `null`, not
+omitted. `tools` names and `skills` frontmatter names may select only this
+plugin's static registrations. Unknown or duplicate ids, malformed output,
+more than 256 ids in either array, or a throwing callback fail closed for that
+plugin only. Dynamic `instructions` are truncated to 4096 characters.
+
+Resolution happens for `thread.start` and `turn.submit`. A selected tool set
+takes effect only when the provider session is next started/resumed; BB never
+hot-mutates a running provider session. Instructions apply to the next turn.
+Skill catalog changes follow the daemon's established runtime policy: a busy
+environment keeps its current staged catalog until a safe relaunch. Side chats
+evaluate `configure` with `sideChat: true`; returned tool, skill, and dynamic
+instruction selections apply at those same boundaries. Independent side-chat
+safety policy such as permission escalation is unchanged. The legacy
+`contributeInstructions` provider remains excluded from side chats, so use
+`configure` for side-chat-aware dynamic instructions.
 
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 
@@ -564,10 +679,13 @@ failing. Cleared on the next load.
 ### bb.onDispose and the reload lifecycle
 
 `bb.onDispose(hook)` registers cleanup; hooks run **LIFO**. On
-reload/disable/shutdown the host: aborts background services and awaits
-them (bounded), runs dispose hooks LIFO (each isolated), drains in-flight
-http/rpc/event handlers, closes every `storage.sqlite()` handle, then
-invalidates the old `bb` handle and (on reload) calls the factory fresh. A
+reload the host first runs the factory against a candidate registration set.
+If it throws, the complete previous set stays live. Once the candidate
+succeeds, the host aborts old background services and awaits them (bounded),
+runs dispose hooks LIFO (each isolated), drains in-flight http/rpc/event
+handlers, closes every `storage.database()` handle, invalidates the old `bb`
+handle, and replaces the registration set wholesale. Disable/shutdown perform
+the same cleanup without a replacement. A
 captured `bb` from a previous load throws `PluginContextStaleError` on use
 — never stash the API object in module-level state that outlives a load.
 
@@ -599,6 +717,7 @@ export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "settings",
     title: "Connection",
+    description: "Configure the remote service used by this plugin.",
     component: SettingsSection,
   });
   app.slots.navPanel({
@@ -637,8 +756,9 @@ Slot props contracts (versioned, additive-only):
 - `settingsSection` → `{}` (deliberately no props in V1). Rendered on
   `/settings/plugins/<pluginId>` below the host-rendered declarative settings
   form for running, needs-configuration, and degraded plugins. Registration:
-  `{ id, title?, component }`; `title` is an optional host-rendered section
-  heading. Use the existing hooks (`useRpc`, `useRealtime`, `useSettings`,
+  `{ id, title?, description?, component }`; `title` is an optional host-rendered
+  section heading and `description` is optional supporting copy rendered with
+  that heading. Use the existing hooks (`useRpc`, `useRealtime`, `useSettings`,
   `useBbNavigate`, `useBbContext`) for data. Enabled plugins appear in the
   settings sidebar when they declare settings descriptors OR register
   settings sections. Slot-derived sidebar entries work for builtin plugin
@@ -652,33 +772,31 @@ Slot props contracts (versioned, additive-only):
   `useBbNavigate().toPluginPanel(path, { subPath, replace? })` — browser
   back/forward then walks panel-internal history (prefer this over hash
   routing).
-  Registration: `{ id, title, icon, path, component, chrome?, headerContent? }`.
-  The host renders your plugin logo + `title` into the SHARED app header
-  (the same chrome as Settings pages) with your optional
+  Registration: `{ id, title, icon, path, component, headerContent? }`.
+  The host renders your compact plugin icon + `title` into the SHARED app
+  header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
-  repeat the title inside your component; the body below is yours,
-  full-width. `headerContent` is plugin code inside host chrome and is
+  repeat the title inside your component. The component owns the full-bleed
+  body below with zero host padding; add your own padding and scrolling when
+  the design needs them. `headerContent` is plugin code inside the host title bar and is
   contained separately: a throw hides the accessory without breaking the
-  header or the panel body. `chrome: "page"` (the default) gives the body
-  the standard page padding at full width — wrap your content in a
-  `mx-auto w-full max-w-3xl space-y-4` div to opt back into the classic
-  centered, width-capped column instead; `chrome: "none"` is the escape hatch — your
-  `component` owns the ENTIRE body region with zero host padding and only the
-  crash boundary remains; the shared header still shows logo + title +
-  `headerContent`.
+  title bar or the panel body. For a classic page, use an outer scroll region
+  with `p-4 md:p-5` and wrap its content in a
+  `mx-auto w-full max-w-3xl space-y-4` div.
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
-  `title` with your plugin logo. Registration:
+  `title` with your compact plugin icon. Registration:
   `{ id, title, icon?, component, run? }`. Activating it calls
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
-  rendering `component` with `{ threadId: string, params: unknown }`.
-  Omitting `run` opens a tab immediately with defaults. `params` must be
-  JSON-serializable — it persists with the tab across reloads (null when
+  rendering `component` with `{ threadId: string, params: JsonValue | null }`.
+  Omitting `run` opens a tab immediately with defaults. Write parameters are
+  typed as the recursively JSON-safe `JsonValue` exported by both
+  `@bb/plugin-sdk` and `@bb/plugin-sdk/app`; they persist with the tab across reloads (null when
   none was passed); identical action+params re-opens focus the existing
   tab (title refreshed), different params open sibling tabs. The tab pill
-  shows your plugin logo + the tab title. Errors thrown from `run` (sync
-  or async) are contained and logged, never breaking the launcher.
+  shows your compact plugin icon + the tab title. Errors thrown from `run`
+  (sync or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
@@ -728,7 +846,7 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   the path. `openThreadPanel` is either
   `({ actionId, title?, params? }) => boolean` or `null`; it opens one of the
   same plugin's registered `threadPanelAction` components in the enclosing
-  thread side panel. `params` must be JSON-serializable, and the return value
+  thread side panel. `params` is typed as `JsonValue`, and the return value
   reports whether the host accepted the action. Use a normal plugin navigation
   action as the fallback when the callback is `null` or returns `false`.
   **Host behavior / fallbacks:** only assistant and
@@ -746,8 +864,8 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
 
 Hooks:
 
-- `useRpc()` → `{ call(method, input?) }` — calls your `bb.rpc` methods;
-  untyped (`Promise<unknown>`) in V1, narrow the result yourself.
+- `useRpc<typeof rpcContract>()` → `{ call(method, input?) }` — exact method,
+  input, and result inference from a type-only backend contract import.
 - `useRealtime(channel, handler)` — fires for this plugin's
   `bb.realtime.publish(channel, …)` signals while mounted.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
@@ -756,6 +874,12 @@ Hooks:
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path, { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?) }`. `toCompose` opens the root compose screen; pass `initialPrompt` to seed the composer draft and `focusPrompt: true` to focus it (the "Create via chat" pattern — drop the user into chat with a prefilled prompt).
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
+  `text` is the current plain text; `setText(next)` replaces it;
+  `updateText(current => next)` receives the latest committed text; and
+  `clear()` clears the text. These edits preserve attachments. Inline
+  mentions outside the changed range are preserved and rebased, while a
+  mention overlapped by replaced text is removed because its inline text no
+  longer represents that pill. Text edits do not focus the composer;
   `addQuote(text)` appends the text as a `> ` blockquote block and focuses
   the composer — the "reference this selection in chat" primitive;
   `insertMention({ provider, id, label })` inserts an @-mention pill bound
@@ -764,6 +888,11 @@ Hooks:
   where writes land (`{ kind: "thread", threadId }` inside a thread
   context, `{ kind: "new-thread", projectId }` from nav panels and
   homepage sections — those seed the composer the user lands on next).
+
+```tsx
+const composer = useComposer();
+composer.updateText((current) => `${current}\n\nPlease summarize this.`);
+```
 
 UI components — **vendored shadcn source you own** (the shadcn model; the
 old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports
@@ -842,14 +971,18 @@ hardcoded colors break custom palettes.
 
 ### Unit tests with `@bb/plugin-sdk/testing`
 
-In a bb checkout (workspace/in-repo plugins), `@bb/plugin-sdk/testing` is
-the official vitest harness: a fake plugin host whose `bb` satisfies
-`BbPluginApi` with host-faithful semantics — real better-sqlite3 `:memory:`
-storage (never mock the db), the kv 256KB cap, the same registration
-name-validation and error messages, rpc/cli JSON round-tripping, and
-`threads.spawn` plugin attribution. It is NOT part of the bundled `.d.ts`
-that `bb plugin new` scaffolds ship (V1 is workspace consumers only), so
-standalone plugins outside a checkout cannot import it yet.
+`@bb/plugin-sdk/testing` is the official vitest harness for workspace and
+standalone plugins. The packed package ships runtime JavaScript and portable
+declarations for both testing subpaths. A scaffold still vendors the root/app
+types, so add `@bb/plugin-sdk` as a devDependency when tests import the
+testing harness (plus its optional peers: `better-sqlite3` for backend tests;
+React, React DOM, Testing Library, and jsdom for frontend tests).
+
+The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
+semantics: real better-sqlite3 temporary storage (never mock the db), the kv
+256KB cap, schema-RPC validation/error/strict-JSON behavior, additive events,
+keyed registration failures, atomic reload, conditional agent configuration,
+request input, and `threads.spawn` plugin attribution.
 
 Backend (`server.ts`) — `createFakePluginHost()`:
 
@@ -867,26 +1000,36 @@ const { bb, harness } = createFakePluginHost({
 });
 await plugin(bb);
 
-await harness.callRpc("list", { q: "x" }); // JSON round-trip like the wire
-await harness.fetchHttp("POST", "/events", { body }); // real Hono context; auth not enforced
-await harness.runCli(["search", "x"]); // { exitCode, stdout, stderr }
-const svc = harness.runService("watcher"); // start now; svc.controller.abort(); await svc.done
-await harness.runSchedule("sync"); // no timers, no cron sweep
-await harness.setSettings({ apiToken: "next" }); // validates + fires onChange like a host save
-await harness.emitThreadEvent("thread.idle", {
+await harness.behavior.callRpc("list", { q: "x" }); // JSON round-trip like the wire
+await harness.behavior.fetchHttp("POST", "/events", { body }); // real Hono context; auth not enforced
+await harness.behavior.runCli(["search", "x"]); // { exitCode, stdout, stderr }
+const svc = harness.behavior.runService("watcher"); // start now; svc.controller.abort(); await svc.done
+await harness.behavior.runSchedule("sync"); // no timers, no cron sweep
+await harness.behavior.setSettings({ apiToken: "next" }); // validates + fires onChange like a host save
+await harness.behavior.emitThreadEvent("thread.idle", {
   thread: makeThreadResponse({ id: "th_1" }), // complete ThreadResponse fixture
   lastAssistantText: "done",
 });
-await harness.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
-await harness.dispose(); // abort services, hooks LIFO, close sqlite; stale bb throws
+await harness.behavior.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
+await harness.behavior.resolveAgentConfiguration(context); // validated tools/skills/instructions
+await harness.lifecycle.dispose(); // abort services, hooks LIFO, close database; stale bb throws
 ```
 
-Inspect: `harness.sdk.calls` / `harness.sdk.callsTo("threads.spawn")` (every
+New tests should use the named views: `harness.behavior` drives host inputs,
+`harness.inspection` exposes observable state, and `harness.lifecycle` owns
+atomic reload/disposal. Direct members remain aliases for compatibility.
+`lifecycle.reload(factory)` preserves settings/KV/database state; a throwing
+replacement leaves the current registrations and API live.
+
+Inspect: `harness.inspection.sdk.calls` /
+`harness.inspection.sdk.callsTo("threads.spawn")` (every
 `bb.sdk` call is recorded; unstubbed methods throw naming the path to stub —
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
 `harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
 `harness.registrations` (http routes, rpc methods, services, schedules, cli,
-agent tools, thread actions, mention providers).
+agent tools/configure provider, thread actions, mention providers). Pass
+`agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
+available to the configure driver.
 
 Frontend (`app.tsx`) — `@bb/plugin-sdk/testing/app` (vitest + jsdom):
 
@@ -911,17 +1054,26 @@ const slot = renderSlot(
   },
 );
 await slot.findByText("…"); // Testing Library queries
-slot.rpcCalls;
-slot.navigateCalls;
-slot.composer.quotes; // recorded hook activity
+slot.inspection.rpcCalls;
+slot.inspection.navigateCalls;
+slot.inspection.composer.quotes; // recorded hook activity
+slot.lifecycle.unmount();
 ```
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
-patterns, settingsSection optional title, navPanel path, chrome,
+patterns, settingsSection optional title, navPanel path,
 fileOpener extensions) and returns them typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
 `thread.idle` reply), `marketplace/plugins/docs/app.test.tsx` (nav
 panel list over rpc + create/open navigation assertions).
+
+Fidelity boundaries: HTTP auth is recorded but not enforced; services and
+schedules run only when driven (no restart timers or cron sweep); storage is
+process-local and secrets stay in memory; `bb.sdk` is always bound and
+unstubbed calls throw; cross-plugin collisions are outside one fake host. The
+frontend harness validates registrations and JSON/composer behavior but does
+not reproduce BB layout/CSS, persistence, routing, crash boundaries, or
+multi-plugin arbitration. Use a live loop for those host boundaries.
 
 ### Live loop against a running bb
 
@@ -968,9 +1120,12 @@ Remaining reference examples in `examples/plugins/`:
 - `bb.sdk` is bind-gated: the real server binds it before plugins load, so
   factories can use it there, but isolated harnesses may not — prefer
   handlers, services, and timers.
-- kv values cap at 256KB; put caches and datasets in `storage.sqlite()`.
+- kv values cap at 256KB; put caches and datasets in `storage.database()`.
 - `storage.migrate` is append-only by statement index.
-- Settings saves do NOT auto-reload the plugin; `bb plugin reload <id>`.
+- Settings saves do not reload healthy or degraded plugins; live `onChange`
+  listeners receive those updates. A save automatically retries load when the
+  plugin is `needs-configuration`; `bb plugin reload <id>` remains available
+  for other recovery cases.
 - Descriptors without `default` produce `| undefined` values.
 - Thread events are observe-only; there are exactly four
   (`thread.created`, `thread.idle`, `thread.failed`, `thread.deleted`).
@@ -986,13 +1141,14 @@ Remaining reference examples in `examples/plugins/`:
   and a throw blocks the send.
 - Agent tool changes apply on the next session start, not mid-session;
   cross-plugin tool-name collisions drop the later registration.
-- rpc/realtime payloads must survive JSON.stringify.
+- RPC results must be strict JSON values and pass their output schema;
+  realtime payloads must survive JSON.stringify.
 - Handler stats shown by `bb plugin list` persist across reloads (reset on
   remove).
 - The frontend Tailwind pass emits default-theme utilities only — style
   with host token classes, no custom `@theme` colors, no hand-set oklch.
 - `onDispose` hooks run LIFO; stale `bb` handles from before a reload throw
   on use.
-- Backend `@bb/plugin-sdk` imports must be type-only (erased at load);
-  runtime imports there would fail outside a checkout. The scaffold
-  tsconfig typechecks both `server.ts` and `app.tsx`.
+- Backend API imports remain type-only. `defineRpcContract` is the one root
+  runtime helper BB supplies; validator imports are plugin dependencies. The
+  scaffold tsconfig typechecks both `server.ts` and `app.tsx`.

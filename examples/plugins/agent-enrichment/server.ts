@@ -6,6 +6,8 @@
 // - bb.agents.registerTool: `docs_search`, the same search as a native
 //   dynamic tool with zod-validated parameters (schema'd, permission-visible
 //   tool calls — the secondary surface from design §4.4)
+// - bb.agents.configure: selects that tool and the repo-conventions skill for
+//   standard-project sessions without rebuilding either registration
 // - bb.ui.registerMentionProvider: `@`-mention the bundled docs from the
 //   composer; the picked doc's body is resolved at send time and attached
 //   as agent-only context
@@ -44,7 +46,8 @@ export default async function plugin(bb: BbPluginApi) {
     caseSensitive: {
       type: "boolean",
       label: "Case-sensitive search",
-      description: "Match docs search queries exactly instead of ignoring case.",
+      description:
+        "Match docs search queries exactly instead of ignoring case.",
       default: false,
     },
   });
@@ -85,7 +88,10 @@ export default async function plugin(bb: BbPluginApi) {
     for (const file of files) {
       const firstLine =
         (await readFile(join(docsDir, file), "utf8")).split("\n")[0] ?? "";
-      docs.push({ file, title: firstLine.replace(/^#+\s*/, "").trim() || file });
+      docs.push({
+        file,
+        title: firstLine.replace(/^#+\s*/, "").trim() || file,
+      });
     }
     return docs;
   }
@@ -150,6 +156,17 @@ export default async function plugin(bb: BbPluginApi) {
       if (excerpts.length === 0) return `No matches for "${query}".`;
       return excerpts.join("\n");
     },
+  });
+
+  bb.agents.configure((context) => {
+    if (context.project.kind === "personal") {
+      return { tools: [], skills: [] };
+    }
+    return {
+      tools: ["docs_search"],
+      skills: ["repo-conventions"],
+      instructions: `Repository docs enrichment is active for ${context.project.name} on ${context.host.name}.`,
+    };
   });
 
   // @-mention a bundled doc from the composer: search matches doc titles

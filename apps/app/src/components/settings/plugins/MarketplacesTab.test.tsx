@@ -14,11 +14,10 @@ interface RecordedRequest {
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 // Server-shaped MarketplaceView (marketplace-service): name mirrors the id,
@@ -83,9 +82,7 @@ describe("MarketplacesTab removal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove marketplace" }));
 
     await vi.waitFor(() => {
-      const del = requests.find(
-        (request) => request.init?.method === "DELETE",
-      );
+      const del = requests.find((request) => request.init?.method === "DELETE");
       expect(del).toBeDefined();
       expect(del?.init?.body).toBeUndefined();
       expect(successToast).toHaveBeenCalledWith(

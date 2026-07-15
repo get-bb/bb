@@ -27,12 +27,14 @@
     "cli-table3": "^0.6.5",
     "commander": "^13.0.0",
     "esbuild": "^0.28.0",
+    "mime-types": "^3.0.2",
     "tailwindcss": "^4.3.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/mime-types": "^3.0.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2"
   }

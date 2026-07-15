@@ -78,6 +78,7 @@ await copyBuildOutput({
 await execFileAsync(
   "node",
   [
+    "--conditions=source",
     "--import",
     "tsx",
     resolve(

@@ -360,6 +360,7 @@ export function ThreadDetailPromptArea({
     [promptHistoryEntries],
   );
   const {
+    executionOptionsRouting,
     selectedProviderId,
     providerOptions,
     hasMultipleProviders,
@@ -928,6 +929,7 @@ export function ThreadDetailPromptArea({
 
   const executionConfig = useMemo(
     () => ({
+      providerRouting: executionOptionsRouting,
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
@@ -962,6 +964,7 @@ export function ThreadDetailPromptArea({
     }),
     [
       activeModel,
+      executionOptionsRouting,
       hasMultipleProviders,
       handleHandoffToNewThread,
       isLoadingModels,

@@ -22,9 +22,9 @@ describe("definePluginApp", () => {
   });
 
   it("rejects a non-function setup", () => {
-    expect(() =>
-      definePluginApp(undefined as unknown as () => void),
-    ).toThrow(/setup function/);
+    expect(() => definePluginApp(undefined as unknown as () => void)).toThrow(
+      /setup function/,
+    );
   });
 });
 
@@ -93,12 +93,16 @@ describe("collectPluginAppRegistrations", () => {
         icon: "columns",
         path: "board",
         component: Component,
-        // Default filled at collection time (host renders it as-is).
-        chrome: "page",
       },
     ]);
     expect(registrations.threadPanelActions).toEqual([
-      { id: "issue", title: "Issue", icon: "Columns", component: Component, run },
+      {
+        id: "issue",
+        title: "Issue",
+        icon: "Columns",
+        component: Component,
+        run,
+      },
     ]);
     expect(registrations.composerAccessories).toEqual([
       { id: "picker", component: Component },
@@ -245,21 +249,6 @@ describe("collectPluginAppRegistrations", () => {
       /"component" must be/,
     ],
     [
-      "nav panel with an unknown chrome mode",
-      () =>
-        definePluginApp((app) => {
-          app.slots.navPanel({
-            id: "x",
-            title: "X",
-            icon: "columns",
-            path: "x",
-            component: Component,
-            chrome: "frameless" as never,
-          });
-        }),
-      /"chrome" must be "page" or "none"/,
-    ],
-    [
       "nav panel with a non-component headerContent",
       () =>
         definePluginApp((app) => {
@@ -337,7 +326,7 @@ describe("collectPluginAppRegistrations", () => {
     expect(() => collectPluginAppRegistrations(build())).toThrow(message);
   });
 
-  it("keeps an explicit chrome + headerContent registration", () => {
+  it("keeps a headerContent registration", () => {
     function Accessory() {
       return null;
     }
@@ -348,13 +337,14 @@ describe("collectPluginAppRegistrations", () => {
         icon: "columns",
         path: "board",
         component: Component,
-        chrome: "none",
         headerContent: Accessory,
       });
     });
-    expect(collectPluginAppRegistrations(definition).navPanels[0]).toMatchObject(
-      { chrome: "none", headerContent: Accessory },
-    );
+    expect(
+      collectPluginAppRegistrations(definition).navPanels[0],
+    ).toMatchObject({
+      headerContent: Accessory,
+    });
   });
 });
 
@@ -426,9 +416,7 @@ describe("interpretPluginFrontends", () => {
     expect(records.get("good")?.status).toBe("loaded");
     expect(records.get("broken")?.status).toBe("failed");
     expect(setRegistrations).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("[plugin:junk]"),
-    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[plugin:junk]"));
   });
 
   it("contains a throwing setup", () => {

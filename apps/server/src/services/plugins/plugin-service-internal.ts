@@ -1,7 +1,13 @@
 import type { DbConnection } from "@bb/db";
 import type { DynamicTool, Thread } from "@bb/domain";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
-import { z } from "zod";
+import {
+  pluginUpdateCheckEntrySchema,
+  type InstalledPlugin,
+  type PluginApplyUpdateResult,
+  type PluginRuntimeStatus,
+  type PluginSourceDetail,
+} from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import type { BuiltinPluginRegistration } from "./builtin-registry.js";
@@ -12,47 +18,17 @@ import type {
   PluginMentionTrigger,
   PluginThreadActionToast,
 } from "./plugin-api.js";
-import type { PluginAppState } from "./app-bundle.js";
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
-import type { PluginResolvedUpdateVersion } from "./update-resolver.js";
-
-/**
- * Live status of an installed plugin. Rows in the `plugins` table hold
- * durable registration facts; this status lives in loader memory and is
- * served via GET /api/v1/plugins.
- */
-export type PluginRuntimeStatus =
-  | "running"
-  | "error"
-  | "incompatible"
-  | "missing"
-  | "disabled"
-  // A background service ignored its abort signal past the stop bound; the
-  // plugin is not re-loaded until the hung start() promise settles.
-  | "degraded"
-  // Reported by the plugin itself (bb.status.needsConfiguration or a service
-  // throwing NeedsConfigurationError): loaded but waiting on user setup.
-  | "needs-configuration";
-
-/**
- * Cumulative wall-time accounting for a plugin's event-handler invocations
- * this server session (design §3 failure isolation: "the app got janky"
- * becomes "plugin X spent Ns"). Survives reloads; dropped on remove.
- */
-export interface PluginHandlerStats {
-  count: number;
-  totalMs: number;
-  maxMs: number;
-  errorCount: number;
-}
+export type {
+  PluginApplyUpdateResult,
+  PluginHandlerStats,
+  PluginRuntimeStatus,
+  PluginServiceEntry,
+  PluginUpdateCheckEntry,
+} from "@bb/server-contract";
 
 /** Live state of one registered background service. */
 export type PluginServiceState = "running" | "backoff" | "stopped";
-
-export interface PluginServiceEntry {
-  name: string;
-  state: PluginServiceState;
-}
 
 export interface PluginScheduleEntry {
   name: string;
@@ -63,71 +39,7 @@ export interface PluginScheduleEntry {
   lastError: string | null;
 }
 
-export interface PluginListEntry {
-  id: string;
-  source: string;
-  rootDir: string;
-  version: string;
-  provenance: "builtin" | "direct" | "marketplace";
-  /** True when a persisted builtin registration no longer exists in BB's builtin registry. */
-  isOrphanedBuiltin: boolean;
-  marketplaceName?: string;
-  sourceDisplay: string;
-  updateState: {
-    outcome?: PluginUpdateCheckEntry["outcome"];
-    availableVersion?: string;
-    blockedVersion?: string;
-    blockedReasons?: string[];
-    lastCheckAt?: number;
-    lastFailure?: { version: string; at: number; detail: string };
-  };
-  enabled: boolean;
-  /** Manifest description (package.json), null when not currently loaded. */
-  description: string | null;
-  /**
-   * `bb.displayName` — human nav/header label; null when not declared or the
-   * plugin is not currently loaded (falls back to the id in the UI).
-   */
-  displayName: string | null;
-  /** `bb.icon` — host icon-name hint; null when not declared or unloaded. */
-  icon: string | null;
-  status: PluginRuntimeStatus;
-  statusDetail: string | null;
-  handlerStats: PluginHandlerStats;
-  /** Background services of the loaded plugin; empty when not loaded. */
-  services: PluginServiceEntry[];
-  /** Durable schedule rows (survive dispose; deleted with the plugin). */
-  schedules: PluginScheduleEntry[];
-  /** The plugin's registered `bb` subcommand; null when none or not loaded. */
-  cliCommand: { name: string; summary: string } | null;
-  /**
-   * True when the loaded plugin declared at least one setting via
-   * bb.settings.define — drives the app's per-plugin settings nav entries.
-   * False while the plugin is not loaded (its schema only exists once the
-   * factory has run).
-   */
-  hasSettings: boolean;
-  /**
-   * Frontend bundle state (design §5.1), refreshed each time the plugin
-   * loads. `{ hasApp: false, bundle: null }` until a load has read the
-   * manifest this session (e.g. disabled-at-boot plugins).
-   */
-  app: PluginAppState;
-  /**
-   * Hash-busted URL of the plugin's logo asset (logo.(svg|png|webp) at the
-   * plugin root, or the manifest's `bb.logo`). Null when the plugin ships
-   * no logo — or is not currently loaded (the asset route only serves live
-   * plugins, so an unservable URL never rides the inventory).
-   */
-  logoUrl: string | null;
-  /**
-   * Hash-busted URL of the optional dark-theme logo variant
-   * (logo-dark.(svg|png|webp) at the plugin root, or the manifest's
-   * `bb.logoDark`). Same gating as logoUrl; the frontend prefers it while
-   * the app is in dark mode.
-   */
-  logoDarkUrl: string | null;
-}
+export type PluginListEntry = InstalledPlugin;
 
 /**
  * Runner state for one background service instance. `current` is the live
@@ -158,7 +70,10 @@ export interface PluginServiceDeps {
   /** Omitted only by isolated plugin-runtime tests without a daemon plane. */
   sharedPorts?: Pick<
     HostSharedPortCoordinator,
-    "declareSharedPorts" | "clearDeclarationsForOwner"
+    | "declareSharedPorts"
+    | "validateSharedPortDeclaration"
+    | "replaceDeclarationsForOwner"
+    | "clearDeclarationsForOwner"
   >;
   ensureSharedPortTunnel?: (
     hostId: string,
@@ -174,7 +89,7 @@ export interface PluginServiceDeps {
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
     "requestPluginInteraction" | "interruptPluginInteractions"
   >;
-  /** BB data dir: plugin sqlite files and secrets live under <dataDir>/plugins/<id>/. */
+  /** BB data dir: plugin database files and secrets live under <dataDir>/plugins/<id>/. */
   dataDir: string;
   /** BB app version, checked against manifests' engines.bb range. */
   appVersion: string;
@@ -232,6 +147,15 @@ export interface PluginAgentToolContribution {
 export interface PluginInstructionContribution {
   pluginId: string;
   provider: (ctx: { threadId: string; projectId: string }) => string | null;
+}
+
+/** Fully validated conditional selections for one thread/session resolution. */
+export interface PluginResolvedAgentConfiguration {
+  tools: PluginAgentToolContribution[];
+  /** Only configured plugins appear. An empty set means fail-closed or an
+   * intentional empty selection; absent plugins keep all manifest skills. */
+  selectedSkillIdsByPlugin: ReadonlyMap<string, ReadonlySet<string>>;
+  dynamicInstructions: Array<{ pluginId: string; text: string }>;
 }
 
 /** One thread action contributed by a running plugin (design §4.9). */
@@ -307,61 +231,8 @@ export type PluginWireLookup<T> =
   | { outcome: "not-found" }
   | { outcome: "found"; value: T };
 
-export interface PluginUpdateCheckEntry {
-  id: string;
-  outcome:
-    | "current"
-    | "update-available"
-    | "pinned"
-    | "incompatible"
-    | "unavailable";
-  devMode?: true;
-  installed: PluginResolvedUpdateVersion;
-  candidate?: PluginResolvedUpdateVersion;
-  blocked?: { version: string; reasons: string[] };
-  detail?: string;
-}
-
-const pluginResolvedUpdateVersionSchema = z.object({
-  version: z.string(),
-  display: z.string(),
-});
-
-export const pluginUpdateCheckEntrySchema = z.object({
-  id: z.string(),
-  outcome: z.enum([
-    "current",
-    "update-available",
-    "pinned",
-    "incompatible",
-    "unavailable",
-  ]),
-  devMode: z.literal(true).optional(),
-  installed: pluginResolvedUpdateVersionSchema,
-  candidate: pluginResolvedUpdateVersionSchema.optional(),
-  blocked: z
-    .object({ version: z.string(), reasons: z.array(z.string()) })
-    .optional(),
-  detail: z.string().optional(),
-});
-
-export interface PluginApplyUpdateResult {
-  applied: boolean;
-  from: PluginResolvedUpdateVersion;
-  to?: PluginResolvedUpdateVersion;
-  outcome: string;
-  detail?: string;
-}
-
-export interface PluginSourceView {
-  requested: string;
-  resolved: string;
-  integrity?: string;
-  registry?: string;
-  engines: { bb?: string; bbPluginSdk?: string };
-  installedAt?: number;
-  history: Array<{ version: string; activatedAt: number }>;
-}
+export { pluginUpdateCheckEntrySchema };
+export type PluginSourceView = PluginSourceDetail;
 
 export type PluginApplyUpdateOutcome =
   | { ok: true; result: PluginApplyUpdateResult }

@@ -27,14 +27,10 @@ const HIGHLIGHTER_OPTIONS = {};
  * frontends load after first paint, so a deep link can land here briefly
  * before registrations arrive.
  *
- * This view renders ONLY the panel body. The title chrome (plugin logo +
+ * This view renders ONLY the panel body. The shared title bar (plugin icon +
  * panel title + the registration's `headerContent`) lives in the shared app
- * header — AppLayout's AppHeader + PluginPanelHeader — so plugin panels get
- * the same chrome as Settings. Body per the registration's
- * `chrome` (default "page"):
- * - "page": full-width PageShell body (no prose max-width cap).
- * - "none": the plugin component owns the entire body region — no host
- *   padding — with only the error boundary remaining.
+ * header — AppLayout's AppHeader + PluginPanelHeader. The component owns the
+ * entire body below it with zero host padding; only the crash boundary remains.
  */
 interface PluginPanelViewProps {
   pluginId?: string;
@@ -96,20 +92,14 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
       </WorkerPoolContextProvider>
     );
 
-  if (panel.chrome === "none") {
-    // Full-bleed: the component owns the entire body region. The negative
-    // margins undo the app layout's `p-4 md:p-5` route padding (same trick
-    // as PageShell's bleed, plus the bottom edge).
-    return (
-      <div className="-m-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-m-5">
-        {mount}
-      </div>
-    );
-  }
-
+  // Full-bleed: the negative margins undo the app layout's `p-4 md:p-5`
+  // route padding. Plugins opt into their own padding and scrolling.
   return (
-    <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-none">
+    <div
+      className="-m-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-m-5"
+      data-testid="plugin-panel-body"
+    >
       {mount}
-    </PageShell>
+    </div>
   );
 }

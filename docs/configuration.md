@@ -335,8 +335,9 @@ skills by name, overriding built-ins.
 Settings → Machines can enroll,
 rename, and remove machines; project settings can add a path or clone source on
 each machine; and thread creation can target any enrolled machine with a usable
-source. The CLI equivalents are `bb machine list`, `bb project source add
---machine <id-or-name> ...`, and `bb thread spawn --machine <id-or-name> ...`.
+source. The CLI equivalents are `bb machine list`, `bb project create
+--machine <id-or-name> ...`, `bb project source add --machine <id-or-name>
+...`, and `bb thread spawn --machine <id-or-name> ...`.
 
 Multi-machine execution is independent of browser access. Tailscale and bb
 connect let another browser reach the bb server; multi-machine support lets

@@ -1,5 +1,12 @@
 import type { ThreadStatus, ThreadTimelinePendingTodos } from "@bb/domain";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type {
+  ProjectResponse,
+  ThreadListResponse,
+  ThreadResponse,
+  ThreadTimelineResponse,
+  ThreadWithIncludesResponse,
+} from "@bb/server-contract";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface StatusGetArgs {
   projectId?: string;
@@ -16,10 +23,10 @@ export interface StatusThreadSummary {
   title: string | null;
 }
 
-export type StatusProject = PublicApiOutput<"/projects/:id", "$get">;
-export type StatusSourceThread = PublicApiOutput<"/threads/:id", "$get">;
-export type StatusChildThreads = PublicApiOutput<"/threads", "$get">;
-export type StatusTimeline = PublicApiOutput<"/threads/:id/timeline", "$get">;
+export type StatusProject = ProjectResponse;
+export type StatusSourceThread = ThreadResponse | ThreadWithIncludesResponse;
+export type StatusChildThreads = ThreadListResponse;
+export type StatusTimeline = ThreadTimelineResponse;
 
 export interface StatusResult {
   childThreads: StatusChildThreads | null;

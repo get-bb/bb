@@ -43,7 +43,6 @@ import {
   requireProject,
   requirePublicProject,
   requirePublicStandardProject,
-  requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
@@ -59,7 +58,6 @@ import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.
 import {
   buildCommandListResponse,
   providerHasCommandSurface,
-  resolveCommandWorkspace,
 } from "../services/threads/provider-command-typeahead.js";
 import {
   beginProjectDeletion,
@@ -76,10 +74,11 @@ import { parseFileListLimit } from "./file-list-query.js";
 import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
+import { assertUsableHostId } from "../services/hosts/primary-host.js";
 import {
-  assertUsableHostId,
-  requirePrimaryHostId,
-} from "../services/hosts/primary-host.js";
+  resolveProjectCommandWorkspace,
+  resolveProjectWorkspaceTarget,
+} from "../services/projects/project-workspace.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
 type ProjectResponseRow = ProjectResponseProjectFields;
@@ -271,11 +270,6 @@ function requireProjectSource(
   return source;
 }
 
-interface ResolvedHostPath {
-  hostId: string;
-  path: string;
-}
-
 interface ResolvedProjectSource {
   path: string;
   gitRemoteUrl: string | null;
@@ -307,66 +301,6 @@ async function inspectProjectGitRemoteBestEffort(
     );
     return null;
   }
-}
-
-interface ResolveEnvironmentPathArgs {
-  environmentId: string;
-  projectId: string;
-}
-
-interface ResolveProjectSourcePathArgs {
-  hostId: string | null;
-  projectId: string;
-}
-
-/**
- * Resolve `(hostId, path)` from an existing project-bound environment.
- * Pure DB lookup — no provisioning, no daemon roundtrip. Use this when a
- * route narrows to a specific environment's workspace (e.g. a thread's
- * worktree) and needs to dispatch a `host.*` daemon command against the
- * environment's path.
- */
-function resolveEnvironmentPath(
-  deps: Pick<AppDeps, "config" | "db" | "hub">,
-  args: ResolveEnvironmentPathArgs,
-): ResolvedHostPath {
-  const environment = requireReadyEnvironment(deps.db, args.environmentId);
-  if (environment.projectId !== args.projectId) {
-    throw new ApiError(404, "environment_not_found", "Environment not found");
-  }
-  assertUsableHostId(deps, { hostId: environment.hostId });
-  return { hostId: environment.hostId, path: environment.path };
-}
-
-/**
- * Resolve `(hostId, path)` from a project's local-path source. Pure DB
- * lookup — never creates an environment row, never queues a provision
- * command. Use for read-only listings issued before any thread environment
- * exists (e.g. file mentions and branch listing in the new-thread prompt
- * box).
- *
- * - When `hostId` is provided, returns the project's local-path source on
- *   that host (404 if the project has no local-path source for that host).
- * - When `hostId` is null, returns the project's local-path source on the
- *   primary local host.
- */
-function resolveProjectSourcePath(
-  deps: Pick<AppDeps, "config" | "db" | "hub">,
-  args: ResolveProjectSourcePathArgs,
-): ResolvedHostPath {
-  const hostId = args.hostId ?? requirePrimaryHostId(deps);
-  assertUsableHostId(deps, { hostId });
-  const source = getProjectSourceByHost(deps.db, args.projectId, hostId);
-  if (!source || source.type !== "local_path") {
-    throw new ApiError(
-      args.hostId ? 404 : 409,
-      "invalid_request",
-      args.hostId
-        ? "Project has no local-path source for host"
-        : "Project has no local-path source for the local host",
-    );
-  }
-  return { hostId: source.hostId, path: source.path };
 }
 
 export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
@@ -619,17 +553,16 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     const limit = parseFileListLimit(query.limit);
 
-    // Both branches dispatch host.list_files against the resolved path —
-    // env-scoped requests narrow to a specific environment's workspace
-    // (e.g. a thread's worktree), pre-env requests fall back to the
-    // project's default source.
-    const target =
-      query.environmentId !== null
-        ? resolveEnvironmentPath(deps, {
-            projectId,
-            environmentId: query.environmentId,
-          })
-        : resolveProjectSourcePath(deps, { projectId, hostId: null });
+    // Environment routing narrows to that workspace. Pre-environment routing
+    // uses the explicit host's project source or the documented primary-host
+    // fallback.
+    const target = resolveProjectWorkspaceTarget(deps, {
+      projectId,
+      ...(query.environmentId !== undefined
+        ? { environmentId: query.environmentId }
+        : {}),
+      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+    });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: target.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -646,7 +579,13 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   get(routes.fileContent, async (context, query) => {
     const projectId = context.req.param("id");
     requirePublicStandardProject(deps.db, projectId);
-    const target = resolveProjectSourcePath(deps, { projectId, hostId: null });
+    const target = resolveProjectWorkspaceTarget(deps, {
+      projectId,
+      ...(query.environmentId !== undefined
+        ? { environmentId: query.environmentId }
+        : {}),
+      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+    });
     const filePath = parseSafeRelativeRoutePath(query.path);
 
     try {
@@ -659,7 +598,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           rootPath: target.path,
         },
       });
-      return createDaemonFileContentResponse(result);
+      return createDaemonFileContentResponse(result, {
+        headers: { "x-bb-content-encoding": result.contentEncoding },
+      });
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }
@@ -671,12 +612,12 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     const limit = parseFileListLimit(query.limit);
 
-    // Project-source listing only: used by the new-thread compose box before
-    // any environment exists. Once a thread has an environment, workspace
-    // path search goes through `GET /environments/:id/paths` instead.
-    const target = resolveProjectSourcePath(deps, {
+    const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
-      hostId: null,
+      ...(query.environmentId !== undefined
+        ? { environmentId: query.environmentId }
+        : {}),
+      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
     const inclusion = parsePathKindInclusion({
       includeFiles: query.includeFiles,
@@ -707,9 +648,12 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       return context.json({ commands: [] });
     }
 
-    const workspace = resolveCommandWorkspace(deps, {
-      environmentId: query.environmentId,
+    const workspace = resolveProjectCommandWorkspace(deps, {
       projectId,
+      ...(query.environmentId !== undefined
+        ? { environmentId: query.environmentId }
+        : {}),
+      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
     const [result, projectSkillSources] = await Promise.all([
       callHostRetryableOnlineRpc(deps, {
@@ -741,7 +685,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const projectId = context.req.param("id");
     requirePublicStandardProject(deps.db, projectId);
 
-    const source = resolveProjectSourcePath(deps, {
+    const source = resolveProjectWorkspaceTarget(deps, {
       projectId,
       hostId: query.hostId,
     });
@@ -767,9 +711,27 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   post(routes.uploadAttachment, async (context) => {
     requirePublicProject(deps.db, context.req.param("id"));
     const formData = await context.req.formData();
+    const fields = [...formData.keys()];
+    if (fields.length === 0) {
+      throw new ApiError(400, "invalid_request", "Attachment file is required");
+    }
+    if (fields.length !== 1 || fields[0] !== "file") {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        'Attachment upload accepts exactly one multipart field named "file"',
+      );
+    }
     const file = formData.get("file");
     if (!(file instanceof File)) {
       throw new ApiError(400, "invalid_request", "Attachment file is required");
+    }
+    if (file.name.trim().length === 0) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Attachment filename is required",
+      );
     }
     return context.json(
       await storeAttachment(deps.config.dataDir, context.req.param("id"), file),

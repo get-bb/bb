@@ -1,6 +1,9 @@
 import { memo } from "react";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
-import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
+import type {
+  SystemExecutionOptionsModelLoadError,
+  SystemProvidersQuery,
+} from "@bb/server-contract";
 import { formatModelLabel } from "@/hooks/useThreadCreationOptions";
 import {
   ModelReasoningPicker,
@@ -50,6 +53,8 @@ export interface ExecutionPermissionConfig {
 }
 
 export interface ExecutionControlsProps {
+  /** Host route reused by provider-tab model previews. */
+  providerRouting?: SystemProvidersQuery;
   provider: ExecutionProviderConfig;
   model: ExecutionModelConfig;
   serviceTier?: ExecutionServiceTierConfig;
@@ -64,6 +69,7 @@ export interface ExecutionControlsProps {
 
 export const ExecutionControls = memo(function ExecutionControls({
   provider,
+  providerRouting,
   model,
   serviceTier,
   reasoning,
@@ -95,6 +101,7 @@ export const ExecutionControls = memo(function ExecutionControls({
       {showModelPicker ? (
         <ModelReasoningPicker
           providerOptions={provider.options ?? []}
+          providerRouting={providerRouting}
           selectedProviderId={selectedProviderId}
           onSelectedProviderChange={provider.onChange}
           hasMultipleProviders={provider.hasMultiple ?? false}

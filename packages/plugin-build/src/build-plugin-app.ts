@@ -10,13 +10,14 @@ import {
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Plugin } from "esbuild";
-import { PLUGIN_SDK_APP_EXPORT_NAMES } from "@bb/plugin-sdk";
+import * as pluginSdkAppFacade from "@bb/plugin-sdk/app";
 import {
   PLUGIN_THEME_CSS,
   TW_ANIMATE_CSS,
 } from "./generated/plugin-theme.generated.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
+import { validatePluginBuildManifest } from "./plugin-manifest.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.app` entry (app.tsx) into a
@@ -73,13 +74,12 @@ const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
 };
 
 /**
- * Named exports of `@bb/plugin-sdk/app`, sourced from the facade package's
- * PLUGIN_SDK_APP_EXPORT_NAMES so shim, facade, and the app implementation
- * cannot drift (the app asserts its implementation keys equal the same
- * list); the React lists next to it come from
+ * Named exports of `@bb/plugin-sdk/app`, read from the facade module itself so
+ * a declaration-only manifest cannot drift from the runtime module; the React
+ * lists next to it come from
  * scripts/generate-runtime-export-manifest.mjs instead.
  */
-const PLUGIN_SDK_APP_EXPORTS: readonly string[] = PLUGIN_SDK_APP_EXPORT_NAMES;
+const PLUGIN_SDK_APP_EXPORTS = Object.keys(pluginSdkAppFacade).sort();
 
 function shimExportsOf(specifier: string): readonly string[] {
   if (specifier === "@bb/plugin-sdk/app") return PLUGIN_SDK_APP_EXPORTS;
@@ -261,9 +261,13 @@ async function readDependencyTailwindSources(
 async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
   const packageJsonPath = join(rootDir, "package.json");
   const pkg = await readPackageJson(packageJsonPath);
-  const bb = isRecord(pkg.bb) ? pkg.bb : undefined;
-  const app = bb?.app;
-  if (typeof app !== "string" || app.length === 0) {
+  const manifest = await validatePluginBuildManifest(
+    pkg,
+    rootDir,
+    packageJsonPath,
+  );
+  const app = manifest.bb.app;
+  if (app === undefined) {
     throw new Error(
       `no frontend entry: ${packageJsonPath} has no "bb": { "app": "./app.tsx" } field (only plugins with an app entry can be built)`,
     );
@@ -280,17 +284,11 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
   } catch {
     throw new Error(`manifest bb.app points at a missing file: ${app}`);
   }
-  if (typeof pkg.name !== "string" || pkg.name.length === 0) {
-    throw new Error(
-      `plugin package.json has no non-empty name at ${packageJsonPath}`,
-    );
-  }
-  if (typeof pkg.version !== "string" || pkg.version.length === 0) {
-    throw new Error(
-      `plugin package.json has no non-empty version at ${packageJsonPath}`,
-    );
-  }
-  return { appEntry, packageName: pkg.name, pluginVersion: pkg.version };
+  return {
+    appEntry,
+    packageName: manifest.name,
+    pluginVersion: manifest.version,
+  };
 }
 
 /**

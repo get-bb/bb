@@ -1,17 +1,36 @@
 import {
   parseThreadEventRow,
   type PromptInput,
+  type PendingInteraction,
   type PendingInteractionResolution,
   type JsonValue,
+  type ResolvedThreadExecutionOptions,
+  type ThreadEventRow,
+  type ThreadQueuedMessage,
   type ThreadStatus,
 } from "@bb/domain";
 import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
-  CloseTerminalRequest,
   CreateQueuedMessageRequest,
-  CreateTerminalRequest,
   CreateThreadRequest,
   DeleteThreadRequest,
+  PromptHistoryResponse,
+  SendQueuedMessageResponse,
+  ThreadArchiveAllResponse,
+  ThreadChildSummaryResponse,
+  ThreadConversationOutlineResponse,
+  ThreadListResponse,
+  ThreadOpenResponse,
+  ThreadPendingInteractionsResponse,
+  ThreadQueuedMessageListResponse,
+  ThreadResponse,
+  ThreadSearchResponse,
+  ThreadStorageFileListResponse,
+  ThreadStoragePathListResponse,
+  ThreadTabsResponse,
+  ThreadTimelineResponse,
+  ThreadWithIncludesResponse,
+  TimelineTurnSummaryDetailsResponse,
   ThreadOpenFile,
   ThreadOpenSplit,
   PromptHistoryQuery,
@@ -20,9 +39,6 @@ import type {
   SendMessageRequest,
   SendQueuedMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
-  TerminalInputRequest,
-  TerminalOutputQuery,
-  TerminalResizeRequest,
   ThreadEventsQuery,
   ThreadEventWaitQuery,
   ThreadGetQuery,
@@ -33,10 +49,9 @@ import type {
   ThreadTimelineQuery,
   TimelineTurnSummaryDetailsQuery,
   UpdateThreadTabsRequest,
-  UpdateTerminalRequest,
   UpdateThreadRequest,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
@@ -62,126 +77,49 @@ export interface ThreadGetArgs {
   threadId: string;
 }
 
-export type ThreadGetResult = PublicApiOutput<"/threads/:id", "$get">;
-export type ThreadListResult = PublicApiOutput<"/threads", "$get">;
-export type ThreadSearchResult = PublicApiOutput<"/threads/search", "$get">;
-export type ThreadOutputResponse = PublicApiOutput<
-  "/threads/:id/output",
-  "$get"
->;
-export type ThreadMutationResult = PublicApiOutput<"/threads/:id", "$patch">;
-export type ThreadSpawnResult = PublicApiOutput<"/threads", "$post">;
-export type ThreadInteractionGetResult = PublicApiOutput<
-  "/threads/:id/interactions/:interactionId",
-  "$get"
->;
-export type ThreadInteractionListResult = PublicApiOutput<
-  "/threads/:id/interactions",
-  "$get"
->;
-export type ThreadInteractionResolveResult = PublicApiOutput<
-  "/threads/:id/interactions/:interactionId/resolve",
-  "$post"
->;
-export type ThreadInteractionRespondResult = PublicApiOutput<
-  "/threads/:id/interactions/:interactionId/respond",
-  "$post"
->;
-export type ThreadInteractionCancelResult = PublicApiOutput<
-  "/threads/:id/interactions/:interactionId/cancel",
-  "$post"
->;
-export type ThreadEventsListResult = PublicApiOutput<
-  "/threads/:id/events",
-  "$get"
->;
-export type ThreadEventWaitResult = PublicApiOutput<
-  "/threads/:id/events/wait",
-  "$get"
->;
-export type ThreadTimelineResult = PublicApiOutput<
-  "/threads/:id/timeline",
-  "$get"
->;
-export type ThreadArchiveResult = PublicApiOutput<
-  "/threads/:id/archive-all",
-  "$post"
->;
-export type ThreadOpenResult = PublicApiOutput<"/threads/:id/open", "$post">;
-export type ThreadDeleteResult = PublicApiOutput<"/threads/:id", "$delete">;
-export type ThreadSendResult = PublicApiOutput<"/threads/:id/send", "$post">;
-export type ThreadStopResult = PublicApiOutput<"/threads/:id/stop", "$post">;
-export type ThreadTerminalCloseResult = PublicApiOutput<
-  "/terminals/:terminalId/close",
-  "$post"
->;
-export type ThreadTerminalCreateResult = PublicApiOutput<"/terminals", "$post">;
-export type ThreadTerminalInputResult = PublicApiOutput<
-  "/terminals/:terminalId/input",
-  "$post"
->;
-export type ThreadTerminalListResult = PublicApiOutput<"/terminals", "$get">;
-export type ThreadTerminalOutputResult = PublicApiOutput<
-  "/terminals/:terminalId/output",
-  "$get"
->;
-export type ThreadTerminalResizeResult = PublicApiOutput<
-  "/terminals/:terminalId/resize",
-  "$post"
->;
-export type ThreadTerminalUpdateResult = PublicApiOutput<
-  "/terminals/:terminalId",
-  "$patch"
->;
-export type ThreadUnarchiveResult = PublicApiOutput<
-  "/threads/:id/unarchive",
-  "$post"
->;
-export type ThreadArchiveAllResult = PublicApiOutput<
-  "/threads/:id/archive-all",
-  "$post"
->;
-export type ThreadReadStateResult = PublicApiOutput<
-  "/threads/:id/read",
-  "$post"
->;
-export type ThreadPinOrderResult = PublicApiOutput<
-  "/threads/:id/pin-order",
-  "$patch"
->;
-export type ThreadPromptHistoryResult = PublicApiOutput<
-  "/threads/:id/prompt-history",
-  "$get"
->;
-export type ThreadQueuedMessagesResult = PublicApiOutput<
-  "/threads/:id/queued-messages",
-  "$get"
->;
-export type ThreadTabsResult = PublicApiOutput<"/threads/:id/tabs", "$get">;
-export type ThreadStorageFilesResult = PublicApiOutput<
-  "/threads/:id/thread-storage/files",
-  "$get"
->;
-export type ThreadStoragePathsResult = PublicApiOutput<
-  "/threads/:id/thread-storage/paths",
-  "$get"
->;
-export type ThreadChildSummaryResult = PublicApiOutput<
-  "/threads/:id/child-summary",
-  "$get"
->;
-export type ThreadDefaultExecutionOptionsResult = PublicApiOutput<
-  "/threads/:id/default-execution-options",
-  "$get"
->;
-export type ThreadConversationOutlineResult = PublicApiOutput<
-  "/threads/:id/conversation-outline",
-  "$get"
->;
-export type ThreadTimelineTurnSummaryDetailsResult = PublicApiOutput<
-  "/threads/:id/timeline/turn-summary-details",
-  "$get"
->;
+export type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
+export type ThreadListResult = ThreadListResponse;
+export type ThreadSearchResult = ThreadSearchResponse;
+export interface ThreadOutputResponse {
+  output: string | null;
+}
+export type ThreadMutationResult = ThreadResponse;
+export type ThreadSpawnResult = ThreadResponse;
+export type ThreadInteractionGetResult = PendingInteraction;
+export type ThreadInteractionListResult = ThreadPendingInteractionsResponse;
+export type ThreadInteractionResolveResult = PendingInteraction;
+export type ThreadInteractionRespondResult = PendingInteraction;
+export type ThreadInteractionCancelResult = PendingInteraction;
+export type ThreadEventsListResult = ThreadEventRow[];
+export type ThreadEventWaitResult = ThreadEventRow | null;
+export type ThreadTimelineResult = ThreadTimelineResponse;
+export type ThreadArchiveResult = ThreadArchiveAllResponse;
+export type ThreadOpenResult = ThreadOpenResponse;
+export type ThreadDeleteResult = { ok: true };
+export type ThreadSendResult = { ok: true };
+export type ThreadStopResult = { ok: true };
+export type ThreadUnarchiveResult = { ok: true };
+export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
+export type ThreadReadStateResult = ThreadResponse;
+export type ThreadPinOrderResult = ThreadListResponse;
+export type ThreadPromptHistoryResult = PromptHistoryResponse;
+export type ThreadQueuedMessagesResult = ThreadQueuedMessageListResponse;
+export type ThreadQueuedMessageCreateResult = ThreadQueuedMessage;
+export type ThreadQueuedMessageDeleteResult = { ok: true };
+export type ThreadQueuedMessageReorderResult = ThreadQueuedMessageListResponse;
+export type ThreadQueuedMessageSendResult = SendQueuedMessageResponse;
+export type ThreadQueuedMessageGroupBoundaryResult =
+  ThreadQueuedMessageListResponse;
+export type ThreadTabsResult = ThreadTabsResponse;
+export type ThreadTabsUpdateResult = ThreadTabsResponse;
+export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
+export type ThreadStoragePathsResult = ThreadStoragePathListResponse;
+export type ThreadChildSummaryResult = ThreadChildSummaryResponse;
+export type ThreadDefaultExecutionOptionsResult =
+  ResolvedThreadExecutionOptions | null;
+export type ThreadConversationOutlineResult = ThreadConversationOutlineResponse;
+export type ThreadTimelineTurnSummaryDetailsResult =
+  TimelineTurnSummaryDetailsResponse;
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
@@ -295,37 +233,6 @@ export interface ThreadOutputArgs {
   threadId: string;
 }
 
-export interface ThreadTerminalListArgs {
-  threadId: string;
-}
-
-export interface ThreadTerminalCreateArgs extends Omit<
-  CreateTerminalRequest,
-  "target"
-> {
-  threadId: string;
-}
-
-export interface ThreadTerminalTargetArgs {
-  terminalId: string;
-  threadId: string;
-}
-
-export interface ThreadTerminalUpdateArgs
-  extends ThreadTerminalTargetArgs, UpdateTerminalRequest {}
-
-export interface ThreadTerminalCloseArgs
-  extends ThreadTerminalTargetArgs, CloseTerminalRequest {}
-
-export interface ThreadTerminalInputArgs
-  extends ThreadTerminalTargetArgs, TerminalInputRequest {}
-
-export interface ThreadTerminalResizeArgs
-  extends ThreadTerminalTargetArgs, TerminalResizeRequest {}
-
-export interface ThreadTerminalOutputArgs
-  extends ThreadTerminalTargetArgs, TerminalOutputQuery {}
-
 export interface ThreadInteractionListArgs {
   threadId: string;
 }
@@ -420,50 +327,28 @@ export interface ThreadEventsArea {
   wait(args: ThreadEventWaitArgs): Promise<ThreadEventWaitResult>;
 }
 
-export interface ThreadTerminalsArea {
-  close(args: ThreadTerminalCloseArgs): Promise<ThreadTerminalCloseResult>;
-  create(args: ThreadTerminalCreateArgs): Promise<ThreadTerminalCreateResult>;
-  input(args: ThreadTerminalInputArgs): Promise<ThreadTerminalInputResult>;
-  list(args: ThreadTerminalListArgs): Promise<ThreadTerminalListResult>;
-  output(args: ThreadTerminalOutputArgs): Promise<ThreadTerminalOutputResult>;
-  resize(args: ThreadTerminalResizeArgs): Promise<ThreadTerminalResizeResult>;
-  update(args: ThreadTerminalUpdateArgs): Promise<ThreadTerminalUpdateResult>;
-}
-
 export interface ThreadQueuedMessagesArea {
   create(
     args: ThreadQueuedMessageCreateArgs,
-  ): Promise<PublicApiOutput<"/threads/:id/queued-messages", "$post">>;
-  delete(args: ThreadQueuedMessageTargetArgs): Promise<{ ok: true }>;
+  ): Promise<ThreadQueuedMessageCreateResult>;
+  delete(
+    args: ThreadQueuedMessageTargetArgs,
+  ): Promise<ThreadQueuedMessageDeleteResult>;
   list(args: ThreadQueuedMessageArgs): Promise<ThreadQueuedMessagesResult>;
   reorder(
     args: ThreadQueuedMessageReorderArgs,
-  ): Promise<
-    PublicApiOutput<
-      "/threads/:id/queued-messages/:queuedMessageId/order",
-      "$patch"
-    >
-  >;
+  ): Promise<ThreadQueuedMessageReorderResult>;
   send(
     args: ThreadQueuedMessageSendArgs,
-  ): Promise<
-    PublicApiOutput<
-      "/threads/:id/queued-messages/:queuedMessageId/send",
-      "$post"
-    >
-  >;
+  ): Promise<ThreadQueuedMessageSendResult>;
   setGroupBoundary(
     args: ThreadQueuedMessageGroupBoundaryArgs,
-  ): Promise<
-    PublicApiOutput<"/threads/:id/queued-messages/group-boundary", "$patch">
-  >;
+  ): Promise<ThreadQueuedMessageGroupBoundaryResult>;
 }
 
 export interface ThreadTabsArea {
   get(args: ThreadStatusArgs): Promise<ThreadTabsResult>;
-  update(
-    args: ThreadTabsUpdateArgs,
-  ): Promise<PublicApiOutput<"/threads/:id/tabs", "$put">>;
+  update(args: ThreadTabsUpdateArgs): Promise<ThreadTabsUpdateResult>;
 }
 
 export interface ThreadsArea {
@@ -495,7 +380,6 @@ export interface ThreadsArea {
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
   stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
-  terminals: ThreadTerminalsArea;
   tabs: ThreadTabsArea;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
   timelineTurnSummaryDetails(
@@ -615,18 +499,6 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
       : {}),
     ...(args.beforeAnchorId !== undefined
       ? { beforeAnchorId: args.beforeAnchorId }
-      : {}),
-  };
-}
-
-function terminalOutputQuery(
-  args: ThreadTerminalOutputArgs,
-): TerminalOutputQuery {
-  return {
-    ...(args.sinceSeq !== undefined ? { sinceSeq: args.sinceSeq } : {}),
-    ...(args.tailBytes !== undefined ? { tailBytes: args.tailBytes } : {}),
-    ...(args.limitChunks !== undefined
-      ? { limitChunks: args.limitChunks }
       : {}),
   };
 }
@@ -774,68 +646,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ].respond.$post({
           param: { id: input.threadId, interactionId: input.interactionId },
           json: { value: input.value },
-        }),
-      );
-    },
-  };
-  const terminals: ThreadTerminalsArea = {
-    async close(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].close.$post({
-          param: { terminalId: input.terminalId },
-          json: { mode: input.mode, reason: input.reason },
-        }),
-      );
-    },
-    async create(input) {
-      return transport.readJson(
-        transport.api.v1.terminals.$post({
-          json: {
-            cols: input.cols,
-            rows: input.rows,
-            title: input.title,
-            start: input.start,
-            target: { kind: "thread", threadId: input.threadId },
-          },
-        }),
-      );
-    },
-    async input(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].input.$post({
-          param: { terminalId: input.terminalId },
-          json: { dataBase64: input.dataBase64 },
-        }),
-      );
-    },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.terminals.$get({
-          query: { threadId: input.threadId },
-        }),
-      );
-    },
-    async output(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].output.$get({
-          param: { terminalId: input.terminalId },
-          query: terminalOutputQuery(input),
-        }),
-      );
-    },
-    async resize(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].resize.$post({
-          param: { terminalId: input.terminalId },
-          json: { cols: input.cols, rows: input.rows },
-        }),
-      );
-    },
-    async update(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].$patch({
-          param: { terminalId: input.terminalId },
-          json: { title: input.title },
         }),
       );
     },
@@ -1081,7 +891,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
       return { ok: true };
     },
-    terminals,
     tabs,
     async timeline(input) {
       return transport.readJson(

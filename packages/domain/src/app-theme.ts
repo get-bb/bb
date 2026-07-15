@@ -141,15 +141,14 @@ export function formatPluginThemeId(pluginId: string, themeId: string): string {
 }
 
 /**
- * The appearance selection a client sends when changing the palette and/or the
- * favicon tint. The server validates `themeId` (built-in id or an existing
- * custom theme) and resolves the CSS from disk for custom themes. `faviconColor`
- * is omitted to leave the current tint unchanged, so a theme-only change (and
- * the CLI/SDK `theme set`, which only knows the id) never resets the tint.
+ * The complete appearance selection a client sends when changing the palette
+ * and/or favicon tint. The server validates `themeId` (built-in id or an
+ * existing custom theme) and resolves the CSS from disk for custom themes.
+ * Callers changing only one facet must carry the other facet forward explicitly.
  */
 export const appThemeSelectionSchema = z.object({
   themeId: z.string().min(1),
-  faviconColor: faviconColorPreferenceSchema.optional(),
+  faviconColor: faviconColorPreferenceSchema,
 });
 export type AppThemeSelection = z.infer<typeof appThemeSelectionSchema>;
 

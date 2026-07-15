@@ -984,7 +984,10 @@ export function SettingsView() {
         faviconColor={appearance.faviconColor}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
-          updateAppearanceMutation.mutate({ themeId })
+          updateAppearanceMutation.mutate({
+            themeId,
+            faviconColor: appearance.faviconColor,
+          })
         }
         onCreatePalette={() =>
           navigate(getRootComposeRoutePath(), {

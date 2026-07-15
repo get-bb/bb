@@ -8,8 +8,11 @@
     "bb": ">=0.0"
   },
   "bb": {
-    "displayName": "Automations",
-    "icon": "Clock",
+    "name": "Automations",
+    "description": "Schedule recurring and one-shot agent or script work.",
+    "branding": {
+      "icon": "Clock"
+    },
     "server": "./src/server.ts",
     "app": "./app.tsx",
     "skills": [

@@ -1,76 +1,26 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import semver from "semver";
-import { z } from "zod";
-import { derivePluginId } from "@bb/domain";
-
-/**
- * The `bb` field of a plugin's package.json. `server` is the backend entry
- * (factory default export). `app` is the optional frontend entry (compiled by
- * `bb plugin build`; unused until the frontend runtime phase). `skills`
- * relocates/filters the auto-imported `skills/` convention directory. `logo`
- * relocates the auto-detected `logo.(svg|png|webp)` root file; `logoDark`
- * does the same for the optional dark-theme variant (`logo-dark.*`). `icon`
- * is a host icon-name hint used when the plugin ships no logo.
- */
-const bbManifestFieldSchema = z.object({
-  server: z.string().min(1),
-  app: z.string().min(1).optional(),
-  /**
-   * Human, Title-Case name for the settings nav + detail header (e.g.
-   * "Remote access"); falls back to the derived plugin id when absent.
-   */
-  displayName: z.string().min(1).optional(),
-  icon: z.string().min(1).optional(),
-  skills: z.array(z.string().min(1)).optional(),
-  logo: z.string().min(1).optional(),
-  logoDark: z.string().min(1).optional(),
-  themes: z
-    .array(
-      z.object({
-        id: z
-          .string()
-          .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/)
-          .max(64),
-        name: z.string().min(1),
-        description: z.string().min(1).optional(),
-        css: z.string().min(1),
-      }),
-    )
-    .optional(),
-});
-
-const pluginPackageJsonSchema = z.object({
-  name: z.string().min(1),
-  version: z.string().min(1),
-  description: z.string().optional(),
-  engines: z
-    .object({
-      bb: z.string().min(1).optional(),
-      bbPluginSdk: z
-        .string()
-        .min(1)
-        .refine((range) => semver.validRange(range) !== null, {
-          message: "must be a valid semver range",
-        })
-        .optional(),
-    })
-    .optional(),
-  bb: bbManifestFieldSchema,
-});
+import { derivePluginId, pluginPackageJsonSchema } from "@bb/domain";
 
 export interface PluginManifest {
   /** Sanitized plugin id derived from the package name. */
   id: string;
   /** Full npm package name. */
-  name: string;
+  packageName: string;
   version: string;
-  /** package.json description, shown in the Settings → Plugins row. */
-  description: string | null;
-  /** `bb.displayName` — human nav/header label; null when not declared. */
-  displayName: string | null;
-  /** `bb.icon` — host icon-name hint; null when not declared. */
-  icon: string | null;
+  /** `bb.name` — human name shown in host-rendered plugin surfaces. */
+  name: string;
+  /** `bb.description` — human description shown in plugin management. */
+  description: string;
+  /** Explicit plugin branding, resolved to absolute asset paths. */
+  branding: {
+    icon?: string;
+    logo?: {
+      lightPath: string;
+      darkPath?: string;
+    };
+  };
   /** semver range from engines.bb, when declared. */
   bbEngineRange: string | undefined;
   /** semver range from engines.bbPluginSdk; absent manifests are legacy. */
@@ -79,18 +29,6 @@ export interface PluginManifest {
   serverEntry: string;
   /** Absolute path of the frontend entry file, when declared. */
   appEntry: string | undefined;
-  /**
-   * Absolute path of the sidebar/menu logo declared via `bb.logo` (svg, png,
-   * or webp). Undefined when not declared — the loader then auto-detects
-   * `logo.svg` / `logo.png` / `logo.webp` at the plugin root.
-   */
-  logoPath: string | undefined;
-  /**
-   * Absolute path of the dark-theme logo variant declared via `bb.logoDark`.
-   * Undefined when not declared — the loader then auto-detects
-   * `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp` at the plugin root.
-   */
-  logoDarkPath: string | undefined;
   /** CSS palettes declared by `bb.themes`, with manifest-relative paths resolved. */
   themes: Array<{
     id: string;
@@ -153,7 +91,15 @@ export async function readPluginManifest(
       `invalid plugin package.json${path ? ` (${path})` : ""}: ${issue?.message ?? "unknown error"}`,
     );
   }
-  const { name, version, description, engines, bb } = parsed.data;
+  const { name: packageName, version, engines, bb } = parsed.data;
+  if (
+    engines?.bbPluginSdk !== undefined &&
+    semver.validRange(engines.bbPluginSdk) === null
+  ) {
+    throw new Error(
+      "invalid plugin package.json (engines.bbPluginSdk): must be a valid semver range",
+    );
+  }
   const serverEntry = resolveEntry(rootDir, bb.server, "bb.server");
   try {
     await stat(serverEntry);
@@ -165,11 +111,7 @@ export async function readPluginManifest(
   const skillsRootPaths = (bb.skills ?? ["skills"]).map((entry) =>
     resolveEntry(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),
   );
-  const resolveLogoEntry = (
-    entry: string | undefined,
-    label: string,
-  ): string | undefined => {
-    if (entry === undefined) return undefined;
+  const resolveBrandingAsset = (entry: string, label: string): string => {
     if (!/\.(svg|png|webp)$/i.test(entry)) {
       throw new Error(
         `manifest ${label} must point at a .svg, .png, or .webp file, got "${entry}"`,
@@ -177,8 +119,47 @@ export async function readPluginManifest(
     }
     return resolveEntry(rootDir, entry, label);
   };
-  const logoPath = resolveLogoEntry(bb.logo, "bb.logo");
-  const logoDarkPath = resolveLogoEntry(bb.logoDark, "bb.logoDark");
+  const brandingLogo =
+    bb.branding.logo === undefined
+      ? undefined
+      : {
+          lightPath: resolveBrandingAsset(
+            bb.branding.logo.light,
+            "bb.branding.logo.light",
+          ),
+          ...(bb.branding.logo.dark === undefined
+            ? {}
+            : {
+                darkPath: resolveBrandingAsset(
+                  bb.branding.logo.dark,
+                  "bb.branding.logo.dark",
+                ),
+              }),
+        };
+  for (const [label, assetPath] of [
+    ["bb.branding.logo.light", brandingLogo?.lightPath],
+    ["bb.branding.logo.dark", brandingLogo?.darkPath],
+  ] as const) {
+    if (assetPath === undefined) continue;
+    let assetStat;
+    try {
+      assetStat = await stat(assetPath);
+    } catch {
+      throw new Error(`manifest ${label} points at a missing file`);
+    }
+    if (!assetStat.isFile()) {
+      throw new Error(`manifest ${label} must point at a file`);
+    }
+    const [realRoot, realAsset] = await Promise.all([
+      realpath(rootDir),
+      realpath(assetPath),
+    ]);
+    if (realAsset !== realRoot && !realAsset.startsWith(realRoot + "/")) {
+      throw new Error(
+        `manifest ${label} escapes the plugin directory through a symlink`,
+      );
+    }
+  }
   const themeIds = new Set<string>();
   const themes = (bb.themes ?? []).map((theme) => {
     if (themeIds.has(theme.id)) {
@@ -207,21 +188,19 @@ export async function readPluginManifest(
     }
   }
   return {
-    id: derivePluginId(name),
-    name,
+    id: derivePluginId(packageName),
+    packageName,
     version,
-    description:
-      description !== undefined && description.trim().length > 0
-        ? description
-        : null,
-    displayName: bb.displayName ?? null,
-    icon: bb.icon ?? null,
+    name: bb.name,
+    description: bb.description,
+    branding: {
+      ...(bb.branding.icon === undefined ? {} : { icon: bb.branding.icon }),
+      ...(brandingLogo === undefined ? {} : { logo: brandingLogo }),
+    },
     bbEngineRange: engines?.bb,
     bbPluginSdkRange: engines?.bbPluginSdk,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
-    logoPath,
-    logoDarkPath,
     themes,
     skillsRootPaths,
     rootDir,

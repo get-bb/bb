@@ -3,7 +3,8 @@ import type { Context } from "hono";
 import type * as z from "zod";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
-import type { JsonValue } from "@bb/domain";
+import type { JsonValue } from "./json-value.js";
+import type { PluginRpcContract, PluginRpcHandlers } from "./rpc-contract.js";
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -114,7 +115,7 @@ export interface PluginStorage {
    * busy_timeout 5000. Handles are host-tracked and closed on
    * dispose/reload; a closed handle throws on use.
    */
-  sqlite(): Database.Database;
+  database(): Database.Database;
   /**
    * Ordered-statement migration helper: statement index = migration id in a
    * `_bb_migrations` table; unapplied statements run in one transaction.
@@ -181,14 +182,17 @@ export interface PluginHttp {
 
 export interface PluginRpc {
   /**
-   * Register rpc methods, served at POST
+   * Register a Standard Schema-driven rpc contract and its inferred handlers,
+   * served at POST
    * `/api/v1/plugins/<id>/rpc/<method>` with "local" auth semantics. The
-   * JSON request body is the input; the response is
-   * `{ ok: true, result }` or `{ ok: false, error }`. Inputs and outputs
-   * must survive a JSON round-trip — results are serialized with
-   * JSON.stringify and nothing else.
+   * host validates input before invocation and output before strict JSON
+   * serialization. The response is `{ ok: true, result }` or
+   * `{ ok: false, error: { code, message, issues? } }`.
    */
-  register(handlers: Record<string, (input: never) => unknown>): void;
+  register<Contract extends PluginRpcContract>(
+    contract: Contract,
+    handlers: PluginRpcHandlers<Contract>,
+  ): void;
 }
 
 export interface PluginRealtime {
@@ -268,14 +272,6 @@ export interface PluginInteractionRequest {
   timeoutMs?: number;
 }
 
-export interface PluginInteractions {
-  /** Block until the app submits or cancels a plugin-owned composer form. */
-  request(
-    request: PluginInteractionRequest,
-    options?: { signal?: AbortSignal },
-  ): Promise<PluginInteractionResult>;
-}
-
 export interface PluginCliResult {
   exitCode: number;
   stdout?: string;
@@ -298,9 +294,9 @@ export interface PluginCliRegistration {
 
 export interface PluginCli {
   /**
-   * Register this plugin's `bb` subcommand. One registration per plugin —
-   * a second call replaces the first. Core bb commands always win name
-   * collisions; reserved names are rejected at registration.
+   * Register this plugin's `bb` subcommand. One registration per factory
+   * execution; a repeated call is rejected. Core bb commands always win
+   * name collisions; reserved names are rejected at registration.
    */
   register(registration: PluginCliRegistration): void;
 }
@@ -337,12 +333,81 @@ export interface PluginAgentToolRegistrationBase {
   /**
    * Optional usage snippet appended to the thread instructions whenever
    * this tool is in the session's tool set (mirrors the built-in
-   * update_environment_directory guidance). Keep it short.
+   * update_environment_directory guidance). Limited to 4096 characters.
    */
   instructions?: string;
 }
 
+/** Stable, plain-data context resolved by the server for one agent session. */
+export interface PluginAgentConfigurationContext {
+  thread: {
+    id: string;
+    title: string | null;
+    parentThreadId: string | null;
+    sourceThreadId: string | null;
+  };
+  project: {
+    id: string;
+    kind: "standard" | "personal";
+    name: string;
+    gitRemoteUrl: string | null;
+  };
+  environment: {
+    id: string;
+    name: string | null;
+    path: string | null;
+    workspaceProvisionType: "unmanaged" | "managed-worktree" | "personal";
+    branchName: string | null;
+  };
+  host: {
+    id: string;
+    name: string;
+  };
+  provider: {
+    id: string;
+    model: string;
+  };
+  sideChat: boolean;
+  origin: {
+    kind: "fork" | "side-chat" | null;
+    pluginId: string | null;
+  };
+}
+
+/** Per-resolution selection returned by {@link PluginAgents.configure}. */
+export interface PluginAgentConfiguration {
+  /** Tool names registered by this plugin. Duplicate or unknown names reject
+   * this plugin's complete selection for the resolution. */
+  tools: string[];
+  /** Skill frontmatter names from this plugin's manifest skill roots.
+   * Duplicate or unknown names reject this plugin's complete selection. */
+  skills: string[];
+  /** Optional dynamic instructions. Output is truncated to 4096 characters. */
+  instructions?: string;
+}
+
 export interface PluginAgents {
+  /**
+   * Select this plugin's statically registered tools and manifest skills for
+   * each thread/session resolution, with optional dynamic instructions. The
+   * callback is synchronous and runs at `thread.start` / `turn.submit`; it
+   * never rebuilds registrations. Exactly one callback may be registered per
+   * factory execution. A throw, malformed result, duplicate id, unknown id,
+   * or more than 256 tool/skill ids fails closed for this plugin only.
+   *
+   * Tools take effect when the provider session is next started or resumed;
+   * an already-running session is not hot-mutated. Instructions are resolved
+   * for the next turn. Skill changes follow BB's environment runtime policy:
+   * a busy runtime keeps its current catalog until a safe relaunch. Side-chat
+   * threads receive `sideChat: true`, and their returned tool, skill, and
+   * dynamic-instruction selections apply at the same boundaries. Independent
+   * side-chat safety policy (such as permission escalation) is unchanged.
+   */
+  configure(
+    provider: (
+      context: PluginAgentConfigurationContext,
+    ) => PluginAgentConfiguration,
+  ): void;
   /**
    * Register a native dynamic tool (design §4.4). `parameters` is either a
    * zod schema (validated per call; execute receives the parsed value) or a
@@ -350,8 +415,8 @@ export interface PluginAgents {
    * arguments as `unknown`). Tool-set changes apply on the NEXT session
    * start — a tool registered mid-session is not hot-added to running
    * provider sessions. A second registration of the same name within this
-   * plugin replaces the first; a name already registered by another plugin
-   * is rejected and surfaced as this plugin's status detail.
+   * plugin is rejected; a name already registered by another plugin is
+   * rejected and surfaced as this plugin's status detail.
    */
   registerTool<Schema extends z.ZodType>(
     tool: PluginAgentToolRegistrationBase & {
@@ -377,10 +442,11 @@ export interface PluginAgents {
    * provider runs when a thread's runtime command config is resolved
    * (thread.start / turn.submit); return null to contribute nothing for
    * that resolution. Must be synchronous and fast — it sits on the
-   * thread-start path. A repeated call replaces this plugin's previous
-   * provider. Output longer than 4096 characters is truncated; a throwing
-   * provider is logged against the plugin and contributes nothing.
-   * Side-chat threads never receive plugin instructions.
+   * thread-start path. Output longer than 4096 characters is truncated; a
+   * throwing provider is logged against the plugin and contributes nothing.
+   * A repeated registration within one factory execution is rejected.
+   * This legacy contribution is not applied to side-chat threads; use
+   * configure() when sideChat-aware dynamic instructions are required.
    */
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,
@@ -474,6 +540,11 @@ export interface PluginMentionProviderRegistration {
 }
 
 export interface PluginUi {
+  /** Block until the app submits or cancels a plugin-owned composer form. */
+  requestInput(
+    request: PluginInteractionRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<PluginInteractionResult>;
   /**
    * Register a thread action rendered in the shipped app's thread header
    * (design §4.9). Multiple actions per plugin; ids must be unique within
@@ -489,6 +560,17 @@ export interface PluginUi {
    * unique within the plugin.
    */
   registerMentionProvider(provider: PluginMentionProviderRegistration): void;
+}
+
+export interface PluginEvents {
+  /**
+   * Add a thread lifecycle listener. Multiple listeners for the same event
+   * are additive and run independently in registration order.
+   */
+  on<E extends PluginThreadEventName>(
+    event: E,
+    handler: PluginThreadEventHandler<E>,
+  ): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -563,7 +645,7 @@ export interface BbPluginApi {
   readonly log: PluginLogger;
   /** Declarative settings (design §4.2). */
   readonly settings: PluginSettings;
-  /** Namespaced KV + per-plugin SQLite (design §4.3). */
+  /** Namespaced KV + per-plugin database (design §4.3). */
   readonly storage: PluginStorage;
   /** HTTP routes under /api/v1/plugins/<id>/http/* (design §4.6). */
   readonly http: PluginHttp;
@@ -575,12 +657,12 @@ export interface BbPluginApi {
   readonly background: PluginBackground;
   /** Agent-facing `bb` CLI subcommand (design §4.4). */
   readonly cli: PluginCli;
-  /** Secure, user-mediated pending interactions rendered by this plugin. */
-  readonly interactions: PluginInteractions;
   /** Per-turn agent context contributions (design §4.4). */
   readonly agents: PluginAgents;
   /** Host-rendered UI contributions (design §4.9). */
   readonly ui: PluginUi;
+  /** Additive plugin lifecycle listeners (design §4.5). */
+  readonly events: PluginEvents;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */
@@ -597,15 +679,6 @@ export interface BbPluginApi {
    * this plugin's id so spawned threads are attributed automatically.
    */
   readonly sdk: BbSdk;
-  /**
-   * Observe thread lifecycle events (design §4.5). Load-safe registration;
-   * handlers run async after the transition and never affect it. Errors are
-   * caught, logged, and counted against this plugin's handler stats.
-   */
-  on<E extends PluginThreadEventName>(
-    event: E,
-    handler: PluginThreadEventHandler<E>,
-  ): void;
   /**
    * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
    * The sanctioned place to clear timers and close connections.

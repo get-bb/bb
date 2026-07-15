@@ -12,6 +12,7 @@ export interface ConnectShareStatus {
   hostId: string;
   hostName: string;
   port: number;
+  createdAt: number;
   url: string;
   /** Present only when url is empty because this share cannot resolve now. */
   unavailableReason?: string;

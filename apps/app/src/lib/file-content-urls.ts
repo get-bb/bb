@@ -24,11 +24,12 @@ export function buildProjectAttachmentContentUrl(
 export function buildProjectFileContentUrl(
   projectId: string,
   path: string,
+  routing: { environmentId?: string; hostId?: string } = {},
 ): string {
   return toRelativeUrl(
     apiClient.projects[":id"].files.content.$url({
       param: { id: projectId },
-      query: { path },
+      query: { path, ...routing },
     }),
   );
 }

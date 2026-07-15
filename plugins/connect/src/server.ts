@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import { registerConnectCli } from "./cli.js";
 import { createKvCredentialStore } from "./credential.js";
-import { createRpcHandlers } from "./rpc.js";
+import { connectRpcContract, createRpcHandlers } from "./rpc.js";
 import { ShareRegistry } from "./shares.js";
 import { ConnectTunnel } from "./tunnel.js";
 import { ShareHostResolver } from "./hosts.js";
@@ -37,7 +37,7 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status),
   });
 
-  bb.rpc.register(createRpcHandlers(tunnel, hostResolver));
+  bb.rpc.register(connectRpcContract, createRpcHandlers(tunnel, hostResolver));
   registerConnectCli({ bb, tunnel, hostResolver });
 
   bb.agents.contributeInstructions(() => {

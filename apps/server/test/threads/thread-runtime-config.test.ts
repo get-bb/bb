@@ -1131,6 +1131,7 @@ describe("thread runtime config", () => {
         harness.deps,
         {
           thread,
+          model: "test-model",
           environment: {
             hostId: environment.hostId,
             id: environment.id,
@@ -1194,6 +1195,7 @@ describe("thread runtime config", () => {
         harness.deps,
         {
           thread: sideChatThread,
+          model: "test-model",
           environment: {
             hostId: environment.hostId,
             id: environment.id,
@@ -1248,6 +1250,7 @@ describe("thread runtime config", () => {
         harness.deps,
         {
           thread,
+          model: "test-model",
           environment: {
             hostId: environment.hostId,
             id: environment.id,
@@ -1318,6 +1321,7 @@ describe("thread runtime config", () => {
         {
           thread,
           environment,
+          model: "test-model",
         },
       );
 
@@ -1372,7 +1376,7 @@ describe("thread runtime config", () => {
 
       const runtimeConfig = await resolveThreadRuntimeCommandConfig(
         harness.deps,
-        { thread, environment },
+        { thread, environment, model: "test-model" },
       );
 
       expect(runtimeConfig.instructions).not.toContain(
@@ -1434,7 +1438,7 @@ describe("thread runtime config", () => {
 
       const runtimeConfig = await resolveThreadRuntimeCommandConfig(
         harness.deps,
-        { thread, environment },
+        { thread, environment, model: "test-model" },
       );
 
       expect(runtimeConfig.injectedSkillSources).toContainEqual({
@@ -1501,6 +1505,7 @@ describe("thread runtime config", () => {
         harness.deps,
         {
           thread,
+          model: "test-model",
           environment: {
             hostId: environment.hostId,
             id: environment.id,
@@ -1614,6 +1619,7 @@ describe("thread runtime config", () => {
           harness.deps,
           {
             thread,
+            model: "test-model",
             environment: {
               hostId: environment.hostId,
               id: environment.id,
@@ -1697,6 +1703,7 @@ describe("thread runtime config", () => {
           harness.deps,
           {
             thread,
+            model: "test-model",
             environment: {
               hostId: environment.hostId,
               id: environment.id,
@@ -1768,6 +1775,7 @@ describe("thread runtime config", () => {
           harness.deps,
           {
             thread: sideChatThread,
+            model: "test-model",
             environment: {
               hostId: environment.hostId,
               id: environment.id,

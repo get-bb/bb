@@ -88,6 +88,8 @@ added/updated/unchanged counts.
                                  --yes). Use outdated to preview; pinned
                                  installs stay put
   bb plugin list                 Status, services, schedules, handler timings
+  bb plugin source <id> [--json] Show requested/resolved source, engine ranges,
+                                 install time, and recent activation history
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
   bb plugin config <id> [set <key> <value> | unset <key>]
@@ -193,10 +195,13 @@ form; no props in V1, optional host-rendered title; builtin slot entries work
 with the Plugins experiment off while the Settings → Plugins management
 bucket stays experiment-gated),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
-arrives as the component's subPath prop for panel-internal deep links),
+arrives as the component's subPath prop for panel-internal deep links; the
+host always renders the shared plugin title bar and the component owns a
+zero-padding full-bleed body, including its scrolling),
 threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
-open closable panel tabs with JSON params), composerAccessory (prompt box
+open closable panel tabs with recursive `JsonValue` params; restored
+components read `JsonValue | null`), composerAccessory (prompt box
 footer), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
@@ -209,8 +214,16 @@ host workspace viewer and a nullable
 openThreadPanel({ actionId, title?, params? }) callback for opening one of the
 same plugin's thread-panel actions). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
-useBbNavigate, and useComposer (quote selections / insert mention pills
-into the chat composer draft). Components are vendored shadcn source the plugin owns (the
+useBbNavigate, and useComposer (read/replace/update/clear scoped composer
+text, quote selections, insert mention pills, and focus the composer;
+plain-text edits preserve attachments and reconcile only inline mentions
+overlapped by the edit). Define RPC methods with `defineRpcContract`
+and Standard Schema-compatible input/output validators (Zod works directly),
+register via `bb.rpc.register(contract, handlers)`, then use a type-only
+backend contract import with `useRpc<typeof contract>()` for exact frontend
+method/input/result inference. The server validates both schemas and rejects
+non-JSON results (including cyclic and non-finite values) with structured
+error codes. Components are vendored shadcn source the plugin owns (the
 shadcn model): `bb plugin new --app` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
@@ -237,10 +250,13 @@ Authoring a plugin
 
 The loop: `bb plugin new <name>` scaffolds `./bb-plugin-<name>` (add --app
 for a frontend entry); `bb plugin install .` registers it; `bb plugin dev`
-watches and reloads on every save. The manifest is package.json: `bb.server`
+watches and reloads on every save. The manifest is package.json: required
+`bb.name` and `bb.description` human identity, required `bb.branding` with at
+least `icon` or `logo.light`, `bb.server`
 (backend entry, loaded as TypeScript — no build step), optional `bb.app`
-(frontend entry), optional `bb.skills` (skills directories auto-imported
-into agent threads; default `skills/`), `engines.bb` (supported bb range),
+(frontend entry), optional `bb.skills` (static skill directories auto-imported
+into agent threads unless filtered by `bb.agents.configure`; default
+`skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
 writes `"^0.2.0"` for SDK 0.2.0). The plugin id is the package name minus
 `bb-plugin-`.
@@ -251,16 +267,15 @@ file. Loaded plugin palettes appear in Settings → Appearance and `bb theme
 list`; their selectable id is `plugin:<plugin-id>:<theme-id>`. Disabling or
 removing the owning plugin makes bb fall back to the default palette.
 
-Logos: drop a logo.svg (or logo.png / logo.webp) in the plugin root and bb
-shows it wherever the plugin's contributions appear — the sidebar entry,
-panel title bar, composer command and mention menus, thread action
-buttons, and Settings → Plugins. Optional `bb.logo` in the manifest
-relocates the file (svg/png/webp only). An optional dark-theme variant —
-logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while
-the app is in dark mode. Without a logo, manifest-level `bb.icon` is the
-canonical app icon on every plugin surface; contribution icon hints are the
-fallback when it is omitted. Unknown icon names use the generic fallback.
-Reload the plugin to pick up logo or icon
+Branding is explicit: `bb.branding.logo.light` points to the plugin's rich
+identity artwork and optional `bb.branding.logo.dark` is preferred in dark
+mode. Paths must be plugin-relative `.svg`, `.png`, or `.webp` files. Root logo
+files are not auto-detected, and a dark logo requires a light logo.
+`bb.branding.icon` is the compact host icon-name identity. Compact chrome uses
+it first, then a contribution's distinct local icon hint, then Zap. Roomy
+Settings rows and cards use the image logo where available. At least the icon
+or light logo is required. BB rejects nulls, empty strings, missing/escaping
+assets, and unsupported extensions. Reload the plugin to pick up branding
 changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
@@ -276,17 +291,22 @@ https://github.com/ymichael/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and
-bb.storage.sqlite()+migrate (the plugin's own database); bb.sdk (the full
+bb.storage.database()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
-attributed to the plugin); bb.on (observe thread.created/idle/failed/deleted);
+attributed to the plugin); bb.events.on (observe thread.created/idle/failed/deleted);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
-local/token/none auth); bb.rpc.register (the frontend data plane);
+local/token/none auth); defineRpcContract + bb.rpc.register (Standard
+Schema-validated frontend data plane with inferred backend handlers and
+type-only frontend method/input/result inference);
 bb.realtime.publish (ephemeral signals to open app pages);
 bb.background.service (long-lived, AbortSignal, restart w/ backoff) and
 bb.background.schedule (durable cron rows); bb.cli.register (a top-level
 `bb <name>` command agents run through bash); bb.agents.registerTool
-(native tools with
-zod or JSON-schema parameters); bb.ui.registerThreadAction /
+(static native tools with zod or JSON-schema parameters) and
+bb.agents.configure (one synchronous per-resolution callback selecting this
+plugin's own tool/skill ids and optional dynamic instructions; tools apply on
+the next provider session start/resume, while busy skill runtimes defer catalog
+changes); bb.ui.registerThreadAction /
 registerMentionProvider (host-rendered UI — no
 frontend bundle needed); bb.status.needsConfiguration (report
 "unconfigured" instead of crashing); bb.onDispose (LIFO cleanup on

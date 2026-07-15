@@ -28,8 +28,8 @@ Spawning:
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
     --folder <id>                  Create the thread in a folder
-    --file <path>                  Attach a local file (repeatable)
-    --image <path>                 Attach a local image (repeatable)
+    --file <path>                  Host-readable absolute or uploaded file path
+    --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork or side-chat thread
     --source-thread <id>           Source thread for fork/side-chat
     --source-seq-end <seq>         Last included source event sequence
@@ -110,65 +110,14 @@ Opening threads and files in the app:
   thread-storage files for the current thread. Use this for Markdown or HTML
   artifacts you create for the user so they open in the BB IDE.
 
-Thread terminals:
-
-  Use thread terminals for long-running commands that should stay alive for the
-  user, such as dev servers, watch tasks, REPLs, and database consoles. Terminals
-  are real PTY sessions scoped to the thread's environment, and they appear in the
-  bb UI as terminal tabs.
-
-  bb thread terminal start <id> --command "pnpm dev"
-    --title <title>                        Display title
-    --cols <n>                             Initial terminal columns
-    --rows <n>                             Initial terminal rows
-    --attach                               Attach interactively after starting
-    --json                                 Print the created terminal session
-
-  bb thread terminal list <id>             List running terminals for a thread
-
-  bb thread terminal attach <terminal-id> <id>
-                                            Attach interactively; Ctrl-B d detaches
-
-  bb thread terminal send <terminal-id> <id>
-    --text <text>                          Text to send
-    --stdin                                Read text from stdin
-    --enter                                Append a newline
-
-  bb thread terminal output <terminal-id> <id>
-    --since-seq <n>                        Read output chunks from a sequence
-    --tail-bytes <n>                       Bound output to latest N bytes
-    --limit-chunks <n>                     Bound output to latest N chunks
-    --json                                 Print chunks, nextSeq, and truncated
-
-  bb thread terminal wait <terminal-id> <id>
-    --contains <text>                      Wait for new output containing text
-    --regex <pattern>                      Wait for new output matching regex
-    --exit                                 Wait until the terminal exits
-    --from-start                           Include existing scrollback
-    --timeout <seconds>                    Timeout
-    --poll-interval <ms>                   Polling interval
-
-  bb thread terminal resize <terminal-id> <id> --cols <n> --rows <n>
-  bb thread terminal stop <terminal-id> <id>
-
-  Terminal commands require an explicit thread ID.
-
-  For a dev server, prefer:
-
-    bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"
-    bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120
-
-  Do not run long-lived servers as one-off foreground commands when the user will
-  need to inspect logs, refresh the page, or stop the process later.
-
 Messaging:
 
   bb thread tell <id> <message>            Send a follow-up message
     --mode <mode>                          Message mode: queue (default), steer, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
-    --file <path>                          Attach a local file (repeatable)
-    --image <path>                         Attach a local image (repeatable)
+    --file <path>                          Host-readable absolute or uploaded file path
+    --image <path>                         Host-readable absolute or uploaded image path
 
   By default, tell queues: if the agent is working, the message is delivered
   after the current turn finishes. Use --mode steer to send immediately into
@@ -219,4 +168,3 @@ Lifecycle:
 
 Read-only commands require a thread ID or --self where supported.
 Mutating thread lifecycle and messaging commands require an explicit ID or --self.
-Terminal commands require an explicit thread ID.

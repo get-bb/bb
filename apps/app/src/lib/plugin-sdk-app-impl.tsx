@@ -13,9 +13,9 @@ import {
  * The real `@bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
  * `globalThis.__bbPluginRuntime.pluginSdkApp` by installPluginRuntime() so
  * `bb plugin build` shims resolve it inside plugin bundles. `satisfies
- * PluginSdkApp` keeps it in type-sync with the facade package, and a unit
- * test asserts its keys equal PLUGIN_SDK_APP_EXPORT_NAMES (the shim's
- * named-export list).
+ * PluginSdkApp` keeps it in type-sync with the facade package; the plugin SDK
+ * parity test compares the facade's actual runtime exports with its bundled
+ * declarations so declaration-only values cannot leak into the contract.
  *
  * Deliberately hooks-only (the 65-component host-provided UI kit was removed
  * 2026-07-03, plugin design §5.5): plugins vendor shadcn-style component

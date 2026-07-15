@@ -36,7 +36,12 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "SDK fixture",
+        description: "Plugin SDK fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -55,6 +60,10 @@ describe("plugin bb.sdk bind gate", () => {
   let service: PluginService;
   const sharedPorts = {
     declareSharedPorts: vi.fn(),
+    validateSharedPortDeclaration: vi.fn(
+      (_hostId: string, ports: readonly number[]) => [...ports],
+    ),
+    replaceDeclarationsForOwner: vi.fn(),
     clearDeclarationsForOwner: vi.fn(),
   };
   const ensureSharedPortTunnel = vi.fn().mockResolvedValue({
@@ -67,6 +76,8 @@ describe("plugin bb.sdk bind gate", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-test-"));
     sharedPorts.declareSharedPorts.mockClear();
+    sharedPorts.validateSharedPortDeclaration.mockClear();
+    sharedPorts.replaceDeclarationsForOwner.mockClear();
     sharedPorts.clearDeclarationsForOwner.mockClear();
     ensureSharedPortTunnel.mockClear();
     service = createPluginService({
@@ -149,6 +160,38 @@ describe("plugin bb.sdk bind gate", () => {
     expect(sharedPorts.clearDeclarationsForOwner).toHaveBeenCalledWith(
       "shares",
     );
+  });
+
+  it("does not publish candidate host declarations when reload fails", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-atomic-shares",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.hosts.declareSharedPorts("host-1", [3000]);
+        }
+      `,
+    });
+    await service.installPath(rootDir);
+    const previousApi = requireApi(service, "atomic-shares");
+    expect(sharedPorts.replaceDeclarationsForOwner).toHaveBeenCalledWith(
+      "atomic-shares",
+      [{ hostId: "host-1", ports: [3000] }],
+    );
+    sharedPorts.replaceDeclarationsForOwner.mockClear();
+
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `
+        export default function plugin(bb: any) {
+          bb.hosts.declareSharedPorts("host-1", [4000]);
+          throw new Error("candidate failed");
+        }
+      `,
+    );
+    await service.reload("atomic-shares");
+
+    expect(service.getApi("atomic-shares")).toBe(previousApi);
+    expect(sharedPorts.replaceDeclarationsForOwner).not.toHaveBeenCalled();
   });
 });
 

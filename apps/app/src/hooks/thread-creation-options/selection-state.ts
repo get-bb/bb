@@ -3,6 +3,7 @@ import type {
   CreateExecutionInputSources,
   ExecutionInputFieldSource,
   ExistingThreadExecutionInputSources,
+  SystemProvidersQuery,
 } from "@bb/server-contract";
 import type {
   StoredPermissionMode,
@@ -39,6 +40,9 @@ export interface UsePromptModelReasoningOptions {
   initialPermissionMode?: PermissionMode;
   initialEnvironmentSelectionValue?: string;
   preferenceProjectId?: string | null;
+  resolveProviderRouting?: (
+    environmentSelectionValue: string,
+  ) => SystemProvidersQuery;
 }
 
 export interface UseNewThreadCreationOptions extends UsePromptModelReasoningOptions {

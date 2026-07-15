@@ -16,6 +16,7 @@ import {
   hostPathExistenceQueryKey,
   projectPathsQueryKey,
   projectCommandsQueryKey,
+  projectFilePreviewQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
   projectsQueryKey,
@@ -99,6 +100,24 @@ function createRealtimeEffectsTestContext() {
 }
 
 describe("createRealtimeCacheEffects", () => {
+  it("isolates project workspace caches between selected hosts", () => {
+    expect(
+      projectPathsQueryKey("project-1", null, "host-a", "src", 8, true, true),
+    ).not.toEqual(
+      projectPathsQueryKey("project-1", null, "host-b", "src", 8, true, true),
+    );
+    expect(
+      projectCommandsQueryKey("project-1", "codex", null, "host-a"),
+    ).not.toEqual(
+      projectCommandsQueryKey("project-1", "codex", null, "host-b"),
+    );
+    expect(
+      projectFilePreviewQueryKey("project-1", null, "host-a", "README.md"),
+    ).not.toEqual(
+      projectFilePreviewQueryKey("project-1", null, "host-b", "README.md"),
+    );
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -169,6 +188,7 @@ describe("createRealtimeCacheEffects", () => {
       "project-1",
       "codex",
       "environment-1",
+      null,
     );
     queryClient.setQueryData(commandsKey, { commands: [] });
 
@@ -1285,6 +1305,8 @@ describe("createRealtimeCacheEffects", () => {
     ]);
     const firstProjectPathsKey = projectPathsQueryKey(
       "project-1",
+      null,
+      "host-1",
       "",
       20,
       true,
@@ -1292,6 +1314,8 @@ describe("createRealtimeCacheEffects", () => {
     );
     const secondProjectPathsKey = projectPathsQueryKey(
       "project-2",
+      null,
+      "host-2",
       "",
       20,
       true,

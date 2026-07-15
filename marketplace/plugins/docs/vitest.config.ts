@@ -6,10 +6,6 @@ export default defineWorkspaceTestConfig({
     // Mirror the plugin tsconfig's "@/*" paths.
     alias: {
       "@": path.resolve(import.meta.dirname, "."),
-      "@bb/plugin-sdk": path.resolve(
-        import.meta.dirname,
-        "../../../packages/plugin-sdk/src",
-      ),
     },
   },
   test: {

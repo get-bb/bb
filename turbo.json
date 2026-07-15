@@ -378,7 +378,8 @@
         "$TURBO_ROOT$/packages/plugin-sdk/scripts/**"
       ],
       "outputs": [
-        "bundled-types/**"
+        "bundled-types/**",
+        "dist/**"
       ]
     },
     "@bb/plugin-build#typecheck": {

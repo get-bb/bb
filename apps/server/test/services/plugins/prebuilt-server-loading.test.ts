@@ -94,7 +94,12 @@ describe("prebuilt server bundle loading", () => {
       JSON.stringify({
         name,
         version: "0.1.0",
-        bb: { server: "./server.ts" },
+        bb: {
+          name: "Prebuilt server fixture",
+          description: "Prebuilt plugin server fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
       }),
     );
     await writeFile(join(rootDir, "server.ts"), THROWING_SERVER_TS);

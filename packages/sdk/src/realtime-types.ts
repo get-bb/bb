@@ -59,36 +59,36 @@ export type BbRealtimeCallback<TEventName extends BbRealtimeEventName> = (
   event: BbRealtimeEventMap[TEventName],
 ) => void;
 
-export interface ThreadRealtimeOnArgs {
+export interface ThreadRealtimeSubscribeArgs {
   callback: BbRealtimeCallback<"thread:changed">;
   event: "thread:changed";
   threadId?: string;
 }
 
-export interface ProjectRealtimeOnArgs {
+export interface ProjectRealtimeSubscribeArgs {
   callback: BbRealtimeCallback<"project:changed">;
   event: "project:changed";
   projectId?: string;
 }
 
-export interface EnvironmentRealtimeOnArgs {
+export interface EnvironmentRealtimeSubscribeArgs {
   callback: BbRealtimeCallback<"environment:changed">;
   environmentId?: string;
   event: "environment:changed";
 }
 
-export interface HostRealtimeOnArgs {
+export interface HostRealtimeSubscribeArgs {
   callback: BbRealtimeCallback<"host:changed">;
   event: "host:changed";
   hostId?: string;
 }
 
-export interface SystemRealtimeOnArgs {
+export interface SystemRealtimeSubscribeArgs {
   callback: BbRealtimeCallback<"system:changed">;
   event: "system:changed";
 }
 
-export interface SystemConfigRealtimeOnArgs {
+export interface SystemConfigRealtimeSubscribeArgs {
   callback: BbRealtimeCallback<"system:config-changed">;
   event: "system:config-changed";
 }
@@ -99,26 +99,26 @@ export interface SystemConfigRealtimeOnArgs {
  * latest connection event as a snapshot on the next microtask, so a status
  * UI mounted after connect still learns the current state.
  */
-export interface RealtimeConnectionOnArgs {
+export interface RealtimeConnectionSubscribeArgs {
   callback: BbRealtimeCallback<"realtime:connection">;
   event: "realtime:connection";
 }
 
-export type BbRealtimeOnArgsUnion =
-  | ThreadRealtimeOnArgs
-  | ProjectRealtimeOnArgs
-  | EnvironmentRealtimeOnArgs
-  | HostRealtimeOnArgs
-  | SystemRealtimeOnArgs
-  | SystemConfigRealtimeOnArgs
-  | RealtimeConnectionOnArgs;
+export type BbRealtimeSubscribeArgsUnion =
+  | ThreadRealtimeSubscribeArgs
+  | ProjectRealtimeSubscribeArgs
+  | EnvironmentRealtimeSubscribeArgs
+  | HostRealtimeSubscribeArgs
+  | SystemRealtimeSubscribeArgs
+  | SystemConfigRealtimeSubscribeArgs
+  | RealtimeConnectionSubscribeArgs;
 
-export type BbRealtimeOnArgs<
+export type BbRealtimeSubscribeArgs<
   TEventName extends BbRealtimeEventName = BbRealtimeEventName,
-> = Extract<BbRealtimeOnArgsUnion, { event: TEventName }>;
+> = Extract<BbRealtimeSubscribeArgsUnion, { event: TEventName }>;
 
 export interface BbRealtime {
-  on<TEventName extends BbRealtimeEventName>(
-    args: BbRealtimeOnArgs<TEventName>,
+  subscribe<TEventName extends BbRealtimeEventName>(
+    args: BbRealtimeSubscribeArgs<TEventName>,
   ): BbRealtimeUnsubscribe;
 }
