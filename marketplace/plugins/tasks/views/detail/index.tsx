@@ -371,7 +371,9 @@ function TaskDetail({ task }: { task: Task }) {
           <InlineProperties
             task={task}
             labels={labels.data}
+            presets={presets.data}
             onUpdate={(update) => void updateTask(update)}
+            onError={(message) => push("error", message)}
             className="mb-4 @[45rem]:hidden"
           />
 
@@ -430,12 +432,7 @@ function TaskDetail({ task }: { task: Task }) {
               rail's Dispatch button is the entry point. */}
           {(threads.data ?? []).length > 0 ? (
             <div className="mt-6">
-              <ThreadsSection
-                taskId={task.id}
-                threads={threads.data ?? []}
-                presets={presets.data}
-                onError={(message) => push("error", message)}
-              />
+              <ThreadsSection threads={threads.data ?? []} />
             </div>
           ) : null}
 

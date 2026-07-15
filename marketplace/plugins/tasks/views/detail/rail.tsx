@@ -552,8 +552,6 @@ export function PropertiesRail({
           presets={presets}
           onError={onError}
           align="start"
-          appearance="primary"
-          labelMode="preset"
           className="w-full"
         />
       </div>
@@ -589,13 +587,21 @@ export function PropertiesRail({
 const CHIP_CLASS =
   "inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-0.5 text-xs text-foreground hover:border-input";
 
-/** Compact property chips shown under the title when the rail is hidden. */
+/** Compact property chips shown under the title when the rail is hidden.
+ *  Carries the task's single DispatchControl on narrow layouts, so it also
+ *  needs the rail's presets/onError wiring. */
 export function InlineProperties({
   task,
   labels,
+  presets,
   onUpdate,
+  onError,
   className,
-}: Omit<TaskPropertiesProps, "project" | "threads"> & { className?: string }) {
+}: Omit<TaskPropertiesProps, "project" | "threads"> & {
+  presets: Preset[] | undefined;
+  onError: (message: string) => void;
+  className?: string;
+}) {
   const taskLabels = (labels ?? []).filter((label) =>
     task.labelIds.includes(label.id),
   );
@@ -616,6 +622,12 @@ export function InlineProperties({
           <Icon name="Plus" className="size-3" />
         </button>
       </LabelsMenu>
+      <DispatchControl
+        taskId={task.id}
+        presets={presets}
+        onError={onError}
+        className="ml-auto max-w-56"
+      />
     </div>
   );
 }

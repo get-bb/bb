@@ -82,29 +82,25 @@ export interface DispatchControlProps {
   presets: Preset[] | undefined;
   onError: (message: string) => void;
   align?: "start" | "end";
-  /** Hero CTA (properties rail) vs quiet outline (threads header). */
-  appearance?: "primary" | "outline";
-  /** "preset" drops the Zap icon and "Dispatch ·" prefix — the rail's
-   *  Dispatch-target section already carries that meaning. */
-  labelMode?: "dispatch" | "preset";
   className?: string;
 }
 
 /**
+ * The single dispatch control for a task — rendered in the properties rail
+ * on wide layouts and in the inline property row when the rail is hidden.
  * GitHub-merge-style split button around the dispatch RPC: the primary
  * segment dispatches immediately with the last-used preset (persisted in
  * localStorage; first preset alphabetically as the fallback), the chevron
  * segment opens the preset menu, which also updates the remembered choice.
- * With zero presets it collapses to an "Add a preset…" button opening the
- * preset dialog in create mode.
+ * The label is just the preset name — the dropdown's "Dispatch with preset"
+ * header carries the verb. With zero presets it collapses to an
+ * "Add a preset…" button opening the preset dialog in create mode.
  */
 export function DispatchControl({
   taskId,
   presets,
   onError,
   align = "end",
-  appearance = "outline",
-  labelMode = "dispatch",
   className,
 }: DispatchControlProps) {
   const rpc = useRpc<DelegationRpcContract>();
@@ -137,17 +133,13 @@ export function DispatchControl({
   // define an accent primary the hero CTA should pick up; in the default
   // theme both read as intended.
   const primarySegment =
-    appearance === "primary"
-      ? "bg-primary text-primary-foreground hover:bg-primary/90"
-      : undefined;
-  const buttonVariant = appearance === "primary" ? "default" : "outline";
+    "bg-primary text-primary-foreground hover:bg-primary/90";
 
   if (presets !== undefined && presets.length === 0) {
     return (
       <>
         <Button
           size="sm"
-          variant={buttonVariant}
           className={cn("h-7 gap-1.5", primarySegment, className)}
           onClick={() => setCreateDialogKey(Date.now())}
         >
@@ -180,7 +172,6 @@ export function DispatchControl({
       <div className={cn("flex min-w-0", className)}>
         <Button
           size="sm"
-          variant={buttonVariant}
           disabled={dispatching || !current}
           className={cn(
             "h-7 min-w-0 flex-1 gap-1.5 rounded-r-none",
@@ -190,31 +181,20 @@ export function DispatchControl({
             if (current) pickPreset(current);
           }}
         >
-          {labelMode === "dispatch" ? (
-            <Icon name="Zap" className="size-3.5 shrink-0" />
-          ) : null}
           <span className="truncate">
             {dispatching
               ? "Dispatching…"
-              : current
-                ? labelMode === "preset"
-                  ? current.name
-                  : `Dispatch · ${current.name}`
-                : "Dispatch"}
+              : (current?.name ?? "Dispatch")}
           </span>
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild disabled={dispatching || !current}>
             <Button
               size="sm"
-              variant={buttonVariant}
               aria-label="Choose dispatch preset"
               className={cn(
-                "h-7 shrink-0 rounded-l-none px-1",
+                "h-7 shrink-0 rounded-l-none border-l border-primary-foreground/25 px-1",
                 primarySegment,
-                appearance === "primary"
-                  ? "border-l border-primary-foreground/25"
-                  : "-ml-px",
               )}
             >
               <Icon name="ChevronDown" className="size-3.5" />
@@ -257,19 +237,13 @@ export function DispatchControl({
 }
 
 export interface ThreadsSectionProps {
-  taskId: string;
   threads: TaskThread[];
-  presets: Preset[] | undefined;
-  onError: (message: string) => void;
 }
 
-/** Attached-thread list; the caller skips it entirely when there are none. */
-export function ThreadsSection({
-  taskId,
-  threads,
-  presets,
-  onError,
-}: ThreadsSectionProps) {
+/** Attached-thread list; the caller skips it entirely when there are none.
+ *  Dispatching lives in a single DispatchControl (rail on wide layouts,
+ *  inline property row on narrow), not here. */
+export function ThreadsSection({ threads }: ThreadsSectionProps) {
   const activeCount = threads.filter(isActiveThread).length;
 
   return (
@@ -279,13 +253,6 @@ export function ThreadsSection({
         {activeCount > 0 ? (
           <span className="font-normal">{activeCount} working now</span>
         ) : null}
-        <DispatchControl
-          taskId={taskId}
-          presets={presets}
-          onError={onError}
-          appearance="outline"
-          className="ml-auto"
-        />
       </div>
       {threads.map((thread) => (
         <ThreadCard key={thread.id} thread={thread} />
