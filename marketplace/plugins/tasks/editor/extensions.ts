@@ -1,0 +1,201 @@
+import { Extension, InputRule, Node, type Extensions } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
+import Image from "@tiptap/extension-image";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import Placeholder from "@tiptap/extension-placeholder";
+import { Markdown } from "tiptap-markdown";
+import { PluginKey } from "@tiptap/pm/state";
+import { Suggestion, type SuggestionProps } from "@tiptap/suggestion";
+
+export interface MentionItem {
+  id: string;
+  key: string;
+  title: string;
+}
+
+const MENTION_SCHEME = "bbtask://";
+
+// tiptap-markdown only adds a `tight` attribute to bulletList/orderedList, so
+// task lists would always serialize loose (blank lines between items).
+// Mirror its attribute here: default tight, loose only when the source
+// markdown had paragraph-separated items.
+const TightTaskList = TaskList.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      tight: {
+        default: true,
+        parseHTML: (element) =>
+          element.getAttribute("data-tight") === "true" ||
+          !element.querySelector("p"),
+        renderHTML: (attributes) => ({
+          "data-tight": attributes.tight ? "true" : null,
+        }),
+      },
+    };
+  },
+});
+
+// Typing "[ ] " / "[x] " at the start of a line turns into a task list item,
+// mirroring how the markdown source spells checkboxes.
+const MarkdownTaskInput = Extension.create({
+  name: "markdownTaskInput",
+  priority: 200,
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /^\s*\[([ xX]?)\]\s$/,
+        handler: ({ range, match, chain }) => {
+          const commands = chain().deleteRange(range).toggleTaskList();
+          if (/[xX]/.test(match[1] ?? ""))
+            commands.updateAttributes("taskItem", { checked: true });
+          commands.run();
+        },
+      }),
+    ];
+  },
+});
+
+// Inline atom that renders as a pill and serializes to markdown as a
+// bbtask:// link: [TSK-42](bbtask://TSK-42).
+export const TaskMention = Node.create({
+  name: "taskMention",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      key: { default: "" },
+      label: { default: "" },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "span[data-task-mention]",
+        getAttrs: (element) => {
+          const key = element.getAttribute("data-task-mention") ?? "";
+          return key ? { key, label: element.textContent || key } : false;
+        },
+      },
+      {
+        // Markdown input arrives as <a href="bbtask://KEY">label</a>; this
+        // rule must outrank the Link mark's a[href] rule.
+        tag: `a[href^="${MENTION_SCHEME}"]`,
+        priority: 100,
+        getAttrs: (element) => {
+          const href = element.getAttribute("href") ?? "";
+          const key = href.slice(MENTION_SCHEME.length);
+          return key ? { key, label: element.textContent || key } : false;
+        },
+      },
+    ];
+  },
+  renderHTML({ node }) {
+    return [
+      "span",
+      {
+        "data-task-mention": String(node.attrs.key),
+        class: "bb-tasks-mention",
+      },
+      String(node.attrs.label || node.attrs.key),
+    ];
+  },
+  renderText({ node }) {
+    return String(node.attrs.label || node.attrs.key);
+  },
+  addStorage() {
+    return {
+      markdown: {
+        serialize(
+          state: { write(value: string): void },
+          node: { attrs: { key: string; label: string } },
+        ) {
+          state.write(
+            `[${node.attrs.label || node.attrs.key}](${MENTION_SCHEME}${node.attrs.key})`,
+          );
+        },
+      },
+    };
+  },
+});
+
+export interface MentionSuggestionHandle {
+  getItems(query: string): Promise<MentionItem[]>;
+  onChange(props: SuggestionProps<MentionItem, MentionItem>): void;
+  onExit(): void;
+  onKeyDown(event: KeyboardEvent): boolean;
+}
+
+// Wires the "@" suggestion popover to the host component. Without a handle
+// the extension contributes nothing, keeping the editor inert when the
+// mentionItems prop is absent.
+const MentionSuggestion = Extension.create<{
+  handle: MentionSuggestionHandle | null;
+}>({
+  name: "taskMentionSuggestion",
+  addOptions() {
+    return { handle: null };
+  },
+  addProseMirrorPlugins() {
+    const handle = this.options.handle;
+    if (!handle) return [];
+    return [
+      Suggestion<MentionItem, MentionItem>({
+        editor: this.editor,
+        char: "@",
+        pluginKey: new PluginKey("taskMentionSuggestion"),
+        items: ({ query }) => handle.getItems(query),
+        command: ({ editor, range, props }) => {
+          editor
+            .chain()
+            .focus()
+            .insertContentAt(range, [
+              {
+                type: TaskMention.name,
+                attrs: { key: props.key, label: props.key },
+              },
+              { type: "text", text: " " },
+            ])
+            .run();
+        },
+        render: () => ({
+          onStart: (props) => handle.onChange(props),
+          onUpdate: (props) => handle.onChange(props),
+          onExit: () => handle.onExit(),
+          onKeyDown: (props) => handle.onKeyDown(props.event),
+        }),
+      }),
+    ];
+  },
+});
+
+export function createEditorExtensions(options?: {
+  placeholder?: () => string;
+  mentionHandle?: MentionSuggestionHandle;
+}): Extensions {
+  return [
+    StarterKit,
+    Link.configure({ openOnClick: false, autolink: true }),
+    Image.configure({ allowBase64: false }),
+    TightTaskList,
+    TaskItem.configure({ nested: true }),
+    MarkdownTaskInput,
+    TaskMention,
+    MentionSuggestion.configure({
+      handle: options?.mentionHandle ?? null,
+    }),
+    Placeholder.configure({
+      placeholder: () => options?.placeholder?.() ?? "",
+    }),
+    Markdown.configure({
+      html: true,
+      tightLists: true,
+      bulletListMarker: "-",
+      linkify: true,
+    }),
+  ];
+}

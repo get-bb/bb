@@ -19,6 +19,7 @@
     "app.tsx",
     "vitest.config.ts",
     "components",
+    "editor",
     "hooks",
     "lib"
   ]
