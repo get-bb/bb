@@ -146,6 +146,17 @@ interface MigrationCountRow {
   count: number;
 }
 
+interface MigratedPluginCatalogProvenanceRow {
+  id: string;
+  provenance: string;
+  catalogEntryId: string | null;
+}
+
+interface MigratedPluginCatalogRow {
+  catalogJson: string;
+  lastAttemptedRefreshAt: number | null;
+}
+
 interface TableInfoRow {
   name: string;
   notnull: number;
@@ -217,6 +228,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS app_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_state_snapshots").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_artifacts").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_catalog").run();
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
@@ -307,6 +319,12 @@ const queuedMessageSortKeyMigrationPath = resolve(
   "..",
   "drizzle",
   "0004_wild_justice.sql",
+);
+const pluginCatalogMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0072_bizarre_the_liberteens.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -3502,6 +3520,163 @@ describe("migrate", () => {
       expect(readIndexNames({ db, tableName: "threads" })).toContain(
         "threads_pin_sort_idx",
       );
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("migrates official marketplace provenance to the singleton catalog without changing direct source data", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE plugins (
+          id text PRIMARY KEY NOT NULL,
+          provenance text NOT NULL,
+          marketplace_id text,
+          marketplace_entry_id text,
+          source text NOT NULL
+        );
+        CREATE TABLE marketplaces (
+          id text PRIMARY KEY NOT NULL,
+          source_kind text NOT NULL,
+          location text NOT NULL,
+          requested_git_ref text,
+          catalog_json text,
+          last_successful_refresh_at integer,
+          last_attempted_refresh_at integer,
+          last_error text,
+          created_at integer NOT NULL,
+          updated_at integer NOT NULL
+        );
+        INSERT INTO marketplaces VALUES
+          ('bb-official', 'git', 'https://github.com/ymichael/bb.git', 'main', '{"schemaVersion":1,"name":"bb-official","displayName":"BB Official","plugins":[]}', 10, 20, NULL, 1, 20),
+          ('other', 'git', 'https://example.test/catalog.git', 'main', '{"schemaVersion":1}', 30, 40, NULL, 2, 40);
+        INSERT INTO plugins VALUES
+          ('official', 'marketplace', 'bb-official', 'notes', 'npm:notes@^1'),
+          ('third-party', 'marketplace', 'other', 'tasks', 'git:https://example.test/tasks@main'),
+          ('already-direct', 'direct', NULL, NULL, 'path:/tmp/plugin');
+      `);
+
+      runMigrationFile({ db, migrationPath: pluginCatalogMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<[], MigratedPluginCatalogProvenanceRow>(
+            `
+            SELECT id, provenance, catalog_entry_id AS catalogEntryId
+            FROM plugins ORDER BY id
+          `,
+          )
+          .all(),
+      ).toEqual([
+        {
+          id: "already-direct",
+          provenance: "direct",
+          catalogEntryId: null,
+        },
+        { id: "official", provenance: "catalog", catalogEntryId: "notes" },
+        {
+          id: "third-party",
+          provenance: "direct",
+          catalogEntryId: null,
+        },
+      ]);
+      expect(
+        db.$client
+          .prepare<[], MigratedPluginCatalogRow>(
+            `
+            SELECT catalog_json AS catalogJson,
+              last_attempted_refresh_at AS lastAttemptedRefreshAt
+            FROM plugin_catalog
+          `,
+          )
+          .get(),
+      ).toEqual({
+        catalogJson: '{"schemaVersion":1,"plugins":[]}',
+        lastAttemptedRefreshAt: 20,
+      });
+      expect(readTableNames(db)).not.toContain("marketplaces");
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { source: string }
+          >("SELECT source FROM plugins WHERE id = 'third-party'")
+          .get(),
+      ).toEqual({ source: "git:https://example.test/tasks@main" });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("does not grant catalog provenance to a custom marketplace named bb-official", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE plugins (
+          id text PRIMARY KEY NOT NULL,
+          provenance text NOT NULL,
+          marketplace_id text,
+          marketplace_entry_id text,
+          source text NOT NULL
+        );
+        CREATE TABLE marketplaces (
+          id text PRIMARY KEY NOT NULL,
+          source_kind text NOT NULL,
+          location text NOT NULL,
+          requested_git_ref text,
+          catalog_json text,
+          last_successful_refresh_at integer,
+          last_attempted_refresh_at integer,
+          last_error text,
+          created_at integer NOT NULL,
+          updated_at integer NOT NULL
+        );
+        INSERT INTO marketplaces VALUES (
+          'bb-official',
+          'git',
+          'https://example.test/custom.git',
+          'main',
+          '{"schemaVersion":1}',
+          10,
+          20,
+          NULL,
+          1,
+          20
+        );
+        INSERT INTO plugins VALUES (
+          'custom',
+          'marketplace',
+          'bb-official',
+          'custom-entry',
+          'npm:bb-plugin-custom@^1'
+        );
+      `);
+
+      runMigrationFile({ db, migrationPath: pluginCatalogMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<[], MigratedPluginCatalogProvenanceRow>(
+            `
+            SELECT id, provenance, catalog_entry_id AS catalogEntryId
+            FROM plugins
+          `,
+          )
+          .get(),
+      ).toEqual({
+        id: "custom",
+        provenance: "direct",
+        catalogEntryId: null,
+      });
+      expect(
+        db.$client
+          .prepare<
+            [],
+            MigrationCountRow
+          >("SELECT COUNT(*) AS count FROM plugin_catalog")
+          .get(),
+      ).toEqual({ count: 0 });
     } finally {
       closeConnection(db);
     }

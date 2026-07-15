@@ -7,9 +7,9 @@ import {
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const pluginDirectories = new Map([
-  ["github", "marketplace/plugins/github"],
-  ["docs", "marketplace/plugins/docs"],
-  ["memory", "marketplace/plugins/memory"],
+  ["github", "official-plugins/github"],
+  ["docs", "official-plugins/docs"],
+  ["memory", "official-plugins/memory"],
 ]);
 
 const requested = process.argv.slice(2);

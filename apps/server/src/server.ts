@@ -22,7 +22,7 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
-import { registerMarketplaceRoutes } from "./routes/marketplaces.js";
+import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
 import {
   createPluginService,
   type PluginService,
@@ -66,7 +66,10 @@ import {
   type BbAppArtifactService,
 } from "./services/install/bb-app-artifact.js";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import { createMarketplaceService } from "./services/marketplaces/marketplace-service.js";
+import {
+  createPluginCatalogService,
+  type PluginCatalogService,
+} from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 
 export type CloseWebSockets = () => Promise<void>;
@@ -78,7 +81,7 @@ export interface ServerApp {
   closeWebSockets: CloseWebSockets;
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
-  marketplaceService: import("./services/marketplaces/marketplace-service.js").MarketplaceService;
+  pluginCatalogService: PluginCatalogService;
 }
 
 interface CloseWebSocketServerArgs {
@@ -106,6 +109,7 @@ function normalizeInternalAuthPath(path: string): string {
 
 interface CreateAppOptions {
   bbAppArtifactService?: BbAppArtifactService;
+  startPluginCatalogRefresh?: boolean;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
 }
@@ -434,12 +438,17 @@ export function createApp(
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
-  const marketplaceService = createMarketplaceService({
+  const pluginCatalogService = createPluginCatalogService({
     db: deps.db,
-    dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     plugins: pluginService,
+    notifyCatalogChanged: () =>
+      deps.hub.notifySystem(["plugin-catalog-changed"]),
+    warn: (message) => deps.logger.warn(message),
   });
+  if (options?.startPluginCatalogRefresh !== false) {
+    pluginCatalogService.startPeriodicRefresh();
+  }
   registerProjectRoutes(publicApi, deps);
   registerThreadFolderRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
@@ -448,8 +457,8 @@ export function createApp(
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
-  registerMarketplaceRoutes(publicApi, marketplaceService);
-  registerPluginRoutes(publicApi, deps, pluginService, marketplaceService);
+  registerPluginCatalogRoutes(publicApi, pluginCatalogService);
+  registerPluginRoutes(publicApi, deps, pluginService);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
@@ -605,6 +614,6 @@ export function createApp(
       }),
     injectWebSocket,
     pluginService,
-    marketplaceService,
+    pluginCatalogService,
   };
 }

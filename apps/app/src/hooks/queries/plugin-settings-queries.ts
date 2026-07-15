@@ -40,7 +40,6 @@ export interface PluginListItem {
   hasSettings: boolean;
   provenance: PluginProvenance;
   isOrphanedBuiltin: boolean;
-  marketplaceName: string | null;
   sourceDisplay: string;
   updateState: PluginUpdateState;
 }
@@ -85,7 +84,6 @@ function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     hasSettings: plugin.hasSettings,
     provenance: plugin.provenance,
     isOrphanedBuiltin: plugin.isOrphanedBuiltin,
-    marketplaceName: plugin.marketplaceName ?? null,
     sourceDisplay: plugin.sourceDisplay,
     updateState: {
       outcome: state.outcome ?? null,

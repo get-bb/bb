@@ -41,7 +41,7 @@ export function InstalledPluginsTab({
 
   if (plugins.length === 0) {
     return (
-      <EmptyState message="No plugins installed. Use “Add plugin”, browse a marketplace, or run bb plugin install <source>." />
+      <EmptyState message="No plugins installed. Use “Add plugin”, browse the official catalog, or run bb plugin install <source>." />
     );
   }
 

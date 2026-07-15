@@ -23,9 +23,8 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
-    provenance: "marketplace",
+    provenance: "catalog",
     isOrphanedBuiltin: false,
-    marketplaceName: "bb-official",
     sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
   };

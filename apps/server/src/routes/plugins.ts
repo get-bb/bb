@@ -13,7 +13,6 @@ import type {
 import { parsePluginSource } from "../services/plugins/install-sources.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
-import type { MarketplaceService } from "../services/marketplaces/marketplace-service.js";
 import {
   pluginApplyUpdateRequestSchema,
   pluginInstallRequestSchema,
@@ -194,7 +193,6 @@ export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
-  marketplaces?: MarketplaceService,
 ): void {
   const DISABLED = {
     ok: false as const,
@@ -512,7 +510,7 @@ export function registerPluginRoutes(
       return context.json(
         {
           ok: false,
-          error: "exactly one of source or marketplace is required",
+          error: 'expected { "source": string }',
         },
         422,
       );
@@ -524,18 +522,7 @@ export function registerPluginRoutes(
       return context.json(DISABLED, 422);
     }
     try {
-      const plugin =
-        "source" in parsed.data
-          ? await plugins.install(parsed.data.source)
-          : marketplaces === undefined
-            ? (() => {
-                throw new Error("marketplace service is unavailable");
-              })()
-            : await marketplaces.install(
-                parsed.data.marketplace.marketplaceId,
-                parsed.data.marketplace.entryId,
-                parsed.data.version,
-              );
+      const plugin = await plugins.install(parsed.data.source);
       return context.json({ ok: true, plugin });
     } catch (error) {
       return context.json(

@@ -9,7 +9,7 @@ import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   checkPluginUpdates,
   usePluginSource,
-} from "@/hooks/queries/plugin-marketplace-queries";
+} from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { pluginUpdateAvailableVersion } from "./plugin-update-signals";
@@ -26,11 +26,11 @@ import { UpdatePluginDialog } from "./UpdatePluginDialog";
  * here — human source line, last check — with the full technical detail one
  * disclosure deeper under "Source details".
  *
- * Builtins are provenance, not a marketplace: their update channel is the
- * bb app release itself, so none of these surfaces render for them.
+ * Builtins update with the bb app release itself, so none of these surfaces
+ * render for them.
  */
 export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
-  return plugin.provenance === "direct" || plugin.provenance === "marketplace";
+  return plugin.provenance === "direct" || plugin.provenance === "catalog";
 }
 
 export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {

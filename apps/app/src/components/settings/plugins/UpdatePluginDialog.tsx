@@ -16,7 +16,7 @@ import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   applyPluginUpdate,
   type PluginUpdateResult,
-} from "@/hooks/queries/plugin-marketplace-queries";
+} from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   DetailsDisclosure,
@@ -96,10 +96,7 @@ function UpdatePluginDialogContent({
     },
   });
 
-  const fromLine =
-    plugin.marketplaceName !== null
-      ? `Currently ${plugin.version} · from ${plugin.marketplaceName}`
-      : `Currently ${plugin.version}`;
+  const fromLine = `Currently ${plugin.version}`;
 
   if (rolledBack !== null) {
     return (

@@ -7,9 +7,9 @@ import { Command } from "commander";
 import { z } from "zod";
 import type {
   InstalledPlugin as PluginEntry,
-  MarketplaceSearchResult,
-  MarketplaceView,
   PluginApplyUpdateResult,
+  PluginCatalogSearchResult,
+  PluginCatalogStatus,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
 import { installedPluginSchema } from "@bb/server-contract";
@@ -33,15 +33,11 @@ const pluginMutationResultSchema = z.object({
   plugin: installedPluginSchema.optional(),
   plugins: z.array(installedPluginSchema).optional(),
 });
-async function listMarketplaces(baseUrl: string): Promise<MarketplaceView[]> {
-  return createCliBbSdk(baseUrl).plugins.marketplaces.list();
-}
-
-async function searchMarketplaces(
+async function searchCatalog(
   baseUrl: string,
   query: string,
-): Promise<MarketplaceSearchResult[]> {
-  return createCliBbSdk(baseUrl).plugins.marketplaces.search({ query });
+): Promise<PluginCatalogSearchResult[]> {
+  return createCliBbSdk(baseUrl).plugins.catalog.search({ query });
 }
 
 export function canDevelopPlugin(
@@ -165,8 +161,8 @@ function formatMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
 }
 
-function formatRelativeDate(value: string | number | undefined): string {
-  if (value === undefined) return "never";
+function formatRelativeDate(value: string | number | null | undefined): string {
+  if (value == null) return "never";
   const elapsed = Date.now() - new Date(value).getTime();
   if (!Number.isFinite(elapsed)) return String(value);
   const future = elapsed < 0;
@@ -189,24 +185,18 @@ function formatAbsoluteDate(value: string | number | undefined): string {
   return Number.isFinite(date.getTime()) ? date.toISOString() : String(value);
 }
 
-function printMarketplace(marketplace: MarketplaceView): void {
-  console.log(`${marketplace.displayName} (${marketplace.name})`);
-  console.log(`  source: ${marketplace.source}`);
-  console.log(`  plugins: ${marketplace.pluginCount}`);
-  console.log(
-    `  last refreshed: ${formatRelativeDate(marketplace.lastRefreshAt)}`,
-  );
-  if (marketplace.resolvedCommit) {
-    console.log(`  resolved commit: ${marketplace.resolvedCommit}`);
-  }
-  if (marketplace.lastError) {
-    console.log(`  state: refresh failed — ${marketplace.lastError}`);
+function printCatalogStatus(catalog: PluginCatalogStatus): void {
+  console.log("Plugin catalog");
+  console.log(`  plugins: ${catalog.pluginCount}`);
+  console.log(`  last refreshed: ${formatRelativeDate(catalog.lastRefreshAt)}`);
+  if (catalog.lastError) {
+    console.log(`  state: refresh failed — ${catalog.lastError}`);
   }
 }
 
 function dualInterpretationError(source: string): string {
   return (
-    `Could not resolve "${source}" as either a marketplace plugin or a path on disk. ` +
+    `Could not resolve "${source}" as either a catalog plugin or a path on disk. ` +
     "Use path:<path>, npm:<package>, or git:<url>@<ref> to choose an interpretation explicitly."
   );
 }
@@ -217,17 +207,6 @@ function hasPathSyntax(source: string): boolean {
     source.includes("\\") ||
     source.startsWith(".") ||
     source.startsWith("~")
-  );
-}
-
-function isLocalMarketplaceSource(source: string): boolean {
-  return (
-    source.startsWith("path:") ||
-    source.startsWith(".") ||
-    source.startsWith("~") ||
-    source.startsWith("/") ||
-    source.startsWith("\\") ||
-    /^[A-Za-z]:[\\/]/.test(source)
   );
 }
 
@@ -242,11 +221,7 @@ async function existsOnDisk(source: string): Promise<boolean> {
 
 type InstallIntent =
   | { kind: "source"; source: string; summary: string }
-  | {
-      kind: "marketplace";
-      marketplace: MarketplaceView;
-      entry: MarketplaceSearchResult;
-    };
+  | { kind: "catalog"; entry: PluginCatalogSearchResult };
 
 async function resolveInstallIntent(
   baseUrl: string,
@@ -276,54 +251,14 @@ async function resolveInstallIntent(
     };
   }
 
-  const at = input.indexOf("@");
-  if (at > 0 && at === input.lastIndexOf("@")) {
-    const entryId = input.slice(0, at);
-    const marketplaceName = input.slice(at + 1);
-    const marketplaces = await listMarketplaces(baseUrl);
-    const marketplace = marketplaces.find(
-      (candidate) => candidate.name === marketplaceName,
-    );
-    if (!marketplace) throw new Error(dualInterpretationError(input));
-    const results = await searchMarketplaces(baseUrl, entryId);
-    const entry = results.find(
-      (candidate) =>
-        candidate.marketplaceId === marketplace.id &&
-        candidate.entryId === entryId,
-    );
-    if (!entry) throw new Error(dualInterpretationError(input));
-    return { kind: "marketplace", marketplace, entry };
-  }
-
   if (!input.includes("@")) {
-    const results = (await searchMarketplaces(baseUrl, input)).filter(
+    const entry = (await searchCatalog(baseUrl, input)).find(
       (candidate) => candidate.entryId === input,
     );
-    if (results.length === 1) {
-      const marketplaces = await listMarketplaces(baseUrl);
-      const marketplace = marketplaces.find(
-        (candidate) => candidate.id === results[0]?.marketplaceId,
-      );
-      if (!marketplace)
-        throw new Error(`Marketplace for "${input}" is no longer available.`);
-      return { kind: "marketplace", marketplace, entry: results[0]! };
-    }
-    if (results.length > 1) {
-      const marketplaces = await listMarketplaces(baseUrl);
-      const names = new Map(
-        marketplaces.map((marketplace) => [marketplace.id, marketplace.name]),
-      );
-      const choices = results.map(
-        (result) =>
-          `  ${result.entryId}@${names.get(result.marketplaceId) ?? result.marketplaceId}`,
-      );
-      throw new Error(
-        `Marketplace plugin "${input}" is ambiguous. Choose one:\n${choices.join("\n")}`,
-      );
-    }
-    if (!(await existsOnDisk(input)))
-      throw new Error(dualInterpretationError(input));
+    if (entry !== undefined) return { kind: "catalog", entry };
   }
+  if (!(await existsOnDisk(input)))
+    throw new Error(dualInterpretationError(input));
 
   const path = resolve(input);
   return {
@@ -439,142 +374,54 @@ export function registerPluginCommands(
     // pass flags after <id> through to the plugin command untouched.
     .enablePositionalOptions();
 
-  const marketplace = plugin
-    .command("marketplace")
-    .description("Manage plugin marketplaces");
+  const catalog = plugin
+    .command("catalog")
+    .description("Inspect and refresh the BB plugin catalog");
 
-  marketplace
-    .command("add <source>")
-    .description("Add and refresh a plugin marketplace")
-    .option("--name <name>", "Set the marketplace name")
-    .option("--yes", "Skip the trust confirmation for a remote marketplace")
-    .action(
-      action(async (source: string, opts: { name?: string; yes?: boolean }) => {
-        if (!isLocalMarketplaceSource(source)) {
-          console.log(
-            "Marketplace catalogs can introduce full-trust plugin code. Adding this marketplace installs NOTHING.",
-          );
-          await confirmPluginAction(
-            "Trust and add this marketplace?",
-            "Refusing to add a remote marketplace without confirmation — re-run with --yes.",
-            opts.yes === true,
-          );
-        }
-        const added = await createCliBbSdk(getUrl()).plugins.marketplaces.add({
-          source,
-          ...(opts.name === undefined ? {} : { name: opts.name }),
-        });
-        printMarketplace(added);
-      }),
-    );
-
-  marketplace
-    .command("list")
-    .description("List configured plugin marketplaces")
-    .option("--json", "Output the raw marketplace views as JSON")
+  catalog
+    .command("status")
+    .description("Show plugin catalog refresh status")
+    .option("--json", "Output JSON")
     .action(
       action(async (opts: JsonOutputOptions) => {
-        const marketplaces = await listMarketplaces(getUrl());
+        const status = await createCliBbSdk(getUrl()).plugins.catalog.status();
         if (opts.json) {
-          outputJson(opts, { marketplaces });
+          outputJson(opts, status);
           return;
         }
-        if (marketplaces.length === 0) {
-          console.log("No plugin marketplaces configured.");
-          return;
-        }
-        const rows = marketplaces.map((entry) => [
-          entry.name,
-          entry.source,
-          String(entry.pluginCount),
-          formatRelativeDate(entry.lastRefreshAt),
-          entry.lastError
-            ? `refresh failed: using cached catalog from ${formatAbsoluteDate(entry.lastRefreshAt)}`
-            : "ok",
-        ]);
-        console.log(
-          renderBorderlessTable(
-            {
-              head: ["Name", "Source", "Plugins", "Last refreshed", "State"],
-              colWidths: [22, 44, 10, 20, 62],
-              trimTrailingWhitespace: true,
-            },
-            rows,
-          ),
-        );
+        printCatalogStatus(status);
       }),
     );
 
-  marketplace
-    .command("update [name]")
-    .description("Refresh one plugin marketplace, or all marketplaces")
+  catalog
+    .command("refresh")
+    .description("Refresh the plugin catalog")
+    .option("--json", "Output JSON")
     .action(
-      action(async (name: string | undefined) => {
-        const marketplaces = await listMarketplaces(getUrl());
-        const selected =
-          name === undefined
-            ? marketplaces
-            : marketplaces.filter((entry) => entry.name === name);
-        if (name !== undefined && selected.length === 0) {
-          console.error(`Unknown marketplace "${name}".`);
-          process.exit(1);
+      action(async (opts: JsonOutputOptions) => {
+        const status = await createCliBbSdk(getUrl()).plugins.catalog.refresh();
+        if (opts.json) {
+          outputJson(opts, status);
+          return;
         }
-        let failed = false;
-        for (const entry of selected) {
-          try {
-            const refreshed = await createCliBbSdk(
-              getUrl(),
-            ).plugins.marketplaces.refresh({ marketplaceId: entry.id });
-            printMarketplace(refreshed);
-          } catch (error) {
-            failed = true;
-            console.error(
-              `${entry.name}: ${error instanceof Error ? error.message : String(error)}`,
-            );
-            console.error("Last-known-good cached catalog is retained.");
-          }
-        }
-        if (failed) process.exit(1);
-      }),
-    );
-
-  marketplace
-    .command("remove <name>")
-    .description("Remove a plugin marketplace")
-    .action(
-      action(async (name: string) => {
-        const marketplaces = await listMarketplaces(getUrl());
-        const entry = marketplaces.find((candidate) => candidate.name === name);
-        if (!entry) {
-          console.error(`Unknown marketplace "${name}".`);
-          process.exit(1);
-        }
-        const removed = await createCliBbSdk(
-          getUrl(),
-        ).plugins.marketplaces.remove({ marketplaceId: entry.id });
-        console.log(`Removed marketplace ${name}.`);
-        console.log(
-          `${removed.convertedPluginIds.length} plugins kept as direct installs.`,
-        );
+        printCatalogStatus(status);
       }),
     );
 
   plugin
     .command("search <query>")
-    .description("Search configured plugin marketplaces")
+    .description("Search the BB plugin catalog")
+    .option("--json", "Output JSON")
     .action(
-      action(async (query: string) => {
-        const [results, marketplaces] = await Promise.all([
-          searchMarketplaces(getUrl(), query),
-          listMarketplaces(getUrl()),
-        ]);
-        const names = new Map(
-          marketplaces.map((entry) => [entry.id, entry.name]),
-        );
+      action(async (query: string, opts: JsonOutputOptions) => {
+        const results = await searchCatalog(getUrl(), query);
+        if (opts.json) {
+          outputJson(opts, results);
+          return;
+        }
         const rows = results.map((result) => [
           result.displayName,
           result.description,
-          names.get(result.marketplaceId) ?? result.marketplaceId,
           result.installed
             ? "✓ installed"
             : result.compatible
@@ -584,8 +431,8 @@ export function registerPluginCommands(
         console.log(
           renderBorderlessTable(
             {
-              head: ["Name", "Description", "Marketplace", "Status"],
-              colWidths: [28, 54, 24, 48],
+              head: ["Name", "Description", "Status"],
+              colWidths: [28, 54, 48],
               trimTrailingWhitespace: true,
             },
             rows,
@@ -663,7 +510,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a plugin from a local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; builtin ids are reserved)",
+      "Install an exact catalog entry, local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; builtin ids are reserved)",
     )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")
@@ -674,7 +521,7 @@ export function registerPluginCommands(
           let summary =
             intent.kind === "source"
               ? intent.summary
-              : `Installing ${intent.entry.displayName} from marketplace ${intent.marketplace.name} (${intent.entry.source})`;
+              : `Installing ${intent.entry.displayName} from the plugin catalog (${intent.entry.source})`;
           if (intent.kind === "source" && intent.source.startsWith("path:")) {
             const path = intent.source.slice(5);
             // Best effort — a missing/invalid manifest is the server's
@@ -723,8 +570,7 @@ export function registerPluginCommands(
               ? await createCliBbSdk(getUrl()).plugins.install({
                   source: intent.source,
                 })
-              : await createCliBbSdk(getUrl()).plugins.installFromMarketplace({
-                  marketplaceId: intent.marketplace.id,
+              : await createCliBbSdk(getUrl()).plugins.catalog.install({
                   entryId: intent.entry.entryId,
                 });
           const result = { ok: true as const, plugin };

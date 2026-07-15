@@ -148,9 +148,9 @@ export const installedPluginSchema = z.object({
   source: z.string(),
   rootDir: z.string(),
   version: z.string(),
-  provenance: z.enum(["builtin", "direct", "marketplace"]),
+  provenance: z.enum(["builtin", "direct", "catalog"]),
   isOrphanedBuiltin: z.boolean(),
-  marketplaceName: z.string().optional(),
+  catalogEntryId: z.string().optional(),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
@@ -183,25 +183,14 @@ export type PluginInstallSourceRequest = z.infer<
   typeof pluginInstallSourceRequestSchema
 >;
 
-export const pluginInstallMarketplaceRequestSchema = z
-  .object({
-    marketplace: z
-      .object({
-        marketplaceId: z.string().min(1),
-        entryId: z.string().min(1),
-      })
-      .strict(),
-    version: z.string().min(1).optional(),
-  })
+export const pluginCatalogInstallRequestSchema = z
+  .object({ entryId: z.string().min(1) })
   .strict();
-export type PluginInstallMarketplaceRequest = z.infer<
-  typeof pluginInstallMarketplaceRequestSchema
+export type PluginCatalogInstallRequest = z.infer<
+  typeof pluginCatalogInstallRequestSchema
 >;
 
-export const pluginInstallRequestSchema = z.union([
-  pluginInstallSourceRequestSchema,
-  pluginInstallMarketplaceRequestSchema,
-]);
+export const pluginInstallRequestSchema = pluginInstallSourceRequestSchema;
 export type PluginInstallRequest = z.infer<typeof pluginInstallRequestSchema>;
 
 export const pluginMutationResponseSchema = z.object({
@@ -292,67 +281,44 @@ export const pluginTokenResponseSchema = z.object({
 });
 export type PluginTokenResponse = z.infer<typeof pluginTokenResponseSchema>;
 
-export const marketplaceViewSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  displayName: z.string(),
-  source: z.string(),
-  resolvedCommit: z.string().optional(),
+export const pluginCatalogStatusSchema = z.object({
   pluginCount: z.number(),
-  lastRefreshAt: z.number().optional(),
-  lastAttemptAt: z.number().optional(),
-  lastError: z.string().optional(),
+  lastRefreshAt: z.number().nullable(),
+  lastAttemptAt: z.number().nullable(),
+  lastError: z.string().nullable(),
 });
-export type MarketplaceView = z.infer<typeof marketplaceViewSchema>;
+export type PluginCatalogStatus = z.infer<typeof pluginCatalogStatusSchema>;
 
-export const marketplaceListResponseSchema = z.object({
-  marketplaces: z.array(marketplaceViewSchema),
+export const pluginCatalogStatusResponseSchema = z.object({
+  catalog: pluginCatalogStatusSchema,
 });
-export type MarketplaceListResponse = z.infer<
-  typeof marketplaceListResponseSchema
+export type PluginCatalogStatusResponse = z.infer<
+  typeof pluginCatalogStatusResponseSchema
 >;
 
-export const marketplaceAddRequestSchema = z
-  .object({
-    source: z.string().min(1),
-    name: z.string().min(1).optional(),
-  })
-  .strict();
-export type MarketplaceAddRequest = z.infer<typeof marketplaceAddRequestSchema>;
-
-export const marketplaceMutationResponseSchema = z.object({
-  marketplace: marketplaceViewSchema,
-});
-export type MarketplaceMutationResponse = z.infer<
-  typeof marketplaceMutationResponseSchema
+export const pluginCatalogRefreshRequestSchema = z.object({}).strict();
+export type PluginCatalogRefreshRequest = z.infer<
+  typeof pluginCatalogRefreshRequestSchema
 >;
 
-export const marketplaceSearchResultSchema = z.object({
-  marketplaceId: z.string(),
+export const pluginCatalogSearchResultSchema = z.object({
   entryId: z.string(),
   displayName: z.string(),
   description: z.string(),
   icon: z.string().nullable(),
-  category: z.string().optional(),
+  category: z.string().nullable(),
   source: z.string(),
   installed: z.boolean(),
   compatible: z.boolean(),
-  incompatibleReason: z.string().optional(),
+  incompatibleReason: z.string().nullable(),
 });
-export type MarketplaceSearchResult = z.infer<
-  typeof marketplaceSearchResultSchema
+export type PluginCatalogSearchResult = z.infer<
+  typeof pluginCatalogSearchResultSchema
 >;
 
-export const marketplaceSearchResponseSchema = z.object({
-  results: z.array(marketplaceSearchResultSchema),
+export const pluginCatalogSearchResponseSchema = z.object({
+  results: z.array(pluginCatalogSearchResultSchema),
 });
-export type MarketplaceSearchResponse = z.infer<
-  typeof marketplaceSearchResponseSchema
->;
-
-export const marketplaceRemoveResponseSchema = z.object({
-  convertedPluginIds: z.array(z.string()),
-});
-export type MarketplaceRemoveResponse = z.infer<
-  typeof marketplaceRemoveResponseSchema
+export type PluginCatalogSearchResponse = z.infer<
+  typeof pluginCatalogSearchResponseSchema
 >;

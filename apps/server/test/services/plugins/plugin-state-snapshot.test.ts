@@ -27,6 +27,7 @@ import {
 import { garbageCollectPluginArtifacts } from "../../../src/services/plugins/plugin-artifact-gc.js";
 import {
   createPluginStateSnapshotOnDisk,
+  readPluginSnapshotRegistration,
   restorePluginStateSnapshot,
 } from "../../../src/services/plugins/plugin-state-snapshot.js";
 
@@ -125,6 +126,113 @@ describe("plugin activation snapshots and garbage collection", () => {
       JSON.stringify("original"),
     );
     expect(await readFile(secretPath, "utf8")).toBe("opaque-secret");
+  });
+
+  it("normalizes legacy marketplace registrations against migrated provenance", async () => {
+    const pluginDir = join(dataDir, "plugins", "legacy-snapshot");
+    await mkdir(pluginDir, { recursive: true });
+    upsertInstalledPlugin(db, {
+      id: "legacy-snapshot",
+      source: "npm:bb-plugin-legacy@^1.0.0",
+      provenance: { kind: "catalog", entryId: "legacy-entry" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-legacy",
+        registry: "https://registry.npmjs.org",
+        requestedSpec: "^1.0.0",
+        specKind: "range",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.2.0",
+        integrity: "sha512-legacy",
+      },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: pluginDir,
+      version: "1.2.0",
+      enabled: true,
+    });
+    const registration = getInstalledPlugin(db, "legacy-snapshot");
+    if (registration === undefined) throw new Error("missing registration");
+    const snapshot = await createPluginStateSnapshotOnDisk({
+      db,
+      dataDir,
+      pluginId: registration.id,
+      fromArtifactId: null,
+      toArtifactId: "candidate",
+      now: 100,
+      retainedUntil: 200,
+      previousRegistration: registration,
+    });
+    if (snapshot.registrationPath === null) {
+      throw new Error("missing snapshot registration path");
+    }
+    const { catalogEntryId: _catalogEntryId, ...legacyRegistration } =
+      registration;
+    await writeFile(
+      snapshot.registrationPath,
+      JSON.stringify({
+        ...legacyRegistration,
+        provenance: "marketplace",
+        marketplaceId: "bb-official",
+        marketplaceEntryId: "legacy-entry",
+      }),
+    );
+    await expect(
+      readPluginSnapshotRegistration({ db, snapshotId: snapshot.id }),
+    ).resolves.toMatchObject({
+      provenance: "catalog",
+      catalogEntryId: "legacy-entry",
+      sourceNpmRequestedSpec: "^1.0.0",
+      npmResolvedVersion: "1.2.0",
+    });
+
+    await writeFile(
+      snapshot.registrationPath,
+      JSON.stringify({
+        ...legacyRegistration,
+        provenance: "marketplace",
+        marketplaceId: "third-party",
+        marketplaceEntryId: "legacy-entry",
+      }),
+    );
+    await expect(
+      readPluginSnapshotRegistration({ db, snapshotId: snapshot.id }),
+    ).resolves.toMatchObject({
+      provenance: "direct",
+      catalogEntryId: null,
+      sourceNpmRequestedSpec: "^1.0.0",
+      npmResolvedVersion: "1.2.0",
+    });
+
+    db.$client
+      .prepare(
+        "UPDATE plugins SET provenance = 'direct', catalog_entry_id = NULL WHERE id = ?",
+      )
+      .run(registration.id);
+    await writeFile(
+      snapshot.registrationPath,
+      JSON.stringify({
+        ...legacyRegistration,
+        provenance: "marketplace",
+        marketplaceId: "bb-official",
+        marketplaceEntryId: "legacy-entry",
+      }),
+    );
+    await expect(
+      readPluginSnapshotRegistration({ db, snapshotId: snapshot.id }),
+    ).resolves.toMatchObject({
+      provenance: "direct",
+      catalogEntryId: null,
+      sourceNpmRequestedSpec: "^1.0.0",
+      npmResolvedVersion: "1.2.0",
+    });
   });
 
   it("never removes active, snapshot-retained, or unmanaged artifact roots", async () => {

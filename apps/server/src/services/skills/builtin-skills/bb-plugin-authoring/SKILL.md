@@ -122,56 +122,24 @@ On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
 rotated at 5MB). Settings edits never auto-reload — `bb plugin reload <id>`
 after configuring.
 
-## Publishing to a marketplace
+## Distributing a plugin
 
-A marketplace is a directory (local path or git repo) whose root has
-`marketplace.json`. Catalog schema version is currently **1**:
+Users can install third-party plugins directly from a local path, npm package,
+or Git repository:
 
-```json
-{
-  "schemaVersion": 1,
-  "name": "my-market",
-  "displayName": "My Market",
-  "plugins": [
-    {
-      "id": "notes",
-      "displayName": "Notes",
-      "description": "Local notes",
-      "source": {
-        "githubRelease": {
-          "repository": "acme/plugins",
-          "package": "bb-plugin-notes",
-          "range": "^1.0.0",
-          "tagTemplate": "plugin-notes-v{version}",
-          "assetTemplate": "bb-plugin-notes-{version}.tgz"
-        }
-      },
-      "category": "productivity",
-      "installation": { "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.3.0" } }
-    }
-  ]
-}
+```sh
+bb plugin install ./bb-plugin-notes
+bb plugin install npm:bb-plugin-notes@^1.0.0
+bb plugin install git:https://github.com/acme/bb-plugin-notes.git@main
 ```
 
-- **source** — one of `npm` (`package`, optional `registry` / `range`),
-  `githubRelease` (`repository`, `package`, semver `range`, plus
-  `tagTemplate` and `assetTemplate` containing `{version}` exactly once),
-  `git` (`url`, `ref`, optional `subdir`), or `path` (relative path **only**
-  for local path marketplaces; remote/git catalogs cannot list path entries).
-  GitHub Release assets are npm-compatible `.tgz` archives produced after
-  `bb plugin build`; BB selects published, non-draft releases with
-  GitHub-provided SHA-256 digests and verifies the archive before installation.
-  Releases may be mutable, so replacing an asset under an existing tag changes
-  what a future install receives.
-- **category** (optional) — free-form string; `bb plugin search` matches it.
-- **installation.engines** (optional) — catalog-level `bb` / `bbPluginSdk`
-  ranges. These **can narrow but never widen** the plugin package manifest's
-  `engines.bb` / `engines.bbPluginSdk`: the catalog range must be a semver
-  subset of the manifest range, or install is refused.
-
-Users add your catalog with `bb plugin marketplace add <source>` (trust prompt
-for remotes; add installs nothing), then `bb plugin search` / `bb plugin install
-<entry>[@<marketplace>]`. See `bb guide plugins` for CLI details.
+BB has one maintained official catalog; users cannot add third-party catalogs.
+Catalog inclusion is a BB release decision, not part of the plugin authoring
+workflow. The official catalog may point to npm, Git, or GitHub Release
+artifacts, but never local paths. GitHub Release packages are npm-compatible
+`.tgz` archives produced after `bb plugin build`; BB selects published,
+non-draft releases with GitHub-provided SHA-256 digests and verifies the archive
+before installation.
 
 ## The backend factory
 
@@ -930,7 +898,7 @@ only `definePluginApp` + the hooks):
   React context on every plugin surface; add `@pierre/diffs` to
   devDependencies for types). Synthesize a `diff --git a/<p> b/<p>` header
   when your patch source (e.g. the GitHub REST API) omits it — see
-  `marketplace/plugins/github/app.tsx`.
+  `official-plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
   cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
@@ -942,7 +910,7 @@ only `definePluginApp` + the hooks):
   tokens, never hardcoded grays.
 - The old bb extras (`EmptyState`, `Markdown`, `PageBody`, `Spinner`) are
   gone — write your own (each is a few lines; see
-  `marketplace/plugins/github/components/` for reference implementations).
+  `official-plugins/github/components/` for reference implementations).
 
 One deviation from stock shadcn: `Dialog` renders as a bottom drawer on
 compact viewports (the host's responsive behavior) — same API.
@@ -1064,7 +1032,7 @@ slot.lifecycle.unmount();
 patterns, settingsSection optional title, navPanel path,
 fileOpener extensions) and returns them typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
-`thread.idle` reply), `marketplace/plugins/docs/app.test.tsx` (nav
+`thread.idle` reply), `official-plugins/docs/app.test.tsx` (nav
 panel list over rpc + create/open navigation assertions).
 
 Fidelity boundaries: HTTP auth is recorded but not enforced; services and
@@ -1089,7 +1057,7 @@ application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
 - Keep pure logic in plain functions/modules so it is unit-testable without
   a bb server; the factory file should mostly wire registrations.
 
-BB Official marketplace plugins in `marketplace/plugins/` (a bb checkout):
+BB Official plugins in `official-plugins/` (a bb checkout):
 
 - `github` — vendored-component showcase: a gh-CLI-backed issue/PR browser
   in a single navPanel (with `headerContent`), subPath-based sub-navigation,

@@ -702,9 +702,8 @@ describe("plugin install flows", () => {
         });
         const source = `npm:${name}@^0.1.0`;
 
-        const entry = await service.installFromMarketplace({
+        const entry = await service.installFromCatalog({
           source,
-          marketplaceId: "bb-official",
           entryId: "release-fixture",
           npmRegistry: registry,
         });
@@ -718,7 +717,8 @@ describe("plugin install flows", () => {
         expect(
           getInstalledPluginRegistration(db, "release-fixture"),
         ).toMatchObject({
-          provenance: "marketplace",
+          provenance: "catalog",
+          catalogEntryId: "release-fixture",
           sourceKind: "npm",
           sourceNpmPackage: name,
           sourceNpmRegistry: registry,

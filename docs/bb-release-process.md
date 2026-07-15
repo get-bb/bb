@@ -1,7 +1,7 @@
 # Releasing bb-app
 
 This runbook is for agents preparing and publishing the `bb-app` npm package.
-Official marketplace plugins have an independent release process documented in
+Official catalog plugins have an independent release process documented in
 [official-plugin-release-process.md](official-plugin-release-process.md).
 It assumes the manual GitHub Actions publish workflow and npm Trusted
 Publishing are configured. Until then, local `npm publish` is an emergency

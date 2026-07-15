@@ -277,8 +277,8 @@ For review or fix pipelines, get the environment ID from
 
 ## Memory
 
-- Memory is an opt-in plugin in the default BB Official marketplace. Install it
-  with `bb plugin install memory@bb-official` before using `bb memory ...`.
+- Memory is an opt-in plugin in the BB Official catalog. Install it with
+  `bb plugin install memory` before using `bb memory ...`.
 - Use `bb memory catalog` to inspect the compact index, `bb memory search
 <query>` to find candidates, and `bb memory get <id>` to progressively
   disclose a full record.
@@ -406,34 +406,25 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   (`builtin:<name>`) ship with bb and remain available even when the experiment
   is off, except `connect`, which is gated by the **"bb connect"**
   experiment.
-- **Plugin marketplaces** (catalogs under `/api/v1/marketplaces`):
-  - BB starts with the removable **BB Official** catalog configured. It lists
-    the opt-in GitHub, Docs, and Memory plugins; removing it is remembered across
-    restarts.
-  - `bb plugin marketplace add <source> [--name <n>] [--yes]` — register and
-    refresh a catalog only (installs nothing). Sources: local path / `path:`,
-    `owner/repo[@ref]`, or a git URL`[@ref]`. Every remote/git source requires
-    trust confirmation; `--yes` skips; non-TTY refuses without it. Unmistakable
-    local path forms (`path:`, `./…`, or absolute paths) skip the prompt;
-    ambiguous bare sources are conservatively prompted.
-  - `bb plugin marketplace list [--json]` / `bb plugin marketplace update
-[name]` — list catalogs or re-fetch one/all. Catalog refresh is not plugin
-    update; a failed refresh keeps the last-known-good catalog.
-  - `bb plugin marketplace remove <name>` — remove a catalog. Its installed
-    plugins remain installed and are converted to direct provenance while
-    preserving their source intent.
-  - `bb plugin search <query>` — search configured catalogs (id, name,
-    description, category); status shows installed / compatible / requires
-    newer bb.
+- **BB Official catalog** (singleton under `/api/v1/plugin-catalog`):
+  - BB ships a bundled last-known-good snapshot and checks one hard-coded HTTPS
+    JSON source at server startup and every six hours thereafter. Users cannot
+    add or remove catalogs.
+  - `bb plugin catalog status [--json]` — show plugin count, freshness, and the
+    last refresh error. `bb plugin catalog refresh [--json]` checks now. A
+    failed check retains the last-known-good catalog and never changes installed
+    plugins.
+  - `bb plugin search <query> [--json]` — search the official catalog by id,
+    name, description, or category; status shows installed / compatible /
+    requires newer bb.
 - Commands:
-  - `bb plugin install <src>` — marketplace entry (bare name when unique;
-    `<entry>@<marketplace>` when ambiguous), local path, `builtin:<name>`,
+  - `bb plugin install <src>` — official catalog entry id, local path, `builtin:<name>`,
     `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
     required for `npm:`). Prefixes `path:` / `npm:` / `git:` / `builtin:` skip
-    marketplace resolution. To pin or range an npm package, install with
-    `npm:<package>@…` (marketplace installs use the catalog entry's source).
+    catalog resolution. To pin or range an npm package, install with
+    `npm:<package>@…` (catalog installs use the catalog entry's source).
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
-    track, while exact versions are pinned. Marketplace GitHub Release semver
+    track, while exact versions are pinned. Catalog GitHub Release semver
     ranges track published, SHA-256-verified `.tgz` assets. Git branches track;
     tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is

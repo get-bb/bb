@@ -10,7 +10,7 @@ import type {
   PluginListResult as RootPluginList,
   PluginGetSourceResult as RootPluginGetSource,
   PluginApplyUpdateResult as RootPluginApplyUpdate,
-  PluginMarketplaceListResult as RootPluginMarketplaceList,
+  PluginCatalogStatusResult as RootPluginCatalogStatus,
   ProjectAttachmentUploadResult as RootProjectAttachmentUpload,
   ProjectFileContentResult as RootProjectFileContent,
   ProjectGetResult as RootProjectGet,
@@ -37,7 +37,7 @@ import type {
   PluginListResult as BrowserPluginList,
   PluginGetSourceResult as BrowserPluginGetSource,
   PluginApplyUpdateResult as BrowserPluginApplyUpdate,
-  PluginMarketplaceListResult as BrowserPluginMarketplaceList,
+  PluginCatalogStatusResult as BrowserPluginCatalogStatus,
   ProjectAttachmentUploadResult as BrowserProjectAttachmentUpload,
   ProjectFileContentResult as BrowserProjectFileContent,
   ProjectGetResult as BrowserProjectGet,
@@ -64,7 +64,7 @@ import type {
   PluginListResult as CorePluginList,
   PluginGetSourceResult as CorePluginGetSource,
   PluginApplyUpdateResult as CorePluginApplyUpdate,
-  PluginMarketplaceListResult as CorePluginMarketplaceList,
+  PluginCatalogStatusResult as CorePluginCatalogStatus,
   ProjectAttachmentUploadResult as CoreProjectAttachmentUpload,
   ProjectFileContentResult as CoreProjectFileContent,
   ProjectGetResult as CoreProjectGet,
@@ -91,7 +91,7 @@ import type {
   PluginListResult as NodePluginList,
   PluginGetSourceResult as NodePluginGetSource,
   PluginApplyUpdateResult as NodePluginApplyUpdate,
-  PluginMarketplaceListResult as NodePluginMarketplaceList,
+  PluginCatalogStatusResult as NodePluginCatalogStatus,
   ProjectAttachmentUploadResult as NodeProjectAttachmentUpload,
   ProjectFileContentResult as NodeProjectFileContent,
   ProjectGetResult as NodeProjectGet,
@@ -117,7 +117,7 @@ interface RootSurface {
   pluginList: RootPluginList;
   pluginGetSource: RootPluginGetSource;
   pluginApplyUpdate: RootPluginApplyUpdate;
-  pluginMarketplaceList: RootPluginMarketplaceList;
+  pluginCatalogStatus: RootPluginCatalogStatus;
   projectAttachmentUpload: RootProjectAttachmentUpload;
   projectFileContent: RootProjectFileContent;
   projectGet: RootProjectGet;
@@ -144,7 +144,7 @@ interface BrowserSurface {
   pluginList: BrowserPluginList;
   pluginGetSource: BrowserPluginGetSource;
   pluginApplyUpdate: BrowserPluginApplyUpdate;
-  pluginMarketplaceList: BrowserPluginMarketplaceList;
+  pluginCatalogStatus: BrowserPluginCatalogStatus;
   projectAttachmentUpload: BrowserProjectAttachmentUpload;
   projectFileContent: BrowserProjectFileContent;
   projectGet: BrowserProjectGet;
@@ -171,7 +171,7 @@ interface CoreSurface {
   pluginList: CorePluginList;
   pluginGetSource: CorePluginGetSource;
   pluginApplyUpdate: CorePluginApplyUpdate;
-  pluginMarketplaceList: CorePluginMarketplaceList;
+  pluginCatalogStatus: CorePluginCatalogStatus;
   projectAttachmentUpload: CoreProjectAttachmentUpload;
   projectFileContent: CoreProjectFileContent;
   projectGet: CoreProjectGet;
@@ -198,7 +198,7 @@ interface NodeSurface {
   pluginList: NodePluginList;
   pluginGetSource: NodePluginGetSource;
   pluginApplyUpdate: NodePluginApplyUpdate;
-  pluginMarketplaceList: NodePluginMarketplaceList;
+  pluginCatalogStatus: NodePluginCatalogStatus;
   projectAttachmentUpload: NodeProjectAttachmentUpload;
   projectFileContent: NodeProjectFileContent;
   projectGet: NodeProjectGet;
@@ -281,27 +281,21 @@ type ExpectedHostsKey =
 type ExpectedPluginsKey =
   | "applyUpdate"
   | "callRpc"
+  | "catalog"
   | "checkUpdates"
   | "disable"
   | "enable"
   | "getSettings"
   | "getSource"
   | "install"
-  | "installFromMarketplace"
   | "list"
   | "listUpdateResults"
-  | "marketplaces"
   | "reload"
   | "remove"
   | "token"
   | "updateSettings";
 
-type ExpectedPluginMarketplacesKey =
-  | "add"
-  | "list"
-  | "refresh"
-  | "remove"
-  | "search";
+type ExpectedPluginCatalogKey = "install" | "refresh" | "search" | "status";
 
 type ExpectedProjectsKey =
   | "attachments"
@@ -474,8 +468,8 @@ describe("SDK public type entrypoints", () => {
       keyof RootBbSdk["plugins"]
     >().toEqualTypeOf<ExpectedPluginsKey>();
     expectTypeOf<
-      keyof RootBbSdk["plugins"]["marketplaces"]
-    >().toEqualTypeOf<ExpectedPluginMarketplacesKey>();
+      keyof RootBbSdk["plugins"]["catalog"]
+    >().toEqualTypeOf<ExpectedPluginCatalogKey>();
     expectTypeOf<
       keyof RootBbSdk["projects"]
     >().toEqualTypeOf<ExpectedProjectsKey>();

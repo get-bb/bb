@@ -25,8 +25,8 @@ describe("bundled plugin SDK declarations", () => {
     expect(declarations).toContain(
       "type EnvironmentStatusResult = EnvironmentStatusResponse;",
     );
-    expect(declarations).toContain("interface PluginMarketplacesArea");
-    expect(declarations).toContain("installFromMarketplace(");
+    expect(declarations).toContain("interface PluginCatalogArea");
+    expect(declarations).toContain("catalog: PluginCatalogArea;");
     expect(declarations).toContain("getSource(args: PluginIdArgs)");
     expect(declarations).toContain("checkUpdates(");
     expect(declarations).toContain("applyUpdate(args: PluginIdArgs)");
@@ -35,8 +35,7 @@ describe("bundled plugin SDK declarations", () => {
       new URL("../../bundled-types/bb-plugin-sdk-app.d.ts", import.meta.url),
       "utf8",
     );
-    expect(appDeclarations).not.toContain("PluginMarketplacesArea");
-    expect(appDeclarations).not.toContain("installFromMarketplace");
+    expect(appDeclarations).not.toContain("PluginCatalogArea");
     expect(appDeclarations).not.toContain("applyUpdate(args: PluginIdArgs)");
     expect(declarations).toContain(
       "list(args?: ProviderListArgs): Promise<ProviderListResult>;",

@@ -92,10 +92,10 @@ import {
   allPluginSettingsViewQueryKeyPrefix,
 } from "../queries/plugin-settings-queries";
 import {
-  allMarketplaceSearchQueryKeyPrefix,
+  allPluginCatalogSearchQueryKeyPrefix,
   allPluginSourceQueryKeyPrefix,
-  marketplacesQueryKey,
-} from "../queries/plugin-marketplace-queries";
+  pluginCatalogStatusQueryKey,
+} from "../queries/plugin-catalog-queries";
 import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend";
 import {
@@ -431,6 +431,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyPluginManagementQueries,
       reconcilePluginFrontendBundles,
     ],
+  },
+  "plugin-catalog-changed": {
+    dirty: [dirtyPluginCatalogQueries],
   },
 } satisfies SystemChangeRegistry;
 
@@ -887,11 +890,17 @@ function dirtyPluginManagementQueries(): QueryKey[] {
     allPluginListQueryKeyPrefix(),
     allPluginSettingsViewQueryKeyPrefix(),
     allPluginSettingsQueryKeyPrefix(),
-    // Update/install/marketplace operations change source detail, catalogs,
-    // and search results (installed/compatible flags) alongside the list.
+    // Update/install operations change source detail and catalog search rows
+    // (installed/compatible flags) alongside the list.
     allPluginSourceQueryKeyPrefix(),
-    marketplacesQueryKey(),
-    allMarketplaceSearchQueryKeyPrefix(),
+    allPluginCatalogSearchQueryKeyPrefix(),
+  ];
+}
+
+function dirtyPluginCatalogQueries(): QueryKey[] {
+  return [
+    pluginCatalogStatusQueryKey(),
+    allPluginCatalogSearchQueryKeyPrefix(),
   ];
 }
 

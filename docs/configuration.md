@@ -415,36 +415,27 @@ Plugin state lives under the data dir:
 <dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
                                    at 5MB; read with `bb plugin logs <id>`)
 <dataDir>/plugins/git/, npm/       Managed installs for git:/npm: sources
-<dataDir>/marketplaces/cache/      Materialized git marketplace trees
-                                   (keyed by marketplace id + commit)
-<dataDir>/marketplaces/staging/    Transient git clones during refresh
 <dataDir>/skills-generated/        Server-generated skills (the
                                    plugin-commands skill listing plugin CLI
                                    commands, injected into agent threads)
 ```
 
-Marketplace configuration (rows in the server DB, API under
-`/api/v1/marketplaces`) stores each catalog's source, last-known-good
-`marketplace.json` payload, optional resolved git commit, refresh timestamps,
-and the last refresh error. Path marketplaces point at the directory on disk;
-git marketplaces materialize under
-`<dataDir>/marketplaces/cache/<id>/<commit>/`. `bb plugin marketplace update`
-re-fetches catalog metadata only — it does not upgrade installed plugins. On
-refresh failure the previous successful catalog is retained and `lastError`
-is set (list shows the failed state). Trust is enforced at the CLI for every
-remote/git `bb plugin marketplace add` (confirmation or `--yes`; non-TTY
-refuses without it); adding never installs plugins.
-Unmistakable local path forms (`path:`, `./…`, or absolute paths) skip the
-prompt; ambiguous bare sources are conservatively prompted. See
-`bb guide plugins` for search, install disambiguation, manual updates, and
-marketplace removal behavior.
+BB ships one official plugin catalog. Its bundled last-known-good snapshot is
+available without network access; the server conditionally fetches the fixed
+HTTPS `plugin-catalog.json` source at startup and every six hours thereafter,
+persisting HTTP validators, refresh timestamps, and the last error. Refresh
+failures retain the previous catalog and never alter installed plugins. Use
+`bb plugin catalog status` or `bb plugin catalog refresh`; users cannot add,
+remove, or configure catalogs.
+Catalog entries use npm, Git, or GitHub Release sources. Local path installs
+remain available directly through `bb plugin install ./path` or `path:...`.
 
 ### Plugin updates
 
 Plugin updates are manual. `bb plugin outdated` checks tracking sources and
 `bb plugin update <id>` / `bb plugin update --all` applies compatible
-candidates. There is no scheduled marketplace refresh, automatic application,
-or update audit feed. Reinstalling an already-installed managed plugin is
+candidates. Catalog metadata refreshes periodically, but there is no automatic
+plugin update application or update audit feed. Reinstalling an already-installed managed plugin is
 refused — use `bb plugin update`. Before activation bb snapshots the plugin
 database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on

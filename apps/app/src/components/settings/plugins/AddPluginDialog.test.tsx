@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { marketplaceSearchQueryKey } from "@/hooks/queries/plugin-marketplace-queries";
+import { pluginCatalogSearchQueryKey } from "@/hooks/queries/plugin-catalog-queries";
 import { appToast } from "@/components/ui/app-toast.js";
 import { AddPluginDialog } from "./AddPluginDialog";
 
@@ -62,7 +62,10 @@ function stubFetch(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       requests.push({ url, init });
-      if (url === "/api/v1/plugins/install") {
+      if (
+        url === "/api/v1/plugins/install" ||
+        url === "/api/v1/plugin-catalog/install"
+      ) {
         return jsonResponse(installBody, installStatus);
       }
       return jsonResponse({ error: "not found" }, 404);
@@ -82,7 +85,7 @@ function renderDialog(
 }
 
 describe("AddPluginDialog", () => {
-  it("installs a typed source in one step behind the full-trust warning", async () => {
+  it("installs a direct local path in one step behind the full-trust warning", async () => {
     const requests = stubFetch();
     renderDialog();
 
@@ -95,7 +98,7 @@ describe("AddPluginDialog", () => {
     expect(install.disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Plugin source"), {
-      target: { value: "npm:@bb-plugins/linear" },
+      target: { value: "./plugins/linear" },
     });
     expect(install.disabled).toBe(false);
     fireEvent.click(install);
@@ -106,16 +109,14 @@ describe("AddPluginDialog", () => {
       );
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
-        source: "npm:@bb-plugins/linear",
+        source: "./plugins/linear",
       });
     });
   });
 
-  it("installs marketplace entries with the marketplace body form", async () => {
+  it("installs official catalog entries through the catalog endpoint", async () => {
     const requests = stubFetch();
     renderDialog({
-      marketplaceId: "mkt_1",
-      marketplaceName: "bb-official",
       entryId: "linear",
       displayName: "Linear",
       icon: "Github",
@@ -128,11 +129,11 @@ describe("AddPluginDialog", () => {
 
     await vi.waitFor(() => {
       const post = requests.find(
-        (request) => request.url === "/api/v1/plugins/install",
+        (request) => request.url === "/api/v1/plugin-catalog/install",
       );
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
-        marketplace: { marketplaceId: "mkt_1", entryId: "linear" },
+        entryId: "linear",
       });
     });
   });
@@ -160,11 +161,11 @@ describe("AddPluginDialog", () => {
     });
   });
 
-  it("invalidates marketplace-search queries after a successful install", async () => {
+  it("invalidates catalog-search queries after a successful install", async () => {
     stubFetch();
     const { wrapper, queryClient } = createQueryClientTestHarness();
     // A cached Browse search must refetch so the card flips to Installed ✓.
-    queryClient.setQueryData(marketplaceSearchQueryKey(""), []);
+    queryClient.setQueryData(pluginCatalogSearchQueryKey(""), []);
     render(<AddPluginDialog open onOpenChange={() => {}} />, { wrapper });
 
     fireEvent.change(screen.getByLabelText("Plugin source"), {
@@ -174,7 +175,8 @@ describe("AddPluginDialog", () => {
 
     await vi.waitFor(() => {
       expect(
-        queryClient.getQueryState(marketplaceSearchQueryKey(""))?.isInvalidated,
+        queryClient.getQueryState(pluginCatalogSearchQueryKey(""))
+          ?.isInvalidated,
       ).toBe(true);
     });
   });

@@ -197,12 +197,11 @@ export const installedPlugins = sqliteTable("plugins", {
   /** Legacy display/diagnostic spec. Normalized columns below are authoritative. */
   source: text("source").notNull(),
   provenance: text("provenance", {
-    enum: ["builtin", "direct", "marketplace"],
+    enum: ["builtin", "direct", "catalog"],
   })
     .notNull()
     .default("direct"),
-  marketplaceId: text("marketplace_id"),
-  marketplaceEntryId: text("marketplace_entry_id"),
+  catalogEntryId: text("catalog_entry_id"),
   sourceKind: text("source_kind", {
     enum: ["path", "builtin", "npm", "git"],
   })
@@ -312,27 +311,24 @@ export const pluginStateSnapshots = sqliteTable(
   ],
 );
 
-export const marketplaces = sqliteTable("marketplaces", {
-  id: text("id").primaryKey(),
-  displayName: text("display_name").notNull(),
-  sourceKind: text("source_kind", {
-    enum: ["builtin", "path", "git"],
-  }).notNull(),
-  location: text("location").notNull(),
-  requestedGitRef: text("requested_git_ref"),
-  resolvedGitCommit: text("resolved_git_commit"),
-  cachePath: text("cache_path"),
-  // The validated last-known-good catalog. Keeping this beside refresh state
-  // makes searches network-free and lets a failed refresh retain old data.
-  catalogJson: text("catalog_json"),
-  lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
-  lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
-  lastError: text("last_error"),
-  /** Removal tombstone so default catalogs are not restored after restart. */
-  removedAt: integer("removed_at"),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});
+// Singleton state for BB's server-owned official plugin catalog. The catalog
+// URL is product policy and intentionally is not configurable or persisted.
+export const pluginCatalog = sqliteTable(
+  "plugin_catalog",
+  {
+    id: integer("id").primaryKey(),
+    // Validated last-known-good JSON. Searches and installs never need network.
+    catalogJson: text("catalog_json").notNull(),
+    etag: text("etag"),
+    lastModified: text("last_modified"),
+    lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
+    lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
+    lastError: text("last_error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [check("plugin_catalog_singleton", sql`${table.id} = 1`)],
+);
 
 // Namespaced plugin key/value storage (`bb.storage.kv`). Values are JSON text;
 // the plugin API caps them at 256KB before they reach this table.

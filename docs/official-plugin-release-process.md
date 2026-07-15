@@ -1,17 +1,17 @@
 # Releasing BB Official plugins
 
 This runbook covers updating and publishing the plugins in the default
-**BB Official** marketplace. Official plugins are distributed as GitHub Release
+**BB Official** catalog. Official plugins are distributed as GitHub Release
 `.tgz` assets by `.github/workflows/publish-official-plugins.yml`; they are not
 published to npm and their generated `dist/` directories are not checked in.
 
 The three independently versioned plugins are:
 
-| Workflow input | Directory                    | Package name             | Marketplace entry | Release tag template       |
-| -------------- | ---------------------------- | ------------------------ | ----------------- | -------------------------- |
-| `github`       | `marketplace/plugins/github` | `bb-plugin-github`       | `github`          | `plugin-github-v<version>` |
-| `docs`         | `marketplace/plugins/docs`   | `bb-plugin-simple-notes` | `simple-notes`    | `plugin-docs-v<version>`   |
-| `memory`       | `marketplace/plugins/memory` | `bb-plugin-memory`       | `memory`          | `plugin-memory-v<version>` |
+| Workflow input | Directory                 | Package name             | Catalog entry  | Release tag template       |
+| -------------- | ------------------------- | ------------------------ | -------------- | -------------------------- |
+| `github`       | `official-plugins/github` | `bb-plugin-github`       | `github`       | `plugin-github-v<version>` |
+| `docs`         | `official-plugins/docs`   | `bb-plugin-simple-notes` | `simple-notes` | `plugin-docs-v<version>`   |
+| `memory`       | `official-plugins/memory` | `bb-plugin-memory`       | `memory`       | `plugin-memory-v<version>` |
 
 ## Release policy
 
@@ -27,9 +27,8 @@ The three independently versioned plugins are:
      and publish its release from `main`;
   2. immediately promote the published line by updating the entry's
      `source.githubRelease.range` and `installation.engines` in
-     `marketplace.json` plus the bundled catalog snapshot in
-     `apps/server/src/services/marketplaces/official-marketplace.ts`.
-- Never check in `marketplace/plugins/*/dist`. The workflow builds it and
+     `plugin-catalog.json` plus the bundled catalog snapshot in the server.
+- Never check in `official-plugins/*/dist`. The workflow builds it and
   includes it in the release archive.
 - GitHub Releases are currently allowed to be mutable, but normal release
   practice is append-only: do not replace an asset under an existing version.
@@ -67,7 +66,7 @@ The three independently versioned plugins are:
    ```
 
 5. Validate through Turbo. The release workflow validates every official
-   plugin because they share build and marketplace contracts.
+   plugin because they share build and catalog contracts.
 
    ```bash
    pnpm exec turbo run typecheck \
@@ -90,9 +89,9 @@ The three independently versioned plugins are:
      --filter=bb-plugin-memory \
      --force
 
-   npm pack --dry-run --json marketplace/plugins/github
-   npm pack --dry-run --json marketplace/plugins/docs
-   npm pack --dry-run --json marketplace/plugins/memory
+   npm pack --dry-run --json official-plugins/github
+   npm pack --dry-run --json official-plugins/docs
+   npm pack --dry-run --json official-plugins/memory
    git diff --check
    ```
 
@@ -102,9 +101,9 @@ The three independently versioned plugins are:
 
    ```bash
    pnpm exec rimraf \
-     marketplace/plugins/github/dist \
-     marketplace/plugins/docs/dist \
-     marketplace/plugins/memory/dist
+     official-plugins/github/dist \
+     official-plugins/docs/dist \
+     official-plugins/memory/dist
    ```
 
 6. Commit the plugin update and land it through a normal pull request. Do not
@@ -170,12 +169,12 @@ The digest must be `sha256:<64 hex characters>`. BB reads that digest from
 GitHub and verifies the downloaded archive before installing it.
 
 For a new compatibility line, land the catalog-promotion PR described above.
-Then exercise the marketplace path from a current BB development build:
+Then exercise the catalog path from a current BB development build:
 
 ```bash
-bb plugin marketplace update bb-official
+bb plugin catalog refresh
 bb plugin search docs
-bb plugin install simple-notes@bb-official --yes
+bb plugin install simple-notes --yes
 bb plugin list
 bb plugin remove simple-notes
 ```
@@ -198,5 +197,5 @@ upgrade path. Use `github`, `simple-notes`, or `memory` as the plugin id.
   do it only with explicit operator approval, then rerun the same version or
   publish a corrected new version.
 - If the release succeeds but BB cannot see it, confirm the tag and asset names
-  match `marketplace.json`, the version satisfies the catalog range, the
+  match `plugin-catalog.json`, the version satisfies the catalog range, the
   release is not a draft, and GitHub exposes its SHA-256 digest.

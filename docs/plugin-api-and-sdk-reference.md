@@ -44,7 +44,7 @@ The committed root/app declarations under `packages/plugin-sdk/bundled-types/` a
 | Manifest | package identity plus required `bb.name`, `bb.description`, explicit branding, server/app entries, skills, and themes |
 | Backend plugin API | complete root and nested logging, settings, storage, wire, background, CLI, agent, UI/input, event, host, status, server, SDK, and disposal capabilities |
 | Frontend app SDK | 7 runtime exports and 9 registration slots |
-| `bb.sdk` | 146 callable paths across 13 named areas plus realtime `subscribe()` |
+| `bb.sdk` | 144 callable paths across 13 named areas plus realtime `subscribe()` |
 | Backend testing | externally shipped fake host, fake SDK, fixture builder, behavior/inspection/lifecycle views |
 | Frontend testing | runtime installer, app loader, slot renderer, realtime driver, and call logs |
 
@@ -555,7 +555,7 @@ This is static template rendering and does not use the transport.
 
 For `commands`, `fileContent`, `files`, and `paths`, `ProjectWorkspaceRoutingArgs` permits exactly one of `environmentId` or `hostId`, or neither. An environment selects its owning host/workspace; an explicit host selects that host's project source; omission falls back to the primary host's project source. Attachment upload is client-local and therefore does not use workspace routing; image uploads cap at 10 MiB and other files at 25 MiB. There is no attachment list/remove method.
 
-### `sdk.plugins` — 20 methods including `marketplaces`
+### `sdk.plugins` — plugin administration and the official catalog
 
 | Method | Arguments | Purpose |
 | --- | --- | --- |
@@ -567,14 +567,12 @@ For `commands`, `fileContent`, `files`, and `paths`, `ProjectWorkspaceRoutingArg
 | `getSettings` | `{ pluginId }` | gets plugin settings metadata/values as `JsonValue`. |
 | `getSource` | `{ pluginId }` | gets normalized source/provenance detail. |
 | `install` | `{ source }` | installs from a plugin source string. |
-| `installFromMarketplace` | `{ marketplaceId, entryId, version? }` | installs a catalog entry/version. |
+| `catalog.install` | `{ entryId }` | installs an official catalog entry. |
+| `catalog.refresh` | none | conditionally refreshes the official catalog, retaining last-known-good data on failure. |
+| `catalog.search` | `{ query }` | searches the official catalog. |
+| `catalog.status` | none | reads catalog freshness and the last refresh error. |
 | `list` | none | lists plugin status as `JsonValue`. |
 | `listUpdateResults` | none | reads the most recently persisted update-check results. |
-| `marketplaces.add` | `MarketplaceAddRequest` | adds and refreshes a marketplace. |
-| `marketplaces.list` | none | lists configured marketplaces. |
-| `marketplaces.refresh` | `{ marketplaceId }` | refreshes one marketplace, retaining last-known-good data on failure. |
-| `marketplaces.remove` | `{ marketplaceId }` | removes a marketplace without uninstalling its plugins. |
-| `marketplaces.search` | `{ query }` | searches configured catalogs. |
 | `reload` | `{ pluginId? }?` | reloads one plugin or all plugins. |
 | `remove` | `{ pluginId }` | removes a plugin. |
 | `token` | `{ pluginId, rotate? }` | gets or rotates the HTTP token. |
@@ -751,7 +749,7 @@ All names below are exported portable aliases (except the generic `TOutput`, con
 - `files`: `read → FileReadResult`, `write → FileWriteResult`, `list → FileListResult`, `listPaths → PathListResult`, `mkdir → FileMkdirResult`, `move → FileMoveResult`, `remove → FileRemoveResult`, `createPreview → FilePreviewResult`.
 - `guide`: `render → GuideRenderResult` synchronously.
 - `hosts`: `createJoinCode → HostCreateJoinCodeResult`, `delete → HostDeleteResult`, `directory → HostDirectoryResult`, `get → HostGetResult`, `cloneDefaultPath → HostCloneDefaultPathResult`, `installProviderCli → HostProviderCliInstallResult`, `list → HostListResult`, `pathsExist → HostPathsExistResult`, `pickFolder → HostPickFolderResult`, `providerCliStatus → HostProviderCliStatusResult`, `update → HostUpdateResult`.
-- `plugins`: `applyUpdate → PluginApplyUpdateResult`, `callRpc → TOutput`, `checkUpdates/listUpdateResults → PluginCheckUpdatesResult`, `disable → PluginDisableResult`, `enable → PluginEnableResult`, `getSettings → PluginGetSettingsResult`, `getSource → PluginGetSourceResult`, `install/installFromMarketplace → PluginInstallResult`, `list → PluginListResult`, `reload → PluginReloadResult`, `remove → PluginRemoveResult`, `token → PluginTokenResult`, `updateSettings → PluginUpdateSettingsResult`; nested marketplace methods return `PluginMarketplaceAddResult`, `PluginMarketplaceListResult`, `PluginMarketplaceRefreshResult`, `PluginMarketplaceRemoveResult`, and `PluginMarketplaceSearchResult` respectively.
+- `plugins`: `applyUpdate → PluginApplyUpdateResult`, `callRpc → TOutput`, `checkUpdates/listUpdateResults → PluginCheckUpdatesResult`, `disable → PluginDisableResult`, `enable → PluginEnableResult`, `getSettings → PluginGetSettingsResult`, `getSource → PluginGetSourceResult`, `install/catalog.install → PluginInstallResult`, `list → PluginListResult`, `reload → PluginReloadResult`, `remove → PluginRemoveResult`, `token → PluginTokenResult`, `updateSettings → PluginUpdateSettingsResult`; nested catalog methods return status, search results, or refresh status.
 - `projects`: `branches → ProjectBranchesResult`, `commands → ProjectCommandsResult`, `create → ProjectCreateResult`, `defaultExecutionOptions → ProjectDefaultExecutionOptionsResult`, `delete → ProjectDeleteResult`, `fileContent → ProjectFileContentResult`, `files → ProjectFilesResult`, `get → ProjectGetResult`, `list → ProjectListResult`, `paths → ProjectPathsResult`, `promptHistory → ProjectPromptHistoryResult`, `reorder → ProjectReorderResult`, `update → ProjectUpdateResult`; `attachments.read/upload → ProjectAttachmentReadResult/ProjectAttachmentUploadResult`; `sources.add/delete/update → ProjectSourceAddResult/ProjectSourceDeleteResult/ProjectSourceUpdateResult`.
 - `providers`: `list → ProviderListResult`; `models → ProviderModelsResult`.
 - `status`: `get → StatusResult`.
@@ -958,7 +956,7 @@ The source tests snapshot backend roots/types, RPC types, frontend declaration/r
 - [x] all four lifecycle events
 - [x] all frontend runtime functions
 - [x] all nine frontend slots and their component/callback props
-- [x] all 13 `BbSdk` areas and all 146 callable paths including realtime
+- [x] all 13 `BbSdk` areas and all 144 callable paths including realtime
 - [x] all 42 thread-area callable paths and all 9 canonical terminal methods
 - [x] realtime subscription surface
 - [x] standalone Node/browser/core/websocket constructors and public errors

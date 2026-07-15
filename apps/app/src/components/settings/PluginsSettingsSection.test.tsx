@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type {
   InstalledPlugin,
@@ -21,12 +27,15 @@ import {
   PluginSettingsDetail,
   PluginSettingsDetailSection,
   PluginSettingsForm,
+  PluginsSettingsSection,
 } from "./PluginsSettingsSection";
 import { InstalledPluginRow } from "./plugins/InstalledPluginsTab";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
+  pluginListQueryKey,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 
 interface RecordedRequest {
   url: string;
@@ -167,6 +176,27 @@ describe("PluginSettingsForm", () => {
   });
 });
 
+describe("PluginsSettingsSection", () => {
+  it("offers only Installed and Browse management tabs", async () => {
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(systemConfigQueryKey(), systemConfig(true));
+    queryClient.setQueryData(pluginListQueryKey(true), { plugins: [] });
+    render(
+      <MemoryRouter>
+        <PluginsSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    const tabs = within(await screen.findByRole("tablist")).getAllByRole(
+      "button",
+    );
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0]?.textContent).toContain("Installed");
+    expect(tabs[1]?.textContent).toBe("Browse");
+  });
+});
+
 function serverPlugin(
   overrides: Partial<InstalledPlugin> = {},
 ): InstalledPlugin {
@@ -215,7 +245,6 @@ function rowPlugin(
     hasSettings: true,
     provenance: "builtin" as const,
     isOrphanedBuiltin: false,
-    marketplaceName: null,
     sourceDisplay: "builtin",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };

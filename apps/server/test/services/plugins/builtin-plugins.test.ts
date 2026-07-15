@@ -174,7 +174,7 @@ describe("builtin plugin reconciliation", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
   });
 
-  it("does not reserve the marketplace Memory plugin as a builtin", () => {
+  it("does not reserve the catalog Memory plugin as a builtin", () => {
     expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(
       "memory",
     );

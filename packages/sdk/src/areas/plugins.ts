@@ -1,13 +1,11 @@
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
-  marketplaceAddRequestSchema,
-  marketplaceListResponseSchema,
-  marketplaceMutationResponseSchema,
-  marketplaceRemoveResponseSchema,
-  marketplaceSearchResponseSchema,
+  pluginCatalogInstallRequestSchema,
+  pluginCatalogRefreshRequestSchema,
+  pluginCatalogSearchResponseSchema,
+  pluginCatalogStatusResponseSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
-  pluginInstallMarketplaceRequestSchema,
   pluginInstallResponseSchema,
   pluginInstallSourceRequestSchema,
   pluginListResponseSchema,
@@ -21,10 +19,8 @@ import {
   pluginUpdateCheckRequestSchema,
   pluginUpdateCheckResponseSchema,
   type InstalledPlugin,
-  type MarketplaceAddRequest,
-  type MarketplaceRemoveResponse,
-  type MarketplaceSearchResult,
-  type MarketplaceView,
+  type PluginCatalogSearchResult as PluginCatalogSearchContract,
+  type PluginCatalogStatus as PluginCatalogStatusContract,
   type PluginApplyUpdateResult as PluginApplyUpdateContract,
   type PluginListResponse,
   type PluginReloadResponse,
@@ -46,11 +42,9 @@ export interface PluginInstallArgs {
   source: string;
 }
 
-/** Install a catalog entry, optionally selecting an exact published version. */
-export interface PluginInstallFromMarketplaceArgs {
-  marketplaceId: string;
+/** Install an entry from BB's official catalog. */
+export interface PluginCatalogInstallArgs {
   entryId: string;
-  version?: string;
 }
 
 export interface PluginReloadArgs {
@@ -75,15 +69,7 @@ export interface PluginRpcArgs<TOutput> extends PluginIdArgs {
   outputSchema: z.ZodType<TOutput>;
 }
 
-export interface PluginMarketplaceRefreshArgs {
-  marketplaceId: string;
-}
-
-export interface PluginMarketplaceRemoveArgs {
-  marketplaceId: string;
-}
-
-export interface PluginMarketplaceSearchArgs {
+export interface PluginCatalogSearchArgs {
   query: string;
 }
 
@@ -100,24 +86,15 @@ export type PluginGetSourceResult = PluginSourceDetail;
 export type PluginCheckUpdatesResult = PluginUpdateCheckEntry[];
 export type PluginApplyUpdateResult = PluginApplyUpdateContract;
 
-export type PluginMarketplaceListResult = MarketplaceView[];
-export type PluginMarketplaceAddResult = MarketplaceView;
-export type PluginMarketplaceSearchResult = MarketplaceSearchResult[];
-export type PluginMarketplaceRefreshResult = MarketplaceView;
-export type PluginMarketplaceRemoveResult = MarketplaceRemoveResponse;
+export type PluginCatalogStatusResult = PluginCatalogStatusContract;
+export type PluginCatalogSearchResult = PluginCatalogSearchContract[];
+export type PluginCatalogRefreshResult = PluginCatalogStatusContract;
 
-export interface PluginMarketplacesArea {
-  add(args: MarketplaceAddRequest): Promise<PluginMarketplaceAddResult>;
-  list(): Promise<PluginMarketplaceListResult>;
-  refresh(
-    args: PluginMarketplaceRefreshArgs,
-  ): Promise<PluginMarketplaceRefreshResult>;
-  remove(
-    args: PluginMarketplaceRemoveArgs,
-  ): Promise<PluginMarketplaceRemoveResult>;
-  search(
-    args: PluginMarketplaceSearchArgs,
-  ): Promise<PluginMarketplaceSearchResult>;
+export interface PluginCatalogArea {
+  install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
+  refresh(): Promise<PluginCatalogRefreshResult>;
+  search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
+  status(): Promise<PluginCatalogStatusResult>;
 }
 
 export interface PluginsArea {
@@ -126,17 +103,14 @@ export interface PluginsArea {
   checkUpdates(
     args?: PluginCheckUpdatesArgs,
   ): Promise<PluginCheckUpdatesResult>;
+  catalog: PluginCatalogArea;
   disable(args: PluginIdArgs): Promise<PluginDisableResult>;
   enable(args: PluginIdArgs): Promise<PluginEnableResult>;
   getSettings(args: PluginIdArgs): Promise<PluginGetSettingsResult>;
   getSource(args: PluginIdArgs): Promise<PluginGetSourceResult>;
   install(args: PluginInstallArgs): Promise<PluginInstallResult>;
-  installFromMarketplace(
-    args: PluginInstallFromMarketplaceArgs,
-  ): Promise<PluginInstallResult>;
   list(): Promise<PluginListResult>;
   listUpdateResults(): Promise<PluginCheckUpdatesResult>;
-  marketplaces: PluginMarketplacesArea;
   reload(args?: PluginReloadArgs): Promise<PluginReloadResult>;
   remove(args: PluginIdArgs): Promise<PluginRemoveResult>;
   token(args: PluginTokenArgs): Promise<PluginTokenResult>;
@@ -174,47 +148,39 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     };
   }
 
-  const marketplaces: PluginMarketplacesArea = {
-    async add(input) {
-      const body = marketplaceAddRequestSchema.parse(input);
+  const catalog: PluginCatalogArea = {
+    async install(input) {
+      const body = pluginCatalogInstallRequestSchema.parse(input);
       const response = await requestParsed(
-        "/api/v1/marketplaces",
-        marketplaceMutationResponseSchema,
+        "/api/v1/plugin-catalog/install",
+        pluginInstallResponseSchema,
         jsonInit("POST", body),
       );
-      return response.marketplace;
+      return response.plugin;
     },
-    async list() {
+    async refresh() {
+      const body = pluginCatalogRefreshRequestSchema.parse({});
       const response = await requestParsed(
-        "/api/v1/marketplaces",
-        marketplaceListResponseSchema,
+        "/api/v1/plugin-catalog/refresh",
+        pluginCatalogStatusResponseSchema,
+        jsonInit("POST", body),
       );
-      return response.marketplaces;
-    },
-    async refresh(input) {
-      const marketplaceId = z.string().min(1).parse(input.marketplaceId);
-      const response = await requestParsed(
-        `/api/v1/marketplaces/${encodeURIComponent(marketplaceId)}/refresh`,
-        marketplaceMutationResponseSchema,
-        jsonInit("POST", {}),
-      );
-      return response.marketplace;
-    },
-    async remove(input) {
-      const marketplaceId = z.string().min(1).parse(input.marketplaceId);
-      return requestParsed(
-        `/api/v1/marketplaces/${encodeURIComponent(marketplaceId)}`,
-        marketplaceRemoveResponseSchema,
-        { method: "DELETE" },
-      );
+      return response.catalog;
     },
     async search(input) {
       const query = z.string().parse(input.query);
       const response = await requestParsed(
-        `/api/v1/marketplaces/search?q=${encodeURIComponent(query)}`,
-        marketplaceSearchResponseSchema,
+        `/api/v1/plugin-catalog/search?q=${encodeURIComponent(query)}`,
+        pluginCatalogSearchResponseSchema,
       );
       return response.results;
+    },
+    async status() {
+      const response = await requestParsed(
+        "/api/v1/plugin-catalog",
+        pluginCatalogStatusResponseSchema,
+      );
+      return response.catalog;
     },
   };
 
@@ -246,6 +212,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
       return response.results;
     },
+    catalog,
     async disable(input) {
       const response = await requestParsed(
         pluginPath(input.pluginId, "/disable"),
@@ -283,21 +250,6 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
       return response.plugin;
     },
-    async installFromMarketplace(input) {
-      const body = pluginInstallMarketplaceRequestSchema.parse({
-        marketplace: {
-          marketplaceId: input.marketplaceId,
-          entryId: input.entryId,
-        },
-        ...(input.version === undefined ? {} : { version: input.version }),
-      });
-      const response = await requestParsed(
-        "/api/v1/plugins/install",
-        pluginInstallResponseSchema,
-        jsonInit("POST", body),
-      );
-      return response.plugin;
-    },
     async list() {
       return requestParsed("/api/v1/plugins", pluginListResponseSchema);
     },
@@ -308,7 +260,6 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
       return response.results;
     },
-    marketplaces,
     async reload(input = {}) {
       const query = input.pluginId
         ? `?id=${encodeURIComponent(z.string().min(1).parse(input.pluginId))}`

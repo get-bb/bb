@@ -15,23 +15,20 @@ import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { appToast } from "@/components/ui/app-toast.js";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
-  invalidateMarketplaces,
+  invalidatePluginCatalogSearch,
   invalidatePluginList,
 } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
+  installCatalogPlugin,
   installPlugin,
-  type PluginInstallRequest,
-} from "@/hooks/queries/plugin-marketplace-queries";
+} from "@/hooks/queries/plugin-catalog-queries";
 import { FullTrustWarning, PlaceholderBadge } from "./plugin-ui";
 
 /**
- * Pre-fill for Browse-tab installs: the dialog shows the marketplace entry
- * instead of the free source field, and the install body uses the
- * marketplace form so provenance is recorded.
+ * Pre-fill for Browse-tab installs: the dialog shows the official catalog
+ * entry instead of the free source field.
  */
 export type AddPluginInitial = {
-  marketplaceId: string;
-  marketplaceName: string;
   entryId: string;
   displayName: string;
   icon: string | null;
@@ -72,17 +69,18 @@ export function AddPluginDialog({
 function buildRequest(
   initial: AddPluginInitial | null,
   sourceText: string,
-): PluginInstallRequest | null {
+):
+  | { kind: "catalog"; entryId: string }
+  | { kind: "direct"; source: string }
+  | null {
   if (initial !== null) {
     return {
-      marketplace: {
-        marketplaceId: initial.marketplaceId,
-        entryId: initial.entryId,
-      },
+      kind: "catalog",
+      entryId: initial.entryId,
     };
   }
   const trimmed = sourceText.trim();
-  return trimmed.length === 0 ? null : { source: trimmed };
+  return trimmed.length === 0 ? null : { kind: "direct", source: trimmed };
 }
 
 function AddPluginDialogContent({
@@ -97,11 +95,14 @@ function AddPluginDialogContent({
   const request = buildRequest(initial, sourceText);
 
   const install = useMutation({
-    mutationFn: (body: PluginInstallRequest) => installPlugin(fetch, body),
+    mutationFn: (body: NonNullable<typeof request>) =>
+      body.kind === "catalog"
+        ? installCatalogPlugin(fetch, { entryId: body.entryId })
+        : installPlugin(fetch, body.source),
     onSuccess: () => {
       invalidatePluginList({ queryClient });
       // Search rows carry installed flags; a fresh install flips them.
-      invalidateMarketplaces({ queryClient });
+      invalidatePluginCatalogSearch({ queryClient });
       appToast.success(`${initial?.displayName ?? "Plugin"} installed`);
       onOpenChange(false);
     },
@@ -120,7 +121,7 @@ function AddPluginDialogContent({
         </DialogTitle>
         <DialogDescription>
           {initial !== null
-            ? `Install from the ${initial.marketplaceName} marketplace.`
+            ? "Install from BB's official plugin catalog."
             : "Install from npm, a Git repository, or a local path."}
         </DialogDescription>
       </DialogHeader>
@@ -135,7 +136,7 @@ function AddPluginDialogContent({
               {initial.displayName}
             </span>
             <span className="ml-auto font-mono text-xs text-subtle-foreground">
-              {initial.entryId}@{initial.marketplaceName}
+              {initial.entryId}
             </span>
           </div>
         ) : (

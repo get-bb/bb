@@ -295,7 +295,7 @@ Plugin administration is exposed through:
 ```text
 bb.plugins.list()
 bb.plugins.install({ source })
-bb.plugins.installFromMarketplace({ marketplaceId, entryId, version })
+bb.plugins.catalog.install({ entryId })
 bb.plugins.getSource({ pluginId })
 bb.plugins.checkUpdates({ pluginId })
 bb.plugins.listUpdateResults()
@@ -307,18 +307,16 @@ bb.plugins.remove({ pluginId })
 bb.plugins.getSettings({ pluginId })
 bb.plugins.updateSettings({ pluginId, values })
 bb.plugins.token({ pluginId, rotate })
-bb.plugins.marketplaces.list()
-bb.plugins.marketplaces.add({ source, name })
-bb.plugins.marketplaces.search({ query })
-bb.plugins.marketplaces.refresh({ marketplaceId })
-bb.plugins.marketplaces.remove({ marketplaceId })
+bb.plugins.catalog.status()
+bb.plugins.catalog.search({ query })
+bb.plugins.catalog.refresh()
 ```
 
-Direct and marketplace installs are separate methods so source strings and
-catalog coordinates cannot be confused. Omitting `version` from
-`installFromMarketplace` lets the catalog source select its normal compatible
-candidate. These administration methods are available to backend plugins via
-the complete `bb.sdk`; they are intentionally absent from the restricted
+Direct and catalog installs are separate methods so source strings and catalog
+entry ids cannot be confused. Catalog installs use the source declared by the
+entry; callers that need a different npm version use a direct `npm:` install.
+These administration methods are available to backend plugins via the complete
+`bb.sdk`; they are intentionally absent from the restricted
 `@bb/plugin-sdk/app` frontend contract.
 
 Plugin-specific UI features can be called through validated RPC. Callers must

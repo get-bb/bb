@@ -1001,9 +1001,9 @@ describe("@bb/sdk", () => {
       source: "npm:@bb/notes@^1",
       rootDir: "/plugins/notes",
       version: "1.2.0",
-      provenance: "marketplace" as const,
+      provenance: "catalog" as const,
       isOrphanedBuiltin: false,
-      marketplaceName: "official",
+      catalogEntryId: "notes",
       sourceDisplay: "npm · @bb/notes · tracks compatible",
       updateState: {},
       enabled: true,
@@ -1021,14 +1021,11 @@ describe("@bb/sdk", () => {
       logoUrl: null,
       logoDarkUrl: null,
     };
-    const marketplace = {
-      id: "official",
-      name: "official",
-      displayName: "Official",
-      source: "owner/catalog@main",
-      resolvedCommit: "abc123",
+    const catalog = {
       pluginCount: 1,
       lastRefreshAt: 10,
+      lastAttemptAt: 10,
+      lastError: null,
     };
     const checked = {
       id: "notes",
@@ -1038,7 +1035,6 @@ describe("@bb/sdk", () => {
     };
     const queue = createFetchQueue([
       { body: { enabled: true, plugins: [plugin] } },
-      { body: { ok: true, plugin } },
       { body: { ok: true, plugin } },
       { body: { ok: true, plugin } },
       {
@@ -1061,26 +1057,25 @@ describe("@bb/sdk", () => {
           detail: "activation failed; restored 1.2.0",
         },
       },
-      { body: { marketplaces: [marketplace] } },
-      { body: { marketplace } },
+      { body: { catalog } },
       {
         body: {
           results: [
             {
-              marketplaceId: "official",
               entryId: "notes",
               displayName: "Notes",
               description: "Notes",
               icon: null,
+              category: null,
               source: "npm:@bb/notes@^1",
               installed: true,
               compatible: true,
+              incompatibleReason: null,
             },
           ],
         },
       },
-      { body: { marketplace } },
-      { body: { convertedPluginIds: ["notes"] } },
+      { body: { catalog } },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -1098,16 +1093,8 @@ describe("@bb/sdk", () => {
       sdk.plugins.install({ source: "npm:@bb/notes@^1" }),
     ).resolves.toEqual(plugin);
     await expect(
-      sdk.plugins.installFromMarketplace({
-        marketplaceId: "official",
+      sdk.plugins.catalog.install({
         entryId: "notes",
-      }),
-    ).resolves.toEqual(plugin);
-    await expect(
-      sdk.plugins.installFromMarketplace({
-        marketplaceId: "official",
-        entryId: "notes",
-        version: "1.2.0",
       }),
     ).resolves.toEqual(plugin);
     await expect(
@@ -1120,21 +1107,11 @@ describe("@bb/sdk", () => {
     await expect(
       sdk.plugins.applyUpdate({ pluginId: "notes" }),
     ).resolves.toMatchObject({ outcome: "rolled-back", applied: false });
-    await expect(sdk.plugins.marketplaces.list()).resolves.toEqual([
-      marketplace,
-    ]);
+    await expect(sdk.plugins.catalog.status()).resolves.toEqual(catalog);
     await expect(
-      sdk.plugins.marketplaces.add({ source: "owner/catalog", name: "work" }),
-    ).resolves.toEqual(marketplace);
-    await expect(
-      sdk.plugins.marketplaces.search({ query: "notes" }),
+      sdk.plugins.catalog.search({ query: "notes" }),
     ).resolves.toMatchObject([{ entryId: "notes", compatible: true }]);
-    await expect(
-      sdk.plugins.marketplaces.refresh({ marketplaceId: "official" }),
-    ).resolves.toEqual(marketplace);
-    await expect(
-      sdk.plugins.marketplaces.remove({ marketplaceId: "official" }),
-    ).resolves.toEqual({ convertedPluginIds: ["notes"] });
+    await expect(sdk.plugins.catalog.refresh()).resolves.toEqual(catalog);
 
     expect(queue.requests).toEqual([
       {
@@ -1149,18 +1126,10 @@ describe("@bb/sdk", () => {
       },
       {
         bodyText: JSON.stringify({
-          marketplace: { marketplaceId: "official", entryId: "notes" },
+          entryId: "notes",
         }),
         method: "POST",
-        url: "http://bb.test/api/v1/plugins/install",
-      },
-      {
-        bodyText: JSON.stringify({
-          marketplace: { marketplaceId: "official", entryId: "notes" },
-          version: "1.2.0",
-        }),
-        method: "POST",
-        url: "http://bb.test/api/v1/plugins/install",
+        url: "http://bb.test/api/v1/plugin-catalog/install",
       },
       {
         bodyText: undefined,
@@ -1185,27 +1154,17 @@ describe("@bb/sdk", () => {
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/marketplaces",
-      },
-      {
-        bodyText: JSON.stringify({ source: "owner/catalog", name: "work" }),
-        method: "POST",
-        url: "http://bb.test/api/v1/marketplaces",
+        url: "http://bb.test/api/v1/plugin-catalog",
       },
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/marketplaces/search?q=notes",
+        url: "http://bb.test/api/v1/plugin-catalog/search?q=notes",
       },
       {
         bodyText: "{}",
         method: "POST",
-        url: "http://bb.test/api/v1/marketplaces/official/refresh",
-      },
-      {
-        bodyText: undefined,
-        method: "DELETE",
-        url: "http://bb.test/api/v1/marketplaces/official",
+        url: "http://bb.test/api/v1/plugin-catalog/refresh",
       },
     ]);
   });

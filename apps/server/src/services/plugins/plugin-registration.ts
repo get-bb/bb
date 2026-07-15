@@ -12,7 +12,7 @@ import {
   type PluginProvenance,
   type PluginSourceIntent,
 } from "@bb/db";
-import { marketplacePolicyWideningProblem } from "../marketplaces/catalog.js";
+import { catalogPolicyWideningProblem } from "../plugin-catalog/catalog.js";
 import {
   BUILTIN_PLUGIN_NAMES,
   builtinPluginSource,
@@ -103,9 +103,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       return false;
     }
     if (
-      provenance.kind === "marketplace" &&
-      (row.marketplaceId !== provenance.marketplaceId ||
-        row.marketplaceEntryId !== provenance.entryId)
+      provenance.kind === "catalog" &&
+      row.catalogEntryId !== provenance.entryId
     ) {
       return false;
     }
@@ -136,8 +135,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     return (
       current.source === expected.source &&
       current.provenance === expected.provenance &&
-      current.marketplaceId === expected.marketplaceId &&
-      current.marketplaceEntryId === expected.marketplaceEntryId &&
+      current.catalogEntryId === expected.catalogEntryId &&
       current.sourceKind === expected.sourceKind &&
       current.sourcePath === expected.sourcePath &&
       current.sourceBuiltinName === expected.sourceBuiltinName &&
@@ -163,8 +161,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     return JSON.stringify({
       source: row.source,
       provenance: row.provenance,
-      marketplaceId: row.marketplaceId,
-      marketplaceEntryId: row.marketplaceEntryId,
+      catalogEntryId: row.catalogEntryId,
       sourceKind: row.sourceKind,
       sourcePath: row.sourcePath,
       sourceBuiltinName: row.sourceBuiltinName,
@@ -197,7 +194,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       );
     }
     if (
-      identity.provenance.kind === "marketplace" ||
+      identity.provenance.kind === "catalog" ||
       identity.sourceIntent.kind === "npm" ||
       identity.sourceIntent.kind === "git"
     ) {
@@ -218,7 +215,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       initialManifest.id,
     );
     const catalogEngines = args.installation?.engines;
-    const wideningProblem = marketplacePolicyWideningProblem(
+    const wideningProblem = catalogPolicyWideningProblem(
       args.installation,
       initialManifest,
     );
@@ -233,7 +230,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       });
       if (catalogCompatibility.effective.length > 0) {
         throw new Error(
-          `install refused by marketplace compatibility policy: ${catalogCompatibility.effective.map((problem) => problem.message).join("; ")}`,
+          `install refused by catalog compatibility policy: ${catalogCompatibility.effective.map((problem) => problem.message).join("; ")}`,
         );
       }
     }
@@ -376,14 +373,13 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
   }
 
   function provenanceForRow(row: InstalledPluginRow): PluginProvenance {
-    if (row.provenance !== "marketplace") return { kind: row.provenance };
-    if (row.marketplaceId === null || row.marketplaceEntryId === null) {
-      throw new Error(`plugin "${row.id}" has corrupt marketplace provenance`);
+    if (row.provenance !== "catalog") return { kind: row.provenance };
+    if (row.catalogEntryId === null) {
+      throw new Error(`plugin "${row.id}" has corrupt catalog provenance`);
     }
     return {
-      kind: "marketplace",
-      marketplaceId: row.marketplaceId,
-      entryId: row.marketplaceEntryId,
+      kind: "catalog",
+      entryId: row.catalogEntryId,
     };
   }
 

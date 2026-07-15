@@ -500,27 +500,24 @@ describe("sdk", () => {
   });
 
   it("keeps nested plugin administration available through the backend SDK", async () => {
-    const marketplace = {
-      id: "official",
-      name: "official",
-      displayName: "Official",
-      source: "owner/catalog@main",
+    const catalog = {
       pluginCount: 1,
+      lastRefreshAt: null,
+      lastAttemptAt: null,
+      lastError: null,
     };
     const { bb, harness } = createFakePluginHost({
       sdk: {
         plugins: {
-          marketplaces: {
-            list: async () => [marketplace],
+          catalog: {
+            status: async () => catalog,
           },
         },
       },
     });
 
-    await expect(bb.sdk.plugins.marketplaces.list()).resolves.toEqual([
-      marketplace,
-    ]);
-    expect(harness.sdk.callsTo("plugins.marketplaces.list")).toEqual([[]]);
+    await expect(bb.sdk.plugins.catalog.status()).resolves.toEqual(catalog);
+    expect(harness.sdk.callsTo("plugins.catalog.status")).toEqual([[]]);
   });
 
   it("throws a stub-naming error for unstubbed methods and accepts late stubs", async () => {

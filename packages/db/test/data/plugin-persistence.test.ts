@@ -4,17 +4,15 @@ import {
   createPluginArtifact,
   deletePluginArtifact,
   deleteInstalledPlugin,
-  deleteMarketplace,
   getInstalledPluginRegistration,
   getInstalledPlugin,
-  getMarketplace,
-  getMarketplaceIncludingRemoved,
+  getPluginCatalog,
   listPluginArtifacts,
-  listMarketplaces,
   migrate,
   setInstalledPluginActiveArtifact,
   upsertInstalledPlugin,
-  upsertMarketplace,
+  updatePluginCatalogRefreshFailure,
+  upsertPluginCatalog,
   type DbConnection,
 } from "../../src/index.js";
 
@@ -33,8 +31,7 @@ describe("normalized plugin persistence", () => {
       id: "linear",
       source: "npm:bb-plugin-linear@1.2.3",
       provenance: {
-        kind: "marketplace",
-        marketplaceId: "official",
+        kind: "catalog",
         entryId: "linear",
       },
       sourceIntent: {
@@ -80,9 +77,8 @@ describe("normalized plugin persistence", () => {
     );
 
     expect(getInstalledPluginRegistration(db, "linear")).toMatchObject({
-      provenance: "marketplace",
-      marketplaceId: "official",
-      marketplaceEntryId: "linear",
+      provenance: "catalog",
+      catalogEntryId: "linear",
       sourceKind: "npm",
       sourceNpmRequestedSpec: "^1.2.0",
       sourceNpmSpecKind: "range",
@@ -96,31 +92,23 @@ describe("normalized plugin persistence", () => {
     );
   });
 
-  it("upserts and lists typed marketplace state", () => {
-    upsertMarketplace(db, {
-      id: "official",
-      displayName: "Official",
-      sourceKind: "git",
-      location: "https://github.com/bb/marketplace.git",
-      requestedGitRef: "main",
-      resolvedGitCommit: null,
-      cachePath: null,
-      catalogJson: null,
+  it("upserts singleton catalog state and records refresh failures", () => {
+    upsertPluginCatalog(db, {
+      catalogJson: '{"schemaVersion":1}',
+      etag: '"v1"',
+      lastModified: "Wed, 15 Jul 2026 12:00:00 GMT",
       lastSuccessfulRefreshAt: null,
       lastAttemptedRefreshAt: null,
       lastError: null,
-      removedAt: null,
     });
 
-    expect(listMarketplaces(db)).toMatchObject([
-      { id: "official", sourceKind: "git" },
-    ]);
-    expect(getMarketplace(db, "official")?.displayName).toBe("Official");
-    expect(deleteMarketplace(db, "official")).toBe(true);
-    expect(getMarketplace(db, "official")).toBeUndefined();
-    expect(getMarketplaceIncludingRemoved(db, "official")?.removedAt).toEqual(
-      expect.any(Number),
-    );
+    expect(getPluginCatalog(db)).toMatchObject({ id: 1, etag: '"v1"' });
+    updatePluginCatalogRefreshFailure(db, 123, "offline");
+    expect(getPluginCatalog(db)).toMatchObject({
+      lastAttemptedRefreshAt: 123,
+      lastError: "offline",
+      catalogJson: '{"schemaVersion":1}',
+    });
   });
 
   it("rejects an npm artifact without registry integrity at runtime", () => {

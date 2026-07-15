@@ -68,9 +68,9 @@ jobs:
           const { readFileSync, writeFileSync } = require("node:fs");
 
           const plugins = {
-            github: { directory: "marketplace/plugins/github", release: "github" },
-            docs: { directory: "marketplace/plugins/docs", release: "docs" },
-            memory: { directory: "marketplace/plugins/memory", release: "memory" },
+            github: { directory: "official-plugins/github", release: "github" },
+            docs: { directory: "official-plugins/docs", release: "docs" },
+            memory: { directory: "official-plugins/memory", release: "memory" },
           };
           const selected = process.env.PLUGIN === "all"
             ? Object.values(plugins)

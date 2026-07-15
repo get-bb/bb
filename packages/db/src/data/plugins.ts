@@ -5,7 +5,7 @@ import { installedPlugins, pluginArtifacts } from "../schema.js";
 export type PluginProvenance =
   | { kind: "builtin" }
   | { kind: "direct" }
-  | { kind: "marketplace"; marketplaceId: string; entryId: string };
+  | { kind: "catalog"; entryId: string };
 
 export type PluginSourceIntent =
   | { kind: "path"; canonicalPath: string }
@@ -45,9 +45,8 @@ export interface PluginUpdateState {
 export interface InstalledPluginRow {
   id: string;
   source: string;
-  provenance: "builtin" | "direct" | "marketplace";
-  marketplaceId: string | null;
-  marketplaceEntryId: string | null;
+  provenance: "builtin" | "direct" | "catalog";
+  catalogEntryId: string | null;
   sourceKind: "path" | "builtin" | "npm" | "git";
   sourcePath: string | null;
   sourceBuiltinName: string | null;
@@ -115,12 +114,8 @@ function normalizedColumns(
   }
   return {
     provenance: plugin.provenance.kind,
-    marketplaceId:
-      plugin.provenance.kind === "marketplace"
-        ? plugin.provenance.marketplaceId
-        : null,
-    marketplaceEntryId:
-      plugin.provenance.kind === "marketplace" ? plugin.provenance.entryId : null,
+    catalogEntryId:
+      plugin.provenance.kind === "catalog" ? plugin.provenance.entryId : null,
     sourceKind: plugin.sourceIntent.kind,
     sourcePath:
       plugin.sourceIntent.kind === "path"
@@ -396,9 +391,8 @@ export function deleteInstalledPlugin(db: DbConnection, id: string): boolean {
   return result.changes > 0;
 }
 
-export function listInstalledPluginsFromMarketplace(
+export function listInstalledPluginsFromCatalog(
   db: DbConnection,
-  marketplaceId: string,
 ): InstalledPluginRow[] {
   return db
     .select({ plugin: installedPlugins, artifactPath: pluginArtifacts.path })
@@ -406,8 +400,7 @@ export function listInstalledPluginsFromMarketplace(
     .leftJoin(pluginArtifacts, eq(installedPlugins.activeArtifactId, pluginArtifacts.id))
     .where(
       and(
-        eq(installedPlugins.provenance, "marketplace"),
-        eq(installedPlugins.marketplaceId, marketplaceId),
+        eq(installedPlugins.provenance, "catalog"),
         isNull(installedPlugins.removedAt),
       ),
     )
@@ -419,29 +412,6 @@ export function listInstalledPluginsFromMarketplace(
           ? artifactPath
           : plugin.rootDir,
     }));
-}
-
-export function setInstalledPluginDirectProvenance(
-  db: DbConnection,
-  id: string,
-): boolean {
-  const result = db
-    .update(installedPlugins)
-    .set({
-      provenance: "direct",
-      marketplaceId: null,
-      marketplaceEntryId: null,
-      updatedAt: Date.now(),
-    })
-    .where(
-      and(
-        eq(installedPlugins.id, id),
-        eq(installedPlugins.provenance, "marketplace"),
-        isNull(installedPlugins.removedAt),
-      ),
-    )
-    .run();
-  return result.changes > 0;
 }
 
 export function markInstalledPluginRemoved(

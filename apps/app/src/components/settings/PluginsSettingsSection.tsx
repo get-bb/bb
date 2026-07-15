@@ -39,7 +39,6 @@ import {
   type PluginListItem,
   type PluginSettingFieldDescriptor,
 } from "@/hooks/queries/plugin-settings-queries";
-import { useMarketplaces } from "@/hooks/queries/plugin-marketplace-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -53,7 +52,6 @@ import {
 } from "./plugins/AddPluginDialog";
 import { BrowsePluginsTab } from "./plugins/BrowsePluginsTab";
 import { InstalledPluginsTab } from "./plugins/InstalledPluginsTab";
-import { MarketplacesTab } from "./plugins/MarketplacesTab";
 import {
   PluginUpdateBanner,
   PluginUpdatesSourceCard,
@@ -62,9 +60,9 @@ import {
 
 /**
  * The Settings "Plugins" surfaces (plugin design §5.2 settingsSection; the
- * marketplace design's locked three-layer disclosure model):
+ * plugin management's three-layer disclosure model):
  *
- * - PluginsSettingsSection: management — Installed / Browse / Marketplaces
+ * - PluginsSettingsSection: management — Installed / Browse
  *   tabs plus the Add-plugin dialog. The installed list is Layer 1: quiet
  *   rows that answer "is anything asking for my attention?".
  * - PluginSettingsDetailSection: one plugin's page (Layer 2) — update
@@ -349,7 +347,7 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "degraded",
 ];
 
-type PluginsTab = "installed" | "browse" | "marketplaces";
+type PluginsTab = "installed" | "browse";
 
 function PluginsTabButton({
   label,
@@ -382,20 +380,18 @@ function PluginsTabButton({
   );
 }
 
-/** The "Plugins" bucket: Installed / Browse / Marketplaces (Layer 1). */
+/** The "Plugins" bucket: Installed / Browse (Layer 1). */
 export function PluginsSettingsSection() {
   const navigate = useNavigate();
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
   const listQuery = usePluginList({ enabled: pluginsEnabled });
-  const marketplacesQuery = useMarketplaces({ enabled: pluginsEnabled });
   const plugins = listQuery.data?.plugins ?? [];
   const [tab, setTab] = useState<PluginsTab>("installed");
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
-  const [marketplaceAddOpen, setMarketplaceAddOpen] = useState(false);
 
   if (systemConfig.data === undefined) return null;
 
@@ -431,12 +427,6 @@ export function PluginsSettingsSection() {
                 active={tab === "browse"}
                 onClick={() => setTab("browse")}
               />
-              <PluginsTabButton
-                label="Marketplaces"
-                count={marketplacesQuery.data?.length}
-                active={tab === "marketplaces"}
-                onClick={() => setTab("marketplaces")}
-              />
             </div>
             <div className="flex items-center gap-1.5">
               <Button
@@ -449,39 +439,22 @@ export function PluginsSettingsSection() {
                 <Icon name="Code" className="size-3.5" />
                 Create a plugin
               </Button>
-              {tab === "marketplaces" ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => setMarketplaceAddOpen(true)}
-                >
-                  <Icon name="Plus" className="size-3.5" />
-                  Add marketplace
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => setAddDialog({ open: true, initial: null })}
-                >
-                  <Icon name="Plus" className="size-3.5" />
-                  Add plugin
-                </Button>
-              )}
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2.5 text-xs"
+                onClick={() => setAddDialog({ open: true, initial: null })}
+              >
+                <Icon name="Plus" className="size-3.5" />
+                Add plugin
+              </Button>
             </div>
           </div>
           {tab === "installed" ? (
             <InstalledPluginsTab plugins={plugins} />
-          ) : tab === "browse" ? (
+          ) : (
             <BrowsePluginsTab
               onInstall={(initial) => setAddDialog({ open: true, initial })}
-            />
-          ) : (
-            <MarketplacesTab
-              addOpen={marketplaceAddOpen}
-              onAddOpenChange={setMarketplaceAddOpen}
             />
           )}
           <AddPluginDialog
@@ -601,7 +574,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   // A running plugin whose only surface is a settingsSection lets that
   // section own the chrome (its own SettingsSection title + description), so
   // the diagnostic header (version + status pill + manifest description)
-  // doesn't stack a second heading above it — unless the marketplace update
+  // doesn't stack a second heading above it — unless the plugin update
   // surfaces render here too, which need the header for context.
   const sectionOwnsHeader =
     isRunning &&
@@ -609,8 +582,8 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
     !plugin.hasSettings &&
     !hasUpdateSurfaces;
   const provenanceLine =
-    plugin.marketplaceName !== null
-      ? `v${plugin.version} · from ${plugin.marketplaceName} marketplace`
+    plugin.provenance === "catalog"
+      ? `v${plugin.version} · official catalog`
       : plugin.provenance === "direct"
         ? `v${plugin.version} · direct install`
         : null;

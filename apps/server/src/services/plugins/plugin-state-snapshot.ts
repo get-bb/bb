@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import {
   createPluginStateSnapshot,
+  getInstalledPlugin,
   getPluginStateSnapshot,
   listPluginKvRows,
   listPluginSchedules,
@@ -46,42 +47,52 @@ const stateSchema = z.object({
   settings: z.array(settingRowSchema),
   schedules: z.array(scheduleRowSchema),
 });
+const installedPluginRowFields = {
+  id: z.string(),
+  source: z.string(),
+  sourceKind: z.enum(["path", "builtin", "npm", "git"]),
+  sourcePath: z.string().nullable(),
+  sourceBuiltinName: z.string().nullable(),
+  sourceNpmPackage: z.string().nullable(),
+  sourceNpmRegistry: z.string().nullable(),
+  sourceNpmRequestedSpec: z.string().nullable(),
+  sourceNpmSpecKind: z.enum(["default", "exact", "tag", "range"]).nullable(),
+  sourceGitUrl: z.string().nullable(),
+  sourceGitSubdirectory: z.string().nullable(),
+  sourceGitRequestedRef: z.string().nullable(),
+  sourceGitRefKind: z.enum(["branch", "tag", "commit"]).nullable(),
+  npmResolvedVersion: z.string().nullable(),
+  npmIntegrity: z.string().nullable(),
+  gitResolvedCommit: z.string().nullable(),
+  lastUpdateCheckAt: z.number().int().nullable(),
+  availableCompatibleVersion: z.string().nullable(),
+  newestIncompatibleVersion: z.string().nullable(),
+  updateStatusDetail: z.string().nullable(),
+  lastFailureVersion: z.string().nullable(),
+  lastFailureAt: z.number().int().nullable(),
+  lastFailureDetail: z.string().nullable(),
+  activeArtifactId: z.string().nullable(),
+  normalizationVersion: z.number().int(),
+  rootDir: z.string(),
+  version: z.string(),
+  enabled: z.boolean(),
+  removedAt: z.number().int().nullable(),
+  installedAt: z.number().int(),
+  updatedAt: z.number().int(),
+} as const;
 const installedPluginRowSchema = z
   .object({
-    id: z.string(),
-    source: z.string(),
+    ...installedPluginRowFields,
+    provenance: z.enum(["builtin", "direct", "catalog"]),
+    catalogEntryId: z.string().nullable(),
+  })
+  .strict();
+const legacyInstalledPluginRowSchema = z
+  .object({
+    ...installedPluginRowFields,
     provenance: z.enum(["builtin", "direct", "marketplace"]),
     marketplaceId: z.string().nullable(),
     marketplaceEntryId: z.string().nullable(),
-    sourceKind: z.enum(["path", "builtin", "npm", "git"]),
-    sourcePath: z.string().nullable(),
-    sourceBuiltinName: z.string().nullable(),
-    sourceNpmPackage: z.string().nullable(),
-    sourceNpmRegistry: z.string().nullable(),
-    sourceNpmRequestedSpec: z.string().nullable(),
-    sourceNpmSpecKind: z.enum(["default", "exact", "tag", "range"]).nullable(),
-    sourceGitUrl: z.string().nullable(),
-    sourceGitSubdirectory: z.string().nullable(),
-    sourceGitRequestedRef: z.string().nullable(),
-    sourceGitRefKind: z.enum(["branch", "tag", "commit"]).nullable(),
-    npmResolvedVersion: z.string().nullable(),
-    npmIntegrity: z.string().nullable(),
-    gitResolvedCommit: z.string().nullable(),
-    lastUpdateCheckAt: z.number().int().nullable(),
-    availableCompatibleVersion: z.string().nullable(),
-    newestIncompatibleVersion: z.string().nullable(),
-    updateStatusDetail: z.string().nullable(),
-    lastFailureVersion: z.string().nullable(),
-    lastFailureAt: z.number().int().nullable(),
-    lastFailureDetail: z.string().nullable(),
-    activeArtifactId: z.string().nullable(),
-    normalizationVersion: z.number().int(),
-    rootDir: z.string(),
-    version: z.string(),
-    enabled: z.boolean(),
-    removedAt: z.number().int().nullable(),
-    installedAt: z.number().int(),
-    updatedAt: z.number().int(),
   })
   .strict();
 
@@ -245,9 +256,32 @@ export async function readPluginSnapshotRegistration(args: {
       `plugin state snapshot ${snapshot.id} predates restart-safe rollback metadata`,
     );
   }
-  return installedPluginRowSchema.parse(
-    JSON.parse(await readFile(snapshot.registrationPath, "utf8")),
+  const json: unknown = JSON.parse(
+    await readFile(snapshot.registrationPath, "utf8"),
   );
+  const current = installedPluginRowSchema.safeParse(json);
+  if (current.success) return current.data;
+  const legacy = legacyInstalledPluginRowSchema.parse(json);
+  const { marketplaceId, marketplaceEntryId, ...registration } = legacy;
+  const installed = getInstalledPlugin(args.db, legacy.id);
+  if (
+    legacy.provenance === "marketplace" &&
+    marketplaceId === "bb-official" &&
+    marketplaceEntryId !== null &&
+    installed?.provenance === "catalog" &&
+    installed.catalogEntryId === marketplaceEntryId
+  ) {
+    return {
+      ...registration,
+      provenance: "catalog",
+      catalogEntryId: marketplaceEntryId,
+    };
+  }
+  return {
+    ...registration,
+    provenance: legacy.provenance === "builtin" ? "builtin" : "direct",
+    catalogEntryId: null,
+  };
 }
 
 export async function restorePluginHostStateSnapshot(args: {

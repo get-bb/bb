@@ -5,6 +5,11 @@ Branch: `bb/plugin-1-0-consolidated`
 Pull request: #716  
 Test instance: isolated `scripts/bb-dev-app` data directory; never the user's normal `~/.bb`
 
+> Historical record: this plan documents the former configurable marketplace
+> implementation. Current BB exposes one fixed official plugin catalog; the
+> marketplace add/remove/path-catalog scenarios below are intentionally not a
+> current acceptance contract.
+
 ## Purpose
 
 This is the executable acceptance plan for the Plugin 1.0 API, SDK, official

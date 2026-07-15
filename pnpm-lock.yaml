@@ -990,7 +990,7 @@ importers:
 
   examples/plugins/small-ux-pack: {}
 
-  marketplace/plugins/docs:
+  official-plugins/docs:
     dependencies:
       '@hugeicons/core-free-icons':
         specifier: ^4.1.3
@@ -1064,7 +1064,7 @@ importers:
     devDependencies:
       '@bb/plugin-sdk':
         specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
+        version: link:../../packages/plugin-sdk
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1096,7 +1096,7 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.2))
 
-  marketplace/plugins/github:
+  official-plugins/github:
     dependencies:
       '@hugeicons/core-free-icons':
         specifier: ^4.1.3
@@ -1125,7 +1125,7 @@ importers:
     devDependencies:
       '@bb/plugin-sdk':
         specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
+        version: link:../../packages/plugin-sdk
       '@pierre/diffs':
         specifier: ^1.2.9
         version: 1.2.9(@shikijs/themes@3.23.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1157,7 +1157,7 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.2))
 
-  marketplace/plugins/memory:
+  official-plugins/memory:
     dependencies:
       '@radix-ui/react-slot':
         specifier: ^1.3.0
@@ -1177,7 +1177,7 @@ importers:
     devDependencies:
       '@bb/plugin-sdk':
         specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
+        version: link:../../packages/plugin-sdk
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

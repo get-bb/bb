@@ -28,7 +28,6 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
-  getMarketplace,
   getThread,
   listDuePluginSchedules,
   listInstalledPlugins,
@@ -168,9 +167,8 @@ export interface PluginService {
    * use update for an existing managed plugin.
    */
   install(source: string): Promise<PluginListEntry>;
-  installFromMarketplace(args: {
+  installFromCatalog(args: {
     source: string;
-    marketplaceId: string;
     entryId: string;
     installation?: { engines: { bb?: string; bbPluginSdk?: string } };
     gitSubdirectory?: string;
@@ -1121,18 +1119,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: row.rootDir,
           version: row.version,
           provenance: row.provenance,
+          ...(row.catalogEntryId === null
+            ? {}
+            : { catalogEntryId: row.catalogEntryId }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
             !builtinPlugins.some(
               (builtin) => builtin.name === row.sourceBuiltinName,
             ),
-          ...(row.marketplaceId === null
-            ? {}
-            : {
-                marketplaceName:
-                  getMarketplace(deps.db, row.marketplaceId)?.displayName ??
-                  row.marketplaceId,
-              }),
           sourceDisplay: sourceDisplayForRow(row),
           updateState: updateStateForRow(row),
           enabled: row.enabled,
@@ -1333,13 +1327,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
     },
 
-    async installFromMarketplace(args) {
+    async installFromCatalog(args) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const parsed = parsePluginSource(args.source);
         const context: InstallContext = {
           provenance: {
-            kind: "marketplace",
-            marketplaceId: args.marketplaceId,
+            kind: "catalog",
             entryId: args.entryId,
           },
           ...(args.installation === undefined
@@ -1353,9 +1346,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : { npmRegistry: args.npmRegistry }),
         };
         if (parsed.kind === "builtin") {
-          throw new Error(
-            "marketplace entries may not install builtin sources",
-          );
+          throw new Error("catalog entries may not install builtin sources");
         }
         if (parsed.kind === "git")
           return installGitSource(parsed, args.source, context);

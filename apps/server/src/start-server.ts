@@ -126,7 +126,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     app,
     closeWebSockets,
     injectWebSocket,
-    marketplaceService,
+    pluginCatalogService,
     pluginService,
   } = createApp(
     {
@@ -160,7 +160,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     skillTreeRegistry,
     pluginSchedules: pluginService,
     pluginService,
-    marketplaceService,
     telemetry,
     terminalSessions,
   };
@@ -206,6 +205,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
+      pluginCatalogService.stopPeriodicRefresh();
       await pluginService.stop().catch((error: unknown) => {
         logger.warn({ err: error }, "Plugin shutdown failed");
       });

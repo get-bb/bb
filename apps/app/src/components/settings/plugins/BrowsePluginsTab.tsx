@@ -1,60 +1,70 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
+import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { EmptyState } from "@bb/shared-ui/empty-state";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { appToast } from "@/components/ui/app-toast.js";
 import {
-  useMarketplaceSearch,
-  useMarketplaces,
-  type MarketplaceSearchEntry,
-} from "@/hooks/queries/plugin-marketplace-queries";
+  applyPluginCatalogStatus,
+  invalidatePluginCatalogSearch,
+} from "@/hooks/cache-owners/plugin-cache-owner";
+import {
+  refreshPluginCatalog,
+  usePluginCatalogSearch,
+  usePluginCatalogStatus,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
+import { formatRelativeTime } from "@/lib/relative-time";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import {
   PlaceholderBadge,
   SUCCESS_TEXT_STYLE,
   UPDATE_TINT_STYLE,
+  formatAbsoluteDate,
 } from "./plugin-ui";
 
-/**
- * The Browse tab (sketch v1 C): search across added catalogs with
- * marketplace filter chips and a category card grid. Catalog entries never
- * render as installed-but-disabled rows; installed entries get a check,
- * incompatible entries say why Install is off. Install opens the shared
- * Add-plugin dialog pre-filled — one pipeline (the top-level store page is
- * deferred; this tab is Phase 5's whole discovery surface).
- *
- * Search results carry only the marketplace id; display names come from
- * joining the marketplace list.
- */
+/** Browse and refresh BB's singleton official plugin catalog. */
 export function BrowsePluginsTab({
   onInstall,
 }: {
   onInstall: (initial: AddPluginInitial) => void;
 }) {
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
-  const [marketplaceFilter, setMarketplaceFilter] = useState<string | null>(
-    null,
-  );
-  const marketplacesQuery = useMarketplaces({ enabled: true });
-  const searchQuery = useMarketplaceSearch(debouncedQuery, { enabled: true });
+  const statusQuery = usePluginCatalogStatus({ enabled: true });
+  const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
+  const status = statusQuery.data;
+  const entries = searchQuery.data ?? [];
 
-  const marketplaces = marketplacesQuery.data ?? [];
-  const marketplaceNames = new Map(
-    marketplaces.map((marketplace) => [
-      marketplace.id,
-      marketplace.displayName,
-    ]),
-  );
-  const entries = (searchQuery.data ?? []).filter(
-    (entry) =>
-      marketplaceFilter === null || entry.marketplaceId === marketplaceFilter,
-  );
+  const refresh = useMutation({
+    mutationFn: () => refreshPluginCatalog(fetch),
+    onSuccess: (nextStatus) => {
+      applyPluginCatalogStatus({ queryClient, status: nextStatus });
+      if (nextStatus.lastError !== null) {
+        appToast.error("Refreshing the plugin catalog failed", {
+          description: nextStatus.lastError,
+        });
+        return;
+      }
+      invalidatePluginCatalogSearch({ queryClient });
+      appToast.success("Plugin catalog refreshed");
+    },
+    onError: (error) => {
+      // The server may have persisted failure status. Refetching status does
+      // not touch successful search data, so cached catalog rows remain shown.
+      void statusQuery.refetch();
+      appToast.error("Refreshing the plugin catalog failed", {
+        description: pluginAdminErrorMessage(error),
+      });
+    },
+  });
 
-  const byCategory = new Map<string, MarketplaceSearchEntry[]>();
+  const byCategory = new Map<string, PluginCatalogSearchEntry[]>();
   for (const entry of entries) {
     const category = entry.category ?? "Other";
     const bucket = byCategory.get(category);
@@ -62,51 +72,93 @@ export function BrowsePluginsTab({
     else bucket.push(entry);
   }
 
+  const failedRefresh = status?.lastError ?? null;
+  const cachedAt = status?.lastRefreshAt ?? null;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <div className="relative min-w-48 flex-1">
-          <Icon
-            name="Search"
-            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground"
-          />
-          <Input
-            value={query}
-            placeholder="Search plugins…"
-            aria-label="Search plugins"
-            className="h-8 pl-8 text-xs"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
-        {marketplaces.length > 1 ? (
-          <div className="flex items-center gap-1.5">
-            <FilterChip
-              label="All"
-              active={marketplaceFilter === null}
-              onClick={() => setMarketplaceFilter(null)}
-            />
-            {marketplaces.map((marketplace) => (
-              <FilterChip
-                key={marketplace.id}
-                label={marketplace.displayName}
-                active={marketplaceFilter === marketplace.id}
-                onClick={() => setMarketplaceFilter(marketplace.id)}
-              />
-            ))}
+      <div className="rounded-lg border border-border bg-card px-3.5 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              BB Official catalog
+            </p>
+            {status === undefined ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {statusQuery.isPending
+                  ? "Loading catalog status…"
+                  : "Catalog status unavailable."}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {status.pluginCount} plugin
+                {status.pluginCount === 1 ? "" : "s"}
+                {status.lastRefreshAt !== null
+                  ? ` · refreshed ${formatRelativeTime({ timestamp: status.lastRefreshAt, now: Date.now() })}`
+                  : " · not refreshed yet"}
+              </p>
+            )}
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 px-2.5 text-xs"
+            disabled={refresh.isPending}
+            aria-busy={refresh.isPending}
+            onClick={() => refresh.mutate()}
+          >
+            {refresh.isPending ? (
+              <Icon name="Spinner" className="size-3.5 animate-spin" />
+            ) : (
+              <Icon name="RotateCcw" className="size-3.5" />
+            )}
+            {failedRefresh === null ? "Refresh" : "Retry"}
+          </Button>
+        </div>
+        {failedRefresh !== null ? (
+          <p
+            className="mt-2 text-xs text-warning-text"
+            data-testid="catalog-refresh-error"
+          >
+            Refresh failed: {failedRefresh}.{" "}
+            {cachedAt === null
+              ? "Previously cached results remain available."
+              : `Showing the catalog cached on ${formatAbsoluteDate(cachedAt)}.`}
+          </p>
         ) : null}
       </div>
+
+      <div className="relative min-w-48">
+        <Icon
+          name="Search"
+          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground"
+        />
+        <Input
+          value={query}
+          placeholder="Search plugins…"
+          aria-label="Search plugins"
+          className="h-8 pl-8 text-xs"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </div>
+
+      {searchQuery.isError && entries.length > 0 ? (
+        <p className="text-xs text-warning-text" role="status">
+          Showing cached catalog results because the latest search failed.
+        </p>
+      ) : null}
 
       {searchQuery.isPending ? (
         <p className="flex items-center gap-2 py-6 text-xs text-muted-foreground">
           <Icon name="Spinner" className="size-3.5 animate-spin" />
-          Searching catalogs…
+          Searching catalog…
         </p>
       ) : entries.length === 0 ? (
         <EmptyState
           message={
-            marketplaces.length === 0
-              ? "No marketplaces added yet. Add one in the Marketplaces tab to browse plugins."
+            searchQuery.isError
+              ? "The BB Official catalog is unavailable."
               : "No plugins match this search."
           }
         />
@@ -119,12 +171,8 @@ export function BrowsePluginsTab({
             <div className="grid gap-2.5 sm:grid-cols-2">
               {categoryEntries.map((entry) => (
                 <BrowseCard
-                  key={`${entry.marketplaceId}:${entry.entryId}`}
+                  key={entry.entryId}
                   entry={entry}
-                  marketplaceName={
-                    marketplaceNames.get(entry.marketplaceId) ??
-                    entry.marketplaceId
-                  }
                   onInstall={onInstall}
                 />
               ))}
@@ -136,43 +184,13 @@ export function BrowsePluginsTab({
   );
 }
 
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      className={cn(
-        "rounded-full border px-3 py-1 text-xs",
-        active
-          ? "border-transparent bg-foreground text-background"
-          : "border-border text-muted-foreground hover:text-foreground",
-      )}
-      onClick={onClick}
-    >
-      {label}
-    </button>
-  );
-}
-
 function BrowseCard({
   entry,
-  marketplaceName,
   onInstall,
 }: {
-  entry: MarketplaceSearchEntry;
-  marketplaceName: string;
+  entry: PluginCatalogSearchEntry;
   onInstall: (initial: AddPluginInitial) => void;
 }) {
-  const sourceLabel = `${marketplaceName} · ${entry.source}`;
-
   return (
     <div
       className="flex items-start gap-3 rounded-lg border border-border bg-card p-3.5"
@@ -193,10 +211,10 @@ function BrowseCard({
         ) : null}
         <p
           className="mt-1.5 truncate text-2xs text-subtle-foreground"
-          title={sourceLabel}
+          title={entry.source}
           data-testid={`browse-source-${entry.entryId}`}
         >
-          {sourceLabel}
+          {entry.source}
         </p>
         {!entry.compatible && entry.incompatibleReason !== null ? (
           <p className="text-2xs text-warning-text">
@@ -220,8 +238,6 @@ function BrowseCard({
           disabled={!entry.compatible}
           onClick={() =>
             onInstall({
-              marketplaceId: entry.marketplaceId,
-              marketplaceName,
               entryId: entry.entryId,
               displayName: entry.displayName,
               icon: entry.icon,

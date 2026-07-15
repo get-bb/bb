@@ -667,6 +667,7 @@ declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     entity: z$1.ZodLiteral<"system">;
     changes: z$1.ZodReadonly<z$1.ZodArray<z$1.ZodEnum<{
         "config-changed": "config-changed";
+        "plugin-catalog-changed": "plugin-catalog-changed";
         "plugins-changed": "plugins-changed";
     }>>>;
 }, z$1.core.$strict>], "entity">;
@@ -2650,9 +2651,9 @@ declare const projectBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
-            missing: "missing";
             local: "local";
             remote: "remote";
+            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
     defaultWorktreeBaseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -2782,8 +2783,8 @@ type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2804,8 +2805,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2960,9 +2961,9 @@ declare const environmentDiffBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
-            missing: "missing";
             local: "local";
             remote: "remote";
+            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -3033,8 +3034,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -3638,8 +3639,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strict>], "kind">>;
         disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
         instructionMode: z$1.ZodEnum<{
-            append: "append";
             replace: "replace";
+            append: "append";
         }>;
         type: z$1.ZodLiteral<"thread.start">;
         requestId: z$1.ZodString;
@@ -4105,8 +4106,8 @@ declare const hostDaemonCommandRegistry: {
                 }>;
             }, z$1.core.$strip>;
             instructionMode: z$1.ZodEnum<{
-                append: "append";
                 replace: "replace";
+                append: "append";
             }>;
             projectId: z$1.ZodString;
             providerId: z$1.ZodString;
@@ -4980,9 +4981,9 @@ declare const hostDaemonCommandRegistry: {
         executablePath: z$1.ZodNullable<z$1.ZodString>;
         installed: z$1.ZodBoolean;
         installSource: z$1.ZodEnum<{
-            external: "external";
             notInstalled: "notInstalled";
             npmGlobal: "npmGlobal";
+            external: "external";
         }>;
         currentVersion: z$1.ZodNullable<z$1.ZodString>;
         latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -5155,13 +5156,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5205,13 +5206,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5267,13 +5268,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5315,13 +5316,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5433,9 +5434,9 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     executablePath: z$1.ZodNullable<z$1.ZodString>;
     installed: z$1.ZodBoolean;
     installSource: z$1.ZodEnum<{
-        external: "external";
         notInstalled: "notInstalled";
         npmGlobal: "npmGlobal";
+        external: "external";
     }>;
     currentVersion: z$1.ZodNullable<z$1.ZodString>;
     latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -5646,10 +5647,10 @@ declare const installedPluginSchema: z$1.ZodObject<{
     provenance: z$1.ZodEnum<{
         builtin: "builtin";
         direct: "direct";
-        marketplace: "marketplace";
+        catalog: "catalog";
     }>;
     isOrphanedBuiltin: z$1.ZodBoolean;
-    marketplaceName: z$1.ZodOptional<z$1.ZodString>;
+    catalogEntryId: z$1.ZodOptional<z$1.ZodString>;
     sourceDisplay: z$1.ZodString;
     updateState: z$1.ZodObject<{
         outcome: z$1.ZodOptional<z$1.ZodEnum<{
@@ -5676,8 +5677,8 @@ declare const installedPluginSchema: z$1.ZodObject<{
     status: z$1.ZodEnum<{
         error: "error";
         running: "running";
-        incompatible: "incompatible";
         missing: "missing";
+        incompatible: "incompatible";
         disabled: "disabled";
         degraded: "degraded";
         "needs-configuration": "needs-configuration";
@@ -5739,10 +5740,10 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         provenance: z$1.ZodEnum<{
             builtin: "builtin";
             direct: "direct";
-            marketplace: "marketplace";
+            catalog: "catalog";
         }>;
         isOrphanedBuiltin: z$1.ZodBoolean;
-        marketplaceName: z$1.ZodOptional<z$1.ZodString>;
+        catalogEntryId: z$1.ZodOptional<z$1.ZodString>;
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
@@ -5769,8 +5770,8 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         status: z$1.ZodEnum<{
             error: "error";
             running: "running";
-            incompatible: "incompatible";
             missing: "missing";
+            incompatible: "incompatible";
             disabled: "disabled";
             degraded: "degraded";
             "needs-configuration": "needs-configuration";
@@ -5833,10 +5834,10 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         provenance: z$1.ZodEnum<{
             builtin: "builtin";
             direct: "direct";
-            marketplace: "marketplace";
+            catalog: "catalog";
         }>;
         isOrphanedBuiltin: z$1.ZodBoolean;
-        marketplaceName: z$1.ZodOptional<z$1.ZodString>;
+        catalogEntryId: z$1.ZodOptional<z$1.ZodString>;
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
@@ -5863,8 +5864,8 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         status: z$1.ZodEnum<{
             error: "error";
             running: "running";
-            incompatible: "incompatible";
             missing: "missing";
+            incompatible: "incompatible";
             disabled: "disabled";
             degraded: "degraded";
             "needs-configuration": "needs-configuration";
@@ -5954,40 +5955,25 @@ declare const pluginTokenResponseSchema: z$1.ZodObject<{
     token: z$1.ZodString;
 }, z$1.core.$strip>;
 type PluginTokenResponse = z$1.infer<typeof pluginTokenResponseSchema>;
-declare const marketplaceViewSchema: z$1.ZodObject<{
-    id: z$1.ZodString;
-    name: z$1.ZodString;
-    displayName: z$1.ZodString;
-    source: z$1.ZodString;
-    resolvedCommit: z$1.ZodOptional<z$1.ZodString>;
+declare const pluginCatalogStatusSchema: z$1.ZodObject<{
     pluginCount: z$1.ZodNumber;
-    lastRefreshAt: z$1.ZodOptional<z$1.ZodNumber>;
-    lastAttemptAt: z$1.ZodOptional<z$1.ZodNumber>;
-    lastError: z$1.ZodOptional<z$1.ZodString>;
+    lastRefreshAt: z$1.ZodNullable<z$1.ZodNumber>;
+    lastAttemptAt: z$1.ZodNullable<z$1.ZodNumber>;
+    lastError: z$1.ZodNullable<z$1.ZodString>;
 }, z$1.core.$strip>;
-type MarketplaceView = z$1.infer<typeof marketplaceViewSchema>;
-declare const marketplaceAddRequestSchema: z$1.ZodObject<{
-    source: z$1.ZodString;
-    name: z$1.ZodOptional<z$1.ZodString>;
-}, z$1.core.$strict>;
-type MarketplaceAddRequest = z$1.infer<typeof marketplaceAddRequestSchema>;
-declare const marketplaceSearchResultSchema: z$1.ZodObject<{
-    marketplaceId: z$1.ZodString;
+type PluginCatalogStatus = z$1.infer<typeof pluginCatalogStatusSchema>;
+declare const pluginCatalogSearchResultSchema: z$1.ZodObject<{
     entryId: z$1.ZodString;
     displayName: z$1.ZodString;
     description: z$1.ZodString;
     icon: z$1.ZodNullable<z$1.ZodString>;
-    category: z$1.ZodOptional<z$1.ZodString>;
+    category: z$1.ZodNullable<z$1.ZodString>;
     source: z$1.ZodString;
     installed: z$1.ZodBoolean;
     compatible: z$1.ZodBoolean;
-    incompatibleReason: z$1.ZodOptional<z$1.ZodString>;
+    incompatibleReason: z$1.ZodNullable<z$1.ZodString>;
 }, z$1.core.$strip>;
-type MarketplaceSearchResult = z$1.infer<typeof marketplaceSearchResultSchema>;
-declare const marketplaceRemoveResponseSchema: z$1.ZodObject<{
-    convertedPluginIds: z$1.ZodArray<z$1.ZodString>;
-}, z$1.core.$strip>;
-type MarketplaceRemoveResponse = z$1.infer<typeof marketplaceRemoveResponseSchema>;
+type PluginCatalogSearchResult$1 = z$1.infer<typeof pluginCatalogSearchResultSchema>;
 
 declare const systemExecutionOptionsResponseSchema: z$1.ZodObject<{
     providers: z$1.ZodArray<z$1.ZodObject<{
@@ -8077,9 +8063,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            unmanaged: "unmanaged";
-            "managed-worktree": "managed-worktree";
             personal: "personal";
+            "managed-worktree": "managed-worktree";
+            unmanaged: "unmanaged";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -9330,11 +9316,9 @@ interface PluginIdArgs {
 interface PluginInstallArgs {
     source: string;
 }
-/** Install a catalog entry, optionally selecting an exact published version. */
-interface PluginInstallFromMarketplaceArgs {
-    marketplaceId: string;
+/** Install an entry from BB's official catalog. */
+interface PluginCatalogInstallArgs {
     entryId: string;
-    version?: string;
 }
 interface PluginReloadArgs {
     pluginId?: string;
@@ -9353,13 +9337,7 @@ interface PluginRpcArgs<TOutput> extends PluginIdArgs {
     method: string;
     outputSchema: z$1.ZodType<TOutput>;
 }
-interface PluginMarketplaceRefreshArgs {
-    marketplaceId: string;
-}
-interface PluginMarketplaceRemoveArgs {
-    marketplaceId: string;
-}
-interface PluginMarketplaceSearchArgs {
+interface PluginCatalogSearchArgs {
     query: string;
 }
 type PluginDisableResult = InstalledPlugin;
@@ -9374,31 +9352,27 @@ type PluginUpdateSettingsResult = PluginSettingsResponse;
 type PluginGetSourceResult = PluginSourceDetail;
 type PluginCheckUpdatesResult = PluginUpdateCheckEntry[];
 type PluginApplyUpdateResult = PluginApplyUpdateResult$1;
-type PluginMarketplaceListResult = MarketplaceView[];
-type PluginMarketplaceAddResult = MarketplaceView;
-type PluginMarketplaceSearchResult = MarketplaceSearchResult[];
-type PluginMarketplaceRefreshResult = MarketplaceView;
-type PluginMarketplaceRemoveResult = MarketplaceRemoveResponse;
-interface PluginMarketplacesArea {
-    add(args: MarketplaceAddRequest): Promise<PluginMarketplaceAddResult>;
-    list(): Promise<PluginMarketplaceListResult>;
-    refresh(args: PluginMarketplaceRefreshArgs): Promise<PluginMarketplaceRefreshResult>;
-    remove(args: PluginMarketplaceRemoveArgs): Promise<PluginMarketplaceRemoveResult>;
-    search(args: PluginMarketplaceSearchArgs): Promise<PluginMarketplaceSearchResult>;
+type PluginCatalogStatusResult = PluginCatalogStatus;
+type PluginCatalogSearchResult = PluginCatalogSearchResult$1[];
+type PluginCatalogRefreshResult = PluginCatalogStatus;
+interface PluginCatalogArea {
+    install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
+    refresh(): Promise<PluginCatalogRefreshResult>;
+    search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
+    status(): Promise<PluginCatalogStatusResult>;
 }
 interface PluginsArea {
     applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
     callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
     checkUpdates(args?: PluginCheckUpdatesArgs): Promise<PluginCheckUpdatesResult>;
+    catalog: PluginCatalogArea;
     disable(args: PluginIdArgs): Promise<PluginDisableResult>;
     enable(args: PluginIdArgs): Promise<PluginEnableResult>;
     getSettings(args: PluginIdArgs): Promise<PluginGetSettingsResult>;
     getSource(args: PluginIdArgs): Promise<PluginGetSourceResult>;
     install(args: PluginInstallArgs): Promise<PluginInstallResult>;
-    installFromMarketplace(args: PluginInstallFromMarketplaceArgs): Promise<PluginInstallResult>;
     list(): Promise<PluginListResult>;
     listUpdateResults(): Promise<PluginCheckUpdatesResult>;
-    marketplaces: PluginMarketplacesArea;
     reload(args?: PluginReloadArgs): Promise<PluginReloadResult>;
     remove(args: PluginIdArgs): Promise<PluginRemoveResult>;
     token(args: PluginTokenArgs): Promise<PluginTokenResult>;

@@ -30,7 +30,7 @@ This release introduces multi-machine workflows and bb Connect, adds more ways t
 ### Experiments
 
 - Split views let you arrange up to four chats in one workspace. Drag threads from the sidebar, resize and rearrange panes, or use keyboard shortcuts to move between them.
-- The new plugin ecosystem includes the BB Official marketplace, compatibility-aware updates, richer chat and panel experiences, plugin themes, and consistent icons throughout bb.
+- The new plugin ecosystem includes the BB Official catalog, compatibility-aware updates, richer chat and panel experiences, plugin themes, and consistent icons throughout bb.
 - Install Docs for filesystem-backed documents with folders, images, Markdown editing, and HTML previews in an editable side panel.
 - Install Memory to carry durable global or project-specific context across Codex and Claude Code.
 
