@@ -113,7 +113,7 @@ Tasks skill, which directs the worker to read and update the tracked task.
 
 ## Known limitations
 
-- Active thread status is refreshed on a 15-second polling interval.
+- Active thread status updates in near-realtime via the server's thread-changed stream (with a 5-minute reconcile sweep as a safety net).
 - The **Auto** delegation preset is deferred; choose an explicit preset.
 - Linking a personal project that is unavailable in the picker requires its
   project id through the **Custom id…** free-text option.
@@ -121,7 +121,6 @@ Tasks skill, which directs the worker to read and update the tracked task.
 
 ## Fast follow
 
-- Replace status polling with a `thread.active` platform event.
 - Batch task-list enrichment for comments and attached-thread state.
 - Add notifications and an inbox for task activity.
 - Add a command palette entry for Tasks to cmd-K.
