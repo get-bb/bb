@@ -29,10 +29,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
+import changelogMd from "../../../../CHANGELOG.md?raw";
 import { initAnalytics, trackLandingEvent } from "../landing/analytics";
 import bbIcon from "../assets/bb-icon.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
+import { RELEASE_META, parseChangelog } from "../landing/changelog";
 import { DownloadLink, EmailSignup, GitHubLink } from "../landing/cta";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
@@ -49,6 +51,18 @@ import type { CtaPlacement } from "../landing/site";
 import { CLI_COMMAND, SITE_DESCRIPTION, SITE_TITLE } from "../landing/site";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
+
+const [LATEST_RELEASE] = parseChangelog(changelogMd);
+if (!LATEST_RELEASE) {
+  throw new Error("CHANGELOG.md must contain at least one release");
+}
+const LATEST_RELEASE_META = RELEASE_META[LATEST_RELEASE.version];
+if (!LATEST_RELEASE_META) {
+  throw new Error(
+    `Latest release ${LATEST_RELEASE.version} must have presentation metadata`,
+  );
+}
+const LATEST_RELEASE_URL = `/changelog#${LATEST_RELEASE.version.replaceAll(".", "-")}`;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -1617,6 +1631,11 @@ function LandingPage() {
       </nav>
 
       <header className="hero">
+        <a className="updates-callout" href={LATEST_RELEASE_URL}>
+          <span className="updates-label">New</span>
+          <span className="updates-title">{LATEST_RELEASE_META.headline}</span>
+          <span aria-hidden="true">→</span>
+        </a>
         <h1>
           The First LDE<span className="lde-star">*</span>
         </h1>

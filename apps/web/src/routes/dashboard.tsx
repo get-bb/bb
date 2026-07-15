@@ -351,8 +351,7 @@ function SignInView({ returnTo }: { returnTo: string | undefined }) {
           Continue with GitHub
         </Button>
         <p className="mt-3 text-center text-xs text-subtle-foreground">
-          Free while in beta · up to {MAX_SERVERS_PER_ACCOUNT} servers per
-          account
+          Up to {MAX_SERVERS_PER_ACCOUNT} servers per account
         </p>
       </WebCard>
     </Shell>

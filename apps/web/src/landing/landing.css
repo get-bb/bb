@@ -311,7 +311,7 @@ code,
 /* ── Hero ───────────────────────────────────────────────────────── */
 
 .hero {
-  padding: 96px 0 48px;
+  padding: 56px 0 48px;
   text-align: center;
   position: relative;
 }
@@ -417,6 +417,48 @@ code,
 
 .hero > :nth-child(6) {
   animation-delay: 0.57s;
+}
+
+.updates-callout {
+  width: fit-content;
+  max-width: min(100%, 680px);
+  margin: -32px auto 56px;
+  padding: 6px 12px 6px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--bg) 82%, transparent);
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.updates-callout:hover {
+  background: var(--state-hover);
+  border-color: color-mix(in oklab, var(--ink) 22%, var(--bg));
+  transform: translateY(-1px);
+}
+
+.updates-label {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.updates-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Scroll reveal: sections start hidden only once JS marks them pending,
@@ -2539,6 +2581,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .nav-links .btn-sm {
     padding: 8px 12px;
+  }
+
+  .updates-label {
+    display: none;
   }
 }
 
