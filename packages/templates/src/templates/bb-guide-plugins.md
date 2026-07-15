@@ -137,11 +137,11 @@ A failed check keeps the last-known-good catalog. Catalog refresh changes only
 discovery metadata; `bb plugin outdated` / `bb plugin update` move installed
 plugin artifacts.
 
-The catalog includes GitHub, Docs, and Memory as opt-in installs
-(`bb plugin install github`, `bb plugin install simple-notes`, or
-`bb plugin install memory`). Catalog entries may resolve to npm, Git, or a
-GitHub Release archive. Catalogs cannot contain local path sources and users
-cannot add or remove catalogs.
+The catalog includes GitHub, Docs, Memory, and Tasks as opt-in installs
+(`bb plugin install github`, `bb plugin install simple-notes`,
+`bb plugin install memory`, or `bb plugin install tasks`). Catalog entries may
+resolve to npm, Git, or a GitHub Release archive. Catalogs cannot contain local
+path sources and users cannot add or remove catalogs.
 
 Updates are manual: `bb plugin outdated` checks tracking sources and
 `bb plugin update` applies compatible candidates. Reinstalling an
@@ -321,7 +321,7 @@ in a checkout). The builtin `inline-vis` plugin renders
 `::inline-vis{file="demo.html" height="480"}` through the sidebar's
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
-The `official-plugins/` directory contains the BB Official GitHub, Docs, and
-Memory plugins. The remaining `examples/plugins/` reference plugins cover slack-bot
+The `official-plugins/` directory contains the BB Official GitHub, Docs,
+Memory, and Tasks plugins. The remaining `examples/plugins/` reference plugins cover slack-bot
 (webhook bot), agent-enrichment (agent surfaces), and small-ux-pack
 (host-rendered UI).
