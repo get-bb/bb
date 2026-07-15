@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, type MouseEventHandler } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type MouseEventHandler,
+} from "react";
 import {
   closestCenter,
   KeyboardSensor,
@@ -110,6 +116,7 @@ export function useSidebarReorderDnd({
     clearDragClickSuppressionSoon,
     consumeDragClickSuppression,
   } = useDragClickSuppression();
+  const isDraggingRef = useRef(false);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, {
@@ -121,6 +128,7 @@ export function useSidebarReorderDnd({
   );
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
+      isDraggingRef.current = true;
       setSidebarDraggingCursor(true);
       beginDragClickSuppression();
       onDragStart?.(event);
@@ -128,24 +136,41 @@ export function useSidebarReorderDnd({
     [beginDragClickSuppression, onDragStart],
   );
   const handleDragCancel = useCallback(() => {
+    if (!isDraggingRef.current) {
+      return;
+    }
+    isDraggingRef.current = false;
     setSidebarDraggingCursor(false);
     clearDragClickSuppressionSoon();
     onDragCancel?.();
   }, [clearDragClickSuppressionSoon, onDragCancel]);
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      isDraggingRef.current = false;
       setSidebarDraggingCursor(false);
       clearDragClickSuppressionSoon();
       onDragEnd(event);
     },
     [clearDragClickSuppressionSoon, onDragEnd],
   );
-  useEffect(
-    () => () => {
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.code === "Escape") {
+        // Split tear-out hands the gesture off by dispatching Escape. dnd-kit
+        // can consume that while its drag is still initializing without
+        // invoking DndContext's public onDragCancel callback, so clear the
+        // sidebar-owned cursor and projected-drag state directly as well.
+        handleDragCancel();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      isDraggingRef.current = false;
       setSidebarDraggingCursor(false);
-    },
-    [],
-  );
+    };
+  }, [handleDragCancel]);
   const onClickCapture = useCallback<MouseEventHandler<HTMLElement>>(
     (event) => {
       if (!consumeDragClickSuppression()) {

@@ -42,4 +42,31 @@ describe("useSidebarReorderDnd", () => {
     unmount();
     expect(document.body.dataset.sidebarDragging).toBeUndefined();
   });
+
+  it("clears app-owned drag state when Escape preempts dnd-kit cancellation", () => {
+    const onDragCancel = vi.fn();
+    const { result } = renderHook(() =>
+      useSidebarReorderDnd({ onDragEnd: vi.fn(), onDragCancel }),
+    );
+
+    act(() => result.current.dndContextProps.onDragStart?.(DRAG_START_EVENT));
+    expect(document.body.dataset.sidebarDragging).toBe("true");
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          bubbles: true,
+        }),
+      );
+    });
+
+    expect(document.body.dataset.sidebarDragging).toBeUndefined();
+    expect(onDragCancel).toHaveBeenCalledTimes(1);
+
+    // A late public callback from dnd-kit must not run owner cleanup twice.
+    act(() => result.current.dndContextProps.onDragCancel?.(DRAG_CANCEL_EVENT));
+    expect(onDragCancel).toHaveBeenCalledTimes(1);
+  });
 });
