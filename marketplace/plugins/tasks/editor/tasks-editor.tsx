@@ -354,44 +354,54 @@ export function TasksEditor({
     >
       {readOnly ? null : (
         <TooltipProvider delayDuration={400}>
+          {/* Collapses to zero height while blurred so the idle composer has
+              no empty band above the placeholder. */}
           <div
-            role="toolbar"
-            aria-label="Formatting"
-            aria-hidden={!toolbarVisible}
             className={cn(
-              "mb-1 flex w-fit items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-sm transition-opacity",
-              toolbarVisible ? "opacity-100" : "pointer-events-none opacity-0",
+              "grid transition-[grid-template-rows,opacity] duration-150",
+              toolbarVisible
+                ? "grid-rows-[1fr] opacity-100"
+                : "pointer-events-none grid-rows-[0fr] opacity-0",
             )}
+            aria-hidden={!toolbarVisible}
           >
-            {TOOLBAR_ACTIONS.map((action) => (
-              <Tooltip key={action.id}>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label={action.label}
-                    aria-pressed={editor ? action.isActive(editor) : false}
-                    tabIndex={toolbarVisible ? 0 : -1}
-                    className={cn(
-                      "size-7 text-muted-foreground",
-                      editor && action.isActive(editor)
-                        ? "bg-accent text-accent-foreground"
-                        : undefined,
-                    )}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      const current = editorRef.current;
-                      if (!current) return;
-                      action.run(current.chain().focus()).run();
-                    }}
-                  >
-                    <HugeiconsIcon icon={action.icon} className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">{action.label}</TooltipContent>
-              </Tooltip>
-            ))}
+            <div className="min-h-0 overflow-hidden">
+              <div
+                role="toolbar"
+                aria-label="Formatting"
+                className="mb-1 flex w-fit items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-sm"
+              >
+                {TOOLBAR_ACTIONS.map((action) => (
+                  <Tooltip key={action.id}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        aria-label={action.label}
+                        aria-pressed={editor ? action.isActive(editor) : false}
+                        tabIndex={toolbarVisible ? 0 : -1}
+                        className={cn(
+                          "size-7 text-muted-foreground",
+                          editor && action.isActive(editor)
+                            ? "bg-accent text-accent-foreground"
+                            : undefined,
+                        )}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          const current = editorRef.current;
+                          if (!current) return;
+                          action.run(current.chain().focus()).run();
+                        }}
+                      >
+                        <HugeiconsIcon icon={action.icon} className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{action.label}</TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+            </div>
           </div>
         </TooltipProvider>
       )}

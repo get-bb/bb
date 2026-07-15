@@ -663,11 +663,25 @@ export function registerHandlers(
     },
     updatePreset(input) {
       const { presetId, ...changes } = input;
+      // Built-in presets are fully editable except their name, which stays
+      // stable as their identity in menus and docs.
+      const current = store.tasks.getPreset(presetId);
+      if (
+        current?.builtin &&
+        changes.name !== undefined &&
+        changes.name !== current.name
+      ) {
+        throw new Error(`Built-in preset "${current.name}" cannot be renamed`);
+      }
       const preset = store.tasks.updatePreset(presetId, changes);
       publishProjectsChanged(bb, null);
       return { preset };
     },
     deletePreset(input) {
+      const current = store.tasks.getPreset(input.presetId);
+      if (current?.builtin) {
+        throw new Error(`Built-in preset "${current.name}" cannot be deleted`);
+      }
       const deleted = store.tasks.deletePreset(input.presetId);
       if (deleted) publishProjectsChanged(bb, null);
       return { deleted };

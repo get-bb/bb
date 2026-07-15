@@ -66,7 +66,7 @@ Commands:
   label create|list|delete
   attachment add|get|list
   preset list|create|update|delete
-  delegate                       Delegate a task to a new agent thread
+  dispatch                       Dispatch a task to a new agent thread
   attach                         Attach an agent thread to a task
   threads                        List threads attached to a task
   seed-demo                      Create sample data (requires --yes)
@@ -106,8 +106,8 @@ const PRESET_HELP = `Usage:
   bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <mode> [--instructions <text>] [--json]
   bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <mode>] [--instructions <text>] [--json]
   bb tasks preset delete <name-or-id> [--json]`;
-const DELEGATE_HELP =
-  "Usage: bb tasks delegate <key> --preset <name> [--instructions <extra>] [--json]";
+const DISPATCH_HELP =
+  "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";
 const ATTACH_HELP =
   "Usage: bb tasks attach <key> [--thread <thread-id>] [--json]";
 const THREADS_HELP = "Usage: bb tasks threads <key> [--json]";
@@ -1311,16 +1311,16 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
   throw new CliError(`unknown preset subcommand: ${action}`);
 }
 
-async function runDelegate(
+async function runDispatch(
   bb: BbPluginApi,
   store: TasksApiStore,
   domain: TasksDomain,
   argv: string[],
 ): Promise<string> {
   const args = parseArgs(argv);
-  if (args.flags.has("help")) return DELEGATE_HELP;
+  if (args.flags.has("help")) return DISPATCH_HELP;
   assertAllowed(args, ["preset", "instructions"]);
-  const [address] = requirePositionals(args, 1, DELEGATE_HELP);
+  const [address] = requirePositionals(args, 1, DISPATCH_HELP);
   const task = await resolveTask(domain, address!);
   const preset = resolvePreset(
     await listPresets(domain),
@@ -1487,13 +1487,13 @@ export function registerTasksCli(
       },
       {
         name: "preset",
-        summary: "List, create, update, or delete delegation presets",
+        summary: "List, create, update, or delete dispatch presets",
         usage: PRESET_HELP,
       },
       {
-        name: "delegate",
-        summary: "Delegate a task to a new agent thread",
-        usage: DELEGATE_HELP,
+        name: "dispatch",
+        summary: "Dispatch a task to a new agent thread",
+        usage: DISPATCH_HELP,
       },
       {
         name: "attach",
@@ -1558,8 +1558,10 @@ export function registerTasksCli(
           case "preset":
             stdout = await runPreset(domain, rest);
             break;
+          case "dispatch":
+          // Hidden alias kept for compatibility; help advertises "dispatch".
           case "delegate":
-            stdout = await runDelegate(bb, store, domain, rest);
+            stdout = await runDispatch(bb, store, domain, rest);
             break;
           case "attach":
             stdout = await runAttach(bb, store, domain, ctx, rest);

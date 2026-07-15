@@ -631,7 +631,7 @@ describe("bb tasks CLI", () => {
     }
   });
 
-  it("returns a friendly delegate error when the task project is not linked", async () => {
+  it("returns a friendly dispatch error when the task project is not linked", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     await plugin(bb);
     stdout(
@@ -650,12 +650,12 @@ describe("bb tasks CLI", () => {
         "--project",
         "UNL",
         "--title",
-        "Cannot delegate yet",
+        "Cannot dispatch yet",
       ]),
     );
 
     const result = await harness.runCli([
-      "delegate",
+      "dispatch",
       "UNL-1",
       "--preset",
       "Sonnet · high",
@@ -665,6 +665,16 @@ describe("bb tasks CLI", () => {
       stdout: "",
       stderr: 'Task project "Unlinked CLI" is not linked to a bb project',
     });
+    // "delegate" stays as a hidden compatibility alias for "dispatch".
+    const aliased = await harness.runCli([
+      "delegate",
+      "UNL-1",
+      "--preset",
+      "Sonnet · high",
+    ]);
+    expect(aliased.stderr).toBe(
+      'Task project "Unlinked CLI" is not linked to a bb project',
+    );
     expect(harness.sdk.callsTo("threads.spawn")).toEqual([]);
 
     await harness.dispose();

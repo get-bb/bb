@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type { Preset, TaskThread } from "../../shared/contract.js";
@@ -54,104 +54,124 @@ function ThreadCard({ thread }: { thread: TaskThread }) {
   );
 }
 
-export interface ThreadsSectionProps {
+export interface DispatchControlProps {
   taskId: string;
-  taskKey: string;
-  threads: TaskThread[];
   presets: Preset[] | undefined;
   onError: (message: string) => void;
+  align?: "start" | "end";
+  /** Render-prop trigger; receives whether a dispatch is in flight. */
+  children: (dispatching: boolean) => ReactNode;
 }
 
-export function ThreadsSection({
+/**
+ * Preset picker + readonly-preset confirm around the dispatch RPC. The
+ * trigger button comes from the caller (threads section, properties rail).
+ */
+export function DispatchControl({
   taskId,
-  taskKey,
-  threads,
   presets,
   onError,
-}: ThreadsSectionProps) {
+  align = "end",
+  children,
+}: DispatchControlProps) {
   const rpc = useRpc<DelegationRpcContract>();
-  const [delegating, setDelegating] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
   const [readonlyConfirm, setReadonlyConfirm] = useState<Preset | null>(null);
-  const activeCount = threads.filter(isActiveThread).length;
 
-  const delegate = async (presetId: string) => {
-    setDelegating(true);
+  const dispatch = async (presetId: string) => {
+    setDispatching(true);
     try {
       await rpc.call("delegate", { taskId, presetId });
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
     } finally {
-      setDelegating(false);
+      setDispatching(false);
     }
   };
 
   const pickPreset = (preset: Preset) => {
     if (preset.permissionMode === "readonly") setReadonlyConfirm(preset);
-    else void delegate(preset.id);
+    else void dispatch(preset.id);
   };
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          asChild
+          disabled={
+            dispatching || (presets !== undefined && presets.length === 0)
+          }
+        >
+          {children(dispatching)}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align={align}>
+          <DropdownMenuLabel>Dispatch with preset</DropdownMenuLabel>
+          {(presets ?? []).map((preset) => (
+            <DropdownMenuItem
+              key={preset.id}
+              onSelect={() => pickPreset(preset)}
+            >
+              <span className="min-w-0 flex-1 truncate">{preset.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {preset.modelId}
+              </span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ConfirmDialog
+        open={readonlyConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setReadonlyConfirm(null);
+        }}
+        title={`Dispatch with “${readonlyConfirm?.name ?? ""}”?`}
+        description="This preset is read-only: the agent can inspect the workspace but can't run bb tasks commands unattended, so it won't update this task on its own."
+        confirmLabel="Dispatch anyway"
+        onConfirm={() => {
+          const preset = readonlyConfirm;
+          if (preset) void dispatch(preset.id);
+        }}
+      />
+    </>
+  );
+}
+
+export interface ThreadsSectionProps {
+  taskId: string;
+  threads: TaskThread[];
+  presets: Preset[] | undefined;
+  onError: (message: string) => void;
+}
+
+/** Attached-thread list; the caller skips it entirely when there are none. */
+export function ThreadsSection({
+  taskId,
+  threads,
+  presets,
+  onError,
+}: ThreadsSectionProps) {
+  const activeCount = threads.filter(isActiveThread).length;
 
   return (
     <section>
       <div className="mb-2 flex items-center gap-2 pt-1.5 text-xs font-semibold text-muted-foreground">
         Agent threads
         {activeCount > 0 ? (
-          <span className="font-normal">
-            {activeCount} working now
-          </span>
+          <span className="font-normal">{activeCount} working now</span>
         ) : null}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-auto h-7 gap-1.5"
-              disabled={delegating || (presets !== undefined && presets.length === 0)}
-            >
+        <DispatchControl taskId={taskId} presets={presets} onError={onError}>
+          {() => (
+            <Button variant="outline" size="sm" className="ml-auto h-7 gap-1.5">
               <Icon name="Zap" className="size-3.5" />
-              Delegate
+              Dispatch
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Delegate with preset</DropdownMenuLabel>
-            {(presets ?? []).map((preset) => (
-              <DropdownMenuItem
-                key={preset.id}
-                onSelect={() => pickPreset(preset)}
-              >
-                <span className="min-w-0 flex-1 truncate">{preset.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {preset.modelId}
-                </span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+        </DispatchControl>
       </div>
-      {threads.length > 0 ? (
-        threads.map((thread) => <ThreadCard key={thread.id} thread={thread} />)
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          No threads yet. Delegate to spawn one, or an agent can self-attach
-          with{" "}
-          <code className="rounded-sm bg-muted px-1 text-xs">
-            bb tasks attach {taskKey}
-          </code>
-          .
-        </p>
-      )}
-      <ConfirmDialog
-        open={readonlyConfirm !== null}
-        onOpenChange={(open) => {
-          if (!open) setReadonlyConfirm(null);
-        }}
-        title={`Delegate with “${readonlyConfirm?.name ?? ""}”?`}
-        description="This preset is read-only: the agent can inspect the workspace but can't run bb tasks commands unattended, so it won't update this task on its own."
-        confirmLabel="Delegate anyway"
-        onConfirm={() => {
-          const preset = readonlyConfirm;
-          if (preset) void delegate(preset.id);
-        }}
-      />
+      {threads.map((thread) => (
+        <ThreadCard key={thread.id} thread={thread} />
+      ))}
     </section>
   );
 }

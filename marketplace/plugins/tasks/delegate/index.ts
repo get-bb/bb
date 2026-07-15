@@ -327,7 +327,7 @@ export function handlers(
             taskId: task.id,
             presetName: preset.name,
             threadId: thread.id,
-            body: `Status changed to In Progress · delegated to ${preset.name}`,
+            body: `Status changed to In Progress · dispatched to ${preset.name}`,
           });
         }
 
@@ -335,7 +335,7 @@ export function handlers(
           taskId: task.id,
           presetName: preset.name,
           threadId: thread.id,
-          body: `Thread "${title}" attached · preset ${preset.name}`,
+          body: `Dispatched to ${preset.name}`,
         });
         return attached;
       });

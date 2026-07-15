@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   Folder,
   Preset,
@@ -6,10 +6,43 @@ import type {
   SidebarProjectSummary,
   Task,
 } from "../shared/contract.js";
+import { useTasksRpc } from "./data.js";
 import type { TasksRoute } from "./routes.js";
+import {
+  PresetDialog,
+  savePresetDraft,
+} from "../views/manage/preset-dialog.js";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+
+const SIDEBAR_WIDTH_KEY = "bb-tasks:sidebar-width";
+const SIDEBAR_DEFAULT_WIDTH = 208; // matches the old fixed w-52
+const SIDEBAR_MIN_WIDTH = 180;
+const SIDEBAR_MAX_WIDTH = 340;
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
+}
+
+function loadSidebarWidth(): number {
+  try {
+    const stored = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    return Number.isFinite(stored) && stored > 0
+      ? clampSidebarWidth(stored)
+      : SIDEBAR_DEFAULT_WIDTH;
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH;
+  }
+}
+
+function storeSidebarWidth(width: number): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
+  } catch {
+    // Persistence is best-effort (e.g. sandboxed iframes without storage).
+  }
+}
 
 interface SidebarRowProps {
   active?: boolean;
@@ -166,6 +199,44 @@ export function TasksSidebar({
   const [collapsedFolders, setCollapsedFolders] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const rpc = useTasksRpc();
+  // Keyed remount resets the dialog draft per open/target. Saving publishes
+  // projects:changed, which refreshes the shell's presets query.
+  const [presetDialog, setPresetDialog] = useState<{
+    key: number;
+    editing: Preset;
+  } | null>(null);
+  const [width, setWidth] = useState(loadSidebarWidth);
+  const [resizing, setResizing] = useState(false);
+  const asideRef = useRef<HTMLElement>(null);
+  const widthRef = useRef(width);
+  widthRef.current = width;
+
+  const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    // The sidebar sits on the right, so width is measured from its right
+    // edge (fixed during the drag) back to the pointer.
+    const rightEdge = asideRef.current?.getBoundingClientRect().right;
+    if (rightEdge === undefined) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizing(true);
+  };
+  const moveResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizing) return;
+    const rightEdge = asideRef.current?.getBoundingClientRect().right;
+    if (rightEdge === undefined) return;
+    setWidth(clampSidebarWidth(Math.round(rightEdge - event.clientX)));
+  };
+  const endResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizing) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setResizing(false);
+    storeSidebarWidth(widthRef.current);
+  };
+  const resetWidth = () => {
+    setWidth(SIDEBAR_DEFAULT_WIDTH);
+    storeSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+  };
   const summaryByProject = useMemo(
     () => new Map((summaries ?? []).map((entry) => [entry.projectId, entry])),
     [summaries],
@@ -228,7 +299,29 @@ export function TasksSidebar({
   };
 
   return (
-    <aside className="flex h-full w-52 shrink-0 flex-col border-l border-border-seam-vertical bg-sidebar">
+    <aside
+      ref={asideRef}
+      style={{ width }}
+      className={cn(
+        "relative flex h-full shrink-0 flex-col border-l border-border-seam-vertical bg-sidebar",
+        resizing && "select-none",
+      )}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        title="Drag to resize · double-click to reset"
+        className={cn(
+          "absolute inset-y-0 -left-px z-10 w-1 cursor-col-resize transition-colors",
+          resizing ? "bg-primary/50" : "hover:bg-primary/30",
+        )}
+        onPointerDown={startResize}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        onDoubleClick={resetWidth}
+      />
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
         <div className="space-y-px">
           <SidebarRow
@@ -285,7 +378,13 @@ export function TasksSidebar({
                 <SectionHeader label="Agent presets" />
                 <div className="space-y-px">
                   {presets.map((preset) => (
-                    <SidebarRow key={preset.id} title={preset.name}>
+                    <SidebarRow
+                      key={preset.id}
+                      title={`Edit preset ${preset.name}`}
+                      onClick={() =>
+                        setPresetDialog({ key: Date.now(), editing: preset })
+                      }
+                    >
                       <Icon name="Brain" className="size-3.5 shrink-0" />
                       <span className="min-w-0 flex-1 truncate">
                         {preset.name}
@@ -307,6 +406,17 @@ export function TasksSidebar({
           <span className="flex-1">Manage</span>
         </SidebarRow>
       </div>
+      {presetDialog ? (
+        <PresetDialog
+          key={presetDialog.key}
+          open
+          onOpenChange={(open) => {
+            if (!open) setPresetDialog(null);
+          }}
+          editing={presetDialog.editing}
+          onSave={(draft) => savePresetDraft(rpc, presetDialog.editing, draft)}
+        />
+      ) : null}
     </aside>
   );
 }

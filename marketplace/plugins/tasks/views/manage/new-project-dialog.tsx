@@ -285,7 +285,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
             label="Linked bb project"
             hint={
               linkedError ??
-              "Optional. Linking a bb project enables delegation to agents."
+              "Optional. Linking a bb project enables dispatching to agents."
             }
           >
             {showLinkPicker ? (

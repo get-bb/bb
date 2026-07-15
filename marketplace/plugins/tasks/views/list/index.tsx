@@ -196,7 +196,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         <EmptyState
           icon="Zap"
           title="No agents working right now"
-          description="Delegate a task to an agent preset and it will show up here while it runs."
+          description="Dispatch a task to an agent preset and it will show up here while it runs."
         />
       );
     } else {

@@ -55,7 +55,7 @@ function NoProjectsEmptyState({ onNewProject }: { onNewProject: () => void }) {
       <div className="space-y-1">
         <p className="text-sm font-medium">No projects yet</p>
         <p className="text-sm text-muted-foreground">
-          Create a project to start tracking tasks and delegating work to
+          Create a project to start tracking tasks and dispatching work to
           agents.
         </p>
       </div>

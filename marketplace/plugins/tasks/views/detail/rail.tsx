@@ -11,7 +11,8 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
 } from "../../shared/contract.js";
-import { useTasksQuery } from "../../shell/data.js";
+import type { Preset } from "../../shared/contract.js";
+import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
 import {
   PRIORITY_LABELS,
   PriorityIcon,
@@ -20,14 +21,23 @@ import {
   formatDueDate,
   isActiveThread,
 } from "./meta.js";
+import { DispatchControl } from "./threads.js";
+import { DEFAULT_COLOR } from "../manage/shared.js";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -221,39 +231,100 @@ function LabelsMenu({
   onUpdate: (update: TaskPropertyUpdate) => void;
   children: React.ReactNode;
 }) {
+  const rpc = useTasksRpc();
+  const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
+
   const toggle = (labelId: string) => {
     const next = task.labelIds.includes(labelId)
       ? task.labelIds.filter((id) => id !== labelId)
       : [...task.labelIds, labelId];
     onUpdate({ labelIds: next });
   };
+
+  // Inline label creation: from the query when it matches nothing, or from
+  // the "New label" row when the project has no labels yet. The created
+  // label is attached to the task right away.
+  const createLabel = async (name: string) => {
+    if (!name || creating) return;
+    setCreating(true);
+    try {
+      const { label } = await rpc.call("createLabel", {
+        projectId: task.projectId,
+        name,
+        color: DEFAULT_COLOR,
+      });
+      onUpdate({ labelIds: [...task.labelIds, label.id] });
+      setQuery("");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const labelList = labels ?? [];
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {(labels ?? []).map((label) => (
-          <DropdownMenuCheckboxItem
-            key={label.id}
-            checked={task.labelIds.includes(label.id)}
-            onCheckedChange={() => toggle(label.id)}
-            onSelect={(event) => event.preventDefault()}
-          >
-            <span
-              aria-hidden
-              className="size-2 rounded-full"
-              style={{ backgroundColor: label.color }}
-            />
-            {label.name}
-          </DropdownMenuCheckboxItem>
-        ))}
-        {labels !== undefined && labels.length === 0 ? (
-          <>
-            <DropdownMenuItem disabled>No labels in project</DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Popover onOpenChange={(open) => open || setQuery("")}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent className="w-56 p-0" align="start">
+        <Command>
+          <CommandInput
+            placeholder="Add labels…"
+            value={query}
+            onValueChange={setQuery}
+          />
+          <CommandList>
+            <CommandEmpty>
+              {query.trim() !== "" ? (
+                <button
+                  type="button"
+                  disabled={creating}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => void createLabel(query.trim())}
+                >
+                  <Icon name="Plus" className="size-3.5" />
+                  Create “{query.trim()}”
+                </button>
+              ) : (
+                "No labels in this project."
+              )}
+            </CommandEmpty>
+            {labels !== undefined && labelList.length === 0 ? (
+              <CommandGroup>
+                <CommandItem
+                  disabled={creating}
+                  onSelect={() => {
+                    const name = query.trim();
+                    if (name) void createLabel(name);
+                  }}
+                >
+                  <Icon name="Plus" className="size-3.5" />
+                  New label{query.trim() ? ` “${query.trim()}”` : "…"}
+                </CommandItem>
+              </CommandGroup>
+            ) : null}
+            <CommandGroup>
+              {labelList.map((label) => (
+                <CommandItem
+                  key={label.id}
+                  value={label.name}
+                  onSelect={() => toggle(label.id)}
+                >
+                  <span
+                    aria-hidden
+                    className="size-2.5 rounded-full"
+                    style={{ backgroundColor: label.color }}
+                  />
+                  <span className="flex-1">{label.name}</span>
+                  {task.labelIds.includes(label.id) ? (
+                    <Icon name="Check" className="size-3.5" />
+                  ) : null}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -266,9 +337,15 @@ export function PropertiesRail({
   project,
   labels,
   threads,
+  presets,
   onUpdate,
+  onError,
   className,
-}: TaskPropertiesProps & { className?: string }) {
+}: TaskPropertiesProps & {
+  presets: Preset[] | undefined;
+  onError: (message: string) => void;
+  className?: string;
+}) {
   const taskLabels = (labels ?? []).filter((label) =>
     task.labelIds.includes(label.id),
   );
@@ -329,7 +406,7 @@ export function PropertiesRail({
       </div>
 
       <div className="mb-1 mt-3 text-2xs font-semibold text-muted-foreground">
-        Delegation target
+        Dispatch target
       </div>
       <div className="py-0.5 text-xs leading-relaxed">
         {linkedBbProjectId !== null ? (
@@ -344,9 +421,25 @@ export function PropertiesRail({
           </span>
         ) : (
           <span className="italic text-muted-foreground">
-            none — link a bb project to delegate
+            none — link a bb project to dispatch
           </span>
         )}
+      </div>
+
+      <div className="mt-2.5 py-0.5">
+        <DispatchControl
+          taskId={task.id}
+          presets={presets}
+          onError={onError}
+          align="start"
+        >
+          {(dispatching) => (
+            <Button size="sm" className="h-7 w-full gap-1.5">
+              <Icon name="Zap" className="size-3.5" />
+              {dispatching ? "Dispatching…" : "Dispatch"}
+            </Button>
+          )}
+        </DispatchControl>
       </div>
 
       <div className="mb-1 mt-3 text-2xs font-semibold text-muted-foreground">

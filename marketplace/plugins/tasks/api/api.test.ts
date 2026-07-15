@@ -563,4 +563,45 @@ describe("Tasks RPC domain API", () => {
 
     await harness.dispose();
   });
+
+  it("lets built-in presets be edited but never renamed or deleted", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const preset = store.tasks.createPreset({
+      name: "Sonnet · high",
+      providerId: "claude-code",
+      modelId: "claude-sonnet-5",
+      reasoningLevel: "high",
+      permissionMode: "full",
+      instructions: "",
+      builtin: true,
+    });
+
+    const updated = await harness.callRpc("updatePreset", {
+      presetId: preset.id,
+      modelId: "claude-sonnet-6",
+      permissionMode: "workspace-write",
+    });
+    expect(updated.preset).toMatchObject({
+      name: "Sonnet · high",
+      modelId: "claude-sonnet-6",
+      permissionMode: "workspace-write",
+      builtin: true,
+    });
+
+    await expect(
+      harness.callRpc("updatePreset", {
+        presetId: preset.id,
+        name: "Renamed",
+      }),
+    ).rejects.toThrow('Built-in preset "Sonnet · high" cannot be renamed');
+
+    await expect(
+      harness.callRpc("deletePreset", { presetId: preset.id }),
+    ).rejects.toThrow('Built-in preset "Sonnet · high" cannot be deleted');
+    expect(store.tasks.getPreset(preset.id)).not.toBeNull();
+
+    await harness.dispose();
+  });
 });

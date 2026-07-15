@@ -88,14 +88,14 @@ describe("task delegation", () => {
           authorName: "Tasks",
           presetName: "Sonnet · high",
           threadId: "thr_delegated",
-          body: "Status changed to In Progress · delegated to Sonnet · high",
+          body: "Status changed to In Progress · dispatched to Sonnet · high",
         }),
         expect.objectContaining({
           kind: "system",
           authorName: "Tasks",
           presetName: "Sonnet · high",
           threadId: "thr_delegated",
-          body: 'Thread "TASK-1 · Implement delegation" attached · preset Sonnet · high',
+          body: "Dispatched to Sonnet · high",
         }),
       ]),
     );

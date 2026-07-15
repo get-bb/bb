@@ -37,12 +37,23 @@ export interface DetailViewProps {
 
 const DESCRIPTION_SAVE_DELAY_MS = 800;
 
-function SubTaskDonut({ subtasks }: { subtasks: Task[] }) {
+function SubTaskDonut({
+  subtasks,
+  onClick,
+}: {
+  subtasks: Task[];
+  onClick: () => void;
+}) {
   if (subtasks.length === 0) return null;
   const done = subtasks.filter((subtask) => subtask.status === "done").length;
   const degrees = (done / subtasks.length) * 360;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-0.5 text-xs text-muted-foreground shadow-2xs">
+    <button
+      type="button"
+      title="Sub-tasks completed"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-0.5 text-xs text-muted-foreground shadow-2xs hover:border-input hover:text-foreground"
+    >
       <span
         aria-hidden
         className="inline-block size-3 rounded-full"
@@ -50,8 +61,8 @@ function SubTaskDonut({ subtasks }: { subtasks: Task[] }) {
           background: `conic-gradient(var(--primary) ${degrees}deg, var(--muted) 0)`,
         }}
       />
-      {done}/{subtasks.length}
-    </span>
+      {done}/{subtasks.length} sub-tasks
+    </button>
   );
 }
 
@@ -93,10 +104,12 @@ function EditableTitle({
 }
 
 function SubTasksSection({
+  ref,
   task,
   subtasks,
   onCreate,
 }: {
+  ref: React.Ref<HTMLElement>;
   task: Task;
   subtasks: Task[];
   onCreate: (title: string) => Promise<boolean>;
@@ -116,7 +129,7 @@ function SubTasksSection({
   };
 
   return (
-    <section className="mt-5">
+    <section ref={ref} className="mt-5">
       {subtasks.map((subtask) => (
         <button
           key={subtask.id}
@@ -182,6 +195,7 @@ function TaskDetail({ task }: { task: Task }) {
   const navigation = useTasksNavigation();
   const { toasts, push, dismiss } = useDetailToasts();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const subtasksRef = useRef<HTMLElement>(null);
 
   // Local description draft: while the user types, the server still holds the
   // previous markdown, so passing the server value straight through would
@@ -338,7 +352,15 @@ function TaskDetail({ task }: { task: Task }) {
                   <span className="min-w-0 truncate">{parentTask.title}</span>
                 </button>
               ) : null}
-              <SubTaskDonut subtasks={subtasks.data ?? []} />
+              <SubTaskDonut
+                subtasks={subtasks.data ?? []}
+                onClick={() =>
+                  subtasksRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  })
+                }
+              />
             </div>
           ) : null}
 
@@ -395,22 +417,28 @@ function TaskDetail({ task }: { task: Task }) {
           <AttachmentsGrid attachments={attachments.data ?? []} />
 
           <SubTasksSection
+            ref={subtasksRef}
             task={task}
             subtasks={subtasks.data ?? []}
             onCreate={createSubtask}
           />
 
-          <div className="mt-6">
-            <ThreadsSection
-              taskId={task.id}
-              taskKey={task.key}
-              threads={threads.data ?? []}
-              presets={presets.data}
-              onError={(message) => push("error", message)}
-            />
-          </div>
+          {/* With no attached threads the section disappears entirely; the
+              rail's Dispatch button is the entry point. */}
+          {(threads.data ?? []).length > 0 ? (
+            <div className="mt-6">
+              <ThreadsSection
+                taskId={task.id}
+                threads={threads.data ?? []}
+                presets={presets.data}
+                onError={(message) => push("error", message)}
+              />
+            </div>
+          ) : null}
 
-          <div className="mt-7 border-t border-border-hairline pt-1">
+          {/* TaskActivity draws its own top hairline; adding one here would
+              stack two dividers above the Activity header. */}
+          <div className="mt-1">
             <TaskActivity taskId={task.id} taskKey={task.key} />
           </div>
         </div>
@@ -420,7 +448,9 @@ function TaskDetail({ task }: { task: Task }) {
           project={project}
           labels={labels.data}
           threads={threads.data ?? []}
+          presets={presets.data}
           onUpdate={(update) => void updateTask(update)}
+          onError={(message) => push("error", message)}
           className="hidden @[45rem]:block"
         />
       </div>
