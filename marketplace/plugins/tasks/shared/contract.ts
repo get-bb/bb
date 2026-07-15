@@ -32,6 +32,18 @@ const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const idSchema = z.string().regex(ULID_PATTERN, "must be a ULID");
 const nonBlankStringSchema = z.string().trim().min(1, "must not be blank");
+const presetReasoningLevelSchema = z.enum([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+const presetPermissionModeSchema = z.enum([
+  "readonly",
+  "workspace-write",
+  "full",
+]);
 const projectPrefixSchema = z
   .string()
   .regex(
@@ -252,8 +264,8 @@ const updatePresetInputSchema = z
     name: nonBlankStringSchema.optional(),
     providerId: nonBlankStringSchema.optional(),
     modelId: nonBlankStringSchema.optional(),
-    reasoningLevel: nonBlankStringSchema.optional(),
-    permissionMode: nonBlankStringSchema.optional(),
+    reasoningLevel: presetReasoningLevelSchema.optional(),
+    permissionMode: presetPermissionModeSchema.optional(),
     instructions: z.string().optional(),
   })
   .strict()
@@ -440,8 +452,8 @@ export const tasksRpcContract = defineRpcContract({
         name: nonBlankStringSchema,
         providerId: nonBlankStringSchema,
         modelId: nonBlankStringSchema,
-        reasoningLevel: nonBlankStringSchema,
-        permissionMode: nonBlankStringSchema,
+        reasoningLevel: presetReasoningLevelSchema,
+        permissionMode: presetPermissionModeSchema,
         instructions: z.string().default(""),
       })
       .strict(),
