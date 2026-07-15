@@ -24,6 +24,16 @@ import {
 import { DispatchControl } from "./threads.js";
 import { DEFAULT_COLOR } from "../manage/shared.js";
 import {
+  BbProjectLinkPicker,
+  bbProjectLinkError,
+  bbProjectLinkStateFor,
+  emptyBbProjectLinkState,
+  resolveBbProjectLink,
+  type BbProjectLinkState,
+} from "../manage/bb-project-link.js";
+import type { BbProjectOption } from "../../shared/contract.js";
+import { Button } from "@/components/ui/button";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -331,6 +341,126 @@ function LabelsMenu({
   );
 }
 
+/**
+ * Editable "Dispatch target" row: shows the linked bb project (or an invite
+ * to link one) and opens a picker that saves via updateProject. The rail's
+ * project data is subscribed to projects:changed, so the row refreshes as
+ * soon as the save publishes.
+ */
+function DispatchTargetMenu({
+  project,
+  bbProjects,
+  onError,
+  triggerClassName,
+}: {
+  project: Project;
+  bbProjects: readonly BbProjectOption[];
+  onError: (message: string) => void;
+  triggerClassName: string;
+}) {
+  const rpc = useTasksRpc();
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<BbProjectLinkState>(
+    emptyBbProjectLinkState,
+  );
+  const [saving, setSaving] = useState(false);
+  const linkedBbProjectId = project.linkedBbProjectId;
+  const linkedName = bbProjects.find(
+    (candidate) => candidate.id === linkedBbProjectId,
+  )?.name;
+  const error = bbProjectLinkError(state, bbProjects);
+  const resolved = resolveBbProjectLink(state, bbProjects);
+
+  const save = async (linkedId: string | null) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await rpc.call("updateProject", {
+        projectId: project.id,
+        linkedBbProjectId: linkedId,
+      });
+      setOpen(false);
+    } catch (saveError) {
+      onError(
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setState(bbProjectLinkStateFor(linkedBbProjectId, bbProjects));
+        setOpen(next);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Edit dispatch target"
+          className={triggerClassName}
+        >
+          <Icon name="ArrowUpRight" className="size-3.5 shrink-0" />
+          {linkedBbProjectId !== null ? (
+            <span className="truncate" title={linkedBbProjectId}>
+              {linkedName ?? linkedBbProjectId}
+            </span>
+          ) : (
+            <span className="truncate text-muted-foreground">
+              Link a bb project…
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-3">
+        <BbProjectLinkPicker
+          state={state}
+          onStateChange={setState}
+          bbProjects={bbProjects}
+          noneLabel={linkedBbProjectId !== null ? "Unlink" : "Not linked"}
+          onCustomSubmit={() => {
+            if (error === null) {
+              void save(resolved === "" ? null : resolved);
+            }
+          }}
+        />
+        {error !== null ? (
+          <p role="alert" className="mt-1.5 text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <div className="mt-2.5 flex items-center justify-between gap-2">
+          {linkedBbProjectId !== null ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-muted-foreground"
+              disabled={saving}
+              onClick={() => void save(null)}
+            >
+              <Icon name="X" className="size-3.5" />
+              Unlink
+            </Button>
+          ) : (
+            <span />
+          )}
+          <Button
+            size="sm"
+            className="h-7"
+            disabled={saving || error !== null}
+            onClick={() => void save(resolved === "" ? null : resolved)}
+          >
+            Save
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 const RAIL_ROW_CLASS =
   "-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm hover:bg-state-hover";
 
@@ -353,18 +483,12 @@ export function PropertiesRail({
     task.labelIds.includes(label.id),
   );
   const active = threads.filter(isActiveThread);
-  const linkedBbProjectId = project?.linkedBbProjectId ?? null;
+  // Fetched unconditionally: the picker needs the workspace list even when
+  // the project is not linked yet.
   const bbProjects = useTasksQuery(
-    async (query) =>
-      linkedBbProjectId === null
-        ? []
-        : (await query.call("listBbProjects")).bbProjects,
+    async (query) => (await query.call("listBbProjects")).bbProjects,
     ["projects:changed"],
-    [linkedBbProjectId],
   );
-  const bbProjectName = (bbProjects.data ?? []).find(
-    (candidate) => candidate.id === linkedBbProjectId,
-  )?.name;
   return (
     <aside className={cn("w-56 shrink-0 py-10 pl-2 pr-6", className)}>
       <h2 className="mb-1.5 text-xs font-semibold text-muted-foreground">
@@ -411,23 +535,16 @@ export function PropertiesRail({
       <div className="mb-1 mt-3 text-2xs font-semibold text-muted-foreground">
         Dispatch target
       </div>
-      <div className="py-0.5 text-xs leading-relaxed">
-        {linkedBbProjectId !== null ? (
-          <span
-            className="flex items-center gap-1 text-foreground"
-            title={linkedBbProjectId}
-          >
-            <Icon name="ArrowUpRight" className="size-3 shrink-0" />
-            <span className="truncate">
-              {bbProjectName ?? linkedBbProjectId}
-            </span>
-          </span>
-        ) : (
-          <span className="italic text-muted-foreground">
-            none — link a bb project to dispatch
-          </span>
-        )}
-      </div>
+      {project !== undefined ? (
+        <DispatchTargetMenu
+          project={project}
+          bbProjects={bbProjects.data ?? []}
+          onError={onError}
+          triggerClassName={RAIL_ROW_CLASS}
+        />
+      ) : (
+        <div className="py-0.5 text-sm text-muted-foreground">…</div>
+      )}
 
       <div className="mt-2.5 py-0.5">
         <DispatchControl

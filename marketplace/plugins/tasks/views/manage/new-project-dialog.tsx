@@ -33,11 +33,16 @@ import {
   Field,
   PROJECT_PREFIX_PATTERN,
 } from "./shared.js";
+import {
+  BbProjectLinkPicker,
+  bbProjectLinkError,
+  emptyBbProjectLinkState,
+  resolveBbProjectLink,
+  type BbProjectLinkState,
+} from "./bb-project-link.js";
 
 const NO_FOLDER = "__none__";
 const NEW_FOLDER = "__new__";
-const NO_LINK = "__none__";
-const CUSTOM_LINK = "__custom__";
 
 export interface NewProjectDialogProps {
   open: boolean;
@@ -57,9 +62,9 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
   const [folderId, setFolderId] = useState<string | null>(null);
   const [newFolderMode, setNewFolderMode] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
-  const [linkedBbProjectId, setLinkedBbProjectId] = useState("");
-  const [linkedSelection, setLinkedSelection] = useState<string | null>(null);
-  const [customLinkMode, setCustomLinkMode] = useState(false);
+  const [linkState, setLinkState] = useState<BbProjectLinkState>(
+    emptyBbProjectLinkState,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +75,6 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
     [],
   );
   const bbProjectList = bbProjects.data ?? [];
-  const showLinkPicker = bbProjectList.length > 0;
 
   useEffect(() => {
     if (!open) return;
@@ -81,9 +85,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
     setFolderId(null);
     setNewFolderMode(false);
     setNewFolderName("");
-    setLinkedBbProjectId("");
-    setLinkedSelection(null);
-    setCustomLinkMode(false);
+    setLinkState(emptyBbProjectLinkState());
     setError(null);
   }, [open]);
 
@@ -98,14 +100,8 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
     return clash ? `Already used by ${clash.name}.` : null;
   }, [prefix, projects.data]);
 
-  const usingCustomLink = !showLinkPicker || customLinkMode;
-  const linkedTrimmed = usingCustomLink
-    ? linkedBbProjectId.trim()
-    : (linkedSelection ?? "");
-  const linkedError =
-    usingCustomLink && linkedTrimmed !== "" && !linkedTrimmed.startsWith("proj_")
-      ? "bb project ids start with proj_."
-      : null;
+  const linkedTrimmed = resolveBbProjectLink(linkState, bbProjectList);
+  const linkedError = bbProjectLinkError(linkState, bbProjectList);
 
   const canSubmit =
     name.trim().length > 0 &&
@@ -288,54 +284,11 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
               "Optional. Linking a bb project enables dispatching to agents."
             }
           >
-            {showLinkPicker ? (
-              <Select
-                value={
-                  customLinkMode ? CUSTOM_LINK : (linkedSelection ?? NO_LINK)
-                }
-                onValueChange={(value) => {
-                  if (value === CUSTOM_LINK) {
-                    setCustomLinkMode(true);
-                    return;
-                  }
-                  setCustomLinkMode(false);
-                  setLinkedSelection(value === NO_LINK ? null : value);
-                }}
-              >
-                <SelectTrigger aria-label="Linked bb project" className="h-8">
-                  <SelectValue>
-                    {customLinkMode
-                      ? "Custom id…"
-                      : (bbProjectList.find(
-                          (project) => project.id === linkedSelection,
-                        )?.name ?? "Not linked")}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_LINK}>Not linked</SelectItem>
-                  {bbProjectList.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                  <SelectSeparator />
-                  <SelectItem value={CUSTOM_LINK}>Custom id…</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : null}
-            {usingCustomLink ? (
-              <Input
-                value={linkedBbProjectId}
-                placeholder="proj_…"
-                aria-invalid={linkedError !== null}
-                onChange={(event) => setLinkedBbProjectId(event.target.value)}
-                className={
-                  showLinkPicker
-                    ? "mt-1.5 h-8 font-mono text-xs"
-                    : "h-8 font-mono text-xs"
-                }
-              />
-            ) : null}
+            <BbProjectLinkPicker
+              state={linkState}
+              onStateChange={setLinkState}
+              bbProjects={bbProjectList}
+            />
           </Field>
         </div>
         {error ? (
