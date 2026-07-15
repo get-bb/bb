@@ -9,6 +9,18 @@ function fetchReturning(body: unknown, status = 200): typeof fetch {
     });
 }
 
+function receiverSensitiveFetch(body: unknown): typeof fetch {
+  return function (this: typeof globalThis) {
+    if (this !== globalThis) throw new TypeError("Illegal invocation");
+    return Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  } as typeof fetch;
+}
+
 const ROW = {
   id: "linear",
   source: "npm:@bb-plugins/linear@^1",
@@ -39,6 +51,13 @@ const ROW = {
 };
 
 describe("fetchPluginList envelope", () => {
+  it("binds browser fetch before the SDK invokes it", async () => {
+    const result = await fetchPluginList(
+      receiverSensitiveFetch({ enabled: true, plugins: [ROW] }),
+    );
+    expect(result.plugins).toHaveLength(1);
+  });
+
   it("parses the { enabled, plugins } envelope and normalizes updateState", async () => {
     const result = await fetchPluginList(
       fetchReturning({ enabled: true, plugins: [ROW] }),

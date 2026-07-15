@@ -1,4 +1,3 @@
-import { createBrowserBbSdk } from "@bb/sdk/browser";
 import type {
   InstalledPlugin,
   PluginSettingDescriptor,
@@ -6,12 +5,9 @@ import type {
 } from "@bb/server-contract";
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { createPluginsClient } from "./plugin-client";
 
 type FetchLike = typeof fetch;
-
-function pluginsClient(fetchImpl: FetchLike) {
-  return createBrowserBbSdk({ fetch: fetchImpl }).plugins;
-}
 
 export type PluginProvenance = InstalledPlugin["provenance"];
 
@@ -113,7 +109,7 @@ export async function fetchPluginList(
   fetchImpl: FetchLike,
 ): Promise<PluginListResult> {
   try {
-    const result = await pluginsClient(fetchImpl).list();
+    const result = await createPluginsClient(fetchImpl).list();
     return { plugins: result.plugins.map(toPluginListItem) };
   } catch {
     return { plugins: [] };
@@ -132,7 +128,9 @@ export async function fetchPluginSettingsView(
   pluginId: string,
 ): Promise<PluginSettingsView | null> {
   try {
-    const result = await pluginsClient(fetchImpl).getSettings({ pluginId });
+    const result = await createPluginsClient(fetchImpl).getSettings({
+      pluginId,
+    });
     return { schema: result.schema, values: result.values };
   } catch {
     return null;
@@ -145,7 +143,7 @@ export async function updatePluginSettings(
   values: Record<string, unknown>,
 ): Promise<PluginSettingsView> {
   const request = pluginSettingsUpdateRequestSchema.parse({ values });
-  const result = await pluginsClient(fetchImpl).updateSettings({
+  const result = await createPluginsClient(fetchImpl).updateSettings({
     pluginId,
     values: request.values,
   });
@@ -157,7 +155,7 @@ export async function setPluginEnabled(
   pluginId: string,
   enabled: boolean,
 ): Promise<void> {
-  const plugins = pluginsClient(fetchImpl);
+  const plugins = createPluginsClient(fetchImpl);
   if (enabled) await plugins.enable({ pluginId });
   else await plugins.disable({ pluginId });
 }
@@ -166,7 +164,7 @@ export async function removePlugin(
   fetchImpl: FetchLike,
   pluginId: string,
 ): Promise<void> {
-  await pluginsClient(fetchImpl).remove({ pluginId });
+  await createPluginsClient(fetchImpl).remove({ pluginId });
 }
 
 export function pluginListQueryKey(enabled: boolean): QueryKey {

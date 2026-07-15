@@ -16,6 +16,18 @@ function fetchReturning(body: unknown, status = 200): typeof fetch {
     });
 }
 
+function receiverSensitiveFetch(body: unknown): typeof fetch {
+  return function (this: typeof globalThis) {
+    if (this !== globalThis) throw new TypeError("Illegal invocation");
+    return Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  } as typeof fetch;
+}
+
 /** fetchReturning plus a record of every (url, init) it was called with. */
 function recordingFetch(body: unknown, status = 200) {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
@@ -135,6 +147,23 @@ describe("removeMarketplace", () => {
 });
 
 describe("marketplace parsers", () => {
+  it("binds browser fetch before the SDK invokes it", async () => {
+    const items = await fetchMarketplaces(
+      receiverSensitiveFetch({
+        marketplaces: [
+          {
+            id: "acme",
+            name: "acme",
+            displayName: "Acme Tools",
+            source: "https://github.com/acme/bb-marketplace@main",
+            pluginCount: 11,
+          },
+        ],
+      }),
+    );
+    expect(items).toHaveLength(1);
+  });
+
   it("maps MarketplaceView fields, keeping displayName distinct from the id", async () => {
     const items = await fetchMarketplaces(
       fetchReturning({

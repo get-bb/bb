@@ -158,6 +158,41 @@ describe("bb plugin update commands", () => {
     ]);
   });
 
+  it("reload rejects an unknown id instead of reporting the full inventory", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        plugins: pluginList("other", "path:/other").plugins,
+      }),
+    );
+
+    await expect(
+      runCommand(["plugin", "reload", "missing", "--json"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify({ ok: false, error: 'unknown plugin "missing"' }, null, 2),
+    ]);
+  });
+
+  it("reload prints only the requested plugin in human output", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        plugins: [
+          ...pluginList("notes", "path:/notes").plugins,
+          ...pluginList("other", "path:/other").plugins,
+        ],
+      }),
+    );
+
+    await runCommand(["plugin", "reload", "notes"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("notes@1.0.0");
+    expect(output).not.toContain("other@1.0.0");
+  });
+
   it("skips pinned plugins with manual reinstall guidance", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({

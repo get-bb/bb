@@ -691,11 +691,13 @@ export function registerPluginCommands(
               // fall through to the bare path summary
             }
           }
-          console.log(summary);
-          console.log(
-            "Plugins are full-trust code running inside the BB server. " +
-              "They can read all local BB data, including other plugins' secrets.",
-          );
+          if (!opts.json) {
+            console.log(summary);
+            console.log(
+              "Plugins are full-trust code running inside the BB server. " +
+                "They can read all local BB data, including other plugins' secrets.",
+            );
+          }
           if (!opts.yes) {
             if (!process.stdin.isTTY) {
               console.error(
@@ -1052,16 +1054,26 @@ export function registerPluginCommands(
     .action(
       action(async (id: string | undefined, opts: JsonOutputOptions) => {
         const query = id ? `?id=${encodeURIComponent(id)}` : "";
-        const result = pluginMutationResultSchema.parse(
+        const response = pluginMutationResultSchema.parse(
           await callPlugins(getUrl(), `/reload${query}`, "POST"),
         );
+        const result =
+          id !== undefined &&
+          response.ok &&
+          !response.plugins?.some((entry) => entry.id === id)
+            ? { ok: false as const, error: `unknown plugin "${id}"` }
+            : response;
         if (opts.json) {
           outputJson(opts, result);
           if (!result.ok) process.exit(1);
           return;
         }
         if (!result.ok) exitWithError(result);
-        for (const entry of result.plugins ?? []) {
+        const reloaded =
+          id === undefined
+            ? (result.plugins ?? [])
+            : (result.plugins ?? []).filter((entry) => entry.id === id);
+        for (const entry of reloaded) {
           printPlugin(entry);
         }
       }),

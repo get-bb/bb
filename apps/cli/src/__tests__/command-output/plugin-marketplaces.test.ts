@@ -163,6 +163,21 @@ describe("bb plugin marketplaces", () => {
     expect(body.source).toMatch(/^path:.*\/linear$/);
   });
 
+  it("keeps install --json free of human trust preamble output", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({ ok: true, plugin: installedPlugin }),
+    );
+
+    await runCommand(
+      ["plugin", "install", "path:/linear", "--yes", "--json"],
+      register,
+    );
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify({ ok: true, plugin: installedPlugin }, null, 2),
+    ]);
+  });
+
   it("resolves name@marketplace without a version override", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

@@ -1,4 +1,3 @@
-import { createBrowserBbSdk } from "@bb/sdk/browser";
 import type {
   MarketplaceSearchResult,
   MarketplaceRemoveResponse,
@@ -10,13 +9,10 @@ import type {
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { createPluginsClient } from "./plugin-client";
 import { toEpochMs } from "./plugin-settings-queries";
 
 type FetchLike = typeof fetch;
-
-function pluginsClient(fetchImpl: FetchLike) {
-  return createBrowserBbSdk({ fetch: fetchImpl }).plugins;
-}
 
 export interface PluginSourceDetail {
   requested: string;
@@ -55,7 +51,7 @@ export async function fetchPluginSource(
 ): Promise<PluginSourceDetail | null> {
   try {
     return toPluginSourceDetail(
-      await pluginsClient(fetchImpl).getSource({ pluginId }),
+      await createPluginsClient(fetchImpl).getSource({ pluginId }),
     );
   } catch {
     return null;
@@ -94,7 +90,7 @@ export async function installPlugin(
   fetchImpl: FetchLike,
   request: PluginInstallRequest,
 ): Promise<void> {
-  const plugins = pluginsClient(fetchImpl);
+  const plugins = createPluginsClient(fetchImpl);
   if (isMarketplaceInstall(request)) {
     await plugins.installFromMarketplace({
       marketplaceId: request.marketplace.marketplaceId,
@@ -139,7 +135,7 @@ export async function checkPluginUpdates(
   fetchImpl: FetchLike,
   args: { id?: string } = {},
 ): Promise<PluginUpdatesEntry[]> {
-  const results = await pluginsClient(fetchImpl).checkUpdates(
+  const results = await createPluginsClient(fetchImpl).checkUpdates(
     args.id === undefined ? {} : { pluginId: args.id },
   );
   return results.map(toUpdatesEntry);
@@ -157,7 +153,7 @@ export async function applyPluginUpdate(
   fetchImpl: FetchLike,
   pluginId: string,
 ): Promise<PluginUpdateResult> {
-  const result = await pluginsClient(fetchImpl).applyUpdate({ pluginId });
+  const result = await createPluginsClient(fetchImpl).applyUpdate({ pluginId });
   return {
     applied: result.applied,
     outcome: result.outcome,
@@ -197,7 +193,8 @@ export async function fetchMarketplaces(
   fetchImpl: FetchLike,
 ): Promise<MarketplaceListItem[]> {
   try {
-    const marketplaces = await pluginsClient(fetchImpl).marketplaces.list();
+    const marketplaces =
+      await createPluginsClient(fetchImpl).marketplaces.list();
     return marketplaces.map(toMarketplaceListItem);
   } catch {
     return [];
@@ -222,7 +219,7 @@ export async function addMarketplace(
   args: { source: string; name?: string },
 ): Promise<MarketplaceListItem> {
   return toMarketplaceListItem(
-    await pluginsClient(fetchImpl).marketplaces.add(args),
+    await createPluginsClient(fetchImpl).marketplaces.add(args),
   );
 }
 
@@ -231,7 +228,9 @@ export async function refreshMarketplace(
   marketplaceId: string,
 ): Promise<MarketplaceListItem> {
   return toMarketplaceListItem(
-    await pluginsClient(fetchImpl).marketplaces.refresh({ marketplaceId }),
+    await createPluginsClient(fetchImpl).marketplaces.refresh({
+      marketplaceId,
+    }),
   );
 }
 
@@ -241,7 +240,7 @@ export async function removeMarketplace(
   fetchImpl: FetchLike,
   marketplaceId: string,
 ): Promise<MarketplaceRemoveResult> {
-  return pluginsClient(fetchImpl).marketplaces.remove({ marketplaceId });
+  return createPluginsClient(fetchImpl).marketplaces.remove({ marketplaceId });
 }
 
 export interface MarketplaceSearchEntry {
@@ -279,7 +278,7 @@ export async function searchMarketplaces(
   query: string,
 ): Promise<MarketplaceSearchEntry[]> {
   try {
-    const results = await pluginsClient(fetchImpl).marketplaces.search({
+    const results = await createPluginsClient(fetchImpl).marketplaces.search({
       query,
     });
     return results.map(toMarketplaceSearchEntry);
