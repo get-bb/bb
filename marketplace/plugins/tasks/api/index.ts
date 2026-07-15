@@ -2,10 +2,12 @@ import type { BbPluginApi, PluginRpcHandlers } from "@bb/plugin-sdk";
 import {
   createTasksStore,
   type Attachment as StoredAttachment,
+  type Comment as StoredComment,
   type Task as StoredTask,
   type TasksStore,
 } from "../db";
 import { removeAttachmentBlobs } from "../attachments";
+import { deliverCommentToAgents } from "../steer";
 import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
@@ -177,8 +179,15 @@ function publishProjectsChanged(
   bb.realtime.publish("projects:changed", payload);
 }
 
-export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
-  const payload: CommentsChangedEvent = { taskId };
+export function publishCommentsChanged(
+  bb: BbPluginApi,
+  taskId: string,
+  notifiedCount?: number,
+): void {
+  const payload: CommentsChangedEvent = {
+    taskId,
+    ...(notifiedCount === undefined ? {} : { notifiedCount }),
+  };
   bb.realtime.publish("comments:changed", payload);
 }
 
@@ -303,12 +312,6 @@ function writeSystemComments(
   }
 }
 
-function initialNotifiedCount(_notify: boolean): 0 {
-  // Steering is added by a later worker. The RPC field is intentionally
-  // consumed here so today's durable contract always records the current count.
-  return 0;
-}
-
 function attachmentMetadata(attachment: StoredAttachment): AttachmentMetadata {
   return {
     id: attachment.id,
@@ -332,6 +335,45 @@ function attachmentsForTasks(
       .listComments(taskId)
       .flatMap((comment) => store.listAttachmentsForComment(comment.id)),
   ]);
+}
+
+interface CreateCommentInput {
+  taskId: string;
+  kind: StoredComment["kind"];
+  authorName: string;
+  body: string;
+  notify: boolean;
+}
+
+export async function createComment(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  input: CreateCommentInput,
+): Promise<StoredComment> {
+  let comment = store.transaction(() =>
+    store.tasks.createComment({
+      taskId: input.taskId,
+      kind: input.kind,
+      authorName: input.authorName,
+      body: input.body,
+      notifiedCount: 0,
+    }),
+  );
+
+  if (input.notify && comment.kind === "user") {
+    const notifiedCount = await deliverCommentToAgents(bb, store.tasks, {
+      taskId: comment.taskId,
+      commentId: comment.id,
+      body: comment.body,
+      authorName: comment.authorName,
+    });
+    comment = store.transaction(() =>
+      store.tasks.updateComment(comment.id, { notifiedCount }),
+    );
+  }
+
+  publishCommentsChanged(bb, input.taskId, comment.notifiedCount);
+  return comment;
 }
 
 export function registerHandlers(
@@ -585,15 +627,14 @@ export function registerHandlers(
     listLabels(input) {
       return { labels: store.tasks.listLabels(input.projectId) };
     },
-    createComment(input) {
-      const comment = store.tasks.createComment({
+    async createComment(input) {
+      const comment = await createComment(bb, store, {
         taskId: input.taskId,
         kind: "user",
         authorName: "You",
         body: input.body,
-        notifiedCount: initialNotifiedCount(input.notify),
+        notify: input.notify,
       });
-      publishCommentsChanged(bb, input.taskId);
       return { comment };
     },
     listComments(input) {

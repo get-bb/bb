@@ -4,9 +4,170 @@ import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { registerAttachments } from "../attachments";
 import { tasksRpcContract } from "../shared/contract";
-import { createStore, registerTasksApi } from ".";
+import { createComment, createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
+  it("persists successful comment steers and skips completed threads", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: { threads: { send: async () => undefined } },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Notifications",
+      prefix: "NTF",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Notify workers",
+    });
+    for (const [threadId, liveStatus] of [
+      ["thr_one", "working"],
+      ["thr_two", "working"],
+      ["thr_done", "completed"],
+    ] as const) {
+      store.tasks.upsertTaskThread({
+        taskId: task.id,
+        threadId,
+        presetName: "Default",
+        title: threadId,
+        liveStatus,
+      });
+    }
+
+    const result = tasksRpcContract.createComment.output.parse(
+      await harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "Keep both workers aligned.",
+        notify: true,
+      }),
+    );
+
+    expect(result.comment.notifiedCount).toBe(2);
+    expect(store.tasks.getComment(result.comment.id)?.notifiedCount).toBe(2);
+    expect(harness.sdk.callsTo("threads.send")).toHaveLength(2);
+    expect(harness.realtimeSignals.at(-1)).toEqual({
+      channel: "comments:changed",
+      payload: { taskId: task.id, notifiedCount: 2 },
+    });
+    await harness.dispose();
+  });
+
+  it("does not send for notify=false or agent comments", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: { threads: { send: async () => undefined } },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Quiet comments",
+      prefix: "QIT",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Avoid loops",
+    });
+    store.tasks.upsertTaskThread({
+      taskId: task.id,
+      threadId: "thr_worker",
+      presetName: "Default",
+      title: "Worker",
+      liveStatus: "working",
+    });
+
+    const quietResult = tasksRpcContract.createComment.output.parse(
+      await harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "Record this without notifying.",
+        notify: false,
+      }),
+    );
+    const agentComment = await createComment(bb, store, {
+      taskId: task.id,
+      kind: "agent",
+      authorName: "Worker",
+      body: "Reporting progress.",
+      notify: true,
+    });
+
+    expect(quietResult.comment.notifiedCount).toBe(0);
+    expect(agentComment.notifiedCount).toBe(0);
+    expect(harness.sdk.callsTo("threads.send")).toEqual([]);
+    expect(harness.realtimeSignals.slice(-2)).toEqual([
+      {
+        channel: "comments:changed",
+        payload: { taskId: task.id, notifiedCount: 0 },
+      },
+      {
+        channel: "comments:changed",
+        payload: { taskId: task.id, notifiedCount: 0 },
+      },
+    ]);
+    await harness.dispose();
+  });
+
+  it("keeps the comment and persists only successful steer deliveries", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          send: async (input) => {
+            if (input.threadId === "thr_failing") {
+              throw new Error("active turn finished");
+            }
+          },
+        },
+      },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Partial delivery",
+      prefix: "PRT",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Keep comments durable",
+    });
+    for (const threadId of ["thr_success", "thr_failing"]) {
+      store.tasks.upsertTaskThread({
+        taskId: task.id,
+        threadId,
+        presetName: "Default",
+        title: threadId,
+        liveStatus: "working",
+      });
+    }
+
+    const result = tasksRpcContract.createComment.output.parse(
+      await harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "This comment must survive delivery failures.",
+        notify: true,
+      }),
+    );
+
+    expect(result.comment.notifiedCount).toBe(1);
+    expect(store.tasks.getComment(result.comment.id)).toMatchObject({
+      body: "This comment must survive delivery failures.",
+      notifiedCount: 1,
+    });
+    expect(harness.logEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          message: expect.stringContaining("thr_failing"),
+        }),
+      ]),
+    );
+    await harness.dispose();
+  });
+
   it("removes task and comment attachment blobs when deleting a task", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);

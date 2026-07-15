@@ -506,6 +506,7 @@ export interface ProjectsChangedEvent {
 
 export interface CommentsChangedEvent {
   taskId: string;
+  notifiedCount?: number;
 }
 
 export interface ThreadsChangedEvent {
