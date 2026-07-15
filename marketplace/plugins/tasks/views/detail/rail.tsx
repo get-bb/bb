@@ -433,8 +433,14 @@ export function PropertiesRail({
           onError={onError}
           align="start"
         >
+          {/* bg-primary (not the default bg-foreground): custom palettes like
+              Nord define an accent primary the hero CTA should pick up; in the
+              default theme both read as intended. */}
           {(dispatching) => (
-            <Button size="sm" className="h-7 w-full gap-1.5">
+            <Button
+              size="sm"
+              className="h-7 w-full gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+            >
               <Icon name="Zap" className="size-3.5" />
               {dispatching ? "Dispatching…" : "Dispatch"}
             </Button>
