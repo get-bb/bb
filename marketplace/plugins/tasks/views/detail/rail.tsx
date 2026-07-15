@@ -1,0 +1,394 @@
+import { useState } from "react";
+import type {
+  Label,
+  Project,
+  Task,
+  TaskPriority,
+  TaskStatus,
+  TaskThread,
+} from "../../shared/contract.js";
+import {
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+} from "../../shared/contract.js";
+import {
+  PRIORITY_LABELS,
+  PriorityIcon,
+  STATUS_LABELS,
+  StatusIcon,
+  formatDueDate,
+  isActiveThread,
+} from "./meta.js";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
+
+export interface TaskPropertyUpdate {
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  dueDate?: string | null;
+  labelIds?: string[];
+}
+
+export interface TaskPropertiesProps {
+  task: Task;
+  project: Project | undefined;
+  labels: Label[] | undefined;
+  threads: TaskThread[];
+  onUpdate: (update: TaskPropertyUpdate) => void;
+}
+
+function localIsoDate(daysFromNow: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function LabelChip({ label }: { label: Label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 text-2xs text-muted-foreground">
+      <span
+        aria-hidden
+        className="size-1.5 rounded-full"
+        style={{ backgroundColor: label.color }}
+      />
+      {label.name}
+    </span>
+  );
+}
+
+function StatusMenu({
+  task,
+  onUpdate,
+  triggerClassName,
+}: {
+  task: Task;
+  onUpdate: (update: TaskPropertyUpdate) => void;
+  triggerClassName: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={triggerClassName}>
+          <StatusIcon status={task.status} />
+          {STATUS_LABELS[task.status]}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {TASK_STATUSES.map((status) => (
+          <DropdownMenuItem
+            key={status}
+            onSelect={() => onUpdate({ status })}
+          >
+            <StatusIcon status={status} />
+            {STATUS_LABELS[status]}
+            {status === task.status ? (
+              <Icon name="Check" className="ml-auto size-3.5" />
+            ) : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function PriorityMenu({
+  task,
+  onUpdate,
+  triggerClassName,
+}: {
+  task: Task;
+  onUpdate: (update: TaskPropertyUpdate) => void;
+  triggerClassName: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={triggerClassName}>
+          <PriorityIcon priority={task.priority} />
+          {PRIORITY_LABELS[task.priority]}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {TASK_PRIORITIES.map((priority) => (
+          <DropdownMenuItem
+            key={priority}
+            onSelect={() => onUpdate({ priority })}
+          >
+            <PriorityIcon priority={priority} />
+            {PRIORITY_LABELS[priority]}
+            {priority === task.priority ? (
+              <Icon name="Check" className="ml-auto size-3.5" />
+            ) : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function DueDateMenu({
+  task,
+  onUpdate,
+  triggerClassName,
+}: {
+  task: Task;
+  onUpdate: (update: TaskPropertyUpdate) => void;
+  triggerClassName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const pick = (dueDate: string | null) => {
+    onUpdate({ dueDate });
+    setOpen(false);
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className={triggerClassName}>
+          <Icon name="Clock" className="size-3.5 shrink-0" />
+          {task.dueDate ? formatDueDate(task.dueDate) : "Set due date"}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-52 p-2">
+        <div className="flex flex-col">
+          {(
+            [
+              ["Today", 0],
+              ["Tomorrow", 1],
+              ["Next week", 7],
+            ] as const
+          ).map(([label, days]) => (
+            <button
+              key={label}
+              type="button"
+              className="flex items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+              onClick={() => pick(localIsoDate(days))}
+            >
+              {label}
+              <span className="text-xs text-muted-foreground">
+                {formatDueDate(localIsoDate(days))}
+              </span>
+            </button>
+          ))}
+          <input
+            type="date"
+            aria-label="Due date"
+            className="mt-1 h-7 rounded-md border border-input bg-transparent px-2 text-sm text-foreground"
+            value={task.dueDate ?? ""}
+            onChange={(event) => {
+              if (event.target.value) pick(event.target.value);
+            }}
+          />
+          {task.dueDate ? (
+            <button
+              type="button"
+              className="mt-1 flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={() => pick(null)}
+            >
+              <Icon name="X" className="size-3.5" />
+              Remove due date
+            </button>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function LabelsMenu({
+  task,
+  labels,
+  onUpdate,
+  children,
+}: {
+  task: Task;
+  labels: Label[] | undefined;
+  onUpdate: (update: TaskPropertyUpdate) => void;
+  children: React.ReactNode;
+}) {
+  const toggle = (labelId: string) => {
+    const next = task.labelIds.includes(labelId)
+      ? task.labelIds.filter((id) => id !== labelId)
+      : [...task.labelIds, labelId];
+    onUpdate({ labelIds: next });
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {(labels ?? []).map((label) => (
+          <DropdownMenuCheckboxItem
+            key={label.id}
+            checked={task.labelIds.includes(label.id)}
+            onCheckedChange={() => toggle(label.id)}
+            onSelect={(event) => event.preventDefault()}
+          >
+            <span
+              aria-hidden
+              className="size-2 rounded-full"
+              style={{ backgroundColor: label.color }}
+            />
+            {label.name}
+          </DropdownMenuCheckboxItem>
+        ))}
+        {labels !== undefined && labels.length === 0 ? (
+          <>
+            <DropdownMenuItem disabled>No labels in project</DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const RAIL_ROW_CLASS =
+  "-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm hover:bg-state-hover";
+
+/** Right-hand properties rail (hidden below the container breakpoint). */
+export function PropertiesRail({
+  task,
+  project,
+  labels,
+  threads,
+  onUpdate,
+  className,
+}: TaskPropertiesProps & { className?: string }) {
+  const taskLabels = (labels ?? []).filter((label) =>
+    task.labelIds.includes(label.id),
+  );
+  const active = threads.filter(isActiveThread);
+  return (
+    <aside className={cn("w-56 shrink-0 py-10 pl-2 pr-6", className)}>
+      <h2 className="mb-1.5 text-xs font-semibold text-muted-foreground">
+        Properties
+      </h2>
+      <StatusMenu task={task} onUpdate={onUpdate} triggerClassName={RAIL_ROW_CLASS} />
+      <PriorityMenu
+        task={task}
+        onUpdate={onUpdate}
+        triggerClassName={RAIL_ROW_CLASS}
+      />
+      <DueDateMenu task={task} onUpdate={onUpdate} triggerClassName={RAIL_ROW_CLASS} />
+
+      <div className="mb-1 mt-3 text-2xs font-semibold text-muted-foreground">
+        Labels
+      </div>
+      <div className="flex flex-wrap items-center gap-1 py-0.5">
+        {taskLabels.map((label) => (
+          <LabelChip key={label.id} label={label} />
+        ))}
+        <LabelsMenu task={task} labels={labels} onUpdate={onUpdate}>
+          <button
+            type="button"
+            aria-label="Edit labels"
+            className="inline-flex items-center rounded-md border border-dashed border-border px-1.5 py-0.5 text-muted-foreground hover:border-input hover:text-foreground"
+          >
+            <Icon name="Plus" className="size-3" />
+          </button>
+        </LabelsMenu>
+      </div>
+
+      <div className="mb-1 mt-3 text-2xs font-semibold text-muted-foreground">
+        Project
+      </div>
+      <div className="flex items-center gap-2 py-0.5 text-sm">
+        <span
+          aria-hidden
+          className="size-3 shrink-0 rounded-sm"
+          style={{ backgroundColor: project?.color }}
+        />
+        <span className="truncate">{project?.name ?? "…"}</span>
+      </div>
+
+      <div className="mb-1 mt-3 text-2xs font-semibold text-muted-foreground">
+        Delegation target
+      </div>
+      <div className="py-0.5 text-xs leading-relaxed">
+        {project?.linkedBbProjectId ? (
+          <span className="flex items-center gap-1 text-foreground">
+            <Icon name="ArrowUpRight" className="size-3 shrink-0" />
+            <span className="truncate">{project.linkedBbProjectId}</span>
+          </span>
+        ) : (
+          <span className="italic text-muted-foreground">
+            none — link a bb project to delegate
+          </span>
+        )}
+      </div>
+
+      <div className="mb-1 mt-3 text-2xs font-semibold text-muted-foreground">
+        Agents
+      </div>
+      <div className="flex flex-col gap-1 py-0.5 text-xs">
+        {active.length > 0 ? (
+          active.map((thread) => (
+            <span
+              key={thread.id}
+              className="flex items-center gap-1.5 font-medium text-success"
+            >
+              <span
+                aria-hidden
+                className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
+              />
+              <span className="truncate">
+                {thread.presetName}{" "}
+                {thread.liveStatus === "starting" ? "starting" : "working"}
+              </span>
+            </span>
+          ))
+        ) : (
+          <span className="text-muted-foreground">none active</span>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+const CHIP_CLASS =
+  "inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-0.5 text-xs text-foreground hover:border-input";
+
+/** Compact property chips shown under the title when the rail is hidden. */
+export function InlineProperties({
+  task,
+  labels,
+  onUpdate,
+  className,
+}: Omit<TaskPropertiesProps, "project" | "threads"> & { className?: string }) {
+  const taskLabels = (labels ?? []).filter((label) =>
+    task.labelIds.includes(label.id),
+  );
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
+      <StatusMenu task={task} onUpdate={onUpdate} triggerClassName={CHIP_CLASS} />
+      <PriorityMenu task={task} onUpdate={onUpdate} triggerClassName={CHIP_CLASS} />
+      <DueDateMenu task={task} onUpdate={onUpdate} triggerClassName={CHIP_CLASS} />
+      {taskLabels.map((label) => (
+        <LabelChip key={label.id} label={label} />
+      ))}
+      <LabelsMenu task={task} labels={labels} onUpdate={onUpdate}>
+        <button
+          type="button"
+          aria-label="Edit labels"
+          className="inline-flex items-center rounded-md border border-dashed border-border px-2 py-1 text-muted-foreground hover:border-input hover:text-foreground"
+        >
+          <Icon name="Plus" className="size-3" />
+        </button>
+      </LabelsMenu>
+    </div>
+  );
+}

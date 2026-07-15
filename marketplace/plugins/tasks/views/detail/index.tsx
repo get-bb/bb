@@ -1,17 +1,480 @@
-// OWNER: detail-view worker. This file is a placeholder created by the
-// app-shell worker (T3.1). Replace its contents with the real task detail
-// page; the shell only depends on the exported `DetailView` name and its
-// props.
+import { useEffect, useRef, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { SmilePlusIcon } from "@hugeicons/core-free-icons";
+import type { Task } from "../../shared/contract.js";
+import { useTasksQuery, useTasksRpc, type TasksRpc } from "../../shell/data.js";
+import { useTasksNavigation } from "../../shell/routes.js";
+import { TasksEditor } from "../../editor/tasks-editor.js";
+import { TaskActivity } from "../activity/index.js";
+import { AttachmentsGrid, uploadAttachment } from "./attachments.js";
+import {
+  STATUS_LABELS,
+  StatusIcon,
+} from "./meta.js";
+import {
+  InlineProperties,
+  PropertiesRail,
+  type TaskPropertyUpdate,
+} from "./rail.js";
+import { ThreadsSection } from "./threads.js";
+import { DetailToasts, useDetailToasts } from "./toast.js";
+import { Icon } from "@/components/ui/icon";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export interface DetailViewProps {
   /** Task key like TSK-4 (not the ULID). */
   taskKey: string;
 }
 
-export function DetailView({ taskKey }: DetailViewProps) {
+const DESCRIPTION_SAVE_DELAY_MS = 800;
+
+function SubTaskDonut({ subtasks }: { subtasks: Task[] }) {
+  if (subtasks.length === 0) return null;
+  const done = subtasks.filter((subtask) => subtask.status === "done").length;
+  const degrees = (done / subtasks.length) * 360;
   return (
-    <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-      Task detail coming soon · taskKey={taskKey}
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-0.5 text-xs text-muted-foreground shadow-2xs">
+      <span
+        aria-hidden
+        className="inline-block size-3 rounded-full"
+        style={{
+          background: `conic-gradient(var(--primary) ${degrees}deg, var(--muted) 0)`,
+        }}
+      />
+      {done}/{subtasks.length}
+    </span>
+  );
+}
+
+function EditableTitle({
+  task,
+  onSave,
+}: {
+  task: Task;
+  onSave: (title: string) => void;
+}) {
+  return (
+    <h1
+      // Remount when another client renames the task; while focused the vdom
+      // children stay constant so React never clobbers in-progress edits.
+      key={`${task.id}:${task.title}`}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-label="Task title"
+      className="mb-2.5 mt-1 text-2xl font-semibold leading-tight outline-none"
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
+      onBlur={(event) => {
+        const next = event.currentTarget.textContent?.trim() ?? "";
+        if (!next) {
+          event.currentTarget.textContent = task.title;
+          return;
+        }
+        if (next !== task.title) onSave(next);
+      }}
+    >
+      {task.title}
+    </h1>
+  );
+}
+
+function SubTasksSection({
+  task,
+  subtasks,
+  onCreate,
+}: {
+  task: Task;
+  subtasks: Task[];
+  onCreate: (title: string) => Promise<boolean>;
+}) {
+  const navigation = useTasksNavigation();
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const trimmed = title.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    const created = await onCreate(trimmed);
+    setBusy(false);
+    if (created) setTitle("");
+  };
+
+  return (
+    <section className="mt-5">
+      {subtasks.map((subtask) => (
+        <button
+          key={subtask.id}
+          type="button"
+          className="flex h-8 w-full items-center gap-2 border-b border-border-hairline px-0.5 text-left text-sm hover:bg-state-hover"
+          title={STATUS_LABELS[subtask.status]}
+          onClick={() => navigation.go({ kind: "task", taskKey: subtask.key })}
+        >
+          <StatusIcon status={subtask.status} />
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {subtask.key}
+          </span>
+          <span className="min-w-0 truncate">{subtask.title}</span>
+        </button>
+      ))}
+      {adding ? (
+        <div className="flex h-8 items-center gap-2 border-b border-border-hairline px-0.5">
+          <StatusIcon status="todo" className="opacity-60" />
+          <input
+            autoFocus
+            value={title}
+            placeholder={`Sub-task of ${task.key}…`}
+            className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void submit();
+              if (event.key === "Escape") {
+                setAdding(false);
+                setTitle("");
+              }
+            }}
+            onBlur={() => {
+              if (!title.trim()) setAdding(false);
+            }}
+          />
+        </div>
+      ) : null}
+      <button
+        type="button"
+        className="flex items-center gap-1.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+        onClick={() => setAdding(true)}
+      >
+        <Icon name="Plus" className="size-3" />
+        Add sub-task
+      </button>
+    </section>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-3xl px-8 py-12">
+      <Skeleton className="mb-4 h-7 w-2/3" />
+      <Skeleton className="mb-2 h-4 w-full" />
+      <Skeleton className="mb-2 h-4 w-5/6" />
+      <Skeleton className="h-4 w-1/2" />
     </div>
   );
+}
+
+function TaskDetail({ task }: { task: Task }) {
+  const rpc = useTasksRpc();
+  const navigation = useTasksNavigation();
+  const { toasts, push, dismiss } = useDetailToasts();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Local description draft: while the user types, the server still holds the
+  // previous markdown, so passing the server value straight through would
+  // reset the editor on every unrelated realtime refresh.
+  const [draft, setDraft] = useState<{ taskId: string; markdown: string }>();
+  const saveTimerRef = useRef<number | undefined>(undefined);
+  const pendingSaveRef = useRef<{ taskId: string; markdown: string } | undefined>(
+    undefined,
+  );
+
+  const projects = useTasksQuery(
+    async (query) => (await query.call("listProjects", {})).projects,
+    ["projects:changed"],
+  );
+  const project = projects.data?.find((entry) => entry.id === task.projectId);
+
+  const parent = useTasksQuery(
+    async (query) =>
+      task.parentTaskId
+        ? (await query.call("getTask", { taskId: task.parentTaskId })).task
+        : null,
+    ["tasks:changed"],
+    [task.parentTaskId],
+  );
+  const subtasks = useTasksQuery(
+    async (query) =>
+      (await query.call("listTasks", { parentTaskId: task.id })).tasks,
+    ["tasks:changed"],
+    [task.id],
+  );
+  const labels = useTasksQuery(
+    async (query) =>
+      (await query.call("listLabels", { projectId: task.projectId })).labels,
+    ["projects:changed"],
+    [task.projectId],
+  );
+  const attachments = useTasksQuery(
+    async (query) =>
+      (await query.call("listAttachments", { taskId: task.id })).attachments,
+    ["tasks:changed"],
+    [task.id],
+  );
+  const threads = useTasksQuery(
+    async (query) =>
+      (await query.call("listTaskThreads", { taskId: task.id })).taskThreads,
+    ["threads:changed"],
+    [task.id],
+  );
+  const presets = useTasksQuery(
+    async (query) => (await query.call("listPresets")).presets,
+    ["projects:changed"],
+  );
+
+  const updateTask = async (
+    input: TaskPropertyUpdate & { title?: string; description?: string },
+  ) => {
+    try {
+      const result = await rpc.call("updateTask", { taskId: task.id, ...input });
+      if (!result.ok) push("error", result.error.message);
+    } catch (error) {
+      push("error", error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const saveDescription = async (taskId: string, markdown: string) => {
+    pendingSaveRef.current = undefined;
+    try {
+      const result = await rpc.call("updateTask", {
+        taskId,
+        description: markdown,
+      });
+      if (!result.ok) push("error", result.error.message);
+    } catch (error) {
+      push("error", error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const onDescriptionChange = (markdown: string) => {
+    setDraft({ taskId: task.id, markdown });
+    pendingSaveRef.current = { taskId: task.id, markdown };
+    window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      const pending = pendingSaveRef.current;
+      if (pending) void saveDescription(pending.taskId, pending.markdown);
+    }, DESCRIPTION_SAVE_DELAY_MS);
+  };
+
+  // Flush a pending description save when leaving the page or switching task.
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(saveTimerRef.current);
+      const pending = pendingSaveRef.current;
+      if (pending && pending.taskId === task.id) {
+        pendingSaveRef.current = undefined;
+        rpc
+          .call("updateTask", {
+            taskId: pending.taskId,
+            description: pending.markdown,
+          })
+          .catch(() => undefined);
+      }
+    };
+  }, [task.id, rpc]);
+
+  const uploadForTask = async (file: File) => {
+    const result = await uploadAttachment(file, task.id);
+    attachments.refresh();
+    return result;
+  };
+
+  const onPickFiles = async (files: FileList | null) => {
+    for (const file of files ?? []) {
+      try {
+        await uploadAttachment(file, task.id);
+      } catch (error) {
+        push(
+          "error",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+    attachments.refresh();
+  };
+
+  const createSubtask = async (title: string): Promise<boolean> => {
+    try {
+      const result = await rpc.call("createTask", {
+        projectId: task.projectId,
+        title,
+        parentTaskId: task.id,
+        status: "todo",
+      });
+      if (!result.ok) {
+        push("error", result.error.message);
+        return false;
+      }
+      subtasks.refresh();
+      return true;
+    } catch (error) {
+      push("error", error instanceof Error ? error.message : String(error));
+      return false;
+    }
+  };
+
+  const mentionItems = async (query: string) => {
+    const result = await rpc.call("listTasks", {
+      ...(query.trim() ? { search: query.trim() } : {}),
+    });
+    return result.tasks
+      .slice(0, 8)
+      .map((entry) => ({ id: entry.id, key: entry.key, title: entry.title }));
+  };
+
+  const descriptionValue =
+    draft && draft.taskId === task.id ? draft.markdown : task.description;
+  const parentTask = parent.data ?? null;
+
+  return (
+    <div className="@container flex min-h-full flex-col bg-surface-recessed-solid p-3">
+      <div className="flex flex-1 items-stretch rounded-lg border border-border bg-card shadow-2xs">
+        <div className="mx-auto w-full min-w-0 max-w-[55rem] flex-1 px-7 pb-16 pt-8 @3xl:px-13 @3xl:pt-11">
+          {(parentTask || subtasks.data?.length) ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              {parentTask ? (
+                <button
+                  type="button"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-0.5 text-xs text-muted-foreground shadow-2xs hover:border-input"
+                  onClick={() =>
+                    navigation.go({ kind: "task", taskKey: parentTask.key })
+                  }
+                >
+                  Sub-task of
+                  <StatusIcon status={parentTask.status} className="size-3" />
+                  <span className="font-medium text-foreground">
+                    {parentTask.key}
+                  </span>
+                  <span className="min-w-0 truncate">{parentTask.title}</span>
+                </button>
+              ) : null}
+              <SubTaskDonut subtasks={subtasks.data ?? []} />
+            </div>
+          ) : null}
+
+          <EditableTitle task={task} onSave={(title) => void updateTask({ title })} />
+
+          <InlineProperties
+            task={task}
+            labels={labels.data}
+            onUpdate={(update) => void updateTask(update)}
+            className="mb-4 @[45rem]:hidden"
+          />
+
+          <TasksEditor
+            value={descriptionValue}
+            onChange={onDescriptionChange}
+            variant="doc"
+            className="min-h-24"
+            placeholder="Add a description… rich text: headings, lists, code, checkboxes, @mentions"
+            onUploadImage={uploadForTask}
+            mentionItems={mentionItems}
+          />
+
+          <div className="mb-1 mt-3 flex items-center gap-1">
+            <button
+              type="button"
+              title="Reactions coming soon"
+              aria-label="Add reaction"
+              disabled
+              className="flex size-6.5 items-center justify-center rounded-md text-muted-foreground opacity-50"
+            >
+              <HugeiconsIcon icon={SmilePlusIcon} className="size-4" />
+            </button>
+            <button
+              type="button"
+              title="Attach file"
+              aria-label="Attach file"
+              className="flex size-6.5 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Icon name="Paperclip" className="size-4" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                void onPickFiles(event.target.files);
+                event.target.value = "";
+              }}
+            />
+          </div>
+
+          <AttachmentsGrid attachments={attachments.data ?? []} />
+
+          <SubTasksSection
+            task={task}
+            subtasks={subtasks.data ?? []}
+            onCreate={createSubtask}
+          />
+
+          <div className="mt-6">
+            <ThreadsSection
+              taskId={task.id}
+              taskKey={task.key}
+              threads={threads.data ?? []}
+              presets={presets.data}
+              onError={(message) => push("error", message)}
+            />
+          </div>
+
+          <div className="mt-7 border-t border-border-hairline pt-1">
+            <TaskActivity taskId={task.id} taskKey={task.key} />
+          </div>
+        </div>
+
+        <PropertiesRail
+          task={task}
+          project={project}
+          labels={labels.data}
+          threads={threads.data ?? []}
+          onUpdate={(update) => void updateTask(update)}
+          className="hidden @[45rem]:block"
+        />
+      </div>
+      <DetailToasts toasts={toasts} onDismiss={dismiss} />
+    </div>
+  );
+}
+
+async function fetchTaskByKey(
+  rpc: TasksRpc,
+  taskKey: string,
+): Promise<Task | null> {
+  const { tasks } = await rpc.call("listTasks", {});
+  const wanted = taskKey.toUpperCase();
+  return tasks.find((task) => task.key.toUpperCase() === wanted) ?? null;
+}
+
+export function DetailView({ taskKey }: DetailViewProps) {
+  const query = useTasksQuery(
+    (rpc) => fetchTaskByKey(rpc, taskKey),
+    ["tasks:changed"],
+    [taskKey],
+  );
+
+  if (query.data === undefined) {
+    return query.error ? (
+      <div className="flex h-full items-center justify-center p-6 text-sm text-destructive">
+        {query.error}
+      </div>
+    ) : (
+      <DetailSkeleton />
+    );
+  }
+  if (query.data === null) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+        <Icon name="FileQuestion" className="size-5" />
+        Task {taskKey} was not found.
+      </div>
+    );
+  }
+  return <TaskDetail task={query.data} />;
 }

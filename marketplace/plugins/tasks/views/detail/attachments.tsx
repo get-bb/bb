@@ -1,0 +1,182 @@
+import { useEffect, useState } from "react";
+import type { Attachment } from "../../shared/contract.js";
+import { formatBytes } from "./meta.js";
+import { Icon } from "@/components/ui/icon";
+
+/** Frontend twin of attachments/index.ts `buildAttachmentUrl`. */
+export function attachmentDownloadUrl(attachmentId: string): string {
+  return `/api/v1/plugins/tasks/http/attachments/download?attachmentId=${encodeURIComponent(attachmentId)}`;
+}
+
+let tokenPromise: Promise<string> | null = null;
+
+/**
+ * The upload route accepts a raw body and therefore uses plugin-token auth
+ * (see attachments/README.md); the token comes from the local-auth token
+ * route once per session.
+ */
+function pluginToken(): Promise<string> {
+  tokenPromise ??= (async () => {
+    const response = await fetch("/api/v1/plugins/tasks/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const json: unknown = await response.json().catch(() => null);
+    const token =
+      json && typeof json === "object" && "token" in json
+        ? (json as { token: unknown }).token
+        : undefined;
+    if (!response.ok || typeof token !== "string") {
+      throw new Error(`failed to fetch plugin token (HTTP ${response.status})`);
+    }
+    return token;
+  })();
+  tokenPromise.catch(() => {
+    tokenPromise = null;
+  });
+  return tokenPromise;
+}
+
+export async function uploadAttachment(
+  file: File,
+  taskId: string,
+): Promise<{ attachmentId: string; url: string }> {
+  const token = await pluginToken();
+  const query = new URLSearchParams({
+    taskId,
+    fileName: file.name || "attachment",
+    mime: file.type || "application/octet-stream",
+  });
+  const response = await fetch(
+    `/api/v1/plugins/tasks/http/attachments/upload?${query.toString()}`,
+    {
+      method: "POST",
+      headers: { "x-bb-plugin-token": token },
+      body: file,
+    },
+  );
+  const json: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      json && typeof json === "object" && "error" in json
+        ? String((json as { error: unknown }).error)
+        : `upload failed (HTTP ${response.status})`;
+    throw new Error(message);
+  }
+  const result = json as { attachmentId: string; url: string };
+  return { attachmentId: result.attachmentId, url: result.url };
+}
+
+function Lightbox({
+  attachment,
+  onClose,
+}: {
+  attachment: Attachment;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    // Capture phase so the shell's Esc-to-close-task handler never sees it.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [onClose]);
+  // Rendered inline (not portaled) so the plugin's scoped stylesheet applies;
+  // `fixed` still overlays the whole viewport from inside the panel.
+  return (
+    <div
+      role="dialog"
+      aria-label={attachment.fileName}
+      className="fixed inset-0 z-50 flex items-center justify-center p-8"
+      style={{ background: "color-mix(in oklab, var(--ink) 60%, transparent)" }}
+      onClick={onClose}
+    >
+      <img
+        src={attachmentDownloadUrl(attachment.id)}
+        alt={attachment.fileName}
+        className="max-h-full max-w-full rounded-md shadow-md"
+        onClick={(event) => event.stopPropagation()}
+      />
+      <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-md bg-popover/90 px-3 py-1.5 text-xs text-popover-foreground shadow-md">
+        <span className="max-w-72 truncate">{attachment.fileName}</span>
+        <span className="text-muted-foreground">
+          {formatBytes(attachment.sizeBytes)}
+        </span>
+      </div>
+      <button
+        type="button"
+        aria-label="Close"
+        className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-md bg-popover/90 text-popover-foreground shadow-md hover:bg-popover"
+        onClick={onClose}
+      >
+        <Icon name="X" className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+export function AttachmentsGrid({
+  attachments,
+}: {
+  attachments: Attachment[];
+}) {
+  const [lightbox, setLightbox] = useState<Attachment | null>(null);
+  if (attachments.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {attachments.map((attachment) =>
+        attachment.isImage ? (
+          <button
+            key={attachment.id}
+            type="button"
+            className="group relative overflow-hidden rounded-md border border-border shadow-2xs"
+            title={`${attachment.fileName} · ${formatBytes(attachment.sizeBytes)}`}
+            onClick={() => setLightbox(attachment)}
+          >
+            <img
+              src={attachmentDownloadUrl(attachment.id)}
+              alt={attachment.fileName}
+              className="block h-24 w-36 object-cover transition-opacity group-hover:opacity-90"
+            />
+            <span
+              className="absolute inset-x-0 bottom-0 truncate px-1.5 py-0.5 text-left text-2xs opacity-0 transition-opacity group-hover:opacity-100"
+              style={{
+                background: "color-mix(in oklab, var(--ink) 55%, transparent)",
+                color: "var(--canvas)",
+              }}
+            >
+              {attachment.fileName}
+            </span>
+          </button>
+        ) : (
+          <a
+            key={attachment.id}
+            href={attachmentDownloadUrl(attachment.id)}
+            download={attachment.fileName}
+            className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm shadow-2xs hover:bg-state-hover"
+          >
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
+              <Icon name="File" className="size-3.5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block max-w-48 truncate">
+                {attachment.fileName}
+              </span>
+              <span className="block text-2xs text-muted-foreground">
+                {formatBytes(attachment.sizeBytes)}
+              </span>
+            </span>
+          </a>
+        ),
+      )}
+      {lightbox ? (
+        <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />
+      ) : null}
+    </div>
+  );
+}
