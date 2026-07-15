@@ -9,11 +9,13 @@ import { z } from "zod";
 
 import {
   publishCommentsChanged,
+  publishProjectsChanged,
   registerHandlers,
   type TasksApiStore,
 } from "../api";
 import {
   buildAttachmentUrl,
+  publishAttachmentChanged,
   readAttachmentToPath,
   saveAttachmentFromPath,
 } from "../attachments";
@@ -67,6 +69,7 @@ Commands:
   delegate                       Delegate a task to a new agent thread
   attach                         Attach an agent thread to a task
   threads                        List threads attached to a task
+  seed-demo                      Create sample data (requires --yes)
 
 Run bb tasks <command> --help for command usage.`;
 
@@ -347,6 +350,8 @@ function taskAuthor(ctx: PluginCliContext): string {
 }
 
 async function runProject(
+  bb: BbPluginApi,
+  store: TasksApiStore,
   domain: TasksDomain,
   argv: string[],
 ): Promise<string> {
@@ -470,34 +475,42 @@ async function runProject(
     ) {
       throw new CliError("no project changes were provided");
     }
-    let updated = project;
-    if (renamePrefix !== undefined) {
-      updated = unwrapTaskProject(
-        tasksRpcContract.renameProjectPrefix.output.parse(
-          await domain.renameProjectPrefix(
-            tasksRpcContract.renameProjectPrefix.input.parse({
-              projectId: project.id,
-              prefix: normalizePrefix(renamePrefix),
-            }),
-          ),
-        ),
-      );
-    }
-    if (
+    const renameInput =
+      renamePrefix === undefined
+        ? undefined
+        : tasksRpcContract.renameProjectPrefix.input.parse({
+            projectId: project.id,
+            prefix: normalizePrefix(renamePrefix),
+          });
+    const hasFieldChanges =
       changes.name !== undefined ||
       changes.color !== undefined ||
       changes.folderId !== undefined ||
-      changes.linkedBbProjectId !== undefined
+      changes.linkedBbProjectId !== undefined;
+    const updateInput = hasFieldChanges
+      ? tasksRpcContract.updateProject.input.parse({
+          projectId: project.id,
+          ...changes,
+        })
+      : undefined;
+    if (
+      renameInput &&
+      store.projectPrefixExists(renameInput.prefix, project.id)
     ) {
-      updated = tasksRpcContract.updateProject.output.parse(
-        await domain.updateProject(
-          tasksRpcContract.updateProject.input.parse({
-            projectId: project.id,
-            ...changes,
-          }),
-        ),
-      ).project;
+      throw new CliError(
+        `Project prefix is already in use: ${renameInput.prefix}`,
+      );
     }
+    const updated = store.transaction(() =>
+      store.tasks.updateProject(project.id, {
+        prefix: renameInput?.prefix,
+        name: updateInput?.name,
+        color: updateInput?.color,
+        folderId: updateInput?.folderId,
+        linkedBbProjectId: updateInput?.linkedBbProjectId,
+      }),
+    );
+    publishProjectsChanged(bb, updated.id);
     return args.flags.has("json")
       ? json({ project: updated })
       : `Updated project ${updated.prefix}  ${updated.name}`;
@@ -506,14 +519,12 @@ async function runProject(
   throw new CliError(`unknown project subcommand: ${action}`);
 }
 
-function unwrapTaskProject(
-  result: ReturnType<typeof tasksRpcContract.renameProjectPrefix.output.parse>,
-): Project {
-  if (!result.ok) throw new CliError(result.error.message);
-  return result.project;
-}
-
-async function runFolder(domain: TasksDomain, argv: string[]): Promise<string> {
+async function runFolder(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  domain: TasksDomain,
+  argv: string[],
+): Promise<string> {
   const [action, ...rest] = argv;
   if (!action || action === "--help") return FOLDER_HELP;
   const args = parseArgs(rest);
@@ -589,31 +600,31 @@ async function runFolder(domain: TasksDomain, argv: string[]): Promise<string> {
     ) {
       throw new CliError("no folder changes were provided");
     }
-    let updated = folder;
     const name = option(args, "name");
-    if (name !== undefined) {
-      updated = tasksRpcContract.renameFolder.output.parse(
-        await domain.renameFolder(
-          tasksRpcContract.renameFolder.input.parse({
+    const parent = parentAddress
+      ? await resolveFolder(domain, parentAddress)
+      : null;
+    const renameInput =
+      name === undefined
+        ? undefined
+        : tasksRpcContract.renameFolder.input.parse({
             folderId: folder.id,
             name,
-          }),
-        ),
-      ).folder;
-    }
-    if (parentAddress !== undefined || args.flags.has("no-parent")) {
-      const parent = parentAddress
-        ? await resolveFolder(domain, parentAddress)
-        : null;
-      updated = tasksRpcContract.moveFolder.output.parse(
-        await domain.moveFolder(
-          tasksRpcContract.moveFolder.input.parse({
+          });
+    const moveInput =
+      parentAddress === undefined && !args.flags.has("no-parent")
+        ? undefined
+        : tasksRpcContract.moveFolder.input.parse({
             folderId: folder.id,
             parentFolderId: parent?.id ?? null,
-          }),
-        ),
-      ).folder;
-    }
+          });
+    const updated = store.transaction(() =>
+      store.tasks.updateFolder(folder.id, {
+        name: renameInput?.name,
+        parentFolderId: moveInput?.parentFolderId,
+      }),
+    );
+    publishProjectsChanged(bb, null);
     return args.flags.has("json")
       ? json({ folder: updated })
       : `Updated folder ${updated.name}  ${updated.id}`;
@@ -1070,6 +1081,7 @@ async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
 }
 
 async function runAttachment(
+  bb: BbPluginApi,
   store: TasksApiStore,
   domain: TasksDomain,
   ctx: PluginCliContext,
@@ -1102,8 +1114,8 @@ async function runAttachment(
     const attachment = await saveAttachmentFromPath(store.tasks, sourcePath, {
       ...owner,
       fileName: option(args, "name"),
-      mime: "application/octet-stream",
     });
+    publishAttachmentChanged(bb, store.tasks, attachment);
     const payload = {
       attachment,
       url: buildAttachmentUrl(attachment.id),
@@ -1493,6 +1505,11 @@ export function registerTasksCli(
         summary: "List agent threads attached to a task",
         usage: THREADS_HELP,
       },
+      {
+        name: "seed-demo",
+        summary: "Create sample folders, projects, labels, tasks, and comments",
+        usage: "bb tasks seed-demo --yes [--json]",
+      },
     ],
     async run(argv, ctx): Promise<PluginCliResult> {
       try {
@@ -1512,10 +1529,10 @@ export function registerTasksCli(
             break;
           }
           case "project":
-            stdout = await runProject(domain, rest);
+            stdout = await runProject(bb, store, domain, rest);
             break;
           case "folder":
-            stdout = await runFolder(domain, rest);
+            stdout = await runFolder(bb, store, domain, rest);
             break;
           case "create":
             stdout = await runCreate(domain, ctx, rest);
@@ -1536,7 +1553,7 @@ export function registerTasksCli(
             stdout = await runLabel(domain, rest);
             break;
           case "attachment":
-            stdout = await runAttachment(store, domain, ctx, rest);
+            stdout = await runAttachment(bb, store, domain, ctx, rest);
             break;
           case "preset":
             stdout = await runPreset(domain, rest);

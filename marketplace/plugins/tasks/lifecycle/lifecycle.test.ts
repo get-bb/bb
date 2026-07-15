@@ -2,10 +2,14 @@ import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createStore } from "../api";
 import type { TaskThreadLiveStatus } from "../db";
-import { registerLifecycle } from ".";
+import {
+  registerLifecycle,
+  THREAD_STATUS_IDLE_INTERVAL_MS,
+  THREAD_STATUS_RECONCILE_INTERVAL_MS,
+} from ".";
 
 interface TrackedThreadFixture {
   bb: ReturnType<typeof createFakePluginHost>["bb"];
@@ -128,6 +132,7 @@ describe("task thread lifecycle", () => {
 
     expect(fixture.harness.sdk.callsTo("threads.get")).toEqual([
       [{ threadId: "thr_worker" }],
+      [{ threadId: "thr_worker" }],
     ]);
     expect(
       fixture.store.tasks.getTaskThread(fixture.taskThreadId)?.liveStatus,
@@ -138,6 +143,168 @@ describe("task thread lifecycle", () => {
     ]);
 
     await fixture.harness.dispose();
+  });
+
+  it("registers listeners first and reconciles again to catch a fast active transition", async () => {
+    let reads = 0;
+    let handlersAtFirstRead:
+      | ReturnType<
+          typeof createFakePluginHost
+        >["harness"]["registrations"]["threadEventHandlers"]
+      | undefined;
+    const host = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async () => {
+            reads += 1;
+            if (reads === 1) {
+              handlersAtFirstRead =
+                host.harness.registrations.threadEventHandlers;
+            }
+            return makeThreadResponse({
+              id: "thr_fast",
+              status: reads === 1 ? "starting" : "active",
+            });
+          },
+        },
+      },
+    });
+    const store = createStore(host.bb);
+    const project = store.tasks.createProject({
+      name: "Fast lifecycle",
+      prefix: "FAST",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Catch active",
+    });
+    const tracked = store.tasks.upsertTaskThread({
+      taskId: task.id,
+      threadId: "thr_fast",
+      presetName: "Default",
+      title: "Fast worker",
+      liveStatus: "starting",
+    });
+
+    await registerLifecycle(host.bb, store);
+
+    expect(handlersAtFirstRead).toEqual({
+      "thread.created": 1,
+      "thread.idle": 1,
+      "thread.failed": 1,
+      "thread.deleted": 1,
+    });
+    expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
+    expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe("working");
+
+    await host.harness.dispose();
+  });
+
+  it("polls for active transitions missing from the plugin event surface", async () => {
+    vi.useFakeTimers();
+    let reads = 0;
+    const host = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async () => {
+            reads += 1;
+            return makeThreadResponse({
+              id: "thr_polled",
+              status: reads <= 2 ? "starting" : "active",
+            });
+          },
+        },
+      },
+    });
+    const store = createStore(host.bb);
+    const project = store.tasks.createProject({
+      name: "Polling lifecycle",
+      prefix: "POLL",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Observe active",
+    });
+    const tracked = store.tasks.upsertTaskThread({
+      taskId: task.id,
+      threadId: "thr_polled",
+      presetName: "Default",
+      title: "Polled worker",
+      liveStatus: "starting",
+    });
+
+    try {
+      await registerLifecycle(host.bb, store);
+      expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe(
+        "starting",
+      );
+
+      const service = host.harness.runService("thread-status-reconcile");
+      await vi.advanceTimersByTimeAsync(THREAD_STATUS_RECONCILE_INTERVAL_MS);
+
+      expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe("working");
+      service.controller.abort();
+      await service.done;
+    } finally {
+      vi.useRealTimers();
+      await host.harness.dispose();
+    }
+  });
+
+  it("backs off polling while no non-terminal task threads exist", async () => {
+    vi.useFakeTimers();
+    const host = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async () =>
+            makeThreadResponse({ id: "thr_later", status: "active" }),
+        },
+      },
+    });
+    const store = createStore(host.bb);
+    const project = store.tasks.createProject({
+      name: "Idle polling",
+      prefix: "IDLE",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Attach later",
+    });
+
+    try {
+      await registerLifecycle(host.bb, store);
+      const service = host.harness.runService("thread-status-reconcile");
+      const tracked = store.tasks.upsertTaskThread({
+        taskId: task.id,
+        threadId: "thr_later",
+        presetName: "Default",
+        title: "Later worker",
+        liveStatus: "starting",
+      });
+
+      await vi.advanceTimersByTimeAsync(THREAD_STATUS_RECONCILE_INTERVAL_MS);
+      expect(host.harness.sdk.callsTo("threads.get")).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(
+        THREAD_STATUS_IDLE_INTERVAL_MS - THREAD_STATUS_RECONCILE_INTERVAL_MS,
+      );
+      expect(host.harness.sdk.callsTo("threads.get")).toEqual([
+        [{ threadId: "thr_later" }],
+      ]);
+      expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe("working");
+
+      service.controller.abort();
+      await service.done;
+    } finally {
+      vi.useRealTimers();
+      await host.harness.dispose();
+    }
   });
 
   it("ignores lifecycle events for non-tracked threads", async () => {

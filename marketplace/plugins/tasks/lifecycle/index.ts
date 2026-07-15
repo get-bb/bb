@@ -11,6 +11,8 @@ const TERMINAL_LIVE_STATUSES = new Set<TaskThreadLiveStatus>([
   "completed",
   "failed",
 ]);
+export const THREAD_STATUS_RECONCILE_INTERVAL_MS = 15_000;
+export const THREAD_STATUS_IDLE_INTERVAL_MS = 60_000;
 
 type SdkThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
 
@@ -29,10 +31,7 @@ function liveStatusFromThread(thread: SdkThread): TaskThreadLiveStatus {
   }
 }
 
-function trackedThreads(
-  store: TasksApiStore,
-  threadId?: string,
-): TaskThread[] {
+function trackedThreads(store: TasksApiStore, threadId?: string): TaskThread[] {
   const tracked: TaskThread[] = [];
   for (const task of store.tasks.listTasks()) {
     for (const thread of store.tasks.listTaskThreads(task.id)) {
@@ -126,19 +125,36 @@ async function reconcileTrackedThreads(
   }
 }
 
+function hasNonTerminalTrackedThreads(store: TasksApiStore): boolean {
+  return trackedThreads(store).some(
+    (thread) => !TERMINAL_LIVE_STATUSES.has(thread.liveStatus),
+  );
+}
+
+function waitForNextReconciliation(
+  signal: AbortSignal,
+  intervalMs: number,
+): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, intervalMs);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export async function registerLifecycle(
   bb: BbPluginApi,
   store: TasksApiStore,
 ): Promise<void> {
-  await reconcileTrackedThreads(bb, store);
-
   bb.events.on("thread.created", ({ thread }) => {
-    transitionTrackedThread(
-      bb,
-      store,
-      thread.id,
-      liveStatusFromThread(thread),
-    );
+    transitionTrackedThread(bb, store, thread.id, liveStatusFromThread(thread));
   });
   bb.events.on("thread.idle", ({ thread }) => {
     transitionTrackedThread(bb, store, thread.id, "idle");
@@ -149,4 +165,22 @@ export async function registerLifecycle(
   bb.events.on("thread.deleted", ({ thread }) => {
     transitionTrackedThread(bb, store, thread.id, "completed");
   });
+
+  // The current plugin event surface has no event for entering `active`.
+  // Reconcile on a bounded interval until the SDK gains that transition.
+  bb.background.service("thread-status-reconcile", {
+    async start(signal) {
+      while (!signal.aborted) {
+        const intervalMs = hasNonTerminalTrackedThreads(store)
+          ? THREAD_STATUS_RECONCILE_INTERVAL_MS
+          : THREAD_STATUS_IDLE_INTERVAL_MS;
+        await waitForNextReconciliation(signal, intervalMs);
+        if (signal.aborted) break;
+        await reconcileTrackedThreads(bb, store);
+      }
+    },
+  });
+
+  await reconcileTrackedThreads(bb, store);
+  await reconcileTrackedThreads(bb, store);
 }

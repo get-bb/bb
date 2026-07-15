@@ -1,6 +1,7 @@
 import {
   copyFile,
   mkdir,
+  open,
   readFile,
   rm,
   stat,
@@ -11,6 +12,23 @@ import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { Attachment, TasksStore } from "../db";
 
 export const MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024;
+
+const INLINE_RASTER_MIMES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+]);
+
+const RASTER_MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+};
 
 const UPLOAD_PATH = "/attachments/upload";
 const DOWNLOAD_PATH = "/attachments/download";
@@ -25,7 +43,7 @@ export type AttachmentOwner =
 
 export type SaveAttachmentFromPathOptions = AttachmentOwner & {
   fileName?: string;
-  mime: string;
+  mime?: string;
 };
 
 interface DatabaseListRow {
@@ -109,27 +127,6 @@ export async function removeAttachmentBlobs(
   );
 }
 
-function publishAttachmentChanged(
-  bb: BbPluginApi,
-  store: TasksStore,
-  attachment: Attachment,
-): void {
-  const taskId =
-    attachment.taskId ??
-    (attachment.commentId
-      ? store.getComment(attachment.commentId)?.taskId
-      : undefined);
-  const task = taskId ? store.getTask(taskId) : undefined;
-  if (!task) {
-    bb.log.warn(`failed to publish attachment change ${attachment.id}`);
-    return;
-  }
-  bb.realtime.publish("tasks:changed", {
-    taskId: task.id,
-    projectId: task.projectId,
-  });
-}
-
 function sanitizeFileName(fileName: string): string {
   const baseName = fileName
     .normalize("NFC")
@@ -156,6 +153,68 @@ function normalizeMime(mime: string): string {
     throw new AttachmentRequestError(400, "mime must be a valid MIME type");
   }
   return normalized;
+}
+
+export function isInlineRasterMime(mime: string): boolean {
+  return INLINE_RASTER_MIMES.has(
+    mime.split(";", 1)[0]?.trim().toLowerCase() ?? "",
+  );
+}
+
+function bytesMatch(
+  bytes: Uint8Array,
+  offset: number,
+  expected: readonly number[],
+): boolean {
+  return expected.every((value, index) => bytes[offset + index] === value);
+}
+
+function sniffRasterMime(bytes: Uint8Array): string | undefined {
+  if (bytesMatch(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    return "image/png";
+  }
+  if (bytesMatch(bytes, 0, [0xff, 0xd8, 0xff])) return "image/jpeg";
+  if (
+    bytesMatch(bytes, 0, [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) ||
+    bytesMatch(bytes, 0, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61])
+  ) {
+    return "image/gif";
+  }
+  if (
+    bytesMatch(bytes, 0, [0x52, 0x49, 0x46, 0x46]) &&
+    bytesMatch(bytes, 8, [0x57, 0x45, 0x42, 0x50])
+  ) {
+    return "image/webp";
+  }
+  if (
+    bytesMatch(bytes, 4, [0x66, 0x74, 0x79, 0x70]) &&
+    (bytesMatch(bytes, 8, [0x61, 0x76, 0x69, 0x66]) ||
+      bytesMatch(bytes, 8, [0x61, 0x76, 0x69, 0x73]))
+  ) {
+    return "image/avif";
+  }
+  return undefined;
+}
+
+async function inferMimeFromPath(
+  sourcePath: string,
+  fileName: string,
+): Promise<string> {
+  const handle = await open(sourcePath, "r");
+  const header = new Uint8Array(12);
+  let bytesRead = 0;
+  try {
+    ({ bytesRead } = await handle.read(header, 0, header.byteLength, 0));
+  } finally {
+    await handle.close();
+  }
+  const sniffed = sniffRasterMime(header.subarray(0, bytesRead));
+  if (sniffed) return sniffed;
+  const extension = fileName.toLowerCase().match(/\.[^.]+$/u)?.[0];
+  return (
+    (extension && RASTER_MIME_BY_EXTENSION[extension]) ??
+    "application/octet-stream"
+  );
 }
 
 function normalizeOwner(
@@ -261,7 +320,7 @@ async function persistAttachment(
     mime: safeMime,
     sizeBytes,
     blobPath: join("blobs", "pending", safeFileName),
-    isImage: safeMime.startsWith("image/"),
+    isImage: isInlineRasterMime(safeMime),
   });
   const blobPath = join("blobs", attachment.id, safeFileName);
   const absolutePath = pathInside(requireStoreRoot(store), blobPath);
@@ -292,11 +351,13 @@ export async function saveAttachmentFromPath(
   if (!source.isFile()) {
     throw new Error(`Attachment source is not a file: ${sourcePath}`);
   }
+  const fileName =
+    options.fileName ?? sourcePath.split(/[\\/]/).at(-1) ?? "attachment";
   return persistAttachment(
     store,
     normalizeOwner(options.taskId, options.commentId),
-    options.fileName ?? sourcePath.split(/[\\/]/).at(-1) ?? "attachment",
-    options.mime,
+    fileName,
+    options.mime ?? (await inferMimeFromPath(sourcePath, fileName)),
     source.size,
     (destinationPath) => copyFile(sourcePath, destinationPath),
   );
@@ -320,6 +381,27 @@ function errorResponse(context: PluginHttpContext, error: unknown): Response {
     return context.json({ error: error.message }, error.status);
   }
   throw error;
+}
+
+export function publishAttachmentChanged(
+  bb: BbPluginApi,
+  store: TasksStore,
+  attachment: Attachment,
+): void {
+  const taskId =
+    attachment.taskId ??
+    (attachment.commentId
+      ? store.getComment(attachment.commentId)?.taskId
+      : undefined);
+  const task = taskId ? store.getTask(taskId) : undefined;
+  if (!task) {
+    bb.log.warn(`failed to publish attachment change ${attachment.id}`);
+    return;
+  }
+  bb.realtime.publish("tasks:changed", {
+    taskId: task.id,
+    projectId: task.projectId,
+  });
 }
 
 /**
@@ -375,7 +457,9 @@ export function registerAttachments(bb: BbPluginApi, store: TasksStore): void {
     } catch {
       return context.json({ error: "attachment not found" }, 404);
     }
-    const disposition = attachment.isImage ? "inline" : "attachment";
+    const disposition = isInlineRasterMime(attachment.mime)
+      ? "inline"
+      : "attachment";
     const encodedName = encodeURIComponent(attachment.fileName).replaceAll(
       "'",
       "%27",
@@ -385,6 +469,7 @@ export function registerAttachments(bb: BbPluginApi, store: TasksStore): void {
         "Content-Type": attachment.mime,
         "Content-Length": String(attachment.sizeBytes),
         "Content-Disposition": `${disposition}; filename="${attachment.fileName}"; filename*=UTF-8''${encodedName}`,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   });

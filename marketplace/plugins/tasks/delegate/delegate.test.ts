@@ -1,4 +1,7 @@
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import type { Comment, Project, Task } from "../db";
@@ -17,6 +20,8 @@ describe("task delegation", () => {
       sdk: {
         threads: {
           spawn: async () => ({ id: "thr_delegated" }),
+          get: async () =>
+            makeThreadResponse({ id: "thr_delegated", status: "starting" }),
         },
       },
     });
@@ -101,6 +106,50 @@ describe("task delegation", () => {
         payload: { taskId: task.id, projectId: project.id },
       },
       { channel: "comments:changed", payload: { taskId: task.id } },
+    ]);
+
+    await harness.dispose();
+  });
+
+  it("corrects the attached row when a delegated thread becomes active immediately", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: async () => ({ id: "thr_fast" }),
+          get: async () =>
+            makeThreadResponse({ id: "thr_fast", status: "active" }),
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Fast delegation",
+      prefix: "FAST",
+      color: "blue",
+      linkedBbProjectId: "proj_bb",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Transition during spawn",
+    });
+    registerDelegation(bb, store);
+    const preset = store.tasks.listPresets()[0];
+    if (!preset) throw new Error("built-in preset was not seeded");
+
+    await harness.callRpc("delegate", {
+      taskId: task.id,
+      presetId: preset.id,
+    });
+
+    expect(harness.sdk.callsTo("threads.get")).toEqual([
+      [{ threadId: "thr_fast" }],
+    ]);
+    expect(store.tasks.listTaskThreads(task.id)).toEqual([
+      expect.objectContaining({
+        threadId: "thr_fast",
+        liveStatus: "working",
+      }),
     ]);
 
     await harness.dispose();

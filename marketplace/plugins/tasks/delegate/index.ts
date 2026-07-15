@@ -257,10 +257,9 @@ export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
 
 type SdkThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
 
-function taskThreadLiveStatus(
-  status: SdkThread["status"],
-): TaskThreadLiveStatus {
-  switch (status) {
+function taskThreadLiveStatus(thread: SdkThread): TaskThreadLiveStatus {
+  if (thread.deletedAt != null) return "completed";
+  switch (thread.status) {
     case "starting":
       return "starting";
     case "active":
@@ -313,8 +312,8 @@ export function handlers(
         prompt,
       });
 
-      store.transaction(() => {
-        store.tasks.upsertTaskThread({
+      const taskThread = store.transaction(() => {
+        const attached = store.tasks.upsertTaskThread({
           taskId: task.id,
           threadId: thread.id,
           presetName: preset.name,
@@ -338,7 +337,22 @@ export function handlers(
           threadId: thread.id,
           body: `Thread "${title}" attached · preset ${preset.name}`,
         });
+        return attached;
       });
+
+      try {
+        const currentThread = await bb.sdk.threads.get({ threadId: thread.id });
+        const currentLiveStatus = taskThreadLiveStatus(currentThread);
+        if (currentLiveStatus !== taskThread.liveStatus) {
+          store.tasks.updateTaskThreadStatus(taskThread.id, currentLiveStatus);
+        }
+      } catch (error) {
+        bb.log.warn(
+          `Could not read delegated thread ${thread.id} after attach: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
 
       publishThreadsChanged(bb, task.id);
       publishTasksChanged(bb, task.id, task.projectId);
@@ -360,7 +374,7 @@ export function handlers(
         threadId: thread.id,
         presetName: MANUAL_PRESET_NAME,
         title,
-        liveStatus: taskThreadLiveStatus(thread.status),
+        liveStatus: taskThreadLiveStatus(thread),
       });
 
       publishThreadsChanged(bb, task.id);

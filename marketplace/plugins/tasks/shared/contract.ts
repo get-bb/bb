@@ -425,10 +425,17 @@ export const tasksRpcContract = defineRpcContract({
     input: z
       .object({
         taskId: idSchema,
-        body: nonBlankStringSchema,
+        body: z.string(),
         notify: z.boolean(),
+        // Attachment-only comments opt in explicitly so existing text-only
+        // callers retain the non-empty body invariant.
+        allowEmptyBody: z.boolean().default(false),
       })
-      .strict(),
+      .strict()
+      .refine((input) => input.allowEmptyBody || input.body.trim().length > 0, {
+        path: ["body"],
+        message: "Comment body cannot be empty",
+      }),
     output: z.object({ comment: commentSchema }).strict(),
   },
   listComments: {

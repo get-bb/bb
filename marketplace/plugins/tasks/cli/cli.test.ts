@@ -16,6 +16,21 @@ function stdout(result: {
 }
 
 describe("bb tasks CLI", () => {
+  it("lists seed-demo in help while retaining the explicit confirmation guard", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    expect(stdout(await harness.runCli(["--help"]))).toContain(
+      "seed-demo                      Create sample data (requires --yes)",
+    );
+    await expect(harness.runCli(["seed-demo"])).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: "seed-demo creates sample data; re-run with --yes",
+    });
+
+    await harness.dispose();
+  });
+
   it("runs create, list, show, update, and comment through case-insensitive key addressing", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     await plugin(bb);
@@ -238,6 +253,66 @@ describe("bb tasks CLI", () => {
     await harness.dispose();
   });
 
+  it("validates combined project and folder updates before mutating", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Atomic project",
+        "--prefix",
+        "ATOM",
+      ]),
+    );
+    stdout(
+      await harness.runCli(["folder", "create", "--name", "Original folder"]),
+    );
+
+    const invalidProjectUpdate = await harness.runCli([
+      "project",
+      "update",
+      "ATOM",
+      "--rename-prefix",
+      "NEXT",
+      "--link-bb-project",
+      "not-a-project-id",
+    ]);
+    expect(invalidProjectUpdate).toMatchObject({ exitCode: 1, stdout: "" });
+    expect(
+      JSON.parse(
+        stdout(await harness.runCli(["project", "show", "ATOM", "--json"])),
+      ).project,
+    ).toMatchObject({ prefix: "ATOM", linkedBbProjectId: null });
+
+    await expect(
+      harness.runCli([
+        "folder",
+        "update",
+        "Original folder",
+        "--name",
+        "Partially renamed",
+        "--parent",
+        "Missing parent",
+      ]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: "folder not found: Missing parent",
+    });
+    const folders = JSON.parse(
+      stdout(await harness.runCli(["folder", "list", "--json"])),
+    ).folders;
+    expect(folders).toEqual([
+      expect.objectContaining({
+        name: "Original folder",
+        parentFolderId: null,
+      }),
+    ]);
+
+    await harness.dispose();
+  });
+
   it("creates, updates, lists, and deletes delegation presets", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     await plugin(bb);
@@ -406,8 +481,13 @@ describe("bb tasks CLI", () => {
   it("adds and downloads an attachment with an exact file round-trip", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bb-tasks-cli-"));
     const inputPath = join(directory, "input.txt");
+    const pngPath = join(directory, "pixel.png");
     const outputPath = join(directory, "nested", "output.txt");
     await writeFile(inputPath, "attachment bytes from CLI\n", "utf8");
+    await writeFile(
+      pngPath,
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     await plugin(bb);
 
@@ -450,16 +530,49 @@ describe("bb tasks CLI", () => {
         fileName: "renamed.txt",
         mime: "application/octet-stream",
         sizeBytes: 26,
+        isImage: false,
       });
+
+      const signalsBeforePng = harness.realtimeSignals.length;
+      const pngAttachment = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "attachment",
+            "add",
+            "FILE-1",
+            "--file",
+            pngPath,
+            "--json",
+          ]),
+        ),
+      ).attachment;
+      expect(pngAttachment).toMatchObject({
+        fileName: "pixel.png",
+        mime: "image/png",
+        sizeBytes: 8,
+        isImage: true,
+      });
+      expect(harness.realtimeSignals.slice(signalsBeforePng)).toEqual([
+        {
+          channel: "tasks:changed",
+          payload: {
+            taskId: pngAttachment.taskId,
+            projectId: expect.any(String),
+          },
+        },
+      ]);
 
       const listed = JSON.parse(
         stdout(
           await harness.runCli(["attachment", "list", "FILE-1", "--json"]),
         ),
       );
-      expect(listed.attachments).toEqual([
-        expect.objectContaining({ id: attachment.id }),
-      ]);
+      expect(listed.attachments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: attachment.id }),
+          expect.objectContaining({ id: pngAttachment.id }),
+        ]),
+      );
 
       const comment = JSON.parse(
         stdout(

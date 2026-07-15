@@ -1,6 +1,9 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { registerAttachments } from "../attachments";
 import { tasksRpcContract } from "../shared/contract";
@@ -10,7 +13,13 @@ describe("Tasks RPC domain API", () => {
   it("persists successful comment steers and skips completed threads", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
-      sdk: { threads: { send: async () => undefined } },
+      sdk: {
+        threads: {
+          get: async ({ threadId }) =>
+            makeThreadResponse({ id: threadId, status: "active" }),
+          send: async () => undefined,
+        },
+      },
     });
     const store = createStore(bb);
     registerTasksApi(bb, store);
@@ -134,11 +143,53 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("allows an empty comment body only with attachment intent", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Attachment comments",
+      prefix: "ACM",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Attach without text",
+    });
+
+    await expect(
+      harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "",
+        notify: false,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    await expect(
+      harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "",
+        notify: false,
+        allowEmptyBody: true,
+      }),
+    ).resolves.toEqual({
+      comment: expect.objectContaining({
+        taskId: task.id,
+        body: "",
+        notifiedCount: 0,
+      }),
+    });
+
+    await harness.dispose();
+  });
+
   it("keeps the comment and persists only successful steer deliveries", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
         threads: {
+          get: async ({ threadId }) =>
+            makeThreadResponse({ id: threadId, status: "active" }),
           send: async (input) => {
             if (input.threadId === "thr_failing") {
               throw new Error("active turn finished");
@@ -406,6 +457,19 @@ describe("Tasks RPC domain API", () => {
         labelIds: [labelResult.label.id],
       }),
     ]);
+
+    const subtask = store.tasks.createTask({
+      projectId: project.id,
+      parentTaskId: createResult.task.id,
+      title: "Nested implementation detail",
+    });
+    store.tasks.upsertTaskThread({
+      taskId: subtask.id,
+      threadId: "thr_subtask_worker",
+      presetName: "Default",
+      title: "Implement nested detail",
+      liveStatus: "working",
+    });
 
     const summary = tasksRpcContract.sidebarSummary.output.parse(
       await harness.callRpc("sidebarSummary", null),

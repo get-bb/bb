@@ -116,7 +116,9 @@ export function createStore(bb: BbPluginApi): TasksApiStore {
                 WHEN tt.live_status IN ('starting', 'working') THEN tt.thread_id
               END) AS active_agent_count
             FROM projects p
-            LEFT JOIN tasks t ON t.project_id = p.id
+            LEFT JOIN tasks t
+              ON t.project_id = p.id
+              AND t.parent_task_id IS NULL
             LEFT JOIN task_threads tt ON tt.task_id = t.id
             GROUP BY p.id
             ORDER BY p.name COLLATE NOCASE, p.id
@@ -171,7 +173,7 @@ function publishTasksChanged(
   bb.realtime.publish("tasks:changed", payload);
 }
 
-function publishProjectsChanged(
+export function publishProjectsChanged(
   bb: BbPluginApi,
   projectId: string | null,
 ): void {
@@ -361,14 +363,16 @@ export async function createComment(
   );
 
   if (input.notify && comment.kind === "user") {
-    const notifiedCount = await deliverCommentToAgents(bb, store.tasks, {
+    const delivery = await deliverCommentToAgents(bb, store.tasks, {
       taskId: comment.taskId,
       commentId: comment.id,
       body: comment.body,
       authorName: comment.authorName,
     });
     comment = store.transaction(() =>
-      store.tasks.updateComment(comment.id, { notifiedCount }),
+      store.tasks.updateComment(comment.id, {
+        notifiedCount: delivery.notifiedCount,
+      }),
     );
   }
 

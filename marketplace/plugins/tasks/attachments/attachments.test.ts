@@ -156,7 +156,41 @@ describe("task attachments", () => {
       expect(response.headers.get("content-disposition")).toBe(
         `inline; filename="image.png"; filename*=UTF-8''image.png`,
       );
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
       await expect(response.text()).resolves.toBe("image");
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("forces SVG downloads and never marks them as embeddable images", async () => {
+    const { harness, store, task } = setup();
+    try {
+      const uploaded = await upload(
+        harness,
+        task.id,
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+        "active.svg",
+        "image/svg+xml",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+
+      expect(store.getAttachment(attachmentId)).toMatchObject({
+        mime: "image/svg+xml",
+        isImage: false,
+      });
+
+      const downloaded = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+      expect(downloaded.status).toBe(200);
+      expect(downloaded.headers.get("content-disposition")).toBe(
+        `attachment; filename="active.svg"; filename*=UTF-8''active.svg`,
+      );
+      expect(downloaded.headers.get("x-content-type-options")).toBe("nosniff");
     } finally {
       await harness.dispose();
     }

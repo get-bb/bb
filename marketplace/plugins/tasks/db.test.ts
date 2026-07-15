@@ -31,7 +31,42 @@ describe("tasks storage", () => {
             { count: number }
           >("SELECT COUNT(*) AS count FROM schema_version")
           .get()?.count,
-      ).toBe(1);
+      ).toBe(2);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("normalizes legacy image flags to the safe raster MIME allowlist", async () => {
+    const { db, harness, store } = setup();
+    try {
+      const project = createProject(store, "IMG");
+      const task = store.createTask({
+        projectId: project.id,
+        title: "Legacy attachment",
+      });
+      const svg = store.createAttachment({
+        taskId: task.id,
+        fileName: "active.svg",
+        mime: "image/svg+xml",
+        sizeBytes: 1,
+        blobPath: "blobs/svg/active.svg",
+        isImage: true,
+      });
+      const png = store.createAttachment({
+        taskId: task.id,
+        fileName: "safe.png",
+        mime: "image/png",
+        sizeBytes: 1,
+        blobPath: "blobs/png/safe.png",
+        isImage: false,
+      });
+      db.prepare("DELETE FROM schema_version WHERE version = 2").run();
+
+      createTasksStore(db);
+
+      expect(store.getAttachment(svg.id)?.isImage).toBe(false);
+      expect(store.getAttachment(png.id)?.isImage).toBe(true);
     } finally {
       await harness.dispose();
     }

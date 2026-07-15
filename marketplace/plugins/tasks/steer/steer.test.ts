@@ -1,4 +1,7 @@
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createTasksStore } from "../db";
 import { deliverCommentToAgents } from ".";
@@ -6,7 +9,13 @@ import { deliverCommentToAgents } from ".";
 function taskWithThreads() {
   const host = createFakePluginHost({
     pluginId: "tasks",
-    sdk: { threads: { send: async () => undefined } },
+    sdk: {
+      threads: {
+        get: async ({ threadId }) =>
+          makeThreadResponse({ id: threadId, status: "active" }),
+        send: async () => undefined,
+      },
+    },
   });
   const store = createTasksStore(host.bb.storage.database());
   const project = store.createProject({
@@ -42,7 +51,13 @@ describe("comment steer delivery", () => {
         authorName: "Sawyer",
         body: "Please include the regression test.",
       }),
-    ).resolves.toBe(2);
+    ).resolves.toEqual({
+      notifiedCount: 2,
+      outcomes: [
+        { threadId: "thr_starting", status: "delivered" },
+        { threadId: "thr_working", status: "delivered" },
+      ],
+    });
 
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [
@@ -69,11 +84,48 @@ describe("comment steer delivery", () => {
     ]);
   });
 
-  it("isolates send failures and counts only successful deliveries", async () => {
+  it("skips an idle thread even when the task row still says working", async () => {
+    const { bb, harness, store, task } = taskWithThreads();
+    harness.sdk.stub("threads.get", async (input: never) => {
+      const { threadId } = input as { threadId: string };
+      return makeThreadResponse({
+        id: threadId,
+        status: threadId === "thr_working" ? "idle" : "active",
+      });
+    });
+
+    await expect(
+      deliverCommentToAgents(bb, store, {
+        taskId: task.id,
+        commentId: "01J00000000000000000000000",
+        authorName: "Sawyer",
+        body: "Do not wake the idle worker.",
+      }),
+    ).resolves.toEqual({
+      notifiedCount: 1,
+      outcomes: [
+        { threadId: "thr_starting", status: "delivered" },
+        {
+          threadId: "thr_working",
+          status: "skipped",
+          reason: "thread is idle",
+        },
+      ],
+    });
+    expect(harness.sdk.callsTo("threads.send")).toEqual([
+      [expect.objectContaining({ threadId: "thr_starting" })],
+    ]);
+  });
+
+  it("records a send-time 409 as a non-delivery", async () => {
     const { bb, harness, store, task } = taskWithThreads();
     harness.sdk.stub("threads.send", async (input: never) => {
       const request = input as { threadId: string };
-      if (request.threadId === "thr_starting") throw new Error("turn ended");
+      if (request.threadId === "thr_starting") {
+        throw Object.assign(new Error("thread awaiting interaction"), {
+          status: 409,
+        });
+      }
     });
 
     await expect(
@@ -83,11 +135,21 @@ describe("comment steer delivery", () => {
         authorName: "Sawyer",
         body: "Please retry safely.",
       }),
-    ).resolves.toBe(1);
+    ).resolves.toEqual({
+      notifiedCount: 1,
+      outcomes: [
+        {
+          threadId: "thr_starting",
+          status: "failed",
+          reason: "thread awaiting interaction",
+        },
+        { threadId: "thr_working", status: "delivered" },
+      ],
+    });
     expect(harness.logEntries).toContainEqual({
       level: "warn",
       message:
-        "failed to steer comment 01J00000000000000000000000 to thread thr_starting: turn ended",
+        "failed to steer comment 01J00000000000000000000000 to thread thr_starting: thread awaiting interaction",
     });
   });
 });
