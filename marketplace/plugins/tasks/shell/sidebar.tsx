@@ -14,6 +14,12 @@ import {
 } from "../views/manage/preset-dialog.js";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_WIDTH_KEY = "bb-tasks:sidebar-width";
@@ -389,6 +395,23 @@ export function TasksSidebar({
                       <span className="min-w-0 flex-1 truncate">
                         {preset.name}
                       </span>
+                      {preset.environmentKind === "new-worktree" ? (
+                        <TooltipProvider delayDuration={300}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                aria-label="Spawns a new worktree"
+                                className="flex shrink-0 text-muted-foreground/70"
+                              >
+                                <Icon name="GitBranch" className="size-3" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">
+                              Spawns a new worktree
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : null}
                     </SidebarRow>
                   ))}
                   {presets.length === 0 ? (

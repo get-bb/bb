@@ -25,6 +25,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 
+/** Below this container width (panel splits, not the window) the sidebar
+    auto-collapses. */
+const SIDEBAR_AUTO_COLLAPSE_WIDTH = 720;
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -93,6 +97,37 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
 
+  // Auto-collapse in narrow containers (the plugin can live in a split pane,
+  // so the panel's own width is what matters — never the window's). A manual
+  // toggle while narrow sticks until the next threshold crossing; growing
+  // wide again restores the user's pre-collapse choice.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  const [narrowOverride, setNarrowOverride] = useState<boolean | null>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const update = () => {
+      const width = root.clientWidth;
+      // Width 0 means hidden or not yet laid out — keep the wide default.
+      setNarrow(width > 0 && width < SIDEBAR_AUTO_COLLAPSE_WIDTH);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    setNarrowOverride(null);
+  }, [narrow]);
+  const effectiveSidebarCollapsed = narrow
+    ? (narrowOverride ?? true)
+    : sidebarCollapsed;
+  const toggleSidebar = () => {
+    if (narrow) setNarrowOverride(!effectiveSidebarCollapsed);
+    else setSidebarCollapsed((value) => !value);
+  };
+
   const folders = useFolders();
   const projects = useProjects();
   const summaries = useSidebarSummary();
@@ -144,8 +179,11 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-row-reverse bg-background text-foreground">
-      {!sidebarCollapsed ? (
+    <div
+      ref={rootRef}
+      className="flex h-full min-h-0 flex-row-reverse bg-background text-foreground"
+    >
+      {!effectiveSidebarCollapsed ? (
         <TasksSidebar
           route={route}
           folders={folders.data}
@@ -162,7 +200,7 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
         <TasksTopbar
           route={route}
           projects={projects.data}
-          sidebarCollapsed={sidebarCollapsed}
+          sidebarCollapsed={effectiveSidebarCollapsed}
           pagerScope={
             lastBrowseRouteRef.current === null
               ? null
@@ -174,7 +212,7 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
                 }
           }
           onNavigate={navigation.go}
-          onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+          onToggleSidebar={toggleSidebar}
           onNewTask={() => setNewTaskOpen(true)}
           onBack={backFromTask}
         />

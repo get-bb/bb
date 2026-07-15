@@ -225,6 +225,42 @@ describe("tasks app shell", () => {
     expect(slot.getAllByRole("dialog")).toHaveLength(1);
   });
 
+  it("marks only new-worktree presets with the worktree hint", async () => {
+    const basePreset = {
+      id: "01HZZZZZZZZZZZZZZZZZZZZZE1",
+      name: "Default env",
+      providerId: "claude-code",
+      modelId: "claude-sonnet-5",
+      reasoningLevel: "medium",
+      permissionMode: "workspace-write",
+      environmentKind: "project-default",
+      baseBranch: null,
+      machineId: null,
+      instructions: "",
+      builtin: false,
+      createdAt: "2026-07-15T00:00:00.000Z",
+    };
+    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, {
+      rpc: seededRpc({
+        listPresets: () => ({
+          presets: [
+            basePreset,
+            {
+              ...basePreset,
+              id: "01HZZZZZZZZZZZZZZZZZZZZZE2",
+              name: "Worktree env",
+              environmentKind: "new-worktree",
+              baseBranch: "main",
+            },
+          ],
+        }),
+      }),
+    });
+    await slot.findByText("Worktree env");
+    expect(slot.getByText("Default env")).toBeDefined();
+    expect(slot.getAllByLabelText("Spawns a new worktree")).toHaveLength(1);
+  });
+
   it("refetches sidebar data when invalidation channels fire", async () => {
     let projectCalls = 0;
     const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, {

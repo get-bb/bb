@@ -22,6 +22,9 @@ if (!window.matchMedia) {
 // imported before it runs.
 const app = await loadPluginApp(() => import("../../app"));
 const { derivePrefix } = await import("./shared.js");
+const { describePresetEnvironment, savePresetDraft } = await import(
+  "./preset-dialog.js"
+);
 
 afterEach(cleanup);
 
@@ -178,6 +181,181 @@ describe("NewTaskDialog", () => {
     await slot.findByText("Sub-tasks cannot have their own sub-tasks");
     // Dialog stays open for correction.
     expect(slot.getByLabelText("Task title")).toBeDefined();
+  });
+});
+
+const MACHINES = [{ id: "mach_1", name: "Sawyer Air" }];
+
+function presetRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "01HZZZZZZZZZZZZZZZZZZZZZE1",
+    name: "FB3 BE live worktree",
+    providerId: "claude-code",
+    modelId: "claude-sonnet-5",
+    reasoningLevel: "medium",
+    permissionMode: "workspace-write",
+    environmentKind: "new-worktree",
+    baseBranch: "main",
+    machineId: "mach_1",
+    instructions: "",
+    builtin: false,
+    createdAt: "2026-07-15T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("describePresetEnvironment", () => {
+  it("summarizes worktree presets and falls back to defaults and raw ids", () => {
+    expect(describePresetEnvironment(presetRow() as never, MACHINES)).toBe(
+      "Worktree · main · Sawyer Air",
+    );
+    expect(
+      describePresetEnvironment(
+        presetRow({ baseBranch: null, machineId: null }) as never,
+        MACHINES,
+      ),
+    ).toBe("Worktree · default · default");
+    // A machine deleted after the preset was created still identifies itself.
+    expect(
+      describePresetEnvironment(
+        presetRow({ machineId: "mach_gone" }) as never,
+        MACHINES,
+      ),
+    ).toBe("Worktree · main · mach_gone");
+    expect(
+      describePresetEnvironment(
+        presetRow({ environmentKind: "project-default" }) as never,
+        MACHINES,
+      ),
+    ).toBe("Project default");
+  });
+});
+
+describe("savePresetDraft", () => {
+  const draft = {
+    name: "FB3",
+    providerId: "claude-code",
+    modelId: "claude-sonnet-5",
+    reasoningLevel: "medium",
+    permissionMode: "workspace-write",
+    environmentKind: "new-worktree",
+    baseBranch: " main ",
+    machineId: "mach_1",
+    instructions: "",
+  } as const;
+
+  function captureRpc() {
+    const calls: Array<{ method: string; input: unknown }> = [];
+    const rpc = {
+      call: (method: string, input: unknown) => {
+        calls.push({ method, input });
+        return Promise.resolve({});
+      },
+    };
+    return { calls, rpc: rpc as never };
+  }
+
+  it("sends trimmed worktree targets on create", async () => {
+    const { calls, rpc } = captureRpc();
+    await savePresetDraft(rpc, null, draft);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.method).toBe("createPreset");
+    expect(calls[0]!.input).toMatchObject({
+      environmentKind: "new-worktree",
+      baseBranch: "main",
+      machineId: "mach_1",
+    });
+  });
+
+  it("nulls stale targets when the kind is project-default", async () => {
+    const { calls, rpc } = captureRpc();
+    // Stale branch/machine left in the draft must never reach the contract,
+    // which rejects them for project-default presets.
+    await savePresetDraft(rpc, presetRow() as never, {
+      ...draft,
+      environmentKind: "project-default",
+    });
+    expect(calls[0]!.method).toBe("updatePreset");
+    expect(calls[0]!.input).toMatchObject({
+      presetId: presetRow().id,
+      environmentKind: "project-default",
+      baseBranch: null,
+      machineId: null,
+    });
+  });
+
+  it("maps empty worktree targets to nulls (defaults)", async () => {
+    const { calls, rpc } = captureRpc();
+    await savePresetDraft(rpc, null, { ...draft, baseBranch: "", machineId: "" });
+    expect(calls[0]!.input).toMatchObject({
+      environmentKind: "new-worktree",
+      baseBranch: null,
+      machineId: null,
+    });
+  });
+});
+
+describe("PresetDialog environment section", () => {
+  function renderManagePresets(presets: unknown[]) {
+    return renderSlot(
+      app.navPanels[0]!,
+      { subPath: "manage" },
+      {
+        rpc: {
+          listProjects: () => ({ projects: [project] }),
+          listFolders: () => ({ folders: [] }),
+          listPresets: () => ({ presets }),
+          sidebarSummary: () => ({ projects: [] }),
+          listTasks: () => ({ tasks: [] }),
+          listLabels: () => ({ labels: [] }),
+          listProviders: () => ({
+            providers: [{ id: "claude-code", name: "Claude Code" }],
+          }),
+          listProviderModels: () => ({
+            models: [
+              { id: "claude-sonnet-5", name: "Sonnet", isDefault: true },
+            ],
+            reasoningLevels: ["low", "medium", "high"],
+          }),
+          listMachines: () => ({ machines: MACHINES }),
+        },
+      },
+    );
+  }
+
+  it("shows the environment column and hydrates a worktree preset", async () => {
+    const slot = renderManagePresets([presetRow()]);
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Presets" }));
+    // Manage table resolves the machine name via listMachines.
+    await slot.findByText("Worktree · main · Sawyer Air");
+    fireEvent.click(
+      slot.getByRole("button", { name: "Edit preset FB3 BE live worktree" }),
+    );
+    const branch = (await slot.findByLabelText(
+      "Base branch",
+    )) as HTMLInputElement;
+    expect(branch.value).toBe("main");
+    expect(branch.placeholder).toBe("project default base — leave empty");
+    expect(slot.getByLabelText("Machine")).toBeDefined();
+  });
+
+  it("hides worktree fields for project-default presets", async () => {
+    const slot = renderManagePresets([
+      presetRow({
+        name: "Default env",
+        environmentKind: "project-default",
+        baseBranch: null,
+        machineId: null,
+      }),
+    ]);
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Presets" }));
+    await slot.findByText("Project default");
+    fireEvent.click(
+      slot.getByRole("button", { name: "Edit preset Default env" }),
+    );
+    await slot.findByLabelText("Execution environment");
+    expect(slot.queryByLabelText("Base branch")).toBeNull();
+    expect(slot.queryByLabelText("Machine")).toBeNull();
   });
 });
 

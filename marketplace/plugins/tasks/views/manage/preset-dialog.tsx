@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Preset } from "../../shared/contract.js";
+import { PRESET_ENVIRONMENT_KINDS } from "../../shared/contract.js";
 import type { TasksRpc } from "../../shell/data.js";
 import { useTasksQuery } from "../../shell/data.js";
 import {
@@ -37,6 +38,7 @@ export const PERMISSION_MODES = [
 ] as const;
 export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
+export type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
 export const PERMISSION_LABELS: Record<PermissionMode, string> = {
   readonly: "Read-only",
@@ -44,8 +46,38 @@ export const PERMISSION_LABELS: Record<PermissionMode, string> = {
   full: "Full access",
 };
 
+export const ENVIRONMENT_LABELS: Record<EnvironmentKind, string> = {
+  "project-default": "Project default",
+  "new-worktree": "New worktree",
+};
+
+export interface MachineOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * Manage-table summary of where a preset's threads spawn. Machine names come
+ * from listMachines; an unknown id (machine removed) falls back to the id.
+ */
+export function describePresetEnvironment(
+  preset: Pick<Preset, "environmentKind" | "baseBranch" | "machineId">,
+  machines: readonly MachineOption[],
+): string {
+  if (preset.environmentKind !== "new-worktree") return "Project default";
+  const branch = preset.baseBranch ?? "default";
+  const machine =
+    preset.machineId === null
+      ? "default"
+      : (machines.find((entry) => entry.id === preset.machineId)?.name ??
+        preset.machineId);
+  return `Worktree · ${branch} · ${machine}`;
+}
+
 /** Sentinel Select value for the free-text provider/model escape hatch. */
 const CUSTOM_VALUE = "__custom__";
+/** Sentinel Select value for "Default machine" (Radix rejects empty values). */
+const DEFAULT_MACHINE_VALUE = "__default-machine__";
 
 function isReasoningLevel(value: string): value is ReasoningLevel {
   return (REASONING_LEVELS as readonly string[]).includes(value);
@@ -61,6 +93,11 @@ export interface PresetDraft {
   modelId: string;
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
+  environmentKind: EnvironmentKind;
+  /** Empty means "project default base"; only sent for new-worktree. */
+  baseBranch: string;
+  /** Empty means "default machine"; only sent for new-worktree. */
+  machineId: string;
   instructions: string;
 }
 
@@ -70,6 +107,9 @@ const EMPTY_PRESET_DRAFT: PresetDraft = {
   modelId: "",
   reasoningLevel: "medium",
   permissionMode: "workspace-write",
+  environmentKind: "project-default",
+  baseBranch: "",
+  machineId: "",
   instructions: "",
 };
 
@@ -86,6 +126,9 @@ function presetDraft(preset: Preset): PresetDraft {
     modelId: preset.modelId,
     reasoningLevel: reasoning ?? "medium",
     permissionMode: permission ?? "workspace-write",
+    environmentKind: preset.environmentKind,
+    baseBranch: preset.baseBranch ?? "",
+    machineId: preset.machineId ?? "",
     instructions: preset.instructions,
   };
 }
@@ -96,12 +139,21 @@ export async function savePresetDraft(
   editing: Preset | null,
   draft: PresetDraft,
 ): Promise<void> {
+  // The contract rejects a branch/machine on project-default presets, and a
+  // kind switch must not leave stale targets behind — always send explicit
+  // nulls outside new-worktree.
+  const worktree = draft.environmentKind === "new-worktree";
+  const baseBranch = draft.baseBranch.trim();
+  const machineId = draft.machineId.trim();
   const fields = {
     name: draft.name.trim(),
     providerId: draft.providerId.trim(),
     modelId: draft.modelId.trim(),
     reasoningLevel: draft.reasoningLevel,
     permissionMode: draft.permissionMode,
+    environmentKind: draft.environmentKind,
+    baseBranch: worktree && baseBranch !== "" ? baseBranch : null,
+    machineId: worktree && machineId !== "" ? machineId : null,
     instructions: draft.instructions,
   };
   if (editing) {
@@ -138,6 +190,11 @@ export function PresetDialog({
     [],
   );
   const providers = providersQuery.data;
+  const machinesQuery = useTasksQuery(
+    async (rpc) => (await rpc.call("listMachines", {})).machines,
+    [],
+  );
+  const machines = machinesQuery.data;
 
   // The dialog opens before the provider list arrives; once it lands, an
   // edited preset whose provider isn't offered flips to the custom input
@@ -390,6 +447,90 @@ export function PresetDialog({
               </Select>
             </Field>
           </div>
+          <Field label="Execution environment">
+            <Select
+              value={draft.environmentKind}
+              onValueChange={(value) => {
+                const kind = value as EnvironmentKind;
+                // Leaving new-worktree clears its targets so a later save
+                // can't ship stale branch/machine values.
+                setDraft((current) => ({
+                  ...current,
+                  environmentKind: kind,
+                  ...(kind === "new-worktree"
+                    ? {}
+                    : { baseBranch: "", machineId: "" }),
+                }));
+              }}
+            >
+              <SelectTrigger aria-label="Execution environment" className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRESET_ENVIRONMENT_KINDS.map((kind) => (
+                  <SelectItem key={kind} value={kind}>
+                    {ENVIRONMENT_LABELS[kind]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          {draft.environmentKind === "new-worktree" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Base branch">
+                <Input
+                  value={draft.baseBranch}
+                  placeholder="project default base — leave empty"
+                  aria-label="Base branch"
+                  onChange={(event) => set("baseBranch", event.target.value)}
+                  className="h-8"
+                />
+              </Field>
+              <Field label="Machine">
+                <Select
+                  value={
+                    draft.machineId === ""
+                      ? DEFAULT_MACHINE_VALUE
+                      : draft.machineId
+                  }
+                  onValueChange={(value) =>
+                    set(
+                      "machineId",
+                      value === DEFAULT_MACHINE_VALUE ? "" : value,
+                    )
+                  }
+                >
+                  <SelectTrigger aria-label="Machine" className="h-8">
+                    <SelectValue
+                      placeholder={
+                        machines === undefined ? "Loading…" : "Machine"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={DEFAULT_MACHINE_VALUE}>
+                      Default machine
+                    </SelectItem>
+                    {(machines ?? []).map((machine) => (
+                      <SelectItem key={machine.id} value={machine.id}>
+                        {machine.name}
+                      </SelectItem>
+                    ))}
+                    {/* An edited preset may reference a machine that no
+                        longer exists; keep it selectable by raw id. */}
+                    {draft.machineId !== "" &&
+                    !(machines ?? []).some(
+                      (machine) => machine.id === draft.machineId,
+                    ) ? (
+                      <SelectItem value={draft.machineId}>
+                        {draft.machineId}
+                      </SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+          ) : null}
           <Field label="Instructions">
             <Textarea
               value={draft.instructions}

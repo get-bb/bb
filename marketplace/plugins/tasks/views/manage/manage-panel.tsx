@@ -24,6 +24,7 @@ import {
   PERMISSION_LABELS,
   PERMISSION_MODES,
   PresetDialog,
+  describePresetEnvironment,
   savePresetDraft,
   type PresetDraft,
 } from "./preset-dialog.js";
@@ -275,6 +276,10 @@ function LabelsSection() {
 function PresetsSection() {
   const rpc = useTasksRpc();
   const presets = usePresets();
+  const machines = useTasksQuery(
+    async (rpc) => (await rpc.call("listMachines", {})).machines,
+    [],
+  );
   // Keyed remount resets the dialog draft per open/target.
   const [dialog, setDialog] = useState<{
     key: number;
@@ -311,6 +316,7 @@ function PresetsSection() {
               <th className="px-3 py-2 font-medium">Model</th>
               <th className="px-3 py-2 font-medium">Reasoning</th>
               <th className="px-3 py-2 font-medium">Permissions</th>
+              <th className="px-3 py-2 font-medium">Environment</th>
               <th className="px-3 py-2 font-medium">Instructions</th>
               <th className="px-3 py-2" />
             </tr>
@@ -342,6 +348,9 @@ function PresetsSection() {
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {permission ? PERMISSION_LABELS[permission] : preset.permissionMode}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+                    {describePresetEnvironment(preset, machines.data ?? [])}
                   </td>
                   <td
                     className="max-w-48 truncate px-3 py-2 text-xs text-muted-foreground"
@@ -387,7 +396,7 @@ function PresetsSection() {
             {(presets.data ?? []).length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-3 py-3 text-sm text-muted-foreground"
                 >
                   No presets yet.
