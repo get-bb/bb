@@ -512,6 +512,13 @@
       "when": 1784132965255,
       "tag": "0072_bizarre_the_liberteens",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1784156543551,
+      "tag": "0073_glorious_frightful_four",
+      "breakpoints": true
     }
   ]
 }

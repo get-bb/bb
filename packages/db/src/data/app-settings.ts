@@ -15,6 +15,7 @@ export function getAppSettings(db: DbConnection): AppSettings {
     .select({
       caffeinate: appSettings.caffeinate,
       showKeyboardHints: appSettings.showKeyboardHints,
+      showUnhandledProviderEvents: appSettings.showUnhandledProviderEvents,
       codexMemoryEnabled: appSettings.codexMemoryEnabled,
       claudeCodeMemoryEnabled: appSettings.claudeCodeMemoryEnabled,
       codexSubagentsDisabled: appSettings.codexSubagentsDisabled,
@@ -38,6 +39,7 @@ export function setAppSettings(
       id: APP_SETTINGS_ROW_ID,
       caffeinate: settings.caffeinate,
       showKeyboardHints: settings.showKeyboardHints,
+      showUnhandledProviderEvents: settings.showUnhandledProviderEvents,
       codexMemoryEnabled: settings.codexMemoryEnabled,
       claudeCodeMemoryEnabled: settings.claudeCodeMemoryEnabled,
       codexSubagentsDisabled: settings.codexSubagentsDisabled,
@@ -50,6 +52,7 @@ export function setAppSettings(
       set: {
         caffeinate: settings.caffeinate,
         showKeyboardHints: settings.showKeyboardHints,
+        showUnhandledProviderEvents: settings.showUnhandledProviderEvents,
         codexMemoryEnabled: settings.codexMemoryEnabled,
         claudeCodeMemoryEnabled: settings.claudeCodeMemoryEnabled,
         codexSubagentsDisabled: settings.codexSubagentsDisabled,

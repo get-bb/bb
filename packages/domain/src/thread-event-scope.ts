@@ -132,6 +132,11 @@ export const threadEventScopeDefinitionByType = {
     rationale:
       "Provider warnings use thread scope for config, deprecation, or global notices; turn-specific warnings use turn scope.",
   },
+  "provider/modelFallback": {
+    policy: "thread-or-turn",
+    rationale:
+      "Provider model fallback signals can occur while a turn is active or at session scope before a turn is established.",
+  },
   "provider/unhandled": {
     policy: "thread-or-turn",
     rationale:

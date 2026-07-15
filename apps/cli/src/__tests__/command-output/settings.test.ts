@@ -25,12 +25,12 @@ describe("bb settings commands", () => {
     });
 
     await runCommand(
-      ["settings", "general", "codexSubagentsDisabled", "true"],
+      ["settings", "general", "showUnhandledProviderEvents", "true"],
       register,
     );
 
     expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, codexSubagentsDisabled: true },
+      json: { ...defaultAppSettings, showUnhandledProviderEvents: true },
     });
   });
 

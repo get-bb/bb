@@ -48,5 +48,6 @@ export * from "./thread-name-tags.js";
 export * from "./thread-search.js";
 export * from "./thread-timeline-active-prompt-mode.js";
 export * from "./thread-timeline-goal.js";
+export * from "./thread-timeline-model-fallback.js";
 export * from "./thread-timeline-pending-todos.js";
 export * from "./thread.js";

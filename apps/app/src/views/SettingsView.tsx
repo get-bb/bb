@@ -138,6 +138,12 @@ export interface RichTextEditingSettingsControlProps {
   onEnabledChange: (enabled: boolean) => void;
 }
 
+export interface UnhandledProviderEventsSettingsControlProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface FaviconColorSettingsControlProps {
   disabled: boolean;
   faviconColor: FaviconColorPreference;
@@ -172,6 +178,9 @@ export interface GeneralSettingsSectionProps {
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
 }
+
+export type DebugSettingsSectionProps =
+  UnhandledProviderEventsSettingsControlProps;
 
 function appPaletteLabel(
   appearance: AppTheme,
@@ -463,6 +472,8 @@ const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
+const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
+  "Show unhandled provider events";
 const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 
 export function RootComposeBehaviorSettingsControl({
@@ -546,6 +557,26 @@ export function RichTextEditingSettingsControl({
         checked={enabled}
         onCheckedChange={onEnabledChange}
         aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function UnhandledProviderEventsSettingsControl({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: UnhandledProviderEventsSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+      description="Show raw provider events bb does not recognize. Development builds always show these events."
+    >
+      <Switch
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
       />
     </SettingsWithControl>
   );
@@ -752,6 +783,22 @@ export function GeneralSettingsSection({
           onEnabledChange={onRewriteLocalhostLinksChange}
         />
       </div>
+    </SettingsSection>
+  );
+}
+
+export function DebugSettingsSection({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: DebugSettingsSectionProps) {
+  return (
+    <SettingsSection title="Debug">
+      <UnhandledProviderEventsSettingsControl
+        disabled={disabled}
+        enabled={enabled}
+        onEnabledChange={onEnabledChange}
+      />
     </SettingsSection>
   );
 }
@@ -1092,6 +1139,19 @@ export function SettingsView() {
         />
         <VoiceInputSettingsSection />
         <UpdatesSettingsSection />
+        <DebugSettingsSection
+          enabled={generalSettings.showUnhandledProviderEvents}
+          disabled={
+            systemConfigQuery.data === undefined ||
+            updateGeneralSettingsMutation.isPending
+          }
+          onEnabledChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              showUnhandledProviderEvents: enabled,
+            })
+          }
+        />
       </>
     );
   }

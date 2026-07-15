@@ -3,6 +3,7 @@
 import type {
   ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
+  ThreadTimelineModelFallback,
   ThreadWithRuntime,
 } from "@bb/domain";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -60,6 +61,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         label: string;
         onClick: () => void;
       };
+      model: {
+        active?: { model: string } | null;
+      };
     };
     stack: ReactNode;
   }) => (
@@ -67,6 +71,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <div data-testid="submit-mode">
         {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
       </div>
+      <div data-testid="selected-model">{execution.model.active?.model}</div>
       {execution.footerAction ? (
         <button type="button" onClick={execution.footerAction.onClick}>
           {execution.footerAction.label}
@@ -285,11 +290,13 @@ function makeThread(
 }
 
 interface RenderPromptAreaOptions {
+  modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractionsInitialLoading?: boolean;
   thread?: ThreadWithRuntime;
 }
 
 function renderPromptArea({
+  modelFallback = null,
   pendingInteractionsInitialLoading = false,
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
@@ -304,6 +311,7 @@ function renderPromptArea({
       contextBannerMergeBase={null}
       environmentGoneStatus={null}
       goal={null}
+      modelFallback={modelFallback}
       isEnvironmentActionPending={false}
       onChangedFileClick={vi.fn()}
       openThreadDiffPanel={vi.fn()}
@@ -385,6 +393,35 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByTestId("submit-mode").textContent).toBe(
       "blocked:loading-pending-interactions",
     );
+  });
+
+  it("selects the provider fallback model for the next turn", () => {
+    mocks.defaultExecutionOptions = {
+      model: "claude-fable-5",
+      permissionMode: "full",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+
+    renderPromptArea({
+      modelFallback: {
+        sourceSeq: 42,
+        detectedAt: 123,
+        originalModel: "claude-fable-5",
+        fallbackModel: "claude-opus-4-8",
+        reason: "refusal",
+        message: "Switched to Opus.",
+      },
+    });
+
+    expect(mocks.useThreadCreationOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ initialModel: "claude-opus-4-8" }),
+    );
+    expect(screen.getByTestId("selected-model").textContent).toBe(
+      "claude-opus-4-8",
+    );
+    expect(screen.getByText("Model fallback")).toBeTruthy();
   });
 
   it("opens root compose with a handoff seed for the current thread", () => {

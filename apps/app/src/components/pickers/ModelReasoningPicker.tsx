@@ -536,21 +536,25 @@ export function ModelReasoningPicker({
   );
 
   useAppCommandContext("modelPickerOpen", open && !disabled);
-  useAppCommandHandler("modelPicker.toggle", ({ target }) => {
-    if (disabled) return false;
-    if (open) {
-      setOpen(false);
+  useAppCommandHandler(
+    "modelPicker.toggle",
+    ({ target }) => {
+      if (disabled) return false;
+      if (open) {
+        setOpen(false);
+        return true;
+      }
+      if (!(target instanceof HTMLElement)) return false;
+      const targetComposer = target.closest("[data-app-composer]");
+      const pickerComposer = triggerRef.current?.closest("[data-app-composer]");
+      if (targetComposer === null || targetComposer !== pickerComposer) {
+        return false;
+      }
+      setOpen(true);
       return true;
-    }
-    if (!(target instanceof HTMLElement)) return false;
-    const targetComposer = target.closest("[data-app-composer]");
-    const pickerComposer = triggerRef.current?.closest("[data-app-composer]");
-    if (targetComposer === null || targetComposer !== pickerComposer) {
-      return false;
-    }
-    setOpen(true);
-    return true;
-  }, 50);
+    },
+    50,
+  );
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
       // While previewing, the listed levels are the previewed provider's, so

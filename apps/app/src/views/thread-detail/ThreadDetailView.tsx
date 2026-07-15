@@ -748,6 +748,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     hasOlderTimelineRows,
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
+    modelFallback,
     pendingTodos,
     timelineError,
     timelineLoading,
@@ -2415,6 +2416,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}
+      modelFallback={modelFallback}
       activeWorkflow={activeWorkflow}
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}

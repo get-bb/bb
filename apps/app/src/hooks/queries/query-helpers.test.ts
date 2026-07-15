@@ -174,6 +174,7 @@ function makeThreadTimelineResponse(
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    modelFallback: null,
     maxSeq: 0,
     rows,
     timelinePage: {

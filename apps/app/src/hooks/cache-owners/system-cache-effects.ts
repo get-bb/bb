@@ -129,6 +129,20 @@ export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
+/** Refresh settings and timeline projections after a General settings write. */
+export function invalidateGeneralSettingsDependencies({
+  queryClient,
+}: QueryClientArg): void {
+  invalidateQueryKeys({
+    queryClient,
+    queryKeys: [
+      systemConfigQueryKey(),
+      allThreadTimelineQueryKeyPrefix(),
+      allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),
+    ],
+  });
+}
+
 function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
   return [
     hostsQueryKey(),

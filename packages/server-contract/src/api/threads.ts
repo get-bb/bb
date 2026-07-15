@@ -19,6 +19,7 @@ import {
   threadSearchSourceKindSchema,
   threadTimelineActivePromptModeSchema,
   threadTimelineGoalSchema,
+  threadTimelineModelFallbackSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
@@ -659,6 +660,7 @@ export const threadTimelineResponseSchema = z.object({
   activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   goal: threadTimelineGoalSchema.nullable(),
+  modelFallback: threadTimelineModelFallbackSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
   timelinePage: timelinePageMetadataSchema,
   /** Thread high-water event sequence this window reflects; bumps on append. */

@@ -102,6 +102,7 @@ function makeTimelineResponse(
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    modelFallback: null,
     maxSeq: 0,
     timelinePage: {
       kind: "latest",

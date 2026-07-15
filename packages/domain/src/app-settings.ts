@@ -13,6 +13,8 @@ export const appSettingsSchema = z
     caffeinate: z.boolean(),
     /** Show shortcut hints after holding Command or Control. */
     showKeyboardHints: z.boolean(),
+    /** Show raw provider events that bb does not yet understand. */
+    showUnhandledProviderEvents: z.boolean(),
     /** Enable Codex's native memory recall and generation for bb threads. */
     codexMemoryEnabled: z.boolean(),
     /** Enable Claude Code's native auto-memory reads and writes for bb threads. */
@@ -30,6 +32,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const defaultAppSettings: AppSettings = {
   caffeinate: false,
   showKeyboardHints: true,
+  showUnhandledProviderEvents: false,
   codexMemoryEnabled: true,
   claudeCodeMemoryEnabled: true,
   codexSubagentsDisabled: false,

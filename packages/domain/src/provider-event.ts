@@ -545,6 +545,15 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     summary: z.string().optional(),
     details: z.string().optional(),
   }),
+  z.object({
+    type: z.literal("provider/modelFallback"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    originalModel: z.string().min(1),
+    fallbackModel: z.string().min(1),
+    reason: z.enum(["refusal", "provider"]),
+    message: z.string(),
+  }),
   providerUnhandledEventSchema,
 ]);
 const scopedEventDataSchema = z.object({

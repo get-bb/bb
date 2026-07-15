@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `show_unhandled_provider_events` integer DEFAULT false NOT NULL;

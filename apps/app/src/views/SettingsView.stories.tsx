@@ -19,6 +19,7 @@ import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
 import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
 import {
   AppearanceSettingsSection,
+  DebugSettingsSection,
   ExperimentsSettingsSection,
   GeneralSettingsSection,
   LocalOpenTargetSettingsSection,
@@ -179,6 +180,8 @@ function useSettingsStoryState() {
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
   const [richTextEditing, setRichTextEditing] = useState(false);
   const [caffeinate, setCaffeinate] = useState(false);
+  const [showUnhandledProviderEvents, setShowUnhandledProviderEvents] =
+    useState(false);
   const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
     useState<PreferredAudioInputDeviceId>("studio-mic");
   const [directoryTargetId, setDirectoryTargetId] =
@@ -199,6 +202,7 @@ function useSettingsStoryState() {
     preferredAudioInputDeviceId,
     rewriteLocalhostLinks,
     richTextEditing,
+    showUnhandledProviderEvents,
     setAppearance,
     setCaffeinate,
     setDirectoryTargetId,
@@ -209,6 +213,7 @@ function useSettingsStoryState() {
     setPreferredAudioInputDeviceId,
     setRewriteLocalhostLinks,
     setRichTextEditing,
+    setShowUnhandledProviderEvents,
     setThemePreference,
     themePreference,
   };
@@ -240,21 +245,30 @@ function GeneralSettingsStory({
   const state = useSettingsStoryState();
 
   return (
-    <GeneralSettingsSection
-      caffeinateAvailable={caffeinateAvailable}
-      caffeinateDisabled={false}
-      caffeinateEnabled={state.caffeinate}
-      desktopBrowserAvailable={desktopBrowserAvailable}
-      navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
-      onCaffeinateChange={state.setCaffeinate}
-      onNavigateToThreadAfterCreateChange={state.setNavigateToThreadAfterCreate}
-      onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
-      onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
-      onRichTextEditingChange={state.setRichTextEditing}
-      openLinksInAppBrowser={state.openLinksInAppBrowser}
-      rewriteLocalhostLinks={state.rewriteLocalhostLinks}
-      richTextEditing={state.richTextEditing}
-    />
+    <>
+      <GeneralSettingsSection
+        caffeinateAvailable={caffeinateAvailable}
+        caffeinateDisabled={false}
+        caffeinateEnabled={state.caffeinate}
+        desktopBrowserAvailable={desktopBrowserAvailable}
+        navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
+        onCaffeinateChange={state.setCaffeinate}
+        onNavigateToThreadAfterCreateChange={
+          state.setNavigateToThreadAfterCreate
+        }
+        onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
+        onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
+        onRichTextEditingChange={state.setRichTextEditing}
+        openLinksInAppBrowser={state.openLinksInAppBrowser}
+        rewriteLocalhostLinks={state.rewriteLocalhostLinks}
+        richTextEditing={state.richTextEditing}
+      />
+      <DebugSettingsSection
+        disabled={false}
+        enabled={state.showUnhandledProviderEvents}
+        onEnabledChange={state.setShowUnhandledProviderEvents}
+      />
+    </>
   );
 }
 

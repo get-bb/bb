@@ -21,6 +21,7 @@ import {
   type Thread,
   type ThreadTimelineActivePromptMode,
   type ThreadTimelineGoal,
+  type ThreadTimelineModelFallback,
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import type {
@@ -57,6 +58,7 @@ import {
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
 import { extractThreadTimelineActivePromptMode } from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
+import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
@@ -116,6 +118,7 @@ export interface ThreadTimelineFromEventsResult {
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   contextWindowUsage: ThreadContextWindowUsage | null;
   goal: ThreadTimelineGoal | null;
+  modelFallback: ThreadTimelineModelFallback | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   rows: TimelineRow[];
 }
@@ -1245,6 +1248,9 @@ export function buildThreadTimelineFromEvents(
     goal: !args.options.isLatestPage
       ? null
       : extractThreadTimelineGoal(args.events),
+    modelFallback: !args.options.isLatestPage
+      ? null
+      : extractThreadTimelineModelFallback(args.events),
     pendingTodos: !args.options.isLatestPage
       ? null
       : extractThreadTimelinePendingTodos(

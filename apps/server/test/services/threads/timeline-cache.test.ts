@@ -29,6 +29,7 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    modelFallback: null,
     maxSeq: 0,
     timelinePage: {
       kind: "latest",
@@ -53,7 +54,7 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   page: latestPage,
   includeNestedRows: false,
   summaryOnly: false,
-  isDevelopment: false,
+  includeProviderUnhandledOperations: false,
 };
 
 describe("createThreadTimelineCache", () => {
@@ -122,7 +123,7 @@ describe("buildThreadTimelineCacheKey", () => {
       { ...baseKeyArgs, environmentId: "env_1" },
       { ...baseKeyArgs, includeNestedRows: true },
       { ...baseKeyArgs, summaryOnly: true },
-      { ...baseKeyArgs, isDevelopment: true },
+      { ...baseKeyArgs, includeProviderUnhandledOperations: true },
       {
         ...baseKeyArgs,
         page: {

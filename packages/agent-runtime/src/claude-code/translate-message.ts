@@ -24,6 +24,8 @@ import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,
   claudeCompactBoundarySystemMessageSchema,
+  claudeModelFallbackSystemMessageSchema,
+  claudeModelRefusalNoFallbackSystemMessageSchema,
   claudeRateLimitEventSchema,
   claudeResultMessageSchema,
   claudeSdkMessageTypeSchema,
@@ -62,6 +64,13 @@ export interface ClaudeTurnState {
   currentTurnId: string | undefined;
   cumulativeTokens: ThreadEventTokenUsageBreakdown;
   latestRequestContextTokens: number | undefined;
+  lastModelFallback:
+    | {
+        fallbackModel: string;
+        originalModel: string;
+        turnId: string;
+      }
+    | undefined;
   openAssistantMessageIdsByScope: Map<string, string>;
   openReasoningItemIdsByScope: Map<string, string>;
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
@@ -190,6 +199,51 @@ function isClaudeNoResponseRequestedSyntheticMessage(
     !hasClaudeAssistantErrorMarker(message) &&
     hasClaudeZeroUsage(nestedMessage.usage) &&
     extractAssistantText(message) === CLAUDE_NO_RESPONSE_REQUESTED_TEXT
+  );
+}
+
+interface ClaudeModelFallbackTransition {
+  fallbackModel: string;
+  originalModel: string;
+}
+
+function extractClaudeFallbackOnlyAssistantMessage(
+  message: ClaudeAssistantMessage,
+): ClaudeModelFallbackTransition | null {
+  const nestedMessage = toOptionalRecord(message.message);
+  const content = nestedMessage?.content;
+  if (
+    !Array.isArray(content) ||
+    content.length === 0 ||
+    !content.every((block) => toOptionalRecord(block)?.type === "fallback")
+  ) {
+    return null;
+  }
+  const block = toOptionalRecord(content[0]);
+  const from = toOptionalRecord(block?.from);
+  const to = toOptionalRecord(block?.to);
+  const originalModel = from?.model;
+  const fallbackModel = to?.model;
+  if (
+    typeof originalModel !== "string" ||
+    originalModel.length === 0 ||
+    typeof fallbackModel !== "string" ||
+    fallbackModel.length === 0
+  ) {
+    return null;
+  }
+  return { fallbackModel, originalModel };
+}
+
+function isDuplicateClaudeModelFallback(
+  state: ClaudeTurnState,
+  transition: ClaudeModelFallbackTransition,
+  turnId: string,
+): boolean {
+  return (
+    state.lastModelFallback?.turnId === turnId &&
+    state.lastModelFallback.originalModel === transition.originalModel &&
+    state.lastModelFallback.fallbackModel === transition.fallbackModel
   );
 }
 
@@ -427,6 +481,61 @@ export function translateClaudeSdkMessage(
         return events;
       }
 
+      const modelFallbackMessage =
+        claudeModelFallbackSystemMessageSchema.safeParse(args.event);
+      if (modelFallbackMessage.success) {
+        const message = modelFallbackMessage.data;
+        const turnId = args.turnState.getCurrentOrLastTurnId({ state });
+        const transition = {
+          originalModel: message.original_model,
+          fallbackModel: message.fallback_model,
+        };
+        if (
+          turnId.length > 0 &&
+          isDuplicateClaudeModelFallback(state, transition, turnId)
+        ) {
+          return events;
+        }
+        if (turnId.length > 0) {
+          state.lastModelFallback = { ...transition, turnId };
+        }
+        events.push({
+          type: "provider/modelFallback",
+          threadId,
+          providerThreadId: "",
+          scope: turnId.length > 0 ? turnScope(turnId) : threadScope(),
+          originalModel: transition.originalModel,
+          fallbackModel: transition.fallbackModel,
+          reason:
+            message.subtype === "model_refusal_fallback"
+              ? "refusal"
+              : "provider",
+          message:
+            message.content ??
+            `Switched from ${message.original_model} to ${message.fallback_model}.`,
+        });
+        return events;
+      }
+
+      const noFallbackMessage =
+        claudeModelRefusalNoFallbackSystemMessageSchema.safeParse(args.event);
+      if (noFallbackMessage.success) {
+        events.push({
+          type: "provider/warning",
+          threadId,
+          providerThreadId: "",
+          scope: state.currentTurnId
+            ? turnScope(state.currentTurnId)
+            : threadScope(),
+          category: "general",
+          summary: "Model refused the request",
+          details:
+            noFallbackMessage.data.content ??
+            "The selected model refused the request and no fallback model was available.",
+        });
+        return events;
+      }
+
       const taskEvents = translateClaudeTaskMessage({
         ensureTurnStarted: () =>
           args.ensureTurnStarted({ events, state, threadId }),
@@ -453,6 +562,30 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
+      // Claude sends this model transition before it begins streaming from the
+      // fallback model. Its richer system/model_* duplicate arrives only after
+      // the response, so emit now and deduplicate that later event.
+      const fallbackTransition =
+        extractClaudeFallbackOnlyAssistantMessage(message);
+      if (fallbackTransition !== null) {
+        const turnId = args.ensureTurnStarted({ events, state, threadId });
+        if (
+          !isDuplicateClaudeModelFallback(state, fallbackTransition, turnId)
+        ) {
+          state.lastModelFallback = { ...fallbackTransition, turnId };
+          events.push({
+            type: "provider/modelFallback",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            originalModel: fallbackTransition.originalModel,
+            fallbackModel: fallbackTransition.fallbackModel,
+            reason: "provider",
+            message: `Switched from ${fallbackTransition.originalModel} to ${fallbackTransition.fallbackModel}.`,
+          });
+        }
+        return events;
+      }
       if (isClaudeNoResponseRequestedSyntheticMessage(message)) {
         const turnId =
           state.currentTurnId ??

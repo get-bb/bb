@@ -107,6 +107,7 @@ import {
   getThreadPendingInteractionInvalidationQueryKeys,
   getThreadPromptHistoryInvalidationQueryKeys,
   getThreadQueueContentInvalidationQueryKeys,
+  getThreadTimelineInvalidationQueryKeys,
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
 
@@ -415,6 +416,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "config-changed": {
     dirty: [
       dirtySystemConfigQueries, // Experiments gate UI surfaces; other windows re-read after a settings write.
+      dirtyAllThreadTimelineQueries, // General settings can change whether diagnostic provider rows are projected.
       dirtySystemProviderQueries,
       dirtySystemExecutionOptionQueries,
     ],
@@ -867,6 +869,10 @@ function dirtyHostAvailabilityQueries(): QueryKey[] {
 
 function dirtySystemConfigQueries(): QueryKey[] {
   return [systemConfigQueryKey()];
+}
+
+function dirtyAllThreadTimelineQueries(): QueryKey[] {
+  return getThreadTimelineInvalidationQueryKeys({ threadId: undefined });
 }
 
 function dirtySystemProviderQueries(): QueryKey[] {

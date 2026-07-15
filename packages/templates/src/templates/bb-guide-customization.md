@@ -49,6 +49,10 @@ Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command on
 macOS or Control on Windows/Linux. Shortcut commands continue to work.
 
+Settings → General includes `showUnhandledProviderEvents`, which defaults to
+false in packaged builds. Turn it on to show raw provider events bb does not yet
+understand; development builds always show these diagnostic rows.
+
   bb settings show
   bb settings general <key> <true|false>
   bb settings experiment <key> <value>

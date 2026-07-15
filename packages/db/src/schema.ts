@@ -162,6 +162,11 @@ export const appSettings = sqliteTable("app_settings", {
   showKeyboardHints: integer("show_keyboard_hints", { mode: "boolean" })
     .notNull()
     .default(true),
+  showUnhandledProviderEvents: integer("show_unhandled_provider_events", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   codexMemoryEnabled: integer("codex_memory_enabled", { mode: "boolean" })
     .notNull()
     .default(true),

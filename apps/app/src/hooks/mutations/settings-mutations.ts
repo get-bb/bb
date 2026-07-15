@@ -6,7 +6,10 @@ import {
   type Experiments,
 } from "@bb/domain";
 import * as api from "@/lib/api";
-import { invalidateSystemConfig } from "../cache-owners/system-cache-effects";
+import {
+  invalidateGeneralSettingsDependencies,
+  invalidateSystemConfig,
+} from "../cache-owners/system-cache-effects";
 import {
   beginKeyboardSettingsCacheTransaction,
   rollbackKeyboardSettingsCacheTransaction,
@@ -46,7 +49,7 @@ export function useUpdateGeneralSettings() {
     },
     mutationFn: (settings: AppSettings) => api.updateGeneralSettings(settings),
     onSuccess: () => {
-      invalidateSystemConfig({ queryClient });
+      invalidateGeneralSettingsDependencies({ queryClient });
     },
   });
 }

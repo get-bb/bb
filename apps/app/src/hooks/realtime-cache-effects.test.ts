@@ -21,6 +21,7 @@ import {
   projectSourceBranchesQueryKey,
   projectsQueryKey,
   sidebarNavigationQueryKey,
+  systemConfigQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
@@ -208,6 +209,32 @@ describe("createRealtimeCacheEffects", () => {
       true,
     );
     expect(queryClient.getQueryState(commandsKey)?.isInvalidated).toBe(true);
+  });
+
+  it("invalidates timelines when config changes provider event visibility", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const configKey = systemConfigQueryKey();
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    const summaryKey = threadTimelineTurnSummaryDetailsQueryKey({
+      threadId: "thr_1",
+      turnId: "turn_1",
+      sourceSeqStart: 1,
+      sourceSeqEnd: 2,
+    });
+    queryClient.setQueryData(configKey, {});
+    queryClient.setQueryData(timelineKey, {});
+    queryClient.setQueryData(summaryKey, {});
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "system",
+      changes: ["config-changed"],
+    });
+
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(summaryKey)?.isInvalidated).toBe(true);
+    effects.dispose();
   });
 
   it("invalidates only catalog caches on plugin-catalog-changed", () => {

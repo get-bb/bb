@@ -40,6 +40,10 @@ message agents, or inspect projects, providers, and environments.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).
+- The `showUnhandledProviderEvents` General preference defaults to false and
+  exposes raw provider events that bb does not yet understand in packaged
+  builds. Development builds always show those diagnostic rows. Update it with
+  `bb settings general showUnhandledProviderEvents <true|false>`.
 - Settings → Keyboard records server-backed per-command shortcut overrides.
   The `showKeyboardHints` preference controls the delayed badges shown while
   holding Command or Control and defaults to true; update it with

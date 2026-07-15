@@ -111,6 +111,7 @@ describe("fetchThreadPendingTodos", () => {
       activeBackgroundCommands: [],
       pendingTodos,
       goal: null,
+      modelFallback: null,
       rows: [],
       maxSeq: 0,
       timelinePage: {
