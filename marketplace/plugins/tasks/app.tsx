@@ -1,23 +1,5 @@
 import { definePluginApp } from "@bb/plugin-sdk/app";
-import { Button } from "@/components/ui/button";
-import { TasksEditorDemo } from "./editor/demo.js";
-
-function TasksPanel() {
-  return (
-    <main className="flex h-full min-h-0 flex-col items-center gap-4 overflow-auto bg-background p-6 text-foreground">
-      <section className="w-full max-w-lg space-y-4 rounded-lg border border-border bg-card p-6 shadow-sm">
-        <div className="space-y-1">
-          <p className="text-sm font-medium">Tasks plugin scaffold</p>
-          <p className="text-sm text-muted-foreground">
-            Linear-style task tracking for bb is coming next.
-          </p>
-        </div>
-        <Button type="button">Tasks is ready</Button>
-      </section>
-      <TasksEditorDemo />
-    </main>
-  );
-}
+import { TasksAppShell } from "./shell/app-shell.js";
 
 export default definePluginApp((app) => {
   app.slots.navPanel({
@@ -25,6 +7,6 @@ export default definePluginApp((app) => {
     title: "Tasks",
     icon: "ListTodo",
     path: "tasks",
-    component: TasksPanel,
+    component: TasksAppShell,
   });
 });
