@@ -1,11 +1,11 @@
-import { memo, useCallback, type CSSProperties } from "react";
-import { DndContext } from "@dnd-kit/core";
+import { memo, useCallback, useMemo, type CSSProperties } from "react";
+import { DndContext, useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { NeighborReorderRequest } from "@/lib/neighbor-reorder";
-import { ThreadTreeNodeRow } from "./ProjectRow";
+import { DropPreviewRow, ThreadTreeNodeRow } from "./ProjectRow";
 import {
   useSidebarSortable,
   type SidebarSortableDragBindings,
@@ -16,6 +16,8 @@ import {
   useNeighborReorderSortable,
   type UseNeighborReorderSortableArgs,
 } from "./useNeighborReorderSortable";
+import { useChronologicalFolderThreadDnd } from "./FolderThreadDndContext";
+import { PINNED_THREAD_PARENT_KEY } from "./useFolderThreadDnd";
 
 interface PinnedThreadRootReorderCallbacks {
   onSettled: () => void;
@@ -127,6 +129,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
   isPinnedReorderPending = false,
   onReorderPinnedRoot,
 }: PinnedThreadTreeProps) {
+  const chronologicalDnd = useChronologicalFolderThreadDnd();
   const handleReorderPinnedRoot = useCallback<
     UseNeighborReorderSortableArgs<ProjectThreadNode>["onReorder"]
   >(
@@ -135,23 +138,73 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
     },
     [onReorderPinnedRoot],
   );
-  const reorderDisabled =
+  const standaloneReorderDisabled =
     isPinnedReorderPending || !onReorderPinnedRoot || rootNodes.length < 2;
   const {
     handleDragEnd: handleSortableDragEnd,
     itemIds: renderedRootNodeIds,
     renderedItems: renderedRootNodes,
   } = useNeighborReorderSortable({
-    disabled: reorderDisabled,
+    disabled: chronologicalDnd !== null || standaloneReorderDisabled,
     getId: getPinnedRootNodeId,
     items: rootNodes,
     onReorder: handleReorderPinnedRoot,
   });
   const { dndContextProps, consumeClickSuppression, onClickCapture } =
     useSidebarReorderDnd({ onDragEnd: handleSortableDragEnd });
+  const chronologicalRootNodes = useMemo(() => {
+    if (!chronologicalDnd) return rootNodes;
+    const nodesById = new Map(
+      rootNodes.map((node) => [getPinnedRootNodeId(node), node]),
+    );
+    const orderedNodes: ProjectThreadNode[] = [];
+    for (const id of chronologicalDnd.pinnedItemIds) {
+      const node = nodesById.get(id);
+      if (!node) return rootNodes;
+      orderedNodes.push(node);
+    }
+    return orderedNodes;
+  }, [chronologicalDnd, rootNodes]);
+  const { setNodeRef: setPinnedParentRef } = useDroppable({
+    id: PINNED_THREAD_PARENT_KEY,
+    disabled: chronologicalDnd === null,
+  });
 
   if (renderedRootNodes.length === 0) {
     return null;
+  }
+
+  if (chronologicalDnd) {
+    const showDropPreview =
+      chronologicalDnd.dragOverParentKey === PINNED_THREAD_PARENT_KEY;
+    return (
+      <div
+        ref={setPinnedParentRef}
+        data-sidebar-sticky-section=""
+        className="relative space-y-0.5 group-data-[collapsible=icon]:hidden"
+        onClickCapture={chronologicalDnd.onClickCapture}
+      >
+        <SortableContext
+          items={[...chronologicalDnd.pinnedItemIds]}
+          strategy={verticalListSortingStrategy}
+        >
+          {chronologicalRootNodes.map((node) => (
+            <SortablePinnedRootItem
+              key={getPinnedRootNodeId(node)}
+              node={node}
+              disabled={chronologicalDnd.pinnedReorderPending}
+              selectedThreadId={selectedThreadId}
+              collapsedThreadIds={collapsedThreadIds}
+              collapsedEnvironmentIds={collapsedEnvironmentIds}
+              onProjectSelect={onProjectSelect}
+              onToggleThreadCollapsed={onToggleThreadCollapsed}
+              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+            />
+          ))}
+        </SortableContext>
+        <DropPreviewRow depth={0} visible={showDropPreview} />
+      </div>
+    );
   }
 
   return (
@@ -170,7 +223,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
               <SortablePinnedRootItem
                 key={getPinnedRootNodeId(node)}
                 node={node}
-                disabled={reorderDisabled}
+                disabled={standaloneReorderDisabled}
                 selectedThreadId={selectedThreadId}
                 collapsedThreadIds={collapsedThreadIds}
                 collapsedEnvironmentIds={collapsedEnvironmentIds}

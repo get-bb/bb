@@ -133,7 +133,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
         isPinned: false,
         selectedThread: thread({ projectId: "proj_app" }),
       }),
-    ).toEqual({ projectId: "proj_app", sidebarSectionId: "projects" });
+    ).toEqual({ projectId: "proj_app" });
   });
 
   it("expands the threads section for unfiled project threads in folders mode", () => {
@@ -155,7 +155,6 @@ describe("getSelectedThreadSidebarExpansion", () => {
       }),
     ).toEqual({
       folderKey: `${CHRONOLOGICAL_CONTAINER_ID}::fld_work`,
-      sidebarSectionId: "folders",
     });
   });
 

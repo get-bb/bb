@@ -28,7 +28,7 @@ import {
  * droppable the pointer is actually over, falling back to center distance when
  * the pointer is outside every droppable (e.g. keyboard drag, which has none).
  */
-const sidebarReorderCollisionDetection: CollisionDetection = (args) => {
+export const sidebarReorderCollisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
   return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
 };
@@ -62,6 +62,11 @@ interface UseSidebarReorderDndArgs {
   onDragOver?: (event: DragOverEvent) => void;
   /** Runs alongside the internal suppression reset when a drag is cancelled. */
   onDragCancel?: () => void;
+  /**
+   * Overrides target selection for surfaces that combine nested draggable
+   * levels in one context. Ordinary one-level lists use the shared default.
+   */
+  collisionDetection?: CollisionDetection;
 }
 
 export type SidebarReorderDndContextProps = Pick<
@@ -98,6 +103,7 @@ export function useSidebarReorderDnd({
   onDragStart,
   onDragOver,
   onDragCancel,
+  collisionDetection = sidebarReorderCollisionDetection,
 }: UseSidebarReorderDndArgs): UseSidebarReorderDndResult {
   const {
     beginDragClickSuppression,
@@ -153,14 +159,21 @@ export function useSidebarReorderDnd({
   const dndContextProps = useMemo<SidebarReorderDndContextProps>(
     () => ({
       sensors,
-      collisionDetection: sidebarReorderCollisionDetection,
+      collisionDetection,
       modifiers: SIDEBAR_REORDER_MODIFIERS,
       onDragStart: handleDragStart,
       onDragOver,
       onDragCancel: handleDragCancel,
       onDragEnd: handleDragEnd,
     }),
-    [handleDragCancel, handleDragEnd, handleDragStart, onDragOver, sensors],
+    [
+      collisionDetection,
+      handleDragCancel,
+      handleDragEnd,
+      handleDragStart,
+      onDragOver,
+      sensors,
+    ],
   );
 
   return {

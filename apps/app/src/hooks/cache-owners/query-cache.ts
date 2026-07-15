@@ -154,27 +154,29 @@ function isArchivedThreadsListFilters(
     return false;
   }
 
-  let hasScope = false;
+  for (const key of Object.keys(candidate)) {
+    if (key !== "projectId" && key !== "kind") {
+      return false;
+    }
+  }
+
   if ("projectId" in candidate && candidate.projectId !== undefined) {
     if (typeof candidate.projectId !== "string") {
       return false;
     }
-    hasScope = true;
   }
-  if ("folderId" in candidate && candidate.folderId !== undefined) {
-    if (typeof candidate.folderId !== "string") {
-      return false;
-    }
-    hasScope = true;
-  }
-  if ("unfiled" in candidate && candidate.unfiled !== undefined) {
-    if (typeof candidate.unfiled !== "boolean") {
-      return false;
-    }
-    hasScope = hasScope || candidate.unfiled;
+  if (
+    "kind" in candidate &&
+    candidate.kind !== undefined &&
+    candidate.kind !== "all" &&
+    candidate.kind !== "root" &&
+    candidate.kind !== "child"
+  ) {
+    return false;
   }
 
-  return hasScope;
+  // An empty filter object is the global archived list.
+  return true;
 }
 
 function getArchivedThreadListFiltersFromQueryKey(

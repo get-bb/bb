@@ -6,17 +6,22 @@ const COLLAPSED_THREADS_STORAGE_KEY = "bb.sidebar.collapsedThreads";
 const COLLAPSED_ENVIRONMENTS_STORAGE_KEY = "bb.sidebar.collapsedEnvironments";
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
+const SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY =
+  "bb.sidebar.folderSectionOrder";
+const SIDEBAR_MACHINE_SECTION_ORDER_STORAGE_KEY =
+  "bb.sidebar.machineSectionOrder";
 const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
 const COLLAPSED_MACHINES_STORAGE_KEY = "bb.sidebar.collapsedMachines";
 
-export type SidebarSectionId = "pinned" | "projects" | "threads";
-export type CollapsibleSidebarSectionId =
-  | "folders"
+export type SidebarSectionId =
   | "pinned"
-  | "projects"
-  | "threads";
+  | "threads"
+  | `project:${string}`
+  | `folder:${string}`
+  | `machine:${string}`;
+export type CollapsibleSidebarSectionId = "pinned" | "threads";
 
 // "project" keeps the per-project grouping; "chronological" is the persisted
 // value for the cross-project Folders view that replaced the old None view;
@@ -27,7 +32,7 @@ export type SidebarOrganizationMode = "project" | "chronological" | "machine";
 // that the runtime normalizes back to "updated".
 export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
 
-export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
+export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
   "pinned",
   "projects",
   "threads",
@@ -63,10 +68,24 @@ export const collapsedSidebarSectionIdsAtom = atomWithStorage<
   { getOnInit: true },
 );
 
-export const sidebarSectionOrderAtom = atomWithStorage<SidebarSectionId[]>(
+export const sidebarSectionOrderAtom = atomWithStorage<string[]>(
   SIDEBAR_SECTION_ORDER_STORAGE_KEY,
   [...DEFAULT_SIDEBAR_SECTION_ORDER],
-  createJsonLocalStorage<SidebarSectionId[]>(),
+  createJsonLocalStorage<string[]>(),
+  { getOnInit: true },
+);
+
+export const sidebarFolderSectionOrderAtom = atomWithStorage<string[]>(
+  SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY,
+  ["pinned", "folders", "threads"],
+  createJsonLocalStorage<string[]>(),
+  { getOnInit: true },
+);
+
+export const sidebarMachineSectionOrderAtom = atomWithStorage<string[]>(
+  SIDEBAR_MACHINE_SECTION_ORDER_STORAGE_KEY,
+  ["pinned", "machines", "threads"],
+  createJsonLocalStorage<string[]>(),
   { getOnInit: true },
 );
 

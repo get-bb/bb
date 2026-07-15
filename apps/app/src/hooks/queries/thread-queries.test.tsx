@@ -48,17 +48,32 @@ beforeEach(() => {
 });
 
 describe("useArchivedThreads", () => {
-  it("omits projectId for folder-scoped archived lists", async () => {
+  it("loads archived threads across all projects when no scope is selected", async () => {
     const { wrapper } = createQueryClientTestHarness();
 
-    renderHook(() => useArchivedThreads({ folderId: "fld_work" }), { wrapper });
+    renderHook(() => useArchivedThreads({}), { wrapper });
 
     await waitFor(() => {
       expect(api.listThreads).toHaveBeenCalled();
     });
     expect(vi.mocked(api.listThreads).mock.calls[0]?.[0]).toEqual({
       archived: true,
-      folderId: "fld_work",
+      limit: ARCHIVED_THREADS_PAGE_SIZE,
+      offset: 0,
+    });
+  });
+
+  it("maps the archived kind filter to the parent-thread query", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    renderHook(() => useArchivedThreads({ kind: "child" }), { wrapper });
+
+    await waitFor(() => {
+      expect(api.listThreads).toHaveBeenCalled();
+    });
+    expect(vi.mocked(api.listThreads).mock.calls[0]?.[0]).toEqual({
+      archived: true,
+      hasParent: true,
       limit: ARCHIVED_THREADS_PAGE_SIZE,
       offset: 0,
     });
@@ -79,22 +94,6 @@ describe("useArchivedThreads", () => {
       limit: ARCHIVED_THREADS_PAGE_SIZE,
       offset: 0,
       projectId: "proj_1",
-    });
-  });
-
-  it("omits projectId for global loose archived lists", async () => {
-    const { wrapper } = createQueryClientTestHarness();
-
-    renderHook(() => useArchivedThreads({ unfiled: true }), { wrapper });
-
-    await waitFor(() => {
-      expect(api.listThreads).toHaveBeenCalled();
-    });
-    expect(vi.mocked(api.listThreads).mock.calls[0]?.[0]).toEqual({
-      archived: true,
-      limit: ARCHIVED_THREADS_PAGE_SIZE,
-      offset: 0,
-      unfiled: true,
     });
   });
 });

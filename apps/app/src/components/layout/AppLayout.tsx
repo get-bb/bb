@@ -57,7 +57,6 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   getLegacyProjectComposeRoutePath,
-  getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
@@ -288,7 +287,6 @@ interface AppHeaderProps {
    */
   usesProjectChromeStyle: boolean;
   usesDesktopChrome: boolean;
-  isArchivedView: boolean;
   isSettingsView: boolean;
   projectId?: string;
   project?: ProjectResponse;
@@ -308,7 +306,6 @@ interface AppHeaderProps {
 function AppHeader({
   usesProjectChromeStyle,
   usesDesktopChrome,
-  isArchivedView,
   isSettingsView,
   projectId,
   project,
@@ -400,20 +397,6 @@ function AppHeader({
         aria-current={isSettingsView ? "page" : undefined}
       >
         <Icon name="Settings" />
-      </Link>
-      <Link
-        to={getProjectArchivedRoutePath(projectId)}
-        className={cn(
-          HEADER_ICON_BUTTON_CLASS,
-          "inline-flex items-center justify-center transition-colors",
-          isArchivedView
-            ? "bg-state-active text-foreground"
-            : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-        )}
-        aria-label="Archived threads"
-        aria-current={isArchivedView ? "page" : undefined}
-      >
-        <Icon name="Archive" />
       </Link>
       {project ? (
         <ProjectActionsMenu
@@ -790,7 +773,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   usesProjectChromeStyle={
                     isRootView || isArchivedView || isSettingsView
                   }
-                  isArchivedView={isArchivedView}
                   isSettingsView={isSettingsView}
                   projectId={projectId}
                   project={project}

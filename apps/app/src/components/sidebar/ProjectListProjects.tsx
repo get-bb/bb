@@ -32,9 +32,9 @@ export interface ProjectListRowModel {
 }
 
 /**
- * Container-owned drag-to-reorder plumbing. Present only when the live sidebar
- * wires up `useSidebarReorderDnd`; absent in stories and whenever there are too
- * few projects to reorder, in which case the rows render without a DnD context.
+ * Container-owned drag-to-reorder plumbing for isolated project collections
+ * such as stories. The live sidebar places the same sortable rows in its one
+ * heterogeneous top-level context instead.
  */
 export interface ProjectListReorderBindings {
   dndContextProps: SidebarReorderDndContextProps;
@@ -59,17 +59,19 @@ interface ProjectListProjectsProps {
   reorder?: ProjectListReorderBindings;
 }
 
-interface SortableProjectRowProps extends ProjectRowProps {
+export interface SortableProjectRowProps extends ProjectRowProps {
   reorderDisabled: boolean;
+  sortableId?: string;
 }
 
-const SortableProjectRow = memo(function SortableProjectRow({
+export const SortableProjectRow = memo(function SortableProjectRow({
   project,
   reorderDisabled,
+  sortableId = project.id,
   ...props
 }: SortableProjectRowProps) {
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
-    id: project.id,
+    id: sortableId,
     disabled: reorderDisabled,
   });
 
@@ -85,7 +87,7 @@ const SortableProjectRow = memo(function SortableProjectRow({
 });
 
 /**
- * Renders the Projects section body: loading skeletons, the project rows
+ * Renders a collection of project sections: loading skeletons, project rows
  * (reorderable when {@link ProjectListProjectsProps.reorder} is supplied and
  * there is more than one), or the empty/unavailable state. Pure and
  * prop-driven — it owns no collapse state or queries, so the live sidebar

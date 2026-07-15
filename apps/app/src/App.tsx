@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
@@ -24,6 +24,7 @@ import {
   SETTINGS_PROVIDER_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
+  getSettingsRoutePath,
 } from "./lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
@@ -40,11 +41,6 @@ const SettingsView = lazy(() =>
 const ProjectSettingsView = lazy(() =>
   import("./views/ProjectSettingsView").then((m) => ({
     default: m.ProjectSettingsView,
-  })),
-);
-const ArchivedThreadsView = lazy(() =>
-  import("./views/ArchivedThreadsView").then((m) => ({
-    default: m.ArchivedThreadsView,
   })),
 );
 const PopoutChatView = lazy(() =>
@@ -101,11 +97,11 @@ function AppRoutes() {
           />
           <Route
             path={PROJECT_ARCHIVED_ROUTE_PATH}
-            element={<ArchivedThreadsView />}
+            element={<Navigate to={getSettingsRoutePath("archived")} replace />}
           />
           <Route
             path={PROJECTLESS_ARCHIVED_ROUTE_PATH}
-            element={<ArchivedThreadsView />}
+            element={<Navigate to={getSettingsRoutePath("archived")} replace />}
           />
           <Route path="*" element={<SplitWorkspaceRoute />} />
         </Routes>

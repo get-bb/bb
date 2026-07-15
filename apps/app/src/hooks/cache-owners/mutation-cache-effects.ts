@@ -1,5 +1,4 @@
 import {
-  archivedThreadsListQueryKey,
   hostsQueryKey,
   projectPathsQueryKeyPrefix,
   sidebarNavigationQueryKey,
@@ -36,10 +35,6 @@ import {
 
 interface ProjectSourceInvalidationArg extends QueryClientArg {
   projectId: string | undefined;
-}
-
-interface ThreadFolderArchivedListRemovalArg extends QueryClientArg {
-  folderId: string;
 }
 
 /** Host rename/remove: refresh the live host list ahead of the realtime echo. */
@@ -112,16 +107,6 @@ export function invalidateThreadListQueries({
       projectId: undefined,
       queryClient,
     }),
-  });
-}
-
-export function removeThreadFolderArchivedListQuery({
-  folderId,
-  queryClient,
-}: ThreadFolderArchivedListRemovalArg): void {
-  queryClient.removeQueries({
-    exact: true,
-    queryKey: archivedThreadsListQueryKey({ folderId }),
   });
 }
 

@@ -108,25 +108,6 @@ export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
 }
 
-export function getProjectlessArchivedRoutePath(): string {
-  return PROJECTLESS_ARCHIVED_ROUTE_PATH;
-}
-
-export function getProjectArchivedRoutePath(projectId: string): string {
-  if (isProjectlessProjectId(projectId)) {
-    return getProjectlessArchivedRoutePath();
-  }
-  return `/projects/${projectId}/archived`;
-}
-
-// Folders live in the personal/projectless section, so a folder's archived
-// list reuses the projectless archived route, scoped by a `folderId` query param.
-export function getFolderArchivedRoutePath(folderId: string): string {
-  return `${PROJECTLESS_ARCHIVED_ROUTE_PATH}?folderId=${encodeURIComponent(
-    folderId,
-  )}`;
-}
-
 export interface PluginPanelRoutePathArgs {
   pluginId: string;
   /** The nav panel's registered `path` segment (validated: [a-zA-Z0-9_-]+). */

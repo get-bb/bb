@@ -8,7 +8,6 @@ import * as api from "@/lib/api";
 import {
   invalidateProjectListQueries,
   invalidateThreadListQueries,
-  removeThreadFolderArchivedListQuery,
 } from "../cache-owners/mutation-cache-effects";
 
 function invalidateThreadFolderQueries(
@@ -23,7 +22,7 @@ export function useCreateThreadFolder() {
 
   return useMutation({
     meta: {
-      errorMessage: "Failed to create folder.",
+      errorMessage: "Failed to create section.",
       showErrorToast: false,
     },
     mutationFn: (request: CreateThreadFolderRequest) =>
@@ -39,7 +38,7 @@ export function useUpdateThreadFolder() {
 
   return useMutation({
     meta: {
-      errorMessage: "Failed to rename folder.",
+      errorMessage: "Failed to rename section.",
       showErrorToast: false,
     },
     mutationFn: (request: UpdateThreadFolderRequest) =>
@@ -55,15 +54,11 @@ export function useDeleteThreadFolder() {
 
   return useMutation({
     meta: {
-      errorMessage: "Failed to remove folder.",
+      errorMessage: "Failed to remove section.",
     },
     mutationFn: (request: DeleteThreadFolderRequest) =>
       api.deleteThreadFolder(request),
-    onSuccess: (_result, request) => {
-      removeThreadFolderArchivedListQuery({
-        folderId: request.id,
-        queryClient,
-      });
+    onSuccess: () => {
       invalidateThreadFolderQueries(queryClient);
     },
   });

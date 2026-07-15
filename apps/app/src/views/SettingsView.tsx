@@ -49,6 +49,7 @@ import { CommunitySettingsSection } from "@/components/settings/CommunitySetting
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -1294,6 +1295,8 @@ export function SettingsView() {
     content = <PluginsSettingsSection />;
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
+  } else if (activeSection === "archived") {
+    content = <ArchivedThreadsSettingsSection />;
   } else {
     content = (
       <>

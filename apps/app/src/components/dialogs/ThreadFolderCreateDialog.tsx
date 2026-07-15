@@ -58,13 +58,13 @@ export function ThreadFolderCreateDialog({
       <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
         {open ? (
           <ThreadFolderDialogContent
-            description="Create a folder for threads."
+            description="Create a section for threads."
             errorMessage={errorMessage}
             initialName=""
-            inputLabel="Folder name"
+            inputLabel="Section name"
             pending={pending}
-            submitLabel="Create folder"
-            title="New folder"
+            submitLabel="Create section"
+            title="New section"
             onSubmit={onCreate}
             inputRef={inputRef}
           />
@@ -88,13 +88,13 @@ export function ThreadFolderRenameDialog({
         {target ? (
           <ThreadFolderDialogContent
             key={target.id}
-            description="Choose a new name for this folder."
+            description="Choose a new name for this section."
             errorMessage={errorMessage}
             initialName={target.name}
-            inputLabel="Folder name"
+            inputLabel="Section name"
             pending={pending}
-            submitLabel="Rename folder"
-            title="Rename folder"
+            submitLabel="Rename section"
+            title="Rename section"
             onSubmit={(name) => onRename(target.id, name)}
             inputRef={inputRef}
           />
@@ -121,7 +121,7 @@ function ThreadFolderDialogContent({
     null,
   );
   const { validationMessage, validate, clearMessage } = useNameValidation({
-    emptyMessage: "Folder name cannot be empty.",
+    emptyMessage: "Section name cannot be empty.",
   });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {

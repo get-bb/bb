@@ -57,6 +57,10 @@ interface BeginThreadPinTransactionArgs extends ThreadIdCacheArgs {
   pinnedAt: number;
 }
 
+interface BeginUnpinAndMoveThreadTransactionArgs extends ThreadIdCacheArgs {
+  folderId: string | null;
+}
+
 interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
   lastReadAt: number | null;
 }
@@ -335,6 +339,31 @@ export function beginUnpinThreadTransaction({
         ),
       ),
     patch: { pinnedAt: null },
+    queryClient,
+    threadId,
+  });
+}
+
+export function beginUnpinAndMoveThreadTransaction({
+  folderId,
+  queryClient,
+  threadId,
+}: BeginUnpinAndMoveThreadTransactionArgs): Promise<ThreadListMutationTransaction> {
+  return runOptimisticThreadFieldTransaction({
+    applyToLists: (queryClient, threadId) =>
+      applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
+        list.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                folderId,
+                pinnedAt: null,
+                pinSortKey: null,
+              }
+            : thread,
+        ),
+      ),
+    patch: { folderId, pinnedAt: null },
     queryClient,
     threadId,
   });

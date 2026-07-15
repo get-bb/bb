@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   getPopoutThreadRoutePath,
-  getProjectArchivedRoutePath,
-  getProjectlessArchivedRoutePath,
   getSurfaceAwareThreadRoutePath,
   getThreadRoutePath,
   isRoutePath,
@@ -12,9 +10,7 @@ import {
 } from "./route-paths";
 
 describe("route path helpers", () => {
-  it("builds and recognizes the canonical projectless archived URL", () => {
-    expect(getProjectlessArchivedRoutePath()).toBe("/archived");
-    expect(getProjectArchivedRoutePath(PERSONAL_PROJECT_ID)).toBe("/archived");
+  it("recognizes the legacy archived URL", () => {
     expect(isRoutePath({ path: "/archived" })).toBe(true);
   });
 

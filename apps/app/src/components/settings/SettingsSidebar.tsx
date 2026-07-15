@@ -157,21 +157,23 @@ export function SettingsSidebar({
         <div className="min-w-0 px-2 group-data-[collapsible=icon]:hidden">
           <SettingsSidebarSectionLabel>Settings</SettingsSidebarSectionLabel>
           <div className="mt-1 space-y-0.5">
-            {sections.map((section) => (
-              <SettingsSidebarRow
-                key={section.id}
-                active={activeSection === section.id}
-                label={section.label}
-                onNavigate={closeOnMobile}
-                to={
-                  section.id === "general"
-                    ? SETTINGS_ROUTE_PATH
-                    : getSettingsRoutePath(section.id)
-                }
-              >
-                {sectionIcon(section.icon)}
-              </SettingsSidebarRow>
-            ))}
+            {sections
+              .filter((section) => section.id !== "archived")
+              .map((section) => (
+                <SettingsSidebarRow
+                  key={section.id}
+                  active={activeSection === section.id}
+                  label={section.label}
+                  onNavigate={closeOnMobile}
+                  to={
+                    section.id === "general"
+                      ? SETTINGS_ROUTE_PATH
+                      : getSettingsRoutePath(section.id)
+                  }
+                >
+                  {sectionIcon(section.icon)}
+                </SettingsSidebarRow>
+              ))}
           </div>
           <div className="mt-4">
             <SettingsSidebarSectionLabel>Providers</SettingsSidebarSectionLabel>
@@ -215,6 +217,30 @@ export function SettingsSidebar({
                     <PluginNavIcon plugin={plugin} />
                   </SettingsSidebarRow>
                 ))}
+              </div>
+            </>
+          ) : null}
+          {sections.some((section) => section.id === "archived") ? (
+            <>
+              <div className="mt-4">
+                <SettingsSidebarSectionLabel>
+                  Archived
+                </SettingsSidebarSectionLabel>
+              </div>
+              <div className="mt-1 space-y-0.5">
+                {sections
+                  .filter((section) => section.id === "archived")
+                  .map((section) => (
+                    <SettingsSidebarRow
+                      key={section.id}
+                      active={activeSection === section.id}
+                      label={section.label}
+                      onNavigate={closeOnMobile}
+                      to={getSettingsRoutePath(section.id)}
+                    >
+                      {sectionIcon(section.icon)}
+                    </SettingsSidebarRow>
+                  ))}
               </div>
             </>
           ) : null}

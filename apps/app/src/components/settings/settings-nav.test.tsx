@@ -30,9 +30,7 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
 }));
 
-function systemConfig(
-  pluginsEnabled: boolean,
-): SystemConfigResponse {
+function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
@@ -104,6 +102,21 @@ describe("useSettingsNavState", () => {
         result.result.current.sections.map((section) => section.id),
       ).toContain("machines");
     });
+  });
+
+  it("resolves archived threads as a settings section", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/archived"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeSection).toBe("archived");
+    });
+    expect(result.current.sections.map((section) => section.id)).toContain(
+      "archived",
+    );
   });
 
   it("shows slot-backed plugin settings entries while the plugins experiment is off", async () => {

@@ -10,7 +10,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   AlertTriangle: "“Project folder not found” indicator on sidebar project rows",
   AlignLeft: "Left-aligned menu",
   AppWindow: "Right-panel app fallback and HTML/mockup file visual",
-  Archive: "“Archived threads” header link, archived-thread banner",
+  Archive: "Archived threads settings navigation and archived-thread banner",
   ArchiveRestore: "Unarchive button on archived threads",
   ArrowDown: "Scroll-to-bottom button when conversation is scrolled up",
   ArrowRight: "Rename arrow in diff file headers (old → new)",

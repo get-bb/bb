@@ -20,10 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
-import {
-  getProjectArchivedRoutePath,
-  getProjectSettingsRoutePath,
-} from "@/lib/route-paths";
+import { getProjectSettingsRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useProjectActions } from "./ProjectActionsProvider";
 
@@ -138,15 +135,6 @@ function ProjectActionsMenuItems({
         }}
       >
         Project settings
-      </ProjectActionMenuItem>
-      <ProjectActionMenuItem
-        surface={surface}
-        icon="Archive"
-        onSelect={() => {
-          navigate(getProjectArchivedRoutePath(project.id));
-        }}
-      >
-        Archived threads
       </ProjectActionMenuItem>
       <ProjectActionMenuSeparator surface={surface} />
       <ProjectActionMenuItem

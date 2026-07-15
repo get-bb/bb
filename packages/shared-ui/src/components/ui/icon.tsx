@@ -68,6 +68,7 @@ import {
   InternetIcon,
   LaptopIcon,
   Layers01Icon,
+  ListViewIcon,
   LockIcon,
   Loading03Icon,
   LayoutTwoColumnIcon,
@@ -199,6 +200,54 @@ const PaletteStrokeRoundedIcon: IconSvgElement = [
   ],
 ];
 
+// Custom "new section" glyph: the set's ListView rows with the middle and
+// bottom rows shortened so the plus owns the lower-right quadrant, matching
+// FolderAdd's non-overlapping plus placement (same plus geometry). Hugeicons
+// has no list-with-plus variant that keeps the ListView row shape, so this
+// inlines the artwork in the same element format the set uses.
+const SectionAddStrokeRoundedIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M2 3.4C2 2.24173 2.24173 2 3.4 2H20.6C21.7583 2 22 2.24173 22 3.4V4.6C22 5.75827 21.7583 6 20.6 6H3.4C2.24173 6 2 5.75827 2 4.6V3.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "0",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M2 11.4C2 10.2417 2.24173 10 3.4 10H10.6C11.7583 10 12 10.2417 12 11.4V12.6C12 13.7583 11.7583 14 10.6 14H3.4C2.24173 14 2 13.7583 2 12.6V11.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "1",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M2 19.4C2 18.2417 2.24173 18 3.4 18H10.6C11.7583 18 12 18.2417 12 19.4V20.6C12 21.7583 11.7583 22 10.6 22H3.4C2.24173 22 2 21.7583 2 20.6V19.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "2",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M18 13V21M22 17H14",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "3",
+    },
+  ],
+];
+
 const ICON_MAP = {
   AlertCircle: AlertCircleIcon,
   AlertTriangle: Alert02Icon,
@@ -268,6 +317,8 @@ const ICON_MAP = {
   Info: InformationCircleIcon,
   Laptop: LaptopIcon,
   Layers: Layers01Icon,
+  ListView: ListViewIcon,
+  SectionAdd: SectionAddStrokeRoundedIcon,
   ListTodo: CheckListIcon,
   Loading: Loading03Icon,
   Lock: LockIcon,

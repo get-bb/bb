@@ -7,24 +7,36 @@ export function ThreadUnarchiveButton({
   onUnarchive,
   buttonLabel,
   className,
+  variant = "icon",
 }: {
   isPending?: boolean;
   onUnarchive: () => void;
   buttonLabel?: string;
   className?: string;
+  variant?: "icon" | "secondary";
 }) {
   const resolvedLabel = buttonLabel ?? "Unarchive thread";
+  const isSecondary = variant === "secondary";
   return (
     <Button
       type="button"
-      variant="ghost"
-      size="icon"
+      variant={isSecondary ? "secondary" : "ghost"}
+      size={isSecondary ? undefined : "icon"}
       aria-label={resolvedLabel}
       onClick={onUnarchive}
       disabled={Boolean(isPending)}
-      className={cn("size-6", className)}
+      className={cn(
+        isSecondary ? "h-7 shrink-0 px-2.5 text-xs font-normal" : "size-6",
+        className,
+      )}
     >
-      {isPending ? (
+      {isSecondary ? (
+        isPending ? (
+          "Restoring…"
+        ) : (
+          "Unarchive"
+        )
+      ) : isPending ? (
         <Icon name="Spinner" className="size-3 animate-spin" />
       ) : (
         <Icon name="ArchiveRestore" className="size-3" />
