@@ -181,8 +181,6 @@ type ChangedMessage = z$1.infer<typeof changedMessageSchema>;
 declare const experimentsSchema: z$1.ZodObject<{
     claudeCodeMockCliTraffic: z$1.ZodBoolean;
     threadSplits: z$1.ZodBoolean;
-    popoutChat: z$1.ZodBoolean;
-    popoutChatHotkey: z$1.ZodString;
     plugins: z$1.ZodBoolean;
 }, z$1.core.$strip>;
 type Experiments = z$1.infer<typeof experimentsSchema>;
@@ -230,8 +228,8 @@ type PendingInteractionResolution = z$1.infer<typeof pendingInteractionResolutio
 declare const threadStatusSchema: z$1.ZodEnum<{
     error: "error";
     active: "active";
-    idle: "idle";
     starting: "starting";
+    idle: "idle";
     stopping: "stopping";
 }>;
 type ThreadStatus = z$1.infer<typeof threadStatusSchema>;
@@ -894,8 +892,8 @@ declare const providerCliInstallRequestSchema: z$1.ZodObject<{
         cursor: "cursor";
     }>;
     actionKind: z$1.ZodEnum<{
-        update: "update";
         install: "install";
+        update: "update";
     }>;
 }, z$1.core.$strip>;
 type ProviderCliInstallRequest = z$1.infer<typeof providerCliInstallRequestSchema>;

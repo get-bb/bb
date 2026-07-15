@@ -1134,7 +1134,7 @@ function skipEventLargeValuesRoundTripForInlineEvents(
     return;
   }
 
-  const popoutChatMigration = requireExpectedAppliedMigration(
+  const legacyExperimentsMigration = requireExpectedAppliedMigration(
     expectedMigrations,
     "0030_popout_chat_experiments",
   );
@@ -1148,14 +1148,14 @@ function skipEventLargeValuesRoundTripForInlineEvents(
     return;
   }
 
-  if (!appliedCreatedAts.has(popoutChatMigration.createdAt)) {
+  if (!appliedCreatedAts.has(legacyExperimentsMigration.createdAt)) {
     if (
       latestAppliedMigrationCreatedAt !== dropWorkflowTablesMigration.createdAt
     ) {
       return;
     }
 
-    applyMigrationStatements(db, popoutChatMigration);
+    applyMigrationStatements(db, legacyExperimentsMigration);
   }
 
   markMigrationApplied(db, largeValuesMigration);

@@ -130,7 +130,6 @@ function ThreadActionsMenuItems({
     togglePin,
     toggleRead,
     unarchiveThread,
-    sendToPopout,
   } = useThreadActions();
   const isCompactViewport = useIsCompactViewport();
   const isDrawer = surface === "dropdown" && isCompactViewport;
@@ -138,7 +137,6 @@ function ThreadActionsMenuItems({
   const isRead = isThreadRead(thread);
   const isArchived = thread.archivedAt != null;
   const isPinned = thread.pinnedAt !== null;
-  const canSendToPopout = sendToPopout !== null;
 
   return (
     <>
@@ -177,20 +175,6 @@ function ThreadActionsMenuItems({
       >
         {isPinned ? "Unpin" : "Pin"}
       </ThreadActionMenuItem>
-      {showSeparators && canSendToPopout ? (
-        <ThreadActionMenuSeparator surface={surface} />
-      ) : null}
-      {canSendToPopout ? (
-        <ThreadActionMenuItem
-          surface={surface}
-          icon="ExternalLink"
-          onSelect={() => {
-            sendToPopout(thread);
-          }}
-        >
-          Send to popout
-        </ThreadActionMenuItem>
-      ) : null}
       <ThreadActionMenuItem
         surface={surface}
         icon="Edit"

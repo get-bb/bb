@@ -21,7 +21,6 @@ function createArgs(
     openPersistedPanel: vi.fn(),
     openPersistedStorageFile: vi.fn(),
     openPersistedWorkspaceFile: vi.fn(),
-    surface: "page",
     threadId: "thr_1",
     togglePersistedPanel: vi.fn(),
     ...overrides,
@@ -73,22 +72,5 @@ describe("useThreadSecondaryPanelVisibility", () => {
       path: "/tmp/log.txt",
     });
     expect(result.current.isOpen).toBe(true);
-  });
-
-  it("does not reveal a compact drawer for popout surfaces", () => {
-    const args = createArgs({
-      isCompactViewport: true,
-      isPersistedOpen: true,
-      surface: "popout",
-    });
-    const { result } = renderHook(() =>
-      useThreadSecondaryPanelVisibility(args),
-    );
-
-    act(() => {
-      result.current.openCompactDrawer();
-    });
-
-    expect(result.current.isOpen).toBe(false);
   });
 });

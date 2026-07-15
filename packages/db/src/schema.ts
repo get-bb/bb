@@ -150,8 +150,6 @@ export const systemExperiments = sqliteTable("system_experiments", {
   threadSplits: integer("thread_splits", { mode: "boolean" })
     .notNull()
     .default(false),
-  popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),
-  popoutChatHotkey: text("popout_chat_hotkey").notNull(),
   plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer("updated_at").notNull(),
 });

@@ -7,8 +7,6 @@ import {
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
   bbDesktopWindowStateSchema,
-  bbDesktopPopoutMouseEventsIgnoredRequestSchema,
-  bbDesktopPopoutThreadChangedPayloadSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
   type BbDesktopBrowserApi,
@@ -22,10 +20,6 @@ import {
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
   type BbDesktopOpenNewTabHandler,
-  type BbDesktopPopoutApi,
-  type BbDesktopPopoutThreadChangedPayload,
-  type BbDesktopPopoutThreadChangedHandler,
-  type BbDesktopPopoutUnsubscribe,
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
@@ -61,15 +55,6 @@ import {
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
-import {
-  BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
-  BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
-  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
-  BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
-  BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
-  BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
-  BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
-} from "./popout-ipc.js";
 import {
   BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
   type BbDesktopSpellcheckApi,
@@ -176,8 +161,6 @@ const browserSnapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
 const closeWindowRequestListeners =
   new Set<BbDesktopCloseWindowRequestHandler>();
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
-const popoutThreadChangedListeners =
-  new Set<BbDesktopPopoutThreadChangedHandler>();
 
 function normalizeSpellcheckWord(word: string): string | null {
   const normalized = word.trim();
@@ -258,53 +241,8 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
 };
 
-const bbPopoutApi: BbDesktopPopoutApi = {
-  async getCurrentThread(): Promise<BbDesktopPopoutThreadChangedPayload> {
-    try {
-      const payload: unknown = await ipcRenderer.invoke(
-        BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
-      );
-      const parsed =
-        bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
-      return parsed.success ? parsed.data : null;
-    } catch {
-      return null;
-    }
-  },
-  toggle(): void {
-    ipcRenderer.send(BB_DESKTOP_POPOUT_TOGGLE_CHANNEL);
-  },
-  setThread(thread): void {
-    ipcRenderer.send(BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL, thread);
-  },
-  stateChanged(thread): void {
-    ipcRenderer.send(BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL, thread);
-  },
-  openInMain(thread): void {
-    ipcRenderer.send(BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL, thread);
-  },
-  setMouseEventsIgnored(request): void {
-    const parsed =
-      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse(request);
-    if (!parsed.success) {
-      return;
-    }
-    ipcRenderer.send(
-      BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
-      parsed.data,
-    );
-  },
-  onThreadChanged(listener): BbDesktopPopoutUnsubscribe {
-    popoutThreadChangedListeners.add(listener);
-    return () => {
-      popoutThreadChangedListeners.delete(listener);
-    };
-  },
-};
-
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
-  popout: bbPopoutApi,
   get lastCheckedAt() {
     return currentInfo.lastCheckedAt;
   },
@@ -454,19 +392,6 @@ ipcRenderer.on(
       return;
     }
     for (const listener of browserSnapshotListeners) {
-      listener(parsed.data);
-    }
-  },
-);
-
-ipcRenderer.on(
-  BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
-  (_event, payload: unknown) => {
-    const parsed = bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
-    if (!parsed.success) {
-      return;
-    }
-    for (const listener of popoutThreadChangedListeners) {
       listener(parsed.data);
     }
   },

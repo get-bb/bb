@@ -77,15 +77,11 @@ function updateExperiment(
   key: string,
   value: string,
 ): Experiments {
-  if (key === "popoutChatHotkey") {
-    return experimentsSchema.parse({ ...experiments, popoutChatHotkey: value });
-  }
   const enabled = parseBoolean(value);
   switch (key) {
     case "claudeCodeMockCliTraffic":
     case "threadSplits":
     case "plugins":
-    case "popoutChat":
       return experimentsSchema.parse({ ...experiments, [key]: enabled });
     default:
       throw new Error(`Unknown experiment '${key}'.`);

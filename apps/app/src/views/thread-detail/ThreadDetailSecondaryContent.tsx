@@ -61,7 +61,6 @@ interface ThreadDetailSecondaryContentProps {
   isMetadataLoading: boolean;
   isSecondaryPanelOpen: boolean;
   isConversationCollapsed: boolean;
-  surface: "page" | "pane" | "popout";
   /**
    * True when rendering inside a bounded split card. Bounded panes skip the
    * page-bleed negative margins below — the card supplies the boundary, so
@@ -82,7 +81,6 @@ export function ThreadDetailSecondaryContent({
   isMetadataLoading,
   isSecondaryPanelOpen,
   isConversationCollapsed,
-  surface,
   isBoundedPane,
   onToggleConversationCollapse,
   metadata,
@@ -288,9 +286,7 @@ export function ThreadDetailSecondaryContent({
     <div
       className={cn(
         "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip",
-        surface !== "popout" &&
-          !isBoundedPane &&
-          "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
+        !isBoundedPane && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
       )}
     >
       {/*

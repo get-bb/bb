@@ -167,10 +167,8 @@ function useSettingsStoryState() {
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
     useState<StoredTargetId>("default-app");
-  const [experiments, setExperiments] = useState<Experiments>({
-    ...defaultExperiments,
-    popoutChat: true,
-  });
+  const [experiments, setExperiments] =
+    useState<Experiments>(defaultExperiments);
 
   return {
     appearance,
@@ -288,11 +286,7 @@ function FilePreferencesStory() {
   );
 }
 
-function ExperimentsStory({
-  desktopShellAvailable = true,
-}: {
-  desktopShellAvailable?: boolean;
-}) {
+function ExperimentsStory() {
   const state = useSettingsStoryState();
 
   return (
@@ -300,24 +294,11 @@ function ExperimentsStory({
       claudeCodeMockCliTrafficEnabled={
         state.experiments.claudeCodeMockCliTraffic
       }
-      desktopShellAvailable={desktopShellAvailable}
       disabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
           claudeCodeMockCliTraffic: enabled,
-        }))
-      }
-      onPopoutChatEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          popoutChat: enabled,
-        }))
-      }
-      onPopoutChatHotkeyChange={(popoutChatHotkey) =>
-        state.setExperiments((current) => ({
-          ...current,
-          popoutChatHotkey,
         }))
       }
       onThreadSplitsEnabledChange={(enabled) =>
@@ -334,8 +315,6 @@ function ExperimentsStory({
       }
       threadSplitsEnabled={state.experiments.threadSplits}
       pluginsEnabled={state.experiments.plugins}
-      popoutChatEnabled={state.experiments.popoutChat}
-      popoutChatHotkey={state.experiments.popoutChatHotkey}
     />
   );
 }

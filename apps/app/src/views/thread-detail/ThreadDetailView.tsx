@@ -101,7 +101,7 @@ import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getProjectComposeRoutePath,
-  getSurfaceAwareThreadRoutePath,
+  getThreadRoutePath,
   isRoutePath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
@@ -148,8 +148,6 @@ import {
   getBbDesktopInfo,
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
-  MACOS_APP_REGION_NO_DRAG_CLASS,
-  MACOS_WINDOW_DRAG_CLASS,
 } from "@/lib/bb-desktop";
 import {
   openUrlByPreference,
@@ -292,29 +290,13 @@ interface ThreadDetailViewPaneProps extends ThreadRoutePathArgs {
   surface: "pane";
 }
 
-interface ThreadDetailViewPopoutProps {
-  onPopoutHide: () => void;
-  onPopoutNewQuickThread: () => void;
-  onPopoutOpenInMain: (thread: ThreadRoutePathArgs) => void;
-  surface: "popout";
-}
-
 type ThreadDetailViewProps =
   | ThreadDetailViewPageProps
-  | ThreadDetailViewPaneProps
-  | ThreadDetailViewPopoutProps;
+  | ThreadDetailViewPaneProps;
 
 type ThreadDetailViewInternalProps =
   | (ThreadDetailViewPageProps & ThreadRoutePathArgs)
-  | ThreadDetailViewPaneProps
-  | (ThreadDetailViewPopoutProps & ThreadRoutePathArgs);
-
-interface PopoutThreadHeaderProps {
-  onHide: () => void;
-  onNewQuickThread: () => void;
-  onOpenInMain: () => void;
-  threadTitle: string;
-}
+  | ThreadDetailViewPaneProps;
 
 function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
   const visual = resolveRightPanelFileVisual({ path });
@@ -324,58 +306,6 @@ function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
       className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
       aria-hidden
     />
-  );
-}
-
-function PopoutThreadHeader({
-  onHide,
-  onNewQuickThread,
-  onOpenInMain,
-  threadTitle,
-}: PopoutThreadHeaderProps) {
-  const buttonClassName = [
-    "inline-flex items-center justify-center text-muted-foreground",
-    "transition-colors hover:bg-state-hover hover:text-foreground",
-    HEADER_ICON_BUTTON_CLASS,
-    MACOS_APP_REGION_NO_DRAG_CLASS,
-  ].join(" ");
-
-  return (
-    <div
-      className={[
-        MACOS_WINDOW_DRAG_CLASS,
-        "flex h-10 shrink-0 items-center gap-1",
-        "border-b border-border-seam-vertical px-2",
-      ].join(" ")}
-    >
-      <button
-        type="button"
-        className={buttonClassName}
-        aria-label="Hide popout"
-        onClick={onHide}
-      >
-        <Icon name="X" />
-      </button>
-      <p className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">
-        {threadTitle}
-      </p>
-      <button
-        type="button"
-        className={buttonClassName}
-        aria-label="New quick thread"
-        onClick={onNewQuickThread}
-      >
-        <Icon name="EditFile" />
-      </button>
-      <button
-        type="button"
-        className={buttonClassName}
-        aria-label="Open in main app"
-        onClick={onOpenInMain}
-      >
-        <Icon name="ExternalLink" />
-      </button>
-    </div>
   );
 }
 
@@ -498,9 +428,7 @@ function ThreadDetailNotFound() {
   );
 }
 
-function RoutedThreadDetailView(
-  props: ThreadDetailViewPageProps | ThreadDetailViewPopoutProps,
-) {
+function RoutedThreadDetailView() {
   const { projectId, threadId } = useRouteState();
 
   if (!projectId || !threadId) {
@@ -508,23 +436,12 @@ function RoutedThreadDetailView(
   }
 
   return (
-    <DefaultPaneContextProvider surface={props.surface}>
-      {props.surface === "popout" ? (
-        <ThreadDetailViewInternal
-          surface="popout"
-          projectId={projectId}
-          threadId={threadId}
-          onPopoutHide={props.onPopoutHide}
-          onPopoutNewQuickThread={props.onPopoutNewQuickThread}
-          onPopoutOpenInMain={props.onPopoutOpenInMain}
-        />
-      ) : (
-        <ThreadDetailViewInternal
-          surface="page"
-          projectId={projectId}
-          threadId={threadId}
-        />
-      )}
+    <DefaultPaneContextProvider>
+      <ThreadDetailViewInternal
+        surface="page"
+        projectId={projectId}
+        threadId={threadId}
+      />
     </DefaultPaneContextProvider>
   );
 }
@@ -533,7 +450,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   if (props.surface === "pane") {
     return <ThreadDetailViewInternal {...props} />;
   }
-  return <RoutedThreadDetailView {...props} />;
+  return <RoutedThreadDetailView />;
 }
 
 function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
@@ -546,14 +463,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isBoundedPane,
   } = usePaneContext();
   const navigate = useNavigate();
-  const routeSurface = props.surface === "popout" ? "popout" : "page";
   useFixedPanelTabsStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const isPersistedSecondaryPanelOpenForSurface =
-    props.surface === "popout"
-      ? false
-      : isPersistedSecondaryPanelOpen && canShowSecondaryPanel;
+    isPersistedSecondaryPanelOpen && canShowSecondaryPanel;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
@@ -589,13 +503,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   );
   const setThreadSecondaryPanelForSurface =
     useCallback<NullableSecondaryPanelChangeHandler>(
-      (panel) => {
-        if (props.surface === "popout") {
-          return;
-        }
-        setThreadSecondaryPanel(panel);
-      },
-      [props.surface, setThreadSecondaryPanel],
+      (panel) => setThreadSecondaryPanel(panel),
+      [setThreadSecondaryPanel],
     );
   const toggleDefaultPersistedSecondaryPanel =
     useToggleThreadSecondaryPanelSelection(threadId, threadId);
@@ -797,8 +706,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   // The in-app browser surface only exists on desktop; on web this stays false
   // and handled web links keep their external-open behavior.
   const desktopBrowserAvailable = isDesktopBrowserAvailable();
-  const canOpenUrlsInAppBrowser =
-    props.surface !== "popout" && desktopBrowserAvailable;
+  const canOpenUrlsInAppBrowser = desktopBrowserAvailable;
   const browserTabIds = useMemo(
     () => new Set(browserTabs.map((tab) => tab.id)),
     [browserTabs],
@@ -938,9 +846,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     [forkThreadFromMessage],
   );
   const isForkAvailable = isThreadForkable(thread ?? null);
-  const canUseSideChatPanel = props.surface !== "popout";
-  const canStartSideChat =
-    canUseSideChatPanel && (thread?.canSpawnChild ?? false);
+  const canStartSideChat = thread?.canSpawnChild ?? false;
   const dismissCompactKeyboard = useCallback(() => {
     if (!renderSecondaryPanelAsDrawer) {
       return;
@@ -1067,14 +973,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openPersistedPanel: openPersistedSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
-    surface: props.surface,
     threadId,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
   const handleOpenTimelinePluginPanel =
     useCallback<ThreadTimelineOpenPluginPanelHandler>(
       ({ pluginId, actionId, title, params }) => {
-        if (props.surface === "popout") return false;
         const action = pluginThreadPanelActions.find(
           (candidate) =>
             candidate.pluginId === pluginId && candidate.id === actionId,
@@ -1102,12 +1006,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         openCompactDrawer();
         return true;
       },
-      [
-        openCompactDrawer,
-        openPluginPanel,
-        pluginThreadPanelActions,
-        props.surface,
-      ],
+      [openCompactDrawer, openPluginPanel, pluginThreadPanelActions],
     );
   const handleSideChatMessage =
     useCallback<ThreadTimelineSideChatMessageHandler>(
@@ -1254,8 +1153,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     getThreadConversationCollapsedAtom(threadId),
   );
-  const isConversationCollapsed =
-    props.surface === "popout" ? false : storedConversationCollapsed;
+  const isConversationCollapsed = storedConversationCollapsed;
   // The collapse preference only applies while the panel is open on a wide
   // viewport; ThreadDetailSecondaryContent gates it (there is nothing to expand
   // into otherwise) and surfaces the toggle on the seam arrow.
@@ -1333,17 +1231,17 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openNewTab]);
   useAppCommandHandler("panel.newTab", () => {
-    if (props.surface === "popout" || !isFocused) return false;
+    if (!isFocused) return false;
     handleOpenNewTab();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
-    if (props.surface === "popout" || !isFocused) return false;
+    if (!isFocused) return false;
     handleOpenNewTab();
     return true;
   });
   useEffect(() => {
-    if (props.surface === "popout" || !isFocused) {
+    if (!isFocused) {
       return;
     }
     const desktopInfo = getBbDesktopInfo();
@@ -1355,7 +1253,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       return;
     }
     return desktopInfo.onOpenNewTab(handleOpenNewTab);
-  }, [handleOpenNewTab, isFocused, props.surface]);
+  }, [handleOpenNewTab, isFocused]);
   const handleOpenBrowser = useCallback(() => {
     openBrowserTabAndReveal();
   }, [openBrowserTabAndReveal]);
@@ -1386,7 +1284,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   ]);
   useAppCommandHandler("terminal.open", () => {
     if (
-      props.surface === "popout" ||
       !isFocused ||
       !canCreateTerminal ||
       createTerminal.isPending ||
@@ -1454,16 +1351,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isSecondaryPanelOpen,
   ]);
   useAppCommandHandler("panel.toggle", () => {
-    if (props.surface === "popout" || !isFocused) return false;
+    if (!isFocused) return false;
     toggleSecondaryPanel();
     return true;
   });
   useAppCommandHandler("panel.close", () => {
-    if (props.surface === "popout" || !isFocused) return false;
+    if (!isFocused) return false;
     return handleCloseWindowRequest();
   });
   useAppCommandHandler("diff.toggle", () => {
-    if (props.surface === "popout" || !isFocused || !canUseGitUi) {
+    if (!isFocused || !canUseGitUi) {
       return false;
     }
     if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "git-diff") {
@@ -1474,7 +1371,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     return true;
   });
   useEffect(() => {
-    if (props.surface === "popout" || !isFocused) {
+    if (!isFocused) {
       return;
     }
     const desktopInfo = getBbDesktopInfo();
@@ -1485,7 +1382,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       return;
     }
     return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
-  }, [handleCloseWindowRequest, isFocused, props.surface]);
+  }, [handleCloseWindowRequest, isFocused]);
   const handleChangedFileClick = useCallback(
     (selection: WorkspaceChangedFileSelection) => {
       const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);
@@ -1821,9 +1718,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           ? threadSourceThreadId
           : thread?.parentThreadId;
       if (!thread || !relatedThreadId) return null;
-      const href = getSurfaceAwareThreadRoutePath({
+      const href = getThreadRoutePath({
         projectId: thread.projectId,
-        surface: routeSurface,
         threadId: relatedThreadId,
       });
       const relationship =
@@ -1859,7 +1755,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       };
     }, [
       parentThread,
-      routeSurface,
       sourceThread,
       thread,
       threadOriginKind,
@@ -1880,15 +1775,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         .map((entry) => ({
           id: entry.id,
           title: getThreadDisplayTitle(entry),
-          href: getSurfaceAwareThreadRoutePath({
+          href: getThreadRoutePath({
             projectId: entry.projectId,
-            surface: routeSurface,
             threadId: entry.id,
           }),
         }));
       if (activeItems.length === 0) return null;
       return { items: activeItems };
-    }, [childThreadSubsetQuery.data, routeSurface]);
+    }, [childThreadSubsetQuery.data]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -2140,7 +2034,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
   });
   useAppCommandHandler("workspace.openPreferred", () => {
-    if (props.surface === "popout" || !isFocused) return false;
+    if (!isFocused) return false;
     if (activeWorkspaceFilePath && handleOpenFileInEditor) {
       handleOpenFileInEditor(activeWorkspaceFilePath);
       return true;
@@ -2447,39 +2341,26 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         }}
       />
     ) : undefined;
-  const timelineHeader =
-    props.surface === "popout" ? (
-      <PopoutThreadHeader
-        threadTitle={threadTitle}
-        onHide={props.onPopoutHide}
-        onNewQuickThread={props.onPopoutNewQuickThread}
-        onOpenInMain={() => {
-          props.onPopoutOpenInMain({
-            projectId,
-            threadId: thread.id,
-          });
-        }}
-      />
-    ) : (
-      <ThreadDetailHeader
-        actionsMenu={threadActionsMenu}
-        childPillLabel={
-          threadOriginKind === "side-chat"
-            ? "side chat"
-            : parentThreadId
-              ? "child"
-              : null
-        }
-        isSecondaryPanelOpen={isSecondaryPanelOpen}
-        onClosePane={onRequestClose ?? undefined}
-        onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
-        onToggleSecondaryPanel={toggleSecondaryPanel}
-        pluginActions={<PluginThreadActions threadId={thread.id} />}
-        threadHeaderGitActions={gitActions.threadHeaderGitActions}
-        threadTitle={threadTitle}
-        workspaceOpenButton={workspaceOpenButton}
-      />
-    );
+  const timelineHeader = (
+    <ThreadDetailHeader
+      actionsMenu={threadActionsMenu}
+      childPillLabel={
+        threadOriginKind === "side-chat"
+          ? "side chat"
+          : parentThreadId
+            ? "child"
+            : null
+      }
+      isSecondaryPanelOpen={isSecondaryPanelOpen}
+      onClosePane={onRequestClose ?? undefined}
+      onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
+      onToggleSecondaryPanel={toggleSecondaryPanel}
+      pluginActions={<PluginThreadActions threadId={thread.id} />}
+      threadHeaderGitActions={gitActions.threadHeaderGitActions}
+      threadTitle={threadTitle}
+      workspaceOpenButton={workspaceOpenButton}
+    />
+  );
   const composerFooter = (
     <ThreadDetailPromptArea
       canUseGitUi={canUseGitUi}
@@ -2499,9 +2380,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       environmentGoneStatus={threadEnvironmentGoneStatus}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
-      onEscapeEmptyPrompt={
-        props.surface === "popout" ? props.onPopoutHide : undefined
-      }
+      onEscapeEmptyPrompt={undefined}
       onPullRequestMerge={handlePullRequestMerge}
       onPullRequestDraft={handlePullRequestDraft}
       onPullRequestReady={handlePullRequestReady}
@@ -2638,7 +2517,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           isMetadataLoading={environmentQuery.isLoading}
           isSecondaryPanelOpen={isSecondaryPanelOpen}
           isConversationCollapsed={isConversationCollapsed}
-          surface={props.surface}
           isBoundedPane={isBoundedPane}
           onToggleConversationCollapse={toggleConversationCollapse}
           metadata={{

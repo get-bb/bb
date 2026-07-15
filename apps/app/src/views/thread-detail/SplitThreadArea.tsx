@@ -584,7 +584,7 @@ function StandalonePaneContent({ content }: { content: PaneContent }) {
     return <ThreadDetailView surface="page" />;
   }
   if (content.kind === "new-thread") {
-    return <RootComposeView isBoundedPane={false} surface="page" />;
+    return <RootComposeView isBoundedPane={false} />;
   }
   return (
     <PluginPanelView
@@ -683,7 +683,7 @@ function NonThreadPaneContent({
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 md:p-5">
         {content.kind === "new-thread" ? (
-          <RootComposeView isBoundedPane={isBoundedPane} surface="page" />
+          <RootComposeView isBoundedPane={isBoundedPane} />
         ) : (
           <PluginPanelView
             pluginId={content.pluginId}

@@ -5,14 +5,12 @@ import {
   app,
   BrowserWindow,
   clipboard,
-  globalShortcut,
   ipcMain,
   nativeImage,
   nativeTheme,
   session,
   shell,
   type Event,
-  type IpcMainEvent,
   type IpcMainInvokeEvent,
   type WebContents,
 } from "electron";
@@ -21,15 +19,10 @@ import {
   APP_SURFACE_DESKTOP,
   APP_SURFACE_ENV_NAME,
 } from "@bb/config/app-surface";
-import { type AppKeybindings, type Experiments } from "@bb/domain";
+import type { AppKeybindings } from "@bb/domain";
 import {
-  bbDesktopPopoutMouseEventsIgnoredRequestSchema,
-  bbDesktopPopoutThreadChangedPayloadSchema,
-  bbDesktopPopoutThreadRefSchema,
   bbDesktopThemeSchema,
-  getDesktopThreadRoutePath,
   type BbDesktopInfo,
-  type BbDesktopPopoutThreadRef,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -111,7 +104,6 @@ import {
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
-import { BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL } from "./desktop-browser-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
@@ -130,22 +122,6 @@ import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
-import {
-  createPopoutWindowManager,
-  type PopoutWindowManager,
-} from "./popout-window.js";
-import {
-  BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
-  BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
-  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
-  BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
-  BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
-  BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
-} from "./popout-ipc.js";
-import {
-  shouldHandlePopoutToggleSender,
-  shouldHandlePopoutWindowSender,
-} from "./popout-ipc-authorization.js";
 import {
   createLogTailer,
   createLogLineBuffer,
@@ -183,20 +159,6 @@ interface DesktopRuntime {
   ownership: RuntimeOwnership;
   serverUrl: string;
   userDataPath: string | null;
-}
-
-type PopoutWindowOperationExecutor = (
-  manager: PopoutWindowManager,
-) => Promise<void>;
-
-interface RunPopoutWindowOperationArgs {
-  execute: PopoutWindowOperationExecutor;
-  operation: string;
-}
-
-interface LogPopoutWindowOperationFailureArgs {
-  error: unknown;
-  operation: string;
 }
 
 interface LoadStartupErrorArgs {
@@ -280,7 +242,7 @@ interface FetchSystemConfigArgs {
   serverUrl: string;
 }
 
-interface RefreshPopoutExperimentConfigArgs {
+interface RefreshSystemConfigArgs {
   serverUrl: string;
 }
 
@@ -307,12 +269,7 @@ let logViewerLineBuffer: LogLineBuffer | null = null;
 let logViewerPreloadPath: string | null = null;
 let logViewerTailer: LogTailer | null = null;
 let logViewerWindow: BrowserWindow | null = null;
-let popoutWindowManager: PopoutWindowManager | null = null;
-let popoutPreloadPath: string | null = null;
-let popoutWindowUrl: string | null = null;
-let popoutHotkeyAccelerator: string | null = null;
 let systemConfigSync: SystemConfigSync | null = null;
-let popoutExperimentEnabled = false;
 let systemConfigRefreshToken = 0;
 const applicationWindowWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
@@ -913,102 +870,8 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
   };
 }
 
-function unregisterPopoutHotkey(): void {
-  if (popoutHotkeyAccelerator === null) {
-    return;
-  }
-  globalShortcut.unregister(popoutHotkeyAccelerator);
-  popoutHotkeyAccelerator = null;
-}
-
-function disablePopoutExperimentSurfaces(): void {
-  popoutExperimentEnabled = false;
-  unregisterPopoutHotkey();
-  popoutWindowManager?.destroy();
-  popoutWindowManager = null;
-}
-
-function ensurePopoutWindowManager(): PopoutWindowManager | null {
-  if (!popoutExperimentEnabled) {
-    return null;
-  }
-  if (popoutWindowManager !== null) {
-    return popoutWindowManager;
-  }
-  if (popoutPreloadPath === null || popoutWindowUrl === null) {
-    return null;
-  }
-  popoutWindowManager = createPopoutWindowManager({
-    appUrl: popoutWindowUrl,
-    preloadPath: popoutPreloadPath,
-    openExternalUrl(openArgs) {
-      void shell.openExternal(openArgs.url);
-    },
-    openInMainHandler: openPopoutThreadInMain,
-  });
-  return popoutWindowManager;
-}
-
-function logPopoutWindowOperationFailure({
-  error,
-  operation,
-}: LogPopoutWindowOperationFailureArgs): void {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`Could not ${operation}: ${message}\n`);
-}
-
-function runPopoutWindowOperation({
-  execute,
-  operation,
-}: RunPopoutWindowOperationArgs): void {
-  const manager = ensurePopoutWindowManager();
-  if (manager === null) {
-    return;
-  }
-  void execute(manager).catch((error: unknown) => {
-    logPopoutWindowOperationFailure({ error, operation });
-  });
-}
-
-function registerPopoutHotkey(accelerator: string): void {
-  if (popoutHotkeyAccelerator === accelerator) {
-    return;
-  }
-
-  if (
-    globalShortcut.register(accelerator, () => {
-      runPopoutWindowOperation({
-        execute: (manager) => manager.toggle(),
-        operation: "toggle popout chat",
-      });
-    })
-  ) {
-    unregisterPopoutHotkey();
-    popoutHotkeyAccelerator = accelerator;
-    return;
-  }
-
-  // There is no renderer-facing notification channel for desktop shell errors
-  // like globalShortcut registration. Keep popout otherwise usable and log the
-  // failure for desktop diagnostics instead of inventing a one-off surface.
-  process.stderr.write(
-    `Could not register popout chat hotkey "${accelerator}".\n`,
-  );
-}
-
-function applyPopoutExperimentConfig(experiments: Experiments): void {
-  if (!experiments.popoutChat) {
-    disablePopoutExperimentSurfaces();
-    return;
-  }
-
-  popoutExperimentEnabled = true;
-  ensurePopoutWindowManager()?.warm();
-  registerPopoutHotkey(experiments.popoutChatHotkey);
-}
-
 async function refreshSystemConfig(
-  args: RefreshPopoutExperimentConfigArgs,
+  args: RefreshSystemConfigArgs,
 ): Promise<void> {
   const token = systemConfigRefreshToken + 1;
   systemConfigRefreshToken = token;
@@ -1022,20 +885,18 @@ async function refreshSystemConfig(
       currentAppKeybindings,
     );
     refreshApplicationMenu();
-    applyPopoutExperimentConfig(config.experiments);
   } catch (error) {
     if (token !== systemConfigRefreshToken) {
       return;
     }
     const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`Could not refresh popout chat config: ${message}\n`);
+    process.stderr.write(`Could not refresh system config: ${message}\n`);
   }
 }
 
 function stopSystemConfigSync(): void {
   systemConfigSync?.stop();
   systemConfigSync = null;
-  disablePopoutExperimentSurfaces();
 }
 
 function startSystemConfigSync(serverUrl: string): void {
@@ -1129,7 +990,7 @@ async function applyServerTarget(): Promise<void> {
     );
   } else if (target.kind === "connect") {
     // Connect servers authenticate through the local runtime's connect
-    // plugin, then load as plain web pages. Popout/system config/updates
+    // plugin, then load as plain web pages. System config and updates
     // stay pinned to the local runtime.
     const localRuntimeReady = await ensureBuiltinRuntimeAttached();
     if (!localRuntimeReady || currentRuntime === null) {
@@ -1169,7 +1030,7 @@ async function applyServerTarget(): Promise<void> {
     await loadWindowUrl({ url: target.server.url });
   } else {
     // A custom server is a plain web load. The owned local runtime keeps
-    // running, and popout/system config/updates stay pinned to it.
+    // running, and system config and updates stay pinned to it.
     bbAppLoaded = true;
     await loadWindowUrl({ url: target.url });
   }
@@ -1216,90 +1077,16 @@ async function openSetServerUrlDialog(): Promise<void> {
   if (result.kind === "cancelled") {
     return;
   }
-  if (result.kind === "clear" && serverTargetStore.getCustomServerUrl() === null) {
+  if (
+    result.kind === "clear" &&
+    serverTargetStore.getCustomServerUrl() === null
+  ) {
     return;
   }
   await serverTargetStore.setCustomServerUrl(
     result.kind === "set" ? result.url : null,
   );
   await applyServerTarget();
-}
-
-function isApplicationWindowSender(webContents: WebContents): boolean {
-  return applicationWindowWebContentsIds.has(webContents.id);
-}
-
-function isPopoutWindowSender(webContents: WebContents): boolean {
-  return popoutWindowManager?.ownsWebContents(webContents) === true;
-}
-
-function shouldHandleMainWindowPopoutEvent(event: IpcMainEvent): boolean {
-  return isApplicationWindowSender(event.sender);
-}
-
-function shouldHandlePopoutToggleEvent(event: IpcMainEvent): boolean {
-  return shouldHandlePopoutToggleSender({
-    isApplicationWindowSender: isApplicationWindowSender(event.sender),
-    isPopoutWindowSender: isPopoutWindowSender(event.sender),
-  });
-}
-
-function shouldHandlePopoutWindowEvent(event: IpcMainEvent): boolean {
-  return shouldHandlePopoutWindowSender(isPopoutWindowSender(event.sender));
-}
-
-function shouldHandlePopoutWindowInvoke(event: IpcMainInvokeEvent): boolean {
-  return shouldHandlePopoutWindowSender(isPopoutWindowSender(event.sender));
-}
-
-function getWindowUrlForRoute(path: string): string | null {
-  // Routes opened from popout/desktop chrome always target the local runtime,
-  // never a remote server a window may currently be displaying.
-  const baseUrl =
-    currentRuntime !== null
-      ? resolveDesktopWindowUrl({
-          env: process.env,
-          serverUrl: currentRuntime.serverUrl,
-        })
-      : currentWindowUrl;
-  if (baseUrl === null || baseUrl === undefined) {
-    return null;
-  }
-  const url = new URL(baseUrl);
-  url.pathname = path;
-  url.search = "";
-  url.hash = "";
-  return url.toString();
-}
-
-async function openPopoutThreadInMain(
-  thread: BbDesktopPopoutThreadRef,
-): Promise<boolean> {
-  if (desktopWindowFactory === null) {
-    return false;
-  }
-  const path = getDesktopThreadRoutePath(thread);
-  const firstWindow = BrowserWindow.getAllWindows().find((browserWindow) =>
-    isRegisteredApplicationWindow(browserWindow),
-  );
-  if (firstWindow !== undefined) {
-    sendToApplicationRenderer(
-      firstWindow,
-      BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
-      { url: path },
-    );
-    firstWindow.focus();
-    return true;
-  }
-  const url = getWindowUrlForRoute(path);
-  if (url === null) {
-    return false;
-  }
-  const browserWindow = await createApplicationWindow({
-    initialUrl: url,
-    stateKey: null,
-  });
-  return browserWindow !== null;
 }
 
 function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
@@ -1491,11 +1278,6 @@ async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
 
 async function loadBbApp(serverUrl: string): Promise<void> {
   bbAppLoaded = true;
-  if (popoutWindowUrl !== serverUrl) {
-    popoutWindowManager?.destroy();
-    popoutWindowManager = null;
-  }
-  popoutWindowUrl = serverUrl;
   await loadWindowUrl({ url: serverUrl });
   if (shouldOpenDevTools()) {
     desktopWindowFactory?.openDevTools();
@@ -1636,81 +1418,6 @@ function registerDesktopUpdateIpc(): void {
         return;
       }
       void shell.openExternal(parsed.toString());
-    },
-  );
-}
-
-function registerPopoutIpc(): void {
-  ipcMain.on(BB_DESKTOP_POPOUT_TOGGLE_CHANNEL, (event) => {
-    if (!shouldHandlePopoutToggleEvent(event)) {
-      return;
-    }
-    runPopoutWindowOperation({
-      execute: (manager) => manager.toggle(),
-      operation: "toggle popout chat",
-    });
-  });
-  ipcMain.on(
-    BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
-    (event, payload: unknown) => {
-      if (!shouldHandleMainWindowPopoutEvent(event)) {
-        return;
-      }
-      const parsed = bbDesktopPopoutThreadRefSchema.safeParse(payload);
-      if (!parsed.success) {
-        return;
-      }
-      runPopoutWindowOperation({
-        execute: (manager) => manager.setThread(parsed.data),
-        operation: "set popout chat thread",
-      });
-    },
-  );
-  ipcMain.handle(BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL, (event) => {
-    if (!shouldHandlePopoutWindowInvoke(event)) {
-      return null;
-    }
-    return popoutWindowManager?.getCurrentThread() ?? null;
-  });
-  ipcMain.on(
-    BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
-    (event, payload: unknown) => {
-      if (!shouldHandlePopoutWindowEvent(event)) {
-        return;
-      }
-      const parsed =
-        bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
-      if (!parsed.success) {
-        return;
-      }
-      ensurePopoutWindowManager()?.setCurrentThread(parsed.data);
-    },
-  );
-  ipcMain.on(
-    BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
-    (event, payload: unknown) => {
-      if (!shouldHandlePopoutWindowEvent(event)) {
-        return;
-      }
-      const parsed = bbDesktopPopoutThreadRefSchema.safeParse(payload);
-      if (!parsed.success) {
-        return;
-      }
-      ensurePopoutWindowManager()?.openInMain(parsed.data);
-    },
-  );
-  ipcMain.on(
-    BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
-    (event, payload: unknown) => {
-      if (!shouldHandlePopoutWindowEvent(event)) {
-        return;
-      }
-      const parsed =
-        bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse(payload);
-      if (!parsed.success) {
-        return;
-      }
-      ensurePopoutWindowManager()?.setMouseEventsIgnored(parsed.data);
     },
   );
 }
@@ -2082,7 +1789,6 @@ async function runDesktopApp(): Promise<void> {
     sendDesktopInfoChanged();
   });
   registerDesktopUpdateIpc();
-  registerPopoutIpc();
   desktopBrowserViewManager = createDesktopBrowserViewManager({
     dispatchAppCommand({ command, hostWebContentsId }) {
       const browserWindow = BrowserWindow.getAllWindows().find(
@@ -2122,7 +1828,6 @@ async function runDesktopApp(): Promise<void> {
       return new BrowserWindow(options);
     },
   };
-  popoutPreloadPath = preloadPath;
   logViewerPreloadPath = resolvedLogViewerPreloadPath;
   serverUrlDialogPreloadPath = resolvedServerUrlDialogPreloadPath;
   desktopWindowFactory = createDesktopWindowFactory({
@@ -2152,7 +1857,7 @@ async function runDesktopApp(): Promise<void> {
     registerApplicationWindow(browserWindow);
   }
   await initializeRuntime({ bridgePath, serverUrl, userDataPath });
-  // The local runtime always starts (popout, system config, and updates stay
+  // The local runtime always starts (system config and updates stay
   // pinned to it); a persisted remote target then replaces the window URL.
   if (serverTargetStore.getTarget().kind !== "builtin") {
     await applyServerTarget();

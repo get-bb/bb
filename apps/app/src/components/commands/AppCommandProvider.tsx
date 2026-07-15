@@ -19,7 +19,6 @@ import {
   type AppKeybindings,
   type AppShortcut,
 } from "@bb/domain";
-import { useLocation } from "react-router-dom";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
@@ -89,7 +88,6 @@ function hasOpenModal(): boolean {
 }
 
 export function AppCommandProvider({ children }: { children: ReactNode }) {
-  const location = useLocation();
   const systemConfig = useSystemConfig();
   const keybindings = systemConfig.data?.keybindings ?? EMPTY_KEYBINDINGS;
   const showKeyboardHints =
@@ -101,7 +99,6 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     null,
   );
   const keybindingsRef = useRef(keybindings);
-  const mainSurfaceRef = useRef(!location.pathname.startsWith("/popout"));
   const handlersRef = useRef(
     new Map<AppCommandId, Map<symbol, AppCommandHandlerRegistration>>(),
   );
@@ -153,10 +150,6 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     keybindingsRef.current = keybindings;
   }, [keybindings]);
-
-  useEffect(() => {
-    mainSurfaceRef.current = !location.pathname.startsWith("/popout");
-  }, [location.pathname]);
 
   const registerHandler = useCallback<
     AppCommandProviderValue["registerHandler"]
@@ -211,7 +204,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const currentContext = useCallback(
     (target: EventTarget | null): AppCommandContext => {
       const next = { ...EMPTY_CONTEXT };
-      next.mainSurface = mainSurfaceRef.current;
+      next.mainSurface = true;
       next.modalOpen = hasOpenModal();
       next.editableFocus = isEditableKeyboardTarget(target);
       next.terminalFocus =

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
@@ -16,7 +16,6 @@ import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   AUTH_CALLBACK_ROUTE_PATH,
-  POPOUT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
@@ -26,12 +25,7 @@ import {
   SETTINGS_SECTION_ROUTE_PATH,
   getSettingsRoutePath,
 } from "./lib/route-paths";
-import { Icon } from "@bb/shared-ui/icon";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
-import {
-  POPOUT_QUICK_ASK_HEIGHT,
-  POPOUT_SHADOW_MARGIN,
-} from "@bb/desktop-contract";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -43,38 +37,7 @@ const ProjectSettingsView = lazy(() =>
     default: m.ProjectSettingsView,
   })),
 );
-const PopoutChatView = lazy(() =>
-  import("./views/PopoutChatView").then((m) => ({
-    default: m.PopoutChatView,
-  })),
-);
 const SplitWorkspaceRoute = lazy(() => import("./views/SplitWorkspaceRoute"));
-
-function PopoutRouteFallback() {
-  useEffect(() => {
-    document.documentElement.setAttribute("data-bb-popout-route", "");
-    document.body.setAttribute("data-bb-popout-route", "");
-    return () => {
-      document.documentElement.removeAttribute("data-bb-popout-route");
-      document.body.removeAttribute("data-bb-popout-route");
-    };
-  }, []);
-
-  return (
-    <div
-      className="flex h-screen flex-col overflow-visible bg-transparent text-foreground"
-      style={{ padding: `${POPOUT_SHADOW_MARGIN}px` }}
-    >
-      <div
-        className="flex min-h-0 w-full flex-col items-center justify-center rounded-2xl border border-border bg-background text-sm text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.08),0_8px_20px_rgba(0,0,0,0.16)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_2px_8px_rgba(0,0,0,0.4),0_8px_20px_rgba(0,0,0,0.5)]"
-        style={{ height: `${POPOUT_QUICK_ASK_HEIGHT}px` }}
-      >
-        <Icon name="Spinner" className="mb-2 size-4 animate-spin" />
-        Loading...
-      </div>
-    </div>
-  );
-}
 
 function AppRoutes() {
   return (
@@ -137,14 +100,6 @@ export function App() {
             <Route
               path={AUTH_CALLBACK_ROUTE_PATH}
               element={<AuthCallbackView />}
-            />
-            <Route
-              path={`${POPOUT_ROUTE_PATH}/*`}
-              element={
-                <Suspense fallback={<PopoutRouteFallback />}>
-                  <PopoutChatView />
-                </Suspense>
-              }
             />
             <Route path="*" element={<AppRoutes />} />
           </Routes>

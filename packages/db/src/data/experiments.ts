@@ -10,8 +10,6 @@ export function getExperiments(db: DbConnection): Experiments {
     .select({
       claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
       threadSplits: systemExperiments.threadSplits,
-      popoutChat: systemExperiments.popoutChat,
-      popoutChatHotkey: systemExperiments.popoutChatHotkey,
       plugins: systemExperiments.plugins,
     })
     .from(systemExperiments)
@@ -31,8 +29,6 @@ export function setExperiments(
       id: SYSTEM_EXPERIMENTS_ROW_ID,
       claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
       threadSplits: experiments.threadSplits,
-      popoutChat: experiments.popoutChat,
-      popoutChatHotkey: experiments.popoutChatHotkey,
       plugins: experiments.plugins,
       updatedAt,
     })
@@ -41,8 +37,6 @@ export function setExperiments(
       set: {
         claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
         threadSplits: experiments.threadSplits,
-        popoutChat: experiments.popoutChat,
-        popoutChatHotkey: experiments.popoutChatHotkey,
         plugins: experiments.plugins,
         updatedAt,
       },

@@ -14,8 +14,6 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
         threadSplits: false,
-        popoutChat: false,
-        popoutChatHotkey: "Alt+Space",
         plugins: false,
       });
     });
@@ -29,8 +27,6 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
           threadSplits: true,
-          popoutChat: true,
-          popoutChatHotkey: "CommandOrControl+Shift+P",
           plugins: false,
         }),
       });
@@ -38,15 +34,11 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
         threadSplits: true,
-        popoutChat: true,
-        popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         threadSplits: true,
-        popoutChat: true,
-        popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
       });
 
@@ -56,8 +48,6 @@ describe("experiments settings", () => {
       ).toEqual({
         claudeCodeMockCliTraffic: true,
         threadSplits: true,
-        popoutChat: true,
-        popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
       });
     });
@@ -74,8 +64,6 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
           threadSplits: false,
-          popoutChat: false,
-          popoutChatHotkey: "Alt+Space",
           plugins: false,
         }),
       });

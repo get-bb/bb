@@ -104,7 +104,6 @@ import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
-import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -134,10 +133,8 @@ import {
   getThreadRoutePath,
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
-  getSurfaceAwareThreadRoutePath,
   isRoutePath,
   isProjectlessProjectId,
-  type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { getBrowserUrlHost } from "@/lib/browser-url";
@@ -392,16 +389,9 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
   return "focusPrompt" in state && state.focusPrompt === true;
 }
 
-type RootComposeViewProps =
-  | {
-      isBoundedPane: boolean;
-      surface: "page";
-    }
-  | {
-      onThreadCreated(args: ThreadRoutePathArgs): void;
-      onEscapeEmptyPrompt(): void;
-      surface: "popout";
-    };
+interface RootComposeViewProps {
+  isBoundedPane: boolean;
+}
 
 interface BuildMobileRecentThreadsArgs {
   sidebarNavigation: SidebarBootstrapResponse | undefined;
@@ -814,7 +804,9 @@ export function buildRootComposeTerminalSessions({
   environmentTerminalSessions,
   globalTerminalSessions,
   terminalTarget,
-}: BuildRootComposeTerminalSessionsArgs): readonly TerminalSession[] | undefined {
+}: BuildRootComposeTerminalSessionsArgs):
+  | readonly TerminalSession[]
+  | undefined {
   if (terminalTarget?.kind === "environment") {
     return environmentTerminalSessions;
   }
@@ -917,7 +909,7 @@ export function RootComposeRoute() {
       poolOptions={FILE_PREVIEW_WORKER_POOL_OPTIONS}
       highlighterOptions={FILE_PREVIEW_HIGHLIGHTER_OPTIONS}
     >
-      <RootComposeView isBoundedPane={false} surface="page" />
+      <RootComposeView isBoundedPane={false} />
     </WorkerPoolContextProvider>
   );
 }
@@ -1303,7 +1295,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     { enabled: Boolean(projectId) },
   );
   const reuseThreadOptions = useMemo(
-    () => buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
+    () =>
+      buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
     [threadsQuery.data, worktreeHostNameById],
   );
   const mobileRecentThreads = useMemo(
@@ -1705,118 +1698,115 @@ export function RootComposeView(props: RootComposeViewProps) {
   // `inputsOverride` bypasses the draft: plugin slash-command `{ send }`
   // results (design §4.9) submit through the same thread-creation path
   // without touching what the user has typed.
-  const submitPromptInternal = useCallback(async (
-    inputsOverride: PromptInput[] | null,
-  ) => {
-    const submittedDraft =
-      inputsOverride === null
-        ? {
-            text: promptDraft.text,
-            mentions: promptDraft.mentions,
-            attachments: promptDraft.attachments,
-          }
-        : null;
-    const submittedInput =
-      submittedDraft !== null
-        ? promptDraftToInput(submittedDraft)
-        : (inputsOverride ?? []);
-    if (!projectId || !selectedProviderId || !selectedThreadModel) {
-      return;
-    }
-
-    setAttachmentError(null);
-
-    if (
-      submittedInput.length === 0 ||
-      createThread.isPending ||
-      isCodexCliVersionBlocked ||
-      managedWorktreeAvailabilityPending ||
-      managedWorktreeUnavailable ||
-      (forkSeed === null && !selectedEnvironment)
-    ) {
-      return;
-    }
-
-    try {
-      const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
-        isForkDraft: forkSeed !== null,
-        navigateToThreadAfterCreate,
-      });
-      const request =
-        forkSeed !== null
-          ? buildForkThreadRequest({
-              ...forkSeed,
-              input: submittedInput,
-              model: selectedThreadModel,
-              permissionMode,
-              reasoningLevel,
-              serviceTier: supportsServiceTier ? serviceTier : undefined,
-            })
-          : selectedEnvironment !== null
-            ? {
-                input: submittedInput,
-                projectId,
-                providerId: selectedProviderId,
-                model: selectedThreadModel,
-                ...(rootComposeFolderId
-                  ? { folderId: rootComposeFolderId }
-                  : {}),
-                ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-                reasoningLevel,
-                permissionMode,
-                executionInputSources,
-                environment: selectedEnvironment,
-              }
-            : null;
-      if (request === null) {
+  const submitPromptInternal = useCallback(
+    async (inputsOverride: PromptInput[] | null) => {
+      const submittedDraft =
+        inputsOverride === null
+          ? {
+              text: promptDraft.text,
+              mentions: promptDraft.mentions,
+              attachments: promptDraft.attachments,
+            }
+          : null;
+      const submittedInput =
+        submittedDraft !== null
+          ? promptDraftToInput(submittedDraft)
+          : (inputsOverride ?? []);
+      if (!projectId || !selectedProviderId || !selectedThreadModel) {
         return;
       }
-      const thread = await createThread.mutateAsync(request);
-      setLastCreatedThreadId(thread.id);
-      clearReuseEnvironment();
-      setForkSeed(null);
-      setRootComposeFolderId(null);
-      if (submittedDraft !== null) {
-        promptDraft.clearIfCurrentMatches(submittedDraft);
+
+      setAttachmentError(null);
+
+      if (
+        submittedInput.length === 0 ||
+        createThread.isPending ||
+        isCodexCliVersionBlocked ||
+        managedWorktreeAvailabilityPending ||
+        managedWorktreeUnavailable ||
+        (forkSeed === null && !selectedEnvironment)
+      ) {
+        return;
       }
-      if (props.surface === "popout") {
-        props.onThreadCreated({
-          projectId: thread.projectId,
-          threadId: thread.id,
+
+      try {
+        const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
+          isForkDraft: forkSeed !== null,
+          navigateToThreadAfterCreate,
         });
-      } else if (shouldNavigateToCreatedThread) {
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
-        );
+        const request =
+          forkSeed !== null
+            ? buildForkThreadRequest({
+                ...forkSeed,
+                input: submittedInput,
+                model: selectedThreadModel,
+                permissionMode,
+                reasoningLevel,
+                serviceTier: supportsServiceTier ? serviceTier : undefined,
+              })
+            : selectedEnvironment !== null
+              ? {
+                  input: submittedInput,
+                  projectId,
+                  providerId: selectedProviderId,
+                  model: selectedThreadModel,
+                  ...(rootComposeFolderId
+                    ? { folderId: rootComposeFolderId }
+                    : {}),
+                  ...(supportsServiceTier && serviceTier
+                    ? { serviceTier }
+                    : {}),
+                  reasoningLevel,
+                  permissionMode,
+                  executionInputSources,
+                  environment: selectedEnvironment,
+                }
+              : null;
+        if (request === null) {
+          return;
+        }
+        const thread = await createThread.mutateAsync(request);
+        setLastCreatedThreadId(thread.id);
+        clearReuseEnvironment();
+        setForkSeed(null);
+        setRootComposeFolderId(null);
+        if (submittedDraft !== null) {
+          promptDraft.clearIfCurrentMatches(submittedDraft);
+        }
+        if (shouldNavigateToCreatedThread) {
+          navigate(
+            getThreadRoutePath({
+              projectId: thread.projectId,
+              threadId: thread.id,
+            }),
+          );
+        }
+      } catch {
+        // Global mutation error handling already surfaced the failure.
       }
-    } catch {
-      // Global mutation error handling already surfaced the failure.
-    }
-  }, [
-    clearReuseEnvironment,
-    createThread,
-    executionInputSources,
-    forkSeed,
-    isCodexCliVersionBlocked,
-    managedWorktreeAvailabilityPending,
-    managedWorktreeUnavailable,
-    navigate,
-    navigateToThreadAfterCreate,
-    permissionMode,
-    projectId,
-    props,
-    promptDraft,
-    reasoningLevel,
-    rootComposeFolderId,
-    selectedEnvironment,
-    selectedProviderId,
-    selectedThreadModel,
-    serviceTier,
-    supportsServiceTier,
-  ]);
+    },
+    [
+      clearReuseEnvironment,
+      createThread,
+      executionInputSources,
+      forkSeed,
+      isCodexCliVersionBlocked,
+      managedWorktreeAvailabilityPending,
+      managedWorktreeUnavailable,
+      navigate,
+      navigateToThreadAfterCreate,
+      permissionMode,
+      projectId,
+      promptDraft,
+      reasoningLevel,
+      rootComposeFolderId,
+      selectedEnvironment,
+      selectedProviderId,
+      selectedThreadModel,
+      serviceTier,
+      supportsServiceTier,
+    ],
+  );
 
   const submitPrompt = useCallback(
     () => submitPromptInternal(null),
@@ -1838,21 +1828,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     (branchEnvironmentMode === "local" &&
       selectedBranch !== null &&
       branchUiState.mutationBlocker !== null);
-
-  const isPromptEmpty = useCallback(
-    () => promptInput.length === 0,
-    [promptInput.length],
-  );
-  const onEscapeEmptyPrompt =
-    props.surface === "popout" ? props.onEscapeEmptyPrompt : undefined;
-  const hideEmptyPopoutPrompt = useCallback(() => {
-    onEscapeEmptyPrompt?.();
-  }, [onEscapeEmptyPrompt]);
-  useEscapeToHide({
-    enabled: props.surface === "popout",
-    isEmpty: isPromptEmpty,
-    onHide: hideEmptyPopoutPrompt,
-  });
 
   const currentPromptDraft = useMemo(
     () => ({
@@ -1919,8 +1894,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
   );
-  const isPersistedSecondaryPanelOpen =
-    props.surface === "page" && fixedPanelTabsState.secondary.isOpen;
+  const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
@@ -1963,16 +1937,11 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const setRootSecondaryPanelForSurface =
     useCallback<NullableSecondaryPanelChangeHandler>(
-      (panel) => {
-        if (props.surface !== "page") {
-          return;
-        }
-        setRootSecondaryPanel(panel);
-      },
-      [props.surface, setRootSecondaryPanel],
+      (panel) => setRootSecondaryPanel(panel),
+      [setRootSecondaryPanel],
     );
   const rootPanelEnvironmentQuery = useEnvironment(rootPanelEnvironmentId, {
-    enabled: props.surface === "page" && rootPanelEnvironmentId !== null,
+    enabled: rootPanelEnvironmentId !== null,
     staleTime: 5_000,
   });
   const rootPanelEnvironment = rootPanelEnvironmentQuery.data;
@@ -2022,37 +1991,33 @@ export function RootComposeView(props: RootComposeViewProps) {
     threadStorageRootPath: rootThreadStorageRootPath,
   } = useThreadStorageViewer({
     activePath: null,
-    fileListEnabled: props.surface === "page" && rootPanelThreadId !== null,
+    fileListEnabled: rootPanelThreadId !== null,
     filePreviewEnabled: false,
     threadId: rootPanelThreadId ?? undefined,
   });
   const shouldUseRootStorageViewerForActiveTab =
     rawActiveRootStorageFileThreadId !== null &&
     rawActiveRootStorageFileThreadId === rootPanelThreadId;
-  const {
-    threadStorageRootPath: activeStorageThreadStorageRootPath,
-  } = useThreadStorageViewer({
-    activePath: null,
-    fileListEnabled:
-      props.surface === "page" &&
-      rawActiveRootStorageFileThreadId !== null &&
-      !shouldUseRootStorageViewerForActiveTab,
-    filePreviewEnabled: false,
-    threadId:
-      rawActiveRootStorageFileThreadId !== null &&
-      !shouldUseRootStorageViewerForActiveTab
-        ? rawActiveRootStorageFileThreadId
-        : undefined,
-  });
+  const { threadStorageRootPath: activeStorageThreadStorageRootPath } =
+    useThreadStorageViewer({
+      activePath: null,
+      fileListEnabled:
+        rawActiveRootStorageFileThreadId !== null &&
+        !shouldUseRootStorageViewerForActiveTab,
+      filePreviewEnabled: false,
+      threadId:
+        rawActiveRootStorageFileThreadId !== null &&
+        !shouldUseRootStorageViewerForActiveTab
+          ? rawActiveRootStorageFileThreadId
+          : undefined,
+    });
   const activeStorageFileRootPath = shouldUseRootStorageViewerForActiveTab
     ? rootThreadStorageRootPath
     : activeStorageThreadStorageRootPath;
   const environmentTerminalsListQuery = useEnvironmentTerminals(
     rootPanelEnvironmentId ?? "",
     {
-      enabled:
-        props.surface === "page" &&
-        rootPanelTerminalTarget?.kind === "environment",
+      enabled: rootPanelTerminalTarget?.kind === "environment",
     },
   );
   const globalTerminalsListQuery = useTerminals(
@@ -2066,15 +2031,14 @@ export function RootComposeView(props: RootComposeViewProps) {
         }
       : null,
     {
-      enabled:
-        props.surface === "page" &&
-        rootPanelTerminalTarget?.kind === "host_path",
+      enabled: rootPanelTerminalTarget?.kind === "host_path",
     },
   );
   const loadedTerminalSessions = useMemo(
     () =>
       buildRootComposeTerminalSessions({
-        environmentTerminalSessions: environmentTerminalsListQuery.data?.sessions,
+        environmentTerminalSessions:
+          environmentTerminalsListQuery.data?.sessions,
         globalTerminalSessions: globalTerminalsListQuery.data?.sessions,
         terminalTarget: rootPanelTerminalTarget,
       }),
@@ -2084,8 +2048,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       rootPanelTerminalTarget,
     ],
   );
-  const terminalSessions =
-    loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
+  const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsListLoaded = loadedTerminalSessions !== undefined;
   const terminalsById = useMemo(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
@@ -2122,8 +2085,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     selectFileSearchResult,
     updateBrowserTab,
   } = useThreadFileTabs({
-    panelStateId:
-      props.surface === "page" ? ROOT_COMPOSE_FIXED_PANEL_STATE_ID : null,
+    panelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     syncThreadId: null,
     environmentId: rootPanelEnvironmentId,
     fileOwnerThreadId: rootPanelThreadId,
@@ -2202,13 +2164,12 @@ export function RootComposeView(props: RootComposeViewProps) {
   const closeRootSecondaryPanel = useCallback(() => {
     setRootSecondaryPanelForSurface(null);
   }, [setRootSecondaryPanelForSurface]);
-  const openRootSecondaryPanel =
-    useCallback<SecondaryPanelChangeHandler>(
-      (panel) => {
-        setRootSecondaryPanelForSurface(panel);
-      },
-      [setRootSecondaryPanelForSurface],
-    );
+  const openRootSecondaryPanel = useCallback<SecondaryPanelChangeHandler>(
+    (panel) => {
+      setRootSecondaryPanelForSurface(panel);
+    },
+    [setRootSecondaryPanelForSurface],
+  );
   const toggleRootPersistedSecondaryPanel = useCallback(() => {
     if (isPersistedSecondaryPanelOpen) {
       closeRootSecondaryPanel();
@@ -2234,7 +2195,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     openPersistedPanel: openRootSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
-    surface: props.surface,
     threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
@@ -2246,9 +2206,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       if (resource.kind === "thread") {
         return () =>
           navigate(
-            getSurfaceAwareThreadRoutePath({
+            getThreadRoutePath({
               projectId: resource.projectId ?? projectId,
-              surface: props.surface,
               threadId: resource.threadId,
             }),
           );
@@ -2286,7 +2245,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       openStorageFile,
       openWorkspaceFile,
       projectId,
-      props.surface,
       rootPanelThreadId,
     ],
   );
@@ -2328,7 +2286,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     ],
   );
   useEffect(() => {
-    if (props.surface !== "page" || !isSecondaryPanelOpen) {
+    if (!isSecondaryPanelOpen) {
       return;
     }
     if (
@@ -2339,7 +2297,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       return;
     }
     openTab({ kind: "new-tab" });
-  }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab, props.surface]);
+  }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab]);
   const openBrowserTab = useCallback(
     (url?: string) => {
       const browserUrl = url ?? "";
@@ -2401,11 +2359,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
   }, [browserTabIds, openBrowserTabAndReveal]);
   const renderBrowserDeck = useCallback(
-    ({
-      canShowNativeBrowserView,
-    }: {
-      canShowNativeBrowserView: boolean;
-    }) => {
+    ({ canShowNativeBrowserView }: { canShowNativeBrowserView: boolean }) => {
       if (rootPanelThreadId === null) {
         return null;
       }
@@ -2454,12 +2408,10 @@ export function RootComposeView(props: RootComposeViewProps) {
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openTab]);
   useAppCommandHandler("panel.newTab", () => {
-    if (props.surface !== "page") return false;
     handleOpenNewTab();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
-    if (props.surface !== "page") return false;
     handleOpenNewTab();
     return true;
   });
@@ -2470,14 +2422,13 @@ export function RootComposeView(props: RootComposeViewProps) {
     }
     handleOpenNewTab();
   }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
-  const handleSecondaryPanelChange =
-    useCallback<SecondaryPanelChangeHandler>(
-      (panel) => {
-        clearActiveFileTabs();
-        openSecondaryPanel(panel);
-      },
-      [clearActiveFileTabs, openSecondaryPanel],
-    );
+  const handleSecondaryPanelChange = useCallback<SecondaryPanelChangeHandler>(
+    (panel) => {
+      clearActiveFileTabs();
+      openSecondaryPanel(panel);
+    },
+    [clearActiveFileTabs, openSecondaryPanel],
+  );
   const handleSecondaryPanelFocus = useCallback(() => {
     touchFixedPanelTabsState();
   }, [touchFixedPanelTabsState]);
@@ -2525,7 +2476,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   ]);
   useAppCommandHandler("terminal.open", () => {
     if (
-      props.surface !== "page" ||
       !canCreateRootTerminal ||
       rootPanelTerminalTarget === null ||
       createEnvironmentTerminalMutation.isPending ||
@@ -2618,18 +2568,13 @@ export function RootComposeView(props: RootComposeViewProps) {
     isSecondaryPanelOpen,
   ]);
   useAppCommandHandler("panel.toggle", () => {
-    if (props.surface !== "page") return false;
     handleToggleSecondaryPanel();
     return true;
   });
   useAppCommandHandler("panel.close", () => {
-    if (props.surface !== "page") return false;
     return handleCloseWindowRequest();
   });
   useEffect(() => {
-    if (props.surface !== "page") {
-      return;
-    }
     const desktopInfo = getBbDesktopInfo();
     if (
       desktopInfo === null ||
@@ -2638,7 +2583,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       return;
     }
     return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
-  }, [handleCloseWindowRequest, props.surface]);
+  }, [handleCloseWindowRequest]);
   const fileTabs = (() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
@@ -2778,7 +2723,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeWorkspaceFileEnvironmentId,
     {
       enabled:
-        props.surface === "page" &&
         activeWorkspaceFileEnvironmentId !== null &&
         activeWorkspaceFileEnvironmentId !== rootPanelEnvironmentId,
       staleTime: 5_000,
@@ -2792,7 +2736,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeRootHostFileEnvironmentId,
     {
       enabled:
-        props.surface === "page" &&
         activeRootHostFileEnvironmentId !== null &&
         activeRootHostFileEnvironmentId !== rootPanelEnvironmentId,
       staleTime: 5_000,
@@ -2806,7 +2749,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeRootStorageFileEnvironmentId,
     {
       enabled:
-        props.surface === "page" &&
         activeRootStorageFileEnvironmentId !== null &&
         activeRootStorageFileEnvironmentId !== rootPanelEnvironmentId,
       staleTime: 5_000,
@@ -2937,7 +2879,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       }
     : undefined;
   useAppCommandHandler("workspace.openPreferred", () => {
-    if (props.surface !== "page") return false;
     if (
       activeWorkspaceFilePath !== null &&
       activeWorkspaceFileEnvironmentId !== null &&
@@ -3130,7 +3071,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   // The shared position class keeps this footprint paired with the no-drag
   // cutout the macOS window-drag strip carves for it while the panel is closed
   // (see RootComposeSecondaryContent).
-  const isBoundedPage = props.surface === "page" && props.isBoundedPane;
+  const isBoundedPage = props.isBoundedPane;
   const panelTogglePositionClassName = isBoundedPage
     ? ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS
     : ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
@@ -3219,7 +3160,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const isForkDraft = forkSeed !== null;
   const showEmptyWelcome =
-    props.surface === "page" &&
     !isForkDraft &&
     !startedComposing &&
     projects !== undefined &&
@@ -3516,16 +3456,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       execution={executionConfig}
     />
   );
-
-  if (props.surface === "popout") {
-    return (
-      <>
-        <div className="w-full">{promptBox}</div>
-        {providerCliInstallLogDialog}
-        {machineSetupDialog}
-      </>
-    );
-  }
 
   return (
     <>

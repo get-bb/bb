@@ -322,7 +322,6 @@ function createProps({
       renderBrowserDeck,
       showGitDiffTab: false,
     },
-    surface: "page",
     timeline: {
       activeThinking: null,
       hasOlderTimelineRows: false,

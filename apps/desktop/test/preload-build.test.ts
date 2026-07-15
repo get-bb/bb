@@ -124,8 +124,6 @@ async function startDesktopSmokeServer(
           experiments: {
             claudeCodeMockCliTraffic: false,
             threadSplits: false,
-            popoutChat: false,
-            popoutChatHotkey: "Alt+Space",
             plugins: false,
           },
           featureFlags: {

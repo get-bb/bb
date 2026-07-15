@@ -14,7 +14,7 @@ import {
   closePanesForThreadsAtom,
   type ClosePanesForThreadsResult,
 } from "@/lib/split-layout/atoms";
-import { defaultExperiments, type Thread } from "@bb/domain";
+import type { Thread } from "@bb/domain";
 import {
   useArchiveThreadAndChildren,
   useDeleteThread,
@@ -46,14 +46,13 @@ import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToas
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
-import { getDesktopBrowserApi, getDesktopPopoutApi } from "@/lib/bb-desktop";
+import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 
 export interface ThreadActionsContextValue {
   archiveThreadAndChildren: (thread: Thread) => void;
   requestRename: (thread: Thread) => void;
   requestDelete: (thread: Thread) => void;
-  sendToPopout: ((thread: Thread) => void) | null;
   unarchiveThread: (thread: Thread) => void;
   togglePin: (thread: Thread) => void;
   toggleRead: (thread: Thread) => void;
@@ -418,28 +417,11 @@ export function ThreadActionsProvider({
     [pinMutate, unpinMutate],
   );
 
-  const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
-  const desktopPopout = getDesktopPopoutApi();
-  const sendToPopout = useMemo<
-    ThreadActionsContextValue["sendToPopout"]
-  >(() => {
-    if (!experiments.popoutChat || desktopPopout === null) {
-      return null;
-    }
-    return (thread) => {
-      desktopPopout.setThread({
-        projectId: thread.projectId,
-        threadId: thread.id,
-      });
-    };
-  }, [desktopPopout, experiments.popoutChat]);
-
   const value = useMemo<ThreadActionsContextValue>(
     () => ({
       requestRename,
       requestDelete,
       archiveThreadAndChildren: archiveThreadAndChildrenAction,
-      sendToPopout,
       unarchiveThread: unarchiveThreadAction,
       togglePin,
       toggleRead,
@@ -448,7 +430,6 @@ export function ThreadActionsProvider({
       archiveThreadAndChildrenAction,
       requestRename,
       requestDelete,
-      sendToPopout,
       togglePin,
       toggleRead,
       unarchiveThreadAction,

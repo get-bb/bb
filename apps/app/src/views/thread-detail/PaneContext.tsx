@@ -8,9 +8,8 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  getSurfaceAwareThreadRoutePath,
+  getThreadRoutePath,
   type ThreadRoutePathArgs,
-  type ThreadRouteSurface,
 } from "@/lib/route-paths";
 
 export interface PaneContextValue {
@@ -18,13 +17,13 @@ export interface PaneContextValue {
   isFocused: boolean;
   /**
    * Whether this pane may show its secondary panel. Always true for the page
-   * and popout surfaces; false for unfocused panes once the split reaches ≥3
+   * surface; false for unfocused panes once the split reaches ≥3
    * panes (no room for two secondary panels).
    */
   canShowSecondaryPanel: boolean;
   /**
-   * Closes this pane, or null when closing isn't available (single pane, page,
-   * or popout). Bridges the pane close affordance and archive/delete-when-split.
+   * Closes this pane, or null when closing isn't available (single pane or
+   * page). Bridges the pane close affordance and archive/delete-when-split.
    */
   onRequestClose: (() => void) | null;
   /**
@@ -32,7 +31,7 @@ export interface PaneContextValue {
    * layouts). Bounded panes suppress the page-bleed negative margins in
    * ThreadDetailSecondaryContent — the content fills the card exactly, so the
    * card needs no cancelling padding and shows no dead band at the bottom.
-   * False on the page, popout, and single-pane surfaces, which keep the
+   * False on the page and single-pane surfaces, which keep the
    * full-bleed page layout.
    */
   isBoundedPane: boolean;
@@ -40,7 +39,7 @@ export interface PaneContextValue {
   /**
    * Starts a pane-reorder drag from the pane header via the shared split-drag
    * layer (move to an edge / swap on center). Only provided when the layout is
-   * split (>1 pane); undefined on the single-pane, page, and popout surfaces,
+   * split (>1 pane); undefined on the single-pane and page surfaces,
    * where there is nothing to reorder.
    */
   beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
@@ -58,24 +57,17 @@ export function usePaneContext(): PaneContextValue {
 
 interface DefaultPaneContextProviderProps {
   children: ReactNode;
-  surface: ThreadRouteSurface;
 }
 
 export function DefaultPaneContextProvider({
   children,
-  surface,
 }: DefaultPaneContextProviderProps) {
   const navigate = useNavigate();
   const navigateInPane = useCallback(
     (thread: ThreadRoutePathArgs) => {
-      navigate(
-        getSurfaceAwareThreadRoutePath({
-          ...thread,
-          surface,
-        }),
-      );
+      navigate(getThreadRoutePath(thread));
     },
-    [navigate, surface],
+    [navigate],
   );
   const value = useMemo<PaneContextValue>(
     () => ({

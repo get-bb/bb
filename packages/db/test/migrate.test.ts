@@ -288,7 +288,7 @@ const branchLocalThreadSearchMigrationWhen = 1781403656070;
 const branchLocalThreadSearchRowidFtsMigrationWhen = 1781403656071;
 const rowidThreadSearchMigrationHash =
   "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4";
-const popoutChatExperimentsMigrationWhen = 1781299832942;
+const legacyExperimentsMigrationWhen = 1781299832942;
 const eventLargeValuesMigrationWhen = 1781403656069;
 const eventLargeValuesRestoreMigrationWhen = 1781557200000;
 const cleanupModeDropMigrationWhen = 1781557300000;
@@ -3148,7 +3148,7 @@ describe("migrate", () => {
             WHERE created_at = ?
           `,
         )
-        .run(popoutChatExperimentsMigrationWhen);
+        .run(legacyExperimentsMigrationWhen);
 
       migrate(db);
 

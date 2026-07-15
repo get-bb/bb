@@ -66,7 +66,7 @@ export function ThreadDetailHeader({
   const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // The title doubles as the pane-reorder drag handle when the layout is split;
-  // beginPaneDrag is undefined on the single-pane, page, and popout surfaces.
+  // beginPaneDrag is undefined on the single-pane and page surfaces.
   const { beginPaneDrag, isFocused } = usePaneContext();
   const showFocusedPaneTitlePill = beginPaneDrag !== undefined && isFocused;
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
