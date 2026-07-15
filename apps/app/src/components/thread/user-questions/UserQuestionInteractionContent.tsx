@@ -158,7 +158,7 @@ function QuestionTabs({
   questions,
 }: QuestionTabsProps) {
   return (
-    <div className="mb-2 flex items-center gap-2">
+    <div className="mb-2 flex shrink-0 items-center gap-2">
       {/* A plain button group, not an ARIA tablist: these toggle which question
           is shown but aren't tab/tabpanel widgets, so role="tablist" would be
           malformed without role="tab" children + panels. */}
@@ -439,7 +439,12 @@ export function UserQuestionAnswerForm({
   const currentState = answerStateFor(formState, currentQuestion);
 
   return (
-    <div className={cn("text-xs text-muted-foreground", className)}>
+    <div
+      className={cn(
+        "flex max-h-[calc(100dvh-6rem)] min-h-0 flex-col text-xs text-muted-foreground",
+        className,
+      )}
+    >
       {totalQuestions > 1 ? (
         <QuestionTabs
           currentIndex={currentIndex}
@@ -448,19 +453,23 @@ export function UserQuestionAnswerForm({
           questions={questions}
         />
       ) : null}
-      <QuestionInputBlock
-        disabled={disabled}
-        question={currentQuestion}
-        state={currentState}
-        onToggleOption={(optionValue) =>
-          handleToggleOption(currentQuestion, optionValue)
-        }
-        onSelectOther={() => handleSelectOther(currentQuestion)}
-        onFreeTextChange={(value) => handleFreeTextChange(currentQuestion, value)}
-        onShortcutSubmit={handleAdvance}
-        shortcuts={choiceShortcuts}
-      />
-      <div className="mt-3 flex items-center justify-between gap-2">
+      <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
+        <QuestionInputBlock
+          disabled={disabled}
+          question={currentQuestion}
+          state={currentState}
+          onToggleOption={(optionValue) =>
+            handleToggleOption(currentQuestion, optionValue)
+          }
+          onSelectOther={() => handleSelectOther(currentQuestion)}
+          onFreeTextChange={(value) =>
+            handleFreeTextChange(currentQuestion, value)
+          }
+          onShortcutSubmit={handleAdvance}
+          shortcuts={choiceShortcuts}
+        />
+      </div>
+      <div className="mt-3 flex shrink-0 items-center justify-between gap-2">
         <Button
           type="button"
           size="sm"
@@ -496,7 +505,7 @@ export function UserQuestionAnswerForm({
         </div>
       </div>
       {mutationErrorMessage ? (
-        <div className="mt-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
+        <div className="mt-2 shrink-0 rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
           {mutationErrorMessage}
         </div>
       ) : null}
