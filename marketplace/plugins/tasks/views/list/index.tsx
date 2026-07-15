@@ -234,7 +234,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
               onClick={() =>
                 navigation.go({ kind: "task", taskKey: task.key })
               }
-              className="flex h-[34px] w-full items-center gap-2 border-b border-border-hairline px-3.5 text-left hover:bg-state-hover"
+              className="flex h-[34px] w-full items-center gap-2 border-b border-border-hairline px-3.5 text-left hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <PriorityIcon priority={task.priority} />
               <span className="w-14 shrink-0 truncate text-xs tabular-nums text-subtle-foreground">

@@ -21,6 +21,7 @@ if (!window.matchMedia) {
 // not be imported before that happens.
 const app = await loadPluginApp(() => import("../app"));
 const { parseTasksRoute, tasksRouteToSubPath } = await import("./routes.js");
+const { pagerPosition } = await import("./topbar.js");
 
 afterEach(cleanup);
 
@@ -69,6 +70,7 @@ describe("tasks route grammar", () => {
     const routes = [
       { kind: "all" },
       { kind: "active" },
+      { kind: "manage" },
       { kind: "task", taskKey: "TSK-4" },
       { kind: "project", projectId: PROJECT_ID, view: "list" },
       { kind: "project", projectId: PROJECT_ID, view: "board" },
@@ -83,6 +85,81 @@ describe("tasks route grammar", () => {
       view: "board",
     });
     expect(parseTasksRoute("")).toEqual({ kind: "all" });
+  });
+});
+
+function pagerTask(key: string, status: string, position: number) {
+  return {
+    id: `01HZZZZZZZZZZZZZZZZZZZZ${key.replace("-", "")}`,
+    projectId: PROJECT_ID,
+    number: position,
+    key,
+    title: key,
+    status,
+    priority: "none",
+    dueDate: null,
+    parentTaskId: null,
+    position,
+    createdAt: "2026-07-15T00:00:00.000Z",
+    updatedAt: "2026-07-15T00:00:00.000Z",
+    labelIds: [],
+    // Only key/status/position matter to the pager; the rest satisfies Task.
+  } as never;
+}
+
+describe("task pager", () => {
+  // List order: canonical status groups, server (board) order within a group.
+  const tasks = [
+    pagerTask("TSK-3", "done", 1),
+    pagerTask("TSK-1", "in_progress", 1),
+    pagerTask("TSK-2", "todo", 1),
+    pagerTask("TSK-4", "todo", 2),
+  ];
+
+  it("orders siblings like the list view and exposes neighbors", () => {
+    // Visual order: TSK-2, TSK-4 (todo) → TSK-1 (in_progress) → TSK-3 (done).
+    expect(pagerPosition(tasks, "TSK-4")).toEqual({
+      index: 2,
+      total: 4,
+      prevKey: "TSK-2",
+      nextKey: "TSK-1",
+    });
+    expect(pagerPosition(tasks, "tsk-2")).toMatchObject({
+      index: 1,
+      prevKey: null,
+    });
+    expect(pagerPosition(tasks, "TSK-3")).toMatchObject({
+      index: 4,
+      nextKey: null,
+    });
+  });
+
+  it("has no position for unknown keys", () => {
+    expect(pagerPosition(tasks, "TSK-99")).toBeNull();
+    expect(pagerPosition([], "TSK-1")).toBeNull();
+  });
+
+  it("renders n / m on the task route and steps to the next sibling", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "task/TSK-4" },
+      {
+        rpc: seededRpc({
+          listTasks: () => ({ tasks }),
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByText("2 / 4");
+    fireEvent.click(slot.getByRole("button", { name: "Next task" }));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: "task/TSK-1" },
+    });
   });
 });
 
@@ -123,6 +200,29 @@ describe("tasks app shell", () => {
       path: "tasks",
       options: { subPath: "all" },
     });
+  });
+
+  it("routes 'manage' to the manage panel via the sidebar footer", async () => {
+    const slot = renderSlot(app.navPanels[0]!, { subPath: "manage" }, {
+      rpc: seededRpc({ listLabels: () => ({ labels: [] }) }),
+    });
+    await slot.findByText("Labels, agent presets, and folders.");
+    // The sidebar footer row is highlighted and present on every route.
+    expect(slot.getByRole("button", { name: "Manage" })).toBeDefined();
+  });
+
+  it("opens quick-create on bare 'c' but not from editable targets or dialogs", async () => {
+    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, {
+      rpc: seededRpc(),
+    });
+    await slot.findByText("Tasks Plugin");
+    fireEvent.keyDown(window, { key: "c" });
+    // The New task dialog mounts (project select defaults to the only project).
+    await slot.findByRole("dialog");
+    // With the dialog open, another 'c' must not stack a second overlay, and
+    // Esc still closes the dialog rather than navigating.
+    fireEvent.keyDown(window, { key: "c" });
+    expect(slot.getAllByRole("dialog")).toHaveLength(1);
   });
 
   it("refetches sidebar data when invalidation channels fire", async () => {

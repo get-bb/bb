@@ -671,6 +671,15 @@ export function registerHandlers(
     listPresets() {
       return { presets: store.tasks.listPresets() };
     },
+    async listBbProjects() {
+      const projects = await bb.sdk.projects.list();
+      return {
+        bbProjects: projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+        })),
+      };
+    },
     sidebarSummary() {
       return { projects: store.sidebarSummary() };
     },

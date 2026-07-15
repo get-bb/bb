@@ -55,6 +55,30 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("lists bb workspace projects as id/name options", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_personal", name: "Personal", extra: "dropped" },
+            { id: "proj_bb", name: "bb" },
+          ],
+        },
+      },
+    });
+    registerTasksApi(bb, createStore(bb));
+
+    const result = tasksRpcContract.listBbProjects.output.parse(
+      await harness.callRpc("listBbProjects", null),
+    );
+    expect(result.bbProjects).toEqual([
+      { id: "proj_personal", name: "Personal" },
+      { id: "proj_bb", name: "bb" },
+    ]);
+    await harness.dispose();
+  });
+
   it("does not send for notify=false or agent comments", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

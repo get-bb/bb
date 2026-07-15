@@ -471,6 +471,20 @@ export const tasksRpcContract = defineRpcContract({
     input: z.null(),
     output: z.object({ presets: z.array(presetSchema) }).strict(),
   },
+  // BB workspace projects (proj_…) for the linked-project picker; distinct
+  // from this plugin's own task projects.
+  listBbProjects: {
+    input: z.null(),
+    output: z
+      .object({
+        bbProjects: z.array(
+          z
+            .object({ id: z.string().startsWith("proj_"), name: z.string() })
+            .strict(),
+        ),
+      })
+      .strict(),
+  },
   sidebarSummary: {
     input: z.null(),
     output: z
@@ -503,6 +517,9 @@ export type Preset = z.infer<typeof presetSchema>;
 export type TasksDomainError = z.infer<typeof tasksDomainErrorSchema>;
 export type TaskMutationResult = z.infer<typeof taskMutationResultSchema>;
 export type ProjectMutationResult = z.infer<typeof projectMutationResultSchema>;
+export type BbProjectOption = z.infer<
+  (typeof tasksRpcContract)["listBbProjects"]["output"]
+>["bbProjects"][number];
 export type SidebarProjectSummary = z.infer<
   (typeof tasksRpcContract)["sidebarSummary"]["output"]
 >["projects"][number];

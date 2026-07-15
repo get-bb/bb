@@ -17,8 +17,11 @@ import { TasksTopbar } from "./topbar.js";
 import { ListView } from "../views/list/index.js";
 import { BoardView } from "../views/board/index.js";
 import { DetailView } from "../views/detail/index.js";
-import { ActivityView } from "../views/activity/index.js";
-import { NewProjectDialog, NewTaskDialog } from "../views/manage/index.js";
+import {
+  ManagePanel,
+  NewProjectDialog,
+  NewTaskDialog,
+} from "../views/manage/index.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 
@@ -28,6 +31,18 @@ function isEditableTarget(target: EventTarget | null): boolean {
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
     target.isContentEditable
+  );
+}
+
+/**
+ * True while any overlay (dialog/lightbox, dropdown menu, select listbox) is
+ * open; both quick-create and Esc-to-back must yield to overlays. Radix and
+ * the attachments lightbox all render `role` overlays only while open.
+ */
+function hasOpenOverlay(): boolean {
+  return (
+    document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]') !==
+    null
   );
 }
 
@@ -57,7 +72,9 @@ function RouteOutlet({ route }: { route: TasksRoute }) {
     case "all":
       return <ListView projectId={null} />;
     case "active":
-      return <ActivityView />;
+      return <ListView projectId={null} activeOnly />;
+    case "manage":
+      return <ManagePanel />;
     case "task":
       return <DetailView taskKey={route.taskKey} />;
     case "project":
@@ -97,6 +114,8 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (isEditableTarget(event.target)) return;
+      // Overlays (lightbox > dialog > menu) consume Esc before task-back.
+      if (hasOpenOverlay()) return;
       backRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -105,6 +124,22 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
 
   const noProjects = projects.data !== undefined && projects.data.length === 0;
   const newTaskProjectId = route.kind === "project" ? route.projectId : null;
+
+  // Quick-create: bare "c" (no modifiers, no editable focus, no open overlay)
+  // opens the New task dialog scoped to the current route's project.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "c" || event.metaKey || event.ctrlKey || event.altKey)
+        return;
+      if (event.defaultPrevented || event.repeat) return;
+      if (isEditableTarget(event.target)) return;
+      if (hasOpenOverlay()) return;
+      event.preventDefault();
+      setNewTaskOpen(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-row-reverse bg-background text-foreground">
@@ -118,6 +153,7 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
           activeTasks={activeTasks.data}
           isLoading={projects.isLoading || summaries.isLoading}
           onNavigate={navigation.go}
+          onNewProject={() => setNewProjectOpen(true)}
         />
       ) : null}
       <main className="flex min-w-0 flex-1 flex-col">
@@ -125,13 +161,18 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
           route={route}
           projects={projects.data}
           sidebarCollapsed={sidebarCollapsed}
+          pagerProjectId={
+            lastBrowseRouteRef.current.kind === "project"
+              ? lastBrowseRouteRef.current.projectId
+              : null
+          }
           onNavigate={navigation.go}
           onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
           onNewTask={() => setNewTaskOpen(true)}
           onBack={backFromTask}
         />
         <div className="min-h-0 flex-1 overflow-auto">
-          {noProjects && route.kind !== "task" ? (
+          {noProjects && route.kind !== "task" && route.kind !== "manage" ? (
             <NoProjectsEmptyState onNewProject={() => setNewProjectOpen(true)} />
           ) : (
             <RouteOutlet route={route} />

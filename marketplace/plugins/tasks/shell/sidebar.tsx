@@ -25,7 +25,7 @@ function SidebarRow({ active, onClick, children, title }: SidebarRowProps) {
       onClick={onClick}
       title={title}
       className={cn(
-        "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm",
+        "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         onClick ? "cursor-pointer" : "cursor-default",
         active
           ? "bg-sidebar-accent font-medium text-foreground"
@@ -149,6 +149,7 @@ export interface TasksSidebarProps {
   activeTasks: Task[] | undefined;
   isLoading: boolean;
   onNavigate: (route: TasksRoute) => void;
+  onNewProject: () => void;
 }
 
 export function TasksSidebar({
@@ -160,6 +161,7 @@ export function TasksSidebar({
   activeTasks,
   isLoading,
   onNavigate,
+  onNewProject,
 }: TasksSidebarProps) {
   const [collapsedFolders, setCollapsedFolders] = useState<ReadonlySet<string>>(
     new Set(),
@@ -268,6 +270,16 @@ export function TasksSidebar({
               </>
             ) : null}
             {rootFolders.map((folder) => renderFolder(folder, false))}
+            {/* With zero projects the main pane's empty-state CTA is the
+                single New-project affordance. */}
+            {(projects ?? []).length > 0 ? (
+              <div className="mt-1.5">
+                <SidebarRow onClick={onNewProject} title="New project">
+                  <Icon name="Plus" className="size-3.5 shrink-0" />
+                  <span className="flex-1">New project</span>
+                </SidebarRow>
+              </div>
+            ) : null}
             {presets && presets.length > 0 ? (
               <>
                 <SectionHeader label="Agent presets" />
@@ -286,6 +298,15 @@ export function TasksSidebar({
           </>
         )}
       </nav>
+      <div className="shrink-0 border-t border-border-hairline px-2 py-1.5">
+        <SidebarRow
+          active={route.kind === "manage"}
+          onClick={() => onNavigate({ kind: "manage" })}
+        >
+          <Icon name="Settings" className="size-3.5 shrink-0" />
+          <span className="flex-1">Manage</span>
+        </SidebarRow>
+      </div>
     </aside>
   );
 }

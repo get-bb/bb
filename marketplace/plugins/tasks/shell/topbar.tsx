@@ -1,9 +1,102 @@
 import { useMemo } from "react";
-import type { Project } from "../shared/contract.js";
+import type { Project, Task } from "../shared/contract.js";
+import { groupTasksByStatus } from "../views/list/lib.js";
+import { useTasksQuery } from "./data.js";
 import type { TaskViewMode, TasksRoute } from "./routes.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+
+export interface PagerPosition {
+  /** 1-based position of the task within its sibling list. */
+  index: number;
+  total: number;
+  prevKey: string | null;
+  nextKey: string | null;
+}
+
+/**
+ * Position of `taskKey` within its sibling tasks, mirroring the list view's
+ * visual order: canonical status groups, board position within each group
+ * (the order `listTasks` returns). Sub-tasks aren't list rows, so a sub-task
+ * (or unknown key) has no pager position.
+ */
+export function pagerPosition(
+  tasks: readonly Task[],
+  taskKey: string,
+): PagerPosition | null {
+  const ordered = groupTasksByStatus(tasks).flatMap((group) => group.tasks);
+  const wanted = taskKey.toUpperCase();
+  const index = ordered.findIndex((task) => task.key.toUpperCase() === wanted);
+  if (index === -1) return null;
+  return {
+    index: index + 1,
+    total: ordered.length,
+    prevKey: ordered[index - 1]?.key ?? null,
+    nextKey: ordered[index + 1]?.key ?? null,
+  };
+}
+
+function TaskPager({
+  taskKey,
+  projectId,
+  onNavigate,
+}: {
+  taskKey: string;
+  /** Scope from the list/board the user came from; null = All tasks. */
+  projectId: string | null;
+  onNavigate: (route: TasksRoute) => void;
+}) {
+  // Same query the list view issues (unfiltered): top-level tasks in the
+  // browse scope. The pager ignores the list's transient filter state — it
+  // steps through the full sibling list.
+  const siblings = useTasksQuery(
+    async (rpc) =>
+      (
+        await rpc.call("listTasks", {
+          ...(projectId === null ? {} : { projectId }),
+          parentTaskId: null,
+        })
+      ).tasks,
+    ["tasks:changed"],
+    [projectId],
+  );
+  const position = useMemo(
+    () => (siblings.data ? pagerPosition(siblings.data, taskKey) : null),
+    [siblings.data, taskKey],
+  );
+  if (!position) return null;
+  const step = (key: string | null) => {
+    if (key !== null) onNavigate({ kind: "task", taskKey: key });
+  };
+  return (
+    <div className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-muted-foreground">
+      <span className="px-1">
+        {position.index} / {position.total}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-6"
+        aria-label="Previous task"
+        disabled={position.prevKey === null}
+        onClick={() => step(position.prevKey)}
+      >
+        <Icon name="ChevronUp" className="size-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-6"
+        aria-label="Next task"
+        disabled={position.nextKey === null}
+        onClick={() => step(position.nextKey)}
+      >
+        <Icon name="ChevronDown" className="size-3.5" />
+      </Button>
+    </div>
+  );
+}
 
 function ViewToggle({
   view,
@@ -39,6 +132,8 @@ export interface TasksTopbarProps {
   route: TasksRoute;
   projects: Project[] | undefined;
   sidebarCollapsed: boolean;
+  /** Pager scope on task routes: the project browsed before, or null for All. */
+  pagerProjectId: string | null;
   onNavigate: (route: TasksRoute) => void;
   onToggleSidebar: () => void;
   onNewTask: () => void;
@@ -49,6 +144,7 @@ export function TasksTopbar({
   route,
   projects,
   sidebarCollapsed,
+  pagerProjectId,
   onNavigate,
   onToggleSidebar,
   onNewTask,
@@ -76,6 +172,15 @@ export function TasksTopbar({
             <span className="font-semibold">Active</span>
             <span className="text-xs font-normal text-muted-foreground">
               agents working now
+            </span>
+          </span>
+        );
+      case "manage":
+        return (
+          <span className="flex items-center gap-2">
+            <span className="font-semibold">Manage</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              labels, presets, folders
             </span>
           </span>
         );
@@ -143,13 +248,20 @@ export function TasksTopbar({
   return (
     <header className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border-hairline bg-background px-3.5 text-sm">
       <div className="min-w-0 flex-1">{breadcrumb}</div>
+      {route.kind === "task" ? (
+        <TaskPager
+          taskKey={route.taskKey}
+          projectId={pagerProjectId}
+          onNavigate={onNavigate}
+        />
+      ) : null}
       {route.kind === "project" ? (
         <ViewToggle
           view={route.view}
           onChange={(view) => onNavigate({ ...route, view })}
         />
       ) : null}
-      {route.kind !== "task" ? (
+      {route.kind !== "task" && route.kind !== "manage" ? (
         <Button size="sm" className="h-7 gap-1.5" onClick={onNewTask}>
           <Icon name="Plus" className="size-3.5" />
           New task
