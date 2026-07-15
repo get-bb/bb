@@ -20,6 +20,65 @@ type JsonValue$1 = string | number | boolean | null | JsonValue$1[] | {
     [key: string]: JsonValue$1;
 };
 
+/** A JSON-safe path segment reported by a Standard Schema validation issue. */
+type PluginRpcIssuePathSegment = string | number;
+/** Validator-neutral validation detail carried by an RPC error envelope. */
+interface PluginRpcValidationIssue {
+    message: string;
+    path?: PluginRpcIssuePathSegment[];
+}
+/** Stable wire error categories for plugin RPC. */
+type PluginRpcErrorCode = "invalid_json" | "invalid_input" | "handler_error" | "invalid_output" | "non_json_result" | "unknown_method";
+/** Structured RPC failure returned as `{ ok: false, error }`. */
+interface PluginRpcError {
+    code: PluginRpcErrorCode;
+    message: string;
+    issues?: PluginRpcValidationIssue[];
+}
+/**
+ * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
+ * Zod 4 schemas implement this interface directly; other validators can do
+ * the same without becoming part of BB's public protocol.
+ */
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+    readonly "~standard": {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>;
+        readonly types?: {
+            readonly input: Input;
+            readonly output: Output;
+        };
+    };
+}
+type StandardSchemaV1Result<Output> = {
+    readonly value: Output;
+    readonly issues?: undefined;
+} | {
+    readonly issues: readonly StandardSchemaV1Issue[];
+};
+interface StandardSchemaV1Issue {
+    readonly message: string;
+    readonly path?: PropertyKey | readonly (PropertyKey | {
+        readonly key: PropertyKey;
+    })[];
+}
+type StandardSchemaV1InferInput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["input"];
+type StandardSchemaV1InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["output"];
+interface PluginRpcMethodContract<InputSchema extends StandardSchemaV1 = StandardSchemaV1, OutputSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    readonly input: InputSchema;
+    readonly output: OutputSchema;
+}
+type PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract>>;
+/** Define a shared RPC contract while preserving exact method/schema types. */
+declare function defineRpcContract<const Contract extends PluginRpcContract>(contract: Contract): Contract;
+type PluginRpcHandlers<Contract extends PluginRpcContract> = {
+    [Method in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[Method]["input"]>) => StandardSchemaV1InferInput<Contract[Method]["output"]> | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
+};
+type PluginRpcCallInput<Method extends PluginRpcMethodContract> = StandardSchemaV1InferInput<Method["input"]>;
+type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends PluginRpcCallInput<Method> ? [input?: PluginRpcCallInput<Method>] : [input: PluginRpcCallInput<Method>];
+type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
+
 /**
  * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
  * side effects. The BB app imports these to keep its real implementation in
@@ -314,14 +373,14 @@ interface PluginAppDefinition {
     readonly __bbPluginApp: true;
     readonly setup: PluginAppSetup;
 }
-interface PluginRpcClient {
+interface PluginRpcClient<Contract extends PluginRpcContract = PluginRpcContract> {
     /**
      * Invoke one of the plugin's `bb.rpc` methods (POST
      * /api/v1/plugins/&lt;id&gt;/rpc/&lt;method&gt;). Resolves with the method's
-     * result; rejects with an `Error` carrying the server's message when the
-     * handler fails or the plugin is not running.
+     * inferred output; rejects with an `Error` carrying the server's message,
+     * stable `code`, and validation `issues` when present.
      */
-    call(method: string, input?: unknown): Promise<unknown>;
+    call<Method extends Extract<keyof Contract, string>>(method: Method, ...args: PluginRpcCallArgs<Contract[Method]>): Promise<PluginRpcResult<Contract[Method]>>;
 }
 interface PluginSettingsState {
     /**
@@ -407,8 +466,9 @@ interface BbNavigate {
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 interface PluginSdkApp {
+    defineRpcContract<const Contract extends PluginRpcContract>(contract: Contract): Contract;
     definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
-    useRpc(): PluginRpcClient;
+    useRpc<Contract extends PluginRpcContract = PluginRpcContract>(): PluginRpcClient<Contract>;
     useRealtime(channel: string, handler: (payload: unknown) => void): void;
     useSettings(): PluginSettingsState;
     useBbContext(): BbContext;
@@ -2266,8 +2326,8 @@ type ThreadEventRow = {
 declare const threadStatusSchema: z$1.ZodEnum<{
     error: "error";
     active: "active";
-    idle: "idle";
     starting: "starting";
+    idle: "idle";
     stopping: "stopping";
 }>;
 type ThreadStatus = z$1.infer<typeof threadStatusSchema>;
@@ -2919,8 +2979,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    squash: "squash";
     rebase: "rebase";
+    squash: "squash";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2951,8 +3011,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        squash: "squash";
         rebase: "rebase";
+        squash: "squash";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -5910,9 +5970,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -5941,9 +6001,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -8176,8 +8236,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -9364,14 +9424,14 @@ interface PluginHttp {
 }
 interface PluginRpc {
     /**
-     * Register rpc methods, served at POST
+     * Register a Standard Schema-driven rpc contract and its inferred handlers,
+     * served at POST
      * `/api/v1/plugins/<id>/rpc/<method>` with "local" auth semantics. The
-     * JSON request body is the input; the response is
-     * `{ ok: true, result }` or `{ ok: false, error }`. Inputs and outputs
-     * must survive a JSON round-trip — results are serialized with
-     * JSON.stringify and nothing else.
+     * host validates input before invocation and output before strict JSON
+     * serialization. The response is `{ ok: true, result }` or
+     * `{ ok: false, error: { code, message, issues? } }`.
      */
-    register(handlers: Record<string, (input: never) => unknown>): void;
+    register<Contract extends PluginRpcContract>(contract: Contract, handlers: PluginRpcHandlers<Contract>): void;
 }
 interface PluginRealtime {
     /**
@@ -9720,4 +9780,5 @@ interface BbPluginApi {
     onDispose(hook: () => void | Promise<void>): void;
 }
 
-export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
+export { defineRpcContract };
+export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };

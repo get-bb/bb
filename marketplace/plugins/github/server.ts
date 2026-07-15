@@ -8,7 +8,8 @@
 // mutations (comment, create, close/reopen, assign, label) and detail views go
 // straight through `gh`.
 import { execFile } from "node:child_process";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
 
 const SYNC_INTERVAL_MS = 5 * 60_000;
 const ISSUE_PAGE = 100;
@@ -19,6 +20,36 @@ const CLOSED_PR_PAGE = 30;
 const GH_HINT =
   "Install the GitHub CLI (https://cli.github.com) and run `gh auth login`, " +
   "then `bb plugin reload github`.";
+
+const githubRpcInputSchema = z.record(z.string(), z.unknown());
+const githubRpcOutputSchema = z.unknown();
+
+export const githubRpcContract = defineRpcContract({
+  status: { input: z.null(), output: githubRpcOutputSchema },
+  refresh: { input: z.null(), output: githubRpcOutputSchema },
+  listItems: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  viewer: { input: z.null(), output: githubRpcOutputSchema },
+  assignableUsers: {
+    input: githubRpcInputSchema,
+    output: githubRpcOutputSchema,
+  },
+  repositoryLabels: {
+    input: githubRpcInputSchema,
+    output: githubRpcOutputSchema,
+  },
+  setIssueState: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  setAssignees: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  setLabels: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  getIssue: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  getPull: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  commentPull: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  pullForThread: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  commentIssue: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  createIssue: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  startWork: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  startReview: { input: githubRpcInputSchema, output: githubRpcOutputSchema },
+  listLinks: { input: z.null(), output: githubRpcOutputSchema },
+});
 
 interface RepoInfo {
   repo: string; // "owner/name"
@@ -623,7 +654,7 @@ export default async function plugin(bb: BbPluginApi) {
     return { repo: args.repo, number: args.number };
   }
 
-  bb.rpc.register({
+  bb.rpc.register(githubRpcContract, {
     /** () → auth/sync status for the panel banner. */
     async status() {
       const cursor = await bb.storage.kv.get<{

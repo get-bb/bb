@@ -83,20 +83,32 @@ describe("custom instructions plugin", () => {
     ).toBeNull();
     await expect(
       harness.callRpc("saveInstructions", { instructions: 42 }),
-    ).rejects.toThrow(/must be a string/);
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
     await expect(
       harness.callRpc("saveInstructions", {
         instructions: "x".repeat(MAX_CUSTOM_INSTRUCTIONS_LENGTH + 1),
       }),
-    ).rejects.toThrow(/at most 4096 characters/);
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
     await expect(
       harness.callRpc("saveInstructions", {
         instructions: "ok",
         ignored: true,
       }),
-    ).rejects.toThrow(/exactly one field/);
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
     await expect(
       harness.callRpc("getInstructions", { ignored: true }),
-    ).rejects.toThrow(/expected no input/);
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
   });
 });

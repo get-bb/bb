@@ -7,9 +7,17 @@ import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
   formatPluginThemeId,
+  type JsonValue,
   type PluginThemeMeta,
   type ToolCallResponse,
 } from "@bb/domain";
+import type {
+  PluginRpcError,
+  PluginRpcValidationIssue,
+  StandardSchemaV1,
+  StandardSchemaV1Issue,
+  StandardSchemaV1Result,
+} from "@bb/plugin-sdk";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
@@ -231,15 +239,17 @@ export interface PluginService {
     context: Context,
   ): Promise<Response>;
   /**
-   * Run an rpc handler (same wrapping). The result is JSON round-tripped so
-   * non-serializable outputs surface as a handler error, not a broken wire.
+   * Validate RPC input, run the handler with failure isolation, validate its
+   * output, then normalize it as strict JSON for the response envelope.
    */
   invokeRpcHandler(
     id: string,
     method: string,
     handler: PluginRpcHandler,
     input: unknown,
-  ): Promise<{ ok: true; result: unknown } | { ok: false; error: string }>;
+  ): Promise<
+    { ok: true; result: JsonValue } | { ok: false; error: PluginRpcError }
+  >;
   /**
    * Per-plugin secret for auth "token" routes, generated on first use and
    * stored under <dataDir>/plugins/<id>/secrets/. `rotate` replaces it.
@@ -409,6 +419,146 @@ async function settledWithin(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+class PluginRpcBoundaryError extends Error {
+  constructor(readonly rpcError: PluginRpcError) {
+    super(rpcError.message);
+    this.name = "PluginRpcBoundaryError";
+  }
+}
+
+function normalizeRpcIssuePath(
+  path: StandardSchemaV1Issue["path"],
+): Array<string | number> | undefined {
+  if (path === undefined) return undefined;
+  const segments = Array.isArray(path) ? path : [path];
+  const normalized = segments.map((segment) => {
+    const key =
+      typeof segment === "object" && segment !== null
+        ? Reflect.get(segment, "key")
+        : segment;
+    return typeof key === "number" ? key : String(key);
+  });
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeRpcIssues(
+  issues: readonly StandardSchemaV1Issue[],
+): PluginRpcValidationIssue[] {
+  return issues.map((issue) => {
+    const path = normalizeRpcIssuePath(issue.path);
+    return {
+      message: issue.message,
+      ...(path !== undefined ? { path } : {}),
+    };
+  });
+}
+
+function rpcBoundaryFailure(
+  code: PluginRpcError["code"],
+  message: string,
+  issues?: PluginRpcValidationIssue[],
+): PluginRpcBoundaryError {
+  return new PluginRpcBoundaryError({
+    code,
+    message,
+    ...(issues !== undefined ? { issues } : {}),
+  });
+}
+
+async function validateRpcValue(
+  schema: StandardSchemaV1,
+  value: unknown,
+  phase: "input" | "output",
+): Promise<unknown> {
+  let result: StandardSchemaV1Result<unknown>;
+  try {
+    result = await schema["~standard"].validate(value);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw rpcBoundaryFailure(
+      phase === "input" ? "invalid_input" : "invalid_output",
+      `rpc ${phase} validator failed: ${detail}`,
+      [{ message: detail }],
+    );
+  }
+  if (result.issues !== undefined) {
+    const issues = normalizeRpcIssues(result.issues);
+    throw rpcBoundaryFailure(
+      phase === "input" ? "invalid_input" : "invalid_output",
+      `rpc ${phase} validation failed`,
+      issues,
+    );
+  }
+  return result.value;
+}
+
+/** Strict JsonValue normalization: no coercion, elision, or toJSON hooks. */
+function normalizeRpcJsonResult(value: unknown): JsonValue {
+  const ancestors = new Set<object>();
+
+  function visit(current: unknown, path: string): JsonValue {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return current;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        throw rpcBoundaryFailure(
+          "non_json_result",
+          `rpc result at ${path} contains a non-finite number`,
+        );
+      }
+      return current;
+    }
+    if (typeof current !== "object") {
+      throw rpcBoundaryFailure(
+        "non_json_result",
+        `rpc result at ${path} is not a JSON value (${typeof current})`,
+      );
+    }
+    if (ancestors.has(current)) {
+      throw rpcBoundaryFailure(
+        "non_json_result",
+        `rpc result at ${path} is cyclic`,
+      );
+    }
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        return current.map((item, index) => visit(item, `${path}[${index}]`));
+      }
+      const prototype = Object.getPrototypeOf(current) as object | null;
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw rpcBoundaryFailure(
+          "non_json_result",
+          `rpc result at ${path} must be a plain JSON object`,
+        );
+      }
+      const symbolKey = Reflect.ownKeys(current).find(
+        (key) => typeof key === "symbol",
+      );
+      if (symbolKey !== undefined) {
+        throw rpcBoundaryFailure(
+          "non_json_result",
+          `rpc result at ${path} contains a symbol key`,
+        );
+      }
+      const normalized: Record<string, JsonValue> = {};
+      for (const [key, child] of Object.entries(current)) {
+        normalized[key] = visit(child, `${path}.${key}`);
+      }
+      return normalized;
+    } finally {
+      ancestors.delete(current);
+    }
+  }
+
+  return visit(value, "$result");
 }
 
 /**
@@ -1332,15 +1482,27 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async invokeRpcHandler(id, method, handler, input) {
       const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
-        const result = await handler(input);
-        // JSON round-trip: the rpc contract is JSON-serializable outputs
-        // only, and a bigint/circular result should be this handler's clear
-        // 500, not a serializer crash in the response path.
-        const json = JSON.stringify(result);
-        return json === undefined ? undefined : (JSON.parse(json) as unknown);
+        const parsedInput = await validateRpcValue(
+          handler.inputSchema,
+          input,
+          "input",
+        );
+        const result = await handler.handler(parsedInput as never);
+        const parsedOutput = await validateRpcValue(
+          handler.outputSchema,
+          result,
+          "output",
+        );
+        return normalizeRpcJsonResult(parsedOutput);
       });
       if (outcome.ok) return { ok: true, result: outcome.value };
-      return { ok: false, error: outcome.error };
+      if (outcome.cause instanceof PluginRpcBoundaryError) {
+        return { ok: false, error: outcome.cause.rpcError };
+      }
+      return {
+        ok: false,
+        error: { code: "handler_error", message: outcome.error },
+      };
     },
 
     async httpToken(id, options) {

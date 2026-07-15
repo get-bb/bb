@@ -8,7 +8,8 @@
 // frontend then points its iframe at bb's path-shaped worktree preview route so
 // relative assets work exactly as they do in the sidebar HTML preview.
 import path from "node:path";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
 
 /** Match the generic sidebar HTML preview's 5 MiB document cap. */
 export const MAX_HTML_BYTES = 5 * 1024 * 1024;
@@ -118,18 +119,29 @@ function httpStatus(error: unknown): number | null {
   return typeof status === "number" ? status : null;
 }
 
+export const inlineVisRpcContract = defineRpcContract({
+  prepareHtmlPreview: {
+    input: z
+      .object({
+        threadId: z.string().trim().min(1),
+        file: z.string().transform((value) => requireWorkspaceHtmlFile(value)),
+      })
+      .strict(),
+    output: z.object({ file: z.string() }).strict(),
+  },
+});
+
 export default async function plugin(bb: BbPluginApi) {
-  bb.rpc.register({
+  bb.rpc.register(inlineVisRpcContract, {
     /**
      * Preflight a workspace-relative HTML file for the inline-vis message
      * directive. Input is untyped on the wire — narrowed immediately. The
      * existing worktree preview route serves the iframe and its relative assets.
      */
-    async prepareHtmlPreview(
-      input: unknown,
-    ): Promise<PrepareHtmlPreviewResult> {
-      const { threadId, file } = parsePrepareHtmlPreviewInput(input);
-
+    async prepareHtmlPreview({
+      threadId,
+      file,
+    }): Promise<PrepareHtmlPreviewResult> {
       const thread = await bb.sdk.threads.get({
         threadId,
         include: "environment",

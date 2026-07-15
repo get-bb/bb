@@ -6,6 +6,65 @@
 
 import { ComponentType } from 'react';
 
+/** A JSON-safe path segment reported by a Standard Schema validation issue. */
+type PluginRpcIssuePathSegment = string | number;
+/** Validator-neutral validation detail carried by an RPC error envelope. */
+interface PluginRpcValidationIssue {
+    message: string;
+    path?: PluginRpcIssuePathSegment[];
+}
+/** Stable wire error categories for plugin RPC. */
+type PluginRpcErrorCode = "invalid_json" | "invalid_input" | "handler_error" | "invalid_output" | "non_json_result" | "unknown_method";
+/** Structured RPC failure returned as `{ ok: false, error }`. */
+interface PluginRpcError {
+    code: PluginRpcErrorCode;
+    message: string;
+    issues?: PluginRpcValidationIssue[];
+}
+/**
+ * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
+ * Zod 4 schemas implement this interface directly; other validators can do
+ * the same without becoming part of BB's public protocol.
+ */
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+    readonly "~standard": {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>;
+        readonly types?: {
+            readonly input: Input;
+            readonly output: Output;
+        };
+    };
+}
+type StandardSchemaV1Result<Output> = {
+    readonly value: Output;
+    readonly issues?: undefined;
+} | {
+    readonly issues: readonly StandardSchemaV1Issue[];
+};
+interface StandardSchemaV1Issue {
+    readonly message: string;
+    readonly path?: PropertyKey | readonly (PropertyKey | {
+        readonly key: PropertyKey;
+    })[];
+}
+type StandardSchemaV1InferInput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["input"];
+type StandardSchemaV1InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["output"];
+interface PluginRpcMethodContract<InputSchema extends StandardSchemaV1 = StandardSchemaV1, OutputSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    readonly input: InputSchema;
+    readonly output: OutputSchema;
+}
+type PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract>>;
+/** Define a shared RPC contract while preserving exact method/schema types. */
+declare function defineRpcContract<const Contract extends PluginRpcContract>(contract: Contract): Contract;
+type PluginRpcHandlers<Contract extends PluginRpcContract> = {
+    [Method in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[Method]["input"]>) => StandardSchemaV1InferInput<Contract[Method]["output"]> | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
+};
+type PluginRpcCallInput<Method extends PluginRpcMethodContract> = StandardSchemaV1InferInput<Method["input"]>;
+type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends PluginRpcCallInput<Method> ? [input?: PluginRpcCallInput<Method>] : [input: PluginRpcCallInput<Method>];
+type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
+
 /**
  * A value that survives a JSON round trip without coercion or data loss.
  *
@@ -310,14 +369,14 @@ interface PluginAppDefinition {
     readonly __bbPluginApp: true;
     readonly setup: PluginAppSetup;
 }
-interface PluginRpcClient {
+interface PluginRpcClient<Contract extends PluginRpcContract = PluginRpcContract> {
     /**
      * Invoke one of the plugin's `bb.rpc` methods (POST
      * /api/v1/plugins/&lt;id&gt;/rpc/&lt;method&gt;). Resolves with the method's
-     * result; rejects with an `Error` carrying the server's message when the
-     * handler fails or the plugin is not running.
+     * inferred output; rejects with an `Error` carrying the server's message,
+     * stable `code`, and validation `issues` when present.
      */
-    call(method: string, input?: unknown): Promise<unknown>;
+    call<Method extends Extract<keyof Contract, string>>(method: Method, ...args: PluginRpcCallArgs<Contract[Method]>): Promise<PluginRpcResult<Contract[Method]>>;
 }
 interface PluginSettingsState {
     /**
@@ -403,8 +462,9 @@ interface BbNavigate {
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 interface PluginSdkApp {
+    defineRpcContract<const Contract extends PluginRpcContract>(contract: Contract): Contract;
     definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
-    useRpc(): PluginRpcClient;
+    useRpc<Contract extends PluginRpcContract = PluginRpcContract>(): PluginRpcClient<Contract>;
     useRealtime(channel: string, handler: (payload: unknown) => void): void;
     useSettings(): PluginSettingsState;
     useBbContext(): BbContext;
@@ -413,12 +473,12 @@ interface PluginSdkApp {
 }
 
 declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
-declare const useRpc: () => PluginRpcClient;
+declare const useRpc: <Contract extends PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract<StandardSchemaV1<unknown, unknown>, StandardSchemaV1<unknown, unknown>>>>>() => PluginRpcClient<Contract>;
 declare const useRealtime: (channel: string, handler: (payload: unknown) => void) => void;
 declare const useSettings: () => PluginSettingsState;
 declare const useBbContext: () => BbContext;
 declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
 
-export { definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRpc, useSettings };
-export type { BbContext, BbNavigate, JsonValue, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRpcClient, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };
+export { definePluginApp, defineRpcContract, useBbContext, useBbNavigate, useComposer, useRealtime, useRpc, useSettings };
+export type { BbContext, BbNavigate, JsonValue, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };

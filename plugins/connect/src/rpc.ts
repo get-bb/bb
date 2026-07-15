@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { defineRpcContract, type PluginRpcHandlers } from "@bb/plugin-sdk";
 import { ConnectListError } from "./list-servers.js";
 import { ConnectPairError } from "./redeem.js";
 import type { ConnectTunnel } from "./tunnel.js";
@@ -7,7 +8,7 @@ import type { ListAccountServersResult } from "./list-servers.js";
 import type { DesktopSession } from "./desktop-session.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
 import type { ShareHostResolver } from "./hosts.js";
-import type { ShareListing, ShareRemoval } from "./shares.js";
+import type { ShareListing } from "./shares.js";
 
 // Panel-facing rpc surface. `server` is optional: the dashboard command
 // carries both --code and --server, but the panel's paste-a-code field only
@@ -28,26 +29,118 @@ const portInputSchema = z
   .strict();
 const revokeMachineInputSchema = z.object({ machineId: z.string().min(1) });
 
-export type ConnectRpcHandlers = {
-  pair(input: unknown): Promise<ConnectStatus>;
-  status(): Promise<ConnectStatus>;
-  disconnect(): Promise<ConnectStatus>;
-  expose(input: unknown): Promise<ShareListing>;
-  unexpose(input: unknown): Promise<ShareRemoval & { port: number }>;
-  listShares(): Promise<ShareListing[]>;
-  listAccountServers(): Promise<ListAccountServersResult>;
-  createDesktopSession(): Promise<DesktopSession>;
-  createMachineCode(): Promise<MachineCode>;
-  revokeMachine(input: unknown): Promise<{ ok: true }>;
-};
+const connectShareStatusSchema = z
+  .object({
+    hostId: z.string(),
+    hostName: z.string(),
+    port: z.number().int(),
+    createdAt: z.number(),
+    url: z.string(),
+    unavailableReason: z.string().optional(),
+  })
+  .strict();
+
+const connectStatusSchema: z.ZodType<ConnectStatus> = z
+  .object({
+    state: z.enum(["disconnected", "pairing", "connected", "reconnecting"]),
+    paired: z.boolean(),
+    handle: z.string().nullable(),
+    url: z.string().nullable(),
+    dashboardUrl: z.string(),
+    lastError: z.string().nullable(),
+    nextRetryAt: z.number().nullable(),
+    since: z.number(),
+    remoteClients: z.number().int(),
+    lastRemoteActivityAt: z.number().nullable(),
+    shares: z.array(connectShareStatusSchema),
+  })
+  .strict();
+
+const shareListingSchema: z.ZodType<ShareListing> = z
+  .object({
+    hostId: z.string(),
+    hostName: z.string(),
+    port: z.number().int(),
+    createdAt: z.number(),
+    url: z.string(),
+    unavailableReason: z.string().optional(),
+  })
+  .strict();
+
+const listAccountServersResultSchema: z.ZodType<ListAccountServersResult> = z
+  .object({
+    servers: z.array(
+      z
+        .object({
+          handle: z.string(),
+          name: z.string(),
+          live: z.boolean(),
+          url: z.string(),
+        })
+        .strict(),
+    ),
+    selfHandle: z.string(),
+  })
+  .strict();
+
+const desktopSessionSchema: z.ZodType<DesktopSession> = z
+  .object({
+    cookie: z
+      .object({
+        domain: z.string(),
+        expiresAt: z.number().int(),
+        name: z.string(),
+        value: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const machineCodeSchema: z.ZodType<MachineCode> = z
+  .object({
+    code: z.string(),
+    expiresAt: z.number(),
+    serverUrl: z.string(),
+  })
+  .strict();
+
+export const connectRpcContract = defineRpcContract({
+  pair: { input: pairInputSchema, output: connectStatusSchema },
+  status: { input: z.null(), output: connectStatusSchema },
+  disconnect: { input: z.null(), output: connectStatusSchema },
+  expose: { input: portInputSchema, output: shareListingSchema },
+  unexpose: {
+    input: portInputSchema,
+    output: z
+      .object({
+        removed: z.boolean(),
+        hostId: z.string(),
+        hostName: z.string(),
+        port: z.number().int(),
+      })
+      .strict(),
+  },
+  listShares: { input: z.null(), output: z.array(shareListingSchema) },
+  listAccountServers: {
+    input: z.null(),
+    output: listAccountServersResultSchema,
+  },
+  createDesktopSession: { input: z.null(), output: desktopSessionSchema },
+  createMachineCode: { input: z.null(), output: machineCodeSchema },
+  revokeMachine: {
+    input: revokeMachineInputSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
+});
+
+export type ConnectRpcHandlers = PluginRpcHandlers<typeof connectRpcContract>;
 
 export function createRpcHandlers(
   tunnel: ConnectTunnel,
   hostResolver: ShareHostResolver,
 ): ConnectRpcHandlers {
   return {
-    async pair(input: unknown) {
-      const args = pairInputSchema.parse(input);
+    async pair(args) {
       try {
         return await tunnel.pair({
           code: args.code,
@@ -69,16 +162,14 @@ export function createRpcHandlers(
     async disconnect() {
       return tunnel.disconnect();
     },
-    async expose(input: unknown) {
-      const args = portInputSchema.parse(input);
+    async expose(args) {
       const host =
         args.hostId === undefined
           ? await hostResolver.serverHost()
           : await hostResolver.byId(args.hostId);
       return tunnel.expose(args.port, host);
     },
-    async unexpose(input: unknown) {
-      const args = portInputSchema.parse(input);
+    async unexpose(args) {
       return tunnel.unexpose(
         args.port,
         args.hostId ?? (await hostResolver.serverHostId()),
@@ -119,8 +210,7 @@ export function createRpcHandlers(
         throw error;
       }
     },
-    async revokeMachine(input: unknown) {
-      const args = revokeMachineInputSchema.parse(input);
+    async revokeMachine(args) {
       await tunnel.revokeMachine(args.machineId);
       return { ok: true };
     },

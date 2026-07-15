@@ -18,6 +18,7 @@ import {
   type PluginNavPanelProps,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
+import type { githubRpcContract } from "./server.js";
 // Shimmed to the host's copy at build time (shared worker-pool context +
 // shiki stays out of the plugin bundle) — diffs render with the same syntax
 // highlighting as the app's own diff panel.
@@ -234,7 +235,7 @@ function useItems(kind: "issue" | "pr"): {
   items: Item[] | null;
   error: string | null;
 } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const [state, setState] = useState<{ items: Item[] | null; error: string | null }>({
     items: null,
     error: null,
@@ -253,7 +254,7 @@ function useItems(kind: "issue" | "pr"): {
 }
 
 function useLinks(): LinksMap {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const [links, setLinks] = useState<LinksMap>({});
   const refetch = useCallback(() => {
     rpc.call("listLinks").then(
@@ -275,7 +276,7 @@ function useSpawn(): {
   spawn: (method: "startWork" | "startReview", repo: string, number: number) => void;
   spawningKey: string | null;
 } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const navigate = useBbNavigate();
   const [spawningKey, setSpawningKey] = useState<string | null>(null);
   const spawn = useCallback(
@@ -300,7 +301,7 @@ function useSpawn(): {
 let viewerLogin: string | null = null;
 
 function useViewer(): string | null {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const [login, setLogin] = useState<string | null>(viewerLogin);
   useEffect(() => {
     if (viewerLogin !== null) return;
@@ -422,7 +423,7 @@ function LabelChips({ labels, className }: { labels: string[]; className?: strin
 // ---------------------------------------------------------------------------
 
 function useIssueMutations() {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const setIssueState = useCallback(
     (repo: string, number: number, state: "open" | "closed") =>
       rpc
@@ -1055,7 +1056,7 @@ function AssigneePicker({
   assignees: string[];
   onToggle: (login: string, assigned: boolean) => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const viewer = useViewer();
   const [users, setUsers] = useState<string[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1124,7 +1125,7 @@ function LabelPicker({
   labels: string[];
   onToggle: (label: string, enabled: boolean) => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const [available, setAvailable] = useState<string[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -1185,7 +1186,7 @@ function IssueDetailView({
   number: number;
   onBack: () => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const links = useLinks();
   const { spawn, spawningKey } = useSpawn();
   const { setIssueState, setAssignees, setLabels } = useIssueMutations();
@@ -1754,7 +1755,7 @@ function PullCommentBox({
   number: number;
   onPosted: () => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const [comment, setComment] = useState("");
   const [posting, setPosting] = useState(false);
   const post = useCallback(() => {
@@ -1799,7 +1800,7 @@ function PullDetailView({
   backLabel?: string;
   compact?: boolean;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const links = useLinks();
   const { spawn, spawningKey } = useSpawn();
   const [pull, setPull] = useState<PullDetail | null>(null);
@@ -2016,7 +2017,7 @@ function PullPickerList({ onPick }: { onPick: (repo: string, number: number) => 
 }
 
 function PullPanelTab({ threadId }: PluginThreadPanelProps) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const [resolved, setResolved] = useState(false);
   const [selected, setSelected] = useState<{ repo: string; number: number } | null>(null);
 
@@ -2083,7 +2084,7 @@ function NewIssueForm({
   onCreated: (repo: string, number: number | null) => void;
   onCancel: () => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const [repo, setRepo] = useState(repos[0]?.repo ?? "");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -2156,7 +2157,7 @@ interface Status {
 }
 
 function useStatus(): { status: Status | null; refetch: () => void } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const [status, setStatus] = useState<Status | null>(null);
   const refetch = useCallback(() => {
     rpc.call("status").then(
@@ -2172,7 +2173,7 @@ function useStatus(): { status: Status | null; refetch: () => void } {
 }
 
 function PanelHeader() {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof githubRpcContract>();
   const { status } = useStatus();
   const [syncing, setSyncing] = useState(false);
   const [failed, setFailed] = useState(false);

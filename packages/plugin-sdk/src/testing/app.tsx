@@ -28,6 +28,13 @@ import {
   type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "../app-contract.js";
+import type {
+  PluginRpcContract,
+  PluginRpcResult,
+  StandardSchemaV1InferInput,
+} from "../rpc-contract.js";
+import { defineRpcContract } from "../rpc-contract.js";
+import type { JsonValue } from "../json-value.js";
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -130,8 +137,11 @@ const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 const testPluginSdkApp = {
   definePluginApp,
-  useRpc(): PluginRpcClient {
-    return useSlotEnv("useRpc").rpcClient;
+  defineRpcContract,
+  useRpc<
+    Contract extends PluginRpcContract = PluginRpcContract,
+  >(): PluginRpcClient<Contract> {
+    return useSlotEnv("useRpc").rpcClient as PluginRpcClient<Contract>;
   },
   useRealtime(channel: string, handler: (payload: unknown) => void): void {
     const env = useSlotEnv("useRealtime");
@@ -471,14 +481,24 @@ export async function loadPluginApp(
 // renderSlot — mount one registration's component with mock hook backends.
 // ---------------------------------------------------------------------------
 
-export interface RenderSlotOptions {
+export type PluginRpcTestHandlers<Contract extends PluginRpcContract> = {
+  [Method in keyof Contract]: (
+    input: StandardSchemaV1InferInput<Contract[Method]["input"]>,
+  ) =>
+    | PluginRpcResult<Contract[Method]>
+    | Promise<PluginRpcResult<Contract[Method]>>;
+};
+
+export interface RenderSlotOptions<
+  Contract extends PluginRpcContract = PluginRpcContract,
+> {
   /**
    * Backing handlers for `useRpc().call`: method name → implementation.
    * Inputs and results are JSON-round-tripped like the wire; a method
    * without a handler rejects, and a throwing handler rejects with its
    * message (what the real rpc client surfaces).
    */
-  rpc?: Record<string, (input: unknown) => unknown>;
+  rpc?: PluginRpcTestHandlers<Contract>;
   /** `useSettings()` values; omitted → `{ values: undefined, isLoading: false }`. */
   settings?: Record<string, string | boolean>;
   /** `useBbContext()` selection; both default to null. */
@@ -499,17 +519,71 @@ export interface RenderedSlot extends RenderResult {
   composer: ComposerLog;
 }
 
-export function renderSlot<Props extends object>(
+function strictJsonRoundTrip(value: unknown, label: string): JsonValue {
+  const ancestors = new Set<object>();
+  function visit(current: unknown, path: string): void {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        throw new Error(`${label} at ${path} contains a non-finite number`);
+      }
+      return;
+    }
+    if (typeof current !== "object") {
+      throw new Error(`${label} at ${path} is not a JSON value`);
+    }
+    if (ancestors.has(current)) {
+      throw new Error(`${label} at ${path} is cyclic`);
+    }
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        current.forEach((item, index) => visit(item, `${path}[${index}]`));
+        return;
+      }
+      const prototype = Object.getPrototypeOf(current) as object | null;
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error(`${label} at ${path} must be a plain JSON object`);
+      }
+      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+        throw new Error(`${label} at ${path} contains a symbol key`);
+      }
+      for (const [key, child] of Object.entries(current)) {
+        visit(child, `${path}.${key}`);
+      }
+    } finally {
+      ancestors.delete(current);
+    }
+  }
+  visit(value, "$");
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
+export function renderSlot<
+  Props extends object,
+  Contract extends PluginRpcContract = PluginRpcContract,
+>(
   registration: { component: ComponentType<Props> },
   props: Props,
-  options: RenderSlotOptions = {},
+  options: RenderSlotOptions<Contract> = {},
 ): RenderedSlot {
   const rpcCalls: RpcCall[] = [];
-  const rpcHandlers = options.rpc ?? {};
+  const rpcHandlers = (options.rpc ?? {}) as Record<
+    string,
+    (input: unknown) => unknown
+  >;
   const rpcClient: PluginRpcClient = {
     async call(method, input) {
       const normalizedInput =
-        input === undefined ? null : JSON.parse(JSON.stringify(input));
+        input === undefined
+          ? null
+          : strictJsonRoundTrip(input, `rpc "${method}" input`);
       rpcCalls.push({ method, input: normalizedInput });
       const handler = rpcHandlers[method];
       if (!handler) {
@@ -518,8 +592,7 @@ export function renderSlot<Props extends object>(
         );
       }
       const result = await handler(normalizedInput);
-      const json = JSON.stringify(result);
-      return json === undefined ? undefined : (JSON.parse(json) as unknown);
+      return strictJsonRoundTrip(result, `rpc "${method}" result`);
     },
   };
 
@@ -602,7 +675,9 @@ export function renderSlot<Props extends object>(
     rpcCalls,
     async emitRealtime(channel, payload) {
       const normalized =
-        payload === undefined ? null : JSON.parse(JSON.stringify(payload));
+        payload === undefined
+          ? null
+          : strictJsonRoundTrip(payload, `realtime "${channel}" payload`);
       const listeners = realtimeHandlers.get(channel);
       await act(async () => {
         for (const listener of [...(listeners ?? [])]) {

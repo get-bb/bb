@@ -1,4 +1,4 @@
-import type { PluginSdkApp } from "@bb/plugin-sdk";
+import { defineRpcContract, type PluginSdkApp } from "@bb/plugin-sdk";
 import { definePluginApp } from "./plugin-app-definition";
 import {
   useBbContext,
@@ -26,6 +26,7 @@ import {
  */
 export const pluginSdkAppImplementation = {
   definePluginApp,
+  defineRpcContract,
   useBbContext,
   useBbNavigate,
   useComposer,

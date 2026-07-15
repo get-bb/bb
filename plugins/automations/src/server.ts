@@ -2,8 +2,11 @@ import type { BbPluginApi } from "@bb/plugin-sdk";
 import { migrations } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
 import { pluginDataDirFromDb } from "./path.js";
-import { createRpcHandlers } from "./rpc.js";
-import { closeAutomationRunForSettledThread, disableAutomationsForDeletedThreadEvent } from "./run.js";
+import { automationRpcContract, createRpcHandlers } from "./rpc.js";
+import {
+  closeAutomationRunForSettledThread,
+  disableAutomationsForDeletedThreadEvent,
+} from "./run.js";
 import { registerAutomationCli } from "./cli.js";
 import { createAutomationService } from "./service.js";
 import { sleep, sweepDueAutomations, SWEEP_INTERVAL_MS } from "./sweep.js";
@@ -25,7 +28,7 @@ export default async function plugin(bb: BbPluginApi) {
     serverUrl: resolveServerUrl(),
   });
 
-  bb.rpc.register(createRpcHandlers(service));
+  bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   registerAutomationCli({ bb, service });
 
   bb.events.on("thread.idle", ({ thread }) => {

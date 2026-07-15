@@ -2,7 +2,8 @@
 import { watch, type FSWatcher } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
 
 const DEFAULT_DIR = "~/Notes";
 const PREVIEW_LENGTH = 100;
@@ -40,6 +41,27 @@ interface ResolvedOpenerFile {
   rootPath: string;
   hostId: string | null;
 }
+
+const docsRpcInputSchema = z.record(z.string(), z.unknown());
+const docsRpcOutputSchema = z.unknown();
+
+export const docsRpcContract = defineRpcContract({
+  listNotes: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  readNote: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  saveNote: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  createNote: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  deletePath: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  createFolder: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  reorderFiles: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  movePath: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  renameToTitle: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  createVault: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  removeVault: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  uploadAttachment: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  preparePreview: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  openFile: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+  saveOpenedFile: { input: docsRpcInputSchema, output: docsRpcOutputSchema },
+});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -782,7 +804,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
   };
 
-  bb.rpc.register(handlers);
+  bb.rpc.register(docsRpcContract, handlers);
 
   bb.http.route(
     "POST",

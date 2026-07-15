@@ -15,6 +15,25 @@ const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
 
 const WIRE_SOURCE = `
+  import { defineRpcContract } from "@bb/plugin-sdk";
+  import { z } from "zod";
+  const rpcContract = defineRpcContract({
+    echo: {
+      input: z.object({ x: z.number().optional(), kept: z.boolean().optional() }),
+      output: z.object({ echoed: z.unknown() }),
+    },
+    boom: { input: z.record(z.string(), z.unknown()), output: z.null() },
+    publish: {
+      input: z.object({ channel: z.string(), payload: z.unknown() }),
+      output: z.literal("published"),
+    },
+    publishBad: { input: z.record(z.string(), z.unknown()), output: z.null() },
+    invalidOutput: { input: z.null(), output: z.string() },
+    bigintResult: { input: z.null(), output: z.any() },
+    cyclicResult: { input: z.null(), output: z.any() },
+    nonFiniteResult: { input: z.null(), output: z.any() },
+    validated: { input: z.object({ value: z.string().min(1) }), output: z.string() },
+  });
   export default function plugin(bb: any) {
     bb.http.route("GET", "/hello", (c: any) => c.json({ message: "hello v1" }));
     bb.http.route("POST", "/echo", async (c: any) =>
@@ -28,7 +47,7 @@ const WIRE_SOURCE = `
     bb.http.route("GET", "/boom", () => {
       throw new Error("route boom");
     });
-    bb.rpc.register({
+    bb.rpc.register(rpcContract, {
       echo: async (input: any) => ({ echoed: input }),
       boom: async () => {
         throw new Error("rpc boom");
@@ -39,6 +58,18 @@ const WIRE_SOURCE = `
       },
       publishBad: async () => {
         bb.realtime.publish("bad", { n: BigInt(1) });
+      },
+      invalidOutput: () => 42,
+      bigintResult: () => BigInt(1),
+      cyclicResult: () => {
+        const value: any = {};
+        value.self = value;
+        return value;
+      },
+      nonFiniteResult: () => ({ value: Number.NaN }),
+      validated: (input: any) => {
+        globalThis.__validatedRpcCalls = (globalThis.__validatedRpcCalls ?? 0) + 1;
+        return input.value;
       },
     });
   }
@@ -305,8 +336,9 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       join(rootDir, "server.ts"),
       `
         export default function plugin(bb: any) {
+          const schema = { "~standard": { version: 1, vendor: "test", validate: (value: any) => ({ value }) } };
           bb.http.route("GET", "/candidate", (c: any) => c.json({ candidate: true }));
-          bb.rpc.register({ candidate: () => ({ candidate: true }) });
+          bb.rpc.register({ candidate: { input: schema, output: schema } }, { candidate: () => ({ candidate: true }) });
           throw new Error("candidate failed");
         }
       `,
@@ -345,18 +377,69 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
 
     const boom = await rpc(harness, "boom", {});
     expect(boom.status).toBe(500);
-    expect(await boom.json()).toEqual({ ok: false, error: "rpc boom" });
+    expect(await boom.json()).toEqual({
+      ok: false,
+      error: { code: "handler_error", message: "rpc boom" },
+    });
 
     const missing = await rpc(harness, "missing", {});
     expect(missing.status).toBe(404);
     expect(await missing.json()).toMatchObject({
       ok: false,
-      error: 'plugin "wire" has no rpc method "missing"',
+      error: {
+        code: "unknown_method",
+        message: 'plugin "wire" has no rpc method "missing"',
+      },
     });
   });
 
+  it("rpc rejects invalid input before invocation and rejects invalid output", async () => {
+    delete (globalThis as Record<string, unknown>).__validatedRpcCalls;
+    const invalidInput = await rpc(harness, "validated", { value: "" });
+    expect(invalidInput.status).toBe(400);
+    expect(await invalidInput.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: "invalid_input",
+        message: "rpc input validation failed",
+        issues: [{ path: ["value"] }],
+      },
+    });
+    expect(
+      (globalThis as Record<string, unknown>).__validatedRpcCalls,
+    ).toBeUndefined();
+
+    const invalidOutput = await rpc(harness, "invalidOutput", null);
+    expect(invalidOutput.status).toBe(500);
+    expect(await invalidOutput.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: "invalid_output",
+        message: "rpc output validation failed",
+        issues: expect.any(Array),
+      },
+    });
+  });
+
+  it.each(["bigintResult", "cyclicResult", "nonFiniteResult"])(
+    "rpc rejects %s as a non-JSON result",
+    async (method) => {
+      const response = await rpc(harness, method, null);
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({
+        ok: false,
+        error: { code: "non_json_result" },
+      });
+    },
+  );
+
   it("rpc enforces local semantics: JSON-only body, origin check, parseable input", async () => {
-    const foreign = await rpc(harness, "echo", { x: 1 }, { origin: EVIL_ORIGIN });
+    const foreign = await rpc(
+      harness,
+      "echo",
+      { x: 1 },
+      { origin: EVIL_ORIGIN },
+    );
     expect(foreign.status).toBe(403);
 
     const notJson = await rpc(harness, "echo", { x: 1 }, { contentType: null });
@@ -371,6 +454,10 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       },
     );
     expect(badBody.status).toBe(400);
+    expect(await badBody.json()).toMatchObject({
+      ok: false,
+      error: { code: "invalid_json" },
+    });
   });
 
   it("returns the structured disabled error when the experiment is off", async () => {
@@ -410,7 +497,10 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({
       ok: false,
-      error: expect.stringContaining("not JSON-serializable"),
+      error: {
+        code: "handler_error",
+        message: expect.stringContaining("not JSON-serializable"),
+      },
     });
   });
 
@@ -421,11 +511,14 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     const genDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
       name: "bb-plugin-gen",
       serverSource: `
+        import { defineRpcContract } from "@bb/plugin-sdk";
+        import { z } from "zod";
+        const rpcContract = defineRpcContract({ gen: { input: z.record(z.string(), z.unknown()), output: z.object({ gen: z.number() }) } });
         export default function plugin(bb: any) {
           const g = globalThis as any;
           g.__wireGen = (g.__wireGen ?? 0) + 1;
           const gen = g.__wireGen;
-          bb.rpc.register({ gen: async () => ({ gen }) });
+          bb.rpc.register(rpcContract, { gen: async () => ({ gen }) });
         }
       `,
     });

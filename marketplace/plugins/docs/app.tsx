@@ -19,6 +19,7 @@ import {
   type PluginNavPanelProps,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
+import type { docsRpcContract } from "./server.js";
 import {
   Editor,
   Extension,
@@ -582,7 +583,7 @@ function TiptapEditor({
 }
 
 function useNotebook(vaultId: string | null) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof docsRpcContract>();
   const [data, setData] = useState<NotesData | null>(null);
   const refresh = useCallback(() => {
     void rpc
@@ -738,7 +739,7 @@ function DocsDirectiveCard({
 }
 
 function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof docsRpcContract>();
   const [state, setState] = useState<PreviewLease | { error: string } | null>(
     null,
   );
@@ -834,7 +835,7 @@ function NotePane({
   onRenamed(path: string): void;
   renameToTitle?: boolean;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof docsRpcContract>();
   const [state, setState] = useState<
     { content: string; lease: PreviewLease } | { error: string } | null
   >(null);
@@ -999,7 +1000,7 @@ function NotePane({
 }
 
 function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof docsRpcContract>();
   const openerSource = useMemo(
     () => ({
       kind: source.kind,
@@ -1160,7 +1161,7 @@ function HtmlPane({
   vaultId: string;
   filePath: string;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof docsRpcContract>();
   const [lease, setLease] = useState<PreviewLease | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -1911,7 +1912,7 @@ function parseRoute(subPath: string): {
 }
 
 function NotesPanel({ subPath }: PluginNavPanelProps) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof docsRpcContract>();
   const navigate = useBbNavigate();
   const route = parseRoute(subPath);
   const [vaultId, setVaultId] = useState<string | null>(route.vaultId);

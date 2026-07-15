@@ -1,5 +1,10 @@
 import type { ComponentType } from "react";
 import type { JsonValue } from "./json-value.js";
+import type {
+  PluginRpcCallArgs,
+  PluginRpcContract,
+  PluginRpcResult,
+} from "./rpc-contract.js";
 
 /**
  * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
@@ -341,14 +346,19 @@ export interface PluginAppDefinition {
 // Hooks
 // ---------------------------------------------------------------------------
 
-export interface PluginRpcClient {
+export interface PluginRpcClient<
+  Contract extends PluginRpcContract = PluginRpcContract,
+> {
   /**
    * Invoke one of the plugin's `bb.rpc` methods (POST
    * /api/v1/plugins/&lt;id&gt;/rpc/&lt;method&gt;). Resolves with the method's
-   * result; rejects with an `Error` carrying the server's message when the
-   * handler fails or the plugin is not running.
+   * inferred output; rejects with an `Error` carrying the server's message,
+   * stable `code`, and validation `issues` when present.
    */
-  call(method: string, input?: unknown): Promise<unknown>;
+  call<Method extends Extract<keyof Contract, string>>(
+    method: Method,
+    ...args: PluginRpcCallArgs<Contract[Method]>
+  ): Promise<PluginRpcResult<Contract[Method]>>;
 }
 
 export interface PluginSettingsState {
@@ -446,8 +456,13 @@ export interface BbNavigate {
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
+  defineRpcContract<const Contract extends PluginRpcContract>(
+    contract: Contract,
+  ): Contract;
   definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
-  useRpc(): PluginRpcClient;
+  useRpc<
+    Contract extends PluginRpcContract = PluginRpcContract,
+  >(): PluginRpcClient<Contract>;
   useRealtime(channel: string, handler: (payload: unknown) => void): void;
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;

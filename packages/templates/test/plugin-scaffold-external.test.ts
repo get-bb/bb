@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { PLUGIN_STARTER_DEPENDENCIES } from "../src/generated/plugin-starter-files.generated.js";
 import { scaffoldPlugin } from "../src/plugin-scaffold.js";
 
 const execFileAsync = promisify(execFile);
@@ -23,17 +24,28 @@ const dependencyRequire = createRequire(
 );
 
 const EXTERNAL_DEPENDENCIES = [
+  ...Object.keys(PLUGIN_STARTER_DEPENDENCIES),
+  "@radix-ui/react-dialog",
   "@types/better-sqlite3",
   "@types/node",
   "@types/react",
   "better-sqlite3",
   "hono",
   "react",
+  "vaul",
   "zod",
 ] as const;
 
 const REPRESENTATIVE_SERVER = `
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
+
+export const rpcContract = defineRpcContract({
+  projectName: {
+    input: z.object({ projectId: z.string() }),
+    output: z.object({ name: z.string() }),
+  },
+});
 
 async function verifyFullSdk(bb: BbPluginApi) {
   const thread = await bb.sdk.threads.spawn({
@@ -61,8 +73,32 @@ async function verifyFullSdk(bb: BbPluginApi) {
 
 export default function plugin(bb: BbPluginApi) {
   void verifyFullSdk;
+  bb.rpc.register(rpcContract, {
+    async projectName({ projectId }) {
+      const project = await bb.sdk.projects.get({ projectId });
+      return { name: project.name };
+    },
+  });
   bb.log.info("portable SDK fixture loaded");
 }
+`;
+
+const REPRESENTATIVE_APP = `
+import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+import type { rpcContract } from "./server";
+
+function Panel() {
+  const rpc = useRpc<typeof rpcContract>();
+  void rpc.call("projectName", { projectId: "proj_fixture" }).then((result) => {
+    const exactName: string = result.name;
+    void exactName;
+  });
+  return null;
+}
+
+export default definePluginApp((app) => {
+  app.slots.homepageSection({ id: "fixture", title: "Fixture", component: Panel });
+});
 `;
 
 function packageRoot(name: string): string {
@@ -112,8 +148,10 @@ describe("external plugin scaffold types", () => {
       targetDir,
       packageName: "bb-plugin-external",
       bbVersion: "0.9.0",
+      app: true,
     });
     await writeFile(join(targetDir, "server.ts"), REPRESENTATIVE_SERVER);
+    await writeFile(join(targetDir, "app.tsx"), REPRESENTATIVE_APP);
     await linkExternalDependencies(targetDir);
 
     const tsconfig = JSON.parse(

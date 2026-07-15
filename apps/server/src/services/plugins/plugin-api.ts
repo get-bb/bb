@@ -36,6 +36,7 @@ import type {
   PluginMentionTrigger,
   PluginRealtime,
   PluginRpc,
+  PluginRpcMethodContract,
   PluginServerApi,
   PluginSettingDescriptors,
   PluginSettingValue,
@@ -48,6 +49,7 @@ import type {
   PluginThreadEventHandler,
   PluginThreadEventName,
   PluginUi,
+  StandardSchemaV1,
 } from "@bb/plugin-sdk";
 import type { BbSdk, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
@@ -87,6 +89,12 @@ export type {
   PluginMentionTrigger,
   PluginRealtime,
   PluginRpc,
+  PluginRpcContract,
+  PluginRpcError,
+  PluginRpcErrorCode,
+  PluginRpcHandlers,
+  PluginRpcMethodContract,
+  PluginRpcValidationIssue,
   PluginServerApi,
   PluginSettings,
   PluginSettingsHandle,
@@ -101,6 +109,7 @@ export type {
   PluginThreadEventName,
   PluginThreadEventPayloads,
   PluginUi,
+  StandardSchemaV1,
 } from "@bb/plugin-sdk";
 
 /**
@@ -140,6 +149,42 @@ export function isNeedsConfigurationError(error: unknown): error is Error {
 /** JSON values ≤256KB; larger writes are rejected with a clear error. */
 const KV_VALUE_MAX_BYTES = 256 * 1024;
 
+function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  if (typeof value !== "object" || value === null) return false;
+  const standard = Reflect.get(value, "~standard");
+  return (
+    typeof standard === "object" &&
+    standard !== null &&
+    Reflect.get(standard, "version") === 1 &&
+    typeof Reflect.get(standard, "vendor") === "string" &&
+    typeof Reflect.get(standard, "validate") === "function"
+  );
+}
+
+function readRpcMethodContract(
+  method: string,
+  value: unknown,
+): PluginRpcMethodContract {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `rpc method "${method}" contract must provide input and output Standard Schemas`,
+    );
+  }
+  const input = Reflect.get(value, "input");
+  const output = Reflect.get(value, "output");
+  if (!isStandardSchema(input)) {
+    throw new Error(
+      `rpc method "${method}" input must be a Standard Schema v1 validator`,
+    );
+  }
+  if (!isStandardSchema(output)) {
+    throw new Error(
+      `rpc method "${method}" output must be a Standard Schema v1 validator`,
+    );
+  }
+  return { input, output };
+}
+
 /** Per-event handler lists recorded by `bb.events.on`; dropped with the handle. */
 export type PluginThreadEventHandlers = {
   [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
@@ -160,8 +205,12 @@ export interface PluginHttpRouteRecord {
   handler: PluginHttpHandler;
 }
 
-/** Runtime shape of a registered rpc handler; inputs arrive JSON-parsed. */
-export type PluginRpcHandler = (input: unknown) => unknown;
+/** Runtime shape of a registered rpc method; inputs arrive JSON-parsed. */
+export interface PluginRpcHandler {
+  inputSchema: StandardSchemaV1;
+  outputSchema: StandardSchemaV1;
+  handler: (input: never) => unknown;
+}
 
 /** Runtime record of a registered native tool. */
 export interface PluginAgentToolRecord {
@@ -747,21 +796,60 @@ export function createPluginApi(options: {
   };
 
   const rpc: PluginRpc = {
-    register(handlers) {
+    register(contract, handlers) {
       assertLive();
-      for (const [name, handler] of Object.entries(handlers)) {
+      if (
+        typeof contract !== "object" ||
+        contract === null ||
+        Array.isArray(contract)
+      ) {
+        throw new Error("rpc.register contract must be an object");
+      }
+      if (
+        typeof handlers !== "object" ||
+        handlers === null ||
+        Array.isArray(handlers)
+      ) {
+        throw new Error("rpc.register handlers must be an object");
+      }
+
+      const pending: Array<[string, PluginRpcHandler]> = [];
+      const contractEntries = Object.entries(contract);
+      const contractNames = new Set(contractEntries.map(([name]) => name));
+      for (const extraName of Object.keys(handlers)) {
+        if (!contractNames.has(extraName)) {
+          throw new Error(
+            `rpc handler "${extraName}" has no matching contract method`,
+          );
+        }
+      }
+      for (const [name, methodContractValue] of contractEntries) {
         if (!RPC_METHOD_PATTERN.test(name)) {
           throw new Error(
             `invalid rpc method name "${name}" — use letters, digits, "-" and "_"`,
           );
         }
+        const methodContract = readRpcMethodContract(name, methodContractValue);
+        const handler = Reflect.get(handlers, name);
         if (typeof handler !== "function") {
-          throw new Error(`rpc method "${name}" must be a function`);
+          throw new Error(
+            `rpc method "${name}" must provide a handler function`,
+          );
         }
         if (rpcHandlers.has(name)) {
           throw new Error(`rpc method "${name}" is already registered`);
         }
-        rpcHandlers.set(name, handler as PluginRpcHandler);
+        pending.push([
+          name,
+          {
+            inputSchema: methodContract.input,
+            outputSchema: methodContract.output,
+            handler: handler as (input: never) => unknown,
+          },
+        ]);
+      }
+      for (const [name, record] of pending) {
+        rpcHandlers.set(name, record);
       }
     },
   };

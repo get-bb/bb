@@ -66,7 +66,12 @@ const APP_SOURCE = `export default function App() {\n  return <div className="li
 
 async function writeAppPluginFixture(
   rootDir: string,
-  options: { name: string; app?: boolean; appSource?: string },
+  options: {
+    name: string;
+    app?: boolean;
+    appSource?: string;
+    serverSource?: string;
+  },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
   await writeFile(
@@ -80,7 +85,10 @@ async function writeAppPluginFixture(
       },
     }),
   );
-  await writeFile(join(rootDir, "server.ts"), SERVER_SOURCE);
+  await writeFile(
+    join(rootDir, "server.ts"),
+    options.serverSource ?? SERVER_SOURCE,
+  );
   if (options.app !== false) {
     await writeFile(join(rootDir, "app.tsx"), options.appSource ?? APP_SOURCE);
   }
@@ -190,6 +198,52 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     );
     expect(response.status).toBe(404);
   });
+
+  it("erases a type-only backend RPC contract import from the frontend bundle", async () => {
+    const rootDir = join(
+      harness.config.dataDir,
+      "fixtures",
+      "bb-plugin-typed-rpc",
+    );
+    await writeAppPluginFixture(rootDir, {
+      name: "bb-plugin-typed-rpc",
+      serverSource: `
+        import { defineRpcContract } from "@bb/plugin-sdk";
+        import { z } from "zod";
+        const BACKEND_ONLY_SENTINEL = "backend-contract-must-not-bundle";
+        export const rpcContract = defineRpcContract({
+          echo: {
+            input: z.object({ value: z.string() }),
+            output: z.object({ value: z.string() }),
+          },
+        });
+        export default function plugin(bb: any) {
+          void BACKEND_ONLY_SENTINEL;
+          bb.rpc.register(rpcContract, { echo: (input: any) => input });
+        }
+      `,
+      appSource: `
+        import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+        import type { rpcContract } from "./server";
+        function Panel() {
+          const rpc = useRpc<typeof rpcContract>();
+          void rpc.call("echo", { value: "typed" });
+          return <div>typed rpc</div>;
+        }
+        export default definePluginApp((app) => {
+          app.slots.homepageSection({ id: "typed", title: "Typed", component: Panel });
+        });
+      `,
+    });
+
+    const entry = await harness.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+    const bundled = await readFile(join(rootDir, "dist", "app.js"), "utf8");
+    expect(bundled).not.toContain("backend-contract-must-not-bundle");
+    expect(bundled).toContain("defineRpcContract");
+    expect(bundled).not.toContain("function defineRpcContract");
+    expect(bundled).toContain("typed rpc");
+  }, 60_000);
 
   it("fails the install when the frontend build fails", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-bad");

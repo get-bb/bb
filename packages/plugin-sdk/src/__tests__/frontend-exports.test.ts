@@ -18,5 +18,7 @@ describe("frontend plugin SDK export parity", () => {
     expect(declarationValueExports(declarations)).toEqual(
       Object.keys(frontendRuntime).sort(),
     );
+    expect(frontendRuntime.defineRpcContract).toBeTypeOf("function");
+    expect(Object.keys(frontendRuntime)).not.toContain("StandardSchemaV1");
   });
 });

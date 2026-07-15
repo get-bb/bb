@@ -4,6 +4,7 @@ import type * as z from "zod";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
+import type { PluginRpcContract, PluginRpcHandlers } from "./rpc-contract.js";
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -181,14 +182,17 @@ export interface PluginHttp {
 
 export interface PluginRpc {
   /**
-   * Register rpc methods, served at POST
+   * Register a Standard Schema-driven rpc contract and its inferred handlers,
+   * served at POST
    * `/api/v1/plugins/<id>/rpc/<method>` with "local" auth semantics. The
-   * JSON request body is the input; the response is
-   * `{ ok: true, result }` or `{ ok: false, error }`. Inputs and outputs
-   * must survive a JSON round-trip — results are serialized with
-   * JSON.stringify and nothing else.
+   * host validates input before invocation and output before strict JSON
+   * serialization. The response is `{ ok: true, result }` or
+   * `{ ok: false, error: { code, message, issues? } }`.
    */
-  register(handlers: Record<string, (input: never) => unknown>): void;
+  register<Contract extends PluginRpcContract>(
+    contract: Contract,
+    handlers: PluginRpcHandlers<Contract>,
+  ): void;
 }
 
 export interface PluginRealtime {
