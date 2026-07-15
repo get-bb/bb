@@ -26,17 +26,6 @@ interface TimelineLogicalSegment {
   rows: TimelineRow[];
 }
 
-const TIMELINE_ROW_WINDOW_CURSOR_PREFIX = "timeline-row-window:";
-
-/**
- * A conversation segment is a useful UX boundary, but it is not a safe
- * resource boundary: one active turn can contain thousands of work rows. Keep
- * the initial response comfortably below the timeline cache's 200-row cutoff
- * and below the point where mounting the rows dominates a thread switch.
- */
-export const THREAD_TIMELINE_PAGE_ROW_LIMIT = 160;
-export const THREAD_TIMELINE_PAGE_JSON_BYTE_TARGET = 512_000;
-
 export interface PaginatedTimelineRowsResult {
   hasOlderRows: boolean;
   kind: ThreadTimelinePageKind;
@@ -44,11 +33,6 @@ export interface PaginatedTimelineRowsResult {
   returnedSegmentCount: number;
   rows: TimelineRow[];
   segmentLimit: number;
-}
-
-export interface PaginateTimelineRowsOptions {
-  /** Older raw events exist before the projected event window. */
-  eventWindowOlderCursor: TimelinePaginationCursor | null;
 }
 
 function isTimelineSegmentAnchorRow(row: TimelineRow): boolean {
@@ -123,118 +107,31 @@ function requireTimelineSegmentCursorIndex(
   );
 }
 
-export function isTimelineRowWindowCursor(
-  cursor: TimelinePaginationCursor,
-): boolean {
-  return cursor.anchorId.startsWith(TIMELINE_ROW_WINDOW_CURSOR_PREFIX);
-}
-
-function timelineRowWindowCursor(row: TimelineRow): TimelinePaginationCursor {
-  return {
-    anchorSeq: row.sourceSeqStart,
-    anchorId: `${TIMELINE_ROW_WINDOW_CURSOR_PREFIX}${row.id}`,
-  };
-}
-
-export function createTimelineEventWindowCursor(args: {
-  eventId: string;
-  sequence: number;
-}): TimelinePaginationCursor {
-  return {
-    anchorSeq: args.sequence,
-    anchorId: `${TIMELINE_ROW_WINDOW_CURSOR_PREFIX}event:${args.eventId}`,
-  };
-}
-
-interface BoundedTimelineRows {
-  rows: TimelineRow[];
-  truncated: boolean;
-}
-
-function selectBoundedTimelineSuffix(
-  rows: readonly TimelineRow[],
-): BoundedTimelineRows {
-  let jsonBytes = 0;
-  let startIndex = rows.length;
-
-  while (startIndex > 0) {
-    const candidate = rows[startIndex - 1];
-    if (!candidate) break;
-    const candidateBytes = Buffer.byteLength(JSON.stringify(candidate), "utf8");
-    const selectedRowCount = rows.length - startIndex;
-    const exceedsRowLimit = selectedRowCount >= THREAD_TIMELINE_PAGE_ROW_LIMIT;
-    const exceedsByteTarget =
-      selectedRowCount > 0 &&
-      jsonBytes + candidateBytes > THREAD_TIMELINE_PAGE_JSON_BYTE_TARGET;
-    if (exceedsRowLimit || exceedsByteTarget) {
-      break;
-    }
-    jsonBytes += candidateBytes;
-    startIndex--;
-  }
-
-  // Rows derived from one source event are an atomic group (for example, one
-  // prompt containing text plus attachments). Never strand part of that group
-  // on the other side of a cursor, even if doing so slightly exceeds a target.
-  const firstSelectedSequence = rows[startIndex]?.sourceSeqStart;
-  while (
-    startIndex > 0 &&
-    firstSelectedSequence !== undefined &&
-    rows[startIndex - 1]?.sourceSeqStart === firstSelectedSequence
-  ) {
-    startIndex--;
-  }
-
-  return {
-    rows: rows.slice(startIndex),
-    truncated: startIndex > 0,
-  };
-}
-
 export function paginateTimelineRows(
   rows: readonly TimelineRow[],
   page: ThreadTimelinePageRequest,
-  options: PaginateTimelineRowsOptions,
 ): PaginatedTimelineRowsResult {
   const segments = buildTimelineLogicalSegments(rows);
   const candidateSegments =
     page.kind === "latest"
       ? segments
-      : isTimelineRowWindowCursor(page.beforeCursor)
-        ? segments
-        : segments.slice(
-            0,
-            requireTimelineSegmentCursorIndex(segments, page.beforeCursor),
-          );
+      : segments.slice(
+          0,
+          requireTimelineSegmentCursorIndex(segments, page.beforeCursor),
+        );
   const selectedSegments = candidateSegments.slice(-page.segmentLimit);
-  const boundedRows = selectBoundedTimelineSuffix(
-    selectedSegments.flatMap((segment) => segment.rows),
-  );
-  const hasOlderSegments = candidateSegments.length > selectedSegments.length;
-  const hasOlderRows =
-    hasOlderSegments ||
-    boundedRows.truncated ||
-    options.eventWindowOlderCursor !== null;
+  const hasOlderRows = candidateSegments.length > selectedSegments.length;
   const oldestSelectedSegment = selectedSegments[0];
-  const oldestSelectedRow = boundedRows.rows[0];
-  const selectedRowIds = new Set(boundedRows.rows.map((row) => row.id));
-  const returnedSegmentCount = selectedSegments.filter((segment) =>
-    segment.rows.some((row) => selectedRowIds.has(row.id)),
-  ).length;
 
   return {
     hasOlderRows,
     kind: page.kind,
     olderCursor:
-      !hasOlderRows || !oldestSelectedRow
-        ? null
-        : boundedRows.truncated
-          ? timelineRowWindowCursor(oldestSelectedRow)
-          : hasOlderSegments
-            ? (oldestSelectedSegment?.cursor ?? null)
-            : options.eventWindowOlderCursor,
-    returnedSegmentCount,
-    rows: boundedRows.rows,
+      hasOlderRows && oldestSelectedSegment
+        ? oldestSelectedSegment.cursor
+        : null,
+    returnedSegmentCount: selectedSegments.length,
+    rows: selectedSegments.flatMap((segment) => segment.rows),
     segmentLimit: page.segmentLimit,
   };
 }

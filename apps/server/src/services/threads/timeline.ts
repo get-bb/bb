@@ -6,7 +6,7 @@ import {
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
-import type { ClientTurnRequestId, Thread, ThreadEventType } from "@bb/domain";
+import type { ClientTurnRequestId, Thread } from "@bb/domain";
 import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
@@ -21,14 +21,13 @@ import {
   getEnvironment,
   getTimelineSegmentAnchorAtSequence,
   listContextWindowUsageRows,
-  listLatestGoalEventRowsByThreadIds,
+  listRecentStoredEventRows,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsByParentToolCallIds,
   listStoredEventRowsInRange,
-  listStoredConversationOutlineEventRows,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
-  listStoredTimelineWindowEventRowsDescending,
+  listStoredTimelineWindowEventRows,
   listStoredToolCallRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
@@ -38,8 +37,6 @@ import type { DbConnection, StoredEventRow } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
-  createTimelineEventWindowCursor,
-  isTimelineRowWindowCursor,
   paginateTimelineRows,
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
@@ -188,7 +185,6 @@ interface TimelineEventRowSelection {
   acceptedClientRequestContextRows: StoredEventRow[];
   contextOnlyToolCallIds: Set<string>;
   paginationPage: ThreadTimelinePageRequest;
-  eventWindowOlderCursor: TimelinePaginationCursor | null;
   responsePageKind: ThreadTimelinePageKind;
   rows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
@@ -584,6 +580,24 @@ function resolveTurnSummaryDetailsSourceRange(
   };
 }
 
+function selectFullTimelineEventRows(
+  db: DbConnection,
+  thread: Thread,
+  page: ThreadTimelinePageRequest,
+): TimelineEventRowSelection {
+  return {
+    acceptedClientRequestContextRows: [],
+    contextOnlyToolCallIds: new Set(),
+    paginationPage: page,
+    responsePageKind: page.kind,
+    rows: listRecentStoredEventRows(db, {
+      threadId: thread.id,
+      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+    }),
+    strategy: "full",
+  };
+}
+
 function collectTurnIdsMissingStartedRows(
   rows: readonly StoredEventRow[],
 ): string[] {
@@ -682,79 +696,6 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
   return mergeStoredEventRowsById([...args.rows, ...stateRows]);
 }
 
-function ensureLatestTimelineGoalStateRow(
-  db: DbConnection,
-  args: TimelineWindowRowsArgs,
-): StoredEventRow[] {
-  const goalRows = listLatestGoalEventRowsByThreadIds(db, {
-    threadIds: [args.threadId],
-  });
-  return mergeStoredEventRowsById([...args.rows, ...goalRows]);
-}
-
-export const THREAD_TIMELINE_EVENT_WINDOW_ROW_LIMIT = 400;
-export const THREAD_TIMELINE_EVENT_WINDOW_BYTE_TARGET = 750_000;
-const THREAD_TIMELINE_EVENT_WINDOW_EXCLUDED_EVENT_TYPES = [
-  ...THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-  // Goal state has its own targeted latest-row query below and never produces
-  // timeline rows. Repeated goal updates must not evict visible work from a
-  // bounded event window.
-  "thread/goal/updated",
-  "thread/goal/cleared",
-] satisfies readonly ThreadEventType[];
-
-interface BoundedTimelineEventRows {
-  olderCursor: TimelinePaginationCursor | null;
-  rows: StoredEventRow[];
-}
-
-function selectBoundedTimelineEventRows(
-  db: DbConnection,
-  args: {
-    beforeSequence: number | undefined;
-    sequenceStart: number;
-    threadId: string;
-  },
-): BoundedTimelineEventRows {
-  const candidates = listStoredTimelineWindowEventRowsDescending(db, {
-    beforeSequence: args.beforeSequence,
-    excludedTypes: THREAD_TIMELINE_EVENT_WINDOW_EXCLUDED_EVENT_TYPES,
-    limit: THREAD_TIMELINE_EVENT_WINDOW_ROW_LIMIT + 1,
-    sequenceStart: args.sequenceStart,
-    threadId: args.threadId,
-  });
-  const selectedDescending: StoredEventRow[] = [];
-  let dataBytes = 0;
-
-  for (const candidate of candidates) {
-    if (selectedDescending.length >= THREAD_TIMELINE_EVENT_WINDOW_ROW_LIMIT) {
-      break;
-    }
-    const candidateBytes = Buffer.byteLength(candidate.data, "utf8");
-    if (
-      selectedDescending.length > 0 &&
-      dataBytes + candidateBytes > THREAD_TIMELINE_EVENT_WINDOW_BYTE_TARGET
-    ) {
-      break;
-    }
-    selectedDescending.push(candidate);
-    dataBytes += candidateBytes;
-  }
-
-  const earliestSelected = selectedDescending.at(-1);
-  const hasOlderRows = selectedDescending.length < candidates.length;
-  return {
-    olderCursor:
-      hasOlderRows && earliestSelected
-        ? createTimelineEventWindowCursor({
-            eventId: earliestSelected.id,
-            sequence: earliestSelected.sequence,
-          })
-        : null,
-    rows: selectedDescending.reverse(),
-  };
-}
-
 interface ResolveTimelineSegmentWindowArgs {
   page: ThreadTimelinePageRequest;
   threadId: string;
@@ -786,20 +727,6 @@ function resolveTimelineSegmentWindow(
 
   if (page.kind === "older") {
     const cursor = page.beforeCursor;
-    if (isTimelineRowWindowCursor(cursor)) {
-      const precedingAnchors = listTimelineSegmentAnchorsDescending(db, {
-        beforeSequence: cursor.anchorSeq,
-        limit: page.segmentLimit + 1,
-        threadId,
-      });
-      return {
-        beforeSequence: cursor.anchorSeq,
-        // A row-window cursor is itself proof that the thread has timeline
-        // content, including legacy threads with no message anchor.
-        hasAnchors: true,
-        sequenceStart: precedingAnchors[page.segmentLimit]?.sequence ?? 0,
-      };
-    }
     const cursorAnchor = getTimelineSegmentAnchorAtSequence(db, {
       sequence: cursor.anchorSeq,
       threadId,
@@ -858,31 +785,31 @@ function selectStandardTimelineEventRows(
     page,
     threadId: thread.id,
   });
+  if (!window.hasAnchors) {
+    return selectFullTimelineEventRows(db, thread, page);
+  }
+
   const beforeSequence = window.beforeSequence;
   const sequenceStart = window.sequenceStart;
-
-  const boundedEventRows = selectBoundedTimelineEventRows(db, {
-    beforeSequence,
-    sequenceStart,
-    threadId: thread.id,
-  });
 
   const selectedRowsWithInWindowTaskState =
     ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,
       rows: ensureTimelineWindowTurnStartedRows(db, {
         threadId: thread.id,
-        rows: boundedEventRows.rows,
+        rows: listStoredTimelineWindowEventRows(db, {
+          beforeSequence,
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          sequenceStart,
+          threadId: thread.id,
+        }),
       }),
     });
   const selectedRows =
     page.kind === "latest"
-      ? ensureLatestTimelineGoalStateRow(db, {
+      ? ensureLatestTimelineOpenBackgroundTaskStateRows(db, {
           threadId: thread.id,
-          rows: ensureLatestTimelineOpenBackgroundTaskStateRows(db, {
-            threadId: thread.id,
-            rows: selectedRowsWithInWindowTaskState,
-          }),
+          rows: selectedRowsWithInWindowTaskState,
         })
       : selectedRowsWithInWindowTaskState;
   const selectedRowsWithContext =
@@ -916,13 +843,10 @@ function selectStandardTimelineEventRows(
             kind: "latest",
             segmentLimit: page.segmentLimit,
           },
-    eventWindowOlderCursor: boundedEventRows.olderCursor,
     responsePageKind: page.kind,
     rows: selectedRowsWithParentedTurnStarts,
     strategy:
-      boundedEventRows.olderCursor === null &&
-      sequenceStart === 0 &&
-      beforeSequence === undefined
+      sequenceStart === 0 && beforeSequence === undefined
         ? "full"
         : "standard-window",
   };
@@ -1112,10 +1036,7 @@ function buildThreadTimelineInternal(
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
-    () =>
-      paginateTimelineRows(timeline.rows, eventSelection.paginationPage, {
-        eventWindowOlderCursor: eventSelection.eventWindowOlderCursor,
-      }),
+    () => paginateTimelineRows(timeline.rows, eventSelection.paginationPage),
   );
   if (profile) {
     profile.responseRowCount = paginatedTimeline.rows.length;
@@ -1215,8 +1136,9 @@ export function buildThreadConversationOutline(
   thread: Thread,
   options: BuildThreadConversationOutlineOptions,
 ): ThreadConversationOutlineResponse {
-  const rawEventRows = listStoredConversationOutlineEventRows(db, {
+  const rawEventRows = listRecentStoredEventRows(db, {
     threadId: thread.id,
+    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   });
   const decodedRawEvents = rawEventRows.map((row) =>
     toThreadEventWithMeta(row),
