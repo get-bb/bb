@@ -293,6 +293,23 @@ For review or fix pipelines, get the environment ID from
   `bb memory update <id> --expected-version <n>` or `bb memory forget <id>
 --expected-version <n> --reason <text>`.
 
+## Tasks
+
+- Tasks is an opt-in plugin in the default BB Official marketplace. Install it
+  with `bb plugin install tasks@bb-official` before using `bb tasks ...`.
+- Start tracked work with `bb tasks show <key-or-id> --json`. Fetch relevant
+  files with `bb tasks attachment get <attachment-id> --out <path>`.
+- Leave substantive milestone updates with `bb tasks comment <key-or-id>
+  --body <markdown>` and attach result artifacts. Avoid progress spam.
+- Delegated threads are attached automatically. For work started independently,
+  run `bb tasks attach <key-or-id>` from the working thread.
+- When implementation is ready for review, run `bb tasks update <key-or-id>
+  --status in_review`; if blocked, leave the status accurate and explain the
+  blocker in a comment.
+- Add `--json` when command output will drive follow-up work. Run `bb tasks
+  --help` for project, folder, task, label, attachment, preset, delegation,
+  attached-thread, and demo-data commands.
+
 ## Automations
 
 - Use `bb automation ...` to manage scheduled tasks. This command is provided

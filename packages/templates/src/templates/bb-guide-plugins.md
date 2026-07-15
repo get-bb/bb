@@ -43,6 +43,22 @@ deletion.
 Project writes use the invoking CLI's current project. Global writes require
 the explicit `--scope global` flag.
 
+The Tasks plugin is an opt-in install from the default BB Official marketplace:
+`bb plugin install tasks@bb-official`. It adds a task tracker, agent delegation,
+and the `bb tasks` command. Common agent operations are:
+
+  bb tasks show <key-or-id> [--json]
+  bb tasks list [--project <prefix-or-id>] [filters...] [--json]
+  bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--json]
+  bb tasks attachment get <attachment-id> --out <path> [--json]
+  bb tasks attach <key-or-id> [--json]
+  bb tasks update <key-or-id> --status in_review [--json]
+
+Run `bb tasks --help` for project, folder, task, label, attachment, and demo-data
+commands, plus preset management, delegation, and attached-thread inspection.
+Delegated threads are attached automatically; use `bb tasks attach` only when
+work started outside Tasks.
+
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
 
