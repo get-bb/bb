@@ -17,6 +17,7 @@ import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
+  getProjectStoredPromptAttachmentPaths,
   hasPromptBranchSelectionChanged,
   hasPromptOptionValueChanged,
   hasSingleUseRootComposeTargetState,
@@ -340,6 +341,46 @@ describe("mergeMissingPromptDraftAttachments", () => {
         ],
       ),
     ).toBeNull();
+  });
+});
+
+describe("getProjectStoredPromptAttachmentPaths", () => {
+  it("selects only server-managed relative attachment paths", () => {
+    expect(
+      getProjectStoredPromptAttachmentPaths([
+        {
+          type: "localImage",
+          path: "image-uploaded.png",
+          name: "image.png",
+          mimeType: "image/png",
+          sizeBytes: 64,
+        },
+        {
+          type: "localFile",
+          path: "image-uploaded.png",
+          name: "duplicate.png",
+          sizeBytes: 64,
+        },
+        {
+          type: "localFile",
+          path: "/tmp/report.pdf",
+          name: "report.pdf",
+          sizeBytes: 32,
+        },
+        {
+          type: "localImage",
+          path: "C:\\Users\\sawyer\\screenshot.png",
+          name: "screenshot.png",
+          sizeBytes: 32,
+        },
+        {
+          type: "localFile",
+          path: "https://example.test/report.pdf",
+          name: "remote.pdf",
+          sizeBytes: 32,
+        },
+      ]),
+    ).toEqual(["image-uploaded.png"]);
   });
 });
 

@@ -4,6 +4,7 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import {
   basename,
+  dirname,
   extname,
   isAbsolute,
   join,
@@ -185,6 +186,34 @@ export async function readAttachment(
     content: await readFile(resolved),
     mimeType: mimeTypes.lookup(resolved) || undefined,
   };
+}
+
+export async function copyProjectAttachments(
+  dataDir: string,
+  sourceProjectId: string,
+  targetProjectId: string,
+  attachmentPaths: readonly string[],
+): Promise<void> {
+  if (sourceProjectId === targetProjectId || attachmentPaths.length === 0) {
+    return;
+  }
+
+  const uniquePaths = [...new Set(attachmentPaths)];
+  const targetDir = projectAttachmentDir(dataDir, targetProjectId);
+  const attachments = await Promise.all(
+    uniquePaths.map(async (attachmentPath) => ({
+      content: (await readAttachment(dataDir, sourceProjectId, attachmentPath))
+        .content,
+      targetPath: resolveAttachmentPath(targetDir, attachmentPath),
+    })),
+  );
+
+  await Promise.all(
+    attachments.map(async ({ content, targetPath }) => {
+      await mkdir(dirname(targetPath), { recursive: true });
+      await writeFile(targetPath, content);
+    }),
+  );
 }
 
 export async function deleteProjectAttachments(

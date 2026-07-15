@@ -103,6 +103,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { copyPromptAttachments } from "@/lib/api";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -274,6 +275,23 @@ export function mergeMissingPromptDraftAttachments(
     return null;
   }
   return [...currentAttachments, ...missingAttachments];
+}
+
+export function getProjectStoredPromptAttachmentPaths(
+  attachments: readonly PromptDraftAttachment[],
+): string[] {
+  return [
+    ...new Set(
+      attachments.flatMap((attachment) => {
+        const path = attachment.path;
+        const isRuntimeReadable =
+          /^[\\/]/u.test(path) ||
+          /^[a-zA-Z]:[\\/]/u.test(path) ||
+          /^[a-zA-Z][a-zA-Z0-9+.-]*:/u.test(path);
+        return isRuntimeReadable ? [] : [path];
+      }),
+    ),
+  ];
 }
 
 export function restorePromptDraftAfterOptionChange({
@@ -1019,6 +1037,8 @@ export function RootComposeView(props: RootComposeViewProps) {
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [isCopyingPromptAttachments, setIsCopyingPromptAttachments] =
+    useState(false);
   const prompt = promptDraft.text;
   const promptInput = useMemo(
     () =>
@@ -1645,14 +1665,51 @@ export function RootComposeView(props: RootComposeViewProps) {
 
   const selectedThreadModel = activeModel?.model ?? selectedModel;
   const handleProjectChange = useCallback<ProjectSelectionChangeHandler>(
-    (nextProjectId) => {
+    async (nextProjectId) => {
       const nextRootComposeProjectId = nextProjectId ?? PERSONAL_PROJECT_ID;
-      if (nextRootComposeProjectId === projectId) return;
+      if (
+        nextRootComposeProjectId === projectId ||
+        isCopyingPromptAttachments
+      ) {
+        return;
+      }
+
+      const attachmentPaths = getProjectStoredPromptAttachmentPaths(
+        promptDraft.getCurrent().attachments,
+      );
+      if (attachmentPaths.length > 0) {
+        setAttachmentError(null);
+        setIsCopyingPromptAttachments(true);
+        try {
+          await copyPromptAttachments(nextRootComposeProjectId, {
+            sourceProjectId: projectId,
+            paths: attachmentPaths,
+          });
+        } catch (error) {
+          setAttachmentError(
+            getMutationErrorMessage({
+              error,
+              fallbackMessage:
+                "Attachments could not be moved to the selected project",
+            }),
+          );
+          return;
+        } finally {
+          setIsCopyingPromptAttachments(false);
+        }
+      }
+
       snapshotPromptDraftBeforeOptionChange();
       setForkSeed(null);
       setRootComposeProjectId(nextRootComposeProjectId);
     },
-    [projectId, setRootComposeProjectId, snapshotPromptDraftBeforeOptionChange],
+    [
+      isCopyingPromptAttachments,
+      projectId,
+      promptDraft,
+      setRootComposeProjectId,
+      snapshotPromptDraftBeforeOptionChange,
+    ],
   );
   const shouldFocusPrompt =
     typeof location.state === "object" &&
@@ -1821,6 +1878,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     isCodexCliVersionBlocked ||
     !selectedThreadModel ||
     createThread.isPending ||
+    isCopyingPromptAttachments ||
     promptInput.length === 0 ||
     (forkSeed === null && !selectedEnvironment) ||
     managedWorktreeAvailabilityPending ||
@@ -3092,7 +3150,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       projectId: projectId ?? "",
       onAttachFiles: handleAttachFiles,
       onRemove: promptDraft.removeAttachment,
-      isAttaching: uploadPromptAttachment.isPending,
+      isAttaching:
+        uploadPromptAttachment.isPending || isCopyingPromptAttachments,
       error: attachmentError,
     }),
     [
@@ -3101,6 +3160,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       projectId,
       promptDraft.attachments,
       promptDraft.removeAttachment,
+      isCopyingPromptAttachments,
       uploadPromptAttachment.isPending,
     ],
   );
@@ -3451,7 +3511,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             !quickCreateProject.isAvailable || quickCreateProject.isCreating,
           isCreating: quickCreateProject.isCreating,
         },
-        disabled: isForkDraft,
+        disabled: isForkDraft || isCopyingPromptAttachments,
       }}
       execution={executionConfig}
     />

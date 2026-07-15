@@ -46,6 +46,7 @@ import type {
 import type {
   CloseTerminalRequest,
   CommandListResponse,
+  CopyProjectAttachmentsRequest,
   CreateHostJoinCodeRequest,
   CreateHostJoinCodeResponse,
   CreateTerminalRequest,
@@ -191,6 +192,7 @@ import type {
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
 import {
   closeTerminalRequestSchema,
+  copyProjectAttachmentsRequestSchema,
   createFilePreviewRequestSchema,
   createThreadFolderRequestSchema,
   deleteThreadFolderRequestSchema,
@@ -409,6 +411,14 @@ export const publicApiRoutes = {
       method: "post",
       request: formRequest<PathProjectId, ProjectAttachmentUploadForm>(),
       response: jsonResponse<UploadedPromptAttachment>({ status: 201 }),
+    }),
+    copyAttachments: defineRoute({
+      path: "/projects/:id/attachments/copy",
+      method: "post",
+      request: jsonRequest<PathProjectId, CopyProjectAttachmentsRequest>(
+        copyProjectAttachmentsRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
     }),
     attachmentContent: defineRoute({
       path: "/projects/:id/attachments/content",

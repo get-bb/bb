@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  copyProjectAttachments,
   readAttachment,
   validatePromptAttachmentReferences,
 } from "./attachments.js";
@@ -34,6 +35,42 @@ describe("project attachments", () => {
 
     expect(result.content.toString("utf8")).toBe("hello");
     expect(result.mimeType).toBe("text/plain");
+  });
+
+  it("copies project-scoped attachments without changing their draft paths", async () => {
+    const dataDir = await makeTempDir();
+    const sourceDir = join(dataDir, "attachments", "proj_source");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "image-uploaded.png"), "image bytes");
+
+    await copyProjectAttachments(dataDir, "proj_source", "proj_target", [
+      "image-uploaded.png",
+    ]);
+
+    const copied = await readAttachment(
+      dataDir,
+      "proj_target",
+      "image-uploaded.png",
+    );
+    expect(copied.content.toString("utf8")).toBe("image bytes");
+  });
+
+  it("does not partially copy when one source attachment is missing", async () => {
+    const dataDir = await makeTempDir();
+    const sourceDir = join(dataDir, "attachments", "proj_source");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "present.txt"), "present");
+
+    await expect(
+      copyProjectAttachments(dataDir, "proj_source", "proj_target", [
+        "present.txt",
+        "missing.txt",
+      ]),
+    ).rejects.toMatchObject({ status: 404 });
+
+    await expect(
+      readAttachment(dataDir, "proj_target", "present.txt"),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it("accepts prompt attachment references to uploaded project files", async () => {

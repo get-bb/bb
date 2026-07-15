@@ -79,6 +79,7 @@ import type {
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
   CloseTerminalRequest,
+  CopyProjectAttachmentsRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
   UpdateThreadFolderRequest,
@@ -757,6 +758,18 @@ export async function uploadPromptAttachment(
   return postMultipart<UploadedPromptAttachment>(
     apiClient.projects[":id"].attachments.$url({ param: { id: projectId } }),
     file,
+  );
+}
+
+export async function copyPromptAttachments(
+  targetProjectId: string,
+  requestBody: CopyProjectAttachmentsRequest,
+): Promise<void> {
+  await request(
+    apiClient.projects[":id"].attachments.copy.$post({
+      param: { id: targetProjectId },
+      json: requestBody,
+    }),
   );
 }
 

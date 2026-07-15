@@ -360,3 +360,13 @@ export const uploadedPromptAttachmentSchema = z.object({
 export type UploadedPromptAttachment = z.infer<
   typeof uploadedPromptAttachmentSchema
 >;
+
+export const copyProjectAttachmentsRequestSchema = z
+  .object({
+    sourceProjectId: z.string().min(1),
+    paths: z.array(z.string().min(1)).min(1).max(100),
+  })
+  .strict();
+export type CopyProjectAttachmentsRequest = z.infer<
+  typeof copyProjectAttachmentsRequestSchema
+>;
