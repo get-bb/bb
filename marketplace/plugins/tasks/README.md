@@ -19,7 +19,9 @@ skill that teaches workers how to report progress back to tasks.
 
 ## Quick start
 
-Create a tracker project and link it to the bb project where delegated agents
+First enable **Plugins** under Settings → Experiments and install the plugin
+with `bb plugin install tasks@bb-official`. Then use the `bb tasks` CLI to
+create a tracker project and link it to the bb project where delegated agents
 should run:
 
 ```sh
@@ -36,11 +38,20 @@ bb tasks create \
 
 bb tasks list --project PROD
 bb tasks show PROD-1
+bb tasks preset list
+bb tasks delegate PROD-1 --preset "GPT-5.6 · high"
 ```
 
 When the CLI runs inside a linked bb project, `create` and `list` infer the
 tracker project, so `--project` can be omitted. Task keys are case-insensitive
-at the CLI boundary.
+at the CLI boundary. You can also delegate from a task's **Delegate** menu,
+choose or create presets under **Manage → Presets**, and type `@` in the bb
+composer to send a task mention to an agent.
+
+When a task has working agents, its comment composer shows a **Notify working
+agents** switch. Leave it on to steer the new comment to those threads, or turn
+it off to record the comment without interrupting them. The CLI equivalent is
+`bb tasks comment PROD-1 --body "New context" --notify`.
 
 ## CLI reference
 
@@ -99,3 +110,18 @@ portable in task content.
 
 Mentioning a task key such as `PROD-1` in an agent request also activates the
 Tasks skill, which directs the worker to read and update the tracked task.
+
+## Known limitations
+
+- Active thread status is refreshed on a 15-second polling interval.
+- The **Auto** delegation preset is deferred; choose an explicit preset.
+- Linking a personal project that is unavailable in the picker requires its
+  project id through the **Custom id…** free-text option.
+- List filters are local UI state and are not persisted in the URL.
+
+## Fast follow
+
+- Replace status polling with a `thread.active` platform event.
+- Batch task-list enrichment for comments and attached-thread state.
+- Add notifications and an inbox for task activity.
+- Add a command palette entry for Tasks to cmd-K.

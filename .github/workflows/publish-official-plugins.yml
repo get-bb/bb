@@ -13,6 +13,7 @@ on:
           - github
           - docs
           - memory
+          - tasks
       dry_run:
         description: Build and validate release archives without creating releases.
         required: true
@@ -71,6 +72,7 @@ jobs:
             github: { directory: "official-plugins/github", release: "github" },
             docs: { directory: "official-plugins/docs", release: "docs" },
             memory: { directory: "official-plugins/memory", release: "memory" },
+            tasks: { directory: "official-plugins/tasks", release: "tasks" },
           };
           const selected = process.env.PLUGIN === "all"
             ? Object.values(plugins)
@@ -101,18 +103,18 @@ jobs:
           NODE
 
       - name: Typecheck official plugins
-        run: pnpm exec turbo run typecheck --filter=bb-plugin-github --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --output-logs=new-only
+        run: pnpm exec turbo run typecheck --filter=bb-plugin-github --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --filter=bb-plugin-tasks --output-logs=new-only
 
       - name: Test official plugin packages and release contract
         run: |
-          pnpm exec turbo run test --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --filter=@bb/server --force --output-logs=new-only > /tmp/official-plugin-test.log 2>&1 || {
+          pnpm exec turbo run test --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --filter=bb-plugin-tasks --filter=@bb/server --force --output-logs=new-only > /tmp/official-plugin-test.log 2>&1 || {
             cat /tmp/official-plugin-test.log
             exit 1
           }
           cat /tmp/official-plugin-test.log
 
       - name: Build release artifacts
-        run: pnpm exec turbo run build --filter=bb-plugin-github --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --force --output-logs=new-only
+        run: pnpm exec turbo run build --filter=bb-plugin-github --filter=bb-plugin-simple-notes --filter=bb-plugin-memory --filter=bb-plugin-tasks --force --output-logs=new-only
 
       - name: Pack release archives
         run: |
