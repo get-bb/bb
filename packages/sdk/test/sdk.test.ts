@@ -326,6 +326,23 @@ describe("@bb/sdk", () => {
     });
   });
 
+  it("rejects empty voice transcription blobs without making a request", async () => {
+    const fetch = async (): Promise<Response> => {
+      throw new Error("Voice transcription should not reach the transport");
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.system.transcribeVoice({ file: new Blob([]) }),
+    ).rejects.toThrow("Audio file must not be empty");
+  });
+
   it("routes project file APIs and returns portable text/binary DTOs", async () => {
     const requests: CapturedRequest[] = [];
     const responses = [

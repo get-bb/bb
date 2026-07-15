@@ -83,6 +83,9 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       return transport.readJson(transport.api.v1.system.config.reload.$post());
     },
     async transcribeVoice(input) {
+      if (input.file.size === 0) {
+        throw new Error("Audio file must not be empty");
+      }
       const form = new FormData();
       form.set("file", input.file);
       if (input.prompt !== undefined) form.set("prompt", input.prompt);

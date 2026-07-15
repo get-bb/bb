@@ -314,6 +314,56 @@ describe("ServerConnection", () => {
     }
   });
 
+  it("rejects a malformed host RPC command without disconnecting", async () => {
+    const { connection, logger, setSession, webSocket } =
+      createConnectionFixture();
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "host-rpc.request",
+          requestId: "invalid-transcription",
+          command: {
+            type: "codex.voice.transcribe",
+            model: "gpt-4o-mini-transcribe",
+            audioBase64: "",
+            mimeType: "audio/webm",
+            filename: "prompt.webm",
+            prompt: null,
+            timeoutMs: 10_000,
+          },
+        }),
+      });
+
+      expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: "host-rpc.response",
+          requestId: "invalid-transcription",
+          commandType: "codex.voice.transcribe",
+          ok: false,
+          errorCode: "invalid_command",
+          errorMessage: "Invalid host RPC command",
+        }),
+      );
+      expect(socket.close).not.toHaveBeenCalled();
+      expect(setSession).not.toHaveBeenLastCalledWith(null);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          commandType: "codex.voice.transcribe",
+          requestId: "invalid-transcription",
+        }),
+        "Rejected invalid host RPC command",
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
   it("deduplicates inactive-session invalidation and reconnects only the current session", async () => {
     const { connection, logger, setSession, webSocket } =
       createConnectionFixture({

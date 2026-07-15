@@ -3,11 +3,13 @@ import {
   buildHostDaemonWebSocketAuthorizationHeader,
   buildHostDaemonWebSocketProtocols,
   hostDaemonDaemonWsMessageSchema,
+  hostDaemonRpcCommandTypeSchema,
   hostDaemonServerWsMessageSchema,
   type HostDaemonSessionCloseReason,
   type HostDaemonSessionOpenResponse,
   type HostDaemonDaemonWsMessage,
 } from "@bb/host-daemon-contract";
+import { z } from "zod";
 import {
   DEFAULT_CONNECTION_TIMEOUT_MS,
   DEFAULT_MAX_RECONNECTION_DELAY,
@@ -33,6 +35,14 @@ interface InvalidServerMessageArgs {
   data: unknown;
   error: Error;
 }
+
+const invalidHostRpcRequestEnvelopeSchema = z
+  .object({
+    type: z.literal("host-rpc.request"),
+    requestId: z.string().min(1),
+    command: z.object({ type: hostDaemonRpcCommandTypeSchema }).passthrough(),
+  })
+  .passthrough();
 
 interface ServerMessagePayloadSummary {
   payloadLength: number;
@@ -432,6 +442,27 @@ export class ServerConnection {
 
     const message = hostDaemonServerWsMessageSchema.safeParse(decoded);
     if (!message.success) {
+      const invalidRpcRequest =
+        invalidHostRpcRequestEnvelopeSchema.safeParse(decoded);
+      if (invalidRpcRequest.success) {
+        this.options.logger.warn(
+          {
+            commandType: invalidRpcRequest.data.command.type,
+            err: message.error,
+            requestId: invalidRpcRequest.data.requestId,
+          },
+          "Rejected invalid host RPC command",
+        );
+        this.sendMessage({
+          type: "host-rpc.response",
+          requestId: invalidRpcRequest.data.requestId,
+          commandType: invalidRpcRequest.data.command.type,
+          ok: false,
+          errorCode: "invalid_command",
+          errorMessage: "Invalid host RPC command",
+        });
+        return;
+      }
       this.handleInvalidServerMessage({ data, error: message.error });
       return;
     }
