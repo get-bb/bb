@@ -93,7 +93,7 @@ describe("tasks app shell", () => {
     });
     await slot.findByText("No projects yet");
     fireEvent.click(slot.getByRole("button", { name: /New project/ }));
-    await slot.findByText("Project creation coming soon");
+    await slot.findByText("Projects group tasks under a shared key prefix.");
   });
 
   it("renders sidebar data and routes project/board/task subPaths", async () => {
@@ -102,9 +102,9 @@ describe("tasks app shell", () => {
       { subPath: `${PROJECT_ID}?view=board` },
       { rpc: seededRpc() },
     );
-    await boardSlot.findByText(
-      `Board view coming soon · projectId=${PROJECT_ID}`,
-    );
+    // The real board renders its status columns (empty listTasks → 0 cards).
+    await boardSlot.findByText("Backlog");
+    await boardSlot.findByText("In Review");
     expect(boardSlot.getAllByText("Tasks Plugin").length).toBeGreaterThan(0);
     expect(boardSlot.getByText("All tasks")).toBeDefined();
     cleanup();
@@ -114,7 +114,8 @@ describe("tasks app shell", () => {
       { subPath: "task/TSK-4" },
       { rpc: seededRpc() },
     );
-    await taskSlot.findByText("Task detail coming soon · taskKey=TSK-4");
+    // Seeded listTasks is empty, so the real detail view lands on not-found.
+    await taskSlot.findByText(/Task TSK-4 was not found/);
     // Esc returns to the previous list/board (default: all tasks).
     fireEvent.keyDown(window, { key: "Escape" });
     expect(taskSlot.navigateCalls).toContainEqual({
