@@ -32,6 +32,9 @@ const publishablePackageSchema = z.object({
   name: z.string(),
   version: z.string(),
   private: z.literal(true),
+  engines: z.object({
+    bbPluginSdk: z.string(),
+  }),
   files: z.array(z.string()),
   repository: z.object({
     type: z.literal("git"),
@@ -87,23 +90,39 @@ it("builds every BB Official plugin with authoritative artifact metadata", async
       if (releaseName === undefined) {
         throw new Error(`missing release name for official plugin ${entry.id}`);
       }
-      expect(entry.source).toEqual({
-        githubRelease: {
-          repository: "ymichael/bb",
-          package: packageJson.name,
-          range: `^${packageJson.version}`,
-          tagTemplate: `plugin-${releaseName}-v{version}`,
-          assetTemplate: `${packageJson.name}-{version}.tgz`,
-        },
-      });
       if (!("githubRelease" in entry.source)) {
         throw new Error(
           `official plugin ${entry.id} must use a GitHub Release source`,
         );
       }
-      expect(
-        semver.satisfies(manifest.version, entry.source.githubRelease.range),
-      ).toBe(true);
+      expect(entry.source.githubRelease).toMatchObject({
+        repository: "ymichael/bb",
+        package: packageJson.name,
+        tagTemplate: `plugin-${releaseName}-v{version}`,
+        assetTemplate: `${packageJson.name}-{version}.tgz`,
+      });
+
+      const catalogRange = entry.source.githubRelease.range;
+      if (semver.satisfies(manifest.version, catalogRange)) {
+        expect(catalogRange).toBe(`^${packageJson.version}`);
+      } else {
+        // A new incompatible line must be published before the public catalog
+        // promotes it. Allow that staging state only when the source package
+        // is newer and its SDK line cannot be selected by the current catalog.
+        const catalogMinimum = semver.minVersion(catalogRange);
+        if (catalogMinimum === null) {
+          throw new Error(
+            `official plugin ${entry.id} has invalid catalog range ${catalogRange}`,
+          );
+        }
+        expect(semver.gt(packageJson.version, catalogMinimum)).toBe(true);
+        expect(
+          semver.intersects(
+            packageJson.engines.bbPluginSdk,
+            entry.installation.engines.bbPluginSdk,
+          ),
+        ).toBe(false);
+      }
 
       const serverBuild = await buildPluginServer(buildRoot, BB_BUILD_VERSION);
       const appBuild = await buildPluginApp(buildRoot, BB_BUILD_VERSION);

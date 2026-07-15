@@ -82,7 +82,9 @@ coverage.
 - [T] Unsafe paths, missing assets, unsupported extensions, blank/null legacy values, and escaping symlinks are rejected.
 - [T] SDK engine compatibility is displayed and incompatible managed installs are refused.
 - [x] The running frontend bundles report compatible SDK metadata and load successfully.
-- [x] Plugin/package/API versions remain pre-1.0 for this PR (`@bb/plugin-sdk` is still `0.2.0`).
+- [x] Plugin/package/API versions remain pre-1.0. The live pass ran on SDK
+      `0.2.0`; release coordination subsequently moved the same tested contract to
+      `0.3.0` without changing runtime behavior.
 
 ## 3. Plugin management UI
 

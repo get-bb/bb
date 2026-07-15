@@ -30,7 +30,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.3.0" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -80,7 +80,7 @@ The manifest is `package.json`:
   a dark variant when needed).
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.2.0`; the scaffold writes `"^0.2.0"`). Absent means a legacy
+  (currently `0.3.0`; the scaffold writes `"^0.3.0"`). Absent means a legacy
   manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
   the running SDK; path installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
@@ -147,7 +147,7 @@ A marketplace is a directory (local path or git repo) whose root has
         }
       },
       "category": "productivity",
-      "installation": { "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" } }
+      "installation": { "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.3.0" } }
     }
   ]
 }

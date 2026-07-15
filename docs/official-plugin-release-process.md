@@ -21,13 +21,14 @@ The three independently versioned plugins are:
   part of the release.
 - Use a patch bump for changes compatible with the catalog's existing semver
   range. For example, `^0.1.0` accepts `0.1.x` but not `0.2.0`.
-- If a plugin requires newer BB or plugin SDK APIs, start a new compatibility
-  line and update all of these together:
-  - the plugin package version and `engines` ranges;
-  - the entry's `source.githubRelease.range` and `installation.engines` in
-    `marketplace.json`;
-  - the bundled catalog snapshot in
-    `apps/server/src/services/marketplaces/official-marketplace.ts`.
+- If a plugin requires newer BB or plugin SDK APIs, stage the new compatibility
+  line in two changes so the catalog never points at an unpublished artifact:
+  1. bump the plugin package version and `engines` ranges, land that source,
+     and publish its release from `main`;
+  2. immediately promote the published line by updating the entry's
+     `source.githubRelease.range` and `installation.engines` in
+     `marketplace.json` plus the bundled catalog snapshot in
+     `apps/server/src/services/marketplaces/official-marketplace.ts`.
 - Never check in `marketplace/plugins/*/dist`. The workflow builds it and
   includes it in the release archive.
 - GitHub Releases are currently allowed to be mutable, but normal release
@@ -56,8 +57,8 @@ The three independently versioned plugins are:
    tag from the table above.
 
 3. Update the selected plugin's `package.json`. When starting a compatibility
-   line, also update its package engines and both copies of the official catalog
-   as described in the release policy.
+   line, update its package engines now, but leave both copies of the official
+   catalog on the last published line until the new release exists.
 
 4. Install after dependency changes and keep the lockfile current.
 
@@ -168,6 +169,7 @@ gh api \
 The digest must be `sha256:<64 hex characters>`. BB reads that digest from
 GitHub and verifies the downloaded archive before installing it.
 
+For a new compatibility line, land the catalog-promotion PR described above.
 Then exercise the marketplace path from a current BB development build:
 
 ```bash
