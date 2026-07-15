@@ -13,12 +13,21 @@ import {
   type TasksApiStore,
 } from "../api";
 import {
+  buildAttachmentUrl,
+  readAttachmentToPath,
+  saveAttachmentFromPath,
+} from "../attachments";
+import { delegationRpcContract } from "../delegate/contract";
+import { handlers as delegationHandlers } from "../delegate";
+import {
   TASK_PRIORITIES,
   TASK_STATUSES,
   tasksRpcContract,
+  type Attachment,
   type Folder,
   type Label,
   type Project,
+  type Preset,
   type Task,
   type TaskMutationResult,
 } from "../shared/contract";
@@ -53,6 +62,11 @@ Commands:
   update                         Update a task
   comment                        Add a task comment
   label create|list|delete
+  attachment add|get|list
+  preset list|create|update|delete
+  delegate                       Delegate a task to a new agent thread
+  attach                         Attach an agent thread to a task
+  threads                        List threads attached to a task
 
 Run bb tasks <command> --help for command usage.`;
 
@@ -75,11 +89,25 @@ const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
 const UPDATE_HELP =
   "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--add-label <name>]... [--remove-label <name>]... [--json]";
 const COMMENT_HELP =
-  "Usage: bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--author <name>] [--json]";
+  "Usage: bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--author <name>] [--notify] [--json]";
 const LABEL_HELP = `Usage:
   bb tasks label create --project <prefix-or-id> --name <name> [--color <color>] [--json]
   bb tasks label list --project <prefix-or-id> [--json]
   bb tasks label delete --project <prefix-or-id> <name-or-id> [--json]`;
+const ATTACHMENT_HELP = `Usage:
+  bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--json]
+  bb tasks attachment get <attachment-id> --out <path> [--json]
+  bb tasks attachment list <key> [--json]`;
+const PRESET_HELP = `Usage:
+  bb tasks preset list [--json]
+  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <mode> [--instructions <text>] [--json]
+  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <mode>] [--instructions <text>] [--json]
+  bb tasks preset delete <name-or-id> [--json]`;
+const DELEGATE_HELP =
+  "Usage: bb tasks delegate <key> --preset <name> [--instructions <extra>] [--json]";
+const ATTACH_HELP =
+  "Usage: bb tasks attach <key> [--thread <thread-id>] [--json]";
+const THREADS_HELP = "Usage: bb tasks threads <key> [--json]";
 
 interface PluginStatus {
   name: string;
@@ -248,6 +276,26 @@ async function resolveTask(
   const task = result.tasks.find((candidate) => candidate.key === normalized);
   if (!task) throw new CliError(`task not found: ${address}`);
   return task;
+}
+
+function resolvePreset(presets: readonly Preset[], address: string): Preset {
+  const normalized = address.trim().toLowerCase();
+  const matches = presets.filter(
+    (preset) =>
+      preset.id.toLowerCase() === normalized ||
+      preset.name.toLowerCase() === normalized,
+  );
+  if (matches.length === 0) throw new CliError(`preset not found: ${address}`);
+  if (matches.length > 1) {
+    throw new CliError(`preset name is ambiguous; use its id: ${address}`);
+  }
+  return matches[0]!;
+}
+
+async function listPresets(domain: TasksDomain): Promise<Preset[]> {
+  return tasksRpcContract.listPresets.output.parse(
+    await domain.listPresets(tasksRpcContract.listPresets.input.parse(null)),
+  ).presets;
 }
 
 async function projectLabels(
@@ -914,22 +962,32 @@ async function runComment(
 ): Promise<string> {
   const args = parseArgs(argv);
   if (args.flags.has("help")) return COMMENT_HELP;
-  assertAllowed(args, ["body", "body-file", "author"]);
+  assertAllowed(args, ["body", "body-file", "author"], ["notify"]);
   const [address] = requirePositionals(args, 1, COMMENT_HELP);
   const task = await resolveTask(domain, address!);
   const body = readFileOption(args, ctx, "body", "body-file");
   if (body === undefined)
     throw new CliError("missing required --body or --body-file");
   if (!body.trim()) throw new CliError("comment body must not be blank");
-  const comment = store.tasks.createComment({
-    taskId: task.id,
-    kind: ctx.threadId ? "agent" : "user",
-    authorName: option(args, "author") ?? taskAuthor(ctx),
-    threadId: ctx.threadId ?? null,
-    body,
-    notifiedCount: 0,
-  });
-  publishCommentsChanged(bb, task.id);
+  const comment = args.flags.has("notify")
+    ? tasksRpcContract.createComment.output.parse(
+        await domain.createComment(
+          tasksRpcContract.createComment.input.parse({
+            taskId: task.id,
+            body,
+            notify: true,
+          }),
+        ),
+      ).comment
+    : store.tasks.createComment({
+        taskId: task.id,
+        kind: ctx.threadId ? "agent" : "user",
+        authorName: option(args, "author") ?? taskAuthor(ctx),
+        threadId: ctx.threadId ?? null,
+        body,
+        notifiedCount: 0,
+      });
+  if (!args.flags.has("notify")) publishCommentsChanged(bb, task.id);
   return args.flags.has("json")
     ? json({ comment })
     : `Commented on ${task.key}  ${comment.id}`;
@@ -1009,6 +1067,323 @@ async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
   }
 
   throw new CliError(`unknown label subcommand: ${action}`);
+}
+
+async function runAttachment(
+  store: TasksApiStore,
+  domain: TasksDomain,
+  ctx: PluginCliContext,
+  argv: string[],
+): Promise<string> {
+  const [action, ...rest] = argv;
+  if (!action || action === "--help") return ATTACHMENT_HELP;
+  const args = parseArgs(rest);
+  if (args.flags.has("help")) return ATTACHMENT_HELP;
+
+  if (action === "add") {
+    assertAllowed(args, ["file", "name"]);
+    const [ownerAddress] = requirePositionals(
+      args,
+      1,
+      "bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--json]",
+    );
+    const sourceOption = requireOption(args, "file");
+    const sourcePath = resolve(ctx.cwd ?? process.cwd(), sourceOption);
+    const normalizedOwner = ownerAddress!.trim().toUpperCase();
+    const comment = ULID_PATTERN.test(normalizedOwner)
+      ? store.tasks.getComment(normalizedOwner)
+      : undefined;
+    if (ULID_PATTERN.test(normalizedOwner) && !comment) {
+      throw new CliError(`comment not found: ${ownerAddress}`);
+    }
+    const owner = comment
+      ? { commentId: comment.id }
+      : { taskId: (await resolveTask(domain, ownerAddress!)).id };
+    const attachment = await saveAttachmentFromPath(store.tasks, sourcePath, {
+      ...owner,
+      fileName: option(args, "name"),
+      mime: "application/octet-stream",
+    });
+    const payload = {
+      attachment,
+      url: buildAttachmentUrl(attachment.id),
+    };
+    return args.flags.has("json")
+      ? json(payload)
+      : `Added attachment ${attachment.fileName}  ${attachment.id}`;
+  }
+
+  if (action === "get") {
+    assertAllowed(args, ["out"]);
+    const [attachmentId] = requirePositionals(
+      args,
+      1,
+      "bb tasks attachment get <attachment-id> --out <path> [--json]",
+    );
+    const outOption = requireOption(args, "out");
+    const outPath = resolve(ctx.cwd ?? process.cwd(), outOption);
+    const attachment = await readAttachmentToPath(
+      store.tasks,
+      attachmentId!,
+      outPath,
+    );
+    return args.flags.has("json")
+      ? json({ attachment, out: outPath })
+      : `Saved ${attachment.fileName}  ${outPath}`;
+  }
+
+  if (action === "list") {
+    assertAllowed(args, []);
+    const [address] = requirePositionals(
+      args,
+      1,
+      "bb tasks attachment list <key> [--json]",
+    );
+    const task = await resolveTask(domain, address!);
+    const directAttachments = tasksRpcContract.listAttachments.output.parse(
+      await domain.listAttachments(
+        tasksRpcContract.listAttachments.input.parse({ taskId: task.id }),
+      ),
+    ).attachments;
+    const comments = tasksRpcContract.listComments.output.parse(
+      await domain.listComments(
+        tasksRpcContract.listComments.input.parse({ taskId: task.id }),
+      ),
+    ).comments;
+    const commentAttachments: Attachment[] = [];
+    for (const comment of comments) {
+      commentAttachments.push(
+        ...tasksRpcContract.listAttachments.output.parse(
+          await domain.listAttachments(
+            tasksRpcContract.listAttachments.input.parse({
+              commentId: comment.id,
+            }),
+          ),
+        ).attachments,
+      );
+    }
+    const attachments = [...directAttachments, ...commentAttachments];
+    return args.flags.has("json")
+      ? json({ task, attachments })
+      : table(
+          ["ID", "NAME", "TYPE", "SIZE"],
+          attachments.map((attachment) => [
+            attachment.id,
+            attachment.fileName,
+            attachment.mime,
+            bytes(attachment.sizeBytes),
+          ]),
+          "No attachments.",
+        );
+  }
+
+  throw new CliError(`unknown attachment subcommand: ${action}`);
+}
+
+async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
+  const [action, ...rest] = argv;
+  if (!action || action === "--help") return PRESET_HELP;
+  const args = parseArgs(rest);
+  if (args.flags.has("help")) return PRESET_HELP;
+
+  if (action === "list") {
+    assertAllowed(args, []);
+    requirePositionals(args, 0, "bb tasks preset list [--json]");
+    const presets = await listPresets(domain);
+    return args.flags.has("json")
+      ? json({ presets })
+      : table(
+          [
+            "NAME",
+            "PROVIDER",
+            "MODEL",
+            "REASONING",
+            "PERMISSION",
+            "BUILTIN",
+            "ID",
+          ],
+          presets.map((preset) => [
+            preset.name,
+            preset.providerId,
+            preset.modelId,
+            preset.reasoningLevel,
+            preset.permissionMode,
+            preset.builtin ? "yes" : "no",
+            preset.id,
+          ]),
+          "No presets.",
+        );
+  }
+
+  if (action === "create") {
+    assertAllowed(args, [
+      "name",
+      "provider",
+      "model",
+      "reasoning",
+      "permission",
+      "instructions",
+    ]);
+    requirePositionals(args, 0, PRESET_HELP.split("\n")[2]!.trim());
+    const result = tasksRpcContract.createPreset.output.parse(
+      await domain.createPreset(
+        tasksRpcContract.createPreset.input.parse({
+          name: requireOption(args, "name"),
+          providerId: requireOption(args, "provider"),
+          modelId: requireOption(args, "model"),
+          reasoningLevel: requireOption(args, "reasoning"),
+          permissionMode: requireOption(args, "permission"),
+          instructions: option(args, "instructions") ?? "",
+        }),
+      ),
+    );
+    return args.flags.has("json")
+      ? json(result)
+      : `Created preset ${result.preset.name}  ${result.preset.id}`;
+  }
+
+  if (action === "update") {
+    assertAllowed(args, [
+      "name",
+      "provider",
+      "model",
+      "reasoning",
+      "permission",
+      "instructions",
+    ]);
+    const [address] = requirePositionals(
+      args,
+      1,
+      "bb tasks preset update <name-or-id> [options] [--json]",
+    );
+    const preset = resolvePreset(await listPresets(domain), address!);
+    const result = tasksRpcContract.updatePreset.output.parse(
+      await domain.updatePreset(
+        tasksRpcContract.updatePreset.input.parse({
+          presetId: preset.id,
+          name: option(args, "name"),
+          providerId: option(args, "provider"),
+          modelId: option(args, "model"),
+          reasoningLevel: option(args, "reasoning"),
+          permissionMode: option(args, "permission"),
+          instructions: option(args, "instructions"),
+        }),
+      ),
+    );
+    return args.flags.has("json")
+      ? json(result)
+      : `Updated preset ${result.preset.name}  ${result.preset.id}`;
+  }
+
+  if (action === "delete") {
+    assertAllowed(args, []);
+    const [address] = requirePositionals(
+      args,
+      1,
+      "bb tasks preset delete <name-or-id> [--json]",
+    );
+    const preset = resolvePreset(await listPresets(domain), address!);
+    if (preset.builtin) {
+      throw new CliError(`builtin preset cannot be deleted: ${preset.name}`);
+    }
+    const result = tasksRpcContract.deletePreset.output.parse(
+      await domain.deletePreset(
+        tasksRpcContract.deletePreset.input.parse({ presetId: preset.id }),
+      ),
+    );
+    return args.flags.has("json")
+      ? json({ ...result, preset })
+      : `Deleted preset ${preset.name}`;
+  }
+
+  throw new CliError(`unknown preset subcommand: ${action}`);
+}
+
+async function runDelegate(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  domain: TasksDomain,
+  argv: string[],
+): Promise<string> {
+  const args = parseArgs(argv);
+  if (args.flags.has("help")) return DELEGATE_HELP;
+  assertAllowed(args, ["preset", "instructions"]);
+  const [address] = requirePositionals(args, 1, DELEGATE_HELP);
+  const task = await resolveTask(domain, address!);
+  const preset = resolvePreset(
+    await listPresets(domain),
+    requireOption(args, "preset"),
+  );
+  const result = delegationRpcContract.delegate.output.parse(
+    await delegationHandlers(bb, store).delegate(
+      delegationRpcContract.delegate.input.parse({
+        taskId: task.id,
+        presetId: preset.id,
+        extraInstructions: option(args, "instructions"),
+      }),
+    ),
+  );
+  return args.flags.has("json")
+    ? json({ task, preset, ...result })
+    : result.threadId;
+}
+
+async function runAttach(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  domain: TasksDomain,
+  ctx: PluginCliContext,
+  argv: string[],
+): Promise<string> {
+  const args = parseArgs(argv);
+  if (args.flags.has("help")) return ATTACH_HELP;
+  assertAllowed(args, ["thread"]);
+  const [address] = requirePositionals(args, 1, ATTACH_HELP);
+  const task = await resolveTask(domain, address!);
+  const threadId =
+    option(args, "thread") ?? process.env.BB_THREAD_ID ?? ctx.threadId;
+  if (!threadId) {
+    throw new CliError("missing --thread and BB_THREAD_ID is not set");
+  }
+  const result = delegationRpcContract.taskThreadsAttach.output.parse(
+    await delegationHandlers(bb, store).taskThreadsAttach(
+      delegationRpcContract.taskThreadsAttach.input.parse({
+        taskId: task.id,
+        threadId,
+      }),
+    ),
+  );
+  return args.flags.has("json")
+    ? json({ task, ...result })
+    : `Attached ${result.threadId} to ${task.key}`;
+}
+
+async function runThreads(
+  domain: TasksDomain,
+  argv: string[],
+): Promise<string> {
+  const args = parseArgs(argv);
+  if (args.flags.has("help")) return THREADS_HELP;
+  assertAllowed(args, []);
+  const [address] = requirePositionals(args, 1, THREADS_HELP);
+  const task = await resolveTask(domain, address!);
+  const result = tasksRpcContract.listTaskThreads.output.parse(
+    await domain.listTaskThreads(
+      tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
+    ),
+  );
+  return args.flags.has("json")
+    ? json({ task, taskThreads: result.taskThreads })
+    : table(
+        ["THREAD", "STATUS", "PRESET", "TITLE"],
+        result.taskThreads.map((thread) => [
+          thread.threadId,
+          thread.liveStatus,
+          thread.presetName,
+          thread.title,
+        ]),
+        "No attached threads.",
+      );
 }
 
 function friendlyError(error: unknown): string {
@@ -1093,6 +1468,31 @@ export function registerTasksCli(
         summary: "Create, list, or delete project labels",
         usage: LABEL_HELP,
       },
+      {
+        name: "attachment",
+        summary: "Add, download, or list task attachments",
+        usage: ATTACHMENT_HELP,
+      },
+      {
+        name: "preset",
+        summary: "List, create, update, or delete delegation presets",
+        usage: PRESET_HELP,
+      },
+      {
+        name: "delegate",
+        summary: "Delegate a task to a new agent thread",
+        usage: DELEGATE_HELP,
+      },
+      {
+        name: "attach",
+        summary: "Attach an existing agent thread to a task",
+        usage: ATTACH_HELP,
+      },
+      {
+        name: "threads",
+        summary: "List agent threads attached to a task",
+        usage: THREADS_HELP,
+      },
     ],
     async run(argv, ctx): Promise<PluginCliResult> {
       try {
@@ -1134,6 +1534,21 @@ export function registerTasksCli(
             break;
           case "label":
             stdout = await runLabel(domain, rest);
+            break;
+          case "attachment":
+            stdout = await runAttachment(store, domain, ctx, rest);
+            break;
+          case "preset":
+            stdout = await runPreset(domain, rest);
+            break;
+          case "delegate":
+            stdout = await runDelegate(bb, store, domain, rest);
+            break;
+          case "attach":
+            stdout = await runAttach(bb, store, domain, ctx, rest);
+            break;
+          case "threads":
+            stdout = await runThreads(domain, rest);
             break;
           case "seed-demo": {
             const args = parseArgs(rest);

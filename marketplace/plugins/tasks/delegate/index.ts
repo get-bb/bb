@@ -273,7 +273,7 @@ function taskThreadLiveStatus(
   }
 }
 
-function handlers(
+export function handlers(
   bb: BbPluginApi,
   store: TasksApiStore,
 ): PluginRpcHandlers<typeof delegationRpcContract> {

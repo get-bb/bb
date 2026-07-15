@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 
@@ -231,6 +234,325 @@ describe("bb tasks CLI", () => {
       stdout: "",
       stderr: "task not found: ERR-404",
     });
+
+    await harness.dispose();
+  });
+
+  it("creates, updates, lists, and deletes delegation presets", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    const created = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "preset",
+          "create",
+          "--name",
+          "CLI worker",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5.6-sol",
+          "--reasoning",
+          "high",
+          "--permission",
+          "workspace-write",
+          "--instructions",
+          "Start with the failing test.",
+          "--json",
+        ]),
+      ),
+    ).preset;
+    expect(created).toMatchObject({
+      name: "CLI worker",
+      providerId: "codex",
+      permissionMode: "workspace-write",
+      builtin: false,
+    });
+
+    const updated = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "preset",
+          "update",
+          "CLI worker",
+          "--reasoning",
+          "xhigh",
+          "--name",
+          "CLI reviewer",
+          "--json",
+        ]),
+      ),
+    ).preset;
+    expect(updated).toMatchObject({
+      id: created.id,
+      name: "CLI reviewer",
+      reasoningLevel: "xhigh",
+    });
+
+    const listed = JSON.parse(
+      stdout(await harness.runCli(["preset", "list", "--json"])),
+    ).presets;
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: created.id, name: "CLI reviewer" }),
+        expect.objectContaining({ builtin: true }),
+      ]),
+    );
+
+    expect(
+      await harness.runCli(["preset", "delete", "Sonnet · high"]),
+    ).toMatchObject({
+      exitCode: 1,
+      stderr: "builtin preset cannot be deleted: Sonnet · high",
+    });
+    expect(
+      JSON.parse(
+        stdout(
+          await harness.runCli(["preset", "delete", "CLI reviewer", "--json"]),
+        ),
+      ),
+    ).toMatchObject({ deleted: true, preset: { id: created.id } });
+
+    await harness.dispose();
+  });
+
+  it("self-attaches through BB_THREAD_ID and lists the live thread status", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async () => ({
+            id: "thr_cli_self",
+            title: "CLI self attach",
+            titleFallback: null,
+            status: "active",
+          }),
+          send: async () => undefined,
+        },
+      },
+    });
+    await plugin(bb);
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Attach",
+        "--prefix",
+        "ATT",
+      ]),
+    );
+    stdout(
+      await harness.runCli([
+        "create",
+        "--project",
+        "ATT",
+        "--title",
+        "Attach this worker",
+      ]),
+    );
+
+    const previousThreadId = process.env.BB_THREAD_ID;
+    process.env.BB_THREAD_ID = "thr_cli_self";
+    try {
+      expect(
+        JSON.parse(stdout(await harness.runCli(["attach", "ATT-1", "--json"]))),
+      ).toMatchObject({ task: { key: "ATT-1" }, threadId: "thr_cli_self" });
+    } finally {
+      if (previousThreadId === undefined) delete process.env.BB_THREAD_ID;
+      else process.env.BB_THREAD_ID = previousThreadId;
+    }
+
+    const threads = JSON.parse(
+      stdout(await harness.runCli(["threads", "ATT-1", "--json"])),
+    );
+    expect(threads.taskThreads).toEqual([
+      expect.objectContaining({
+        threadId: "thr_cli_self",
+        liveStatus: "working",
+        presetName: "Attached",
+      }),
+    ]);
+
+    const notified = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "comment",
+          "ATT-1",
+          "--body",
+          "Include the new edge case.",
+          "--notify",
+          "--json",
+        ]),
+      ),
+    ).comment;
+    expect(notified).toMatchObject({
+      taskId: threads.task.id,
+      notifiedCount: 1,
+    });
+    expect(harness.sdk.callsTo("threads.send")).toEqual([
+      [
+        expect.objectContaining({
+          threadId: "thr_cli_self",
+          mode: "steer",
+        }),
+      ],
+    ]);
+
+    await harness.dispose();
+  });
+
+  it("adds and downloads an attachment with an exact file round-trip", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-tasks-cli-"));
+    const inputPath = join(directory, "input.txt");
+    const outputPath = join(directory, "nested", "output.txt");
+    await writeFile(inputPath, "attachment bytes from CLI\n", "utf8");
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    try {
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          "Files",
+          "--prefix",
+          "FILE",
+        ]),
+      );
+      stdout(
+        await harness.runCli([
+          "create",
+          "--project",
+          "FILE",
+          "--title",
+          "Round-trip a file",
+        ]),
+      );
+
+      const attachment = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "attachment",
+            "add",
+            "FILE-1",
+            "--file",
+            inputPath,
+            "--name",
+            "renamed.txt",
+            "--json",
+          ]),
+        ),
+      ).attachment;
+      expect(attachment).toMatchObject({
+        fileName: "renamed.txt",
+        mime: "application/octet-stream",
+        sizeBytes: 26,
+      });
+
+      const listed = JSON.parse(
+        stdout(
+          await harness.runCli(["attachment", "list", "FILE-1", "--json"]),
+        ),
+      );
+      expect(listed.attachments).toEqual([
+        expect.objectContaining({ id: attachment.id }),
+      ]);
+
+      const comment = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "comment",
+            "FILE-1",
+            "--body",
+            "Attach the source to this comment.",
+            "--json",
+          ]),
+        ),
+      ).comment;
+      const commentAttachment = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "attachment",
+            "add",
+            comment.id,
+            "--file",
+            inputPath,
+            "--json",
+          ]),
+        ),
+      ).attachment;
+      expect(commentAttachment).toMatchObject({
+        taskId: null,
+        commentId: comment.id,
+      });
+      const listedWithCommentAttachment = JSON.parse(
+        stdout(
+          await harness.runCli(["attachment", "list", "FILE-1", "--json"]),
+        ),
+      );
+      expect(listedWithCommentAttachment.attachments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: attachment.id }),
+          expect.objectContaining({ id: commentAttachment.id }),
+        ]),
+      );
+
+      stdout(
+        await harness.runCli([
+          "attachment",
+          "get",
+          attachment.id,
+          "--out",
+          outputPath,
+        ]),
+      );
+      expect(await readFile(outputPath, "utf8")).toBe(
+        "attachment bytes from CLI\n",
+      );
+    } finally {
+      await harness.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a friendly delegate error when the task project is not linked", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Unlinked CLI",
+        "--prefix",
+        "UNL",
+      ]),
+    );
+    stdout(
+      await harness.runCli([
+        "create",
+        "--project",
+        "UNL",
+        "--title",
+        "Cannot delegate yet",
+      ]),
+    );
+
+    const result = await harness.runCli([
+      "delegate",
+      "UNL-1",
+      "--preset",
+      "Sonnet · high",
+    ]);
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: 'Task project "Unlinked CLI" is not linked to a bb project',
+    });
+    expect(harness.sdk.callsTo("threads.spawn")).toEqual([]);
 
     await harness.dispose();
   });

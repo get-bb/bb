@@ -18,6 +18,7 @@ const VALUELESS_FLAGS = new Set([
   "no-due",
   "no-folder",
   "no-parent",
+  "notify",
   "unlink-bb-project",
   "yes",
 ]);
