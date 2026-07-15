@@ -38,8 +38,10 @@ import {
   listStoredClientTurnRequestRowsByKeys,
   listStoredEventRows,
   listStoredEventRowsInRange,
+  listStoredConversationOutlineEventRows,
   listStoredThreadProvisioningRowsByProvisioningId,
   listStoredTimelineWindowEventRows,
+  listStoredTimelineWindowEventRowsDescending,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
   listActiveBackgroundTaskCountsByThreadIds,
@@ -1117,6 +1119,63 @@ describe("events", () => {
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([2, 3]);
+
+    expect(
+      listStoredTimelineWindowEventRowsDescending(db, {
+        excludedTypes: [],
+        limit: 2,
+        sequenceStart: 2,
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([4, 3]);
+  });
+
+  it("loads only message-producing events for conversation outlines", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: JSON.stringify({ input: textInput("question") }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/started",
+        ...threadEventFields,
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/completed",
+        ...threadEventFields,
+        itemId: "command-1",
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          item: { type: "commandExecution", id: "command-1" },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "item/completed",
+        ...threadEventFields,
+        itemId: "message-1",
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          item: { type: "agentMessage", id: "message-1", text: "answer" },
+        }),
+      },
+    ]);
+
+    expect(
+      listStoredConversationOutlineEventRows(db, {
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([1, 2, 4]);
   });
 
   it("lists accepted input rows for requested client turn sequences", () => {

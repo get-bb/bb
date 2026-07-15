@@ -17,6 +17,8 @@ import {
 import type { DbConnection } from "@bb/db";
 import type { TimelineRow } from "@bb/server-contract";
 import { buildThreadTimeline } from "../../../src/services/threads/timeline.js";
+import { THREAD_TIMELINE_EVENT_WINDOW_ROW_LIMIT } from "../../../src/services/threads/timeline.js";
+import { THREAD_TIMELINE_PAGE_ROW_LIMIT } from "../../../src/services/threads/timeline-pagination.js";
 
 const providerThreadId = "provider-root";
 
@@ -360,5 +362,117 @@ describe("thread timeline parented pagination", () => {
     expect(rowTexts(delegation?.childRows ?? [])).toContain(
       "SECOND_SUBAGENT_OUTPUT",
     );
+  });
+});
+
+describe("thread timeline active-turn pagination", () => {
+  it("pages backward within one giant active turn", () => {
+    const { db, thread } = setup();
+    const firstRequestId = requestId(1);
+    const assistantMessageCount = THREAD_TIMELINE_EVENT_WINDOW_ROW_LIMIT + 40;
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "spawn",
+          initiator: "user",
+          request: { method: "thread/start", params: {} },
+          requestId: firstRequestId,
+          senderThreadId: null,
+          input: [{ type: "text", text: "Do all the work.", mentions: [] }],
+          target: { kind: "thread-start" },
+          execution,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/started",
+        scope: turnScope("giant-turn"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "turn/input/accepted",
+        scope: turnScope("giant-turn"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({ clientRequestId: firstRequestId }),
+      },
+      ...Array.from({ length: assistantMessageCount }, (_, index) => ({
+        threadId: thread.id,
+        sequence: index + 4,
+        type: "item/completed" as const,
+        scope: turnScope("giant-turn"),
+        providerThreadId,
+        itemId: `message-${index + 1}`,
+        itemKind: "agentMessage" as const,
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: `message-${index + 1}`,
+            text: `Assistant message ${index + 1}`,
+          },
+        }),
+      })),
+    ]);
+    const maxSeq = assistantMessageCount + 3;
+
+    const latest = buildThreadTimeline(db, thread, {
+      isDevelopment: false,
+      maxSeq,
+      page: { kind: "latest", segmentLimit: 20 },
+    });
+    expect(latest.rows.length).toBeLessThanOrEqual(
+      THREAD_TIMELINE_PAGE_ROW_LIMIT,
+    );
+    expect(latest.timelinePage.olderCursor).not.toBeNull();
+    expect(latest.timelinePage.hasOlderRows).toBe(true);
+
+    const pages = [latest];
+    let olderCursor = latest.timelinePage.olderCursor;
+    while (olderCursor !== null) {
+      const older = buildThreadTimeline(db, thread, {
+        isDevelopment: false,
+        maxSeq,
+        page: {
+          kind: "older",
+          beforeCursor: olderCursor,
+          segmentLimit: 20,
+        },
+      });
+      pages.unshift(older);
+      olderCursor = older.timelinePage.olderCursor;
+      expect(pages.length).toBeLessThan(10);
+    }
+    const rowsById = new Map(
+      pages.flatMap((timeline) =>
+        timeline.rows.map((row) => [row.id, row] as const),
+      ),
+    );
+    const conversationTexts = [...rowsById.values()].flatMap((row) =>
+      row.kind === "conversation" ? [row.text] : [],
+    );
+
+    expect(pages.length).toBeGreaterThan(2);
+    expect(pages[0]?.timelinePage.hasOlderRows).toBe(false);
+    expect(conversationTexts).toEqual([
+      "Do all the work.",
+      ...Array.from(
+        { length: assistantMessageCount },
+        (_, index) => `Assistant message ${index + 1}`,
+      ),
+    ]);
   });
 });

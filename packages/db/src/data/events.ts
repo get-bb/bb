@@ -812,11 +812,20 @@ export interface ListRecentStoredEventRowsArgs {
   threadId: string;
 }
 
+export interface ListStoredConversationOutlineEventRowsArgs {
+  threadId: string;
+}
+
 export interface ListStoredTimelineWindowEventRowsArgs {
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
   sequenceStart: number;
   threadId: string;
+}
+
+export interface ListStoredTimelineWindowEventRowsDescendingArgs
+  extends ListStoredTimelineWindowEventRowsArgs {
+  limit: number;
 }
 
 export interface ListContextWindowUsageRowsArgs {
@@ -1654,6 +1663,49 @@ export function listRecentStoredEventRows(
     .all();
 }
 
+/**
+ * The conversation outline renders only user/assistant messages. Selecting
+ * command, tool, diff, goal, and usage events made its cost scale with all work
+ * performed in a thread even though none of those rows can reach the result.
+ */
+export function listStoredConversationOutlineEventRows(
+  db: DbConnection,
+  args: ListStoredConversationOutlineEventRowsArgs,
+): StoredEventRow[] {
+  const directConversationTypes = [
+    "client/turn/requested",
+    "turn/input/accepted",
+    "turn/started",
+    "item/agentMessage/delta",
+    "system/manager/user_message",
+  ] satisfies ThreadEventType[];
+  const agentItemTypes = [
+    "item/started",
+    "item/completed",
+  ] satisfies ThreadEventType[];
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        or(
+          inArray(events.type, directConversationTypes),
+          and(
+            inArray(events.type, agentItemTypes),
+            or(
+              eq(events.itemKind, "agentMessage"),
+              sql`json_extract(${events.data}, '$.item.type') = 'agentMessage'`,
+            ),
+          ),
+        ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
 export interface StandardTimelineSegmentAnchorRow {
   rowId: string;
   sequence: number;
@@ -1784,6 +1836,34 @@ export function listStoredTimelineWindowEventRows(
     .from(events)
     .where(and(...conditions))
     .orderBy(events.sequence)
+    .all();
+}
+
+/**
+ * Reads only the newest part of a timeline sequence range. Callers use the
+ * descending order to enforce a byte budget before decoding event JSON.
+ */
+export function listStoredTimelineWindowEventRowsDescending(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsDescendingArgs,
+): StoredEventRow[] {
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    gte(events.sequence, args.sequenceStart),
+  ];
+  if (args.beforeSequence !== undefined) {
+    conditions.push(lt(events.sequence, args.beforeSequence));
+  }
+  if (args.excludedTypes && args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(and(...conditions))
+    .orderBy(desc(events.sequence))
+    .limit(args.limit)
     .all();
 }
 
