@@ -176,7 +176,7 @@ function publishProjectsChanged(
   bb.realtime.publish("projects:changed", payload);
 }
 
-function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
+export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
   const payload: CommentsChangedEvent = { taskId };
   bb.realtime.publish("comments:changed", payload);
 }
@@ -321,7 +321,7 @@ function attachmentMetadata(attachment: StoredAttachment): AttachmentMetadata {
   };
 }
 
-function registerHandlers(
+export function registerHandlers(
   bb: BbPluginApi,
   store: TasksApiStore,
 ): PluginRpcHandlers<typeof tasksRpcContract> {
