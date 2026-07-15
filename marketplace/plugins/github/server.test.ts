@@ -2,7 +2,11 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineRpcContract } from "@bb/plugin-sdk";
 import type { PluginRpcClient, PluginRpcHandlers } from "@bb/plugin-sdk";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { githubRpcContract } from "./server";
+import {
+  githubRpcContract,
+  parsePaginatedGhApi,
+  validateGithubCliArgs,
+} from "./server";
 
 type GithubRpcHandlers = PluginRpcHandlers<typeof githubRpcContract>;
 
@@ -73,6 +77,31 @@ function assertGithubFrontendInference(
 }
 
 describe("GitHub RPC contract", () => {
+  it("flattens every paginated GitHub API page", () => {
+    expect(
+      parsePaginatedGhApi(
+        JSON.stringify([[{ id: 1 }, { id: 2 }], [{ id: 3 }]]),
+      ),
+    ).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+
+    expect(() => parsePaginatedGhApi(JSON.stringify([{ id: 1 }]))).toThrow(
+      "malformed page",
+    );
+  });
+
+  it("rejects CLI arguments that would otherwise broaden a repository query", () => {
+    expect(validateGithubCliArgs(["issues", "ymichael/bb"])).toBeNull();
+    expect(validateGithubCliArgs(["issues", "bad/repo/shape"])).toContain(
+      "expected owner/repo",
+    );
+    expect(validateGithubCliArgs(["prs", "ymichael/bb", "extra"])).toContain(
+      "Unexpected argument",
+    );
+    expect(validateGithubCliArgs(["repos", "--json"])).toContain(
+      "does not accept arguments",
+    );
+  });
+
   it("infers parsed handler inputs and frontend results", () => {
     expectTypeOf<
       Parameters<GithubRpcHandlers["createIssue"]>[0]

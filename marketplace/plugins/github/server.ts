@@ -336,6 +336,46 @@ function run(
   });
 }
 
+export function parsePaginatedGhApi(raw: string): Record<string, unknown>[] {
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error("GitHub API pagination returned a non-array response");
+  }
+  const rows: Record<string, unknown>[] = [];
+  for (const page of parsed) {
+    if (!Array.isArray(page)) {
+      throw new Error("GitHub API pagination returned a malformed page");
+    }
+    for (const row of page) {
+      if (typeof row !== "object" || row === null || Array.isArray(row)) {
+        throw new Error("GitHub API pagination returned a malformed row");
+      }
+      rows.push(row as Record<string, unknown>);
+    }
+  }
+  return rows;
+}
+
+export function validateGithubCliArgs(argv: string[]): string | null {
+  const [sub, arg, ...rest] = argv;
+  if (rest.length > 0) return `Unexpected argument "${rest[0]}".`;
+  if (sub === undefined) return null;
+  if (sub === "help" || sub === "--help") {
+    return arg === undefined ? null : `Unexpected argument "${arg}".`;
+  }
+  if (sub === "repos" || sub === "sync") {
+    return arg === undefined
+      ? null
+      : `Subcommand "${sub}" does not accept arguments.`;
+  }
+  if ((sub === "issues" || sub === "prs") && arg !== undefined) {
+    return isRepoName(arg)
+      ? null
+      : `Invalid repository "${arg}"; expected owner/repo.`;
+  }
+  return null;
+}
+
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     extraRepos: {
@@ -1005,8 +1045,14 @@ export default async function plugin(bb: BbPluginApi) {
         "comments,reviews,reviewRequests";
       const [viewRaw, reviewCommentsRaw, filesRaw] = await Promise.all([
         gh(["pr", "view", String(number), "-R", repo, "--json", prFields], 30_000),
-        gh(["api", `repos/${repo}/pulls/${number}/comments?per_page=100`], 30_000),
-        gh(["api", `repos/${repo}/pulls/${number}/files?per_page=100`], 30_000),
+        gh(
+          ["api", "--paginate", "--slurp", `repos/${repo}/pulls/${number}/comments?per_page=100`],
+          30_000,
+        ),
+        gh(
+          ["api", "--paginate", "--slurp", `repos/${repo}/pulls/${number}/files?per_page=100`],
+          30_000,
+        ),
       ]);
 
       interface GhPullView extends GhListEntry {
@@ -1079,7 +1125,7 @@ export default async function plugin(bb: BbPluginApi) {
         created_at?: unknown;
         user?: { login?: unknown };
       }
-      const reviewComments = JSON.parse(reviewCommentsRaw) as GhReviewComment[];
+      const reviewComments = parsePaginatedGhApi(reviewCommentsRaw) as GhReviewComment[];
       interface ReviewThread {
         path: string;
         line: number | null;
@@ -1121,7 +1167,7 @@ export default async function plugin(bb: BbPluginApi) {
         deletions?: unknown;
         patch?: unknown;
       }
-      const files = (JSON.parse(filesRaw) as GhPullFile[]).map((file) => {
+      const files = (parsePaginatedGhApi(filesRaw) as GhPullFile[]).map((file) => {
         const patch = typeof file.patch === "string" ? file.patch : null;
         return {
           path: String(file.filename ?? ""),
@@ -1369,6 +1415,10 @@ export default async function plugin(bb: BbPluginApi) {
     async run(argv) {
       const [sub, arg] = argv;
       try {
+        const validationError = validateGithubCliArgs(argv);
+        if (validationError !== null) {
+          return { exitCode: 1, stderr: `${validationError}\n${USAGE}` };
+        }
         if (sub === undefined || sub === "help" || sub === "--help") {
           return { exitCode: 0, stdout: USAGE };
         }
