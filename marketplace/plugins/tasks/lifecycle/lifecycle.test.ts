@@ -26,6 +26,7 @@ function trackedThreadFixture(
   const host = createFakePluginHost({
     pluginId: "tasks",
     sdk: {
+      subscribe: () => () => {},
       threads: {
         get: async () =>
           makeThreadResponse({
@@ -155,6 +156,7 @@ describe("task thread lifecycle", () => {
     const host = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
+        subscribe: () => () => {},
         threads: {
           get: async () => {
             reads += 1;
@@ -202,17 +204,17 @@ describe("task thread lifecycle", () => {
     await host.harness.dispose();
   });
 
-  it("polls for active transitions missing from the plugin event surface", async () => {
-    vi.useFakeTimers();
+  it("reconciles a realtime status change without waiting for the safety sweep", async () => {
     let reads = 0;
     const host = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
+        subscribe: () => () => {},
         threads: {
           get: async () => {
             reads += 1;
             return makeThreadResponse({
-              id: "thr_polled",
+              id: "thr_realtime",
               status: reads <= 2 ? "starting" : "active",
             });
           },
@@ -221,8 +223,8 @@ describe("task thread lifecycle", () => {
     });
     const store = createStore(host.bb);
     const project = store.tasks.createProject({
-      name: "Polling lifecycle",
-      prefix: "POLL",
+      name: "Realtime lifecycle",
+      prefix: "REAL",
       color: "blue",
     });
     const task = store.tasks.createTask({
@@ -231,9 +233,9 @@ describe("task thread lifecycle", () => {
     });
     const tracked = store.tasks.upsertTaskThread({
       taskId: task.id,
-      threadId: "thr_polled",
+      threadId: "thr_realtime",
       presetName: "Default",
-      title: "Polled worker",
+      title: "Realtime worker",
       liveStatus: "starting",
     });
 
@@ -242,10 +244,101 @@ describe("task thread lifecycle", () => {
       expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe(
         "starting",
       );
-
       const service = host.harness.runService("thread-status-reconcile");
-      await vi.advanceTimersByTimeAsync(THREAD_STATUS_RECONCILE_INTERVAL_MS);
 
+      const [[subscription]] = host.harness.sdk.callsTo("subscribe");
+      if (
+        typeof subscription !== "object" ||
+        subscription === null ||
+        !("callback" in subscription) ||
+        typeof subscription.callback !== "function"
+      ) {
+        throw new Error("thread realtime callback was not registered");
+      }
+      subscription.callback({
+        type: "changed",
+        entity: "thread",
+        id: "thr_realtime",
+        changes: ["status-changed"],
+      });
+
+      await vi.waitFor(() => {
+        expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe(
+          "working",
+        );
+      });
+      expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(3);
+      service.controller.abort();
+      await service.done;
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+
+  it("unsubscribes from thread realtime on dispose", async () => {
+    const unsubscribe = vi.fn();
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: { subscribe: () => unsubscribe },
+    });
+    const store = createStore(bb);
+
+    await registerLifecycle(bb, store);
+    harness.runService("thread-status-reconcile");
+    expect(unsubscribe).not.toHaveBeenCalled();
+
+    await harness.dispose();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it("sweeps active threads every five minutes as a realtime safety net", async () => {
+    vi.useFakeTimers();
+    let reads = 0;
+    const host = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        subscribe: () => () => {},
+        threads: {
+          get: async () => {
+            reads += 1;
+            return makeThreadResponse({
+              id: "thr_safety_net",
+              status: reads <= 2 ? "starting" : "active",
+            });
+          },
+        },
+      },
+    });
+    const store = createStore(host.bb);
+    const project = store.tasks.createProject({
+      name: "Safety net lifecycle",
+      prefix: "SAFE",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Recover dropped realtime",
+    });
+    const tracked = store.tasks.upsertTaskThread({
+      taskId: task.id,
+      threadId: "thr_safety_net",
+      presetName: "Default",
+      title: "Safety net worker",
+      liveStatus: "starting",
+    });
+
+    try {
+      await registerLifecycle(host.bb, store);
+      const service = host.harness.runService("thread-status-reconcile");
+
+      await vi.advanceTimersByTimeAsync(
+        THREAD_STATUS_RECONCILE_INTERVAL_MS - 1,
+      );
+      expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe(
+        "starting",
+      );
+
+      await vi.advanceTimersByTimeAsync(1);
       expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe("working");
       service.controller.abort();
       await service.done;
@@ -260,6 +353,7 @@ describe("task thread lifecycle", () => {
     const host = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
+        subscribe: () => () => {},
         threads: {
           get: async () =>
             makeThreadResponse({ id: "thr_later", status: "active" }),
@@ -288,12 +382,15 @@ describe("task thread lifecycle", () => {
         liveStatus: "starting",
       });
 
-      await vi.advanceTimersByTimeAsync(THREAD_STATUS_RECONCILE_INTERVAL_MS);
+      await vi.advanceTimersByTimeAsync(THREAD_STATUS_IDLE_INTERVAL_MS);
       expect(host.harness.sdk.callsTo("threads.get")).toEqual([]);
 
       await vi.advanceTimersByTimeAsync(
-        THREAD_STATUS_IDLE_INTERVAL_MS - THREAD_STATUS_RECONCILE_INTERVAL_MS,
+        THREAD_STATUS_RECONCILE_INTERVAL_MS - 1,
       );
+      expect(host.harness.sdk.callsTo("threads.get")).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(1);
       expect(host.harness.sdk.callsTo("threads.get")).toEqual([
         [{ threadId: "thr_later" }],
       ]);
@@ -308,7 +405,10 @@ describe("task thread lifecycle", () => {
   });
 
   it("ignores lifecycle events for non-tracked threads", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: { subscribe: () => () => {} },
+    });
     const store = createStore(bb);
     await registerLifecycle(bb, store);
 
