@@ -562,12 +562,12 @@ function ProjectListThreadsSectionActions({
   );
 }
 
-// "In one list" is the user-facing name for chronological/drag-ordered mode;
+// "Manually" is the user-facing name for chronological/drag-ordered mode;
 // the stored atom value stays "chronological".
 const SIDEBAR_ORGANIZE_OPTIONS = [
   { label: "By project", mode: "project" },
   { label: "By machine", mode: "machine" },
-  { label: "In one list", mode: "chronological" },
+  { label: "Manually", mode: "chronological" },
 ] as const satisfies readonly {
   label: string;
   mode: SidebarOrganizationMode;

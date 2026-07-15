@@ -79,14 +79,14 @@ describe("sidebar display options menu", () => {
       "menuitemcheckbox",
       { name: "By project" },
     );
-    const inOneListOption = within(organizeGroup).getByRole(
+    const manuallyOption = within(organizeGroup).getByRole(
       "menuitemcheckbox",
-      { name: "In one list" },
+      { name: "Manually" },
     );
 
     expect(byProjectOption.getAttribute("aria-checked")).toBe("true");
-    expect(inOneListOption.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(inOneListOption);
+    expect(manuallyOption.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(manuallyOption);
 
     expect(screen.getByTestId("organization-mode").textContent).toBe(
       "chronological",
@@ -96,7 +96,7 @@ describe("sidebar display options menu", () => {
     fireEvent.click(trigger);
     expect(
       (
-        await screen.findByRole("menuitemcheckbox", { name: "In one list" })
+        await screen.findByRole("menuitemcheckbox", { name: "Manually" })
       ).getAttribute("aria-checked"),
     ).toBe("true");
   });
