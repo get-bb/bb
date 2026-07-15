@@ -71,9 +71,17 @@ describe("bundled plugin SDK declarations", () => {
         ),
       ),
     );
-    for (const content of declarations) {
+    for (const content of declarations.slice(0, 2)) {
       expect(content).not.toMatch(/from ['"]@bb\//u);
       expect(content).not.toMatch(/import\(['"]@bb\//u);
+    }
+    for (const content of declarations.slice(2)) {
+      const bbImports = [
+        ...content.matchAll(/from ['"](@bb\/[^'"]+)['"]/gu),
+      ].map((match) => match[1]);
+      expect(new Set(bbImports)).toEqual(new Set(["@bb/plugin-sdk"]));
+      expect(content).not.toContain("@bb/sdk");
+      expect(content).not.toContain("@bb/server-contract");
     }
     expect(declarations[2]).toContain("interface FakePluginBehaviorDrivers");
     expect(declarations[3]).toContain(

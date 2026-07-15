@@ -35,7 +35,7 @@ The authoritative source files for this snapshot are:
 - `apps/app/src/lib/plugin-sdk-app-impl.tsx`
 - `apps/app/src/views/PluginPanelView.tsx`
 
-The committed bundled declarations under `packages/plugin-sdk/bundled-types/` are the types copied into newly scaffolded external plugins. Differences between those declarations and the source contracts are therefore release-significant.
+The committed root/app declarations under `packages/plugin-sdk/bundled-types/` are copied into newly scaffolded external plugins. The testing declarations ship with the installed package and reuse its public root declaration rather than duplicating the full SDK contract. Differences between any bundled declaration and its source contract are release-significant.
 
 ## Surface at a glance
 

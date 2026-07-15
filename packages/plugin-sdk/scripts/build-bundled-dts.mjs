@@ -4,9 +4,11 @@
 // on disk.
 //
 // rollup-plugin-dts flattens @bb/plugin-sdk's own contracts plus every @bb/*
-// type it references (BbSdk, PromptInput, ThreadResponse, …) into one file,
-// keeping only genuine npm packages (react, better-sqlite3, hono, zod) as
-// external imports — those resolve from the scaffold's own devDependencies.
+// type it references (BbSdk, PromptInput, ThreadResponse, …) into the root
+// file. Testing subpaths reuse that already-portable root declaration through
+// the package's own public name instead of flattening the same contracts a
+// second time. Genuine npm packages remain external imports and resolve from
+// the consumer's own dependencies.
 //
 // The output is committed as bundled-types/*.d.ts (read at scaffold time by
 // @bb/templates via file path — no package edge, to avoid a dependency cycle).
@@ -33,6 +35,7 @@ const outputs = {
 // Real npm packages the bundle imports from — kept external so they resolve
 // from the scaffold's devDependencies rather than being inlined.
 const EXTERNAL = [
+  /^@bb\/plugin-sdk$/,
   /^@testing-library\/react($|\/)/,
   /^better-sqlite3/,
   /^hono($|\/)/,
@@ -93,8 +96,9 @@ async function bundle(input) {
 }
 
 const HEADER = [
-  "// Portable type declarations for `@bb/plugin-sdk`, with BB workspace",
-  "// contracts flattened so external consumers resolve no @bb/* packages.",
+  "// Portable type declarations for `@bb/plugin-sdk`. Unpublished BB",
+  "// workspace contracts are flattened; public subpaths may reuse the",
+  "// package root without requiring any other @bb/* package.",
   "//",
   "// Confused by the API, or need a symbol that isn't here? Clone the BB repo",
   "// and read the real source: https://github.com/ymichael/bb",

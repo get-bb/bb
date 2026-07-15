@@ -1,4 +1,6 @@
-import type { BbSdk } from "@bb/sdk";
+import type { BbPluginApi } from "@bb/plugin-sdk";
+
+type BbSdk = BbPluginApi["sdk"];
 
 /**
  * Recordable `bb.sdk` stand-in for {@link createFakePluginHost}. Every call

@@ -29,13 +29,11 @@ import {
   type PluginSettingsState,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
-} from "../app-contract.js";
-import type {
-  PluginRpcContract,
-  PluginRpcResult,
-  StandardSchemaV1InferInput,
-} from "../rpc-contract.js";
-import type { JsonValue } from "../json-value.js";
+  type PluginRpcContract,
+  type PluginRpcResult,
+  type StandardSchemaV1InferInput,
+  type JsonValue,
+} from "@bb/plugin-sdk";
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a

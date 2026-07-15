@@ -46,16 +46,14 @@ import type {
   PluginThreadEventName,
   PluginThreadEventPayloads,
   PluginUi,
-} from "../backend-contract.js";
-import type {
   PluginRpcError,
   PluginRpcMethodContract,
   PluginRpcValidationIssue,
   StandardSchemaV1,
   StandardSchemaV1Issue,
   StandardSchemaV1Result,
-} from "../rpc-contract.js";
-import type { JsonValue } from "../json-value.js";
+  JsonValue,
+} from "@bb/plugin-sdk";
 import {
   createFakeSdk,
   type FakeSdkHarness,

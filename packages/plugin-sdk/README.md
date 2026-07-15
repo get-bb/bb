@@ -90,8 +90,10 @@ multi-plugin arbitration; use a live BB test for those boundaries.
 
 ## Declaration surface
 
-The four flattened declaration bundles contain no `@bb/*` imports. Genuine npm
-types (`hono`, `better-sqlite3`, `zod`, React, and Testing Library) remain peer
-imports. Scaffolded plugins still vendor the complete root/app declarations in
-`types/`; installing this package is needed only when their tests import the
-testing subpaths.
+The complete root declaration flattens the unpublished BB workspace contracts.
+The testing declarations reuse that public `@bb/plugin-sdk` root instead of
+embedding a second copy, and no declaration depends on unpublished `@bb/*`
+packages. Genuine npm types (`hono`, `better-sqlite3`, `zod`, React, and Testing
+Library) remain peer imports. Scaffolded plugins still vendor the root/app
+declarations in `types/`; installing this package is needed only when their
+tests import the testing subpaths.

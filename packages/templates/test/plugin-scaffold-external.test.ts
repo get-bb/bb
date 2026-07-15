@@ -369,7 +369,12 @@ describe("external plugin scaffold types", () => {
         join(installedSdk, entry.types.replace(/^\.\//u, "")),
         "utf8",
       );
-      expect(declarations).not.toMatch(/from ['"]@bb\//u);
+      const bbImports = [
+        ...declarations.matchAll(/from ['"](@bb\/[^'"]+)['"]/gu),
+      ].map((match) => match[1]);
+      expect(new Set(bbImports)).toEqual(new Set(["@bb/plugin-sdk"]));
+      expect(declarations).not.toContain("@bb/sdk");
+      expect(declarations).not.toContain("@bb/server-contract");
     }
     for (const runtimePath of [
       "dist/testing/index.js",
@@ -379,10 +384,26 @@ describe("external plugin scaffold types", () => {
       expect(runtime).not.toMatch(/from ['"]@bb\//u);
     }
     await expect(access(join(installedSdk, "src"))).rejects.toThrow();
+    const backendTsconfigPath = join(backendDir, "tsconfig.json");
     const backendTsconfig = JSON.parse(
-      await readFile(join(backendDir, "tsconfig.json"), "utf8"),
-    ) as { compilerOptions: { skipLibCheck: boolean } };
+      await readFile(backendTsconfigPath, "utf8"),
+    ) as {
+      compilerOptions: {
+        skipLibCheck: boolean;
+        paths: Record<string, string[]>;
+      };
+    };
     expect(backendTsconfig.compilerOptions.skipLibCheck).toBe(false);
+    await runTypecheck(backendDir);
+
+    // Also prove package self-reference works without the scaffold's vendored
+    // root declaration mapping. The testing declarations intentionally import
+    // the installed package root instead of flattening the full SDK again.
+    delete backendTsconfig.compilerOptions.paths["@bb/plugin-sdk"];
+    await writeFile(
+      backendTsconfigPath,
+      `${JSON.stringify(backendTsconfig, null, 2)}\n`,
+    );
     await runTypecheck(backendDir);
     await runVitest(backendDir);
 
