@@ -371,7 +371,7 @@ function buildThreadTreeItems(
   return buildSortedItems(rootNodes, compareThreads, groupEnvironmentThreads);
 }
 
-// Chronological "All Threads" bucket: root threads are globally ordered by the
+// Chronological Threads bucket: root threads are globally ordered by the
 // chosen comparator and descendants stay nested under their parent. Worktree
 // grouping stays off. Side chats are excluded to match buildProjectThreadGroups.
 export function buildChronologicalThreadList(

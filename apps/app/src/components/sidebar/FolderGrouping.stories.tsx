@@ -130,7 +130,7 @@ export function ChronologicalFolders() {
   return (
     <StoryCard>
       <StoryRow
-        label="all threads"
+        label="threads"
         hint="stored folderId groups matching threads across projects"
       >
         <SidebarStage>
@@ -153,7 +153,6 @@ export function ChronologicalFolders() {
             pinnedThreads={[]}
             onReorderPinnedThread={noop}
             renderPinnedSection={() => null}
-            renderAllThreadsSection={(content) => content}
             renderThreadsSection={(content) => content}
           />
         </SidebarStage>

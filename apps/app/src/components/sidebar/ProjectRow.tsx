@@ -203,7 +203,6 @@ interface TopLevelFolderHeaderActions {
 }
 
 interface ChronologicalBuiltInSidebarSections {
-  allThreads: Omit<BuiltInSidebarSectionOptions, "content">;
   collapsedSectionIds: ReadonlySet<CollapsibleSidebarSectionId>;
   onToggleCollapsed: (id: CollapsibleSidebarSectionId) => void;
   pinned: BuiltInSidebarSectionOptions;
@@ -221,10 +220,6 @@ interface ChronologicalFolderThreadSectionsProps extends FolderThreadTreeProps {
     callbacks: { onSettled: () => void },
   ) => void;
   renderPinnedSection?: (
-    consumeClickSuppression?: ConsumeDragClickSuppression,
-  ) => ReactNode;
-  renderAllThreadsSection?: (
-    content: ReactNode,
     consumeClickSuppression?: ConsumeDragClickSuppression,
   ) => ReactNode;
   renderThreadsSection?: (
@@ -1801,7 +1796,6 @@ export const ChronologicalFolderThreadSections = memo(
     pinnedThreads,
     onReorderPinnedThread,
     renderPinnedSection,
-    renderAllThreadsSection,
     renderThreadsSection,
   }: ChronologicalFolderThreadSectionsProps) {
     const threads =
@@ -1890,7 +1884,6 @@ export const ChronologicalFolderThreadSections = memo(
     const folderItems = renderedRootItems.filter(
       (item) => item.kind === "folder",
     );
-    const hasFolders = folderItems.length > 0;
     const looseItems = renderedRootItems.filter(
       (item) => item.kind !== "folder",
     );
@@ -1998,18 +1991,14 @@ export const ChronologicalFolderThreadSections = memo(
               renderedFolderDnd?.dragOverParentKey === PINNED_THREAD_PARENT_KEY,
           },
           threads: {
-            ...(hasFolders
-              ? builtInSections.threads
-              : builtInSections.allThreads),
+            ...builtInSections.threads,
             content: threadsContent,
           },
         }
       : undefined;
     const legacyBuiltInSectionNodes: BuiltInSidebarSectionNodes = {
       pinned: renderPinnedSection?.(consumeClickSuppression),
-      threads: hasFolders
-        ? renderThreadsSection?.(threadsContent, consumeClickSuppression)
-        : renderAllThreadsSection?.(threadsContent, consumeClickSuppression),
+      threads: renderThreadsSection?.(threadsContent, consumeClickSuppression),
     };
     const sections = (
       <SidebarSectionOrderList order={topLevelSectionOrder}>

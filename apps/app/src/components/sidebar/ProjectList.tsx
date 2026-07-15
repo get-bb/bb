@@ -118,7 +118,6 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -269,9 +268,7 @@ type ToggleCollapsedSidebarSectionId = (
   id: CollapsibleSidebarSectionId,
 ) => void;
 type OpenSidebarMenu =
-  | "projectsDisplayOptions"
   | "threadsDisplayOptions"
-  | "allThreadsOverflow"
   | `displayOptions:${string}`
   | null;
 
@@ -521,7 +518,9 @@ function ProjectListProjectsSectionActions({
       ariaLabel="New project"
       title="New project"
       disabled={isCreatingProject}
-      icon={<Icon name="FolderPlus" className={COARSE_POINTER_ICON_SIZE_CLASS} />}
+      icon={
+        <Icon name="FolderPlus" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+      }
       onClick={onNewProject}
     />
   );
@@ -539,7 +538,12 @@ function ProjectListThreadsSectionActions({
           ariaLabel="New section"
           title="New section"
           disabled={isCreatingFolder}
-          icon={<Icon name="SectionAdd" className={COARSE_POINTER_ICON_SIZE_CLASS} />}
+          icon={
+            <Icon
+              name="SectionAdd"
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+            />
+          }
           onClick={onNewFolder}
         />
       ) : null}
@@ -547,7 +551,10 @@ function ProjectListThreadsSectionActions({
         ariaLabel="New thread"
         title="New thread"
         icon={
-          <Icon name="MessageSquarePlus" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+          <Icon
+            name="MessageSquarePlus"
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
         }
         onClick={onNewThread}
       />
@@ -691,18 +698,9 @@ interface SidebarThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
-interface SidebarAllThreadsOverflowMenuProps {
-  isCreatingFolder: boolean;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onNewFolder: () => void;
-}
-
-// The complete Threads-section header cluster (display options + new thread).
-// One component drives the Threads header in both project mode and
-// the folders view, so they can never drift apart. It carries the same combined
-// display-options menu as the primary header, so in manual mode the menu is
-// reachable above both the Folders and Threads sections.
+// The complete Threads-section header cluster. Every organization mode and
+// every folder state renders this same component so the label-adjacent actions
+// cannot drift apart.
 function SidebarThreadsSectionActions({
   displayOptionsOpen,
   onDisplayOptionsOpenChange,
@@ -730,33 +728,6 @@ function SidebarThreadsSectionActions({
         onNewThread={onNewThread}
       />
     </>
-  );
-}
-
-function SidebarAllThreadsOverflowMenu({
-  isCreatingFolder,
-  open,
-  onOpenChange,
-  onNewFolder,
-}: SidebarAllThreadsOverflowMenuProps) {
-  return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <SidebarDisplayMenuTrigger
-        ariaLabel="All Threads actions"
-        iconName="MoreHorizontal"
-        tooltip="More actions"
-      />
-      <DropdownMenuContent
-        align="end"
-        mobileTitle="All Threads actions"
-        className="min-w-0"
-      >
-        <DropdownMenuItem disabled={isCreatingFolder} onSelect={onNewFolder}>
-          <Icon name="SectionAdd" aria-hidden="true" />
-          New section
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -1163,7 +1134,6 @@ function ProjectModeSections({
 }
 
 interface FolderModeSectionsProps extends BuiltInSectionRenderState {
-  allThreadsSection: Omit<BuiltInSidebarSectionOptions, "content">;
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
@@ -1193,7 +1163,6 @@ interface FolderModeSectionsProps extends BuiltInSectionRenderState {
 }
 
 function FolderModeSections({
-  allThreadsSection,
   collapsedEnvironmentIds,
   collapsedSectionIds,
   collapsedThreadIds,
@@ -1262,7 +1231,6 @@ function FolderModeSections({
       builtInSections={{
         pinned: pinnedSection,
         threads: threadsSection,
-        allThreads: allThreadsSection,
         collapsedSectionIds,
         onToggleCollapsed,
       }}
@@ -1680,23 +1648,12 @@ function ProjectListComponent({
     },
     [],
   );
-  const handleProjectsDisplayOptionsMenuOpenChange = useCallback(
-    (open: boolean) => setSidebarMenuOpen("projectsDisplayOptions", open),
-    [setSidebarMenuOpen],
-  );
   const handleThreadsDisplayOptionsMenuOpenChange = useCallback(
     (open: boolean) => setSidebarMenuOpen("threadsDisplayOptions", open),
     [setSidebarMenuOpen],
   );
-  const handleAllThreadsOverflowMenuOpenChange = useCallback(
-    (open: boolean) => setSidebarMenuOpen("allThreadsOverflow", open),
-    [setSidebarMenuOpen],
-  );
-  const projectsDisplayOptionsMenuOpen =
-    openSidebarMenu === "projectsDisplayOptions";
   const threadsDisplayOptionsMenuOpen =
     openSidebarMenu === "threadsDisplayOptions";
-  const allThreadsOverflowMenuOpen = openSidebarMenu === "allThreadsOverflow";
   const renderSectionDisplayOptions = (sectionId: SidebarSectionId) => {
     const menuId = `displayOptions:${sectionId}` as const;
     return (
@@ -1892,33 +1849,7 @@ function ProjectListComponent({
       onReorderPinnedRoot={handleReorderPinnedRoot}
     />
   );
-  // When there are no folders, the catch-all header owns the global controls
-  // that previously lived on the removed aggregate Folders header.
-  const allThreadsSectionActions = (
-    <>
-      <SidebarDisplayOptionsMenu
-        open={projectsDisplayOptionsMenuOpen}
-        onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
-      />
-      <SidebarAllThreadsOverflowMenu
-        isCreatingFolder={isCreateThreadFolderPending}
-        open={allThreadsOverflowMenuOpen}
-        onOpenChange={handleAllThreadsOverflowMenuOpenChange}
-        onNewFolder={handleOpenCreateFolderDialog}
-      />
-      {onNewProject ? (
-        <ProjectListProjectsSectionActions
-          isCreatingProject={isCreatingProject}
-          onNewProject={onNewProject}
-        />
-      ) : null}
-      <ProjectListThreadsSectionActions
-        isCreatingFolder={isCreateThreadFolderPending}
-        onNewThread={handleCreateProjectlessThread}
-      />
-    </>
-  );
-  // One Threads-header cluster shared by project mode and the folders view.
+  // One Threads-header cluster shared by every organization and folder state.
   const threadsSectionActions = (
     <SidebarThreadsSectionActions
       displayOptionsOpen={threadsDisplayOptionsMenuOpen}
@@ -1942,11 +1873,6 @@ function ProjectListComponent({
     label: "Threads",
     actions: threadsSectionActions,
     actionsOpen: threadsDisplayOptionsMenuOpen,
-  } satisfies Omit<BuiltInSidebarSectionOptions, "content">;
-  const allThreadsSection = {
-    label: "All Threads",
-    actions: allThreadsSectionActions,
-    actionsOpen: projectsDisplayOptionsMenuOpen || allThreadsOverflowMenuOpen,
   } satisfies Omit<BuiltInSidebarSectionOptions, "content">;
   const folderCreateDialog = (
     <ThreadFolderCreateDialog
@@ -2055,7 +1981,6 @@ function ProjectListComponent({
               pinnedThreads={pinnedRootThreads}
               onReorderPinnedThread={handleReorderPinnedRoot}
               threadsSection={threadsSection}
-              allThreadsSection={allThreadsSection}
               selectedThreadId={selectedThreadId}
               collapsedSectionIds={collapsedSidebarSectionIds}
               collapsedThreadIds={collapsedThreadIds}
