@@ -553,6 +553,7 @@ export function PropertiesRail({
           onError={onError}
           align="start"
           appearance="primary"
+          labelMode="preset"
           className="w-full"
         />
       </div>

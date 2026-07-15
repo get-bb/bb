@@ -84,6 +84,9 @@ export interface DispatchControlProps {
   align?: "start" | "end";
   /** Hero CTA (properties rail) vs quiet outline (threads header). */
   appearance?: "primary" | "outline";
+  /** "preset" drops the Zap icon and "Dispatch ·" prefix — the rail's
+   *  Dispatch-target section already carries that meaning. */
+  labelMode?: "dispatch" | "preset";
   className?: string;
 }
 
@@ -101,6 +104,7 @@ export function DispatchControl({
   onError,
   align = "end",
   appearance = "outline",
+  labelMode = "dispatch",
   className,
 }: DispatchControlProps) {
   const rpc = useRpc<DelegationRpcContract>();
@@ -186,12 +190,16 @@ export function DispatchControl({
             if (current) pickPreset(current);
           }}
         >
-          <Icon name="Zap" className="size-3.5 shrink-0" />
+          {labelMode === "dispatch" ? (
+            <Icon name="Zap" className="size-3.5 shrink-0" />
+          ) : null}
           <span className="truncate">
             {dispatching
               ? "Dispatching…"
               : current
-                ? `Dispatch · ${current.name}`
+                ? labelMode === "preset"
+                  ? current.name
+                  : `Dispatch · ${current.name}`
                 : "Dispatch"}
           </span>
         </Button>
