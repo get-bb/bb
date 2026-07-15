@@ -78,6 +78,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.4.0",
+    "zod": "^4.3.6",
     "tiptap-markdown": "^0.8.10"
   }
 }

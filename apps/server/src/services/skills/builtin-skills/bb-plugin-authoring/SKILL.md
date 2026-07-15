@@ -103,10 +103,11 @@ The scaffold ships the full API as bundled type declarations in `types/`
 --noEmit` typechecks anywhere — no bb checkout required. Those `.d.ts` files
 are the authoritative, exhaustive surface: read them (or the source at
 <https://github.com/ymichael/bb>, cloned) when you need an exact signature or
-a symbol this skill doesn't cover. Backend imports from `@bb/plugin-sdk` MUST
-be type-only (`import type { BbPluginApi } from "@bb/plugin-sdk"`); they are
-erased when the server loads the file, so `server.ts` runs as-is with zero
-runtime dependencies.
+a symbol this skill doesn't cover. Backend API imports stay type-only; the one
+root runtime helper is `defineRpcContract`, supplied by BB for shared schema
+contracts: `import { defineRpcContract, type BbPluginApi } from
+"@bb/plugin-sdk"`. Validator imports such as Zod are normal plugin runtime
+dependencies (and are bundled by `bb plugin build`).
 
 On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
 `secrets/` (secret settings + HTTP token), `logs/plugin.log` (JSONL,
@@ -377,26 +378,66 @@ Auth modes:
 
 ### bb.rpc — the frontend data plane
 
-`bb.rpc.register({ methodName(input) { ... } })` serves POST
-`/api/v1/plugins/<id>/rpc/<method>` with local-auth semantics. The JSON body
-is the input; the return value is wrapped as `{ ok: true, result }` (or
-`{ ok: false, error }` when the handler throws). Inputs and outputs must
-survive a JSON round-trip. Inputs arrive untyped — declare handler
-parameters as `unknown` and narrow at the top (hoist a `function
-makeHandlers()` returning the record if you want shared types between
-handlers):
+Define method names plus runtime input/output schemas once, then register
+handlers against that contract. Schemas use validator-neutral Standard Schema
+v1, which Zod 4 implements directly. The host validates input before invoking
+the handler and output before serialization; handler parameters and return
+values are inferred from the schemas.
 
 ```ts
-bb.rpc.register({
-  listIssues(input: unknown) {
-    const filter =
-      typeof (input as { filter?: unknown })?.filter === "string"
-        ? (input as { filter: string }).filter
-        : undefined;
-    return { issues: listCachedIssues(filter) };
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
+
+export const rpcContract = defineRpcContract({
+  listIssues: {
+    input: z.object({ filter: z.string().optional() }).strict(),
+    output: z.object({ issues: z.array(z.object({ id: z.string() })) }),
+  },
+  status: {
+    input: z.null(), // null input lets the frontend omit the argument
+    output: z.object({ ready: z.boolean() }),
   },
 });
+
+export default function plugin(bb: BbPluginApi) {
+  bb.rpc.register(rpcContract, {
+    listIssues({ filter }) {
+      return { issues: listCachedIssues(filter) };
+    },
+    status() {
+      return { ready: true };
+    },
+  });
+}
 ```
+
+In `app.tsx`, import only the backend contract's type. The backend module and
+its dependencies are erased from the frontend bundle:
+
+```tsx
+import { useRpc } from "@bb/plugin-sdk/app";
+import type { rpcContract } from "./server";
+
+function IssuesButton() {
+  const rpc = useRpc<typeof rpcContract>();
+
+  async function loadIssues() {
+    const { issues } = await rpc.call("listIssues", { filter: "open" });
+    return issues;
+  }
+
+  return <button onClick={() => void loadIssues()}>Load issues</button>;
+}
+```
+
+The wire envelope is `{ ok: true, result }` or `{ ok: false, error }`.
+Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
+`invalid_output`, `non_json_result`, and `unknown_method`; validation failures
+also carry normalized `{ message, path? }[]` issues. Unknown methods return
+404, invalid JSON/input returns 400, and handler/output/serialization failures
+return 500. Results must be strict JSON values: cyclic objects, bigint,
+undefined/functions, class instances, symbol keys, and non-finite numbers are
+rejected rather than coerced or silently dropped.
 
 ### bb.realtime
 
@@ -759,8 +800,8 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
 
 Hooks:
 
-- `useRpc()` → `{ call(method, input?) }` — calls your `bb.rpc` methods;
-  untyped (`Promise<unknown>`) in V1, narrow the result yourself.
+- `useRpc<typeof rpcContract>()` → `{ call(method, input?) }` — exact method,
+  input, and result inference from a type-only backend contract import.
 - `useRealtime(channel, handler)` — fires for this plugin's
   `bb.realtime.publish(channel, …)` signals while mounted.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
@@ -999,13 +1040,14 @@ Remaining reference examples in `examples/plugins/`:
   and a throw blocks the send.
 - Agent tool changes apply on the next session start, not mid-session;
   cross-plugin tool-name collisions drop the later registration.
-- rpc/realtime payloads must survive JSON.stringify.
+- RPC results must be strict JSON values and pass their output schema;
+  realtime payloads must survive JSON.stringify.
 - Handler stats shown by `bb plugin list` persist across reloads (reset on
   remove).
 - The frontend Tailwind pass emits default-theme utilities only — style
   with host token classes, no custom `@theme` colors, no hand-set oklch.
 - `onDispose` hooks run LIFO; stale `bb` handles from before a reload throw
   on use.
-- Backend `@bb/plugin-sdk` imports must be type-only (erased at load);
-  runtime imports there would fail outside a checkout. The scaffold
-  tsconfig typechecks both `server.ts` and `app.tsx`.
+- Backend API imports remain type-only. `defineRpcContract` is the one root
+  runtime helper BB supplies; validator imports are plugin dependencies. The
+  scaffold tsconfig typechecks both `server.ts` and `app.tsx`.

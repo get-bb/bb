@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bb/shared-ui": "workspace:*"
+    "@bb/shared-ui": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/plugin-sdk": "workspace:*",

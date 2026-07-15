@@ -1524,11 +1524,15 @@ describe("connect plugin", () => {
       baseDomain: "attacker.example",
     };
 
-    await expect(harness.callRpc("expose", redirected)).rejects.toThrow(
-      /Unrecognized keys.*label.*baseDomain/,
-    );
-    await expect(harness.callRpc("unexpose", redirected)).rejects.toThrow(
-      /Unrecognized keys.*label.*baseDomain/,
+    await expect(harness.callRpc("expose", redirected)).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
+    await expect(harness.callRpc("unexpose", redirected)).rejects.toMatchObject(
+      {
+        code: "invalid_input",
+        issues: expect.any(Array),
+      },
     );
   });
 

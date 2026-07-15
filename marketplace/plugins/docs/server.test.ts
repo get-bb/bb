@@ -1,11 +1,17 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
+import { defineRpcContract } from "@bb/plugin-sdk";
+import type { PluginRpcClient, PluginRpcHandlers } from "@bb/plugin-sdk";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import simpleNotes from "./server";
+import simpleNotes, { docsRpcContract } from "./server";
 
 const temporaryDirectories: string[] = [];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -38,10 +44,18 @@ async function loadNotebook(notes: Record<string, string>) {
           })),
           truncated: false,
         }),
-        read: async ({ path: filePath }) => ({
-          content: await readFile(filePath, "utf8"),
-          sha256: "test-sha",
-        }),
+        read: async ({ path: filePath }) => {
+          const content = await readFile(filePath, "utf8");
+          return {
+            path: filePath,
+            content,
+            contentEncoding: "utf8" as const,
+            mimeType: "text/markdown",
+            sizeBytes: Buffer.byteLength(content),
+            modifiedAtMs: 1,
+            sha256: "test-sha",
+          };
+        },
         write: async () => ({
           outcome: "written" as const,
           sha256: "written-sha",
@@ -61,6 +75,65 @@ async function loadNotebook(notes: Record<string, string>) {
   await simpleNotes(host.bb);
   return host;
 }
+
+type DocsRpcHandlers = PluginRpcHandlers<typeof docsRpcContract>;
+
+function assertDocsFrontendInference(
+  client: PluginRpcClient<typeof docsRpcContract>,
+) {
+  expectTypeOf(
+    client.call("saveNote", {
+      vaultId: "personal",
+      path: "plan.md",
+      content: "# Plan",
+      expectedSha256: "sha",
+    }),
+  ).toEqualTypeOf<
+    Promise<
+      | { outcome: "written"; sha256: string; sizeBytes: number }
+      | { outcome: "conflict"; currentSha256: string | null }
+    >
+  >();
+
+  // @ts-expect-error saveNote requires string content.
+  void client.call("saveNote", { path: "plan.md", content: 42 });
+  // @ts-expect-error createVault requires an absolute-path candidate.
+  void client.call("createVault", { name: "Work" });
+}
+
+describe("Docs RPC contract", () => {
+  it("infers parsed handler inputs and frontend results", () => {
+    expectTypeOf<Parameters<DocsRpcHandlers["openFile"]>[0]>().toEqualTypeOf<{
+      source: {
+        kind: "workspace" | "host" | "thread-storage";
+        threadId: string | null;
+        environmentId: string | null;
+        projectId: string | null;
+      };
+      path: string;
+    }>();
+    expectTypeOf(assertDocsFrontendInference).toBeFunction();
+  });
+
+  it("rejects invalid method inputs and outputs at runtime", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "docs-contract" });
+    const contract = defineRpcContract({
+      saveNote: docsRpcContract.saveNote,
+    });
+    bb.rpc.register(contract, {
+      saveNote(): { outcome: "written"; sha256: string; sizeBytes: number } {
+        return { outcome: "written", sha256: "sha", sizeBytes: -1 };
+      },
+    });
+
+    await expect(
+      harness.callRpc("saveNote", { path: "plan.md", content: 42 }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
+      harness.callRpc("saveNote", { path: "plan.md", content: "# Plan" }),
+    ).rejects.toMatchObject({ code: "invalid_output" });
+  });
+});
 
 async function waitForSignal(
   predicate: () => boolean,
@@ -240,6 +313,7 @@ describe("Docs vault operations", () => {
         harness.realtimeSignals.some(
           (signal) =>
             signal.channel === "vault-changed" &&
+            isRecord(signal.payload) &&
             signal.payload.vaultId === "personal",
         ),
       );

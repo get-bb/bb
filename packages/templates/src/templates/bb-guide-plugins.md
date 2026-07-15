@@ -213,7 +213,13 @@ openThreadPanel({ actionId, title?, params? }) callback for opening one of the
 same plugin's thread-panel actions). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
 useBbNavigate, and useComposer (quote selections / insert mention pills
-into the chat composer draft). Components are vendored shadcn source the plugin owns (the
+into the chat composer draft). Define RPC methods with `defineRpcContract`
+and Standard Schema-compatible input/output validators (Zod works directly),
+register via `bb.rpc.register(contract, handlers)`, then use a type-only
+backend contract import with `useRpc<typeof contract>()` for exact frontend
+method/input/result inference. The server validates both schemas and rejects
+non-JSON results (including cyclic and non-finite values) with structured
+error codes. Components are vendored shadcn source the plugin owns (the
 shadcn model): `bb plugin new --app` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
@@ -283,7 +289,9 @@ bb.storage.database()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
 attributed to the plugin); bb.events.on (observe thread.created/idle/failed/deleted);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
-local/token/none auth); bb.rpc.register (the frontend data plane);
+local/token/none auth); defineRpcContract + bb.rpc.register (Standard
+Schema-validated frontend data plane with inferred backend handlers and
+type-only frontend method/input/result inference);
 bb.realtime.publish (ephemeral signals to open app pages);
 bb.background.service (long-lived, AbortSignal, restart w/ backoff) and
 bb.background.schedule (durable cron rows); bb.cli.register (a top-level

@@ -372,7 +372,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     id: string,
     label: string,
     run: () => T | Promise<T>,
-  ): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+  ): Promise<
+    { ok: true; value: T } | { ok: false; error: string; cause: unknown }
+  > {
     const stats = statsFor(id);
     const startedAt = performance.now();
     let settle!: () => void;
@@ -394,7 +396,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       if (statuses.get(id)?.status === "running") {
         setStatus(id, "running", `${label} failed: ${message}`);
       }
-      return { ok: false, error: message };
+      return { ok: false, error: message, cause: error };
     } finally {
       const elapsedMs = performance.now() - startedAt;
       stats.count += 1;

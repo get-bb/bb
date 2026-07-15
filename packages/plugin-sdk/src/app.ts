@@ -2,6 +2,22 @@ import type { PluginSdkApp } from "./app-contract.js";
 
 export type * from "./app-contract.js";
 export type * from "./json-value.js";
+export type {
+  PluginRpcCallArgs,
+  PluginRpcContract,
+  PluginRpcError,
+  PluginRpcErrorCode,
+  PluginRpcHandlers,
+  PluginRpcIssuePathSegment,
+  PluginRpcMethodContract,
+  PluginRpcResult,
+  PluginRpcValidationIssue,
+  StandardSchemaV1,
+  StandardSchemaV1InferInput,
+  StandardSchemaV1InferOutput,
+  StandardSchemaV1Issue,
+  StandardSchemaV1Result,
+} from "./rpc-contract.js";
 
 /**
  * `@bb/plugin-sdk/app` — typed facade over the BB app's plugin runtime.

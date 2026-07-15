@@ -755,7 +755,13 @@ export function registerPluginRoutes(
         input = JSON.parse(rawBody);
       } catch {
         return context.json(
-          { ok: false, error: "request body must be JSON (the rpc input)" },
+          {
+            ok: false,
+            error: {
+              code: "invalid_json",
+              message: "request body must be JSON (the rpc input)",
+            },
+          },
           400,
         );
       }
@@ -772,7 +778,13 @@ export function registerPluginRoutes(
     }
     if (lookup.outcome === "not-found") {
       return context.json(
-        { ok: false, error: `plugin "${id}" has no rpc method "${method}"` },
+        {
+          ok: false,
+          error: {
+            code: "unknown_method",
+            message: `plugin "${id}" has no rpc method "${method}"`,
+          },
+        },
         404,
       );
     }
@@ -783,7 +795,10 @@ export function registerPluginRoutes(
       input,
     );
     if (!outcome.ok) {
-      return context.json({ ok: false, error: outcome.error }, 500);
+      return context.json(
+        { ok: false, error: outcome.error },
+        outcome.error.code === "invalid_input" ? 400 : 500,
+      );
     }
     return context.json({ ok: true, result: outcome.result });
   });

@@ -48,6 +48,42 @@ describe("callPluginRpc", () => {
     );
   });
 
+  it("surfaces structured wire failures with stable code and issues", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () =>
+      jsonResponse(
+        {
+          ok: false,
+          error: {
+            code: "invalid_input",
+            message: "rpc input validation failed",
+            issues: [{ path: ["id"], message: "Required" }],
+          },
+        },
+        false,
+        400,
+      ),
+    );
+    const promise = callPluginRpc(fetchImpl, "demo", "lookup", {});
+    await expect(promise).rejects.toMatchObject({
+      code: "invalid_input",
+      message: "rpc input validation failed",
+      issues: [{ path: ["id"], message: "Required" }],
+    });
+  });
+
+  it("rejects cyclic and non-finite inputs before fetch", async () => {
+    const fetchImpl = vi.fn<FetchLike>();
+    const cyclic: { self?: unknown } = {};
+    cyclic.self = cyclic;
+    await expect(
+      callPluginRpc(fetchImpl, "demo", "cyclic", cyclic),
+    ).rejects.toThrow("cyclic");
+    await expect(
+      callPluginRpc(fetchImpl, "demo", "nonFinite", { value: Number.NaN }),
+    ).rejects.toThrow("non-finite");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("falls back to an HTTP-status message for non-JSON failures", async () => {
     const fetchImpl = vi.fn<FetchLike>(async () => ({
       ok: false,

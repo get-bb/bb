@@ -2,16 +2,37 @@
 import { useEffect, useState } from "react";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import type {
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
 import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
+import { defineRpcContract } from "../../rpc-contract.js";
 
 // Install before touching @bb/plugin-sdk/app — it binds the runtime global
 // at import time (same constraint real plugin app.tsx files have).
 installTestPluginRuntime();
 const { definePluginApp, useRealtime, useRpc } = await import("../../app.js");
+
+const typedRpcContract = defineRpcContract({
+  getItem: {
+    input: z.object({ id: z.string() }),
+    output: z.object({ title: z.string() }),
+  },
+});
+
+function TypedRpcPanel() {
+  const rpc = useRpc<typeof typedRpcContract>();
+  const [title, setTitle] = useState("Loading typed RPC…");
+  useEffect(() => {
+    void rpc.call("getItem", { id: "item-1" }).then((result) => {
+      const exactTitle: string = result.title;
+      setTitle(exactTitle);
+    });
+  }, [rpc]);
+  return <div>{title}</div>;
+}
 
 afterEach(cleanup);
 
@@ -125,6 +146,26 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.messageDirective: duplicate id "inline-vis"');
+  });
+});
+
+describe("typed rpc test runtime", () => {
+  it("preserves contract method, input, and result types while recording calls", async () => {
+    const slot = renderSlot<PluginNavPanelProps, typeof typedRpcContract>(
+      { component: TypedRpcPanel },
+      { subPath: "" },
+      {
+        rpc: {
+          getItem(input) {
+            return { title: `Item ${input.id}` };
+          },
+        },
+      },
+    );
+    await slot.findByText("Item item-1");
+    expect(slot.rpcCalls).toEqual([
+      { method: "getItem", input: { id: "item-1" } },
+    ]);
   });
 });
 

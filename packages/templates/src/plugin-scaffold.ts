@@ -89,9 +89,17 @@ function serverEntrySource(packageName: string): string {
   const id = pluginIdOf(packageName);
   return `// ${packageName} — a BB plugin backend entry.
 //
-// The default export is a factory that receives the plugin API. Type-only
-// imports are erased when BB loads this file, so it runs as-is.
-import type { BbPluginApi } from "@bb/plugin-sdk";
+// The default export is a factory that receives the plugin API. BB supplies
+// the tiny defineRpcContract runtime helper; the API type remains type-only.
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
+
+export const rpcContract = defineRpcContract({
+  greeting: {
+    input: z.null(),
+    output: z.object({ greeting: z.string(), loadCount: z.number().int() }),
+  },
+});
 
 export default async function plugin(bb: BbPluginApi) {
   bb.log.info("loaded");
@@ -108,6 +116,12 @@ export default async function plugin(bb: BbPluginApi) {
   const loadCount = ((await bb.storage.kv.get<number>("load-count")) ?? 0) + 1;
   await bb.storage.kv.set("load-count", loadCount);
   bb.log.info(\`\${greeting} — load #\${loadCount}\`);
+
+  // Both schemas run at the wire boundary. Handler input/output are inferred
+  // from the shared contract; app.tsx imports only its type.
+  bb.rpc.register(rpcContract, {
+    greeting: () => ({ greeting, loadCount }),
+  });
 
   // Cleanup on reload/disable/shutdown; hooks run LIFO. The sanctioned place
   // to clear timers and close connections.
@@ -150,7 +164,9 @@ function appEntrySource(packageName: string): string {
 // \`npx shadcn add @bb/<name>\` (see components.json) — dialogs, dropdowns,
 // tables, the full shadcn set, version-matched to this BB install. Run
 // \`npm install\` once before \`bb plugin build\`.
-import { definePluginApp, useBbContext } from "@bb/plugin-sdk/app";
+import { useState } from "react";
+import { definePluginApp, useBbContext, useRpc } from "@bb/plugin-sdk/app";
+import type { rpcContract } from "./server";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -161,6 +177,8 @@ import {
 
 function HelloCard() {
   const { projectId } = useBbContext();
+  const rpc = useRpc<typeof rpcContract>();
+  const [greeting, setGreeting] = useState("Say hello");
   // Tailwind classes compile against the host theme's live CSS variables —
   // derive colors from the theme tokens, never hardcoded grays.
   return (
@@ -174,10 +192,16 @@ function HelloCard() {
             ? "No project selected."
             : \`Project: \${projectId}.\`}
         </span>
-        <Button size="sm" variant="outline" asChild>
-          <a href="https://github.com/ymichael/bb" target="_blank" rel="noreferrer">
-            Docs
-          </a>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void rpc.call("greeting").then((result) => {
+              setGreeting(\`\${result.greeting} (#\${result.loadCount})\`);
+            });
+          }}
+        >
+          {greeting}
         </Button>
       </CardContent>
     </Card>

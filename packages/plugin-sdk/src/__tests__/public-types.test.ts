@@ -72,6 +72,25 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
 
 const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS: readonly string[] = [];
 
+const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
+  "PluginRpcCallArgs",
+  "PluginRpcContract",
+  "PluginRpcError",
+  "PluginRpcErrorCode",
+  "PluginRpcHandlers",
+  "PluginRpcIssuePathSegment",
+  "PluginRpcMethodContract",
+  "PluginRpcResult",
+  "PluginRpcValidationIssue",
+  "StandardSchemaV1",
+  "StandardSchemaV1InferInput",
+  "StandardSchemaV1InferOutput",
+  "StandardSchemaV1Issue",
+  "StandardSchemaV1Result",
+] as const;
+
+const EXPECTED_RPC_ROOT_VALUE_EXPORTS = ["defineRpcContract"] as const;
+
 function namesFromMatches(source: string, pattern: RegExp): string[] {
   return Array.from(source.matchAll(pattern), (match) => match[1]).sort();
 }
@@ -122,6 +141,35 @@ describe("backend plugin SDK public surface", () => {
       expect(rootTypeExports.has(exportName), exportName).toBe(true);
     }
     for (const exportName of EXPECTED_BACKEND_ROOT_VALUE_EXPORTS) {
+      expect(rootValueExports.has(exportName), exportName).toBe(true);
+    }
+  });
+
+  it("keeps every rpc contract export in the root declaration bundle", async () => {
+    const [rpcContract, declarations] = await Promise.all([
+      readFile(new URL("../rpc-contract.ts", import.meta.url), "utf8"),
+      readFile(
+        new URL("../../bundled-types/bb-plugin-sdk.d.ts", import.meta.url),
+        "utf8",
+      ),
+    ]);
+    const declaredTypes = namesFromMatches(
+      rpcContract,
+      /^export (?:interface|type) ([A-Za-z0-9_]+)/gmu,
+    );
+    const declaredValues = namesFromMatches(
+      rpcContract,
+      /^export (?:class|const|function) ([A-Za-z0-9_]+)/gmu,
+    );
+    expect(declaredTypes).toEqual([...EXPECTED_RPC_ROOT_TYPE_EXPORTS].sort());
+    expect(declaredValues).toEqual([...EXPECTED_RPC_ROOT_VALUE_EXPORTS]);
+
+    const rootTypeExports = rootExportNames(declarations, "type");
+    const rootValueExports = rootExportNames(declarations, "value");
+    for (const exportName of EXPECTED_RPC_ROOT_TYPE_EXPORTS) {
+      expect(rootTypeExports.has(exportName), exportName).toBe(true);
+    }
+    for (const exportName of EXPECTED_RPC_ROOT_VALUE_EXPORTS) {
       expect(rootValueExports.has(exportName), exportName).toBe(true);
     }
   });

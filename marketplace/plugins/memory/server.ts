@@ -5,7 +5,12 @@
 // the `bb memory` CLI command; this plugin intentionally registers no native
 // agent tools.
 import { randomBytes } from "node:crypto";
-import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
+import {
+  defineRpcContract,
+  type BbPluginApi,
+  type PluginCliContext,
+} from "@bb/plugin-sdk";
+import { z } from "zod";
 
 const CATALOG_MAX_CHARS = 3_900;
 const DEFAULT_RESULT_LIMIT = 20;
@@ -43,6 +48,66 @@ interface MemoryRecord {
   createdAt: number;
   updatedAt: number;
 }
+
+const memoryKindSchema = z.enum(MEMORY_KINDS);
+const memoryRecordSchema: z.ZodType<MemoryRecord> = z
+  .object({
+    id: z.string(),
+    scope: z.enum(["global", "project"]),
+    projectId: z.string().nullable(),
+    name: z.string(),
+    summary: z.string(),
+    details: z.string(),
+    kind: memoryKindSchema,
+    tags: z.array(z.string()),
+    importance: z.number().int().min(0).max(100),
+    pinned: z.boolean(),
+    sourceThreadId: z.string().nullable(),
+    writeReason: z.string(),
+    version: z.number().int().positive(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .strict();
+
+const memoryUpdateInputSchema = z
+  .object({
+    id: z.string(),
+    expectedVersion: z.number().int().positive(),
+    summary: z.string(),
+    details: z.string(),
+    kind: memoryKindSchema,
+    tags: z.array(z.string()),
+    importance: z.number().int().min(0).max(100),
+    pinned: z.boolean(),
+  })
+  .strict();
+
+export const memoryRpcContract = defineRpcContract({
+  listMemories: {
+    input: z.null(),
+    output: z.object({ memories: z.array(memoryRecordSchema) }).strict(),
+  },
+  updateMemory: {
+    input: memoryUpdateInputSchema,
+    output: z.object({ memory: memoryRecordSchema }).strict(),
+  },
+  deleteMemory: {
+    input: z
+      .object({
+        id: z.string(),
+        expectedVersion: z.number().int().positive(),
+      })
+      .strict(),
+    output: z
+      .object({
+        deleted: z
+          .object({ id: z.string(), version: z.number().int().positive() })
+          .strict(),
+      })
+      .strict(),
+  },
+});
 
 type MemorySummary = Omit<
   MemoryRecord,
@@ -866,38 +931,28 @@ export default async function plugin(bb: BbPluginApi) {
   ]);
   const store = new MemoryStore(db);
 
-  bb.rpc.register({
-    listMemories(input: unknown) {
-      assertNoRpcInput(input);
+  bb.rpc.register(memoryRpcContract, {
+    listMemories() {
       return { memories: store.listAll() };
     },
-    updateMemory(input: unknown) {
-      const record = parseRpcRecord(input);
-      const id = rpcString(record, "id");
+    updateMemory(input) {
+      const { id } = input;
       const current = store.getAdmin(id);
       if (!current) throw new Error(`memory "${id}" was not found`);
-      const kindValue = rpcString(record, "kind");
+      const kindValue = input.kind;
       if (!isMemoryKind(kindValue)) {
         throw new Error(`kind must be one of: ${MEMORY_KINDS.join(", ")}`);
-      }
-      if (typeof record.pinned !== "boolean") {
-        throw new Error("pinned must be a boolean");
       }
       const memory = store.update(
         id,
         {
-          expectedVersion: rpcInteger(
-            record,
-            "expectedVersion",
-            1,
-            Number.MAX_SAFE_INTEGER,
-          ),
-          summary: rpcString(record, "summary"),
-          details: rpcString(record, "details"),
+          expectedVersion: input.expectedVersion,
+          summary: input.summary,
+          details: input.details,
           kind: kindValue,
-          tags: parseRpcTags(record),
-          importance: rpcInteger(record, "importance", 0, 100),
-          pinned: record.pinned,
+          tags: input.tags,
+          importance: input.importance,
+          pinned: input.pinned,
           sourceThreadId: null,
           writeReason: "Edited in Memory settings",
         },
@@ -905,14 +960,13 @@ export default async function plugin(bb: BbPluginApi) {
       );
       return { memory };
     },
-    deleteMemory(input: unknown) {
-      const record = parseRpcRecord(input);
-      const id = rpcString(record, "id");
+    deleteMemory(input) {
+      const { id } = input;
       const current = store.getAdmin(id);
       if (!current) throw new Error(`memory "${id}" was not found`);
       const memory = store.forget(
         id,
-        rpcInteger(record, "expectedVersion", 1, Number.MAX_SAFE_INTEGER),
+        input.expectedVersion,
         "Deleted in Memory settings",
         null,
         current.projectId ?? undefined,

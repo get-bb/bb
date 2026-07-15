@@ -9,6 +9,7 @@ import {
   useRpc,
   type PluginMessageDirectiveProps,
 } from "@bb/plugin-sdk/app";
+import type { inlineVisRpcContract } from "./server.js";
 
 type LoadState =
   | { status: "missing-file" }
@@ -67,7 +68,7 @@ function InlineVisDirective({
   message,
   openWorkspaceFile,
 }: PluginMessageDirectiveProps) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof inlineVisRpcContract>();
   const fileAttr = attributes.file?.trim() ?? "";
   const heightAttr = attributes.height;
   const previewHeight = parsePreviewHeight(heightAttr);

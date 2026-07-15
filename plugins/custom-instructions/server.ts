@@ -1,13 +1,29 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
 
 export const MAX_CUSTOM_INSTRUCTIONS_LENGTH = 4096;
 const STORAGE_KEY = "customInstructions";
 
-function assertNoInput(input: unknown): void {
-  if (input !== null && input !== undefined) {
-    throw new Error("expected no input");
-  }
-}
+const instructionsInputSchema = z
+  .object({
+    instructions: z.string().max(MAX_CUSTOM_INSTRUCTIONS_LENGTH),
+  })
+  .strict();
+
+const instructionsResponseSchema = z
+  .object({
+    instructions: z.string(),
+    maxLength: z.number().int().positive(),
+  })
+  .strict();
+
+export const customInstructionsRpcContract = defineRpcContract({
+  getInstructions: { input: z.null(), output: instructionsResponseSchema },
+  saveInstructions: {
+    input: instructionsInputSchema,
+    output: instructionsResponseSchema,
+  },
+});
 
 function parseInstructionsInput(input: unknown): string {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
@@ -32,16 +48,14 @@ function parseInstructionsInput(input: unknown): string {
 export default async function plugin(bb: BbPluginApi) {
   let customInstructions = (await bb.storage.kv.get<string>(STORAGE_KEY)) ?? "";
 
-  bb.rpc.register({
-    getInstructions(input: unknown) {
-      assertNoInput(input);
+  bb.rpc.register(customInstructionsRpcContract, {
+    getInstructions() {
       return {
         instructions: customInstructions,
         maxLength: MAX_CUSTOM_INSTRUCTIONS_LENGTH,
       };
     },
-    async saveInstructions(input: unknown) {
-      const instructions = parseInstructionsInput(input);
+    async saveInstructions({ instructions }) {
       await bb.storage.kv.set(STORAGE_KEY, instructions);
       customInstructions = instructions;
       return {

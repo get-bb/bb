@@ -45,6 +45,14 @@ import type {
   PluginThreadEventPayloads,
   PluginUi,
 } from "../backend-contract.js";
+import type {
+  PluginRpcError,
+  PluginRpcMethodContract,
+  PluginRpcValidationIssue,
+  StandardSchemaV1,
+  StandardSchemaV1Issue,
+  StandardSchemaV1Result,
+} from "../rpc-contract.js";
 import {
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
   type JsonValue,
@@ -63,8 +71,8 @@ import {
  *
  * Faithful where a plugin can observe it: registration name validation and
  * error messages, the kv 256KB cap, append-only database migrations, settings
- * read/update semantics (including onChange), rpc/cli invocation shapes
- * (JSON round-tripping, exit-code normalization), `threads.spawn`
+ * read/update semantics (including onChange), schema-validated rpc/cli
+ * invocation shapes (strict JSON boundaries, exit-code normalization), `threads.spawn`
  * attribution, and dispose order (services aborted, hooks LIFO, database
  * closed, stale handles throw).
  *
@@ -312,10 +320,9 @@ export interface FakePluginHarness {
    */
   setSettings(values: Record<string, PluginSettingValue | null>): Promise<void>;
   /**
-   * Invoke a registered rpc method with host semantics: the input and the
-   * result are JSON-round-tripped, and a handler failure rejects with an
-   * `Error` carrying the handler's message (what the frontend rpc client
-   * would surface). Throws for unregistered methods.
+   * Invoke a registered rpc method with host semantics: input/output schemas,
+   * strict JSON result normalization, and structured failure codes. Rejects
+   * with the same message/code/issues the frontend client surfaces.
    */
   callRpc(method: string, input?: unknown): Promise<unknown>;
   /**
@@ -588,6 +595,163 @@ function jsonRoundTrip(value: unknown, what: string): unknown {
   return JSON.parse(json);
 }
 
+interface FakeRpcRecord {
+  inputSchema: StandardSchemaV1;
+  outputSchema: StandardSchemaV1;
+  handler: (input: never) => unknown;
+}
+
+function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  if (typeof value !== "object" || value === null) return false;
+  const standard = Reflect.get(value, "~standard");
+  return (
+    typeof standard === "object" &&
+    standard !== null &&
+    Reflect.get(standard, "version") === 1 &&
+    typeof Reflect.get(standard, "vendor") === "string" &&
+    typeof Reflect.get(standard, "validate") === "function"
+  );
+}
+
+function readRpcMethodContract(
+  method: string,
+  value: unknown,
+): PluginRpcMethodContract {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `rpc method "${method}" contract must provide input and output Standard Schemas`,
+    );
+  }
+  const input = Reflect.get(value, "input");
+  const output = Reflect.get(value, "output");
+  if (!isStandardSchema(input)) {
+    throw new Error(
+      `rpc method "${method}" input must be a Standard Schema v1 validator`,
+    );
+  }
+  if (!isStandardSchema(output)) {
+    throw new Error(
+      `rpc method "${method}" output must be a Standard Schema v1 validator`,
+    );
+  }
+  return { input, output };
+}
+
+function normalizeRpcIssues(
+  issues: readonly StandardSchemaV1Issue[],
+): PluginRpcValidationIssue[] {
+  return issues.map((issue) => {
+    const rawPath = issue.path;
+    const segments =
+      rawPath === undefined ? [] : Array.isArray(rawPath) ? rawPath : [rawPath];
+    const path = segments.map((segment) => {
+      const key =
+        typeof segment === "object" && segment !== null
+          ? Reflect.get(segment, "key")
+          : segment;
+      return typeof key === "number" ? key : String(key);
+    });
+    return {
+      message: issue.message,
+      ...(path.length > 0 ? { path } : {}),
+    };
+  });
+}
+
+function throwRpcError(error: PluginRpcError): never {
+  const thrown = new Error(error.message);
+  Reflect.set(thrown, "code", error.code);
+  if (error.issues !== undefined) Reflect.set(thrown, "issues", error.issues);
+  throw thrown;
+}
+
+async function validateRpcValue(
+  schema: StandardSchemaV1,
+  value: unknown,
+  phase: "input" | "output",
+): Promise<unknown> {
+  let result: StandardSchemaV1Result<unknown>;
+  try {
+    result = await schema["~standard"].validate(value);
+  } catch (error) {
+    const message = errorMessage(error);
+    return throwRpcError({
+      code: phase === "input" ? "invalid_input" : "invalid_output",
+      message: `rpc ${phase} validator failed: ${message}`,
+      issues: [{ message }],
+    });
+  }
+  if (result.issues !== undefined) {
+    return throwRpcError({
+      code: phase === "input" ? "invalid_input" : "invalid_output",
+      message: `rpc ${phase} validation failed`,
+      issues: normalizeRpcIssues(result.issues),
+    });
+  }
+  return result.value;
+}
+
+function normalizeRpcJsonResult(value: unknown): JsonValue {
+  const ancestors = new Set<object>();
+  function visit(current: unknown, path: string): JsonValue {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return current;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        return throwRpcError({
+          code: "non_json_result",
+          message: `rpc result at ${path} contains a non-finite number`,
+        });
+      }
+      return current;
+    }
+    if (typeof current !== "object") {
+      return throwRpcError({
+        code: "non_json_result",
+        message: `rpc result at ${path} is not a JSON value (${typeof current})`,
+      });
+    }
+    if (ancestors.has(current)) {
+      return throwRpcError({
+        code: "non_json_result",
+        message: `rpc result at ${path} is cyclic`,
+      });
+    }
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        return current.map((item, index) => visit(item, `${path}[${index}]`));
+      }
+      const prototype = Object.getPrototypeOf(current) as object | null;
+      if (prototype !== Object.prototype && prototype !== null) {
+        return throwRpcError({
+          code: "non_json_result",
+          message: `rpc result at ${path} must be a plain JSON object`,
+        });
+      }
+      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+        return throwRpcError({
+          code: "non_json_result",
+          message: `rpc result at ${path} contains a symbol key`,
+        });
+      }
+      const normalized: Record<string, JsonValue> = {};
+      for (const [key, child] of Object.entries(current)) {
+        normalized[key] = visit(child, `${path}.${key}`);
+      }
+      return normalized;
+    } finally {
+      ancestors.delete(current);
+    }
+  }
+  return visit(value, "$result");
+}
+
 export function createFakePluginHost(
   options: CreateFakePluginHostOptions = {},
 ): FakePluginHost {
@@ -766,23 +930,61 @@ export function createFakePluginHost(
   };
 
   // --- rpc ---
-  const rpcHandlers = new Map<string, (input: unknown) => unknown>();
+  const rpcHandlers = new Map<string, FakeRpcRecord>();
   const rpc: PluginRpc = {
-    register(handlers) {
+    register(contract, handlers) {
       assertLive();
-      for (const [name, handler] of Object.entries(handlers)) {
+      if (
+        typeof contract !== "object" ||
+        contract === null ||
+        Array.isArray(contract)
+      ) {
+        throw new Error("rpc.register contract must be an object");
+      }
+      if (
+        typeof handlers !== "object" ||
+        handlers === null ||
+        Array.isArray(handlers)
+      ) {
+        throw new Error("rpc.register handlers must be an object");
+      }
+      const pending: Array<[string, FakeRpcRecord]> = [];
+      const contractEntries = Object.entries(contract);
+      const contractNames = new Set(contractEntries.map(([name]) => name));
+      for (const extraName of Object.keys(handlers)) {
+        if (!contractNames.has(extraName)) {
+          throw new Error(
+            `rpc handler "${extraName}" has no matching contract method`,
+          );
+        }
+      }
+      for (const [name, contractValue] of contractEntries) {
         if (!RPC_METHOD_PATTERN.test(name)) {
           throw new Error(
             `invalid rpc method name "${name}" — use letters, digits, "-" and "_"`,
           );
         }
+        const methodContract = readRpcMethodContract(name, contractValue);
+        const handler = Reflect.get(handlers, name);
         if (typeof handler !== "function") {
-          throw new Error(`rpc method "${name}" must be a function`);
+          throw new Error(
+            `rpc method "${name}" must provide a handler function`,
+          );
         }
         if (rpcHandlers.has(name)) {
           throw new Error(`rpc method "${name}" is already registered`);
         }
-        rpcHandlers.set(name, handler as (input: unknown) => unknown);
+        pending.push([
+          name,
+          {
+            inputSchema: methodContract.input,
+            outputSchema: methodContract.output,
+            handler: handler as (input: never) => unknown,
+          },
+        ]);
+      }
+      for (const [name, record] of pending) {
+        rpcHandlers.set(name, record);
       }
     },
   };
@@ -1408,19 +1610,37 @@ export function createFakePluginHost(
     },
 
     async callRpc(method, input) {
-      const handler = rpcHandlers.get(method);
-      if (!handler) {
-        throw new Error(`plugin "${pluginId}" has no rpc method "${method}"`);
+      const record = rpcHandlers.get(method);
+      if (!record) {
+        return throwRpcError({
+          code: "unknown_method",
+          message: `plugin "${pluginId}" has no rpc method "${method}"`,
+        });
       }
       const parsedInput =
         input === undefined
-          ? undefined
+          ? null
           : jsonRoundTrip(input, `rpc "${method}" input`);
-      const result = await handler(parsedInput);
-      // Same round-trip as the dispatcher: a bigint/circular result is this
-      // call's clear error, not a serializer crash later.
-      const json = JSON.stringify(result);
-      return json === undefined ? undefined : (JSON.parse(json) as unknown);
+      const validatedInput = await validateRpcValue(
+        record.inputSchema,
+        parsedInput,
+        "input",
+      );
+      let result: unknown;
+      try {
+        result = await record.handler(validatedInput as never);
+      } catch (error) {
+        return throwRpcError({
+          code: "handler_error",
+          message: errorMessage(error),
+        });
+      }
+      const validatedOutput = await validateRpcValue(
+        record.outputSchema,
+        result,
+        "output",
+      );
+      return normalizeRpcJsonResult(validatedOutput);
     },
 
     async runCli(argv, ctx = {}) {

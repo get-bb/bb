@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+import type { memoryRpcContract } from "./server.js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -100,7 +101,7 @@ function MemoryEditor({
   onCancel: () => void;
   onSaved: (memory: MemoryRecord) => void;
 }) {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof memoryRpcContract>();
   const [draft, setDraft] = useState(memory);
   const [tags, setTags] = useState(memory.tags.join(", "));
   const [saving, setSaving] = useState(false);
@@ -227,7 +228,7 @@ function MemoryEditor({
 }
 
 function MemorySettings() {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof memoryRpcContract>();
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+import type { customInstructionsRpcContract } from "./server.js";
 import { Textarea } from "@bb/shared-ui/textarea";
 
 export const AUTOSAVE_DELAY_MS = 500;
@@ -31,7 +32,7 @@ function errorMessage(error: unknown): string {
 }
 
 function CustomInstructionsSettings() {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof customInstructionsRpcContract>();
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [draft, setDraft] = useState("");
   const [saved, setSaved] = useState("");

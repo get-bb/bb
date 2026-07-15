@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { BbPluginApi } from "../../backend-contract.js";
+import { defineRpcContract } from "../../rpc-contract.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
 
 describe("ui.requestInput", () => {
@@ -207,29 +208,100 @@ describe("settings", () => {
 });
 
 describe("rpc", () => {
-  it("callRpc JSON-round-trips input and output and rejects unknown methods", async () => {
+  it("callRpc validates and JSON-normalizes input and output", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "notes" });
-    bb.rpc.register({
-      echo: (input: { when: Date }) => ({ got: input, extra: undefined }),
+    const contract = defineRpcContract({
+      echo: {
+        input: z.object({ when: z.string() }),
+        output: z.object({ got: z.object({ when: z.string() }) }),
+      },
     });
-    // Dates become strings on the wire; undefined fields are stripped.
-    const result = await harness.callRpc("echo", { when: new Date(0) });
+    bb.rpc.register(contract, {
+      echo: (input) => ({ got: input }),
+    });
+    const result = await harness.callRpc("echo", {
+      when: "1970-01-01T00:00:00.000Z",
+    });
     expect(result).toEqual({ got: { when: "1970-01-01T00:00:00.000Z" } });
 
     await expect(harness.callRpc("missing")).rejects.toThrow(
       'plugin "notes" has no rpc method "missing"',
     );
+    await expect(harness.callRpc("missing")).rejects.toMatchObject({
+      code: "unknown_method",
+    });
+  });
+
+  it("matches production validation, handler, and serialization failures", async () => {
+    const { bb, harness } = createFakePluginHost();
+    let calls = 0;
+    const contract = defineRpcContract({
+      checked: {
+        input: z.object({ value: z.string().min(1) }),
+        output: z.object({ value: z.string() }),
+      },
+      badOutput: {
+        input: z.null(),
+        output: z.custom<unknown>((value) => typeof value === "string"),
+      },
+      throws: { input: z.null(), output: z.null() },
+      cyclic: { input: z.null(), output: z.any() },
+      nonFinite: { input: z.null(), output: z.any() },
+    });
+    bb.rpc.register(contract, {
+      checked(input) {
+        calls += 1;
+        return input;
+      },
+      badOutput: () => 1,
+      throws: () => {
+        throw new Error("boom");
+      },
+      cyclic: () => {
+        const value: { self?: unknown } = {};
+        value.self = value;
+        return value;
+      },
+      nonFinite: () => ({ value: Number.POSITIVE_INFINITY }),
+    });
+
+    await expect(
+      harness.callRpc("checked", { value: "" }),
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
+    expect(calls).toBe(0);
+    await expect(harness.callRpc("badOutput")).rejects.toMatchObject({
+      code: "invalid_output",
+    });
+    await expect(harness.callRpc("throws")).rejects.toMatchObject({
+      code: "handler_error",
+      message: "boom",
+    });
+    await expect(harness.callRpc("cyclic")).rejects.toMatchObject({
+      code: "non_json_result",
+    });
+    await expect(harness.callRpc("nonFinite")).rejects.toMatchObject({
+      code: "non_json_result",
+    });
   });
 
   it("rejects invalid and duplicate registrations", () => {
     const { bb } = createFakePluginHost();
-    bb.rpc.register({ list: () => [] });
-    expect(() => bb.rpc.register({ list: () => [] })).toThrow(
+    const listContract = defineRpcContract({
+      list: { input: z.null(), output: z.array(z.string()) },
+    });
+    bb.rpc.register(listContract, { list: () => [] });
+    expect(() => bb.rpc.register(listContract, { list: () => [] })).toThrow(
       'rpc method "list" is already registered',
     );
-    expect(() => bb.rpc.register({ "bad name": () => [] })).toThrow(
-      'invalid rpc method name "bad name"',
-    );
+    const badContract = defineRpcContract({
+      "bad name": { input: z.null(), output: z.array(z.string()) },
+    });
+    expect(() =>
+      bb.rpc.register(badContract, { "bad name": () => [] }),
+    ).toThrow('invalid rpc method name "bad name"');
   });
 });
 
