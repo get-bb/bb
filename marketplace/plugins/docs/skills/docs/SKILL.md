@@ -44,7 +44,11 @@ HTML artifacts the user should be able to reopen.
 bb docs write plans/release-plan.md --vault personal --content '# Release plan'
 bb docs mkdir artifacts --vault personal
 bb docs write artifacts/report.html --vault personal --content '<!doctype html>…'
+bb docs remove artifacts --vault personal --recursive
 ```
+
+`remove` deletes files and empty directories without a flag. Use
+`--recursive` only when deleting a non-empty directory tree.
 
 Use Markdown for documents and plans. Use a self-contained `.html` file for a
 visual artifact or interactive report; relative assets can live beside it.

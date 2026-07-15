@@ -130,8 +130,41 @@ describe("Docs RPC contract", () => {
       harness.callRpc("saveNote", { path: "plan.md", content: 42 }),
     ).rejects.toMatchObject({ code: "invalid_input" });
     await expect(
+      harness.callRpc("saveNote", {
+        path: "../outside.md",
+        content: "# Outside",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
       harness.callRpc("saveNote", { path: "plan.md", content: "# Plan" }),
     ).rejects.toMatchObject({ code: "invalid_output" });
+  });
+
+  it("returns HTTP 400 envelopes for invalid JSON and request input", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+
+    const invalidJson = await harness.fetchHttp("POST", "/read", {
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+    expect(invalidJson.status).toBe(400);
+    await expect(invalidJson.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid_json" },
+    });
+
+    const invalidInput = await harness.fetchHttp("POST", "/read", {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "../outside.md" }),
+    });
+    expect(invalidInput.status).toBe(400);
+    await expect(invalidInput.json()).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "invalid_input",
+        issues: [{ path: ["path"] }],
+      },
+    });
   });
 });
 
@@ -204,6 +237,34 @@ describe("Docs vault operations", () => {
       name: "docs",
       summary: "Read and update Docs vaults",
     });
+  });
+
+  it("keeps CLI removal non-recursive unless --recursive is passed", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+    const rootPath = temporaryDirectories[0]!;
+
+    await expect(harness.runCli(["remove", "empty"])).resolves.toMatchObject({
+      exitCode: 0,
+    });
+    await expect(
+      harness.runCli(["remove", "archive", "--recursive"]),
+    ).resolves.toMatchObject({ exitCode: 0 });
+    expect(harness.sdk.callsTo("files.remove")).toEqual([
+      [
+        {
+          path: path.join(rootPath, "empty"),
+          rootPath,
+          recursive: false,
+        },
+      ],
+      [
+        {
+          path: path.join(rootPath, "archive"),
+          rootPath,
+          recursive: true,
+        },
+      ],
+    ]);
   });
 
   it("persists a manual file order per vault folder", async () => {

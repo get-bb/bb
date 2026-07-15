@@ -75,6 +75,43 @@ describe("confined host path mutations", () => {
     await expect(fs.stat(nested)).resolves.toMatchObject({});
   });
 
+  it("removes empty directories non-recursively and requires recursive for non-empty directories", async () => {
+    const root = await makeRoot();
+    const empty = path.join(root, "empty");
+    await fs.mkdir(empty);
+    await expect(
+      removeHostPath({
+        type: "host.remove_path",
+        path: empty,
+        rootPath: root,
+        recursive: false,
+      }),
+    ).resolves.toEqual({ ok: true });
+    await expect(fs.stat(empty)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const nonEmpty = path.join(root, "non-empty");
+    await fs.mkdir(nonEmpty);
+    await fs.writeFile(path.join(nonEmpty, "note.md"), "# Note");
+    await expect(
+      removeHostPath({
+        type: "host.remove_path",
+        path: nonEmpty,
+        rootPath: root,
+        recursive: false,
+      }),
+    ).rejects.toThrow();
+    await expect(fs.stat(nonEmpty)).resolves.toMatchObject({});
+    await expect(
+      removeHostPath({
+        type: "host.remove_path",
+        path: nonEmpty,
+        rootPath: root,
+        recursive: true,
+      }),
+    ).resolves.toEqual({ ok: true });
+    await expect(fs.stat(nonEmpty)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("rejects symlink escapes and refuses to remove the declared root", async () => {
     const root = await makeRoot();
     const outside = await makeRoot();

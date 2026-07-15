@@ -83,7 +83,11 @@ bb docs write projects/plan.md --vault personal --content '# Plan'
 bb docs mkdir projects/archive --vault personal
 bb docs move projects/draft.md projects/plan.md --vault personal
 bb docs remove projects/old.md --vault personal
+bb docs remove projects/archive --vault personal --recursive
 ```
+
+`remove` deletes files and empty directories by default. Pass `--recursive`
+to delete a non-empty directory.
 
 `write` accepts UTF-8 content through `--content`; the HTTP API is better for
 large bodies.

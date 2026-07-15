@@ -55,7 +55,20 @@ const vaultSchema = z
     rootPath: z.string().min(1),
   })
   .strict();
-const vaultPathSchema = z.string().min(1);
+const vaultPathSchema = z.string().transform((value, context) => {
+  try {
+    return requireVaultPath(value);
+  } catch (error) {
+    context.addIssue({
+      code: "custom",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return z.NEVER;
+  }
+});
+const vaultDirectorySchema = z
+  .union([z.literal(""), vaultPathSchema])
+  .optional();
 const openerSourceSchema = z
   .object({
     kind: z.enum(["workspace", "host", "thread-storage"]),
@@ -162,7 +175,7 @@ export const docsRpcContract = defineRpcContract({
     input: z
       .object({
         vaultId: vaultIdSchema,
-        parent: z.string().optional(),
+        parent: vaultDirectorySchema,
         name: z.string().optional(),
         content: z.string().optional(),
       })
@@ -187,7 +200,7 @@ export const docsRpcContract = defineRpcContract({
     input: z
       .object({
         vaultId: vaultIdSchema,
-        parent: z.string().optional(),
+        parent: vaultDirectorySchema,
         paths: z.array(vaultPathSchema),
       })
       .strict(),
@@ -429,20 +442,30 @@ function parseCli(argv: string[]): {
   positionals: string[];
   vaultId?: string;
   content?: string;
+  recursive: boolean;
   json: boolean;
 } {
   const positionals: string[] = [];
   let vaultId: string | undefined;
   let content: string | undefined;
+  let recursive = false;
   let json = false;
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index]!;
     if (arg === "--vault") vaultId = argv[++index];
     else if (arg === "--content") content = argv[++index] ?? "";
+    else if (arg === "--recursive") recursive = true;
     else if (arg === "--json") json = true;
     else positionals.push(arg);
   }
-  return { command: argv[0] ?? "help", positionals, vaultId, content, json };
+  return {
+    command: argv[0] ?? "help",
+    positionals,
+    vaultId,
+    content,
+    recursive,
+    json,
+  };
 }
 
 function waitForDelay(ms: number, signal: AbortSignal): Promise<void> {
@@ -989,14 +1012,61 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.rpc.register(docsRpcContract, handlers);
 
+  async function readHttpInput<Schema extends z.ZodType>(
+    context: Parameters<Parameters<BbPluginApi["http"]["route"]>[2]>[0],
+    schema: Schema,
+  ): Promise<
+    { ok: true; value: z.output<Schema> } | { ok: false; response: Response }
+  > {
+    let input: unknown;
+    try {
+      input = await context.req.json();
+    } catch {
+      return {
+        ok: false,
+        response: context.json(
+          {
+            ok: false,
+            error: {
+              code: "invalid_json",
+              message: "request body must be JSON",
+            },
+          },
+          400,
+        ),
+      };
+    }
+    const result = await schema.safeParseAsync(input);
+    if (result.success) return { ok: true, value: result.data };
+    return {
+      ok: false,
+      response: context.json(
+        {
+          ok: false,
+          error: {
+            code: "invalid_input",
+            message: "request input validation failed",
+            issues: result.error.issues.map((issue) => ({
+              message: issue.message,
+              ...(issue.path.length > 0 ? { path: issue.path } : {}),
+            })),
+          },
+        },
+        400,
+      ),
+    };
+  }
+
   bb.http.route(
     "POST",
     "/list",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(
-        await handlers.listNotes(docsRpcContract.listNotes.input.parse(input)),
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.listNotes.input,
       );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.listNotes(input.value));
     },
     { auth: "token" },
   );
@@ -1004,10 +1074,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/read",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(
-        await handlers.readNote(docsRpcContract.readNote.input.parse(input)),
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.readNote.input,
       );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.readNote(input.value));
     },
     { auth: "token" },
   );
@@ -1015,10 +1087,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/write",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(
-        await handlers.saveNote(docsRpcContract.saveNote.input.parse(input)),
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.saveNote.input,
       );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.saveNote(input.value));
     },
     { auth: "token" },
   );
@@ -1026,12 +1100,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/mkdir",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(
-        await handlers.createFolder(
-          docsRpcContract.createFolder.input.parse(input),
-        ),
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.createFolder.input,
       );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.createFolder(input.value));
     },
     { auth: "token" },
   );
@@ -1039,10 +1113,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/move",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(
-        await handlers.movePath(docsRpcContract.movePath.input.parse(input)),
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.movePath.input,
       );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.movePath(input.value));
     },
     { auth: "token" },
   );
@@ -1050,12 +1126,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/remove",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(
-        await handlers.deletePath(
-          docsRpcContract.deletePath.input.parse(input),
-        ),
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.deletePath.input,
       );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.deletePath(input.value));
     },
     { auth: "token" },
   );
@@ -1106,8 +1182,8 @@ export default async function plugin(bb: BbPluginApi) {
       },
       {
         name: "remove",
-        summary: "Remove a file",
-        usage: "bb docs remove <path> [--vault <id>]",
+        summary: "Remove a file or directory",
+        usage: "bb docs remove <path> [--vault <id>] [--recursive]",
       },
     ],
     async run(argv) {
@@ -1147,7 +1223,11 @@ export default async function plugin(bb: BbPluginApi) {
             args.positionals[1],
           );
         } else if (args.command === "remove") {
-          result = await removePath(args.vaultId, args.positionals[0]);
+          result = await removePath(
+            args.vaultId,
+            args.positionals[0],
+            args.recursive,
+          );
         } else {
           return {
             exitCode: 1,
