@@ -31,7 +31,7 @@ A dev bb instance for THIS worktree is already running with the plugin installed
 - App: http://localhost:15943 — Server API: http://localhost:23943
 - Plugin panel: http://localhost:15943/plugins/tasks/tasks
 - CLI against the dev instance: `eval "$(scripts/bb-dev-app env)"` then `pnpm bb:dev tasks <subcommand>`.
-- After changing plugin code: `pnpm exec turbo run build --filter=bb-plugin-tasks` then `eval "$(scripts/bb-dev-app env)" && pnpm bb:dev plugin reload tasks`. (Or run `pnpm bb:dev plugin dev` for a watch loop if you prefer; stop it before you finish.)
+- After changing plugin code: `pnpm exec turbo run build --filter=bb-plugin-tasks` then reload. NOTE: the `bb plugin reload` CLI hits the same pre-existing `displayName` validation bug as `plugin list` — reload via the API instead: `curl -s -X POST http://localhost:23943/api/v1/plugins/reload -H 'Content-Type: application/json' -d '{"id":"tasks"}'` (check the exact payload against `packages/server-contract` if it 400s; T3.2 used this route successfully).
 - If the dev server itself died: `scripts/bb-dev-app status` / `scripts/bb-dev-app current`.
 
 ## Visual verification (UI tasks)
