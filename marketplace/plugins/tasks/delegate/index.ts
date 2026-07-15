@@ -39,7 +39,7 @@ const presetExecutionSchema = z
   })
   .strict();
 
-export type DelegationErrorCode = "project_not_linked";
+export type DelegationErrorCode = "project_not_linked" | "spawn_target_invalid";
 
 export class DelegationError extends Error {
   constructor(
@@ -182,6 +182,78 @@ function collectAttachments(
   return [...attachments.values()];
 }
 
+type SpawnEnvironment = Parameters<
+  BbPluginApi["sdk"]["threads"]["spawn"]
+>[0]["environment"];
+
+async function presetSpawnEnvironment(
+  bb: BbPluginApi,
+  preset: Preset,
+): Promise<SpawnEnvironment> {
+  if (preset.environmentKind === "project-default") {
+    return { type: "project-default" };
+  }
+
+  const hostId =
+    preset.machineId ?? (await bb.sdk.system.config()).primaryHostId;
+  if (hostId === null) {
+    throw new DelegationError(
+      "spawn_target_invalid",
+      "Could not create a worktree because BB has no default machine",
+    );
+  }
+  return {
+    type: "host",
+    hostId,
+    workspace: {
+      type: "managed-worktree",
+      baseBranch:
+        preset.baseBranch === null
+          ? { kind: "default" }
+          : { kind: "named", name: preset.baseBranch },
+    },
+  };
+}
+
+function isBbHttpError(
+  error: unknown,
+): error is Error & { code: string | null; status: number } {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (typeof error.code === "string" || error.code === null) &&
+    "status" in error &&
+    typeof error.status === "number"
+  );
+}
+
+const SPAWN_TARGET_ERROR_CODES = new Set([
+  "host_not_found",
+  "host_unavailable",
+  "invalid_request",
+  "project_unavailable",
+  "unsupported_host",
+  "workspace_unavailable",
+]);
+
+function mapSpawnTargetError(error: unknown, preset: Preset): never {
+  if (
+    preset.environmentKind === "new-worktree" &&
+    isBbHttpError(error) &&
+    error.code !== null &&
+    SPAWN_TARGET_ERROR_CODES.has(error.code)
+  ) {
+    const machine = preset.machineId ?? "the default machine";
+    const branch = preset.baseBranch ?? "the default branch";
+    const detail = error.message.replace(/^HTTP \d+:\s*/u, "");
+    throw new DelegationError(
+      "spawn_target_invalid",
+      `Could not create a worktree on ${machine} from ${branch}: ${detail}`,
+    );
+  }
+  throw error;
+}
+
 export function createSystemComment(
   store: TasksStore,
   input: {
@@ -267,16 +339,19 @@ export function handlers(
         extraInstructions: input.extraInstructions,
       });
 
-      const thread = await bb.sdk.threads.spawn({
-        projectId: linkedBbProjectId,
-        environment: { type: "project-default" },
-        providerId: execution.providerId,
-        model: execution.model,
-        reasoningLevel: execution.reasoningLevel,
-        permissionMode: execution.permissionMode,
-        title,
-        prompt,
-      });
+      const environment = await presetSpawnEnvironment(bb, preset);
+      const thread = await bb.sdk.threads
+        .spawn({
+          projectId: linkedBbProjectId,
+          environment,
+          providerId: execution.providerId,
+          model: execution.model,
+          reasoningLevel: execution.reasoningLevel,
+          permissionMode: execution.permissionMode,
+          title,
+          prompt,
+        })
+        .catch((error: unknown) => mapSpawnTargetError(error, preset));
 
       const taskThread = store.transaction(() => {
         const attached = store.tasks.upsertTaskThread({

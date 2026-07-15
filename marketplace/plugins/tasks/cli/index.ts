@@ -65,7 +65,7 @@ Commands:
   comment                        Add a task comment
   label create|list|delete
   attachment add|get|list
-  preset list|create|update|delete
+  preset list|show|create|update|delete
   dispatch                       Dispatch a task to a new agent thread
   attach                         Attach an agent thread to a task
   threads                        List threads attached to a task
@@ -103,8 +103,9 @@ const ATTACHMENT_HELP = `Usage:
   bb tasks attachment list <key> [--json]`;
 const PRESET_HELP = `Usage:
   bb tasks preset list [--json]
-  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <mode> [--instructions <text>] [--json]
-  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <mode>] [--instructions <text>] [--json]
+  bb tasks preset show <name-or-id> [--json]
+  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <mode> [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
+  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <mode>] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
   bb tasks preset delete <name-or-id> [--json]`;
 const DISPATCH_HELP =
   "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";
@@ -299,6 +300,54 @@ async function listPresets(domain: TasksDomain): Promise<Preset[]> {
   return tasksRpcContract.listPresets.output.parse(
     await domain.listPresets(tasksRpcContract.listPresets.input.parse(null)),
   ).presets;
+}
+
+function parsePresetEnvironment(
+  value: string | undefined,
+  fallback: Preset["environmentKind"],
+): Preset["environmentKind"] {
+  if (value === undefined) return fallback;
+  if (value === "project-default") return "project-default";
+  if (value === "worktree") return "new-worktree";
+  throw new CliError(
+    `invalid --environment ${value}; expected project-default or worktree`,
+  );
+}
+
+async function resolveMachineId(
+  domain: TasksDomain,
+  address: string,
+): Promise<string> {
+  const machines = tasksRpcContract.listMachines.output.parse(
+    await domain.listMachines(tasksRpcContract.listMachines.input.parse({})),
+  ).machines;
+  const normalized = address.trim().toLocaleLowerCase();
+  const matches = machines.filter(
+    (machine) =>
+      machine.id === address.trim() ||
+      machine.name.toLocaleLowerCase() === normalized,
+  );
+  if (matches.length === 0) {
+    throw new CliError(`machine not found: ${address}`);
+  }
+  if (matches.length > 1) {
+    throw new CliError(`machine name is ambiguous; use its id: ${address}`);
+  }
+  return matches[0]!.id;
+}
+
+function validatePresetTargetOptions(input: {
+  environmentKind: Preset["environmentKind"];
+  baseBranch: string | undefined;
+  machine: string | undefined;
+}): void {
+  if (input.environmentKind === "new-worktree") return;
+  if (input.baseBranch !== undefined) {
+    throw new CliError("--base-branch requires --environment worktree");
+  }
+  if (input.machine !== undefined) {
+    throw new CliError("--machine requires --environment worktree");
+  }
 }
 
 async function projectLabels(
@@ -1211,6 +1260,9 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
             "MODEL",
             "REASONING",
             "PERMISSION",
+            "ENVIRONMENT",
+            "BASE BRANCH",
+            "MACHINE",
             "BUILTIN",
             "ID",
           ],
@@ -1220,11 +1272,46 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
             preset.modelId,
             preset.reasoningLevel,
             preset.permissionMode,
+            preset.environmentKind === "new-worktree"
+              ? "worktree"
+              : "project-default",
+            preset.baseBranch ?? "-",
+            preset.machineId ?? "-",
             preset.builtin ? "yes" : "no",
             preset.id,
           ]),
           "No presets.",
         );
+  }
+
+  if (action === "show") {
+    assertAllowed(args, []);
+    const [address] = requirePositionals(
+      args,
+      1,
+      "bb tasks preset show <name-or-id> [--json]",
+    );
+    const preset = resolvePreset(await listPresets(domain), address!);
+    return args.flags.has("json")
+      ? json({ preset })
+      : detail([
+          ["Name", preset.name],
+          ["Provider", preset.providerId],
+          ["Model", preset.modelId],
+          ["Reasoning", preset.reasoningLevel],
+          ["Permission", preset.permissionMode],
+          [
+            "Environment",
+            preset.environmentKind === "new-worktree"
+              ? "worktree"
+              : "project-default",
+          ],
+          ["Base branch", preset.baseBranch ?? "-"],
+          ["Machine", preset.machineId ?? "-"],
+          ["Instructions", preset.instructions || "-"],
+          ["Built in", preset.builtin ? "yes" : "no"],
+          ["ID", preset.id],
+        ]);
   }
 
   if (action === "create") {
@@ -1234,9 +1321,19 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       "model",
       "reasoning",
       "permission",
+      "environment",
+      "base-branch",
+      "machine",
       "instructions",
     ]);
-    requirePositionals(args, 0, PRESET_HELP.split("\n")[2]!.trim());
+    requirePositionals(args, 0, PRESET_HELP.split("\n")[3]!.trim());
+    const environmentKind = parsePresetEnvironment(
+      option(args, "environment"),
+      "project-default",
+    );
+    const baseBranch = option(args, "base-branch");
+    const machine = option(args, "machine");
+    validatePresetTargetOptions({ environmentKind, baseBranch, machine });
     const result = tasksRpcContract.createPreset.output.parse(
       await domain.createPreset(
         tasksRpcContract.createPreset.input.parse({
@@ -1245,6 +1342,12 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
           modelId: requireOption(args, "model"),
           reasoningLevel: requireOption(args, "reasoning"),
           permissionMode: requireOption(args, "permission"),
+          environmentKind,
+          baseBranch: baseBranch ?? null,
+          machineId:
+            machine === undefined
+              ? null
+              : await resolveMachineId(domain, machine),
           instructions: option(args, "instructions") ?? "",
         }),
       ),
@@ -1261,6 +1364,9 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       "model",
       "reasoning",
       "permission",
+      "environment",
+      "base-branch",
+      "machine",
       "instructions",
     ]);
     const [address] = requirePositionals(
@@ -1269,6 +1375,14 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       "bb tasks preset update <name-or-id> [options] [--json]",
     );
     const preset = resolvePreset(await listPresets(domain), address!);
+    const environmentOption = option(args, "environment");
+    const environmentKind = parsePresetEnvironment(
+      environmentOption,
+      preset.environmentKind,
+    );
+    const baseBranch = option(args, "base-branch");
+    const machine = option(args, "machine");
+    validatePresetTargetOptions({ environmentKind, baseBranch, machine });
     const result = tasksRpcContract.updatePreset.output.parse(
       await domain.updatePreset(
         tasksRpcContract.updatePreset.input.parse({
@@ -1278,6 +1392,20 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
           modelId: option(args, "model"),
           reasoningLevel: option(args, "reasoning"),
           permissionMode: option(args, "permission"),
+          environmentKind:
+            environmentOption === undefined ? undefined : environmentKind,
+          baseBranch:
+            environmentOption !== undefined &&
+            environmentKind === "project-default"
+              ? null
+              : baseBranch,
+          machineId:
+            environmentOption !== undefined &&
+            environmentKind === "project-default"
+              ? null
+              : machine === undefined
+                ? undefined
+                : await resolveMachineId(domain, machine),
           instructions: option(args, "instructions"),
         }),
       ),
@@ -1484,7 +1612,7 @@ export function registerTasksCli(
       },
       {
         name: "preset",
-        summary: "List, create, update, or delete dispatch presets",
+        summary: "List, show, create, update, or delete dispatch presets",
         usage: PRESET_HELP,
       },
       {

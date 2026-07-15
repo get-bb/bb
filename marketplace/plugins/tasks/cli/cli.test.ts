@@ -314,7 +314,17 @@ describe("bb tasks CLI", () => {
   });
 
   it("creates, updates, lists, and deletes delegation presets", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        hosts: {
+          list: async () => [
+            { id: "host_air", name: "Sawyer Air" },
+            { id: "host_box", name: "Build box" },
+          ],
+        },
+      },
+    });
     await plugin(bb);
 
     const created = JSON.parse(
@@ -332,6 +342,12 @@ describe("bb tasks CLI", () => {
           "high",
           "--permission",
           "workspace-write",
+          "--environment",
+          "worktree",
+          "--base-branch",
+          "main",
+          "--machine",
+          "Sawyer Air",
           "--instructions",
           "Start with the failing test.",
           "--json",
@@ -342,8 +358,17 @@ describe("bb tasks CLI", () => {
       name: "CLI worker",
       providerId: "codex",
       permissionMode: "workspace-write",
+      environmentKind: "new-worktree",
+      baseBranch: "main",
+      machineId: "host_air",
       builtin: false,
     });
+    const shown = stdout(
+      await harness.runCli(["preset", "show", "CLI worker"]),
+    );
+    expect(shown).toContain("Environment   worktree");
+    expect(shown).toContain("Base branch   main");
+    expect(shown).toContain("Machine       host_air");
 
     const updated = JSON.parse(
       stdout(
@@ -355,6 +380,8 @@ describe("bb tasks CLI", () => {
           "xhigh",
           "--name",
           "CLI reviewer",
+          "--environment",
+          "project-default",
           "--json",
         ]),
       ),
@@ -363,7 +390,15 @@ describe("bb tasks CLI", () => {
       id: created.id,
       name: "CLI reviewer",
       reasoningLevel: "xhigh",
+      environmentKind: "project-default",
+      baseBranch: null,
+      machineId: null,
     });
+
+    const listTable = stdout(await harness.runCli(["preset", "list"]));
+    expect(listTable).toContain("ENVIRONMENT");
+    expect(listTable).toContain("BASE BRANCH");
+    expect(listTable).toContain("MACHINE");
 
     const listed = JSON.parse(
       stdout(await harness.runCli(["preset", "list", "--json"])),
@@ -379,6 +414,47 @@ describe("bb tasks CLI", () => {
         ),
       ),
     ).toMatchObject({ deleted: true, preset: { id: created.id } });
+
+    await harness.dispose();
+  });
+
+  it("reports friendly preset target validation errors", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+    const required = [
+      "preset",
+      "create",
+      "--name",
+      "Invalid target",
+      "--provider",
+      "codex",
+      "--model",
+      "gpt-5.6-sol",
+      "--reasoning",
+      "high",
+      "--permission",
+      "full",
+    ];
+
+    await expect(
+      harness.runCli([...required, "--environment", "branch"]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr:
+        "invalid --environment branch; expected project-default or worktree",
+    });
+    await expect(
+      harness.runCli([...required, "--base-branch", "main"]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: "--base-branch requires --environment worktree",
+    });
+    await expect(
+      harness.runCli([...required, "--machine", "missing"]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: "--machine requires --environment worktree",
+    });
 
     await harness.dispose();
   });

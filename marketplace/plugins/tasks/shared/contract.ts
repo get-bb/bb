@@ -26,6 +26,11 @@ export const TASK_THREAD_LIVE_STATUSES = [
   "failed",
 ] as const;
 
+export const PRESET_ENVIRONMENT_KINDS = [
+  "project-default",
+  "new-worktree",
+] as const;
+
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 const PROJECT_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,9}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -44,6 +49,8 @@ const presetPermissionModeSchema = z.enum([
   "workspace-write",
   "full",
 ]);
+const presetEnvironmentKindSchema = z.enum(PRESET_ENVIRONMENT_KINDS);
+const nullablePresetTargetSchema = nonBlankStringSchema.nullable();
 const projectPrefixSchema = z
   .string()
   .regex(
@@ -168,6 +175,9 @@ export const presetSchema = z
     modelId: z.string(),
     reasoningLevel: z.string(),
     permissionMode: z.string(),
+    environmentKind: presetEnvironmentKindSchema,
+    baseBranch: nullablePresetTargetSchema,
+    machineId: nullablePresetTargetSchema,
     instructions: z.string(),
     builtin: z.boolean(),
     createdAt: z.string(),
@@ -273,6 +283,9 @@ const updatePresetInputSchema = z
     modelId: nonBlankStringSchema.optional(),
     reasoningLevel: presetReasoningLevelSchema.optional(),
     permissionMode: presetPermissionModeSchema.optional(),
+    environmentKind: presetEnvironmentKindSchema.optional(),
+    baseBranch: nullablePresetTargetSchema.optional(),
+    machineId: nullablePresetTargetSchema.optional(),
     instructions: z.string().optional(),
   })
   .strict()
@@ -283,9 +296,36 @@ const updatePresetInputSchema = z
       input.modelId !== undefined ||
       input.reasoningLevel !== undefined ||
       input.permissionMode !== undefined ||
+      input.environmentKind !== undefined ||
+      input.baseBranch !== undefined ||
+      input.machineId !== undefined ||
       input.instructions !== undefined,
     { message: "at least one preset field must be updated" },
-  );
+  )
+  .superRefine((input, ctx) => {
+    if (
+      input.environmentKind === "project-default" &&
+      input.baseBranch !== undefined &&
+      input.baseBranch !== null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["baseBranch"],
+        message: "requires environmentKind new-worktree",
+      });
+    }
+    if (
+      input.environmentKind === "project-default" &&
+      input.machineId !== undefined &&
+      input.machineId !== null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["machineId"],
+        message: "requires environmentKind new-worktree",
+      });
+    }
+  });
 
 export const tasksRpcContract = defineRpcContract({
   createFolder: {
@@ -468,9 +508,34 @@ export const tasksRpcContract = defineRpcContract({
         modelId: nonBlankStringSchema,
         reasoningLevel: presetReasoningLevelSchema,
         permissionMode: presetPermissionModeSchema,
+        environmentKind: presetEnvironmentKindSchema.default("project-default"),
+        baseBranch: nullablePresetTargetSchema.default(null),
+        machineId: nullablePresetTargetSchema.default(null),
         instructions: z.string().default(""),
       })
-      .strict(),
+      .strict()
+      .superRefine((input, ctx) => {
+        if (
+          input.environmentKind === "project-default" &&
+          input.baseBranch !== null
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["baseBranch"],
+            message: "requires environmentKind new-worktree",
+          });
+        }
+        if (
+          input.environmentKind === "project-default" &&
+          input.machineId !== null
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["machineId"],
+            message: "requires environmentKind new-worktree",
+          });
+        }
+      }),
     output: z.object({ preset: presetSchema }).strict(),
   },
   updatePreset: {
@@ -509,6 +574,16 @@ export const tasksRpcContract = defineRpcContract({
             .strict(),
         ),
         reasoningLevels: z.array(z.string()),
+      })
+      .strict(),
+  },
+  listMachines: {
+    input: z.object({}).strict(),
+    output: z
+      .object({
+        machines: z.array(
+          z.object({ id: z.string(), name: z.string() }).strict(),
+        ),
       })
       .strict(),
   },

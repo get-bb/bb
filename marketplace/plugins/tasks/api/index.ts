@@ -673,7 +673,12 @@ export function registerHandlers(
     },
     updatePreset(input) {
       const { presetId, ...changes } = input;
-      const preset = store.tasks.updatePreset(presetId, changes);
+      const preset = store.tasks.updatePreset(
+        presetId,
+        changes.environmentKind === "project-default"
+          ? { ...changes, baseBranch: null, machineId: null }
+          : changes,
+      );
       publishProjectsChanged(bb, null);
       return { preset };
     },
@@ -720,6 +725,15 @@ export function registerHandlers(
           reasoningLevels.length > 0
             ? reasoningLevels
             : [...PRESET_REASONING_LEVELS],
+      };
+    },
+    async listMachines() {
+      const machines = await bb.sdk.hosts.list();
+      return {
+        machines: machines.map((machine) => ({
+          id: machine.id,
+          name: machine.name,
+        })),
       };
     },
     async searchThreads(input) {

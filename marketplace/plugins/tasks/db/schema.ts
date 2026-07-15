@@ -132,6 +132,13 @@ const MIGRATIONS = [
       ELSE 0
     END;
   `,
+  `
+    ALTER TABLE presets
+      ADD COLUMN environment_kind TEXT NOT NULL DEFAULT 'project-default'
+      CHECK (environment_kind IN ('project-default', 'new-worktree'));
+    ALTER TABLE presets ADD COLUMN base_branch TEXT;
+    ALTER TABLE presets ADD COLUMN machine_id TEXT;
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {

@@ -15,6 +15,7 @@ import type {
   Label,
   ListTasksFilters,
   Preset,
+  PresetEnvironmentKind,
   Project,
   SubtaskDoneCounts,
   Task,
@@ -131,6 +132,9 @@ interface PresetRow {
   model_id: string;
   reasoning_level: string;
   permission_mode: string;
+  environment_kind: PresetEnvironmentKind;
+  base_branch: string | null;
+  machine_id: string | null;
   instructions: string;
   builtin: number;
   created_at: string;
@@ -324,10 +328,41 @@ function presetFromRow(row: PresetRow): Preset {
     modelId: row.model_id,
     reasoningLevel: row.reasoning_level,
     permissionMode: row.permission_mode,
+    environmentKind: row.environment_kind,
+    baseBranch: row.base_branch,
+    machineId: row.machine_id,
     instructions: row.instructions,
     builtin: row.builtin === 1,
     createdAt: row.created_at,
   };
+}
+
+function validatePresetEnvironment(input: {
+  environmentKind: PresetEnvironmentKind;
+  baseBranch: string | null;
+  machineId: string | null;
+}): {
+  environmentKind: PresetEnvironmentKind;
+  baseBranch: string | null;
+  machineId: string | null;
+} {
+  const baseBranch =
+    input.baseBranch === null
+      ? null
+      : requireNonEmpty(input.baseBranch, "Preset baseBranch");
+  const machineId =
+    input.machineId === null
+      ? null
+      : requireNonEmpty(input.machineId, "Preset machineId");
+  if (
+    input.environmentKind === "project-default" &&
+    (baseBranch !== null || machineId !== null)
+  ) {
+    throw new Error(
+      "Preset baseBranch and machineId require environmentKind new-worktree",
+    );
+  }
+  return { environmentKind: input.environmentKind, baseBranch, machineId };
 }
 
 function escapeLike(value: string): string {
@@ -1369,14 +1404,29 @@ export function createTasksStore(db: PluginDatabase) {
 
   function createPreset(input: CreatePresetInput): Preset {
     const id = createOrValidateUlid(input.id);
+    const environment = validatePresetEnvironment(input);
     db.prepare<
-      [string, string, string, string, string, string, string, number, string]
+      [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        PresetEnvironmentKind,
+        string | null,
+        string | null,
+        string,
+        number,
+        string,
+      ]
     >(
       `
       INSERT INTO presets (
         id, name, provider_id, model_id, reasoning_level, permission_mode,
-        instructions, builtin, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        environment_kind, base_branch, machine_id, instructions, builtin,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     ).run(
       id,
@@ -1385,6 +1435,9 @@ export function createTasksStore(db: PluginDatabase) {
       requireNonEmpty(input.modelId, "Preset modelId"),
       requireNonEmpty(input.reasoningLevel, "Preset reasoningLevel"),
       requireNonEmpty(input.permissionMode, "Preset permissionMode"),
+      environment.environmentKind,
+      environment.baseBranch,
+      environment.machineId,
       input.instructions,
       input.builtin ? 1 : 0,
       nowIso(),
@@ -1404,13 +1457,33 @@ export function createTasksStore(db: PluginDatabase) {
 
   function updatePreset(id: string, input: UpdatePresetInput): Preset {
     const current = requirePreset(id);
+    const environment = validatePresetEnvironment({
+      environmentKind: input.environmentKind ?? current.environmentKind,
+      baseBranch:
+        input.baseBranch === undefined ? current.baseBranch : input.baseBranch,
+      machineId:
+        input.machineId === undefined ? current.machineId : input.machineId,
+    });
     db.prepare<
-      [string, string, string, string, string, string, number, string]
+      [
+        string,
+        string,
+        string,
+        string,
+        string,
+        PresetEnvironmentKind,
+        string | null,
+        string | null,
+        string,
+        number,
+        string,
+      ]
     >(
       `
       UPDATE presets SET
         name = ?, provider_id = ?, model_id = ?, reasoning_level = ?,
-        permission_mode = ?, instructions = ?, builtin = ?
+        permission_mode = ?, environment_kind = ?, base_branch = ?,
+        machine_id = ?, instructions = ?, builtin = ?
       WHERE id = ?
     `,
     ).run(
@@ -1429,6 +1502,9 @@ export function createTasksStore(db: PluginDatabase) {
       input.permissionMode === undefined
         ? current.permissionMode
         : requireNonEmpty(input.permissionMode, "Preset permissionMode"),
+      environment.environmentKind,
+      environment.baseBranch,
+      environment.machineId,
       input.instructions ?? current.instructions,
       (input.builtin ?? current.builtin) ? 1 : 0,
       id,

@@ -31,7 +31,47 @@ describe("tasks storage", () => {
             { count: number }
           >("SELECT COUNT(*) AS count FROM schema_version")
           .get()?.count,
-      ).toBe(2);
+      ).toBe(3);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("migrates existing presets to the project-default environment", async () => {
+    const { db, harness } = setup();
+    try {
+      db.exec(`
+        DELETE FROM schema_version WHERE version = 3;
+        DROP TABLE presets;
+        CREATE TABLE presets (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+          provider_id TEXT NOT NULL,
+          model_id TEXT NOT NULL,
+          reasoning_level TEXT NOT NULL,
+          permission_mode TEXT NOT NULL,
+          instructions TEXT NOT NULL,
+          builtin INTEGER NOT NULL DEFAULT 0 CHECK (builtin IN (0, 1)),
+          created_at TEXT NOT NULL
+        );
+        INSERT INTO presets (
+          id, name, provider_id, model_id, reasoning_level, permission_mode,
+          instructions, builtin, created_at
+        ) VALUES (
+          '01J00000000000000000000000', 'Legacy', 'codex', 'gpt-5', 'high',
+          'full', '', 0, '2026-07-15T00:00:00.000Z'
+        );
+      `);
+
+      const migrated = createTasksStore(db).getPreset(
+        "01J00000000000000000000000",
+      );
+
+      expect(migrated).toMatchObject({
+        environmentKind: "project-default",
+        baseBranch: null,
+        machineId: null,
+      });
     } finally {
       await harness.dispose();
     }
@@ -266,6 +306,9 @@ describe("tasks storage", () => {
         modelId: "gpt-5",
         reasoningLevel: "high",
         permissionMode: "workspace-write",
+        environmentKind: "project-default" as const,
+        baseBranch: null,
+        machineId: null,
         instructions: "Work the task.",
       };
       store.createPreset(preset);

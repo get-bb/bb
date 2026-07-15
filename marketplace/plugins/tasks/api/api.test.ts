@@ -146,6 +146,39 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("lists machines as id/name options from the BB SDK", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        hosts: {
+          list: async () => [
+            {
+              id: "host_primary",
+              name: "Sawyer Air",
+              status: "connected",
+            },
+            {
+              id: "host_remote",
+              name: "Build box",
+              status: "disconnected",
+            },
+          ],
+        },
+      },
+    });
+    registerTasksApi(bb, createStore(bb));
+
+    await expect(harness.callRpc("listMachines", {})).resolves.toEqual({
+      machines: [
+        { id: "host_primary", name: "Sawyer Air" },
+        { id: "host_remote", name: "Build box" },
+      ],
+    });
+    expect(harness.sdk.callsTo("hosts.list")).toEqual([[]]);
+
+    await harness.dispose();
+  });
+
   it("falls back to the standard reasoning levels when models omit metadata", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
@@ -729,6 +762,9 @@ describe("Tasks RPC domain API", () => {
       modelId: "claude-sonnet-5",
       reasoningLevel: "high",
       permissionMode: "full",
+      environmentKind: "project-default",
+      baseBranch: null,
+      machineId: null,
       instructions: "",
       builtin: true,
     });

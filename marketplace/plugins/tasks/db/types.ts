@@ -32,6 +32,13 @@ export const TASK_THREAD_LIVE_STATUSES = [
 
 export type TaskThreadLiveStatus = (typeof TASK_THREAD_LIVE_STATUSES)[number];
 
+export const PRESET_ENVIRONMENT_KINDS = [
+  "project-default",
+  "new-worktree",
+] as const;
+
+export type PresetEnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
+
 export interface Folder {
   id: string;
   name: string;
@@ -120,6 +127,9 @@ export interface Preset {
   modelId: string;
   reasoningLevel: string;
   permissionMode: string;
+  environmentKind: PresetEnvironmentKind;
+  baseBranch: string | null;
+  machineId: string | null;
   instructions: string;
   builtin: boolean;
   createdAt: string;
@@ -265,6 +275,9 @@ export interface CreatePresetInput {
   modelId: string;
   reasoningLevel: string;
   permissionMode: string;
+  environmentKind: PresetEnvironmentKind;
+  baseBranch: string | null;
+  machineId: string | null;
   instructions: string;
   builtin?: boolean;
 }
@@ -275,6 +288,9 @@ export interface UpdatePresetInput {
   modelId?: string;
   reasoningLevel?: string;
   permissionMode?: string;
+  environmentKind?: PresetEnvironmentKind;
+  baseBranch?: string | null;
+  machineId?: string | null;
   instructions?: string;
   builtin?: boolean;
 }

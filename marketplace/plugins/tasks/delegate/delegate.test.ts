@@ -8,13 +8,23 @@ import type { Comment, Project, Task } from "../db";
 import { delegationRpcContract } from "./contract";
 import { buildSeedPrompt, registerDelegation } from ".";
 
-function createTestPreset(store: ReturnType<typeof createStore>) {
+function createTestPreset(
+  store: ReturnType<typeof createStore>,
+  overrides: Partial<{
+    environmentKind: "project-default" | "new-worktree";
+    baseBranch: string | null;
+    machineId: string | null;
+  }> = {},
+) {
   return store.tasks.createPreset({
     name: "Test worker",
     providerId: "claude-code",
     modelId: "claude-sonnet-5",
     reasoningLevel: "high",
     permissionMode: "full",
+    environmentKind: overrides.environmentKind ?? "project-default",
+    baseBranch: overrides.baseBranch ?? null,
+    machineId: overrides.machineId ?? null,
     instructions: "",
     builtin: false,
   });
@@ -154,6 +164,163 @@ describe("task delegation", () => {
         liveStatus: "working",
       }),
     ]);
+
+    await harness.dispose();
+  });
+
+  it("spawns a new worktree from the configured branch on the configured machine", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: async () => ({ id: "thr_worktree" }),
+          get: async () =>
+            makeThreadResponse({ id: "thr_worktree", status: "starting" }),
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Worktree delegation",
+      prefix: "WT",
+      color: "blue",
+      linkedBbProjectId: "proj_demo",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Use a fresh checkout",
+    });
+    registerDelegation(bb, store);
+    const preset = createTestPreset(store, {
+      environmentKind: "new-worktree",
+      baseBranch: "release/next",
+      machineId: "host_remote",
+    });
+
+    await harness.callRpc("delegate", {
+      taskId: task.id,
+      presetId: preset.id,
+    });
+
+    expect(harness.sdk.callsTo("threads.spawn")).toEqual([
+      [
+        expect.objectContaining({
+          environment: {
+            type: "host",
+            hostId: "host_remote",
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "named", name: "release/next" },
+            },
+          },
+        }),
+      ],
+    ]);
+    expect(harness.sdk.callsTo("system.config")).toEqual([]);
+
+    await harness.dispose();
+  });
+
+  it("resolves the default machine and default branch for a worktree preset", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        system: {
+          config: async () => ({ primaryHostId: "host_primary" }),
+        },
+        threads: {
+          spawn: async () => ({ id: "thr_default_worktree" }),
+          get: async () =>
+            makeThreadResponse({
+              id: "thr_default_worktree",
+              status: "starting",
+            }),
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Default worktree target",
+      prefix: "DWT",
+      color: "blue",
+      linkedBbProjectId: "proj_demo",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Use default worktree target",
+    });
+    registerDelegation(bb, store);
+    const preset = createTestPreset(store, {
+      environmentKind: "new-worktree",
+    });
+
+    await harness.callRpc("delegate", {
+      taskId: task.id,
+      presetId: preset.id,
+    });
+
+    expect(harness.sdk.callsTo("system.config")).toEqual([[]]);
+    expect(harness.sdk.callsTo("threads.spawn")).toEqual([
+      [
+        expect.objectContaining({
+          environment: {
+            type: "host",
+            hostId: "host_primary",
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "default" },
+            },
+          },
+        }),
+      ],
+    ]);
+
+    await harness.dispose();
+  });
+
+  it("maps a rejected worktree target to a friendly typed delegation error", async () => {
+    const spawnError = Object.assign(new Error("HTTP 404: Host not found"), {
+      code: "host_not_found",
+      status: 404,
+    });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: async () => {
+            throw spawnError;
+          },
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Invalid target",
+      prefix: "BAD",
+      color: "blue",
+      linkedBbProjectId: "proj_demo",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Reject bad machine",
+    });
+    registerDelegation(bb, store);
+    const preset = createTestPreset(store, {
+      environmentKind: "new-worktree",
+      baseBranch: "missing-branch",
+      machineId: "host_missing",
+    });
+
+    await expect(
+      harness.callRpc("delegate", {
+        taskId: task.id,
+        presetId: preset.id,
+      }),
+    ).rejects.toMatchObject({
+      code: "handler_error",
+      message:
+        "Could not create a worktree on host_missing from missing-branch: Host not found",
+    });
 
     await harness.dispose();
   });
