@@ -85,6 +85,10 @@ export async function deliverCommentToAgents(
       }
     }),
   );
+  // Deterministic output order: task_threads rows attached within the same
+  // millisecond have no stable DB order, which made this array (and the
+  // tests asserting it) order-flaky.
+  outcomes.sort((a, b) => a.threadId.localeCompare(b.threadId));
   return {
     notifiedCount: outcomes.filter((outcome) => outcome.status === "delivered")
       .length,
