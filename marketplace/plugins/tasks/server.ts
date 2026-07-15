@@ -5,6 +5,7 @@ import { createStore, registerTasksApi } from "./api";
 import { registerAttachments } from "./attachments";
 import { registerTasksCli } from "./cli";
 import { registerDelegation } from "./delegate";
+import { registerLifecycle } from "./lifecycle";
 import { registerMentions } from "./mentions";
 
 export const TASKS_PLUGIN_NAME = "Tasks";
@@ -30,6 +31,7 @@ export default async function plugin(bb: BbPluginApi) {
   registerTasksCli(bb, store, statusPayload());
   registerDelegation(bb, store);
   registerMentions(bb, store);
+  await registerLifecycle(bb, store);
 
   bb.rpc.register(tasksRpcContract, {
     ping(): { ok: true; version: string } {
