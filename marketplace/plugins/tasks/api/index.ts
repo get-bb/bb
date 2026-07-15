@@ -5,6 +5,7 @@ import {
   type Task as StoredTask,
   type TasksStore,
 } from "../db";
+import { removeAttachmentBlobs } from "../attachments";
 import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
@@ -321,6 +322,18 @@ function attachmentMetadata(attachment: StoredAttachment): AttachmentMetadata {
   };
 }
 
+function attachmentsForTasks(
+  store: TasksStore,
+  taskIds: readonly string[],
+): StoredAttachment[] {
+  return taskIds.flatMap((taskId) => [
+    ...store.listAttachmentsForTask(taskId),
+    ...store
+      .listComments(taskId)
+      .flatMap((comment) => store.listAttachmentsForComment(comment.id)),
+  ]);
+}
+
 export function registerHandlers(
   bb: BbPluginApi,
   store: TasksApiStore,
@@ -382,7 +395,7 @@ export function registerHandlers(
         throw error;
       }
     },
-    deleteProject(input) {
+    async deleteProject(input) {
       try {
         if (!input.force && store.projectTaskCount(input.projectId) > 0) {
           fail(
@@ -390,8 +403,15 @@ export function registerHandlers(
             "A project must be empty before it can be deleted; pass force: true to delete its tasks",
           );
         }
+        const taskIds = store.tasks
+          .listTasks({ projectId: input.projectId })
+          .map((task) => task.id);
+        const attachments = attachmentsForTasks(store.tasks, taskIds);
         const deleted = store.tasks.deleteProject(input.projectId);
-        if (deleted) publishProjectsChanged(bb, input.projectId);
+        if (deleted) {
+          await removeAttachmentBlobs(bb, store.tasks, attachments);
+          publishProjectsChanged(bb, input.projectId);
+        }
         return { ok: true, deleted };
       } catch (error) {
         if (error instanceof TasksDomainFailure) return projectFailure(error);
@@ -496,10 +516,14 @@ export function registerHandlers(
         throw error;
       }
     },
-    deleteTask(input) {
+    async deleteTask(input) {
       const task = store.tasks.getTask(input.taskId);
+      const attachments = attachmentsForTasks(store.tasks, [input.taskId]);
       const deleted = store.tasks.deleteTask(input.taskId);
-      if (deleted && task) publishTasksChanged(bb, task.id, task.projectId);
+      if (deleted && task) {
+        await removeAttachmentBlobs(bb, store.tasks, attachments);
+        publishTasksChanged(bb, task.id, task.projectId);
+      }
       return { deleted };
     },
     listTasks(input) {

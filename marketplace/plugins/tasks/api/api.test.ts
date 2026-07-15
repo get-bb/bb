@@ -1,9 +1,128 @@
+import { stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
+import { registerAttachments } from "../attachments";
 import { tasksRpcContract } from "../shared/contract";
 import { createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
+  it("removes task and comment attachment blobs when deleting a task", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    registerAttachments(bb, store.tasks);
+    const project = store.tasks.createProject({
+      name: "Cleanup",
+      prefix: "CLN",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Delete blobs",
+    });
+    const comment = store.tasks.createComment({
+      taskId: task.id,
+      kind: "user",
+      authorName: "Sawyer",
+      body: "Attached context",
+    });
+
+    try {
+      const taskUpload = await harness.fetchHttp(
+        "POST",
+        `/attachments/upload?taskId=${task.id}&fileName=task.txt&mime=text%2Fplain`,
+        { body: "task blob", headers: { "content-type": "text/plain" } },
+      );
+      const commentUpload = await harness.fetchHttp(
+        "POST",
+        `/attachments/upload?commentId=${comment.id}&fileName=comment.txt&mime=text%2Fplain`,
+        { body: "comment blob", headers: { "content-type": "text/plain" } },
+      );
+      const taskAttachmentId = (
+        (await taskUpload.json()) as { attachmentId: string }
+      ).attachmentId;
+      const commentAttachmentId = (
+        (await commentUpload.json()) as { attachmentId: string }
+      ).attachmentId;
+      const taskAttachment = store.tasks.getAttachment(taskAttachmentId);
+      const commentAttachment = store.tasks.getAttachment(commentAttachmentId);
+      if (!taskAttachment || !commentAttachment) {
+        throw new Error("attachment rows were not created");
+      }
+      const database = bb.storage
+        .database()
+        .prepare<[], { name: string; file: string }>("PRAGMA database_list")
+        .all()
+        .find((entry) => entry.name === "main");
+      if (!database) throw new Error("test database path is missing");
+      const blobDirectories = [taskAttachment, commentAttachment].map(
+        (attachment) =>
+          dirname(join(dirname(database.file), attachment.blobPath)),
+      );
+
+      await expect(
+        harness.callRpc("deleteTask", { taskId: task.id }),
+      ).resolves.toEqual({ deleted: true });
+      for (const blobDirectory of blobDirectories) {
+        await expect(stat(blobDirectory)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("removes attachment blobs when force-deleting a project", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    registerAttachments(bb, store.tasks);
+    const project = store.tasks.createProject({
+      name: "Project cleanup",
+      prefix: "PRJ",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Delete project blobs",
+    });
+
+    try {
+      const upload = await harness.fetchHttp(
+        "POST",
+        `/attachments/upload?taskId=${task.id}&fileName=project.txt&mime=text%2Fplain`,
+        { body: "project blob", headers: { "content-type": "text/plain" } },
+      );
+      const attachmentId = ((await upload.json()) as { attachmentId: string })
+        .attachmentId;
+      const attachment = store.tasks.getAttachment(attachmentId);
+      if (!attachment) throw new Error("attachment row was not created");
+      const database = bb.storage
+        .database()
+        .prepare<[], { name: string; file: string }>("PRAGMA database_list")
+        .all()
+        .find((entry) => entry.name === "main");
+      if (!database) throw new Error("test database path is missing");
+      const blobDirectory = dirname(
+        join(dirname(database.file), attachment.blobPath),
+      );
+
+      await expect(
+        harness.callRpc("deleteProject", {
+          projectId: project.id,
+          force: true,
+        }),
+      ).resolves.toEqual({ ok: true, deleted: true });
+      await expect(stat(blobDirectory)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("runs the project and task flow with comments, filtering, summary SQL, and invalidations", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);

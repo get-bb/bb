@@ -80,6 +80,56 @@ function pathInside(root: string, blobPath: string): string {
   return absolutePath;
 }
 
+export async function removeAttachmentBlobs(
+  bb: BbPluginApi,
+  store: TasksStore,
+  attachments: readonly Pick<Attachment, "id" | "blobPath">[],
+): Promise<void> {
+  if (attachments.length === 0) return;
+  let root: string;
+  try {
+    root = requireStoreRoot(store);
+  } catch (error) {
+    bb.log.warn(
+      `failed to resolve attachment blob storage: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+  await Promise.all(
+    attachments.map(async (attachment) => {
+      try {
+        const absolutePath = pathInside(root, attachment.blobPath);
+        await rm(dirname(absolutePath), { recursive: true, force: true });
+      } catch (error) {
+        bb.log.warn(
+          `failed to remove attachment blob ${attachment.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }),
+  );
+}
+
+function publishAttachmentChanged(
+  bb: BbPluginApi,
+  store: TasksStore,
+  attachment: Attachment,
+): void {
+  const taskId =
+    attachment.taskId ??
+    (attachment.commentId
+      ? store.getComment(attachment.commentId)?.taskId
+      : undefined);
+  const task = taskId ? store.getTask(taskId) : undefined;
+  if (!task) {
+    bb.log.warn(`failed to publish attachment change ${attachment.id}`);
+    return;
+  }
+  bb.realtime.publish("tasks:changed", {
+    taskId: task.id,
+    projectId: task.projectId,
+  });
+}
+
 function sanitizeFileName(fileName: string): string {
   const baseName = fileName
     .normalize("NFC")
@@ -296,6 +346,7 @@ export function registerAttachments(bb: BbPluginApi, store: TasksStore): void {
           body.byteLength,
           (destinationPath) => writeFile(destinationPath, body),
         );
+        publishAttachmentChanged(bb, store, attachment);
         return context.json(
           {
             attachmentId: attachment.id,
@@ -346,9 +397,9 @@ export function registerAttachments(bb: BbPluginApi, store: TasksStore): void {
     if (!attachment)
       return context.json({ error: "attachment not found" }, 404);
 
-    const absolutePath = pathInside(root, attachment.blobPath);
     store.deleteAttachment(attachment.id);
-    await rm(dirname(absolutePath), { recursive: true, force: true });
+    await removeAttachmentBlobs(bb, store, [attachment]);
+    publishAttachmentChanged(bb, store, attachment);
     return context.json({ deleted: true });
   });
 }

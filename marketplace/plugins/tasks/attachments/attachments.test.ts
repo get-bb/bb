@@ -78,6 +78,12 @@ describe("task attachments", () => {
       expect(await readFile(join(root, attachment.blobPath), "utf8")).toBe(
         "png bytes",
       );
+      expect(harness.realtimeSignals).toEqual([
+        {
+          channel: "tasks:changed",
+          payload: { taskId: task.id, projectId: task.projectId },
+        },
+      ]);
     } finally {
       await harness.dispose();
     }
@@ -185,6 +191,16 @@ describe("task attachments", () => {
       await expect(stat(blobDirectory)).rejects.toMatchObject({
         code: "ENOENT",
       });
+      expect(harness.realtimeSignals).toEqual([
+        {
+          channel: "tasks:changed",
+          payload: { taskId: task.id, projectId: task.projectId },
+        },
+        {
+          channel: "tasks:changed",
+          payload: { taskId: task.id, projectId: task.projectId },
+        },
+      ]);
     } finally {
       await harness.dispose();
     }
