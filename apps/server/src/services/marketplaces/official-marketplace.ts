@@ -27,13 +27,13 @@ export const OFFICIAL_MARKETPLACE_CATALOG = {
         githubRelease: {
           repository: "ymichael/bb",
           package: "bb-plugin-github",
-          range: "^0.1.0",
+          range: "^0.2.0",
           tagTemplate: "plugin-github-v{version}",
           assetTemplate: "bb-plugin-github-{version}.tgz",
         },
       },
       installation: {
-        engines: { bb: ">=0.0", bbPluginSdk: "^0.2.0" },
+        engines: { bb: ">=0.0", bbPluginSdk: "^0.3.0" },
       },
     },
     {
@@ -47,13 +47,13 @@ export const OFFICIAL_MARKETPLACE_CATALOG = {
         githubRelease: {
           repository: "ymichael/bb",
           package: "bb-plugin-simple-notes",
-          range: "^0.1.1",
+          range: "^0.2.0",
           tagTemplate: "plugin-docs-v{version}",
           assetTemplate: "bb-plugin-simple-notes-{version}.tgz",
         },
       },
       installation: {
-        engines: { bb: ">=0.0", bbPluginSdk: "^0.2.0" },
+        engines: { bb: ">=0.0", bbPluginSdk: "^0.3.0" },
       },
     },
     {
@@ -67,13 +67,13 @@ export const OFFICIAL_MARKETPLACE_CATALOG = {
         githubRelease: {
           repository: "ymichael/bb",
           package: "bb-plugin-memory",
-          range: "^0.1.0",
+          range: "^0.2.0",
           tagTemplate: "plugin-memory-v{version}",
           assetTemplate: "bb-plugin-memory-{version}.tgz",
         },
       },
       installation: {
-        engines: { bb: ">=0.0", bbPluginSdk: "^0.2.0" },
+        engines: { bb: ">=0.0", bbPluginSdk: "^0.3.0" },
       },
     },
   ],
