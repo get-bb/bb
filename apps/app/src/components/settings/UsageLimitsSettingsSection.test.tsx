@@ -37,6 +37,52 @@ function renderContent(
 }
 
 describe("UsageLimitsSettingsSectionContent", () => {
+  it("renders Cursor plan and on-demand limits", () => {
+    renderContent({
+      usage: {
+        cursor: {
+          status: "ok",
+          planLabel: "Pro",
+          windows: [
+            { label: "Plan usage", usedPercent: 50, resetsAt: null },
+            {
+              label: "On-demand spend",
+              usedPercent: 10,
+              resetsAt: null,
+              cost: { usedUsdCents: 500, limitUsdCents: 5_000 },
+            },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      onRefresh: vi.fn(),
+    });
+
+    expect(screen.getByRole("heading", { name: "Cursor" })).toBeDefined();
+    expect(screen.getByText("Plan usage")).toBeDefined();
+    expect(screen.getByText("50% used")).toBeDefined();
+    expect(screen.getByText("On-demand spend")).toBeDefined();
+    expect(screen.getByText("$5.00 / $50")).toBeDefined();
+  });
+
+  it("hides Cursor when its CLI is not installed", () => {
+    renderContent({
+      usage: {
+        codex: { status: "unauthenticated" },
+        cursor: { status: "not_installed" },
+      },
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      onRefresh: vi.fn(),
+    });
+
+    expect(screen.queryByRole("heading", { name: "Cursor" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
+  });
+
   it("selects which connected machine supplies usage", () => {
     const onSelectHost = vi.fn();
     renderContent({

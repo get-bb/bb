@@ -43,6 +43,7 @@ const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
 const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
   codex: { status: "unauthenticated" },
   claudeCode: { status: "unauthenticated" },
+  cursor: { status: "unauthenticated" },
 };
 
 afterEach(() => {

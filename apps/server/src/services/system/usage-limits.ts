@@ -9,9 +9,9 @@ import {
 } from "../hosts/primary-host.js";
 
 /**
- * Reads live Codex/Claude Code subscription usage from a connected host's
- * daemon. The daemon owns the credentials and provider HTTP calls; the server
- * only validates and routes the selected machine.
+ * Reads live Codex, Claude Code, and Cursor subscription usage from a connected
+ * host's daemon. The daemon owns the credentials and provider HTTP calls; the
+ * server only validates and routes the selected machine.
  */
 export async function getProviderUsageLimits(
   deps: AppDeps,

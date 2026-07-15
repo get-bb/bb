@@ -90,6 +90,7 @@ function futureIso(minutesFromNow: number): string {
 const usageFixture: {
   codex: ProviderUsage;
   claudeCode: ProviderUsage;
+  cursor: ProviderUsage;
 } = {
   codex: {
     status: "ok",
@@ -120,6 +121,23 @@ const usageFixture: {
         label: "Weekly limit",
         resetsAt: futureIso(4 * 24 * 60),
         usedPercent: 26,
+      },
+    ],
+  },
+  cursor: {
+    status: "ok",
+    planLabel: "Pro",
+    windows: [
+      {
+        label: "Plan usage",
+        resetsAt: futureIso(14 * 24 * 60),
+        usedPercent: 72,
+      },
+      {
+        label: "On-demand spend",
+        resetsAt: futureIso(14 * 24 * 60),
+        usedPercent: 25,
+        cost: { usedUsdCents: 1_250, limitUsdCents: 5_000 },
       },
     ],
   },

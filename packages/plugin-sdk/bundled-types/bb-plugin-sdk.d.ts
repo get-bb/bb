@@ -2783,8 +2783,8 @@ type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        standard: "standard";
         personal: "personal";
+        standard: "standard";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2805,8 +2805,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        standard: "standard";
         personal: "personal";
+        standard: "standard";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -3034,8 +3034,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -3239,10 +3239,10 @@ declare const environmentPullRequestResponseSchema: z$1.ZodObject<{
         mergeability: z$1.ZodObject<{
             state: z$1.ZodEnum<{
                 unknown: "unknown";
-                blocked: "blocked";
                 draft: "draft";
                 mergeable: "mergeable";
                 conflicts: "conflicts";
+                blocked: "blocked";
             }>;
             mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
                 BEHIND: "BEHIND";
@@ -3262,13 +3262,13 @@ declare const environmentPullRequestResponseSchema: z$1.ZodObject<{
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
             none: "none";
-            blocked: "blocked";
             merged: "merged";
             draft: "draft";
             closed: "closed";
             changes_requested: "changes_requested";
             review_requested: "review_requested";
             conflicts: "conflicts";
+            blocked: "blocked";
             checks_failed: "checks_failed";
             checks_pending: "checks_pending";
             ready_to_merge: "ready_to_merge";
@@ -3428,7 +3428,13 @@ declare const providerUsageResponseSchema: z$1.ZodObject<{
             label: z$1.ZodString;
             usedPercent: z$1.ZodNumber;
             resetsAt: z$1.ZodNullable<z$1.ZodString>;
+            cost: z$1.ZodOptional<z$1.ZodObject<{
+                usedUsdCents: z$1.ZodNumber;
+                limitUsdCents: z$1.ZodNumber;
+            }, z$1.core.$strip>>;
         }, z$1.core.$strip>>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        status: z$1.ZodLiteral<"not_installed">;
     }, z$1.core.$strip>, z$1.ZodObject<{
         status: z$1.ZodLiteral<"unauthenticated">;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -3444,7 +3450,35 @@ declare const providerUsageResponseSchema: z$1.ZodObject<{
             label: z$1.ZodString;
             usedPercent: z$1.ZodNumber;
             resetsAt: z$1.ZodNullable<z$1.ZodString>;
+            cost: z$1.ZodOptional<z$1.ZodObject<{
+                usedUsdCents: z$1.ZodNumber;
+                limitUsdCents: z$1.ZodNumber;
+            }, z$1.core.$strip>>;
         }, z$1.core.$strip>>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        status: z$1.ZodLiteral<"not_installed">;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        status: z$1.ZodLiteral<"unauthenticated">;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        status: z$1.ZodLiteral<"expired">;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        status: z$1.ZodLiteral<"error">;
+        message: z$1.ZodString;
+    }, z$1.core.$strip>], "status">;
+    cursor: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        status: z$1.ZodLiteral<"ok">;
+        planLabel: z$1.ZodNullable<z$1.ZodString>;
+        windows: z$1.ZodArray<z$1.ZodObject<{
+            label: z$1.ZodString;
+            usedPercent: z$1.ZodNumber;
+            resetsAt: z$1.ZodNullable<z$1.ZodString>;
+            cost: z$1.ZodOptional<z$1.ZodObject<{
+                usedUsdCents: z$1.ZodNumber;
+                limitUsdCents: z$1.ZodNumber;
+            }, z$1.core.$strip>>;
+        }, z$1.core.$strip>>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        status: z$1.ZodLiteral<"not_installed">;
     }, z$1.core.$strip>, z$1.ZodObject<{
         status: z$1.ZodLiteral<"unauthenticated">;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -4943,7 +4977,13 @@ declare const hostDaemonCommandRegistry: {
                 label: z$1.ZodString;
                 usedPercent: z$1.ZodNumber;
                 resetsAt: z$1.ZodNullable<z$1.ZodString>;
+                cost: z$1.ZodOptional<z$1.ZodObject<{
+                    usedUsdCents: z$1.ZodNumber;
+                    limitUsdCents: z$1.ZodNumber;
+                }, z$1.core.$strip>>;
             }, z$1.core.$strip>>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            status: z$1.ZodLiteral<"not_installed">;
         }, z$1.core.$strip>, z$1.ZodObject<{
             status: z$1.ZodLiteral<"unauthenticated">;
         }, z$1.core.$strip>, z$1.ZodObject<{
@@ -4959,7 +4999,35 @@ declare const hostDaemonCommandRegistry: {
                 label: z$1.ZodString;
                 usedPercent: z$1.ZodNumber;
                 resetsAt: z$1.ZodNullable<z$1.ZodString>;
+                cost: z$1.ZodOptional<z$1.ZodObject<{
+                    usedUsdCents: z$1.ZodNumber;
+                    limitUsdCents: z$1.ZodNumber;
+                }, z$1.core.$strip>>;
             }, z$1.core.$strip>>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            status: z$1.ZodLiteral<"not_installed">;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            status: z$1.ZodLiteral<"unauthenticated">;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            status: z$1.ZodLiteral<"expired">;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            status: z$1.ZodLiteral<"error">;
+            message: z$1.ZodString;
+        }, z$1.core.$strip>], "status">;
+        cursor: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            status: z$1.ZodLiteral<"ok">;
+            planLabel: z$1.ZodNullable<z$1.ZodString>;
+            windows: z$1.ZodArray<z$1.ZodObject<{
+                label: z$1.ZodString;
+                usedPercent: z$1.ZodNumber;
+                resetsAt: z$1.ZodNullable<z$1.ZodString>;
+                cost: z$1.ZodOptional<z$1.ZodObject<{
+                    usedUsdCents: z$1.ZodNumber;
+                    limitUsdCents: z$1.ZodNumber;
+                }, z$1.core.$strip>>;
+            }, z$1.core.$strip>>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            status: z$1.ZodLiteral<"not_installed">;
         }, z$1.core.$strip>, z$1.ZodObject<{
             status: z$1.ZodLiteral<"unauthenticated">;
         }, z$1.core.$strip>, z$1.ZodObject<{
@@ -5583,11 +5651,11 @@ type HostProviderCliInstallEvent = ProviderCliInstallEvent;
 declare const pluginUpdateCheckEntrySchema: z$1.ZodObject<{
     id: z$1.ZodString;
     outcome: z$1.ZodEnum<{
+        unavailable: "unavailable";
         incompatible: "incompatible";
         current: "current";
         "update-available": "update-available";
         pinned: "pinned";
-        unavailable: "unavailable";
     }>;
     devMode: z$1.ZodOptional<z$1.ZodLiteral<true>>;
     installed: z$1.ZodObject<{
@@ -5654,11 +5722,11 @@ declare const installedPluginSchema: z$1.ZodObject<{
     sourceDisplay: z$1.ZodString;
     updateState: z$1.ZodObject<{
         outcome: z$1.ZodOptional<z$1.ZodEnum<{
+            unavailable: "unavailable";
             incompatible: "incompatible";
             current: "current";
             "update-available": "update-available";
             pinned: "pinned";
-            unavailable: "unavailable";
         }>>;
         availableVersion: z$1.ZodOptional<z$1.ZodString>;
         blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -5747,11 +5815,11 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
-                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -5841,11 +5909,11 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
-                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -8063,9 +8131,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            personal: "personal";
-            "managed-worktree": "managed-worktree";
             unmanaged: "unmanaged";
+            "managed-worktree": "managed-worktree";
+            personal: "personal";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;

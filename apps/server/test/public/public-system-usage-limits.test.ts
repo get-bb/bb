@@ -12,6 +12,7 @@ const USAGE_RESPONSE: ProviderUsageResponse = {
     windows: [{ label: "5-hour", usedPercent: 42, resetsAt: null }],
   },
   claudeCode: { status: "unauthenticated" },
+  cursor: { status: "unauthenticated" },
 };
 
 describe("GET /api/v1/system/usage-limits", () => {
@@ -63,5 +64,4 @@ describe("GET /api/v1/system/usage-limits", () => {
       );
     });
   });
-
 });

@@ -1108,13 +1108,20 @@ const workspacePullRequestActionResultSchema = z.object({}).strict();
 
 /**
  * One usage window for a provider subscription, e.g. the rolling 5h session
- * limit or the weekly limit. `usedPercent` is normalized to 0-100 and
- * `resetsAt` is an ISO-8601 timestamp (or null when the provider omits it).
+ * limit or the weekly limit. `usedPercent` is normalized to 0-100,
+ * `resetsAt` is an ISO-8601 timestamp (or null when the provider omits it),
+ * and `cost` carries optional Cursor on-demand spend in USD cents.
  */
 export const providerUsageWindowSchema = z.object({
   label: z.string().min(1),
   usedPercent: z.number().min(0).max(100),
   resetsAt: z.string().min(1).nullable(),
+  cost: z
+    .object({
+      usedUsdCents: z.number().int().nonnegative(),
+      limitUsdCents: z.number().int().positive(),
+    })
+    .optional(),
 });
 export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
 
@@ -1124,6 +1131,7 @@ export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
  * without inventing placeholder numbers.
  *
  * - `ok` — usage was read; `windows` may be empty if the plan exposes none.
+ * - `not_installed` — the provider CLI is not installed on this host.
  * - `unauthenticated` — no local credentials (the CLI is not logged in).
  * - `expired` — credentials exist but the token expired; the CLI must refresh
  *   it (we never refresh another tool's tokens here).
@@ -1135,6 +1143,7 @@ export const providerUsageSchema = z.discriminatedUnion("status", [
     planLabel: z.string().min(1).nullable(),
     windows: z.array(providerUsageWindowSchema),
   }),
+  z.object({ status: z.literal("not_installed") }),
   z.object({ status: z.literal("unauthenticated") }),
   z.object({ status: z.literal("expired") }),
   z.object({ status: z.literal("error"), message: z.string().min(1) }),
@@ -1144,6 +1153,7 @@ export type ProviderUsage = z.infer<typeof providerUsageSchema>;
 export const providerUsageResponseSchema = z.object({
   codex: providerUsageSchema,
   claudeCode: providerUsageSchema,
+  cursor: providerUsageSchema,
 });
 export type ProviderUsageResponse = z.infer<typeof providerUsageResponseSchema>;
 

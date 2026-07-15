@@ -92,6 +92,11 @@ interface GetProviderCliStatusForProviderArgs {
   nodePlatform?: NodeJS.Platform;
 }
 
+interface IsProviderCliInstalledArgs {
+  env?: NodeJS.ProcessEnv;
+  runner?: ProviderCliCommandRunner;
+}
+
 export interface KnownAcpAgentExecutableQuery {
   id: string;
   executableName: string;
@@ -813,6 +818,18 @@ export async function getProviderCliStatusForProvider(
     runner,
     nodePlatform,
   });
+}
+
+export async function isProviderCliInstalled(
+  provider: ProviderCliKey,
+  args: IsProviderCliInstalledArgs = {},
+): Promise<boolean> {
+  const runner = args.runner ?? createSpawnProviderCliCommandRunner(args.env);
+  const status = await inspectExecutableInstallStatus({
+    executableName: getProviderCliDefinition(provider).executableName,
+    runner,
+  });
+  return status.installed;
 }
 
 export async function inspectExecutableInstallStatus({

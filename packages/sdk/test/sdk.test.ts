@@ -469,6 +469,7 @@ describe("@bb/sdk", () => {
     const usage = {
       codex: { status: "unauthenticated" as const },
       claudeCode: { status: "unauthenticated" as const },
+      cursor: { status: "unauthenticated" as const },
     };
     const queue = createFetchQueue([{ body: usage }]);
     const sdk = createBbSdk({

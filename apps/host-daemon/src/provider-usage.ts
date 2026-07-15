@@ -15,6 +15,7 @@ import {
 } from "./chatgpt-cloudflare-cookies.js";
 import { readCodexAuthCredentials } from "./codex-auth.js";
 import { ExpectedCommandDispatchError } from "./command-dispatch-support.js";
+import { isProviderCliInstalled } from "./provider-cli-health.js";
 
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
 
@@ -38,6 +39,15 @@ function epochSecondsToIso(seconds: number | null | undefined): string | null {
     return null;
   }
   return new Date(seconds * 1000).toISOString();
+}
+
+function epochMillisecondsToIso(
+  milliseconds: number | null | undefined,
+): string | null {
+  if (milliseconds == null || !Number.isFinite(milliseconds)) {
+    return null;
+  }
+  return new Date(milliseconds).toISOString();
 }
 
 function normalizeIsoTimestamp(
@@ -387,17 +397,259 @@ async function fetchClaudeUsage(): Promise<ProviderUsage> {
 }
 
 // ---------------------------------------------------------------------------
+// Cursor (Cursor subscription)
+// ---------------------------------------------------------------------------
+
+const CURSOR_DASHBOARD_URL =
+  "https://api2.cursor.sh/aiserver.v1.DashboardService";
+const CURSOR_KEYCHAIN_ACCOUNT = "cursor-user";
+const CURSOR_ACCESS_TOKEN_SERVICE = "cursor-access-token";
+
+const cursorNonNegativeIntegerSchema = z
+  .union([
+    z.number().int().nonnegative(),
+    z.string().regex(/^\d+$/u).transform(Number),
+  ])
+  .refine(Number.isSafeInteger);
+
+const cursorPlanUsageSchema = z.object({
+  // Connect's JSON encoding omits scalar zero values.
+  totalPercentUsed: z.number().nonnegative().default(0),
+});
+
+const cursorSpendLimitUsageSchema = z.object({
+  overallLimit: cursorNonNegativeIntegerSchema.nullish(),
+  overallUsed: cursorNonNegativeIntegerSchema.nullish(),
+  individualLimit: cursorNonNegativeIntegerSchema.nullish(),
+  individualUsed: cursorNonNegativeIntegerSchema.nullish(),
+  pooledLimit: cursorNonNegativeIntegerSchema.nullish(),
+  pooledUsed: cursorNonNegativeIntegerSchema.nullish(),
+});
+
+const cursorCurrentPeriodUsageSchema = z
+  .object({
+    billingCycleEnd: cursorNonNegativeIntegerSchema.nullish(),
+    planUsage: cursorPlanUsageSchema.nullish(),
+    spendLimitUsage: cursorSpendLimitUsageSchema.nullish(),
+  })
+  .passthrough();
+
+const cursorPlanInfoSchema = z
+  .object({
+    planInfo: z
+      .object({
+        planName: z.string().min(1),
+      })
+      .nullish(),
+  })
+  .passthrough();
+
+const cursorFileCredentialsSchema = z.object({
+  accessToken: z.string().min(1).nullish(),
+});
+
+function cursorAuthFilePath(): string {
+  if (process.platform === "win32") {
+    const appData =
+      process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+    return path.join(appData, "Cursor", "auth.json");
+  }
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), ".cursor", "auth.json");
+  }
+  const configHome =
+    process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
+  return path.join(configHome, "cursor", "auth.json");
+}
+
+async function readCursorKeychainAccessToken(): Promise<string | null> {
+  if (process.platform !== "darwin") {
+    return null;
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      "security",
+      [
+        "find-generic-password",
+        "-s",
+        CURSOR_ACCESS_TOKEN_SERVICE,
+        "-a",
+        CURSOR_KEYCHAIN_ACCOUNT,
+        "-w",
+      ],
+      { timeout: 10_000 },
+    );
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function readCursorFileAccessToken(): Promise<string | null> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(cursorAuthFilePath(), "utf8");
+  } catch {
+    return null;
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const parsed = cursorFileCredentialsSchema.safeParse(json);
+  return parsed.success ? (parsed.data.accessToken ?? null) : null;
+}
+
+async function readCursorAccessToken(): Promise<string | null> {
+  return (
+    (await readCursorKeychainAccessToken()) ??
+    (await readCursorFileAccessToken())
+  );
+}
+
+interface CursorSpendUsageWindowArgs {
+  label: string;
+  used: number | null | undefined;
+  limit: number | null | undefined;
+  resetsAt: string | null;
+}
+
+function cursorSpendUsageWindow(
+  args: CursorSpendUsageWindowArgs,
+): ProviderUsageWindow | null {
+  if (args.used == null || args.limit == null || args.limit <= 0) {
+    return null;
+  }
+  return {
+    label: args.label,
+    usedPercent: clampPercent((args.used / args.limit) * 100),
+    resetsAt: args.resetsAt,
+    cost: {
+      usedUsdCents: args.used,
+      limitUsdCents: args.limit,
+    },
+  };
+}
+
+function cursorPlanUsageWindow(
+  usedPercent: number | null | undefined,
+  resetsAt: string | null,
+): ProviderUsageWindow | null {
+  if (usedPercent == null) {
+    return null;
+  }
+  return {
+    label: "Plan usage",
+    usedPercent: clampPercent(usedPercent),
+    resetsAt,
+  };
+}
+
+function normalizeCursorUsage(
+  rawUsage: unknown,
+  rawPlan: unknown,
+): ProviderUsage {
+  const usage = cursorCurrentPeriodUsageSchema.safeParse(rawUsage);
+  if (!usage.success) {
+    return { status: "error", message: "Cursor usage response was malformed." };
+  }
+  const plan = cursorPlanInfoSchema.safeParse(rawPlan);
+  const resetsAt = epochMillisecondsToIso(usage.data.billingCycleEnd);
+  const spendLimit = usage.data.spendLimitUsage;
+  const spendLimitPair =
+    spendLimit?.overallLimit != null
+      ? { limit: spendLimit.overallLimit, used: spendLimit.overallUsed ?? 0 }
+      : spendLimit?.individualLimit != null
+        ? {
+            limit: spendLimit.individualLimit,
+            used: spendLimit.individualUsed ?? 0,
+          }
+        : spendLimit?.pooledLimit != null
+          ? { limit: spendLimit.pooledLimit, used: spendLimit.pooledUsed ?? 0 }
+          : null;
+  const windows = [
+    cursorPlanUsageWindow(usage.data.planUsage?.totalPercentUsed, resetsAt),
+    cursorSpendUsageWindow({
+      label: "On-demand spend",
+      used: spendLimitPair?.used,
+      limit: spendLimitPair?.limit,
+      resetsAt,
+    }),
+  ].filter((window): window is ProviderUsageWindow => window !== null);
+
+  return {
+    status: "ok",
+    planLabel: plan.success ? (plan.data.planInfo?.planName ?? null) : null,
+    windows,
+  };
+}
+
+type CursorDashboardMethod = "GetCurrentPeriodUsage" | "GetPlanInfo";
+
+function fetchCursorDashboard(
+  method: CursorDashboardMethod,
+  accessToken: string,
+): Promise<Response> {
+  // Cursor has no personal-usage CLI command or public individual API. These
+  // authenticated Connect RPCs are the same dashboard methods shipped in the
+  // Cursor CLI, so keep their response parsing isolated at this boundary.
+  return fetch(`${CURSOR_DASHBOARD_URL}/${method}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "Connect-Protocol-Version": "1",
+      "x-cursor-client-type": "cli",
+      "x-cursor-client-version": "cli-bb-host-daemon",
+    },
+    body: "{}",
+    signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS),
+  });
+}
+
+async function fetchCursorUsage(): Promise<ProviderUsage> {
+  if (!(await isProviderCliInstalled("cursor"))) {
+    return { status: "not_installed" };
+  }
+
+  const accessToken = await readCursorAccessToken();
+  if (!accessToken) {
+    return { status: "unauthenticated" };
+  }
+
+  const [usageResponse, planResponse] = await Promise.all([
+    fetchCursorDashboard("GetCurrentPeriodUsage", accessToken),
+    fetchCursorDashboard("GetPlanInfo", accessToken),
+  ]);
+  if (usageResponse.status === 401 || planResponse.status === 401) {
+    return { status: "expired" };
+  }
+  if (!usageResponse.ok) {
+    return {
+      status: "error",
+      message: `Cursor usage request failed (HTTP ${usageResponse.status}).`,
+    };
+  }
+
+  const rawPlan: unknown = planResponse.ok ? await planResponse.json() : {};
+  return normalizeCursorUsage(await usageResponse.json(), rawPlan);
+}
+
+// ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
 
 /**
- * Reads live usage/rate-limit snapshots for the local Codex and Claude Code
- * subscriptions. Each provider resolves independently so one failing never
- * blanks the other. Tokens are read from the providers' own credential stores
- * and used as-is — we never refresh another tool's tokens.
+ * Reads live usage/rate-limit snapshots for local Codex, Claude Code, and
+ * Cursor subscriptions. Each provider resolves independently so one failing
+ * never blanks the others. Tokens are read from the providers' own credential
+ * stores and used as-is — we never refresh another tool's tokens.
  */
 export async function getProviderUsage(): Promise<ProviderUsageResponse> {
-  const [codex, claudeCode] = await Promise.all([
+  const [codex, claudeCode, cursor] = await Promise.all([
     fetchCodexUsage().catch(
       (error): ProviderUsage => ({
         status: "error",
@@ -410,13 +662,20 @@ export async function getProviderUsage(): Promise<ProviderUsageResponse> {
         message: errorMessage(error),
       }),
     ),
+    fetchCursorUsage().catch(
+      (error): ProviderUsage => ({
+        status: "error",
+        message: errorMessage(error),
+      }),
+    ),
   ]);
-  return { codex, claudeCode };
+  return { codex, claudeCode, cursor };
 }
 
 export const __testing = {
   normalizeCodexUsage,
   normalizeClaudeUsage,
+  normalizeCursorUsage,
   codexPlanLabel,
   claudePlanLabel,
 };
