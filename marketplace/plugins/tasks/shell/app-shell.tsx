@@ -99,13 +99,15 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
   const presets = usePresets();
   const activeTasks = useActiveTasks();
 
-  // Esc from a task returns to the list/board the user came from.
-  const lastBrowseRouteRef = useRef<TasksRoute>({ kind: "all" });
+  // Esc from a task returns to the list/board the user came from. null until
+  // the user browses one this session (e.g. a deep-linked refresh).
+  const lastBrowseRouteRef = useRef<TasksRoute | null>(null);
   useEffect(() => {
     if (route.kind !== "task") lastBrowseRouteRef.current = route;
     // Routes are plain data; keying on subPath tracks every route change.
   }, [subPath]);
-  const backFromTask = () => navigation.go(lastBrowseRouteRef.current);
+  const backFromTask = () =>
+    navigation.go(lastBrowseRouteRef.current ?? { kind: "all" });
   const onTaskRoute = route.kind === "task";
   const backRef = useRef(backFromTask);
   backRef.current = backFromTask;
@@ -161,10 +163,15 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
           route={route}
           projects={projects.data}
           sidebarCollapsed={sidebarCollapsed}
-          pagerProjectId={
-            lastBrowseRouteRef.current.kind === "project"
-              ? lastBrowseRouteRef.current.projectId
-              : null
+          pagerScope={
+            lastBrowseRouteRef.current === null
+              ? null
+              : {
+                  projectId:
+                    lastBrowseRouteRef.current.kind === "project"
+                      ? lastBrowseRouteRef.current.projectId
+                      : null,
+                }
           }
           onNavigate={navigation.go}
           onToggleSidebar={() => setSidebarCollapsed((value) => !value)}

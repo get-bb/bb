@@ -4,7 +4,40 @@ import {
   applyBoardMove,
   dropIndexForPointer,
   dropNeighborsForIndex,
+  visibleBoardStatuses,
 } from "./drop-position.js";
+
+describe("visibleBoardStatuses", () => {
+  const columns = (canceled: number): Record<TaskStatus, unknown[]> => ({
+    backlog: [],
+    todo: ["t1"],
+    in_progress: [],
+    in_review: [],
+    done: [],
+    canceled: Array.from({ length: canceled }, (_, index) => `c${index}`),
+  });
+
+  it("hides the Canceled column while it is empty", () => {
+    expect(visibleBoardStatuses(columns(0))).toEqual([
+      "backlog",
+      "todo",
+      "in_progress",
+      "in_review",
+      "done",
+    ]);
+  });
+
+  it("appends Canceled at the end once it holds cards", () => {
+    expect(visibleBoardStatuses(columns(2))).toEqual([
+      "backlog",
+      "todo",
+      "in_progress",
+      "in_review",
+      "done",
+      "canceled",
+    ]);
+  });
+});
 
 describe("dropNeighborsForIndex", () => {
   const column = ["a", "b", "c"];

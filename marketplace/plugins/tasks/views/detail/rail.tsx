@@ -11,6 +11,7 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
 } from "../../shared/contract.js";
+import { useTasksQuery } from "../../shell/data.js";
 import {
   PRIORITY_LABELS,
   PriorityIcon,
@@ -272,6 +273,18 @@ export function PropertiesRail({
     task.labelIds.includes(label.id),
   );
   const active = threads.filter(isActiveThread);
+  const linkedBbProjectId = project?.linkedBbProjectId ?? null;
+  const bbProjects = useTasksQuery(
+    async (query) =>
+      linkedBbProjectId === null
+        ? []
+        : (await query.call("listBbProjects")).bbProjects,
+    ["projects:changed"],
+    [linkedBbProjectId],
+  );
+  const bbProjectName = (bbProjects.data ?? []).find(
+    (candidate) => candidate.id === linkedBbProjectId,
+  )?.name;
   return (
     <aside className={cn("w-56 shrink-0 py-10 pl-2 pr-6", className)}>
       <h2 className="mb-1.5 text-xs font-semibold text-muted-foreground">
@@ -319,10 +332,15 @@ export function PropertiesRail({
         Delegation target
       </div>
       <div className="py-0.5 text-xs leading-relaxed">
-        {project?.linkedBbProjectId ? (
-          <span className="flex items-center gap-1 text-foreground">
+        {linkedBbProjectId !== null ? (
+          <span
+            className="flex items-center gap-1 text-foreground"
+            title={linkedBbProjectId}
+          >
             <Icon name="ArrowUpRight" className="size-3 shrink-0" />
-            <span className="truncate">{project.linkedBbProjectId}</span>
+            <span className="truncate">
+              {bbProjectName ?? linkedBbProjectId}
+            </span>
           </span>
         ) : (
           <span className="italic text-muted-foreground">

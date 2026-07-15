@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "../../components/confirm-dialog.js";
 
 function ThreadCard({ thread }: { thread: TaskThread }) {
   const navigate = useBbNavigate();
@@ -70,6 +71,7 @@ export function ThreadsSection({
 }: ThreadsSectionProps) {
   const rpc = useRpc<DelegationRpcContract>();
   const [delegating, setDelegating] = useState(false);
+  const [readonlyConfirm, setReadonlyConfirm] = useState<Preset | null>(null);
   const activeCount = threads.filter(isActiveThread).length;
 
   const delegate = async (presetId: string) => {
@@ -81,6 +83,11 @@ export function ThreadsSection({
     } finally {
       setDelegating(false);
     }
+  };
+
+  const pickPreset = (preset: Preset) => {
+    if (preset.permissionMode === "readonly") setReadonlyConfirm(preset);
+    else void delegate(preset.id);
   };
 
   return (
@@ -109,7 +116,7 @@ export function ThreadsSection({
             {(presets ?? []).map((preset) => (
               <DropdownMenuItem
                 key={preset.id}
-                onSelect={() => void delegate(preset.id)}
+                onSelect={() => pickPreset(preset)}
               >
                 <span className="min-w-0 flex-1 truncate">{preset.name}</span>
                 <span className="text-xs text-muted-foreground">
@@ -132,6 +139,19 @@ export function ThreadsSection({
           .
         </p>
       )}
+      <ConfirmDialog
+        open={readonlyConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setReadonlyConfirm(null);
+        }}
+        title={`Delegate with “${readonlyConfirm?.name ?? ""}”?`}
+        description="This preset is read-only: the agent can inspect the workspace but can't run bb tasks commands unattended, so it won't update this task on its own."
+        confirmLabel="Delegate anyway"
+        onConfirm={() => {
+          const preset = readonlyConfirm;
+          if (preset) void delegate(preset.id);
+        }}
+      />
     </section>
   );
 }

@@ -132,8 +132,12 @@ export interface TasksTopbarProps {
   route: TasksRoute;
   projects: Project[] | undefined;
   sidebarCollapsed: boolean;
-  /** Pager scope on task routes: the project browsed before, or null for All. */
-  pagerProjectId: string | null;
+  /**
+   * Pager scope on task routes: the list/board browsed before (projectId null
+   * = All tasks). null when no list/board was visited this session (deep
+   * link) — the pager then anchors to the task's own project.
+   */
+  pagerScope: { projectId: string | null } | null;
   onNavigate: (route: TasksRoute) => void;
   onToggleSidebar: () => void;
   onNewTask: () => void;
@@ -144,7 +148,7 @@ export function TasksTopbar({
   route,
   projects,
   sidebarCollapsed,
-  pagerProjectId,
+  pagerScope,
   onNavigate,
   onToggleSidebar,
   onNewTask,
@@ -248,10 +252,12 @@ export function TasksTopbar({
   return (
     <header className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border-hairline bg-background px-3.5 text-sm">
       <div className="min-w-0 flex-1">{breadcrumb}</div>
-      {route.kind === "task" ? (
+      {route.kind === "task" && (pagerScope !== null || projects !== undefined) ? (
         <TaskPager
           taskKey={route.taskKey}
-          projectId={pagerProjectId}
+          // No browse context (deep link): step through the task's own
+          // project in list order; All tasks only if its project is unknown.
+          projectId={pagerScope !== null ? pagerScope.projectId : (project?.id ?? null)}
           onNavigate={onNavigate}
         />
       ) : null}

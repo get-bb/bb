@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import { ColorSwatchPicker, DEFAULT_COLOR, Field } from "./shared.js";
 
 // Enum options mirror the contract's preset create/update inputs.
@@ -42,6 +43,10 @@ const PERMISSION_LABELS: Record<PermissionMode, string> = {
   "workspace-write": "Workspace write",
   full: "Full access",
 };
+
+/** Provider ids bb ships with; the field stays free text for custom ones. */
+const KNOWN_PROVIDER_IDS = ["claude-code", "codex", "acp-grok"] as const;
+const PROVIDER_DATALIST_ID = "tasks-preset-provider-ids";
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -129,6 +134,10 @@ function LabelsSection() {
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    label: Label;
+    usedBy: number;
+  } | null>(null);
 
   const run = async (action: () => Promise<unknown>) => {
     setError(null);
@@ -138,6 +147,12 @@ function LabelsSection() {
       setError(describeError(actionError));
     }
   };
+
+  const askDelete = (label: Label) =>
+    run(async () => {
+      const { tasks } = await rpc.call("listTasks", { labelIds: [label.id] });
+      setConfirmDelete({ label, usedBy: tasks.length });
+    });
 
   if (projectList.length === 0) {
     return (
@@ -216,11 +231,7 @@ function LabelsSection() {
                   variant="ghost"
                   className="size-6 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
                   aria-label={`Delete label ${label.name}`}
-                  onClick={() =>
-                    void run(() =>
-                      rpc.call("deleteLabel", { labelId: label.id }),
-                    )
-                  }
+                  onClick={() => void askDelete(label)}
                 >
                   <Icon name="Trash2" className="size-3.5" />
                 </Button>
@@ -250,6 +261,28 @@ function LabelsSection() {
           {error}
         </p>
       ) : null}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+        title={`Delete label “${confirmDelete?.label.name ?? ""}”?`}
+        description={
+          confirmDelete && confirmDelete.usedBy > 0
+            ? `Used by ${confirmDelete.usedBy} task${confirmDelete.usedBy > 1 ? "s" : ""} — removing it detaches them.`
+            : "This label isn't used by any tasks."
+        }
+        confirmLabel="Delete label"
+        destructive
+        onConfirm={() => {
+          const target = confirmDelete;
+          if (target) {
+            void run(() =>
+              rpc.call("deleteLabel", { labelId: target.label.id }),
+            );
+          }
+        }}
+      />
     </div>
   );
 }
@@ -342,10 +375,16 @@ function PresetDialog({
             <Field label="Provider">
               <Input
                 value={draft.providerId}
-                placeholder="anthropic"
+                placeholder="claude-code"
+                list={PROVIDER_DATALIST_ID}
                 onChange={(event) => set("providerId", event.target.value)}
                 className="h-8"
               />
+              <datalist id={PROVIDER_DATALIST_ID}>
+                {KNOWN_PROVIDER_IDS.map((providerId) => (
+                  <option key={providerId} value={providerId} />
+                ))}
+              </datalist>
             </Field>
             <Field label="Model">
               <Input

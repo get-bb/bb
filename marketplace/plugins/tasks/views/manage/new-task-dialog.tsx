@@ -38,7 +38,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { CheckboxField } from "./shared.js";
+import { CheckboxField, DEFAULT_COLOR } from "./shared.js";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
@@ -100,6 +100,8 @@ export function NewTaskDialog({
   const [createMore, setCreateMore] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [labelQuery, setLabelQuery] = useState("");
+  const [creatingLabel, setCreatingLabel] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Each open starts a fresh draft seeded from the invoking context.
@@ -113,6 +115,7 @@ export function NewTaskDialog({
     setLabelIds([]);
     setDueDate("");
     setParentTaskId(defaultParentTaskId ?? null);
+    setLabelQuery("");
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -163,6 +166,31 @@ export function NewTaskDialog({
         ? current.filter((id) => id !== labelId)
         : [...current, labelId],
     );
+
+  // Inline label creation from the picker when the query matches nothing.
+  const createLabelFromQuery = async () => {
+    const name = labelQuery.trim();
+    if (!name || effectiveProjectId === null || creatingLabel) return;
+    setCreatingLabel(true);
+    try {
+      const { label } = await rpc.call("createLabel", {
+        projectId: effectiveProjectId,
+        name,
+        color: DEFAULT_COLOR,
+      });
+      labels.refresh();
+      setLabelIds((current) => [...current, label.id]);
+      setLabelQuery("");
+    } catch (createError) {
+      setError(
+        createError instanceof Error
+          ? createError.message
+          : String(createError),
+      );
+    } finally {
+      setCreatingLabel(false);
+    }
+  };
 
   const canSubmit =
     effectiveProjectId !== null && title.trim().length > 0 && !submitting;
@@ -243,6 +271,14 @@ export function NewTaskDialog({
             autoFocus
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={(event) => {
+              // Plain Enter submits from the title (Cmd/Ctrl+Enter works
+              // anywhere in the dialog via the DialogContent handler).
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                void submit();
+              }
+            }}
             placeholder="Task title"
             aria-label="Task title"
             className="w-full bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground"
@@ -346,9 +382,27 @@ export function NewTaskDialog({
             </PopoverTrigger>
             <PopoverContent className="w-56 p-0" align="start">
               <Command>
-                <CommandInput placeholder="Add labels…" />
+                <CommandInput
+                  placeholder="Add labels…"
+                  value={labelQuery}
+                  onValueChange={setLabelQuery}
+                />
                 <CommandList>
-                  <CommandEmpty>No labels in this project.</CommandEmpty>
+                  <CommandEmpty>
+                    {labelQuery.trim() !== "" ? (
+                      <button
+                        type="button"
+                        disabled={creatingLabel}
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                        onClick={() => void createLabelFromQuery()}
+                      >
+                        <Icon name="Plus" className="size-3.5" />
+                        Create “{labelQuery.trim()}”
+                      </button>
+                    ) : (
+                      "No labels in this project."
+                    )}
+                  </CommandEmpty>
                   <CommandGroup>
                     {(labels.data ?? []).map((label) => (
                       <CommandItem

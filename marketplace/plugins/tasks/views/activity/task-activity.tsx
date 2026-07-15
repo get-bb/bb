@@ -12,7 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
-import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import {
+  useTaskMentionItems,
+  useTasksQuery,
+  useTasksRpc,
+} from "../../shell/data.js";
+import { Lightbox } from "../detail/attachments.js";
 import type { Attachment, Comment, TaskThread } from "../../shared/contract.js";
 import {
   formatFileSize,
@@ -141,18 +146,28 @@ function AgentAvatar() {
   );
 }
 
-function AttachmentPreview({ attachment }: { attachment: Attachment }) {
+function AttachmentPreview({
+  attachment,
+  onOpenImage,
+}: {
+  attachment: Attachment;
+  onOpenImage: (attachment: Attachment) => void;
+}) {
   const url = attachmentDownloadUrl(attachment.id);
   if (attachment.isImage) {
     return (
       <figure className="m-0 flex flex-col">
-        <a href={url} target="_blank" rel="noreferrer">
+        <button
+          type="button"
+          aria-label={`View ${attachment.fileName}`}
+          onClick={() => onOpenImage(attachment)}
+        >
           <img
             src={url}
             alt={attachment.fileName}
             className="h-24 w-[150px] cursor-zoom-in rounded-md border border-border bg-muted object-cover hover:border-input"
           />
-        </a>
+        </button>
         <figcaption className="mt-0.5 max-w-[150px] truncate text-2xs text-muted-foreground">
           {attachment.fileName}
         </figcaption>
@@ -162,8 +177,7 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
   return (
     <a
       href={url}
-      target="_blank"
-      rel="noreferrer"
+      download={attachment.fileName}
       className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs shadow-2xs hover:border-input"
     >
       <span className="flex size-6 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
@@ -215,6 +229,7 @@ function CommentCard({
 }) {
   const { comment, attachments } = entry;
   const agent = comment.kind === "agent";
+  const [lightbox, setLightbox] = useState<Attachment | null>(null);
   return (
     <div className="relative mb-3.5 flex gap-2.5">
       {agent ? <AgentAvatar /> : <UserAvatar name={comment.authorName} />}
@@ -239,9 +254,16 @@ function CommentCard({
         {attachments.length > 0 ? (
           <div className="mt-1.5 flex flex-wrap gap-2">
             {attachments.map((attachment) => (
-              <AttachmentPreview key={attachment.id} attachment={attachment} />
+              <AttachmentPreview
+                key={attachment.id}
+                attachment={attachment}
+                onOpenImage={setLightbox}
+              />
             ))}
           </div>
+        ) : null}
+        {lightbox ? (
+          <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />
         ) : null}
         {comment.kind === "user" && comment.notifiedCount > 0 ? (
           <div className="mt-1 flex items-center gap-1 text-2xs font-medium text-success">
@@ -260,37 +282,181 @@ interface ComposerProps {
   runningCount: number;
 }
 
+export const MAX_COMMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+interface StagedAttachment {
+  id: number;
+  file: File;
+  /**
+   * staged: waiting for send · oversized: rejected at pick time, never sent ·
+   * failed: the comment posted but this upload failed; retry targets commentId.
+   */
+  status: "staged" | "oversized" | "failed";
+  commentId?: string;
+  error?: string;
+}
+
+let nextStagedId = 0;
+
+/** Size-validates picked files: oversized ones become rejected chips. */
+export function stageFiles(files: readonly File[]): StagedAttachment[] {
+  return files.map((file) =>
+    file.size > MAX_COMMENT_ATTACHMENT_BYTES
+      ? {
+          id: nextStagedId++,
+          file,
+          status: "oversized" as const,
+          error: `Over the 25 MB attachment limit (${formatFileSize(file.size)})`,
+        }
+      : { id: nextStagedId++, file, status: "staged" as const },
+  );
+}
+
+function AttachmentChip({
+  entry,
+  onRemove,
+  onRetry,
+}: {
+  entry: StagedAttachment;
+  onRemove: () => void;
+  onRetry?: () => void;
+}) {
+  const broken = entry.status !== "staged";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
+        broken
+          ? "border-destructive/50 bg-destructive/10 text-destructive"
+          : "border-border bg-background",
+      )}
+      title={entry.error}
+    >
+      <HugeiconsIcon
+        icon={File01Icon}
+        className={cn("size-3", broken ? undefined : "text-muted-foreground")}
+      />
+      <span className="max-w-40 truncate">{entry.file.name}</span>
+      <span
+        className={cn(
+          "text-2xs",
+          broken ? "text-destructive/80" : "text-muted-foreground",
+        )}
+      >
+        {formatFileSize(entry.file.size)}
+      </span>
+      {entry.status === "failed" && onRetry ? (
+        <button
+          type="button"
+          aria-label={`Retry upload of ${entry.file.name}`}
+          className="font-medium underline underline-offset-2"
+          onClick={onRetry}
+        >
+          Retry
+        </button>
+      ) : null}
+      <button
+        type="button"
+        aria-label={`Remove ${entry.file.name}`}
+        className={cn(
+          !broken && "text-muted-foreground hover:text-foreground",
+        )}
+        onClick={onRemove}
+      >
+        <HugeiconsIcon icon={Cancel01Icon} className="size-3" />
+      </button>
+    </span>
+  );
+}
+
 function CommentComposer({ taskId, runningCount }: ComposerProps) {
   const rpc = useTasksRpc();
+  const mentionItems = useTaskMentionItems();
   const [body, setBody] = useState("");
   const [notify, setNotify] = useState(true);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<StagedAttachment[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canSend = body.trim().length > 0 && !sending;
+  const staged = pendingFiles.filter((entry) => entry.status === "staged");
+  const canSend = !sending && (body.trim().length > 0 || staged.length > 0);
+
+  const removeFile = (id: number) =>
+    setPendingFiles((files) => files.filter((entry) => entry.id !== id));
+
+  const retryUpload = async (entry: StagedAttachment) => {
+    if (entry.commentId === undefined) return;
+    try {
+      await uploadCommentAttachment(entry.commentId, entry.file);
+      removeFile(entry.id);
+      setError(null);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setPendingFiles((files) =>
+        files.map((candidate) =>
+          candidate.id === entry.id
+            ? { ...candidate, error: message }
+            : candidate,
+        ),
+      );
+    }
+  };
 
   const send = async () => {
     if (!canSend) return;
     setSending(true);
     setError(null);
+    const text = body.trim();
+    let comment: Comment;
     try {
-      const { comment } = await rpc.call("createComment", {
-        taskId,
-        body: body.trim(),
-        notify: notify && runningCount > 0,
-      });
-      for (const file of pendingFiles) {
-        await uploadCommentAttachment(comment.id, file);
-      }
-      setBody("");
-      setPendingFiles([]);
+      comment = (
+        await rpc.call("createComment", {
+          taskId,
+          body: text,
+          notify: notify && runningCount > 0,
+          allowEmptyBody: text.length === 0,
+        })
+      ).comment;
     } catch (cause) {
+      // Nothing posted: keep the draft and chips for another attempt.
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
       setSending(false);
+      return;
     }
+    // The comment is now posted — clear the text so a later upload failure
+    // can't double-post it. Failed uploads stay behind as retryable chips.
+    setBody("");
+    const failed: StagedAttachment[] = [];
+    for (const entry of staged) {
+      try {
+        await uploadCommentAttachment(comment.id, entry.file);
+      } catch (cause) {
+        failed.push({
+          ...entry,
+          status: "failed",
+          commentId: comment.id,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
+      }
+    }
+    // Sent entries leave the tray (failures come back as retryable chips);
+    // anything staged after send started is untouched.
+    setPendingFiles((files) =>
+      files.flatMap((entry) => {
+        const failure = failed.find((candidate) => candidate.id === entry.id);
+        if (failure) return [failure];
+        return staged.some((candidate) => candidate.id === entry.id)
+          ? []
+          : [entry];
+      }),
+    );
+    if (failed.length > 0) {
+      setError(
+        `The comment posted, but ${failed.length} attachment${failed.length > 1 ? "s" : ""} failed to upload — retry below.`,
+      );
+    }
+    setSending(false);
   };
 
   return (
@@ -299,37 +465,23 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
         value={body}
         onChange={setBody}
         variant="comment"
-        placeholder="Leave a comment…"
+        placeholder="Leave a comment… @-mention tasks to link them"
         className="min-h-11"
+        mentionItems={mentionItems}
       />
       {pendingFiles.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {pendingFiles.map((file, index) => (
-            <span
-              key={`${file.name}-${index}`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs"
-            >
-              <HugeiconsIcon
-                icon={File01Icon}
-                className="size-3 text-muted-foreground"
-              />
-              <span className="max-w-40 truncate">{file.name}</span>
-              <span className="text-2xs text-muted-foreground">
-                {formatFileSize(file.size)}
-              </span>
-              <button
-                type="button"
-                aria-label={`Remove ${file.name}`}
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() =>
-                  setPendingFiles((files) =>
-                    files.filter((_, at) => at !== index),
-                  )
-                }
-              >
-                <HugeiconsIcon icon={Cancel01Icon} className="size-3" />
-              </button>
-            </span>
+          {pendingFiles.map((entry) => (
+            <AttachmentChip
+              key={entry.id}
+              entry={entry}
+              onRemove={() => removeFile(entry.id)}
+              onRetry={
+                entry.status === "failed"
+                  ? () => void retryUpload(entry)
+                  : undefined
+              }
+            />
           ))}
         </div>
       ) : null}
@@ -358,7 +510,7 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
           onChange={(event) => {
             const files = [...(event.target.files ?? [])];
             if (files.length > 0)
-              setPendingFiles((current) => [...current, ...files]);
+              setPendingFiles((current) => [...current, ...stageFiles(files)]);
             event.target.value = "";
           }}
         />

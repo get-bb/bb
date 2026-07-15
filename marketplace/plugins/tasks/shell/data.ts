@@ -118,6 +118,27 @@ export function useSidebarSummary() {
   );
 }
 
+/**
+ * @-mention source for TasksEditor: tasks matched by key/title/description
+ * via the server-side `listTasks` search.
+ */
+export function useTaskMentionItems() {
+  const rpc = useTasksRpc();
+  return useCallback(
+    async (query: string) => {
+      const trimmed = query.trim();
+      const result = await rpc.call(
+        "listTasks",
+        trimmed ? { search: trimmed } : {},
+      );
+      return result.tasks
+        .slice(0, 8)
+        .map((task) => ({ id: task.id, key: task.key, title: task.title }));
+    },
+    [rpc],
+  );
+}
+
 /** Tasks with agents currently working, for the Active view count. */
 export function useActiveTasks() {
   return useTasksQuery(

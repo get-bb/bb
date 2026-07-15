@@ -68,7 +68,8 @@ export async function uploadAttachment(
   return { attachmentId: result.attachmentId, url: result.url };
 }
 
-function Lightbox({
+/** Full-viewport image overlay, shared by the detail grid and comment feed. */
+export function Lightbox({
   attachment,
   onClose,
 }: {

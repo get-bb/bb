@@ -17,23 +17,16 @@ import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/index.js";
 import {
   applyBoardMove,
+  BOARD_STATUSES,
   dropIndexForPointer,
   dropNeighborsForIndex,
+  visibleBoardStatuses,
 } from "./drop-position.js";
 import { PriorityIcon, STATUS_LABELS, StatusIcon } from "./icons.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
-/** Column order; Canceled is appended only when it has cards. */
-const BOARD_STATUSES = [
-  "backlog",
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
-] as const satisfies readonly TaskStatus[];
 
 const DRAG_THRESHOLD_PX = 5;
 
@@ -300,11 +293,6 @@ export function BoardView({ projectId }: BoardViewProps) {
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => dragCleanupRef.current?.(), []);
 
-  const visibleStatuses = (current: ColumnMap): TaskStatus[] => [
-    ...BOARD_STATUSES,
-    ...(current.canceled.length > 0 ? (["canceled"] as const) : []),
-  ];
-
   const findDropTarget = (
     x: number,
     y: number,
@@ -324,7 +312,7 @@ export function BoardView({ projectId }: BoardViewProps) {
     ) {
       return null;
     }
-    for (const status of visibleStatuses(current)) {
+    for (const status of visibleBoardStatuses(current)) {
       const columnElement = columnRefs.current.get(status);
       if (!columnElement) continue;
       const rect = columnElement.getBoundingClientRect();
@@ -556,7 +544,7 @@ export function BoardView({ projectId }: BoardViewProps) {
         drag !== null && "cursor-grabbing",
       )}
     >
-      {visibleStatuses(columns).map(renderColumn)}
+      {visibleBoardStatuses(columns).map(renderColumn)}
       {drag && ghostTask ? (
         <div
           className="pointer-events-none fixed z-50"

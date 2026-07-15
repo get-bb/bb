@@ -2,11 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SmilePlusIcon } from "@hugeicons/core-free-icons";
 import type { Task } from "../../shared/contract.js";
-import { useTasksQuery, useTasksRpc, type TasksRpc } from "../../shell/data.js";
+import {
+  useTaskMentionItems,
+  useTasksQuery,
+  useTasksRpc,
+  type TasksRpc,
+} from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import { TaskActivity } from "../activity/index.js";
 import { AttachmentsGrid, uploadAttachment } from "./attachments.js";
+import {
+  createDescriptionSaver,
+  type DescriptionSaver,
+} from "./description-save.js";
 import {
   STATUS_LABELS,
   StatusIcon,
@@ -178,10 +187,24 @@ function TaskDetail({ task }: { task: Task }) {
   // previous markdown, so passing the server value straight through would
   // reset the editor on every unrelated realtime refresh.
   const [draft, setDraft] = useState<{ taskId: string; markdown: string }>();
-  const saveTimerRef = useRef<number | undefined>(undefined);
-  const pendingSaveRef = useRef<{ taskId: string; markdown: string } | undefined>(
-    undefined,
-  );
+  const rpcRef = useRef(rpc);
+  rpcRef.current = rpc;
+  const pushRef = useRef(push);
+  pushRef.current = push;
+  const saverRef = useRef<DescriptionSaver | null>(null);
+  saverRef.current ??= createDescriptionSaver({
+    save: async (taskId, markdown) => {
+      const result = await rpcRef.current.call("updateTask", {
+        taskId,
+        description: markdown,
+      });
+      return result.ok
+        ? { ok: true }
+        : { ok: false, errorMessage: result.error.message };
+    },
+    onError: (message) => pushRef.current("error", message),
+    delayMs: DESCRIPTION_SAVE_DELAY_MS,
+  });
 
   const projects = useTasksQuery(
     async (query) => (await query.call("listProjects", {})).projects,
@@ -237,45 +260,15 @@ function TaskDetail({ task }: { task: Task }) {
     }
   };
 
-  const saveDescription = async (taskId: string, markdown: string) => {
-    pendingSaveRef.current = undefined;
-    try {
-      const result = await rpc.call("updateTask", {
-        taskId,
-        description: markdown,
-      });
-      if (!result.ok) push("error", result.error.message);
-    } catch (error) {
-      push("error", error instanceof Error ? error.message : String(error));
-    }
-  };
-
   const onDescriptionChange = (markdown: string) => {
     setDraft({ taskId: task.id, markdown });
-    pendingSaveRef.current = { taskId: task.id, markdown };
-    window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => {
-      const pending = pendingSaveRef.current;
-      if (pending) void saveDescription(pending.taskId, pending.markdown);
-    }, DESCRIPTION_SAVE_DELAY_MS);
+    saverRef.current?.onChange(task.id, markdown);
   };
 
   // Flush a pending description save when leaving the page or switching task.
   useEffect(() => {
-    return () => {
-      window.clearTimeout(saveTimerRef.current);
-      const pending = pendingSaveRef.current;
-      if (pending && pending.taskId === task.id) {
-        pendingSaveRef.current = undefined;
-        rpc
-          .call("updateTask", {
-            taskId: pending.taskId,
-            description: pending.markdown,
-          })
-          .catch(() => undefined);
-      }
-    };
-  }, [task.id, rpc]);
+    return () => saverRef.current?.flush(task.id);
+  }, [task.id]);
 
   const uploadForTask = async (file: File) => {
     const result = await uploadAttachment(file, task.id);
@@ -317,14 +310,7 @@ function TaskDetail({ task }: { task: Task }) {
     }
   };
 
-  const mentionItems = async (query: string) => {
-    const result = await rpc.call("listTasks", {
-      ...(query.trim() ? { search: query.trim() } : {}),
-    });
-    return result.tasks
-      .slice(0, 8)
-      .map((entry) => ({ id: entry.id, key: entry.key, title: entry.title }));
-  };
+  const mentionItems = useTaskMentionItems();
 
   const descriptionValue =
     draft && draft.taskId === task.id ? draft.markdown : task.description;

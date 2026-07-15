@@ -1,5 +1,28 @@
 import { TASK_STATUSES, type TaskStatus } from "../../shared/contract.js";
 
+/** Always-visible columns in board order; Canceled is appended on demand. */
+export const BOARD_STATUSES = [
+  "backlog",
+  "todo",
+  "in_progress",
+  "in_review",
+  "done",
+] as const satisfies readonly TaskStatus[];
+
+/**
+ * The board's column set: the five canonical columns, plus Canceled appended
+ * at the end whenever it holds cards (canceled top-level tasks would
+ * otherwise be unreachable from the board).
+ */
+export function visibleBoardStatuses(
+  columns: Readonly<Record<TaskStatus, readonly unknown[]>>,
+): TaskStatus[] {
+  return [
+    ...BOARD_STATUSES,
+    ...(columns.canceled.length > 0 ? (["canceled"] as const) : []),
+  ];
+}
+
 /**
  * Reorder neighbors for a board drop, matching the `boardMove` RPC contract:
  * `beforeTaskId` is the card that sorts BEFORE (above) the dropped card and
