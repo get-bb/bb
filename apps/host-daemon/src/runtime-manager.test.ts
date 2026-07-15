@@ -1077,6 +1077,34 @@ describe("RuntimeManager", () => {
     );
   });
 
+  it("passes the resolved shell PATH to managed worktree setup", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      shellEnv: {
+        PATH: "/resolved/user/bin:/usr/bin:/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      provision: {
+        workspaceProvisionType: "managed-worktree",
+        sourcePath: "/tmp/source",
+        targetPath: "/tmp/env-1",
+        branchName: "bb/env-1",
+        baseBranch: "main",
+        timeoutMs: 900000,
+      },
+    });
+
+    expect(provisionWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        setupPath: "/resolved/user/bin:/usr/bin:/bin",
+      }),
+    );
+  });
+
   it("passes shell PATH through to provider process env", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());

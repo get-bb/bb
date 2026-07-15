@@ -91,6 +91,8 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   baseBranch: string | null;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
+  /** Resolved user-shell PATH for the setup script. */
+  setupPath?: string;
 }
 
 export interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
@@ -684,6 +686,7 @@ async function provisionWorktree(
     branchName: opts.branchName,
     baseBranch: opts.baseBranch,
     timeoutMs: opts.timeoutMs,
+    setupPath: opts.setupPath,
     onProgress: opts.onProgress,
     pruneEmptyParent: true,
     signal: opts.signal,
