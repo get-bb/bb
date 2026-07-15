@@ -216,7 +216,7 @@ function collectAttachments(
   return [...attachments.values()];
 }
 
-function createSystemComment(
+export function createSystemComment(
   store: TasksStore,
   input: {
     taskId: string;
@@ -236,7 +236,7 @@ function createSystemComment(
   });
 }
 
-function publishThreadsChanged(bb: BbPluginApi, taskId: string): void {
+export function publishThreadsChanged(bb: BbPluginApi, taskId: string): void {
   const payload: ThreadsChangedEvent = { taskId };
   bb.realtime.publish("threads:changed", payload);
 }
@@ -250,7 +250,7 @@ function publishTasksChanged(
   bb.realtime.publish("tasks:changed", payload);
 }
 
-function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
+export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
   const payload: CommentsChangedEvent = { taskId };
   bb.realtime.publish("comments:changed", payload);
 }
