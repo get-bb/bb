@@ -1,0 +1,337 @@
+import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { describe, expect, it } from "vitest";
+import { createStore } from "../api";
+import type { Comment, Project, Task } from "../db";
+import { delegationRpcContract } from "./contract";
+import {
+  buildSeedPrompt,
+  BUILTIN_PRESETS,
+  registerDelegation,
+  seedBuiltinPresets,
+} from ".";
+
+describe("task delegation", () => {
+  it("spawns from a preset, attaches the thread, advances status, comments, and invalidates", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: async () => ({ id: "thr_delegated" }),
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Tasks plugin",
+      prefix: "TASK",
+      color: "blue",
+      linkedBbProjectId: "proj_bb",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Implement delegation",
+      description: "Build the core agent loop.",
+      status: "todo",
+    });
+    registerDelegation(bb, store);
+    const preset = store.tasks
+      .listPresets()
+      .find((candidate) => candidate.name === "Sonnet · high");
+    if (!preset) throw new Error("built-in preset was not seeded");
+
+    const result = delegationRpcContract.delegate.output.parse(
+      await harness.callRpc("delegate", {
+        taskId: task.id,
+        presetId: preset.id,
+        extraInstructions: "Run the focused tests before reporting back.",
+      }),
+    );
+
+    expect(result).toEqual({ threadId: "thr_delegated" });
+    expect(harness.sdk.callsTo("threads.spawn")).toEqual([
+      [
+        expect.objectContaining({
+          projectId: "proj_bb",
+          environment: { type: "project-default" },
+          providerId: "claude-code",
+          model: "claude-sonnet-5",
+          reasoningLevel: "high",
+          permissionMode: "full",
+          title: "TASK-1 · Implement delegation",
+          prompt: expect.stringContaining(
+            "Run the focused tests before reporting back.",
+          ),
+          origin: "plugin",
+          originPluginId: "tasks",
+        }),
+      ],
+    ]);
+    expect(store.tasks.listTaskThreads(task.id)).toEqual([
+      expect.objectContaining({
+        taskId: task.id,
+        threadId: "thr_delegated",
+        presetName: "Sonnet · high",
+        title: "TASK-1 · Implement delegation",
+        liveStatus: "starting",
+      }),
+    ]);
+    expect(store.tasks.getTask(task.id)?.status).toBe("in_progress");
+    expect(store.tasks.listComments(task.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "system",
+          authorName: "Tasks",
+          presetName: "Sonnet · high",
+          threadId: "thr_delegated",
+          body: "Status changed to In Progress · delegated to Sonnet · high",
+        }),
+        expect.objectContaining({
+          kind: "system",
+          authorName: "Tasks",
+          presetName: "Sonnet · high",
+          threadId: "thr_delegated",
+          body: 'Thread "TASK-1 · Implement delegation" attached · preset Sonnet · high',
+        }),
+      ]),
+    );
+    expect(harness.realtimeSignals).toEqual([
+      { channel: "threads:changed", payload: { taskId: task.id } },
+      {
+        channel: "tasks:changed",
+        payload: { taskId: task.id, projectId: project.id },
+      },
+      { channel: "comments:changed", payload: { taskId: task.id } },
+    ]);
+
+    await harness.dispose();
+  });
+
+  it("fails before spawning when the task project is not linked to bb", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: { threads: { spawn: async () => ({ id: "thr_never" }) } },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Unlinked",
+      prefix: "UNL",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Cannot delegate yet",
+    });
+    registerDelegation(bb, store);
+    const preset = store.tasks.listPresets()[0];
+    if (!preset) throw new Error("built-in preset was not seeded");
+
+    await expect(
+      harness.callRpc("delegate", { taskId: task.id, presetId: preset.id }),
+    ).rejects.toMatchObject({
+      code: "handler_error",
+      message: 'Task project "Unlinked" is not linked to a bb project',
+    });
+    expect(harness.sdk.callsTo("threads.spawn")).toEqual([]);
+
+    await harness.dispose();
+  });
+
+  it("self-attaches an existing thread through taskThreadsAttach", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async () => ({
+            id: "thr_existing",
+            title: "Existing worker",
+            titleFallback: null,
+            status: "active",
+          }),
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Manual",
+      prefix: "MAN",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Attach current worker",
+    });
+    registerDelegation(bb, store);
+
+    await expect(
+      harness.callRpc("taskThreadsAttach", {
+        taskId: task.id,
+        threadId: "thr_existing",
+      }),
+    ).resolves.toEqual({ threadId: "thr_existing" });
+    expect(harness.sdk.callsTo("threads.get")).toEqual([
+      [{ threadId: "thr_existing" }],
+    ]);
+    expect(store.tasks.listTaskThreads(task.id)).toEqual([
+      expect.objectContaining({
+        threadId: "thr_existing",
+        presetName: "Attached",
+        title: "Existing worker",
+        liveStatus: "working",
+      }),
+    ]);
+    expect(harness.realtimeSignals).toEqual([
+      { channel: "threads:changed", payload: { taskId: task.id } },
+      {
+        channel: "tasks:changed",
+        payload: { taskId: task.id, projectId: project.id },
+      },
+    ]);
+
+    await harness.dispose();
+  });
+
+  it("seeds built-in presets only when the preset table is empty", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+
+    seedBuiltinPresets(store.tasks);
+    seedBuiltinPresets(store.tasks);
+
+    expect(store.tasks.listPresets()).toHaveLength(BUILTIN_PRESETS.length);
+    expect(store.tasks.listPresets()).toEqual(
+      expect.arrayContaining(
+        BUILTIN_PRESETS.map((preset) =>
+          expect.objectContaining({ ...preset, builtin: true }),
+        ),
+      ),
+    );
+
+    await harness.dispose();
+  });
+});
+
+describe("delegation seed prompt", () => {
+  it("captures task context and the complete report-back contract", () => {
+    const project: Project = {
+      id: "01J00000000000000000000001",
+      name: "Tasks plugin",
+      prefix: "TASK",
+      nextTaskNumber: 4,
+      color: "blue",
+      folderId: null,
+      linkedBbProjectId: "proj_tasks",
+      createdAt: "2026-07-15T17:00:00.000Z",
+    };
+    const task: Task = {
+      id: "01J00000000000000000000002",
+      projectId: project.id,
+      number: 1,
+      key: "TASK-1",
+      title: "Delegate work",
+      description:
+        "Implement **preset-driven** delegation.\n\nKeep the prompt useful.",
+      status: "todo",
+      priority: "high",
+      dueDate: null,
+      parentTaskId: null,
+      position: 1_024,
+      createdAt: "2026-07-15T17:01:00.000Z",
+      updatedAt: "2026-07-15T17:01:00.000Z",
+    };
+    const subtask: Task = {
+      ...task,
+      id: "01J00000000000000000000003",
+      number: 2,
+      key: "TASK-2",
+      title: "Add focused tests",
+      status: "in_progress",
+      parentTaskId: task.id,
+    };
+    const comments: Comment[] = [
+      {
+        id: "01J00000000000000000000004",
+        taskId: task.id,
+        kind: "user",
+        authorName: "Sawyer",
+        presetName: null,
+        threadId: null,
+        body: "Preserve the existing domain path.",
+        notifiedCount: 0,
+        createdAt: "2026-07-15T17:02:00.000Z",
+      },
+      {
+        id: "01J00000000000000000000005",
+        taskId: task.id,
+        kind: "agent",
+        authorName: "Worker",
+        presetName: "Sonnet · high",
+        threadId: "thr_prior",
+        body: "The schema study is complete.",
+        notifiedCount: 0,
+        createdAt: "2026-07-15T17:03:00.000Z",
+      },
+    ];
+
+    expect(
+      buildSeedPrompt({
+        task,
+        project,
+        subtasks: [subtask],
+        attachments: [
+          {
+            id: "01J00000000000000000000006",
+            fileName: "delegation-notes.md",
+          },
+        ],
+        recentComments: comments,
+        presetInstructions: "Prefer focused changes.",
+        extraInstructions: "Run the backend gates.",
+      }),
+    ).toMatchInlineSnapshot(`
+      "# TASK-1 · Delegate work
+
+      ## Description
+
+      Implement **preset-driven** delegation.
+
+      Keep the prompt useful.
+
+      ## Project context
+
+      - Name: Tasks plugin
+      - Linked bb project: proj_tasks
+
+      ## Sub-tasks
+
+      - TASK-2 · Add focused tests (in_progress)
+
+      ## Attachments
+
+      - delegation-notes.md · 01J00000000000000000000006
+        Fetch with: bb tasks attachment get 01J00000000000000000000006 --out <path>
+
+      ## Recent comments
+
+      ### Sawyer · user · 2026-07-15T17:02:00.000Z
+
+      Preserve the existing domain path.
+
+      ### Worker · agent · 2026-07-15T17:03:00.000Z
+
+      The schema study is complete.
+
+      ## Report-back contract
+
+      You are working on task TASK-1. Use the bb tasks CLI: comment substantive updates (bb tasks comment TASK-1 --body ...), attach result artifacts, set status when done (bb tasks update TASK-1 --status in_review) or explain blockage in a comment. Your thread is already attached to the task.
+
+      ## Preset instructions
+
+      Prefer focused changes.
+
+      ## Additional instructions
+
+      Run the backend gates.
+      "
+    `);
+  });
+});
