@@ -1,7 +1,10 @@
-// OWNER: activity-view worker. This file is a placeholder created by the
-// app-shell worker (T3.1). Replace its contents with the real Active view
-// (tasks with agents working now); the shell only depends on the exported
-// `ActivityView` name and its props.
+// TaskActivity is the activity feed + comment composer the detail view
+// mounts under a task. ActivityView (the "Active" sidebar route: tasks with
+// agents working now) is still a placeholder pending its own task; the shell
+// only depends on the exported name.
+
+export { TaskActivity, type TaskActivityProps } from "./task-activity.js";
+export { default } from "./task-activity.js";
 
 export function ActivityView() {
   return (
