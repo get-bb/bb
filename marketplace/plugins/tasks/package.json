@@ -78,6 +78,7 @@
     "@radix-ui/react-tabs": "^1.1.17",
     "@radix-ui/react-tooltip": "^1.2.12",
     "@tiptap/core": "^2.27.2",
+    "@tiptap/extension-bubble-menu": "^2.27.2",
     "@tiptap/extension-image": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",
     "@tiptap/extension-placeholder": "^2.27.2",
@@ -86,12 +87,12 @@
     "@tiptap/pm": "^2.27.2",
     "@tiptap/starter-kit": "^2.27.2",
     "@tiptap/suggestion": "^2.27.2",
-    "tiptap-markdown": "^0.8.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "lucide-react": "^1.23.0",
     "tailwind-merge": "^3.4.0",
+    "tiptap-markdown": "^0.8.10",
     "vaul": "^1.1.2",
     "zod": "^4.3.6"
   }

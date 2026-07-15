@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Preset } from "../../shared/contract.js";
 import type { TasksRpc } from "../../shell/data.js";
+import { useTasksQuery } from "../../shell/data.js";
 import {
   Dialog,
   DialogContent,
@@ -43,9 +44,12 @@ export const PERMISSION_LABELS: Record<PermissionMode, string> = {
   full: "Full access",
 };
 
-/** Provider ids bb ships with; the field stays free text for custom ones. */
-const KNOWN_PROVIDER_IDS = ["claude-code", "codex", "acp-grok"] as const;
-const PROVIDER_DATALIST_ID = "tasks-preset-provider-ids";
+/** Sentinel Select value for the free-text provider/model escape hatch. */
+const CUSTOM_VALUE = "__custom__";
+
+function isReasoningLevel(value: string): value is ReasoningLevel {
+  return (REASONING_LEVELS as readonly string[]).includes(value);
+}
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -86,16 +90,14 @@ function presetDraft(preset: Preset): PresetDraft {
   };
 }
 
-/**
- * Create/update a preset from a dialog draft. Built-in presets keep their
- * name (the field is disabled in the dialog and omitted from the update).
- */
+/** Create/update a preset from a dialog draft. */
 export async function savePresetDraft(
   rpc: TasksRpc,
   editing: Preset | null,
   draft: PresetDraft,
 ): Promise<void> {
   const fields = {
+    name: draft.name.trim(),
     providerId: draft.providerId.trim(),
     modelId: draft.modelId.trim(),
     reasoningLevel: draft.reasoningLevel,
@@ -103,13 +105,9 @@ export async function savePresetDraft(
     instructions: draft.instructions,
   };
   if (editing) {
-    await rpc.call("updatePreset", {
-      presetId: editing.id,
-      ...fields,
-      ...(editing.builtin ? {} : { name: draft.name.trim() }),
-    });
+    await rpc.call("updatePreset", { presetId: editing.id, ...fields });
   } else {
-    await rpc.call("createPreset", { ...fields, name: draft.name.trim() });
+    await rpc.call("createPreset", fields);
   }
 }
 
@@ -128,11 +126,90 @@ export function PresetDialog({
   const [draft, setDraft] = useState<PresetDraft>(
     editing ? presetDraft(editing) : EMPTY_PRESET_DRAFT,
   );
+  const [providerCustom, setProviderCustom] = useState(false);
+  const [modelCustom, setModelCustom] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const set = <K extends keyof PresetDraft>(key: K, value: PresetDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
-  const nameLocked = editing?.builtin ?? false;
+
+  const providersQuery = useTasksQuery(
+    async (rpc) => (await rpc.call("listProviders", {})).providers,
+    [],
+  );
+  const providers = providersQuery.data;
+
+  // The dialog opens before the provider list arrives; once it lands, an
+  // edited preset whose provider isn't offered flips to the custom input
+  // (keeping its value), and a fresh draft preselects the first provider.
+  const providerResolvedRef = useRef(false);
+  useEffect(() => {
+    if (!providers || providerResolvedRef.current) return;
+    providerResolvedRef.current = true;
+    const known = providers.some(
+      (provider) => provider.id === draft.providerId,
+    );
+    if (draft.providerId === "") {
+      const first = providers[0];
+      if (first) set("providerId", first.id);
+      else setProviderCustom(true);
+    } else if (!known) {
+      setProviderCustom(true);
+      setModelCustom(true);
+    }
+  }, [providers]);
+
+  const providerForModels =
+    !providerCustom && draft.providerId !== "" ? draft.providerId : null;
+  const modelsQuery = useTasksQuery(
+    async (rpc) =>
+      providerForModels === null
+        ? null
+        : await rpc.call("listProviderModels", {
+            providerId: providerForModels,
+          }),
+    [],
+    [providerForModels],
+  );
+  const models = modelsQuery.data?.models;
+  const serverLevels = (modelsQuery.data?.reasoningLevels ?? []).filter(
+    isReasoningLevel,
+  );
+  const reasoningOptions: readonly ReasoningLevel[] =
+    !modelCustom && !providerCustom && serverLevels.length > 0
+      ? serverLevels
+      : REASONING_LEVELS;
+
+  // Cascade: when the models for the selected provider land and the current
+  // model isn't one of them, either respect an edited preset's custom model
+  // (first load) or preselect the provider's default.
+  const modelsResolvedOnceRef = useRef(false);
+  useEffect(() => {
+    if (!models || modelCustom) return;
+    if (models.some((model) => model.id === draft.modelId)) {
+      modelsResolvedOnceRef.current = true;
+      return;
+    }
+    if (editing && draft.modelId !== "" && !modelsResolvedOnceRef.current) {
+      modelsResolvedOnceRef.current = true;
+      setModelCustom(true);
+      return;
+    }
+    modelsResolvedOnceRef.current = true;
+    const fallback = models.find((model) => model.isDefault) ?? models[0];
+    set("modelId", fallback ? fallback.id : "");
+  }, [models, modelCustom]);
+
+  // Keep the reasoning level inside what the provider actually offers.
+  useEffect(() => {
+    if (!reasoningOptions.includes(draft.reasoningLevel)) {
+      set(
+        "reasoningLevel",
+        reasoningOptions.includes("medium") ? "medium" : reasoningOptions[0]!,
+      );
+    }
+  }, [reasoningOptions.join(","), draft.reasoningLevel]);
+
   const canSubmit =
     draft.name.trim() !== "" &&
     draft.providerId.trim() !== "" &&
@@ -152,41 +229,125 @@ export function PresetDialog({
         <div className="space-y-4">
           <Field label="Name">
             <Input
-              autoFocus={!nameLocked}
+              autoFocus
               value={draft.name}
               placeholder="e.g. Sonnet · high"
-              disabled={nameLocked}
               onChange={(event) => set("name", event.target.value)}
               className="h-8"
             />
-            {nameLocked ? (
-              <p className="text-2xs text-muted-foreground">
-                Built-in preset — the name can't be changed.
-              </p>
-            ) : null}
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Provider">
-              <Input
-                value={draft.providerId}
-                placeholder="claude-code"
-                list={PROVIDER_DATALIST_ID}
-                onChange={(event) => set("providerId", event.target.value)}
-                className="h-8"
-              />
-              <datalist id={PROVIDER_DATALIST_ID}>
-                {KNOWN_PROVIDER_IDS.map((providerId) => (
-                  <option key={providerId} value={providerId} />
-                ))}
-              </datalist>
+              <Select
+                value={providerCustom ? CUSTOM_VALUE : draft.providerId}
+                onValueChange={(value) => {
+                  if (value === CUSTOM_VALUE) {
+                    setProviderCustom(true);
+                    setModelCustom(true);
+                    return;
+                  }
+                  setProviderCustom(false);
+                  setModelCustom(false);
+                  setDraft((current) => ({
+                    ...current,
+                    providerId: value,
+                    // Cleared so the cascade effect fills in the provider's
+                    // default model once the list arrives.
+                    modelId: "",
+                  }));
+                }}
+              >
+                <SelectTrigger aria-label="Provider" className="h-8">
+                  <SelectValue
+                    placeholder={
+                      providers === undefined ? "Loading…" : "Provider"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {(providers ?? []).map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={CUSTOM_VALUE}>Custom…</SelectItem>
+                </SelectContent>
+              </Select>
+              {providerCustom ? (
+                <Input
+                  value={draft.providerId}
+                  placeholder="provider id, e.g. claude-code"
+                  aria-label="Custom provider id"
+                  onChange={(event) => set("providerId", event.target.value)}
+                  className="h-8"
+                />
+              ) : null}
             </Field>
             <Field label="Model">
-              <Input
-                value={draft.modelId}
-                placeholder="claude-sonnet-5"
-                onChange={(event) => set("modelId", event.target.value)}
-                className="h-8"
-              />
+              {providerCustom || modelCustom ? (
+                <>
+                  {!providerCustom ? (
+                    <Select
+                      value={CUSTOM_VALUE}
+                      onValueChange={(value) => {
+                        if (value === CUSTOM_VALUE) return;
+                        setModelCustom(false);
+                        set("modelId", value);
+                      }}
+                    >
+                      <SelectTrigger aria-label="Model" className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(models ?? []).map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.name}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value={CUSTOM_VALUE}>Custom…</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  <Input
+                    value={draft.modelId}
+                    placeholder="model id, e.g. claude-sonnet-5"
+                    aria-label="Custom model id"
+                    onChange={(event) => set("modelId", event.target.value)}
+                    className="h-8"
+                  />
+                </>
+              ) : (
+                <Select
+                  value={draft.modelId === "" ? undefined : draft.modelId}
+                  onValueChange={(value) => {
+                    if (value === CUSTOM_VALUE) {
+                      setModelCustom(true);
+                      return;
+                    }
+                    set("modelId", value);
+                  }}
+                >
+                  <SelectTrigger aria-label="Model" className="h-8">
+                    <SelectValue
+                      placeholder={
+                        modelsQuery.data === undefined &&
+                        providerForModels !== null
+                          ? "Loading…"
+                          : "Model"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(models ?? []).map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name}
+                        {model.isDefault ? " (default)" : ""}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={CUSTOM_VALUE}>Custom…</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -201,7 +362,7 @@ export function PresetDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {REASONING_LEVELS.map((level) => (
+                  {reasoningOptions.map((level) => (
                     <SelectItem key={level} value={level}>
                       {level}
                     </SelectItem>

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SmilePlusIcon } from "@hugeicons/core-free-icons";
 import type { Task } from "../../shared/contract.js";
+import { useBbNavigate } from "@bb/plugin-sdk/app";
 import {
-  useTaskMentionItems,
+  useMentionItems,
   useTasksQuery,
   useTasksRpc,
   type TasksRpc,
@@ -324,7 +325,8 @@ function TaskDetail({ task }: { task: Task }) {
     }
   };
 
-  const mentionItems = useTaskMentionItems();
+  const mentionItems = useMentionItems();
+  const navigate = useBbNavigate();
 
   const descriptionValue =
     draft && draft.taskId === task.id ? draft.markdown : task.description;
@@ -381,6 +383,7 @@ function TaskDetail({ task }: { task: Task }) {
             placeholder="Add a description… rich text: headings, lists, code, checkboxes, @mentions"
             onUploadImage={uploadForTask}
             mentionItems={mentionItems}
+            onOpenThread={(threadId) => navigate.toThread(threadId)}
           />
 
           <div className="mb-1 mt-3 flex items-center gap-1">

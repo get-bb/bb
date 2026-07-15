@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtime, useRpc } from "@bb/plugin-sdk/app";
 import type { TasksRpcContract } from "../shared/contract.js";
+import type { MentionItem } from "../editor/extensions.js";
 
 /** Typed RPC client bound to the tasks contract. */
 export function useTasksRpc() {
@@ -120,20 +121,34 @@ export function useSidebarSummary() {
 
 /**
  * @-mention source for TasksEditor: tasks matched by key/title/description
- * via the server-side `listTasks` search.
+ * via the server-side `listTasks` search, followed by bb threads from
+ * `searchThreads`. A thread-search failure must not take task mentions down
+ * with it, so it degrades to an empty section.
  */
-export function useTaskMentionItems() {
+export function useMentionItems() {
   const rpc = useTasksRpc();
   return useCallback(
-    async (query: string) => {
+    async (query: string): Promise<MentionItem[]> => {
       const trimmed = query.trim();
-      const result = await rpc.call(
-        "listTasks",
-        trimmed ? { search: trimmed } : {},
-      );
-      return result.tasks
-        .slice(0, 8)
-        .map((task) => ({ id: task.id, key: task.key, title: task.title }));
+      const [taskResult, threadResult] = await Promise.all([
+        rpc.call("listTasks", trimmed ? { search: trimmed } : {}),
+        rpc
+          .call("searchThreads", { query: trimmed, limit: 5 })
+          .catch(() => ({ threads: [] })),
+      ]);
+      return [
+        ...taskResult.tasks.slice(0, 8).map((task) => ({
+          type: "task" as const,
+          id: task.id,
+          key: task.key,
+          title: task.title,
+        })),
+        ...threadResult.threads.map((thread) => ({
+          type: "thread" as const,
+          id: thread.id,
+          title: thread.title,
+        })),
+      ];
     },
     [rpc],
   );

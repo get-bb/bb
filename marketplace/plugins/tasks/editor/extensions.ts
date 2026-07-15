@@ -7,15 +7,52 @@ import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
 import { PluginKey } from "@tiptap/pm/state";
+import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { Suggestion, type SuggestionProps } from "@tiptap/suggestion";
+import type { IconSvgElement } from "@hugeicons/react";
+import { BubbleChatIcon } from "@hugeicons/core-free-icons";
 
-export interface MentionItem {
-  id: string;
-  key: string;
-  title: string;
-}
+/** One entry in the @-mention popover: a task or a bb thread. */
+export type MentionItem =
+  | { type: "task"; id: string; key: string; title: string }
+  | { type: "thread"; id: string; title: string };
 
 const MENTION_SCHEME = "bbtask://";
+const THREAD_MENTION_SCHEME = "bbthread://";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+// Hugeicons ships icon artwork as React-style [tag, camelCaseAttrs] tuples;
+// ProseMirror DOM specs need real (kebab-case) SVG attribute names.
+function svgSpecAttributes(
+  attrs: Record<string, string | number>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === "key") continue;
+    out[key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)] =
+      String(value);
+  }
+  return out;
+}
+
+function mentionIconSpec(icon: IconSvgElement): DOMOutputSpec {
+  return [
+    `${SVG_NS} svg`,
+    {
+      viewBox: "0 0 24 24",
+      fill: "none",
+      class: "bb-tasks-mention-icon",
+      "aria-hidden": "true",
+    },
+    ...icon.map(
+      ([tag, attrs]): DOMOutputSpec => [
+        `${SVG_NS} ${tag}`,
+        svgSpecAttributes(attrs),
+      ],
+    ),
+  ];
+}
 
 // tiptap-markdown only adds a `tight` attribute to bulletList/orderedList, so
 // task lists would always serialize loose (blank lines between items).
@@ -123,6 +160,78 @@ export const TaskMention = Node.create({
   },
 });
 
+// Inline atom that renders as a pill (with a small chat glyph to distinguish
+// it from task pills) and serializes to markdown as a bbthread:// link:
+// [Fix login flow](bbthread://thr_abc).
+export const ThreadMention = Node.create({
+  name: "threadMention",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      threadId: { default: "" },
+      label: { default: "" },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "span[data-thread-mention]",
+        getAttrs: (element) => {
+          const threadId = element.getAttribute("data-thread-mention") ?? "";
+          return threadId
+            ? { threadId, label: element.textContent || threadId }
+            : false;
+        },
+      },
+      {
+        // Markdown input arrives as <a href="bbthread://thr_x">label</a>; this
+        // rule must outrank the Link mark's a[href] rule.
+        tag: `a[href^="${THREAD_MENTION_SCHEME}"]`,
+        priority: 100,
+        getAttrs: (element) => {
+          const href = element.getAttribute("href") ?? "";
+          const threadId = href.slice(THREAD_MENTION_SCHEME.length);
+          return threadId
+            ? { threadId, label: element.textContent || threadId }
+            : false;
+        },
+      },
+    ];
+  },
+  renderHTML({ node }) {
+    return [
+      "span",
+      {
+        "data-thread-mention": String(node.attrs.threadId),
+        class: "bb-tasks-mention bb-tasks-thread-mention",
+        role: "link",
+      },
+      mentionIconSpec(BubbleChatIcon),
+      String(node.attrs.label || node.attrs.threadId),
+    ];
+  },
+  renderText({ node }) {
+    return String(node.attrs.label || node.attrs.threadId);
+  },
+  addStorage() {
+    return {
+      markdown: {
+        serialize(
+          state: { write(value: string): void },
+          node: { attrs: { threadId: string; label: string } },
+        ) {
+          state.write(
+            `[${node.attrs.label || node.attrs.threadId}](${THREAD_MENTION_SCHEME}${node.attrs.threadId})`,
+          );
+        },
+      },
+    };
+  },
+});
+
 export interface MentionSuggestionHandle {
   getItems(query: string): Promise<MentionItem[]>;
   onChange(props: SuggestionProps<MentionItem, MentionItem>): void;
@@ -150,16 +259,20 @@ const MentionSuggestion = Extension.create<{
         pluginKey: new PluginKey("taskMentionSuggestion"),
         items: ({ query }) => handle.getItems(query),
         command: ({ editor, range, props }) => {
+          const node =
+            props.type === "thread"
+              ? {
+                  type: ThreadMention.name,
+                  attrs: { threadId: props.id, label: props.title },
+                }
+              : {
+                  type: TaskMention.name,
+                  attrs: { key: props.key, label: props.key },
+                };
           editor
             .chain()
             .focus()
-            .insertContentAt(range, [
-              {
-                type: TaskMention.name,
-                attrs: { key: props.key, label: props.key },
-              },
-              { type: "text", text: " " },
-            ])
+            .insertContentAt(range, [node, { type: "text", text: " " }])
             .run();
         },
         render: () => ({
@@ -185,6 +298,7 @@ export function createEditorExtensions(options?: {
     TaskItem.configure({ nested: true }),
     MarkdownTaskInput,
     TaskMention,
+    ThreadMention,
     MentionSuggestion.configure({
       handle: options?.mentionHandle ?? null,
     }),

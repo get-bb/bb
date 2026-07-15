@@ -204,7 +204,7 @@ export function TasksSidebar({
   // projects:changed, which refreshes the shell's presets query.
   const [presetDialog, setPresetDialog] = useState<{
     key: number;
-    editing: Preset;
+    editing: Preset | null;
   } | null>(null);
   const [width, setWidth] = useState(loadSidebarWidth);
   const [resizing, setResizing] = useState(false);
@@ -373,7 +373,7 @@ export function TasksSidebar({
                 </SidebarRow>
               </div>
             ) : null}
-            {presets && presets.length > 0 ? (
+            {presets ? (
               <>
                 <SectionHeader label="Agent presets" />
                 <div className="space-y-px">
@@ -391,6 +391,20 @@ export function TasksSidebar({
                       </span>
                     </SidebarRow>
                   ))}
+                  {presets.length === 0 ? (
+                    <div className="px-2 py-1 text-xs text-muted-foreground">
+                      No presets yet.
+                    </div>
+                  ) : null}
+                  <SidebarRow
+                    title="New preset"
+                    onClick={() =>
+                      setPresetDialog({ key: Date.now(), editing: null })
+                    }
+                  >
+                    <Icon name="Plus" className="size-3.5 shrink-0" />
+                    <span className="flex-1">New preset</span>
+                  </SidebarRow>
                 </div>
               </>
             ) : null}

@@ -15,7 +15,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
@@ -330,11 +329,6 @@ function PresetsSection() {
                         className="size-3.5 text-muted-foreground"
                       />
                       {preset.name}
-                      {preset.builtin ? (
-                        <Badge variant="secondary" className="px-1.5 py-0">
-                          Built-in
-                        </Badge>
-                      ) : null}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
@@ -368,25 +362,23 @@ function PresetsSection() {
                       >
                         <Icon name="Edit" className="size-3.5" />
                       </Button>
-                      {!preset.builtin ? (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="size-6 text-muted-foreground hover:text-destructive"
-                          aria-label={`Delete preset ${preset.name}`}
-                          onClick={() => {
-                            setError(null);
-                            rpc
-                              .call("deletePreset", { presetId: preset.id })
-                              .then(() => presets.refresh())
-                              .catch((deleteError: unknown) =>
-                                setError(describeError(deleteError)),
-                              );
-                          }}
-                        >
-                          <Icon name="Trash2" className="size-3.5" />
-                        </Button>
-                      ) : null}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-6 text-muted-foreground hover:text-destructive"
+                        aria-label={`Delete preset ${preset.name}`}
+                        onClick={() => {
+                          setError(null);
+                          rpc
+                            .call("deletePreset", { presetId: preset.id })
+                            .then(() => presets.refresh())
+                            .catch((deleteError: unknown) =>
+                              setError(describeError(deleteError)),
+                            );
+                        }}
+                      >
+                        <Icon name="Trash2" className="size-3.5" />
+                      </Button>
                     </span>
                   </td>
                 </tr>

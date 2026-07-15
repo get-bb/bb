@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Editor, type ChainedCommands } from "@tiptap/core";
+import {
+  Editor,
+  isNodeSelection,
+  type ChainedCommands,
+} from "@tiptap/core";
+import { BubbleMenuPlugin } from "@tiptap/extension-bubble-menu";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  BubbleChatIcon,
   CheckListIcon,
+  CodeIcon,
   Heading02Icon,
   LeftToRightBlockQuoteIcon,
   LeftToRightListBulletIcon,
@@ -13,12 +20,6 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { SuggestionProps } from "@tiptap/suggestion";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   createEditorExtensions,
@@ -80,6 +81,12 @@ const EDITOR_CSS = `
   color: var(--primary); padding: 0.05em 0.35em;
   font-size: 0.9em; font-weight: 500; white-space: nowrap;
 }
+.bb-tasks-editor .bb-tasks-thread-mention { cursor: pointer; }
+.bb-tasks-editor .bb-tasks-thread-mention:hover { background: color-mix(in oklab, var(--primary) 20%, transparent); }
+.bb-tasks-editor .bb-tasks-mention-icon {
+  display: inline-block; width: 0.95em; height: 0.95em;
+  vertical-align: -0.12em; margin-right: 0.3em;
+}
 `;
 
 function ensureEditorStyles(): void {
@@ -103,7 +110,7 @@ interface MentionPopoverState {
   selectedIndex: number;
 }
 
-interface ToolbarAction {
+interface BubbleAction {
   id: string;
   label: string;
   icon: IconSvgElement;
@@ -111,7 +118,7 @@ interface ToolbarAction {
   run(chain: ChainedCommands): ChainedCommands;
 }
 
-const TOOLBAR_ACTIONS: ToolbarAction[] = [
+const BUBBLE_ACTIONS: BubbleAction[] = [
   {
     id: "bold",
     label: "Bold",
@@ -125,6 +132,13 @@ const TOOLBAR_ACTIONS: ToolbarAction[] = [
     icon: TextItalicIcon,
     isActive: (editor) => editor.isActive("italic"),
     run: (chain) => chain.toggleItalic(),
+  },
+  {
+    id: "code",
+    label: "Inline code",
+    icon: CodeIcon,
+    isActive: (editor) => editor.isActive("code"),
+    run: (chain) => chain.toggleCode(),
   },
   {
     id: "heading",
@@ -174,9 +188,9 @@ export interface TasksEditorProps {
   onUploadImage?: (
     file: File,
   ) => Promise<{ url: string; attachmentId: string }>;
-  mentionItems?: (
-    query: string,
-  ) => Promise<Array<{ id: string; key: string; title: string }>>;
+  mentionItems?: (query: string) => Promise<MentionItem[]>;
+  /** Invoked when a thread-mention pill is clicked (edit and read-only). */
+  onOpenThread?: (threadId: string) => void;
   onEditorReady?: (editor: Editor) => void;
   className?: string;
 }
@@ -190,10 +204,12 @@ export function TasksEditor({
   variant = "doc",
   onUploadImage,
   mentionItems,
+  onOpenThread,
   onEditorReady,
   className,
 }: TasksEditorProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const lastMarkdownRef = useRef(value);
   const changeRef = useRef(onChange);
@@ -204,12 +220,13 @@ export function TasksEditor({
   uploadRef.current = onUploadImage;
   const mentionItemsRef = useRef(mentionItems);
   mentionItemsRef.current = mentionItems;
+  const openThreadRef = useRef(onOpenThread);
+  openThreadRef.current = onOpenThread;
   const readyRef = useRef(onEditorReady);
   readyRef.current = onEditorReady;
   const initialValueRef = useRef(value);
   const autofocusRef = useRef(autofocus);
 
-  const [focused, setFocused] = useState(false);
   const [, setRevision] = useState(0);
   const [mention, setMentionState] = useState<MentionPopoverState | null>(
     null,
@@ -316,21 +333,57 @@ export function TasksEditor({
       },
     });
     editorRef.current = editor;
+    if (variant === "doc" && !readOnly && bubbleRef.current) {
+      editor.registerPlugin(
+        BubbleMenuPlugin({
+          pluginKey: "tasksBubbleMenu",
+          editor,
+          element: bubbleRef.current,
+          updateDelay: 150,
+          tippyOptions: {
+            duration: 120,
+            placement: "top",
+            maxWidth: "none",
+            zIndex: 40,
+            appendTo: () => rootRef.current?.parentElement ?? document.body,
+          },
+          shouldShow: ({ editor: bubbleEditor, state, from, to }) => {
+            const { selection } = state;
+            if (!bubbleEditor.isEditable || selection.empty) return false;
+            // Node selections (e.g. a clicked image or pill) get no text menu.
+            if (isNodeSelection(selection)) return false;
+            return state.doc.textBetween(from, to).trim().length > 0;
+          },
+        }),
+      );
+    }
     editor.on("update", () => {
       const markdown = editor.storage.markdown.getMarkdown() as string;
       lastMarkdownRef.current = markdown;
       changeRef.current(markdown);
     });
-    editor.on("focus", () => setFocused(true));
-    editor.on("blur", () => setFocused(false));
     editor.on("transaction", () => setRevision((current) => current + 1));
     readyRef.current?.(editor);
+    // Thread pills open their thread on click. A plain DOM listener (instead
+    // of ProseMirror's handleClickOn) also covers read-only comment bodies.
+    const root = rootRef.current;
+    const onClick = (event: MouseEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const pill = event.target.closest("[data-thread-mention]");
+      const threadId = pill?.getAttribute("data-thread-mention");
+      if (threadId && openThreadRef.current) {
+        event.preventDefault();
+        openThreadRef.current(threadId);
+      }
+    };
+    root.addEventListener("click", onClick);
     return () => {
+      root.removeEventListener("click", onClick);
       editorRef.current = null;
       setMentionRef.current(null);
       editor.destroy();
     };
-  }, [readOnly]);
+  }, [readOnly, variant]);
 
   // The value prop is canonical: when the host swaps in different markdown
   // (e.g. another task was opened), replace the document. Echoes of our own
@@ -345,71 +398,90 @@ export function TasksEditor({
 
   const editor = editorRef.current;
   const mentionRect = mention?.clientRect?.() ?? null;
-  const toolbarVisible = !readOnly && focused;
+  const taskItems = (mention?.items ?? [])
+    .map((item, index) => ({ item, index }))
+    .filter((entry) => entry.item.type === "task");
+  const threadItems = (mention?.items ?? [])
+    .map((item, index) => ({ item, index }))
+    .filter((entry) => entry.item.type === "thread");
+
+  const mentionRow = (
+    { item, index }: { item: MentionItem; index: number },
+  ) => (
+    <button
+      key={item.id}
+      type="button"
+      role="option"
+      aria-selected={index === mention?.selectedIndex}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
+        index === mention?.selectedIndex
+          ? "bg-accent text-accent-foreground"
+          : "hover:bg-accent hover:text-accent-foreground",
+      )}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => mention?.command(item)}
+    >
+      {item.type === "task" ? (
+        <span className="shrink-0 font-medium text-muted-foreground">
+          {item.key}
+        </span>
+      ) : (
+        <HugeiconsIcon
+          icon={BubbleChatIcon}
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
+      )}
+      <span className="min-w-0 flex-1 truncate">{item.title}</span>
+    </button>
+  );
 
   return (
     <div
       className={cn("bb-tasks-editor relative min-w-0", className)}
       data-variant={variant}
     >
-      {readOnly ? null : (
-        <TooltipProvider delayDuration={400}>
-          {/* Collapses to zero height while blurred so the idle composer has
-              no empty band above the placeholder. */}
-          <div
-            className={cn(
-              "grid transition-[grid-template-rows,opacity] duration-150",
-              toolbarVisible
-                ? "grid-rows-[1fr] opacity-100"
-                : "pointer-events-none grid-rows-[0fr] opacity-0",
-            )}
-            aria-hidden={!toolbarVisible}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div
-                role="toolbar"
-                aria-label="Formatting"
-                className="mb-1 flex w-fit items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-sm"
-              >
-                {TOOLBAR_ACTIONS.map((action) => (
-                  <Tooltip key={action.id}>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        aria-label={action.label}
-                        aria-pressed={editor ? action.isActive(editor) : false}
-                        tabIndex={toolbarVisible ? 0 : -1}
-                        className={cn(
-                          "size-7 text-muted-foreground",
-                          editor && action.isActive(editor)
-                            ? "bg-accent text-accent-foreground"
-                            : undefined,
-                        )}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          const current = editorRef.current;
-                          if (!current) return;
-                          action.run(current.chain().focus()).run();
-                        }}
-                      >
-                        <HugeiconsIcon icon={action.icon} className="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">{action.label}</TooltipContent>
-                  </Tooltip>
-                ))}
-              </div>
-            </div>
-          </div>
-        </TooltipProvider>
-      )}
+      {/* Floating selection menu (doc variant only); BubbleMenuPlugin moves
+          this element into a tippy popper positioned above the selection. */}
+      {variant === "doc" && !readOnly ? (
+        <div
+          ref={bubbleRef}
+          role="toolbar"
+          aria-label="Formatting"
+          style={{ visibility: "hidden" }}
+          className="flex items-center gap-0.5 rounded-lg border border-border bg-popover p-0.5 text-popover-foreground shadow-md"
+        >
+          {BUBBLE_ACTIONS.map((action) => (
+            <Button
+              key={action.id}
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label={action.label}
+              aria-pressed={editor ? action.isActive(editor) : false}
+              className={cn(
+                "size-7 text-muted-foreground",
+                editor && action.isActive(editor)
+                  ? "bg-accent text-accent-foreground"
+                  : undefined,
+              )}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                const current = editorRef.current;
+                if (!current) return;
+                action.run(current.chain().focus()).run();
+              }}
+            >
+              <HugeiconsIcon icon={action.icon} className="size-4" />
+            </Button>
+          ))}
+        </div>
+      ) : null}
       <div ref={rootRef} className="min-w-0" />
       {mention && mention.items.length > 0 ? (
         <div
           role="listbox"
-          aria-label="Mention a task"
+          aria-label="Mention a task or thread"
           className="fixed z-50 max-h-64 w-72 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
           style={
             mentionRect
@@ -417,27 +489,18 @@ export function TasksEditor({
               : undefined
           }
         >
-          {mention.items.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              role="option"
-              aria-selected={index === mention.selectedIndex}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
-                index === mention.selectedIndex
-                  ? "bg-accent text-accent-foreground"
-                  : "hover:bg-accent hover:text-accent-foreground",
-              )}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => mention.command(item)}
-            >
-              <span className="shrink-0 font-medium text-muted-foreground">
-                {item.key}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{item.title}</span>
-            </button>
-          ))}
+          {taskItems.length > 0 ? (
+            <div className="px-2 pb-0.5 pt-1 text-2xs font-semibold text-muted-foreground">
+              Tasks
+            </div>
+          ) : null}
+          {taskItems.map(mentionRow)}
+          {threadItems.length > 0 ? (
+            <div className="px-2 pb-0.5 pt-1 text-2xs font-semibold text-muted-foreground">
+              Threads
+            </div>
+          ) : null}
+          {threadItems.map(mentionRow)}
         </div>
       ) : null}
     </div>

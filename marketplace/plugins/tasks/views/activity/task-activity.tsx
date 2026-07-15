@@ -12,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
+import { useBbNavigate } from "@bb/plugin-sdk/app";
 import {
-  useTaskMentionItems,
+  useMentionItems,
   useTasksQuery,
   useTasksRpc,
 } from "../../shell/data.js";
@@ -229,6 +230,7 @@ function CommentCard({
 }) {
   const { comment, attachments } = entry;
   const agent = comment.kind === "agent";
+  const navigate = useBbNavigate();
   const [lightbox, setLightbox] = useState<Attachment | null>(null);
   return (
     <div className="relative mb-3.5 flex gap-2.5">
@@ -250,6 +252,7 @@ function CommentCard({
           onChange={() => {}}
           readOnly
           variant="comment"
+          onOpenThread={(threadId) => navigate.toThread(threadId)}
         />
         {attachments.length > 0 ? (
           <div className="mt-1.5 flex flex-wrap gap-2">
@@ -371,7 +374,8 @@ function AttachmentChip({
 
 function CommentComposer({ taskId, runningCount }: ComposerProps) {
   const rpc = useTasksRpc();
-  const mentionItems = useTaskMentionItems();
+  const navigate = useBbNavigate();
+  const mentionItems = useMentionItems();
   const [body, setBody] = useState("");
   const [notify, setNotify] = useState(true);
   const [pendingFiles, setPendingFiles] = useState<StagedAttachment[]>([]);
@@ -465,9 +469,10 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
         value={body}
         onChange={setBody}
         variant="comment"
-        placeholder="Leave a comment… @-mention tasks to link them"
+        placeholder="Leave a comment… @-mention tasks and threads to link them"
         className="min-h-11"
         mentionItems={mentionItems}
+        onOpenThread={(threadId) => navigate.toThread(threadId)}
       />
       {pendingFiles.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">

@@ -34,6 +34,10 @@ describe("markdown round-trip", () => {
     ["image", "![diagram](https://example.com/diagram.png)"],
     ["mention", "Blocked on [TSK-42](bbtask://TSK-42) for review."],
     [
+      "thread mention",
+      "Discussed in [Fix login flow](bbthread://thr_a82u8wp8qq) yesterday.",
+    ],
+    [
       "mixed document",
       "## Plan\n\nShip the **editor** with `tiptap`.\n\n- [x] parse\n- [ ] serialize\n\n> Notes on [TSK-7](bbtask://TSK-7)\n\n```\nplain code\n```",
     ],
@@ -85,8 +89,18 @@ describe("mention extension", () => {
         mentionItems={(query) =>
           Promise.resolve(
             [
-              { id: "1", key: "TSK-42", title: "Round-trip review" },
-              { id: "2", key: "TSK-7", title: "Detail panel" },
+              {
+                type: "task" as const,
+                id: "1",
+                key: "TSK-42",
+                title: "Round-trip review",
+              },
+              {
+                type: "task" as const,
+                id: "2",
+                key: "TSK-7",
+                title: "Detail panel",
+              },
             ].filter((item) => item.key.toLowerCase().includes(query.toLowerCase())),
           )
         }
@@ -122,6 +136,168 @@ describe("mention extension", () => {
     instance!.chain().focus().insertContent("@").run();
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("offers a Threads section and inserts a thread pill", async () => {
+    let instance: Editor | null = null;
+    const onChange = vi.fn();
+    const screen = render(
+      <TasksEditor
+        value=""
+        onChange={onChange}
+        mentionItems={() =>
+          Promise.resolve([
+            {
+              type: "task" as const,
+              id: "1",
+              key: "TSK-42",
+              title: "Round-trip review",
+            },
+            {
+              type: "thread" as const,
+              id: "thr_a82u8wp8qq",
+              title: "Fix login flow",
+            },
+          ])
+        }
+        onEditorReady={(editor) => {
+          instance = editor;
+        }}
+      />,
+    );
+    instance!.chain().focus().insertContent("@").run();
+    await screen.findByText("Threads");
+    // Tasks stay first in the popover.
+    expect(screen.getByText("Tasks")).toBeTruthy();
+    fireEvent.click(screen.getByText("Fix login flow").closest("button")!);
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(
+        "[Fix login flow](bbthread://thr_a82u8wp8qq) ",
+      ),
+    );
+    expect(
+      screen.container.querySelector(
+        '[data-thread-mention="thr_a82u8wp8qq"]',
+      ),
+    ).toBeTruthy();
+  });
+});
+
+describe("thread mention extension", () => {
+  it("parses a bbthread link into a pill and serializes it back", () => {
+    const editor = new Editor({
+      extensions: createEditorExtensions(),
+      content: "See [Fix login flow](bbthread://thr_a82u8wp8qq).",
+    });
+    try {
+      const pill = editor.view.dom.querySelector(
+        '[data-thread-mention="thr_a82u8wp8qq"]',
+      );
+      expect(pill?.classList.contains("bb-tasks-thread-mention")).toBe(true);
+      expect(pill?.textContent).toBe("Fix login flow");
+      // The pill carries the distinguishing chat glyph.
+      expect(pill?.querySelector("svg.bb-tasks-mention-icon")).toBeTruthy();
+      expect(editor.storage.markdown.getMarkdown()).toBe(
+        "See [Fix login flow](bbthread://thr_a82u8wp8qq).",
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("opens the thread when a pill is clicked, including read-only", () => {
+    const onOpenThread = vi.fn();
+    const screen = render(
+      <TasksEditor
+        value="See [Fix login flow](bbthread://thr_a82u8wp8qq)."
+        onChange={() => undefined}
+        readOnly
+        variant="comment"
+        onOpenThread={onOpenThread}
+      />,
+    );
+    const pill = screen.container.querySelector(
+      '[data-thread-mention="thr_a82u8wp8qq"]',
+    );
+    fireEvent.click(pill!);
+    expect(onOpenThread).toHaveBeenCalledWith("thr_a82u8wp8qq");
+  });
+});
+
+describe("heading toggle", () => {
+  // Heading is block-level, so the toggle converts whole blocks — but only
+  // the block(s) the selection actually touches, and toggling again returns
+  // them to paragraphs. These pin down the bubble-menu H2 action.
+  function editorWith(markdown: string): Editor {
+    return new Editor({
+      extensions: createEditorExtensions(),
+      content: markdown,
+    });
+  }
+
+  /** Puts a text selection inside the (1-based) nth block, or across two. */
+  function selectBlocks(editor: Editor, fromBlock: number, toBlock = fromBlock) {
+    const positions: number[] = [];
+    editor.state.doc.forEach((_node, offset) => {
+      positions.push(offset + 2); // one char into the block's text
+    });
+    editor.commands.setTextSelection({
+      from: positions[fromBlock - 1]!,
+      to: positions[toBlock - 1]!,
+    });
+  }
+
+  it("converts only the block under a within-block selection", () => {
+    const editor = editorWith("First\n\nSecond\n\nThird");
+    try {
+      selectBlocks(editor, 2);
+      editor.chain().toggleHeading({ level: 2 }).run();
+      expect(editor.storage.markdown.getMarkdown()).toBe(
+        "First\n\n## Second\n\nThird",
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("converts only intersecting blocks for a multi-block selection", () => {
+    const editor = editorWith("First\n\nSecond\n\nThird");
+    try {
+      selectBlocks(editor, 2, 3);
+      editor.chain().toggleHeading({ level: 2 }).run();
+      expect(editor.storage.markdown.getMarkdown()).toBe(
+        "First\n\n## Second\n\n## Third",
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("toggles a heading back to a paragraph", () => {
+    const editor = editorWith("First\n\n## Second\n\nThird");
+    try {
+      selectBlocks(editor, 2);
+      editor.chain().toggleHeading({ level: 2 }).run();
+      expect(editor.storage.markdown.getMarkdown()).toBe(
+        "First\n\nSecond\n\nThird",
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("converts only the caret's block with no selection", () => {
+    const editor = editorWith("First\n\nSecond\n\nThird");
+    try {
+      selectBlocks(editor, 3);
+      editor.commands.setTextSelection(editor.state.selection.from);
+      editor.chain().toggleHeading({ level: 2 }).run();
+      expect(editor.storage.markdown.getMarkdown()).toBe(
+        "First\n\nSecond\n\n## Third",
+      );
+    } finally {
+      editor.destroy();
+    }
   });
 });
 

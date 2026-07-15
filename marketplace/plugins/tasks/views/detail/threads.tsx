@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type { Preset, TaskThread } from "../../shared/contract.js";
@@ -7,6 +7,11 @@ import {
   formatRelativeTime,
   isActiveThread,
 } from "./meta.js";
+import {
+  PresetDialog,
+  savePresetDraft,
+} from "../manage/preset-dialog.js";
+import { useTasksRpc } from "../../shell/data.js";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -54,29 +59,57 @@ function ThreadCard({ thread }: { thread: TaskThread }) {
   );
 }
 
+const LAST_PRESET_STORAGE_KEY = "bb-tasks:last-dispatch-preset";
+
+function loadLastPresetId(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_PRESET_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeLastPresetId(presetId: string): void {
+  try {
+    window.localStorage.setItem(LAST_PRESET_STORAGE_KEY, presetId);
+  } catch {
+    // Persistence is best-effort (e.g. sandboxed iframes without storage).
+  }
+}
+
 export interface DispatchControlProps {
   taskId: string;
   presets: Preset[] | undefined;
   onError: (message: string) => void;
   align?: "start" | "end";
-  /** Render-prop trigger; receives whether a dispatch is in flight. */
-  children: (dispatching: boolean) => ReactNode;
+  /** Hero CTA (properties rail) vs quiet outline (threads header). */
+  appearance?: "primary" | "outline";
+  className?: string;
 }
 
 /**
- * Preset picker + readonly-preset confirm around the dispatch RPC. The
- * trigger button comes from the caller (threads section, properties rail).
+ * GitHub-merge-style split button around the dispatch RPC: the primary
+ * segment dispatches immediately with the last-used preset (persisted in
+ * localStorage; first preset alphabetically as the fallback), the chevron
+ * segment opens the preset menu, which also updates the remembered choice.
+ * With zero presets it collapses to an "Add a preset…" button opening the
+ * preset dialog in create mode.
  */
 export function DispatchControl({
   taskId,
   presets,
   onError,
   align = "end",
-  children,
+  appearance = "outline",
+  className,
 }: DispatchControlProps) {
   const rpc = useRpc<DelegationRpcContract>();
+  const tasksRpc = useTasksRpc();
   const [dispatching, setDispatching] = useState(false);
   const [readonlyConfirm, setReadonlyConfirm] = useState<Preset | null>(null);
+  const [lastPresetId, setLastPresetId] = useState(loadLastPresetId);
+  // Keyed remount resets the create dialog's draft per open.
+  const [createDialogKey, setCreateDialogKey] = useState<number | null>(null);
 
   const dispatch = async (presetId: string) => {
     setDispatching(true);
@@ -90,36 +123,114 @@ export function DispatchControl({
   };
 
   const pickPreset = (preset: Preset) => {
+    setLastPresetId(preset.id);
+    storeLastPresetId(preset.id);
     if (preset.permissionMode === "readonly") setReadonlyConfirm(preset);
     else void dispatch(preset.id);
   };
 
+  // bg-primary (not the default bg-foreground): custom palettes like Nord
+  // define an accent primary the hero CTA should pick up; in the default
+  // theme both read as intended.
+  const primarySegment =
+    appearance === "primary"
+      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+      : undefined;
+  const buttonVariant = appearance === "primary" ? "default" : "outline";
+
+  if (presets !== undefined && presets.length === 0) {
+    return (
+      <>
+        <Button
+          size="sm"
+          variant={buttonVariant}
+          className={cn("h-7 gap-1.5", primarySegment, className)}
+          onClick={() => setCreateDialogKey(Date.now())}
+        >
+          <Icon name="Plus" className="size-3.5 shrink-0" />
+          Add a preset…
+        </Button>
+        {createDialogKey !== null ? (
+          <PresetDialog
+            key={createDialogKey}
+            open
+            onOpenChange={(open) => {
+              if (!open) setCreateDialogKey(null);
+            }}
+            editing={null}
+            onSave={(draft) => savePresetDraft(tasksRpc, null, draft)}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  const current =
+    presets?.find((preset) => preset.id === lastPresetId) ??
+    (presets
+      ? [...presets].sort((a, b) => a.name.localeCompare(b.name))[0]
+      : undefined);
+
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          asChild
-          disabled={
-            dispatching || (presets !== undefined && presets.length === 0)
-          }
+      <div className={cn("flex min-w-0", className)}>
+        <Button
+          size="sm"
+          variant={buttonVariant}
+          disabled={dispatching || !current}
+          className={cn(
+            "h-7 min-w-0 flex-1 gap-1.5 rounded-r-none",
+            primarySegment,
+          )}
+          onClick={() => {
+            if (current) pickPreset(current);
+          }}
         >
-          {children(dispatching)}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align={align}>
-          <DropdownMenuLabel>Dispatch with preset</DropdownMenuLabel>
-          {(presets ?? []).map((preset) => (
-            <DropdownMenuItem
-              key={preset.id}
-              onSelect={() => pickPreset(preset)}
+          <Icon name="Zap" className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {dispatching
+              ? "Dispatching…"
+              : current
+                ? `Dispatch · ${current.name}`
+                : "Dispatch"}
+          </span>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild disabled={dispatching || !current}>
+            <Button
+              size="sm"
+              variant={buttonVariant}
+              aria-label="Choose dispatch preset"
+              className={cn(
+                "h-7 shrink-0 rounded-l-none px-1",
+                primarySegment,
+                appearance === "primary"
+                  ? "border-l border-primary-foreground/25"
+                  : "-ml-px",
+              )}
             >
-              <span className="min-w-0 flex-1 truncate">{preset.name}</span>
-              <span className="text-xs text-muted-foreground">
-                {preset.modelId}
-              </span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+              <Icon name="ChevronDown" className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align={align}>
+            <DropdownMenuLabel>Dispatch with preset</DropdownMenuLabel>
+            {(presets ?? []).map((preset) => (
+              <DropdownMenuItem
+                key={preset.id}
+                onSelect={() => pickPreset(preset)}
+              >
+                <span className="min-w-0 flex-1 truncate">{preset.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {preset.modelId}
+                </span>
+                {preset.id === current?.id ? (
+                  <Icon name="Check" className="size-3.5" />
+                ) : null}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <ConfirmDialog
         open={readonlyConfirm !== null}
         onOpenChange={(open) => {
@@ -160,14 +271,13 @@ export function ThreadsSection({
         {activeCount > 0 ? (
           <span className="font-normal">{activeCount} working now</span>
         ) : null}
-        <DispatchControl taskId={taskId} presets={presets} onError={onError}>
-          {() => (
-            <Button variant="outline" size="sm" className="ml-auto h-7 gap-1.5">
-              <Icon name="Zap" className="size-3.5" />
-              Dispatch
-            </Button>
-          )}
-        </DispatchControl>
+        <DispatchControl
+          taskId={taskId}
+          presets={presets}
+          onError={onError}
+          appearance="outline"
+          className="ml-auto"
+        />
       </div>
       {threads.map((thread) => (
         <ThreadCard key={thread.id} thread={thread} />

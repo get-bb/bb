@@ -37,7 +37,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -302,25 +301,29 @@ function LabelsMenu({
                 </CommandItem>
               </CommandGroup>
             ) : null}
-            <CommandGroup>
-              {labelList.map((label) => (
-                <CommandItem
-                  key={label.id}
-                  value={label.name}
-                  onSelect={() => toggle(label.id)}
-                >
-                  <span
-                    aria-hidden
-                    className="size-2.5 rounded-full"
-                    style={{ backgroundColor: label.color }}
-                  />
-                  <span className="flex-1">{label.name}</span>
-                  {task.labelIds.includes(label.id) ? (
-                    <Icon name="Check" className="size-3.5" />
-                  ) : null}
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {/* Rendered only when labels exist: an empty cmdk group still
+                paints its p-1 padding, leaving a dead band under "New label…". */}
+            {labelList.length > 0 ? (
+              <CommandGroup>
+                {labelList.map((label) => (
+                  <CommandItem
+                    key={label.id}
+                    value={label.name}
+                    onSelect={() => toggle(label.id)}
+                  >
+                    <span
+                      aria-hidden
+                      className="size-2.5 rounded-full"
+                      style={{ backgroundColor: label.color }}
+                    />
+                    <span className="flex-1">{label.name}</span>
+                    {task.labelIds.includes(label.id) ? (
+                      <Icon name="Check" className="size-3.5" />
+                    ) : null}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>
@@ -432,20 +435,9 @@ export function PropertiesRail({
           presets={presets}
           onError={onError}
           align="start"
-        >
-          {/* bg-primary (not the default bg-foreground): custom palettes like
-              Nord define an accent primary the hero CTA should pick up; in the
-              default theme both read as intended. */}
-          {(dispatching) => (
-            <Button
-              size="sm"
-              className="h-7 w-full gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              <Icon name="Zap" className="size-3.5" />
-              {dispatching ? "Dispatching…" : "Dispatch"}
-            </Button>
-          )}
-        </DispatchControl>
+          appearance="primary"
+          className="w-full"
+        />
       </div>
 
       <div className="mb-1 mt-3 text-2xs font-semibold text-muted-foreground">
