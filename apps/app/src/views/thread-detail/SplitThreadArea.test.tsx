@@ -138,6 +138,62 @@ const docsContent: PaneContent = {
   subPath: "",
 };
 
+function pluginContent(panelPath: string): PaneContent {
+  return {
+    kind: "plugin-panel",
+    pluginId: "test-plugin",
+    panelPath,
+    subPath: "",
+  };
+}
+
+function fourPanePluginLayout(): SplitLayout {
+  return {
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        {
+          type: "split",
+          dir: "col",
+          sizes: [0.5, 0.5],
+          children: [
+            {
+              type: "pane",
+              paneId: "pane-top-left",
+              content: pluginContent("top-left"),
+            },
+            {
+              type: "pane",
+              paneId: "pane-bottom-left",
+              content: pluginContent("bottom-left"),
+            },
+          ],
+        },
+        {
+          type: "split",
+          dir: "col",
+          sizes: [0.5, 0.5],
+          children: [
+            {
+              type: "pane",
+              paneId: "pane-top-right",
+              content: pluginContent("top-right"),
+            },
+            {
+              type: "pane",
+              paneId: "pane-bottom-right",
+              content: pluginContent("bottom-right"),
+            },
+          ],
+        },
+      ],
+    },
+    focusedPaneId: "pane-bottom-right",
+  };
+}
+
 function pluginSplitLayout(): SplitLayout {
   return {
     root: {
@@ -324,6 +380,55 @@ describe("SplitThreadArea", () => {
     expect(dragHandle?.className).toContain("cursor-grab");
     expect(dragHandle?.className).toContain("[app-region:no-drag]");
     expect(dragHandle?.className).toContain("[-webkit-app-region:no-drag]");
+  });
+
+  it("makes only top-row split headers desktop window-drag regions", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      lastCheckedAt: null,
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.0-test",
+    };
+    window.bbDesktop = createBbDesktopApi(desktopInfo);
+    setPluginSlotRegistrations("test-plugin", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
+        (path) => ({
+          id: path,
+          title: path,
+          icon: "FileText",
+          path,
+          component: () => <div>{path} panel</div>,
+        }),
+      ),
+      threadPanelActions: [],
+      composerAccessories: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderSplitArea({
+      path: "/plugins/test-plugin/bottom-right",
+      layout: fourPanePluginLayout(),
+      routeContent: pluginContent("bottom-right"),
+    });
+
+    for (const path of ["top-left", "top-right"]) {
+      const header = (await screen.findByText(path)).closest("header");
+      expect(header?.className).toContain("[app-region:drag]");
+      expect(header?.className).toContain("[-webkit-app-region:drag]");
+    }
+    for (const path of ["bottom-left", "bottom-right"]) {
+      const header = (await screen.findByText(path)).closest("header");
+      expect(header?.className).not.toContain("[app-region:drag]");
+      expect(header?.className).not.toContain("[-webkit-app-region:drag]");
+    }
   });
 
   it("places plugin header actions before the pane close button", async () => {

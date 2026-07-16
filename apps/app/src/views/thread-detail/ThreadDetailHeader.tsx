@@ -67,7 +67,7 @@ export function ThreadDetailHeader({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // The title doubles as the pane-reorder drag handle when the layout is split;
   // beginPaneDrag is undefined on the single-pane and page surfaces.
-  const { beginPaneDrag, isFocused } = usePaneContext();
+  const { beginPaneDrag, isFocused, isTopRow } = usePaneContext();
   const showFocusedPaneTitlePill = beginPaneDrag !== undefined && isFocused;
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (!beginPaneDrag || event.button !== 0) {
@@ -206,6 +206,7 @@ export function ThreadDetailHeader({
       center={center}
       actions={actions}
       bordered={false}
+      isWindowDragRegion={isTopRow}
       className={cn(
         "border-b border-border-seam-vertical/60",
         beginPaneDrag && isFocused && "bg-surface-raised",

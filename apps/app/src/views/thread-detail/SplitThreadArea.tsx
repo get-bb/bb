@@ -332,6 +332,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           canShowSecondaryPanel
           onRequestClose={null}
           isBoundedPane={false}
+          isTopRow
           onNavigateInPane={navigateInPane}
         />
       </>
@@ -350,6 +351,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         <SplitTree
           node={layout.root}
           path={EMPTY_PATH}
+          isTopRow
           focusedPaneId={layout.focusedPaneId}
           paneCount={panes.length}
           onFocusPane={focusPane}
@@ -410,6 +412,8 @@ function SplitPaneCommandHandlers({
 interface SplitTreeProps {
   node: LayoutNode;
   path: SplitPath;
+  /** Whether this subtree touches the workspace's top edge. */
+  isTopRow: boolean;
   focusedPaneId: string;
   paneCount: number;
   onFocusPane: (paneId: string) => void;
@@ -425,7 +429,7 @@ interface SplitTreeProps {
 }
 
 function SplitTree(props: SplitTreeProps) {
-  const { node, path, focusedPaneId, paneCount } = props;
+  const { node, path, isTopRow, focusedPaneId, paneCount } = props;
 
   if (node.type === "pane") {
     const isFocused = node.paneId === focusedPaneId;
@@ -456,6 +460,7 @@ function SplitTree(props: SplitTreeProps) {
           canShowSecondaryPanel={paneCount < 3 || isFocused}
           onRequestClose={() => props.onClosePane(node.paneId)}
           isBoundedPane
+          isTopRow={isTopRow}
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
@@ -492,7 +497,15 @@ function SplitTree(props: SplitTreeProps) {
             className="flex min-h-0 min-w-0"
             style={{ flex: `${node.sizes[index] ?? 1} 1 0` }}
           >
-            <SplitTree {...props} node={child} path={[...path, index]} />
+            <SplitTree
+              {...props}
+              node={child}
+              path={[...path, index]}
+              // Horizontal siblings all remain on the same top row. In a
+              // vertical stack, only the first child can inherit the parent
+              // subtree's contact with the workspace top edge.
+              isTopRow={isTopRow && (node.dir === "row" || index === 0)}
+            />
           </div>
         </Fragment>
       ))}
@@ -509,6 +522,7 @@ interface WorkspacePaneContentProps {
   // True inside multi-pane split cards; suppresses the page-bleed margins so
   // content fills the card exactly (see PaneContextValue.isBoundedPane).
   isBoundedPane: boolean;
+  isTopRow: boolean;
   onNavigateInPane: NavigateInPane;
   // Absent for the single-pane surface — a lone pane has nothing to reorder.
   onBeginPaneDrag?: BeginPaneDrag;
@@ -521,6 +535,7 @@ function WorkspacePaneContent({
   canShowSecondaryPanel,
   onRequestClose,
   isBoundedPane,
+  isTopRow,
   onNavigateInPane,
   onBeginPaneDrag,
 }: WorkspacePaneContentProps) {
@@ -543,6 +558,7 @@ function WorkspacePaneContent({
       canShowSecondaryPanel,
       onRequestClose,
       isBoundedPane,
+      isTopRow,
       navigateInPane,
       beginPaneDrag,
     }),
@@ -551,6 +567,7 @@ function WorkspacePaneContent({
       canShowSecondaryPanel,
       isBoundedPane,
       isFocused,
+      isTopRow,
       navigateInPane,
       onRequestClose,
       paneId,
@@ -564,6 +581,7 @@ function WorkspacePaneContent({
         onRequestClose={onRequestClose}
         beginPaneDrag={beginPaneDrag}
         isBoundedPane={isBoundedPane}
+        isTopRow={isTopRow}
       />
     );
   }
@@ -600,11 +618,13 @@ function NonThreadPaneContent({
   onRequestClose,
   beginPaneDrag,
   isBoundedPane,
+  isTopRow,
 }: {
   content: Exclude<PaneContent, { kind: "thread" }>;
   onRequestClose: (() => void) | null;
   beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
   isBoundedPane: boolean;
+  isTopRow: boolean;
 }) {
   const { navPanels } = usePluginSlots();
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -654,6 +674,7 @@ function NonThreadPaneContent({
       {isBoundedPane || panel ? (
         <AppPageHeader
           bordered={false}
+          isWindowDragRegion={isTopRow}
           className="border-b border-border-seam-vertical/60"
           center={
             <div

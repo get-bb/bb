@@ -35,6 +35,11 @@ export interface PaneContextValue {
    * full-bleed page layout.
    */
   isBoundedPane: boolean;
+  /**
+   * Whether this pane touches the workspace's top edge, where its header
+   * occupies the native desktop title-bar row.
+   */
+  isTopRow: boolean;
   navigateInPane: (thread: ThreadRoutePathArgs) => void;
   /**
    * Starts a pane-reorder drag from the pane header via the shared split-drag
@@ -76,6 +81,7 @@ export function DefaultPaneContextProvider({
       canShowSecondaryPanel: true,
       onRequestClose: null,
       isBoundedPane: false,
+      isTopRow: true,
       navigateInPane,
     }),
     [navigateInPane],
