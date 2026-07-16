@@ -13,6 +13,10 @@ export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     name: "bb-plugin-tasks",
+    // CI runners are slow enough that testing-library's default 1s findBy*/
+    // waitFor timeout flakes on the heavier UI suites (pager, manage, rail).
+    testTimeout: 20_000,
+    setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.test.{ts,tsx}"],
     exclude: ["node_modules/**"],
     server: {

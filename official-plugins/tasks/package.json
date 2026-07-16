@@ -47,7 +47,7 @@
     "bb-plugin"
   ],
   "scripts": {
-    "build": "node --conditions=source --import tsx build.mjs",
+    "build": "node --conditions=source --import tsx ../../scripts/build-official-plugins.mjs tasks",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },

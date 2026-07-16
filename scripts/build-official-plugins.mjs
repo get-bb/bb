@@ -10,6 +10,7 @@ const pluginDirectories = new Map([
   ["github", "official-plugins/github"],
   ["docs", "official-plugins/docs"],
   ["memory", "official-plugins/memory"],
+  ["tasks", "official-plugins/tasks"],
 ]);
 
 const requested = process.argv.slice(2);
@@ -21,7 +22,7 @@ const selected =
 for (const plugin of selected) {
   if (!pluginDirectories.has(plugin)) {
     throw new Error(
-      `unknown official plugin ${JSON.stringify(plugin)}; expected github, docs, memory, or all`,
+      `unknown official plugin ${JSON.stringify(plugin)}; expected github, docs, memory, tasks, or all`,
     );
   }
 }
