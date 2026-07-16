@@ -352,9 +352,11 @@ function attachmentsForTasks(
 /**
  * Resolve the current human title of each distinct agent thread that authored
  * one of `comments`, keyed by thread id. Titles come from the live thread so
- * renames are reflected. Threads that are deleted, hidden, or otherwise
- * inaccessible resolve to no entry, so callers fall back to `authorName`
- * without leaking a thread the viewer cannot open.
+ * renames are reflected. A thread contributes no entry — so callers fall back
+ * to `authorName` and expose no link — when it is:
+ *   - deleted, hidden, or otherwise inaccessible (the SDK read rejects), or
+ *   - a side chat (originKind/legacy childOrigin === "side-chat"), which is an
+ *     internal conversation that must not surface through an ordinary comment.
  */
 async function resolveAgentThreadTitles(
   bb: BbPluginApi,
@@ -371,8 +373,18 @@ async function resolveAgentThreadTitles(
     [...threadIds].map(async (threadId) => {
       try {
         const thread = await bb.sdk.threads.get({ threadId });
-        const title = thread.title ?? thread.titleFallback ?? "";
-        if (title.trim() !== "") titles.set(threadId, title);
+        if (
+          thread.originKind === "side-chat" ||
+          thread.childOrigin === "side-chat"
+        ) {
+          return;
+        }
+        // Prefer the first non-blank candidate: a whitespace-only primary
+        // title must not suppress a useful fallback.
+        const title = [thread.title, thread.titleFallback].find(
+          (candidate) => candidate !== null && candidate.trim() !== "",
+        );
+        if (title !== null && title !== undefined) titles.set(threadId, title);
       } catch {
         // Deleted, hidden, or inaccessible threads leave no title.
       }

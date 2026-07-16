@@ -83,6 +83,29 @@ describe("Tasks RPC domain API", () => {
                 titleFallback: "Untitled work",
               });
             }
+            if (threadId === "thr_blank_title") {
+              // A whitespace primary title must not suppress a useful fallback.
+              return makeThreadResponse({
+                id: threadId,
+                title: "   ",
+                titleFallback: "Recovered fallback",
+              });
+            }
+            if (threadId === "thr_side_chat") {
+              return makeThreadResponse({
+                id: threadId,
+                title: "Internal side chat",
+                originKind: "side-chat",
+              });
+            }
+            if (threadId === "thr_side_chat_legacy") {
+              return makeThreadResponse({
+                id: threadId,
+                title: "Legacy side chat",
+                originKind: null,
+                childOrigin: "side-chat",
+              });
+            }
             // Deleted / hidden / inaccessible threads reject.
             throw new Error("thread_not_found");
           },
@@ -116,6 +139,33 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_fallback_only)",
       threadId: "thr_fallback_only",
       body: "Fallback title",
+      notifiedCount: 0,
+    });
+    // Agent comment whose thread has only a whitespace primary title.
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "agent (thr_blank_title)",
+      threadId: "thr_blank_title",
+      body: "Blank title",
+      notifiedCount: 0,
+    });
+    // Agent comment authored by a side chat (must not leak title/link).
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "agent (thr_side_chat)",
+      threadId: "thr_side_chat",
+      body: "Side chat",
+      notifiedCount: 0,
+    });
+    // Agent comment authored by a legacy childOrigin side chat.
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "agent (thr_side_chat_legacy)",
+      threadId: "thr_side_chat_legacy",
+      body: "Legacy side chat",
       notifiedCount: 0,
     });
     // Agent comment whose thread is gone/inaccessible.
@@ -154,11 +204,14 @@ describe("Tasks RPC domain API", () => {
     );
     expect(titleByBody.get("Titled")).toBe("Fix the login bug");
     expect(titleByBody.get("Fallback title")).toBe("Untitled work");
+    expect(titleByBody.get("Blank title")).toBe("Recovered fallback");
+    expect(titleByBody.get("Side chat")).toBeNull();
+    expect(titleByBody.get("Legacy side chat")).toBeNull();
     expect(titleByBody.get("Missing thread")).toBeNull();
     expect(titleByBody.get("Legacy")).toBeNull();
     expect(titleByBody.get("Human note")).toBeNull();
     // Each distinct agent thread is resolved once, not per comment.
-    expect(harness.sdk.callsTo("threads.get")).toHaveLength(3);
+    expect(harness.sdk.callsTo("threads.get")).toHaveLength(6);
     await harness.dispose();
   });
 

@@ -26,12 +26,12 @@ import type {
   TaskThread,
 } from "../../shared/contract.js";
 import {
-  commentByline,
   formatFileSize,
   formatRelativeTime,
   splitSystemBody,
   useNowTick,
 } from "./time.js";
+import { CommentAuthor } from "./comment-author.js";
 
 const PLUGIN_HTTP_BASE = "/api/v1/plugins/tasks/http";
 const TOKEN_URL = "/api/v1/plugins/tasks/token";
@@ -225,35 +225,6 @@ function SystemEvent({ comment, nowMs }: { comment: Comment; nowMs: number }) {
       </span>
     </div>
   );
-}
-
-/**
- * Comment byline. Agent comments whose thread is still resolvable render the
- * thread's human title as a link that opens the chat; everything else (users,
- * legacy agent comments with no thread, deleted/hidden threads) falls back to
- * the stored author name so the byline is never blank.
- */
-function CommentAuthor({
-  comment,
-  onOpenThread,
-}: {
-  comment: DisplayComment;
-  onOpenThread: (threadId: string) => void;
-}) {
-  const byline = commentByline(comment);
-  if (byline.kind === "thread-link") {
-    return (
-      <button
-        type="button"
-        onClick={() => onOpenThread(byline.threadId)}
-        className="truncate font-semibold text-primary hover:underline"
-        title={byline.title}
-      >
-        {byline.title}
-      </button>
-    );
-  }
-  return <span className="font-semibold">{byline.name}</span>;
 }
 
 function CommentCard({
