@@ -618,34 +618,50 @@ describe("bb tasks CLI", () => {
         presetName: "Attached",
       }),
     ]);
-    createStore(bb).tasks.createComment({
+    const taskStore = createStore(bb).tasks;
+    taskStore.createComment({
       taskId: threads.task.id,
       kind: "agent",
-      authorName: "CLI worker",
-      threadId: "thr_cli_self",
-      body: "Prior reply from this agent.",
+      authorName: "Prior worker",
+      threadId: "thr_prior_worker",
+      body: "Prior reply from another agent.",
     });
 
     const notified = JSON.parse(
       stdout(
-        await harness.runCli([
-          "comment",
-          "ATT-1",
-          "--body",
-          "Include the new edge case.",
-          "--notify",
-          "--json",
-        ]),
+        await harness.runCli(
+          [
+            "comment",
+            "ATT-1",
+            "--body",
+            "Include the new edge case.",
+            "--author",
+            "Custom CLI agent",
+            "--notify",
+            "--json",
+          ],
+          { threadId: "thr_cli_sender", projectId: "proj_bb" },
+        ),
       ),
     ).comment;
     expect(notified).toMatchObject({
       taskId: threads.task.id,
+      kind: "agent",
+      authorName: "Custom CLI agent",
+      threadId: "thr_cli_sender",
+      body: "Include the new edge case.",
+      notifiedCount: 1,
+    });
+    expect(taskStore.getComment(notified.id)).toMatchObject({
+      kind: "agent",
+      authorName: "Custom CLI agent",
+      threadId: "thr_cli_sender",
       notifiedCount: 1,
     });
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [
         expect.objectContaining({
-          threadId: "thr_cli_self",
+          threadId: "thr_prior_worker",
           mode: "steer-if-active",
         }),
       ],
@@ -900,10 +916,23 @@ describe("bb tasks CLI", () => {
     });
     await plugin(bb);
     stdout(
-      await harness.runCli(["project", "create", "--name", "PRs", "--prefix", "PRS"]),
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "PRs",
+        "--prefix",
+        "PRS",
+      ]),
     );
     stdout(
-      await harness.runCli(["create", "--project", "PRS", "--title", "Ship the pill"]),
+      await harness.runCli([
+        "create",
+        "--project",
+        "PRS",
+        "--title",
+        "Ship the pill",
+      ]),
     );
     stdout(
       await harness.runCli(["attach", "PRS-1", "--thread", "thr_pr_worker"]),
@@ -964,12 +993,27 @@ describe("bb tasks CLI", () => {
     });
     await plugin(bb);
     stdout(
-      await harness.runCli(["project", "create", "--name", "PRs", "--prefix", "PRS"]),
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "PRs",
+        "--prefix",
+        "PRS",
+      ]),
     );
     stdout(
-      await harness.runCli(["create", "--project", "PRS", "--title", "Ship the pill"]),
+      await harness.runCli([
+        "create",
+        "--project",
+        "PRS",
+        "--title",
+        "Ship the pill",
+      ]),
     );
-    stdout(await harness.runCli(["attach", "PRS-1", "--thread", "thr_down_0000"]));
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_down_0000"]),
+    );
 
     const shown = stdout(await harness.runCli(["show", "PRS-1"]));
     expect(shown).toContain("PR lookup unavailable for: thr_down_0000");

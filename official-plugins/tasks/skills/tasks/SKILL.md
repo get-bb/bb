@@ -43,7 +43,9 @@ not already exist. Dispatch requires an existing preset.
    Add `--notify` only when the new comment should be delivered to the thread
    that authored the task's most recent agent reply. This resumes an idle
    recipient; with no prior agent reply, the comment is recorded without
-   targeting an unrelated thread.
+   targeting an unrelated thread. In agent context, the new comment keeps the
+   current thread identity and an explicit `--author`, while delivery still
+   targets the prior latest responder rather than the new comment itself.
 
 4. Attach result artifacts that belong with the task, such as reports,
    screenshots, patches, or generated files:

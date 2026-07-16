@@ -9,7 +9,7 @@ import type {
 import { z } from "zod";
 
 import {
-  publishCommentsChanged,
+  createComment,
   publishProjectsChanged,
   registerHandlers,
   type TasksApiStore,
@@ -825,7 +825,9 @@ async function runList(
   const sortOption = option(args, "sort") ?? "manual";
   const sort = TASK_SORTS.find((candidate) => candidate === sortOption);
   if (sort === undefined) {
-    throw new CliError(`invalid sort: ${sortOption} (${TASK_SORTS.join(", ")})`);
+    throw new CliError(
+      `invalid sort: ${sortOption} (${TASK_SORTS.join(", ")})`,
+    );
   }
   const project = await selectedProject(
     domain,
@@ -1122,25 +1124,15 @@ async function runComment(
   if (body === undefined)
     throw new CliError("missing required --body or --body-file");
   if (!body.trim()) throw new CliError("comment body must not be blank");
-  const comment = args.flags.has("notify")
-    ? tasksRpcContract.createComment.output.parse(
-        await domain.createComment(
-          tasksRpcContract.createComment.input.parse({
-            taskId: task.id,
-            body,
-            notify: true,
-          }),
-        ),
-      ).comment
-    : store.tasks.createComment({
-        taskId: task.id,
-        kind: ctx.threadId ? "agent" : "user",
-        authorName: option(args, "author") ?? taskAuthor(ctx),
-        threadId: ctx.threadId ?? null,
-        body,
-        notifiedCount: 0,
-      });
-  if (!args.flags.has("notify")) publishCommentsChanged(bb, task.id);
+  const comment = await createComment(bb, store, {
+    taskId: task.id,
+    kind: ctx.threadId ? "agent" : "user",
+    authorName: option(args, "author") ?? taskAuthor(ctx),
+    presetName: null,
+    threadId: ctx.threadId ?? null,
+    body,
+    notify: args.flags.has("notify"),
+  });
   return args.flags.has("json")
     ? json({ comment })
     : `Commented on ${task.key}  ${comment.id}`;

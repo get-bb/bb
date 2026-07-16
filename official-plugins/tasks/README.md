@@ -54,6 +54,9 @@ authored the latest reply, resuming that thread when it is idle. Turn it off to
 keep the comment in Tasks only. If no agent has replied, the disabled control
 says so explicitly. Agents and scripts can use the same behavior with
 `bb tasks comment PROD-1 --body "New context" --notify`.
+When run from a thread, the CLI preserves that agent thread and any explicit
+`--author`; notification still targets the prior latest responder rather than
+the newly recorded agent comment itself.
 
 ## CLI reference
 
@@ -69,7 +72,7 @@ Run `bb tasks --help` or `bb tasks <command> --help` for exact options. Add
 | `bb tasks list`                                | Filter tasks by project, status, priority, label, active agents, or search text; `--sort priority\|due` orders the results.       |
 | `bb tasks show <key-or-id>`                    | Show the complete task record, including comments, attachments, subtasks, and attached threads.                                   |
 | `bb tasks update <key-or-id>`                  | Update status, priority, title, description, due date, or labels.                                                                 |
-| `bb tasks comment <key-or-id>`                 | Add a Markdown comment from inline text or a file; optionally notify mentioned threads.                                           |
+| `bb tasks comment <key-or-id>`                 | Add a Markdown comment from inline text or a file; optionally notify the latest responding task agent.                            |
 | `bb tasks attachment add\|get\|list`           | Add a task/comment artifact, fetch it to a path, or list a task's attachments.                                                    |
 | `bb tasks preset list\|create\|update\|delete` | Manage reusable agent execution presets.                                                                                          |
 | `bb tasks delegate <key>`                      | Start and attach a new agent thread using a preset.                                                                               |

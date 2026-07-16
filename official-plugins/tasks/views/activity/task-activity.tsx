@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowUp02Icon,
@@ -246,7 +246,7 @@ interface ComposerProps {
   notificationTarget: AgentNotificationTarget;
 }
 
-function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
+export function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
   const rpc = useTasksRpc();
   const navigate = useBbNavigate();
   const mentionItems = useMentionItems();
@@ -256,6 +256,7 @@ function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sendingRef = useRef(false);
 
   const staged = pendingFiles.filter((entry) => entry.status === "staged");
   const canSend = !sending && (body.trim().length > 0 || staged.length > 0);
@@ -293,13 +294,13 @@ function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
   };
 
   const send = async () => {
-    if (!canSend) return;
+    if (!canSend || sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
     setError(null);
     const text = body.trim();
-    let comment: Comment;
     try {
-      comment = (
+      const comment: Comment = (
         await rpc.call("createComment", {
           taskId,
           body: text,
@@ -307,45 +308,45 @@ function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
           allowEmptyBody: text.length === 0,
         })
       ).comment;
+      // The comment is now posted — clear the text so a later upload failure
+      // can't double-post it. Failed uploads stay behind as retryable chips.
+      setBody("");
+      const failed: StagedAttachment[] = [];
+      for (const entry of staged) {
+        try {
+          await uploadAttachment(entry.file, { commentId: comment.id });
+        } catch (cause) {
+          failed.push({
+            ...entry,
+            status: "failed",
+            owner: { commentId: comment.id },
+            error: cause instanceof Error ? cause.message : String(cause),
+          });
+        }
+      }
+      // Sent entries leave the tray (failures come back as retryable chips);
+      // anything staged after send started is untouched.
+      setPendingFiles((files) =>
+        files.flatMap((entry) => {
+          const failure = failed.find((candidate) => candidate.id === entry.id);
+          if (failure) return [failure];
+          return staged.some((candidate) => candidate.id === entry.id)
+            ? []
+            : [entry];
+        }),
+      );
+      if (failed.length > 0) {
+        setError(
+          `The comment posted, but ${failed.length} attachment${failed.length > 1 ? "s" : ""} failed to upload — retry below.`,
+        );
+      }
     } catch (cause) {
       // Nothing posted: keep the draft and chips for another attempt.
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      sendingRef.current = false;
       setSending(false);
-      return;
     }
-    // The comment is now posted — clear the text so a later upload failure
-    // can't double-post it. Failed uploads stay behind as retryable chips.
-    setBody("");
-    const failed: StagedAttachment[] = [];
-    for (const entry of staged) {
-      try {
-        await uploadAttachment(entry.file, { commentId: comment.id });
-      } catch (cause) {
-        failed.push({
-          ...entry,
-          status: "failed",
-          owner: { commentId: comment.id },
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      }
-    }
-    // Sent entries leave the tray (failures come back as retryable chips);
-    // anything staged after send started is untouched.
-    setPendingFiles((files) =>
-      files.flatMap((entry) => {
-        const failure = failed.find((candidate) => candidate.id === entry.id);
-        if (failure) return [failure];
-        return staged.some((candidate) => candidate.id === entry.id)
-          ? []
-          : [entry];
-      }),
-    );
-    if (failed.length > 0) {
-      setError(
-        `The comment posted, but ${failed.length} attachment${failed.length > 1 ? "s" : ""} failed to upload — retry below.`,
-      );
-    }
-    setSending(false);
   };
 
   return (
@@ -430,6 +431,7 @@ export function AgentNotificationControl({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const labelId = useId();
   const enabled = target.kind === "ready";
   const label =
     target.kind === "ready"
@@ -444,9 +446,9 @@ export function AgentNotificationControl({
         checked={enabled && checked}
         disabled={!enabled}
         onCheckedChange={onCheckedChange}
-        aria-label="Notify last responding agent"
+        aria-labelledby={labelId}
       />
-      {label}
+      <span id={labelId}>{label}</span>
     </label>
   );
 }

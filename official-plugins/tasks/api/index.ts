@@ -398,6 +398,8 @@ interface CreateCommentInput {
   taskId: string;
   kind: StoredComment["kind"];
   authorName: string;
+  presetName: string | null;
+  threadId: string | null;
   body: string;
   notify: boolean;
 }
@@ -412,12 +414,14 @@ export async function createComment(
       taskId: input.taskId,
       kind: input.kind,
       authorName: input.authorName,
+      presetName: input.presetName,
+      threadId: input.threadId,
       body: input.body,
       notifiedCount: 0,
     }),
   );
 
-  if (input.notify && comment.kind === "user") {
+  if (input.notify) {
     const delivery = await deliverCommentToLatestAgent(bb, store.tasks, {
       taskId: comment.taskId,
       commentId: comment.id,
@@ -841,6 +845,8 @@ export function registerHandlers(
         taskId: input.taskId,
         kind: "user",
         authorName: "You",
+        presetName: null,
+        threadId: null,
         body: input.body,
         notify: input.notify,
       });

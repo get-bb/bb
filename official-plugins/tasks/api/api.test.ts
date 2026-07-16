@@ -446,7 +446,7 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
-  it("does not send for notify=false or agent comments", async () => {
+  it("does not send for notify=false or when no prior agent has replied", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: { threads: { send: async () => undefined } },
@@ -481,6 +481,8 @@ describe("Tasks RPC domain API", () => {
       taskId: task.id,
       kind: "agent",
       authorName: "Worker",
+      presetName: null,
+      threadId: "thr_worker",
       body: "Reporting progress.",
       notify: true,
     });
@@ -1065,11 +1067,8 @@ describe("Tasks RPC domain API", () => {
           },
         },
         environments: {
-          pullRequest: async ({
-            environmentId,
-          }: {
-            environmentId: string;
-          }) => pullRequestsByEnvironment[environmentId]!,
+          pullRequest: async ({ environmentId }: { environmentId: string }) =>
+            pullRequestsByEnvironment[environmentId]!,
         },
       },
     });
@@ -1246,7 +1245,11 @@ describe("Tasks RPC domain API", () => {
       title: "Ship it",
     });
     // Two threads share env_a; a third uses env_b.
-    for (const threadId of ["thr_alpha0000", "thr_alpha0001", "thr_beta00000"]) {
+    for (const threadId of [
+      "thr_alpha0000",
+      "thr_alpha0001",
+      "thr_beta00000",
+    ]) {
       store.tasks.upsertTaskThread({
         taskId: task.id,
         threadId,
@@ -1325,11 +1328,8 @@ describe("Tasks RPC domain API", () => {
             }),
         },
         environments: {
-          pullRequest: async ({
-            environmentId,
-          }: {
-            environmentId: string;
-          }) => lookupByEnvironment[environmentId]!,
+          pullRequest: async ({ environmentId }: { environmentId: string }) =>
+            lookupByEnvironment[environmentId]!,
         },
       },
     });

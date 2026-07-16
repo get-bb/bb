@@ -1,13 +1,53 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createComment, createStore } from "../../api/index.js";
 import type { DisplayComment } from "../../shared/contract.js";
 import {
   AgentNotificationControl,
   agentNotificationTarget,
+  CommentComposer,
 } from "./task-activity.js";
 
-afterEach(cleanup);
+const { rpcCall } = vi.hoisted(() => ({ rpcCall: vi.fn() }));
+
+vi.mock("../../shell/data.js", () => ({
+  useMentionItems: () => [],
+  useTasksQuery: () => ({ data: [] }),
+  useTasksRpc: () => ({ call: rpcCall }),
+}));
+
+vi.mock("@bb/plugin-sdk/app", () => ({
+  useBbNavigate: () => ({ toThread: vi.fn() }),
+}));
+
+vi.mock("../../editor/tasks-editor.js", () => ({
+  TasksEditor: (props: {
+    value: string;
+    onChange: (value: string) => void;
+  }) => (
+    <textarea
+      aria-label="Comment body"
+      value={props.value}
+      onChange={(event) => props.onChange(event.currentTarget.value)}
+    />
+  ),
+}));
+
+afterEach(() => {
+  cleanup();
+  rpcCall.mockReset();
+});
 
 function comment(
   kind: DisplayComment["kind"],
@@ -61,7 +101,7 @@ describe("AgentNotificationControl", () => {
     );
 
     const toggle = screen.getByRole("switch", {
-      name: "Notify last responding agent",
+      name: "Notify Fix the login bug",
     });
     expect(toggle.hasAttribute("disabled")).toBe(false);
     expect(screen.getByText("Notify Fix the login bug")).toBeTruthy();
@@ -81,7 +121,7 @@ describe("AgentNotificationControl", () => {
     expect(screen.getByText("No prior agent reply to notify")).toBeTruthy();
     expect(
       screen
-        .getByRole("switch", { name: "Notify last responding agent" })
+        .getByRole("switch", { name: "No prior agent reply to notify" })
         .hasAttribute("disabled"),
     ).toBe(true);
   });
@@ -100,8 +140,104 @@ describe("AgentNotificationControl", () => {
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("switch", { name: "Notify last responding agent" })
+        .getByRole("switch", {
+          name: "Latest responding agent can’t be notified",
+        })
         .hasAttribute("disabled"),
     ).toBe(true);
+  });
+});
+
+describe("CommentComposer", () => {
+  it("single-flights rapid submit activation into one comment and send", async () => {
+    let releaseSend!: () => void;
+    const sendGate = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }) =>
+            makeThreadResponse({ id: threadId, status: "active" }),
+          send: async () => sendGate,
+        },
+      },
+    });
+    try {
+      const store = createStore(bb);
+      const project = store.tasks.createProject({
+        name: "Composer",
+        prefix: "CMP",
+        color: "blue",
+      });
+      const task = store.tasks.createTask({
+        projectId: project.id,
+        title: "Submit once",
+      });
+      store.tasks.createComment({
+        taskId: task.id,
+        kind: "agent",
+        authorName: "Worker",
+        threadId: "thr_worker",
+        body: "Ready for input",
+      });
+      rpcCall.mockImplementation(async (method, input) => {
+        if (method !== "createComment") {
+          throw new Error(`Unexpected RPC method: ${String(method)}`);
+        }
+        const request = input as {
+          taskId: string;
+          body: string;
+          notify: boolean;
+        };
+        return {
+          comment: await createComment(bb, store, {
+            taskId: request.taskId,
+            kind: "user",
+            authorName: "You",
+            presetName: null,
+            threadId: null,
+            body: request.body,
+            notify: request.notify,
+          }),
+        };
+      });
+
+      render(
+        <CommentComposer
+          taskId={task.id}
+          notificationTarget={{ kind: "ready", title: "Worker" }}
+        />,
+      );
+      fireEvent.change(screen.getByRole("textbox", { name: "Comment body" }), {
+        target: { value: "Only once" },
+      });
+      const submit = screen.getByRole("button", { name: "Comment" });
+      fireEvent.click(submit);
+      fireEvent.click(submit);
+
+      await waitFor(() => expect(rpcCall).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(harness.sdk.callsTo("threads.send")).toHaveLength(1),
+      );
+      expect(
+        store.tasks
+          .listComments(task.id)
+          .filter((entry) => entry.body === "Only once"),
+      ).toHaveLength(1);
+
+      releaseSend();
+      await waitFor(() =>
+        expect(
+          store.tasks
+            .listComments(task.id)
+            .find((entry) => entry.body === "Only once")?.notifiedCount,
+        ).toBe(1),
+      );
+    } finally {
+      releaseSend();
+      await harness.dispose();
+    }
   });
 });
