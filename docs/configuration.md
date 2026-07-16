@@ -135,7 +135,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
 | Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`                 | All clients              |
 | Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
-| Layout    | Focus chat pane 1–4           | `Mod+1` … `Mod+4`                 | While split              |
+| Layout    | Focus chat pane 1–8           | `Mod+1` … `Mod+8`                 | While split              |
 | Layout    | Close focused chat pane       | `Mod+Shift+X`                     | While split              |
 | Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
 | Window    | Settings                      | `Mod+,`                           | All clients              |
@@ -364,8 +364,10 @@ are limited to one attempt per 15 minutes, and never downgrade a daemon.
 ## Thread splits Experiment
 
 The **Thread splits** experiment (Settings → Experiments, off by default)
-enables the app's multi-pane thread view and its sidebar, menu, and keyboard
-split controls. It also enables explicit split placement through
+enables up to eight panes in the app's multi-pane thread view and its sidebar,
+menu, and keyboard split controls. Edge placement creates panes through the
+eighth pane; at the eight-pane limit, opening a new thread with an edge
+placement replaces the focused pane. It also enables explicit split placement through
 `bb thread open <thread-id> --split right|down|left|top|replace` and the matching
 SDK request. Ordinary thread and file opens without an explicit split placement
 continue to work while the experiment is off.

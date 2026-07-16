@@ -16,7 +16,10 @@ import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout";
+import {
+  serializeSplitLayout,
+  SPLIT_LAYOUT_STORAGE_KEY,
+} from "@/lib/split-layout";
 import type { PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
@@ -26,6 +29,7 @@ import {
 } from "@/lib/plugin-slots";
 import { PaneContext, usePaneSecondaryPanelRegistration } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
+import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 
 // Per-thread archived/deleted state consulted by the mocked useThread, driving
 // PaneStaleWatcher. Unknown threads read as "still loading" (never pruned).
@@ -183,6 +187,24 @@ function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
     },
     focusedPaneId,
   };
+}
+
+function eightPaneThreadLayout(): SplitLayout {
+  let layout: SplitLayout | null = null;
+  for (let index = 0; index < 8; index += 1) {
+    layout = applyThreadOpenToLayout(
+      layout,
+      {
+        projectId: PERSONAL_PROJECT_ID,
+        threadId: `thr-${String.fromCharCode(97 + index)}`,
+      },
+      index === 0 ? "replace" : "right",
+    );
+  }
+  if (layout === null) {
+    throw new Error("Expected eight-pane layout");
+  }
+  return layout;
 }
 
 const docsContent: PaneContent = {
@@ -530,6 +552,45 @@ describe("SplitThreadArea", () => {
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
+  });
+
+  it("restores eight successive default-right opens, then focuses and closes with valid URL state", async () => {
+    const layout = eightPaneThreadLayout();
+    expect(layout.root).toMatchObject({
+      type: "split",
+      dir: "row",
+      sizes: Array.from({ length: 8 }, () => 1 / 8),
+    });
+    window.localStorage.setItem(
+      SPLIT_LAYOUT_STORAGE_KEY,
+      serializeSplitLayout(layout),
+    );
+
+    const store = renderSplitArea({ path: threadPath("thr-h") });
+
+    for (const suffix of ["a", "b", "c", "d", "e", "f", "g", "h"]) {
+      expect(await screen.findByTestId(`pane-thr-${suffix}`)).toBeTruthy();
+    }
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(8);
+    expect(screen.getByTestId("pane-thr-h").dataset.focused).toBe("true");
+
+    fireEvent.pointerDown(screen.getByTestId("pane-thr-f"));
+    await waitFor(() => {
+      expect(screen.getByTestId("pane-thr-f").dataset.focused).toBe("true");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-f"),
+      );
+    });
+
+    fireEvent.click(screen.getByTestId("close-thr-f"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("pane-thr-f")).toBeNull();
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-g"),
+      );
+    });
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-7");
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(7);
   });
 
   it("carves a plugin pane drag handle out of the macOS window-drag region", async () => {

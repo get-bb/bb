@@ -6,6 +6,26 @@ import {
 } from "./persistence";
 import type { SplitLayout } from "./types";
 
+function layoutWithPaneCount(count: number): SplitLayout {
+  return {
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: Array.from({ length: count }, () => 1 / count),
+      children: Array.from({ length: count }, (_, index) => ({
+        type: "pane" as const,
+        paneId: `pane-${index + 1}`,
+        content: {
+          kind: "thread" as const,
+          projectId: "project-1",
+          threadId: `thread-${index + 1}`,
+        },
+      })),
+    },
+    focusedPaneId: `pane-${count}`,
+  };
+}
+
 const layout: SplitLayout = {
   root: {
     type: "split",
@@ -75,6 +95,14 @@ describe("split layout persistence", () => {
     expect(deserializeSplitLayout(serializeSplitLayout(mixed))).toEqual(mixed);
   });
 
+  it("round-trips and restores all eight panes with focus and sizes intact", () => {
+    const eightPanes = layoutWithPaneCount(8);
+
+    expect(deserializeSplitLayout(serializeSplitLayout(eightPanes))).toEqual(
+      eightPanes,
+    );
+  });
+
   it("rejects malformed JSON, unknown versions, and invalid layout invariants", () => {
     expect(deserializeSplitLayout(null)).toBeNull();
     expect(deserializeSplitLayout("not json")).toBeNull();
@@ -99,6 +127,9 @@ describe("split layout persistence", () => {
           layout: { ...layout, focusedPaneId: "missing" },
         }),
       ),
+    ).toBeNull();
+    expect(
+      deserializeSplitLayout(serializeSplitLayout(layoutWithPaneCount(9))),
     ).toBeNull();
   });
 });

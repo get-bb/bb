@@ -106,7 +106,8 @@ Opening threads and files in the app:
   the thread ID argument is omitted for file-only opens. Pass an explicit thread
   ID with --split to open another thread. Outside a BB thread, pass the thread ID
   as the first argument. A thread already open in a pane is focused instead of
-  duplicated. At four panes, edge placement replaces the focused pane.
+  duplicated. Edge placement creates panes through the eighth pane; at eight
+  panes, it replaces the focused pane.
   Enable the "Thread splits" experiment in Settings → Experiments before using
   --split; ordinary thread/file opens without --split remain available while off.
   Paths can be thread-relative workspace paths, or absolute paths inside the

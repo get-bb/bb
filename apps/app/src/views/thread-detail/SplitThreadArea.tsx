@@ -107,7 +107,7 @@ const EMPTY_PATH: SplitPath = [];
 type NavigateInPane = (paneId: string, thread: ThreadRoutePathArgs) => void;
 
 /**
- * Renders the 1–4 thread panes that live in the main content area. It bridges
+ * Renders the 1–8 thread panes that live in the main content area. It bridges
  * the URL-follows-focus and external-navigation policies between the global
  * split-layout atom and the route, then recursively draws the layout tree.
  * A single pane renders identically to the pre-split page surface (no wrapper,

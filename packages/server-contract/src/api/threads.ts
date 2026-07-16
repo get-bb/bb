@@ -395,7 +395,11 @@ export type ReorderPinnedThreadRequest = z.infer<
 export const panelFileSourceSchema = z.enum(["workspace", "thread-storage"]);
 export type PanelFileSource = z.infer<typeof panelFileSourceSchema>;
 
-/** Requested placement for a thread opened in the app's split layout. */
+/**
+ * Requested placement for a thread opened in the app's split layout. Edge
+ * placements add panes through the eighth pane; at the cap they replace the
+ * focused pane. `replace` always replaces the focused pane.
+ */
 export const threadOpenSplitSchema = z.enum([
   "right",
   "down",

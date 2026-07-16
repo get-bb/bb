@@ -52,18 +52,15 @@ function twoPanes(): SplitLayout {
   };
 }
 
-function fourPanes(): SplitLayout {
+function eightPanes(): SplitLayout {
   return {
     root: {
       type: "split",
       dir: "row",
-      sizes: [0.25, 0.25, 0.25, 0.25],
-      children: [
-        pane("pane-1", "t1"),
-        pane("pane-2", "t2"),
-        pane("pane-3", "t3"),
-        pane("pane-4", "t4"),
-      ],
+      sizes: Array.from({ length: 8 }, () => 0.125),
+      children: Array.from({ length: 8 }, (_, index) =>
+        pane(`pane-${index + 1}`, `t${index + 1}`),
+      ),
     },
     focusedPaneId: "pane-1",
   };
@@ -119,11 +116,11 @@ describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)
     });
   });
 
-  it("coerces to a replace of the focused pane at the four-pane cap", () => {
-    const { store, openInSplit } = renderOpenInSplit("t9", fourPanes());
+  it("coerces to a replace of the focused pane at the eight-pane cap", () => {
+    const { store, openInSplit } = renderOpenInSplit("t9", eightPanes());
     openInSplit();
     const layout = store.get(splitLayoutAtom);
-    expect(countPanes(layout!.root)).toBe(4); // never exceeds the cap
+    expect(countPanes(layout!.root)).toBe(8); // never exceeds the cap
     const opened = findPaneByThread(layout!.root, "p1", "t9");
     expect(opened?.paneId).toBe("pane-1"); // replaced the focused pane
     expect(findPaneByThread(layout!.root, "p1", "t1")).toBeNull();

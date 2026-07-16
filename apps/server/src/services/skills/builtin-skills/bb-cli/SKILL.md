@@ -236,8 +236,9 @@ For review or fix pipelines, get the environment ID from
   other workspace file for the user in the BB IDE's thread panel.
 - Use `bb thread open <thread-id> --split right|down|left|top|replace` to open
   or focus a thread in the current app split layout. `replace` is the default;
-  an already-open thread is focused, and an edge split at the four-pane cap
-  replaces the focused pane. Explicit `--split` placement requires the
+  an already-open thread is focused. Edge splits create panes through the
+  eighth pane; at eight panes, they replace the focused pane. Explicit
+  `--split` placement requires the
   **"Thread splits"** experiment in Settings → Experiments; ordinary opens
   without `--split` continue to work while it is off.
 - A file path is optional when a thread ID is explicit:
