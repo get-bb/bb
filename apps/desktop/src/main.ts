@@ -1377,10 +1377,10 @@ function registerDesktopUpdateIpc(): void {
     await finishQuit();
     desktopAutoUpdateService.installUpdate();
   });
-  // Renderer pushes the resolved bb theme so the NSWindow appearance —
-  // traffic lights and inactive title-bar chrome — follows bb's theme
-  // rather than the OS appearance. `themeSource` is app-global so a single
-  // assignment covers every BrowserWindow, including the log viewer.
+  // Renderer pushes the bb theme preference so the NSWindow appearance —
+  // traffic lights and inactive title-bar chrome — follows an explicit bb
+  // theme or the OS when set to system. `themeSource` is app-global so a
+  // single assignment covers every BrowserWindow, including the log viewer.
   ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
     const parsed = bbDesktopThemeSchema.safeParse(payload);
     if (!parsed.success) {

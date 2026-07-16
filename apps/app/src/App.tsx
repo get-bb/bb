@@ -81,7 +81,7 @@ export function App() {
   // Show a separate toast when the Electron shell reports a desktop update.
   useDesktopUpdateAvailableToast();
   // Keep the Electron window chrome (traffic lights, inactive title bar)
-  // in sync with bb's resolved theme.
+  // in sync with bb's theme preference.
   useDesktopThemeSync();
   // Apply the server-stored app palette (built-in or custom CSS) app-wide.
   useAppTheme();
