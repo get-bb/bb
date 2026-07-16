@@ -267,27 +267,42 @@ export function ThreadDetailSecondaryContent({
       ),
     [hasForks, isMetadataLoading, stableMetadata],
   );
-  const inlineSecondaryPanelContent = !renderAsDrawer ? (
-    <ThreadSecondaryPanel
-      {...threadSecondaryPanelProps}
-      browserDeck={browserDeck}
-      renderAsDrawer={false}
-      isConversationCollapsed={isConversationCollapsedActive}
-      onToggleConversationCollapse={onToggleConversationCollapse}
-      // The full-width header bar owns the (stable) right-panel toggle, so the
-      // panel drops its own inline hide control entirely — no reserved slot, so
-      // the trailing expand control sits flush at the edge.
-      inlinePanelToggle={secondaryPanelHost === null ? "hidden" : "reserved"}
-      // In the split-workspace host, panes' panels share one PanelGroup, so
-      // each pane's Panel needs its own layout identity (see the prop doc).
-      resizablePanelId={
-        secondaryPanelHost === null
-          ? undefined
-          : `thread-detail-secondary-panel-${paneId}`
-      }
-      metadataContent={metadataContent}
-    />
-  ) : null;
+  const inlineSecondaryPanelContent = useMemo(
+    () =>
+      !renderAsDrawer ? (
+        <ThreadSecondaryPanel
+          {...threadSecondaryPanelProps}
+          browserDeck={browserDeck}
+          renderAsDrawer={false}
+          isConversationCollapsed={isConversationCollapsedActive}
+          onToggleConversationCollapse={onToggleConversationCollapse}
+          // The full-width header bar owns the (stable) right-panel toggle, so
+          // the panel drops its own inline hide control entirely — no reserved
+          // slot, so the trailing expand control sits flush at the edge.
+          inlinePanelToggle={
+            secondaryPanelHost === null ? "hidden" : "reserved"
+          }
+          // In the split-workspace host, panes' panels share one PanelGroup, so
+          // each pane's Panel needs its own layout identity (see the prop doc).
+          resizablePanelId={
+            secondaryPanelHost === null
+              ? undefined
+              : `thread-detail-secondary-panel-${paneId}`
+          }
+          metadataContent={metadataContent}
+        />
+      ) : null,
+    [
+      browserDeck,
+      isConversationCollapsedActive,
+      metadataContent,
+      onToggleConversationCollapse,
+      paneId,
+      renderAsDrawer,
+      secondaryPanelHost,
+      threadSecondaryPanelProps,
+    ],
+  );
   const drawerSecondaryPanelContent = renderAsDrawer ? (
     <ThreadSecondaryPanel
       {...threadSecondaryPanelProps}
@@ -298,13 +313,20 @@ export function ThreadDetailSecondaryContent({
       metadataContent={metadataContent}
     />
   ) : null;
-  const hostedCollapsedRail = (
-    <ConversationCollapsedRail
-      collapsed={isConversationCollapsedActive}
-      isWorking={isConversationWorking}
-      reserveTopForDesktopTrafficLights={false}
-      onExpand={onToggleConversationCollapse}
-    />
+  const hostedCollapsedRail = useMemo(
+    () => (
+      <ConversationCollapsedRail
+        collapsed={isConversationCollapsedActive}
+        isWorking={isConversationWorking}
+        reserveTopForDesktopTrafficLights={false}
+        onExpand={onToggleConversationCollapse}
+      />
+    ),
+    [
+      isConversationCollapsedActive,
+      isConversationWorking,
+      onToggleConversationCollapse,
+    ],
   );
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
     () => ({

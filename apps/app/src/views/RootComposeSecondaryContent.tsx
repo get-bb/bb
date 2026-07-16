@@ -210,22 +210,33 @@ export function RootComposeSecondaryContent({
       secondaryWidth,
     ]);
   }, [isSecondaryPanelOpen, renderAsDrawer]);
-  const inlineSecondaryPanelContent = !renderAsDrawer ? (
-    <ThreadSecondaryPanel
-      {...threadSecondaryPanelProps}
-      browserDeck={browserDeck}
-      renderAsDrawer={false}
-      isConversationCollapsed={false}
-      onToggleConversationCollapse={noopToggleConversationCollapse}
-      // In the split-workspace host, panes' panels share one PanelGroup, so
-      // each pane's Panel needs its own layout identity (see the prop doc).
-      resizablePanelId={
-        secondaryPanelHost === null || paneContext === null
-          ? undefined
-          : `thread-detail-secondary-panel-${paneContext.paneId}`
-      }
-    />
-  ) : null;
+  const inlineSecondaryPanelContent = useMemo(
+    () =>
+      !renderAsDrawer ? (
+        <ThreadSecondaryPanel
+          {...threadSecondaryPanelProps}
+          browserDeck={browserDeck}
+          renderAsDrawer={false}
+          isConversationCollapsed={false}
+          onToggleConversationCollapse={noopToggleConversationCollapse}
+          // In the split-workspace host, panes' panels share one PanelGroup,
+          // so each pane's Panel needs its own layout identity (see the prop
+          // doc).
+          resizablePanelId={
+            secondaryPanelHost === null || paneContext === null
+              ? undefined
+              : `thread-detail-secondary-panel-${paneContext.paneId}`
+          }
+        />
+      ) : null,
+    [
+      browserDeck,
+      paneContext,
+      renderAsDrawer,
+      secondaryPanelHost,
+      threadSecondaryPanelProps,
+    ],
+  );
   const drawerSecondaryPanelContent = renderAsDrawer ? (
     <ThreadSecondaryPanel
       {...threadSecondaryPanelProps}

@@ -132,7 +132,10 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
-  const secondaryPanelRegistry = useMemo(createPaneSecondaryPanelRegistry, []);
+  const secondaryPanelRegistry = useMemo(
+    () => createPaneSecondaryPanelRegistry(),
+    [],
+  );
 
   const routeThread = useMemo<ThreadRoutePathArgs | null>(
     () => (projectId && threadId ? { projectId, threadId } : null),
