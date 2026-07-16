@@ -69,6 +69,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Thread creation may omit visibility for backward compatibility; the server fills visible at the creation boundary.",
+    fields: ["createThreadRequestSchema.visibility"],
+  },
+  {
+    reason:
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
       "createThreadRequestSchema.folderId",
@@ -794,6 +799,7 @@ describe("server-contract canonical schemas", () => {
           originKind: null,
           childOrigin: null,
           originPluginId: null,
+          visibility: "visible",
           archivedAt: null,
           pinnedAt: null,
           pinSortKey: null,
@@ -1180,6 +1186,26 @@ describe("server-contract canonical schemas", () => {
       },
     });
     expect(parsed.origin).toBe("sdk");
+  });
+
+  it("accepts generic hidden thread visibility without changing omitted requests", () => {
+    const base = {
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "sdk" as const,
+      input: [{ type: "text" as const, text: "Scripted start" }],
+      environment: {
+        type: "host" as const,
+        hostId: "host_abc",
+        workspace: { type: "unmanaged" as const, path: null },
+      },
+    };
+
+    expect(createThreadRequestSchema.parse(base).visibility).toBeUndefined();
+    expect(
+      createThreadRequestSchema.parse({ ...base, visibility: "hidden" })
+        .visibility,
+    ).toBe("hidden");
   });
 
   it("rejects empty input for a normal thread start", () => {

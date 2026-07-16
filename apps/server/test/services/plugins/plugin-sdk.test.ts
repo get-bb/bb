@@ -18,8 +18,11 @@ import {
 import type { BbPluginApi } from "../../../src/services/plugins/plugin-api.js";
 import {
   seedHostSession,
+  seedEnvironment,
   seedPrimaryHost,
   seedProjectWithSource,
+  seedThread,
+  seedThreadRuntimeState,
 } from "../../helpers/seed.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
 
@@ -196,7 +199,7 @@ describe("plugin bb.sdk bind gate", () => {
 });
 
 describe("plugin bb.sdk against a running server", () => {
-  it("serves SDK calls and attributes plugin-spawned threads", async () => {
+  it("keeps hidden plugin threads attributed and directly operable by id", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));
     try {
@@ -205,6 +208,11 @@ describe("plugin bb.sdk against a running server", () => {
       seedPrimaryHost(server.deps, host.id);
       const { project } = seedProjectWithSource(server.deps, {
         hostId: host.id,
+        path: "/tmp/plugin-sdk-live-source",
+      });
+      const environment = seedEnvironment(server.deps, {
+        hostId: host.id,
+        projectId: project.id,
         path: "/tmp/plugin-sdk-live-source",
       });
 
@@ -254,9 +262,58 @@ describe("plugin bb.sdk against a running server", () => {
         projectId: project.id,
         prompt: "spawned from a plugin",
         environment: { type: "project-default" },
+        visibility: "hidden",
       });
       expect(thread.originPluginId).toBe("spawner");
-      expect(getThread(server.db, thread.id)?.originPluginId).toBe("spawner");
+      expect(thread.visibility).toBe("hidden");
+      expect(getThread(server.db, thread.id)).toMatchObject({
+        originPluginId: "spawner",
+        visibility: "hidden",
+      });
+      await expect(
+        api.sdk.threads.get({ threadId: thread.id }),
+      ).resolves.toMatchObject({ id: thread.id, visibility: "hidden" });
+      await expect(
+        api.sdk.threads.wait({
+          threadId: thread.id,
+          status: "starting",
+          timeoutMs: 100,
+        }),
+      ).resolves.toMatchObject({ matched: true, threadId: thread.id });
+      await expect(
+        api.sdk.threads.list({ projectId: project.id }),
+      ).resolves.not.toContainEqual(expect.objectContaining({ id: thread.id }));
+
+      const operable = seedThread(server.deps, {
+        environmentId: environment.id,
+        originPluginId: "spawner",
+        projectId: project.id,
+        status: "idle",
+        visibility: "hidden",
+      });
+      seedThreadRuntimeState(server.deps, {
+        environmentId: environment.id,
+        inputText: "Initial turn",
+        providerThreadId: "provider-hidden-plugin-thread",
+        threadId: operable.id,
+      });
+      await expect(
+        api.sdk.threads.wait({
+          threadId: operable.id,
+          status: "idle",
+          timeoutMs: 100,
+        }),
+      ).resolves.toMatchObject({ matched: true });
+      await expect(
+        api.sdk.threads.send({
+          threadId: operable.id,
+          mode: "auto",
+          input: [{ type: "text", text: "Continue", mentions: [] }],
+        }),
+      ).resolves.toEqual({ ok: true });
+      await expect(
+        api.sdk.threads.stop({ threadId: operable.id }),
+      ).resolves.toEqual({ ok: true });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });

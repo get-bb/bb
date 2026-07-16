@@ -567,7 +567,8 @@ export interface PluginUi {
 export interface PluginEvents {
   /**
    * Add a thread lifecycle listener. Multiple listeners for the same event
-   * are additive and run independently in registration order.
+   * are additive and run independently in registration order. Visible thread
+   * events are broadcast; hidden thread events go only to their origin plugin.
    */
   on<E extends PluginThreadEventName>(
     event: E,

@@ -147,6 +147,7 @@ function toPublicThread(thread: Thread): Thread {
     originKind: thread.originKind,
     childOrigin: thread.originKind ?? thread.childOrigin,
     originPluginId: thread.originPluginId,
+    visibility: thread.visibility,
     archivedAt: thread.archivedAt,
     pinnedAt: thread.pinnedAt,
     deletedAt: thread.deletedAt,

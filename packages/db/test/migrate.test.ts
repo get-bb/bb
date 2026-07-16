@@ -265,6 +265,9 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN thread_splits")
     .run();
+  // Thread visibility was added after the legacy checkpoints these tests
+  // replay, so remove it before applying the forward migration chain again.
+  db.$client.prepare("ALTER TABLE threads DROP COLUMN visibility").run();
   // threads.origin_plugin_id was added by 0051; rewind it the same way.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
   dropProjectGitRemoteUrlColumn(db);

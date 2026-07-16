@@ -7,6 +7,7 @@ import {
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
+  countVisibleNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
@@ -126,9 +127,60 @@ describe("threads", () => {
     expect(thread.projectId).toBe(project.id);
     expect(thread.deletedAt).toBeNull();
     expect(thread.lastReadAt).toBe(thread.latestAttentionAt);
+    expect(thread.visibility).toBe("visible");
 
     const fetched = getThread(db, thread.id);
+    expect(fetched?.visibility).toBe("visible");
     expect(fetched).toMatchObject({ id: thread.id });
+  });
+
+  it("keeps hidden threads out of ordinary organization and attention queries", () => {
+    const { db, project } = setup();
+    const parent = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const visible = createThread(db, noopNotifier, {
+      parentThreadId: parent.id,
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const hidden = createThread(db, noopNotifier, {
+      parentThreadId: parent.id,
+      projectId: project.id,
+      providerId: "codex",
+      visibility: "hidden",
+    });
+
+    pinThread(db, noopNotifier, { threadId: hidden.id });
+    markThreadAttentionRequested(db, noopNotifier, { threadId: hidden.id });
+    createPendingInteraction(db, {
+      payload: "{}",
+      providerId: "codex",
+      providerRequestId: "hidden-request",
+      providerThreadId: "hidden-provider-thread",
+      threadId: hidden.id,
+      turnId: "hidden-turn",
+    });
+
+    expect(getThread(db, hidden.id)?.visibility).toBe("hidden");
+    expect(
+      listThreads(db, { projectId: project.id }).map((thread) => thread.id),
+    ).toEqual([visible.id, parent.id]);
+    expect(
+      listActiveVisiblePinnedThreadRoots(db).map((thread) => thread.id),
+    ).not.toContain(hidden.id);
+    expect(hasActiveThreadAttention(db)).toBe(false);
+    expect(
+      countNonDeletedAssignedChildThreads(db, {
+        parentThreadId: parent.id,
+      }),
+    ).toBe(2);
+    expect(
+      countVisibleNonDeletedAssignedChildThreads(db, {
+        parentThreadId: parent.id,
+      }),
+    ).toBe(1);
   });
 
   it("persists, reads, and clears the thread execution override", () => {

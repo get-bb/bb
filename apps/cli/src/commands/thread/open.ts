@@ -14,6 +14,7 @@ import {
 import { outputJson, printContextLabel, type ResolvedId } from "../helpers.js";
 
 interface ThreadOpenCommandOptions {
+  debugHidden?: boolean;
   line?: string;
   json?: boolean;
   split?: string;
@@ -42,6 +43,7 @@ export function registerOpenCommand(
     .usage("[id] [path] [options]")
     .argument("[id]", "Thread ID. Omit inside a BB thread.")
     .argument("[path]", "Thread-relative or absolute file path to open")
+    .option("--debug-hidden", "Explicitly open a hidden thread for debugging")
     .option("--line <number>", "Line number to focus")
     .option(
       "--split <placement>",
@@ -58,7 +60,7 @@ export function registerOpenCommand(
           const target = resolveThreadOpenTarget(
             first,
             second,
-            opts.split !== undefined,
+            opts.split !== undefined || opts.debugHidden === true,
           );
           const lineNumber = parseLineNumber(opts.line);
           const requestedSplit =
@@ -82,6 +84,7 @@ export function registerOpenCommand(
                   lineNumber,
                 };
           const result = await sdk.threads.open({
+            ...(opts.debugHidden === true ? { debugHidden: true } : {}),
             threadId: target.threadId,
             ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
             file,
@@ -118,7 +121,7 @@ export function registerOpenCommand(
 function resolveThreadOpenTarget(
   first: string | undefined,
   second: string | undefined,
-  hasExplicitSplit: boolean,
+  allowsExplicitThreadTarget: boolean,
 ): ThreadOpenTarget {
   const contextThreadId = resolveContextThreadId();
   if (contextThreadId) {
@@ -138,21 +141,23 @@ function resolveThreadOpenTarget(
       if (!explicitThreadId) {
         throw new Error("Missing thread ID. Pass <threadId>.");
       }
-      if (explicitThreadId !== contextThreadId && !hasExplicitSplit) {
+      if (explicitThreadId !== contextThreadId && !allowsExplicitThreadTarget) {
         throw new Error(
           "BB_THREAD_ID is set, so bb thread open targets the current thread. Omit the thread ID.",
         );
       }
       return {
-        threadId: hasExplicitSplit ? explicitThreadId : contextThreadId,
+        threadId: allowsExplicitThreadTarget
+          ? explicitThreadId
+          : contextThreadId,
         inputPath: second,
-        resolved: hasExplicitSplit
+        resolved: allowsExplicitThreadTarget
           ? { id: explicitThreadId, source: "arg" }
           : { id: contextThreadId, source: "env" },
       };
     }
 
-    if (hasExplicitSplit) {
+    if (allowsExplicitThreadTarget) {
       const threadId = resolveExplicitIdFlag({
         flagName: "<threadId> argument",
         value: first,

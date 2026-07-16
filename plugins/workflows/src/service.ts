@@ -366,27 +366,6 @@ export function createWorkflowService(
     await Promise.all(Array.from(threadIds, (threadId) => stopChild(threadId)));
   }
 
-  async function ensureWorkflowFolder(signal: AbortSignal): Promise<string> {
-    const existing = (await bb.sdk.threadFolders.list()).find(
-      (folder) => folder.name === "Workflow",
-    );
-    throwIfCancelled(signal);
-    if (existing !== undefined) return existing.id;
-    try {
-      const created = await bb.sdk.threadFolders.create({ name: "Workflow" });
-      throwIfCancelled(signal);
-      return created.id;
-    } catch (error) {
-      throwIfCancelled(signal);
-      const raced = (await bb.sdk.threadFolders.list()).find(
-        (folder) => folder.name === "Workflow",
-      );
-      throwIfCancelled(signal);
-      if (raced !== undefined) return raced.id;
-      throw error;
-    }
-  }
-
   async function resolveOrigin(input: StartWorkflowInput) {
     const thread = await bb.sdk.threads.get({ threadId: input.originThreadId });
     if (thread.environmentId === null) {
@@ -749,8 +728,6 @@ export function createWorkflowService(
       replayDecision.release();
     }
     throwIfCancelled(signal);
-    const folderId = await ensureWorkflowFolder(signal);
-    throwIfCancelled(signal);
     const child = await bb.sdk.threads.spawn({
       projectId: run.projectId,
       environment: { type: "reuse", environmentId: run.environmentId },
@@ -760,7 +737,7 @@ export function createWorkflowService(
       model: selection.model,
       reasoningLevel: selection.reasoningLevel,
       permissionMode: selection.permissionMode,
-      folderId,
+      visibility: "hidden",
     });
     if (signal.aborted) {
       await stopChild(child.id);

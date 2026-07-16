@@ -21,6 +21,7 @@ import {
   threadTimelineGoalSchema,
   threadTimelineModelFallbackSchema,
   threadTimelinePendingTodosSchema,
+  threadVisibilitySchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
@@ -107,6 +108,8 @@ export const createThreadRequestSchema = z
      * origin is "plugin" (enforced below); persisted for attribution.
      */
     originPluginId: z.string().min(1).optional(),
+    /** Hidden threads are omitted from ordinary organization and attention surfaces. */
+    visibility: threadVisibilitySchema.optional(),
     title: z.string().min(1).optional(),
     // A source-derived side-chat preload may establish the cloned provider
     // session without a first prompt. Normal starts and forks require at least
@@ -450,6 +453,9 @@ export const threadOpenSignalLenientSchema = z.object({
 /** Request body for POST /threads/:id/open (threadId comes from the path). */
 export const threadOpenRequestSchema = z
   .object({
+    // Hidden threads have no ordinary navigation affordance. Callers must opt
+    // into the direct debugging path when asking connected apps to open one.
+    debugHidden: z.boolean().optional(),
     // Omission is semantically distinct from an explicit placement: ordinary
     // thread/file opens remain available while the Thread splits experiment is
     // off, while any supplied split request is server-gated.

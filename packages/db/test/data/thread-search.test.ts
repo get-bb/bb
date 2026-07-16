@@ -251,6 +251,13 @@ describe("thread search data", () => {
       });
       deleteThread(db, noopNotifier, deletedThread.id);
 
+      createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "hiddenwriterneedle",
+        visibility: "hidden",
+      });
+
       const activeResults = searchThreadsWithPendingInteractionState(db, {
         query: "livewriterneedle",
         limitPerGroup: 20,
@@ -281,7 +288,11 @@ describe("thread search data", () => {
         archivedResults.archived.results.map((result) => result.thread.id),
       ).toEqual([archivedThread.id]);
 
-      for (const query of ["secretwriterneedle", "deletedwriterneedle"]) {
+      for (const query of [
+        "secretwriterneedle",
+        "deletedwriterneedle",
+        "hiddenwriterneedle",
+      ]) {
         const results = searchThreadsWithPendingInteractionState(db, {
           query,
           limitPerGroup: 20,

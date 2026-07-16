@@ -25,6 +25,7 @@ export function makeThreadResponse(
     originKind: null,
     childOrigin: null,
     originPluginId: null,
+    visibility: "visible",
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,

@@ -259,6 +259,7 @@ describe("bb thread open command output", () => {
       "Open a BB thread, optionally with a file in its panel",
     );
     expect(help).toContain("--line");
+    expect(help).toContain("--debug-hidden");
     expect(help).toContain("--split <placement>");
     expect(help).toContain("right, down, left, top, or replace");
     expect(help).not.toContain("--preview");
@@ -299,6 +300,21 @@ describe("bb thread open command output", () => {
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-other" },
       json: { split: "left", file: null },
+    });
+  });
+
+  it("opens an explicit hidden-thread debug target inside a BB thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-current");
+    const { openThread } = stubThreadOpenApi({});
+
+    await runCommand(
+      ["thread", "open", "thread-hidden", "--debug-hidden"],
+      register,
+    );
+
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-hidden" },
+      json: { debugHidden: true, file: null },
     });
   });
 

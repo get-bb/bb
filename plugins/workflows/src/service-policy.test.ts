@@ -146,16 +146,6 @@ function setup(
           modelLoadError: null,
         }),
       },
-      threadFolders: {
-        list: async () => [
-          {
-            id: "workflow-folder",
-            name: "Workflow",
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        ],
-      },
       environments: {
         get: async () =>
           ({

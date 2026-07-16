@@ -898,9 +898,13 @@ describe("@bb/sdk", () => {
         workspace: { type: "unmanaged", path: null },
       },
       input: [{ type: "text", text: "From CLI", mentions: [] }],
+      visibility: "hidden",
     });
 
-    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}").origin).toBe("cli");
+    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}")).toMatchObject({
+      origin: "cli",
+      visibility: "hidden",
+    });
   });
 
   it("preserves folder assignment in thread updates", async () => {

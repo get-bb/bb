@@ -63,6 +63,7 @@ function createThreadListEntry({
     latestAttentionAt: 1000,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     parentThreadId: null,
     pinSortKey: null,
     pinnedAt: null,

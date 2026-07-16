@@ -288,6 +288,7 @@ function makeThread(
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     childOrigin: null,
     status: "idle",
     stopRequestedAt: null,

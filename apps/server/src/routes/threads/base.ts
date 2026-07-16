@@ -1,7 +1,7 @@
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
-  countNonDeletedAssignedChildThreads,
+  countVisibleNonDeletedAssignedChildThreads,
   getEnvironment,
   getThreadFolderById,
   listThreadsWithPendingInteractionState,
@@ -279,9 +279,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   function getThreadChildSummary(threadId: string): ThreadChildSummaryResponse {
-    const nonDeletedChildCount = countNonDeletedAssignedChildThreads(deps.db, {
-      parentThreadId: threadId,
-    });
+    const nonDeletedChildCount = countVisibleNonDeletedAssignedChildThreads(
+      deps.db,
+      {
+        parentThreadId: threadId,
+      },
+    );
     return {
       nonDeletedChildCount,
     };

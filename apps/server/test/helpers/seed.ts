@@ -31,6 +31,7 @@ import type {
   ThreadEventItemType,
   ThreadEventType,
   ThreadOriginKind,
+  ThreadVisibility,
   WorkspaceProvisionType,
 } from "@bb/domain";
 import type { AppDeps } from "../../src/types.js";
@@ -183,7 +184,9 @@ export function seedThread(
     parentThreadId?: string | null;
     sourceThreadId?: string | null;
     originKind?: ThreadOriginKind | null;
+    originPluginId?: string | null;
     titleFallback?: string | null;
+    visibility?: ThreadVisibility;
   },
 ) {
   return createThread(deps.db, deps.hub, {
@@ -196,6 +199,8 @@ export function seedThread(
     parentThreadId: args.parentThreadId ?? null,
     sourceThreadId: args.sourceThreadId ?? null,
     originKind: args.originKind ?? null,
+    originPluginId: args.originPluginId ?? null,
+    visibility: args.visibility ?? "visible",
   });
 }
 

@@ -23,6 +23,7 @@ import type {
   ThreadOriginKind,
   ThreadSearchSourceKind,
   ThreadStatus,
+  ThreadVisibility,
   WorkspaceProvisionType,
 } from "@bb/domain";
 import {
@@ -256,6 +257,7 @@ export interface CreateThreadInput {
   childOrigin?: ThreadChildOrigin | null;
   /** Plugin attribution for create origin "plugin". */
   originPluginId?: string | null;
+  visibility?: ThreadVisibility;
 }
 
 export function createThread(
@@ -287,6 +289,7 @@ export function createThread(
           originKind,
           childOrigin: null,
           originPluginId: input.originPluginId ?? null,
+          visibility: input.visibility ?? "visible",
           lastReadAt: now,
           latestAttentionAt: now,
           createdAt: now,
@@ -421,6 +424,7 @@ export type ReorderPinnedThreadResult =
 function pinnedThreadWhere() {
   return and(
     isNull(threads.deletedAt),
+    eq(threads.visibility, "visible"),
     isNotNull(threads.pinnedAt),
     isNotNull(threads.pinSortKey),
   );
@@ -623,6 +627,7 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
   const originKind = options.originKind ?? options.childOrigin;
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
+    eq(threads.visibility, "visible"),
     options.folderId ? eq(threads.folderId, options.folderId) : undefined,
     options.unfiled ? isNull(threads.folderId) : undefined,
     isNull(threads.deletedAt),
@@ -665,6 +670,7 @@ function buildListThreadsForProjectsFilters(
 ) {
   return [
     inArray(threads.projectId, [...options.projectIds]),
+    eq(threads.visibility, "visible"),
     isNull(threads.deletedAt),
     options.excludeOriginKind
       ? and(
@@ -903,6 +909,7 @@ function listThreadSearchLimitedThreadRows(
       FROM token_matches
       JOIN threads AS t ON t.id = token_matches.threadId
       WHERE t.deleted_at IS NULL
+        AND t.visibility = 'visible'
         AND ${archiveFilter}
       GROUP BY threadId
       HAVING COUNT(DISTINCT token_matches.tokenIndex) = ${args.tokenMatchQueries.length}
@@ -1157,6 +1164,7 @@ export function hasActiveThreadAttention(db: DbConnection): boolean {
       and(
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
+        eq(threads.visibility, "visible"),
         visibleThread,
         or(unreadThread, isNotNull(pendingInteractions.id)),
       ),
@@ -1232,6 +1240,25 @@ export function countNonDeletedAssignedChildThreads(
     .where(
       and(
         eq(threads.parentThreadId, args.parentThreadId),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .get();
+
+  return assignedChildThreadCount?.count ?? 0;
+}
+
+export function countVisibleNonDeletedAssignedChildThreads(
+  db: DbConnection,
+  args: CountNonDeletedAssignedChildThreadsArgs,
+): number {
+  const assignedChildThreadCount = db
+    .select({ count: count() })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.parentThreadId, args.parentThreadId),
+        eq(threads.visibility, "visible"),
         isNull(threads.deletedAt),
       ),
     )

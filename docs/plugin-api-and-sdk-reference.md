@@ -316,6 +316,8 @@ Ports must be integers from 1 through 65535. The server deduplicates and sorts t
 
 Listeners are additive and run independently in registration order after the transition. `thread.active` fires when an applied lifecycle transition enters the `active` running state. Listeners cannot veto or delay transitions. Errors are caught, logged, and counted in plugin handler stats.
 
+Visible-thread events are broadcast to all loaded plugins. Hidden-thread events are routed only to the plugin recorded in `thread.originPluginId`; plugin spawning fills that attribution automatically. This scoping prevents unrelated plugin lifecycle handlers from treating background workers as their own, but it is not a security boundary because plugins are full-trust server code.
+
 ### `bb.onDispose`
 
 `onDispose(hook: () => void | Promise<void>) => void`
@@ -463,7 +465,7 @@ Slot ids and nav paths use letters, digits, `_`, and `-`; directive ids use lowe
 
 ## `bb.sdk`: complete SDK reachable by plugins
 
-`bb.sdk` is bind-gated like `bb.server.loopbackBaseUrl`. The production server binds it before plugin factories load, but portable plugins should read it from handlers/services/timers because isolated hosts may bind later. `threads.spawn` automatically defaults `origin` to `plugin` and `originPluginId` to the current plugin id.
+`bb.sdk` is bind-gated like `bb.server.loopbackBaseUrl`. The production server binds it before plugin factories load, but portable plugins should read it from handlers/services/timers because isolated hosts may bind later. `threads.spawn` automatically defaults `origin` to `plugin` and `originPluginId` to the current plugin id. Its optional `visibility` is `visible` by default; use `hidden` for directly addressable background workers that should not participate in ordinary organization or attention surfaces.
 
 Every SDK area exports concrete, portable, named argument and result DTO aliases from the `@bb/sdk` root, browser, and core entrypoints. Generated plugin declarations intentionally do not expose route-derived `PublicApiOutput<Path, Method>` aliases, so external consumers never depend on server-route implementation types. The descriptive tables below plus the exact signature inventory near the end are the full callable surface.
 
@@ -648,7 +650,7 @@ These are also full-trust administrative APIs when reached through a plugin.
 | `list` | `ThreadListArgs?` | lists/filter threads. |
 | `markRead` | `{ threadId }` | marks read. |
 | `markUnread` | `{ threadId }` | marks unread. |
-| `open` | `{ threadId, split?, file }` | asks the app to open/focus a thread and optional file. |
+| `open` | `{ threadId, debugHidden?, split?, file }` | asks the app to open/focus a thread and optional file; hidden threads require `debugHidden: true`. |
 | `output` | `{ threadId }` | gets latest assembled assistant output. |
 | `pin` | `{ threadId }` | pins a thread. |
 | `promptHistory` | `{ threadId, ...PromptHistoryQuery }` | gets thread prompt history. |
@@ -666,9 +668,9 @@ These are also full-trust administrative APIs when reached through a plugin.
 | `update` | `{ threadId, title?, folderId?, parentThreadId?, model?, reasoningLevel? }` | updates forwarded thread fields. |
 | `wait` | `ThreadWaitArgs` | polls for a target status or event with timeout/unreachable errors. |
 
-`ThreadListArgs` supports `archived`, `excludeSideChats`, `folderId`, `hasParent`, `limit`, `offset`, `originKind`, `parentThreadId`, `projectId`, `sourceThreadId`, and `unfiled`.
+`ThreadListArgs` supports `archived`, `excludeSideChats`, `folderId`, `hasParent`, `limit`, `offset`, `originKind`, `parentThreadId`, `projectId`, `sourceThreadId`, and `unfiled`. Ordinary list and search queries return visible threads only; a hidden thread remains available to direct ID methods such as `get`, `send`, `stop`, and `wait`.
 
-`spawn` requires exactly one of `prompt: string` or structured `input`. Other fields come from `CreateThreadRequest` except the SDK restates origin/child attribution fields. Plugin wrapping defaults origin attribution automatically.
+`spawn` requires exactly one of `prompt: string` or structured `input`. Other fields come from `CreateThreadRequest` except the SDK restates origin/child attribution fields. Plugin wrapping defaults origin attribution automatically. Set `visibility: "hidden"` for a background worker; visible is the backward-compatible default. Hidden threads are omitted from folders, sidebar/search, unread attention, and native child-completion notifications. This is an organization contract rather than a plugin authorization boundary.
 
 `send` accepts the public send request fields: structured `input`, `mode`, optional execution/model/permission/reasoning/service-tier choices, sender thread, and execution input sources.
 

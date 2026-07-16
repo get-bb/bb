@@ -742,7 +742,7 @@ function settleThreadCommandFailure(
   }
   // Forks / side chats are user-initiated branches, not agent-delegated
   // sub-tasks, so a failed turn must not notify their parent thread either.
-  if (isAgentDelegatedChildThread(thread)) {
+  if (isAgentDelegatedChildThread(thread) && thread.visibility === "visible") {
     const parentThreadId = thread.parentThreadId;
     postCommitActions.push({
       name: "Child thread command failure notification",

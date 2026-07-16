@@ -20,6 +20,7 @@ interface RecordedThreadPayload {
     id: string;
     projectId?: string;
     status: string;
+    visibility?: "hidden" | "visible";
   };
   lastAssistantText?: string | null;
   error?: string | null;
@@ -229,6 +230,53 @@ describe("plugin thread lifecycle events", () => {
       expect(recorded[0]?.thread.status).toBe("starting");
     } finally {
       delete globals.__createdEvents;
+      await cleanup();
+    }
+  });
+
+  it("delivers hidden lifecycle events only to the originating plugin", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__hiddenCreatedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.created", (payload: any) => {
+          (globalThis as any).__hiddenCreatedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { environment, project } = seedThreadFixture(harness);
+      const createHidden = (originPluginId: string) =>
+        createThreadRecord(
+          { db: harness.db, hub: harness.hub },
+          {
+            environmentId: environment.id,
+            request: {
+              environment: { type: "reuse", environmentId: environment.id },
+              input: [],
+              origin: "plugin",
+              originPluginId,
+              projectId: project.id,
+              providerId: "codex",
+              startedOnBehalfOf: null,
+              titleFallback: "Hidden plugin worker",
+              visibility: "hidden",
+            },
+          },
+        );
+
+      createHidden("other-plugin");
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(recorded).toHaveLength(0);
+
+      const owned = createHidden("observer");
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread).toMatchObject({
+        id: owned.id,
+        visibility: "hidden",
+      });
+    } finally {
+      delete globals.__hiddenCreatedEvents;
       await cleanup();
     }
   });

@@ -123,16 +123,6 @@ describe("workflows plugin", () => {
             ],
           }),
         },
-        threadFolders: {
-          list: async () => [
-            {
-              id: "workflow-folder",
-              name: "Workflow",
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          ],
-        },
       },
     });
     hosts.push(harness);
@@ -187,7 +177,11 @@ describe("workflows plugin", () => {
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).not.toHaveProperty(
       "parentThreadId",
     );
+    expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).not.toHaveProperty(
+      "folderId",
+    );
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+      visibility: "hidden",
       prompt: expect.stringContaining(
         "Use bb_workflow_result to return your final response in the requested structured format. You MUST call this tool exactly once at the end of your response",
       ),
@@ -806,16 +800,6 @@ describe("workflow resume cache integration", () => {
             selectedOnlyModels,
             modelLoadError: null,
           }),
-        },
-        threadFolders: {
-          list: async () => [
-            {
-              id: "workflow-folder",
-              name: "Workflow",
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          ],
         },
       },
     });

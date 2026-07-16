@@ -36,6 +36,7 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
     providerId: "codex",
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     sourceThreadId: null,
     runtime: {
       displayStatus: "idle",

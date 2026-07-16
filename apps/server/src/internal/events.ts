@@ -307,7 +307,7 @@ function notifyInsertedEventThreads(
 function addParentTurnNotificationFollowUp(
   args: AddParentTurnNotificationFollowUpArgs,
 ): void {
-  if (!args.thread.parentThreadId) {
+  if (!args.thread.parentThreadId || args.thread.visibility === "hidden") {
     return;
   }
   if (args.turnStatus === "failed") {

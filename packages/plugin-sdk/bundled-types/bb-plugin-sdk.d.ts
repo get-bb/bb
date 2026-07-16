@@ -2863,6 +2863,10 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
             fork: "fork";
         }>>;
         originPluginId: z$1.ZodNullable<z$1.ZodString>;
+        visibility: z$1.ZodEnum<{
+            visible: "visible";
+            hidden: "hidden";
+        }>;
         archivedAt: z$1.ZodNullable<z$1.ZodNumber>;
         pinnedAt: z$1.ZodNullable<z$1.ZodNumber>;
         deletedAt: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7271,6 +7275,10 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         sdk: "sdk";
     }>;
     originPluginId: z$1.ZodOptional<z$1.ZodString>;
+    visibility: z$1.ZodOptional<z$1.ZodEnum<{
+        visible: "visible";
+        hidden: "hidden";
+    }>>;
     title: z$1.ZodOptional<z$1.ZodString>;
     input: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -7838,6 +7846,10 @@ declare const threadListResponseSchema: z$1.ZodArray<z$1.ZodObject<{
         fork: "fork";
     }>>;
     originPluginId: z$1.ZodNullable<z$1.ZodString>;
+    visibility: z$1.ZodEnum<{
+        visible: "visible";
+        hidden: "hidden";
+    }>;
     archivedAt: z$1.ZodNullable<z$1.ZodNumber>;
     pinnedAt: z$1.ZodNullable<z$1.ZodNumber>;
     deletedAt: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7907,6 +7919,10 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                     fork: "fork";
                 }>>;
                 originPluginId: z$1.ZodNullable<z$1.ZodString>;
+                visibility: z$1.ZodEnum<{
+                    visible: "visible";
+                    hidden: "hidden";
+                }>;
                 archivedAt: z$1.ZodNullable<z$1.ZodNumber>;
                 pinnedAt: z$1.ZodNullable<z$1.ZodNumber>;
                 deletedAt: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7991,6 +8007,10 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                     fork: "fork";
                 }>>;
                 originPluginId: z$1.ZodNullable<z$1.ZodString>;
+                visibility: z$1.ZodEnum<{
+                    visible: "visible";
+                    hidden: "hidden";
+                }>;
                 archivedAt: z$1.ZodNullable<z$1.ZodNumber>;
                 pinnedAt: z$1.ZodNullable<z$1.ZodNumber>;
                 deletedAt: z$1.ZodNullable<z$1.ZodNumber>;
@@ -8074,6 +8094,10 @@ declare const threadResponseSchema: z$1.ZodObject<{
         fork: "fork";
     }>>;
     originPluginId: z$1.ZodNullable<z$1.ZodString>;
+    visibility: z$1.ZodEnum<{
+        visible: "visible";
+        hidden: "hidden";
+    }>;
     archivedAt: z$1.ZodNullable<z$1.ZodNumber>;
     pinnedAt: z$1.ZodNullable<z$1.ZodNumber>;
     deletedAt: z$1.ZodNullable<z$1.ZodNumber>;
@@ -8127,6 +8151,10 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         fork: "fork";
     }>>;
     originPluginId: z$1.ZodNullable<z$1.ZodString>;
+    visibility: z$1.ZodEnum<{
+        visible: "visible";
+        hidden: "hidden";
+    }>;
     archivedAt: z$1.ZodNullable<z$1.ZodNumber>;
     pinnedAt: z$1.ZodNullable<z$1.ZodNumber>;
     deletedAt: z$1.ZodNullable<z$1.ZodNumber>;
@@ -9865,6 +9893,8 @@ interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
     threadId: string;
 }
 interface ThreadOpenArgs {
+    /** Required to intentionally open a hidden background thread in the app. */
+    debugHidden?: boolean;
     threadId: string;
     split?: ThreadOpenSplit;
     file: ThreadOpenFile | null;
@@ -10476,7 +10506,8 @@ interface PluginUi {
 interface PluginEvents {
     /**
      * Add a thread lifecycle listener. Multiple listeners for the same event
-     * are additive and run independently in registration order.
+     * are additive and run independently in registration order. Visible thread
+     * events are broadcast; hidden thread events go only to their origin plugin.
      */
     on<E extends PluginThreadEventName>(event: E, handler: PluginThreadEventHandler<E>): void;
 }

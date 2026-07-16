@@ -12,6 +12,7 @@ import {
   threadChildOriginSchema,
   threadOriginKindSchema,
 } from "./thread-child-origin.js";
+import { threadVisibilitySchema } from "./thread-visibility.js";
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
 export {
@@ -24,6 +25,11 @@ export type {
   ThreadChildOrigin,
   ThreadOriginKind,
 } from "./thread-child-origin.js";
+export {
+  threadVisibilitySchema,
+  threadVisibilityValues,
+} from "./thread-visibility.js";
+export type { ThreadVisibility } from "./thread-visibility.js";
 
 export const threadRuntimeDisplayStatusValues = [
   ...threadStatusValues,
@@ -388,6 +394,7 @@ export const threadSchema = z.object({
   childOrigin: threadChildOriginSchema.nullable(),
   /** Id of the plugin that spawned this thread; null for non-plugin origins. */
   originPluginId: z.string().nullable(),
+  visibility: threadVisibilitySchema,
   archivedAt: z.number().nullable(),
   pinnedAt: z.number().nullable(),
   deletedAt: z.number().nullable(),

@@ -309,7 +309,10 @@ bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and
 bb.storage.database()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
-attributed to the plugin); bb.events.on (observe thread.created/idle/failed/deleted);
+attributed to the plugin; `visibility: "hidden"` creates directly addressable
+background workers omitted from normal organization and attention surfaces);
+bb.events.on (observe thread.created/idle/failed/deleted; hidden-thread events
+are routed only to their origin plugin);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); defineRpcContract + bb.rpc.register (Standard
 Schema-validated frontend data plane with inferred backend handlers and
