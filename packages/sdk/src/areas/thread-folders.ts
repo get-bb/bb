@@ -10,7 +10,7 @@ import {
   threadFolderMutationResponseSchema,
   threadFolderSchema,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export type ThreadFolderCreateResult = ThreadFolderResponse;
 export type ThreadFolderUpdateResult = ThreadFolderMutationResponse;
@@ -49,7 +49,7 @@ export function createThreadFoldersArea(
       const body = await transport.readJson(
         transport.api.v1["sidebar-bootstrap"].$get(
           {},
-          { init: { signal: input?.signal } },
+          ...signalRequestArgs(input?.signal),
         ),
       );
       return sidebarBootstrapResponseSchema.parse(body).folders;

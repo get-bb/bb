@@ -16,7 +16,7 @@ import type {
   SystemVoiceTranscriptionResponse,
 } from "@bb/server-contract";
 import { systemVoiceTranscriptionResponseSchema } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface SystemAttentionArgs {
   signal?: AbortSignal;
@@ -90,7 +90,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       return transport.readJson(
         transport.api.v1.system.attention.$get(
           {},
-          { init: { signal: input?.signal } },
+          ...signalRequestArgs(input?.signal),
         ),
       );
     },
@@ -98,7 +98,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       return transport.readJson(
         transport.api.v1.system.config.$get(
           {},
-          { init: { signal: input?.signal } },
+          ...signalRequestArgs(input?.signal),
         ),
       );
     },
@@ -112,7 +112,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
               providerId: input.providerId,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -157,7 +157,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       return transport.readJson(
         transport.api.v1.system["usage-limits"].$get(
           { query: { hostId: input.hostId } },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -165,7 +165,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       return transport.readJson(
         transport.api.v1.system.version.$get(
           { query: versionQuery(input) },
-          { init: { signal: input?.signal } },
+          ...signalRequestArgs(input?.signal),
         ),
       );
     },

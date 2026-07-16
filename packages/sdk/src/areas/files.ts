@@ -8,7 +8,7 @@ import type {
   HostPathListResponse,
   HostRemovePathResponse,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 /**
  * Host file primitives. `hostId` may be omitted to target the server's
@@ -115,7 +115,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
               rootPath: input.rootPath,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -135,7 +135,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
               query: input.query,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -152,7 +152,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
               query: input.query,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -181,7 +181,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
               ttlMs: input.ttlMs,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },

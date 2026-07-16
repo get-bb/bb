@@ -9,7 +9,7 @@ import type {
   TerminalSession,
   UpdateTerminalRequest,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface TerminalThreadScope {
   cwd?: never;
@@ -225,7 +225,7 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
         {
           param: { terminalId: input.terminalId },
         },
-        { init: { signal: input.signal } },
+        ...signalRequestArgs(input.signal),
       ),
     );
 
@@ -267,7 +267,7 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
           {
             query: terminalListQuery(input.scope),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -278,7 +278,7 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
             param: { terminalId: input.terminalId },
             query: terminalOutputQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },

@@ -2,7 +2,7 @@ import type {
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 /** Select exactly one provider-discovery host source, or omit both for primary. */
 export type ProviderHostRoutingArgs =
@@ -40,7 +40,7 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
               hostId: input.hostId,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -54,7 +54,7 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
               providerId: input.providerId,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },

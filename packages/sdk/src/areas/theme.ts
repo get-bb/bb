@@ -1,6 +1,6 @@
 import type { AppTheme, AppThemeSelection } from "@bb/domain";
 import type { ThemeCatalogResponse } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export type ThemeGetResult = AppTheme;
 export type ThemeCatalogResult = ThemeCatalogResponse;
@@ -37,7 +37,7 @@ export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
       const config = await transport.readJson(
         transport.api.v1.system.config.$get(
           {},
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
       return config.appearance;
@@ -46,7 +46,7 @@ export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
       return transport.readJson(
         transport.api.v1.settings.themes.$get(
           {},
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },

@@ -51,7 +51,7 @@ import type {
   UpdateThreadTabsRequest,
   UpdateThreadRequest,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
@@ -604,7 +604,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             ? {}
             : { query: { include: input.include } }),
         },
-        { init: { signal: input.signal } },
+        ...signalRequestArgs(input.signal),
       ),
     );
   const events: ThreadEventsArea = {
@@ -615,7 +615,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             param: { id: input.threadId },
             query: eventsListQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -626,7 +626,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             param: { id: input.threadId },
             query: eventWaitQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
       const statusCode: number = response.status;
@@ -655,7 +655,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               interactionId: input.interactionId,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -663,7 +663,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"].interactions.$get(
           { param: { id: input.threadId } },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -718,7 +718,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"]["queued-messages"].$get(
           { param: { id: input.threadId } },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -772,7 +772,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"].tabs.$get(
           { param: { id: input.threadId } },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -810,7 +810,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"]["child-summary"].$get(
           { param: { id: input.threadId } },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -818,7 +818,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"]["conversation-outline"].$get(
           { param: { id: input.threadId } },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -826,7 +826,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"]["default-execution-options"].$get(
           { param: { id: input.threadId } },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -848,7 +848,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads.$get(
           { query: listQuery(input) },
-          { init: { signal: input?.signal } },
+          ...signalRequestArgs(input?.signal),
         ),
       );
     },
@@ -870,7 +870,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"].output.$get(
           { param: { id: input.threadId } },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -899,7 +899,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             param: { id: input.threadId },
             query: { limit: input.limit },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -919,7 +919,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads.search.$get(
           { query: searchQuery(input) },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -955,7 +955,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             param: { id: input.threadId },
             query: timelineQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -970,7 +970,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               sourceSeqEnd: input.sourceSeqEnd,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -981,7 +981,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             param: { id: input.threadId },
             query: { query: input.query, limit: input.limit },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -997,7 +997,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               includeDirectories: input.includeDirectories,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },

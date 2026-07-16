@@ -23,7 +23,7 @@ import type {
 } from "@bb/server-contract";
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import type { ProjectExecutionDefaults, ProjectSource } from "@bb/domain";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface ProjectListArgs extends ProjectListQuery {
   signal?: AbortSignal;
@@ -333,7 +333,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
             param: { id: input.projectId },
             query: { path: input.path },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
       const bytes = new Uint8Array(await response.arrayBuffer());
@@ -403,7 +403,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
             param: { id: projectId },
             query,
           },
-          { init: { signal } },
+          ...signalRequestArgs(signal),
         ),
       );
     },
@@ -415,7 +415,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
             param: { id: projectId },
             query,
           },
-          { init: { signal } },
+          ...signalRequestArgs(signal),
         ),
       );
     },
@@ -441,7 +441,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
             param: { id: input.projectId },
             query: {},
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -453,7 +453,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
             param: { id: projectId },
             query,
           },
-          { init: { signal } },
+          ...signalRequestArgs(signal),
         ),
       );
       const bytes = new Uint8Array(await response.arrayBuffer());
@@ -482,7 +482,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
             param: { id: projectId },
             query,
           },
-          { init: { signal } },
+          ...signalRequestArgs(signal),
         ),
       );
     },
@@ -492,7 +492,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
           {
             param: { id: input.projectId },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -503,7 +503,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
           {
             query,
           },
-          { init: { signal } },
+          ...signalRequestArgs(signal),
         ),
       );
     },
@@ -515,7 +515,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
             param: { id: projectId },
             query,
           },
-          { init: { signal } },
+          ...signalRequestArgs(signal),
         ),
       );
     },
@@ -526,7 +526,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
             param: { id: input.projectId },
             query: { limit: input.limit },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },

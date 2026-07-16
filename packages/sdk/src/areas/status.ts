@@ -6,7 +6,7 @@ import type {
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface StatusGetArgs {
   projectId?: string;
@@ -77,7 +77,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
                   {
                     param: { id: projectId },
                   },
-                  { init: { signal } },
+                  ...signalRequestArgs(signal),
                 ),
               ),
             )
@@ -89,7 +89,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
                   {
                     param: { id: threadId },
                   },
-                  { init: { signal } },
+                  ...signalRequestArgs(signal),
                 ),
               ),
             )
@@ -105,7 +105,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
                     param: { id: thread.id },
                     query: { summaryOnly: "true" },
                   },
-                  { init: { signal } },
+                  ...signalRequestArgs(signal),
                 ),
               );
               return timeline.pendingTodos;
@@ -122,7 +122,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
                       parentThreadId: thread.id,
                     },
                   },
-                  { init: { signal } },
+                  ...signalRequestArgs(signal),
                 ),
               ),
             );

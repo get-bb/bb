@@ -31,7 +31,7 @@ import type {
   UpdateEnvironmentRequest,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface EnvironmentActionArgs {
   environmentId: string;
@@ -279,7 +279,7 @@ export function createEnvironmentsArea(
             param: { id: input.environmentId },
             query: environmentDiffQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -290,7 +290,7 @@ export function createEnvironmentsArea(
             param: { id: input.environmentId },
             query: environmentDiffBranchesQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -301,7 +301,7 @@ export function createEnvironmentsArea(
             param: { id: input.environmentId },
             query: environmentDiffFileQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -312,7 +312,7 @@ export function createEnvironmentsArea(
             param: { id: input.environmentId },
             query: environmentDiffQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -326,7 +326,7 @@ export function createEnvironmentsArea(
               target: input.target,
             },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -336,7 +336,7 @@ export function createEnvironmentsArea(
           {
             param: { id: input.environmentId },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
       return environmentSchema.parse(body);
@@ -347,7 +347,7 @@ export function createEnvironmentsArea(
           {
             param: { id: input.environmentId },
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -388,7 +388,7 @@ export function createEnvironmentsArea(
             param: { id: input.environmentId },
             query: environmentPathsQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
@@ -413,7 +413,7 @@ export function createEnvironmentsArea(
             param: { id: input.environmentId },
             query: environmentStatusQuery(input),
           },
-          { init: { signal: input.signal } },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },
