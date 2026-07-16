@@ -216,7 +216,8 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   execution,
 }: NewThreadPromptBoxUIProps) {
   const promptBoxRef = useRef<PromptBoxHandle>(null);
-  // Scope Cmd+Shift+C to the focused split pane (see FollowUpPromptBox).
+  // Scope Cmd+Shift+C to the focused split pane (see FollowUpPromptBox). The
+  // new-thread composer is always a pane's primary composer.
   const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   useAppCommandContext("promptAvailable", true);
   useAppCommandHandler("composer.focus", () => {
@@ -263,7 +264,12 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       ? "Loading models..."
       : "Submit (Enter)";
   return (
-    <div data-app-composer="" data-promptbox-shell="" className="w-full">
+    <div
+      data-app-composer=""
+      data-app-composer-role="primary"
+      data-promptbox-shell=""
+      className="w-full"
+    >
       {modeConfig.banner ? (
         <div className="mb-2">{modeConfig.banner}</div>
       ) : null}

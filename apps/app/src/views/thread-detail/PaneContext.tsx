@@ -18,6 +18,12 @@ export interface PaneContextValue {
   paneId: string;
   isFocused: boolean;
   /**
+   * True only inside a multi-pane split. Lets keyboard commands scope a
+   * caret-outside-composer fallback (e.g. Cmd+Shift+M after keyboard pane
+   * navigation) to splits while leaving lone surfaces at their prior behavior.
+   */
+  isSplitPane: boolean;
+  /**
    * Window-level secondary-panel host for a multi-pane workspace. Pane views
    * publish their already-assembled panel model here while retaining ownership
    * of panel tabs, selection, commands, and product policy. Null on standalone
@@ -179,6 +185,7 @@ export function DefaultPaneContextProvider({
     () => ({
       paneId: "main",
       isFocused: true,
+      isSplitPane: false,
       secondaryPanelHost: null,
       reservesWindowPanelToggle: false,
       onRequestClose: null,

@@ -8,39 +8,47 @@ export interface ModelPickerToggleInput {
   disabled: boolean;
   /** Whether this picker's split pane is the focused one. */
   isFocusedPane: boolean;
+  /** Whether this picker lives inside a multi-pane split (not a lone surface). */
+  isSplitPane: boolean;
   /**
-   * The `[data-app-composer]` element the keyboard event originated in, or null
-   * when focus sits outside any composer (e.g. after keyboard pane navigation).
+   * Whether this composer is the pane's primary composer (the main thread /
+   * new-thread box) rather than a secondary one (a side-chat composer, which
+   * stays mounted but hidden). Only the primary composer answers the keyboard
+   * fallback when the caret is outside every composer.
    */
-  targetComposer: Element | null;
-  /** The `[data-app-composer]` element this picker belongs to, if any. */
-  pickerComposer: Element | null;
+  isPrimaryComposer: boolean;
+  /** The caret sits inside THIS picker's composer. */
+  caretInThisComposer: boolean;
+  /** The caret sits inside a DIFFERENT composer of the same focused pane. */
+  caretInOtherComposerOfPane: boolean;
 }
 
 /**
  * Decides what a single {@link ModelReasoningPicker} should do when the
- * `modelPicker.toggle` command (Cmd+Shift+M) fires. Every composer registers its
- * own handler, so the decision must both scope to the focused split pane and, for
- * panes with several composers (main + side chat), pick the composer the cursor
- * sits in.
+ * `modelPicker.toggle` command (Cmd+Shift+M) fires. Every mounted composer
+ * registers its own handler — including side-chat composers that stay mounted
+ * while hidden — so the decision must scope to the focused pane AND to a single
+ * composer within it.
  *
- * - An already-open picker always closes, so the chord dismisses whatever popover
- *   is showing regardless of focus.
- * - Otherwise only the focused pane may open. When the cursor is inside a specific
- *   composer, only that composer's picker opens; when focus is outside every
- *   composer (keyboard pane nav, body focus), the focused pane's picker opens.
+ * Precedence:
+ * 1. Disabled pickers never act.
+ * 2. Only the focused pane participates (checked before close so a stale open
+ *    picker in an unfocused pane can't swallow the chord).
+ * 3. An open picker in the focused pane toggles closed.
+ * 4. If the caret is inside a composer, only that composer's picker opens; a
+ *    sibling composer of the same pane defers to it.
+ * 5. Otherwise (caret outside every composer, e.g. after keyboard pane
+ *    navigation) only a split pane's primary composer opens — lone surfaces keep
+ *    their prior "do nothing unless the caret is in the composer" behavior.
  */
 export function resolveModelPickerToggle(
   input: ModelPickerToggleInput,
 ): ModelPickerToggleAction {
   if (input.disabled) return "ignore";
-  if (input.open) return "close";
   if (!input.isFocusedPane) return "ignore";
-  if (
-    input.targetComposer !== null &&
-    input.targetComposer !== input.pickerComposer
-  ) {
-    return "ignore";
-  }
-  return "open";
+  if (input.open) return "close";
+  if (input.caretInThisComposer) return "open";
+  if (input.caretInOtherComposerOfPane) return "ignore";
+  if (!input.isSplitPane) return "ignore";
+  return input.isPrimaryComposer ? "open" : "ignore";
 }
