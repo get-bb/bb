@@ -309,7 +309,7 @@ export const BB_HOST_TYPE_ENV = defineEnvVar<HostType | undefined>({
   parse: parseHostTypeValue,
 });
 
-export const DEFAULT_BB_APP_VERSION = "0.0.0-dev";
+export const DEFAULT_BB_APP_VERSION = DEFAULTS.appVersion;
 export const DEFAULT_BB_APP_SURFACE = DEFAULT_APP_SURFACE;
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_EXTERNAL_URL = "";
