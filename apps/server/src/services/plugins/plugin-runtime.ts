@@ -643,13 +643,24 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
+  function isPrebuiltServerSdkCompatible(
+    meta: { sdkMajor: number; sdkVersion: string } | null,
+  ): boolean {
+    if (meta === null) return false;
+    if (meta.sdkMajor !== PLUGIN_SDK_MAJOR) return false;
+    if (PLUGIN_SDK_MAJOR === 0) return meta.sdkVersion === PLUGIN_SDK_VERSION;
+    return true;
+  }
+
   /**
    * The backend entry to import for this load. Managed (git:/npm:) installs
-   * prefer a fresh, SDK-major-compatible prebuilt `dist/server.js` (design
+   * prefer a fresh, SDK-compatible prebuilt `dist/server.js` (design
    * §3 loader amendment, §6 prebuilt distribution) so consumers never need
    * npm or node_modules; path installs ALWAYS load from source, so author
    * iteration via `bb plugin reload` sees edited files. A present-but-stale
-   * or meta-less dist falls back to source with one warning.
+   * or meta-less dist falls back to source with one warning. While the SDK
+   * is pre-1.0, minor bumps are breaking (semver), so compatibility requires
+   * the exact SDK version, not just a matching major.
    */
   async function resolveServerEntry(
     row: InstalledPluginRow,
@@ -670,9 +681,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } catch {
       // missing sidecar → meta stays null
     }
-    if (meta?.sdkMajor !== PLUGIN_SDK_MAJOR) {
+    if (!isPrebuiltServerSdkCompatible(meta)) {
       logger.warn(
-        `plugin ${row.id}: ignoring prebuilt dist/server.js (built for SDK ${meta ? `major ${meta.sdkMajor}` : "unknown"}, running SDK major is ${PLUGIN_SDK_MAJOR}) — loading from source`,
+        `plugin ${row.id}: ignoring prebuilt dist/server.js (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}) — loading from source`,
       );
       return manifest.serverEntry;
     }
