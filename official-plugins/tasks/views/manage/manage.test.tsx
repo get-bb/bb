@@ -4,6 +4,20 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
 
+// jsdom lacks ResizeObserver; cmdk's list observes its size on mount.
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+// jsdom lacks scrollIntoView; cmdk calls it to keep the active item in view.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 // jsdom lacks matchMedia; the vendored Dialog's responsive root needs it.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
@@ -181,6 +195,52 @@ describe("NewTaskDialog", () => {
     await slot.findByText("Sub-tasks cannot have their own sub-tasks");
     // Dialog stays open for correction.
     expect(slot.getByLabelText("Task title")).toBeDefined();
+  });
+
+  it("offers a compact create-label action when the query matches no label", async () => {
+    const createLabelCalls: Array<Record<string, unknown>> = [];
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      {
+        rpc: {
+          listProjects: () => ({ projects: [project] }),
+          listFolders: () => ({ folders: [] }),
+          listPresets: () => ({ presets: [] }),
+          sidebarSummary: () => ({ projects: [] }),
+          listTasks: () => ({ tasks: [] }),
+          // An existing label so cmdk renders its empty state (not the
+          // no-labels-at-all fallback) when the query matches nothing.
+          listLabels: () => ({
+            labels: [
+              { id: "01HLABELDOCS0000000000000", projectId: PROJECT_ID, name: "docs", color: "#888" },
+            ],
+          }),
+          createLabel: (input: Record<string, unknown>) => {
+            createLabelCalls.push(input);
+            return {
+              label: { id: "01HLABELNEW00000000000000", projectId: PROJECT_ID, name: input.name, color: input.color },
+            };
+          },
+        },
+      },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    fireEvent.click(await slot.findByRole("button", { name: /Labels/ }));
+    const search = await slot.findByPlaceholderText("Add labels…");
+    fireEvent.change(search, { target: { value: "  dank  " } });
+
+    const createBtn = await slot.findByRole("button", { name: /Create .*dank/ });
+    // Regression guard (BB-11): the actionable create row must not inherit the
+    // empty-state's tall centered padding — that produced the "insane" gap.
+    const emptyContainer = createBtn.closest("[cmdk-empty]");
+    expect(emptyContainer).not.toBeNull();
+    expect(emptyContainer!.className).not.toContain("py-6");
+    expect(emptyContainer!.className).not.toContain("text-center");
+
+    fireEvent.click(createBtn);
+    await waitFor(() => expect(createLabelCalls).toHaveLength(1));
+    expect(createLabelCalls[0]).toMatchObject({ projectId: PROJECT_ID, name: "dank" });
   });
 });
 

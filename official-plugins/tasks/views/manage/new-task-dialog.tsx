@@ -388,7 +388,11 @@ export function NewTaskDialog({
                   onValueChange={setLabelQuery}
                 />
                 <CommandList>
-                  <CommandEmpty>
+                  <CommandEmpty
+                    className={
+                      labelQuery.trim() !== "" ? "p-1 text-left" : undefined
+                    }
+                  >
                     {labelQuery.trim() !== "" ? (
                       <button
                         type="button"

@@ -282,7 +282,9 @@ function LabelsMenu({
             onValueChange={setQuery}
           />
           <CommandList>
-            <CommandEmpty>
+            <CommandEmpty
+              className={query.trim() !== "" ? "p-1 text-left" : undefined}
+            >
               {query.trim() !== "" ? (
                 <button
                   type="button"
