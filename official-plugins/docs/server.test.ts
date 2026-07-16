@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
@@ -74,6 +75,163 @@ async function loadNotebook(notes: Record<string, string>) {
   });
   await simpleNotes(host.bb);
   return host;
+}
+
+interface VirtualFile {
+  content: string;
+  contentEncoding: "base64" | "utf8";
+  modifiedAtMs: number;
+}
+
+function virtualSha(file: VirtualFile): string {
+  return createHash("sha256")
+    .update(Buffer.from(file.content, file.contentEncoding))
+    .digest("hex");
+}
+
+async function loadVirtualSyncVault(initial: Record<string, VirtualFile>) {
+  const files = new Map<string, VirtualFile>(Object.entries(initial));
+  const directories = new Set<string>(["/vault", "/work"]);
+  let concurrentWrite: { path: string; content: string } | null = null;
+  const addParents = (filePath: string) => {
+    let current = path.posix.dirname(filePath);
+    while (current !== "/" && !directories.has(current)) {
+      directories.add(current);
+      current = path.posix.dirname(current);
+    }
+  };
+  for (const filePath of files.keys()) addParents(filePath);
+  const setUtf8 = (filePath: string, content: string) => {
+    addParents(filePath);
+    files.set(filePath, {
+      content,
+      contentEncoding: "utf8",
+      modifiedAtMs: Date.now(),
+    });
+  };
+  const host = createFakePluginHost({
+    pluginId: "simple-notes-sync",
+    settings: { directory: "/vault" },
+    sdk: {
+      files: {
+        async listPaths(args) {
+          const prefix = args.path.endsWith("/") ? args.path : `${args.path}/`;
+          const paths = [
+            ...(args.includeDirectories
+              ? [...directories]
+                  .filter((entry) => entry.startsWith(prefix))
+                  .map((entry) => ({
+                    kind: "directory" as const,
+                    path: entry.slice(prefix.length),
+                    name: path.posix.basename(entry),
+                    score: 0,
+                    positions: [],
+                  }))
+              : []),
+            ...(args.includeFiles
+              ? [...files.keys()]
+                  .filter((entry) => entry.startsWith(prefix))
+                  .map((entry) => ({
+                    kind: "file" as const,
+                    path: entry.slice(prefix.length),
+                    name: path.posix.basename(entry),
+                    score: 0,
+                    positions: [],
+                  }))
+              : []),
+          ];
+          return { paths, truncated: false };
+        },
+        async read(args) {
+          const file = files.get(args.path);
+          if (!file)
+            throw new Error(`ENOENT: Path does not exist: ${args.path}`);
+          return {
+            path: args.path,
+            content: file.content,
+            contentEncoding: file.contentEncoding,
+            mimeType: file.contentEncoding === "utf8" ? "text/plain" : null,
+            sizeBytes: Buffer.from(file.content, file.contentEncoding).length,
+            modifiedAtMs: file.modifiedAtMs,
+            sha256: virtualSha(file),
+          };
+        },
+        async write(args) {
+          const pending = concurrentWrite;
+          if (pending && pending.path === args.path) {
+            concurrentWrite = null;
+            setUtf8(pending.path, pending.content);
+            const current = files.get(pending.path);
+            if (!current)
+              throw new Error("Concurrent test write was not stored");
+            return {
+              outcome: "conflict" as const,
+              currentSha256: virtualSha(current),
+            };
+          }
+          const current = files.get(args.path);
+          const currentSha = current ? virtualSha(current) : null;
+          if (
+            args.expectedSha256 !== undefined &&
+            args.expectedSha256 !== currentSha
+          ) {
+            return { outcome: "conflict" as const, currentSha256: currentSha };
+          }
+          const next = {
+            content: args.content,
+            contentEncoding: args.contentEncoding ?? "utf8",
+            modifiedAtMs: Date.now(),
+          } satisfies VirtualFile;
+          addParents(args.path);
+          files.set(args.path, next);
+          return {
+            outcome: "written" as const,
+            sha256: virtualSha(next),
+            sizeBytes: Buffer.from(next.content, next.contentEncoding).length,
+          };
+        },
+        async mkdir(args) {
+          directories.add(args.path);
+          addParents(args.path);
+          return { ok: true as const };
+        },
+        async remove(args) {
+          if (files.delete(args.path)) return { ok: true as const };
+          if (!directories.has(args.path))
+            throw new Error(`ENOENT: Path does not exist: ${args.path}`);
+          const prefix = `${args.path}/`;
+          if (
+            !args.recursive &&
+            ([...files.keys()].some((entry) => entry.startsWith(prefix)) ||
+              [...directories].some((entry) => entry.startsWith(prefix)))
+          )
+            throw new Error("Directory is not empty");
+          directories.delete(args.path);
+          return { ok: true as const };
+        },
+        async move() {
+          return { ok: true as const };
+        },
+        async createPreview() {
+          return { baseUrl: "/preview", expiresAtMs: Date.now() + 60_000 };
+        },
+        async list() {
+          return { paths: [], truncated: false };
+        },
+      },
+      hosts: { list: async () => [] },
+    },
+  });
+  await simpleNotes(host.bb);
+  return {
+    ...host,
+    files,
+    directories,
+    setUtf8,
+    conflictNextWrite(path: string, content: string) {
+      concurrentWrite = { path, content };
+    },
+  };
 }
 
 type DocsRpcHandlers = PluginRpcHandlers<typeof docsRpcContract>;
@@ -235,8 +393,357 @@ describe("Docs vault operations", () => {
     const { harness } = await loadNotebook({ "plan.md": "# Plan" });
     expect(harness.registrations.cli).toMatchObject({
       name: "docs",
-      summary: "Read and update Docs vaults",
+      summary: "Discover and safely sync Docs vaults",
     });
+  });
+
+  it("round-trips a folder edit through pull and push without changing binary assets", async () => {
+    const { harness, files, setUtf8 } = await loadVirtualSyncVault({
+      "/vault/plans/plan.md": {
+        content: "# Plan\n\nOriginal\n",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+      "/vault/plans/image.bin": {
+        content: "AP+AQA==",
+        contentEncoding: "base64",
+        modifiedAtMs: 1,
+      },
+    });
+
+    const pulled = await harness.runCli(
+      ["pull", "plans", "--folder", "--into", "sync", "--json"],
+      { cwd: "/work" },
+    );
+    expect(pulled).toMatchObject({ exitCode: 0 });
+    expect(files.get("/work/sync/plans/image.bin")).toMatchObject({
+      content: "AP+AQA==",
+      contentEncoding: "base64",
+    });
+    expect(files.has("/work/sync/.bb-docs-state.json")).toBe(true);
+
+    setUtf8("/work/sync/plans/plan.md", "# Plan\n\nEdited locally\n");
+    const status = await harness.runCli(
+      ["status", "sync", "--diff", "--json"],
+      { cwd: "/work" },
+    );
+    expect(status.exitCode).toBe(4);
+    expect(JSON.parse(status.stdout ?? "{}")).toMatchObject({
+      outcome: "planned",
+      writes: ["plans/plan.md"],
+    });
+
+    const pushed = await harness.runCli(["push", "sync", "--json"], {
+      cwd: "/work",
+    });
+    expect(pushed.exitCode).toBe(0);
+    expect(files.get("/vault/plans/plan.md")?.content).toBe(
+      "# Plan\n\nEdited locally\n",
+    );
+    expect(files.get("/vault/plans/image.bin")?.content).toBe("AP+AQA==");
+  });
+
+  it("pushes newly created local files with create-only semantics", async () => {
+    const { harness, files, setUtf8 } = await loadVirtualSyncVault({
+      "/vault/plans/existing.md": {
+        content: "existing",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    await harness.runCli(
+      ["pull", "plans", "--folder", "--into", "sync", "--json"],
+      { cwd: "/work" },
+    );
+    setUtf8("/work/sync/plans/new.md", "created locally");
+
+    const pushed = await harness.runCli(["push", "sync", "--json"], {
+      cwd: "/work",
+    });
+
+    expect(pushed.exitCode).toBe(0);
+    expect(JSON.parse(pushed.stdout ?? "{}")).toMatchObject({
+      outcome: "pushed",
+      writes: ["plans/new.md"],
+    });
+    expect(files.get("/vault/plans/new.md")?.content).toBe("created locally");
+  });
+
+  it("reconciles remotely and locally deleted empty directories safely", async () => {
+    const { harness, files, directories } = await loadVirtualSyncVault({
+      "/vault/folder/keep.md": {
+        content: "keep",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    directories.add("/vault/folder/remote-gone");
+    directories.add("/vault/folder/local-gone");
+    await harness.runCli(
+      ["pull", "folder", "--folder", "--into", "sync", "--json"],
+      { cwd: "/work" },
+    );
+
+    directories.delete("/vault/folder/remote-gone");
+    const refreshed = await harness.runCli(
+      ["pull", "folder", "--folder", "--into", "sync", "--json"],
+      { cwd: "/work" },
+    );
+    expect(refreshed.exitCode).toBe(0);
+    expect(JSON.parse(refreshed.stdout ?? "{}")).toMatchObject({
+      deletedDirectories: ["folder/remote-gone"],
+    });
+    expect(directories.has("/work/sync/folder/remote-gone")).toBe(false);
+
+    directories.delete("/work/sync/folder/local-gone");
+    const safePush = await harness.runCli(["push", "sync", "--json"], {
+      cwd: "/work",
+    });
+    expect(safePush.exitCode).toBe(0);
+    expect(directories.has("/vault/folder/local-gone")).toBe(true);
+    expect(JSON.parse(safePush.stdout ?? "{}")).toMatchObject({
+      warnings: [{ path: "folder/local-gone" }],
+    });
+
+    const deletingPush = await harness.runCli(
+      ["push", "sync", "--delete", "--json"],
+      { cwd: "/work" },
+    );
+    expect(deletingPush.exitCode).toBe(0);
+    expect(directories.has("/vault/folder/local-gone")).toBe(false);
+    expect(files.has("/vault/folder/keep.md")).toBe(true);
+  });
+
+  it("preflights concurrent edits and leaves the vault copy untouched", async () => {
+    const { harness, files, setUtf8 } = await loadVirtualSyncVault({
+      "/vault/plan.md": {
+        content: "base",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    await harness.runCli(["pull", "plan.md", "--into", "sync", "--json"], {
+      cwd: "/work",
+    });
+    setUtf8("/work/sync/plan.md", "local edit");
+    setUtf8("/vault/plan.md", "remote edit");
+
+    const pushed = await harness.runCli(["push", "sync", "--json"], {
+      cwd: "/work",
+    });
+    expect(pushed.exitCode).toBe(3);
+    expect(JSON.parse(pushed.stdout ?? "{}")).toMatchObject({
+      outcome: "conflict",
+      conflicts: [
+        { path: "plan.md", reason: "both local and vault copies changed" },
+      ],
+    });
+    expect(files.get("/vault/plan.md")?.content).toBe("remote edit");
+  });
+
+  it("reports a post-preflight CAS race as a conflict when nothing applied", async () => {
+    const { harness, files, setUtf8, conflictNextWrite } =
+      await loadVirtualSyncVault({
+        "/vault/plan.md": {
+          content: "base",
+          contentEncoding: "utf8",
+          modifiedAtMs: 1,
+        },
+      });
+    await harness.runCli(["pull", "plan.md", "--into", "sync"], {
+      cwd: "/work",
+    });
+    setUtf8("/work/sync/plan.md", "local edit");
+    conflictNextWrite("/vault/plan.md", "raced remote edit");
+
+    const pushed = await harness.runCli(["push", "sync", "--json"], {
+      cwd: "/work",
+    });
+
+    expect(pushed.exitCode).toBe(3);
+    expect(JSON.parse(pushed.stdout ?? "{}")).toMatchObject({
+      outcome: "conflict",
+      applied: {
+        outcome: "conflict",
+        written: [],
+        conflicts: [{ path: "plan.md" }],
+      },
+    });
+    expect(files.get("/vault/plan.md")?.content).toBe("raced remote edit");
+  });
+
+  it("rejects apply-level path collisions and reports only newly created directories", async () => {
+    const { harness, directories } = await loadVirtualSyncVault({
+      "/vault/plan.md": {
+        content: "base",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    directories.add("/vault/existing");
+    const emptyApply = {
+      vaultId: "personal",
+      writes: [],
+      deletes: [],
+      deleteDirectories: [],
+      dryRun: false,
+    };
+
+    await expect(
+      harness.callRpc("syncApply", {
+        ...emptyApply,
+        directories: ["New", "new"],
+      }),
+    ).rejects.toThrow(/collide/);
+    await expect(
+      harness.callRpc("syncApply", {
+        ...emptyApply,
+        directories: [],
+        writes: [
+          {
+            path: "PLAN.md",
+            content: "collision",
+            contentEncoding: "utf8",
+            expectedSha256: null,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/collide/);
+
+    const applied = await harness.callRpc("syncApply", {
+      ...emptyApply,
+      directories: ["existing", "created"],
+    });
+    expect(applied).toMatchObject({
+      outcome: "applied",
+      createdDirectories: ["created"],
+      deletedDirectories: [],
+    });
+  });
+
+  it("ignores local deletions by default and applies them only with --delete", async () => {
+    const { harness, files } = await loadVirtualSyncVault({
+      "/vault/archive/old.md": {
+        content: "old",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    await harness.runCli(["pull", "archive", "--folder", "--into", "sync"], {
+      cwd: "/work",
+    });
+    files.delete("/work/sync/archive/old.md");
+
+    const safePush = await harness.runCli(["push", "sync", "--json"], {
+      cwd: "/work",
+    });
+    expect(safePush.exitCode).toBe(0);
+    expect(files.has("/vault/archive/old.md")).toBe(true);
+    expect(JSON.parse(safePush.stdout ?? "{}")).toMatchObject({
+      warnings: [{ path: "archive/old.md" }],
+    });
+
+    const deletingPush = await harness.runCli(
+      ["push", "sync", "--delete", "--json"],
+      { cwd: "/work" },
+    );
+    expect(deletingPush.exitCode).toBe(0);
+    expect(files.has("/vault/archive/old.md")).toBe(false);
+  });
+
+  it("fails closed on malformed sync state with machine-readable output", async () => {
+    const { harness, setUtf8 } = await loadVirtualSyncVault({
+      "/vault/plan.md": {
+        content: "base",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    setUtf8("/work/sync/.bb-docs-state.json", "{not-json");
+
+    const result = await harness.runCli(["push", "sync", "--json"], {
+      cwd: "/work",
+    });
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout ?? "{}")).toMatchObject({
+      outcome: "error",
+      error: { code: "operation_failed" },
+    });
+    expect(result.stderr).toBe("");
+  });
+
+  it("supports whole-vault and single-file scopes and deprecates direct writes", async () => {
+    const { harness, files } = await loadVirtualSyncVault({
+      "/vault/a.md": {
+        content: "A",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+      "/vault/nested/b.md": {
+        content: "B",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    await expect(
+      harness.runCli(["pull", "a.md", "--into", "one"], { cwd: "/work" }),
+    ).resolves.toMatchObject({ exitCode: 0 });
+    expect(files.has("/work/one/a.md")).toBe(true);
+    expect(files.has("/work/one/nested/b.md")).toBe(false);
+    await expect(
+      harness.runCli(["pull", "nested/b.md", "--into", "nested-one"], {
+        cwd: "/work",
+      }),
+    ).resolves.toMatchObject({ exitCode: 0 });
+    await expect(
+      harness.runCli(["status", "nested-one"], { cwd: "/work" }),
+    ).resolves.toMatchObject({ exitCode: 0 });
+    await expect(
+      harness.runCli(["pull", "--all", "--into", "all"], { cwd: "/work" }),
+    ).resolves.toMatchObject({ exitCode: 0 });
+    expect(files.has("/work/all/nested/b.md")).toBe(true);
+
+    const direct = await harness.runCli([
+      "write",
+      "legacy.md",
+      "--content",
+      "legacy",
+    ]);
+    expect(direct).toMatchObject({ exitCode: 0 });
+    expect(direct.stderr).toContain("Deprecated");
+  });
+
+  it("renders top-level help successfully and rejects inapplicable flags before mutation", async () => {
+    const { harness, files } = await loadVirtualSyncVault({
+      "/vault/plan.md": {
+        content: "base",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+
+    const help = await harness.runCli(["--help"]);
+    expect(help).toMatchObject({ exitCode: 0 });
+    expect(help.stdout).toContain("pull|status|push");
+
+    const unsafePull = await harness.runCli(
+      ["pull", "plan.md", "--into", "sync", "--dry-run", "--json"],
+      { cwd: "/work" },
+    );
+    expect(unsafePull.exitCode).toBe(2);
+    expect(JSON.parse(unsafePull.stdout ?? "{}")).toMatchObject({
+      error: { code: "usage_error" },
+    });
+    expect(files.has("/work/sync/plan.md")).toBe(false);
+
+    const unsafeRemove = await harness.runCli([
+      "remove",
+      "plan.md",
+      "--dry-run",
+      "--json",
+    ]);
+    expect(unsafeRemove.exitCode).toBe(2);
+    expect(files.has("/vault/plan.md")).toBe(true);
   });
 
   it("keeps CLI removal non-recursive unless --recursive is passed", async () => {
