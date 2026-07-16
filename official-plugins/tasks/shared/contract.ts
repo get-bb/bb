@@ -142,15 +142,37 @@ export const commentSchema = z
   .strict();
 
 /**
- * A comment enriched for display with the current human title of the agent
- * thread that authored it. `threadTitle` is resolved at read time against the
- * live thread and is null for user/system comments, legacy agent comments that
- * carry no `threadId`, and threads that are deleted, hidden, or otherwise
- * inaccessible — callers fall back to `authorName` and render no link.
+ * Identity of the provider (agent) that authored an agent comment, resolved at
+ * read time from the authoring thread's live `providerId`. `name` and
+ * `logoUrl` come from the host provider list; `logoUrl` is populated only for
+ * providers that serve a logo asset (custom ACP agents) — built-in providers
+ * carry a null `logoUrl` and the UI renders a bundled brand glyph keyed by
+ * `id`. `name` falls back to the raw provider id when the provider is no longer
+ * installed. See `commentProviderSchema` usages in `displayCommentSchema`.
+ */
+export const commentProviderSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    logoUrl: z.string().nullable(),
+  })
+  .strict();
+
+/**
+ * A comment enriched for display with (a) the current human title of the agent
+ * thread that authored it and (b) the authoring provider. Both are resolved at
+ * read time against the live thread. `threadTitle` is null for user/system
+ * comments, legacy agent comments that carry no `threadId`, and threads that
+ * are deleted, hidden, side chats, or otherwise inaccessible — callers fall
+ * back to `authorName` and render no link. `provider` is null for user/system
+ * comments, legacy agent comments with no `threadId`, and threads that are
+ * deleted/hidden/inaccessible; it is present (and drives the comment's logo)
+ * whenever the authoring thread resolves, including side chats.
  */
 export const displayCommentSchema = commentSchema
   .extend({
     threadTitle: z.string().nullable(),
+    provider: commentProviderSchema.nullable(),
   })
   .strict();
 
@@ -732,6 +754,7 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 export type Label = z.infer<typeof labelSchema>;
 export type Comment = z.infer<typeof commentSchema>;
+export type CommentProvider = z.infer<typeof commentProviderSchema>;
 export type DisplayComment = z.infer<typeof displayCommentSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
 export type TaskThread = z.infer<typeof taskThreadSchema>;

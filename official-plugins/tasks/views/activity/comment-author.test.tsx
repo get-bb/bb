@@ -14,6 +14,7 @@ const base: DisplayComment = {
   presetName: null,
   threadId: "thr_worker",
   threadTitle: "Fix the login bug",
+  provider: { id: "codex", name: "Codex", logoUrl: null },
   body: "Done",
   notifiedCount: 0,
   createdAt: "2026-07-15T00:00:00.000Z",

@@ -1,7 +1,10 @@
 import { mkdtemp, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 
 import { createStore } from "../api";
@@ -51,7 +54,24 @@ describe("bb tasks CLI", () => {
   });
 
   it("runs create, list, show, update, and comment through case-insensitive key addressing", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }) =>
+            makeThreadResponse({
+              id: threadId,
+              title: "CLI provider worker",
+              providerId: "codex",
+            }),
+        },
+        providers: {
+          list: async () => [
+            { id: "codex", displayName: "Codex", logoUrl: null },
+          ],
+        },
+      },
+    });
     await plugin(bb);
 
     const projectResult = await harness.runCli([
@@ -172,9 +192,27 @@ describe("bb tasks CLI", () => {
           kind: "system",
           body: "Priority changed to High by cli",
         }),
-        expect.objectContaining({ kind: "agent", body: "Ready for review." }),
+        expect.objectContaining({
+          kind: "agent",
+          body: "Ready for review.",
+          threadTitle: "CLI provider worker",
+          provider: { id: "codex", name: "Codex", logoUrl: null },
+        }),
       ]),
     );
+
+    const updatedShowTable = stdout(
+      await harness.runCli(["show", createPayload.task.id]),
+    );
+    expect(updatedShowTable).toContain(
+      "TIME                      KIND    AUTHOR               PROVIDER  BODY",
+    );
+    const agentRow = updatedShowTable
+      .split("\n")
+      .find((line) => line.includes("Ready for review."));
+    expect(agentRow).toContain("agent");
+    expect(agentRow).toContain("CLI provider worker");
+    expect(agentRow).toContain("Codex");
 
     await harness.dispose();
   });

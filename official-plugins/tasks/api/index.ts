@@ -23,6 +23,7 @@ import {
   type TasksDomainError,
   type TaskStatus,
   type CommentsChangedEvent,
+  type CommentProvider,
 } from "../shared/contract";
 
 type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
@@ -355,47 +356,98 @@ function attachmentsForTasks(
 }
 
 /**
- * Resolve the current human title of each distinct agent thread that authored
- * one of `comments`, keyed by thread id. Titles come from the live thread so
- * renames are reflected. A thread contributes no entry — so callers fall back
- * to `authorName` and expose no link — when it is:
- *   - deleted, hidden, or otherwise inaccessible (the SDK read rejects), or
- *   - a side chat (originKind/legacy childOrigin === "side-chat"), which is an
- *     internal conversation that must not surface through an ordinary comment.
+ * Live display facts about an agent thread that authored a comment.
+ *   - `title`: the current human title for the byline link, or null when it
+ *     must be suppressed — a side chat (an internal conversation that must not
+ *     surface a title/link) or a thread with only a blank/whitespace title.
+ *   - `providerId`: the thread's live provider id, always present when the
+ *     thread resolves (including side chats — a brand logo exposes no link).
+ * A thread contributes no entry at all when it is deleted, hidden, or otherwise
+ * inaccessible (the SDK read rejects), so callers fall back to `authorName`
+ * with no link and no provider logo.
  */
-async function resolveAgentThreadTitles(
+interface AgentThreadInfo {
+  title: string | null;
+  providerId: string;
+}
+
+/**
+ * Resolve {@link AgentThreadInfo} for each distinct agent thread that authored
+ * one of `comments`, keyed by thread id, reading each thread once from the live
+ * SDK so renames are reflected.
+ */
+async function resolveAgentThreadInfo(
   bb: BbPluginApi,
   comments: readonly StoredComment[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, AgentThreadInfo>> {
   const threadIds = new Set<string>();
   for (const comment of comments) {
     if (comment.kind === "agent" && comment.threadId !== null) {
       threadIds.add(comment.threadId);
     }
   }
-  const titles = new Map<string, string>();
+  const infos = new Map<string, AgentThreadInfo>();
   await Promise.all(
     [...threadIds].map(async (threadId) => {
       try {
         const thread = await bb.sdk.threads.get({ threadId });
-        if (
+        const isSideChat =
           thread.originKind === "side-chat" ||
-          thread.childOrigin === "side-chat"
-        ) {
-          return;
-        }
+          thread.childOrigin === "side-chat";
         // Prefer the first non-blank candidate: a whitespace-only primary
-        // title must not suppress a useful fallback.
-        const title = [thread.title, thread.titleFallback].find(
-          (candidate) => candidate !== null && candidate.trim() !== "",
-        );
-        if (title !== null && title !== undefined) titles.set(threadId, title);
+        // title must not suppress a useful fallback. Side chats never surface
+        // a title/link, but still expose their provider.
+        const title = isSideChat
+          ? undefined
+          : [thread.title, thread.titleFallback].find(
+              (candidate) => candidate !== null && candidate.trim() !== "",
+            );
+        infos.set(threadId, {
+          title: title ?? null,
+          providerId: thread.providerId,
+        });
       } catch {
-        // Deleted, hidden, or inaccessible threads leave no title.
+        // Deleted, hidden, or inaccessible threads leave no entry.
       }
     }),
   );
-  return titles;
+  return infos;
+}
+
+/**
+ * Resolve a display badge ({@link CommentProvider}) for each provider id that
+ * appears in `threadInfo`, keyed by provider id. `name`/`logoUrl` come from the
+ * live host provider list (one call, only when at least one provider is
+ * needed). A provider that is no longer installed — or a provider list that
+ * fails to load — leaves no entry, and callers fall back to a badge carrying
+ * the raw provider id so the UI can still render a brand glyph by id.
+ */
+async function resolveProviderBadges(
+  bb: BbPluginApi,
+  threadInfo: ReadonlyMap<string, AgentThreadInfo>,
+): Promise<Map<string, CommentProvider>> {
+  const providerIds = new Set(
+    [...threadInfo.values()].map((info) => info.providerId),
+  );
+  const badges = new Map<string, CommentProvider>();
+  if (providerIds.size === 0) return badges;
+  let providers: Awaited<ReturnType<typeof bb.sdk.providers.list>>;
+  try {
+    providers = await bb.sdk.providers.list();
+  } catch {
+    // Host provider list unavailable: callers fall back to raw-id badges.
+    return badges;
+  }
+  for (const provider of providers) {
+    if (providerIds.has(provider.id)) {
+      badges.set(provider.id, {
+        id: provider.id,
+        name: provider.displayName,
+        logoUrl: provider.logoUrl,
+      });
+    }
+  }
+  return badges;
 }
 
 interface CreateCommentInput {
@@ -858,15 +910,27 @@ export function registerHandlers(
     },
     async listComments(input) {
       const comments = store.tasks.listComments(input.taskId);
-      const threadTitles = await resolveAgentThreadTitles(bb, comments);
+      const threadInfo = await resolveAgentThreadInfo(bb, comments);
+      const providerBadges = await resolveProviderBadges(bb, threadInfo);
       return {
-        comments: comments.map((comment) => ({
-          ...comment,
-          threadTitle:
+        comments: comments.map((comment) => {
+          const info =
             comment.kind === "agent" && comment.threadId !== null
-              ? (threadTitles.get(comment.threadId) ?? null)
-              : null,
-        })),
+              ? threadInfo.get(comment.threadId)
+              : undefined;
+          return {
+            ...comment,
+            threadTitle: info?.title ?? null,
+            provider:
+              info === undefined
+                ? null
+                : (providerBadges.get(info.providerId) ?? {
+                    id: info.providerId,
+                    name: info.providerId,
+                    logoUrl: null,
+                  }),
+          };
+        }),
       };
     },
     listAttachments(input) {

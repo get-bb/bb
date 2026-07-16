@@ -1021,13 +1021,15 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
         : ""
     }`,
     `Comments\n${table(
-      ["TIME", "KIND", "AUTHOR", "BODY"],
+      ["TIME", "KIND", "AUTHOR", "PROVIDER", "BODY"],
       comments.map((comment) => [
         comment.createdAt,
         comment.kind,
         // Agent comments show the authoring thread's human title when it
         // resolves; otherwise the stored author name (which carries the id).
         comment.threadTitle ?? comment.authorName,
+        // The responding agent's provider, when the authoring thread resolves.
+        comment.provider?.name ?? "-",
         comment.body,
       ]),
       "(none)",

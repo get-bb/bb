@@ -296,6 +296,130 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("resolves the authoring provider badge for agent comments and falls back otherwise", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) => {
+            if (threadId === "thr_codex") {
+              return makeThreadResponse({ id: threadId, providerId: "codex" });
+            }
+            if (threadId === "thr_custom") {
+              return makeThreadResponse({
+                id: threadId,
+                providerId: "acp-custom",
+              });
+            }
+            if (threadId === "thr_side_chat") {
+              // Side chats suppress the title/link but still expose a provider.
+              return makeThreadResponse({
+                id: threadId,
+                title: "Internal side chat",
+                originKind: "side-chat",
+                providerId: "claude-code",
+              });
+            }
+            if (threadId === "thr_uninstalled") {
+              return makeThreadResponse({
+                id: threadId,
+                providerId: "acp-gone",
+              });
+            }
+            throw new Error("thread_not_found");
+          },
+        },
+        providers: {
+          list: async () => [
+            { id: "codex", displayName: "Codex", logoUrl: null },
+            { id: "claude-code", displayName: "Claude Code", logoUrl: null },
+            {
+              id: "acp-custom",
+              displayName: "Custom Agent",
+              logoUrl: "/api/v1/system/providers/acp-custom/logo",
+            },
+          ],
+        },
+      },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Providers",
+      prefix: "PRV",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Provider badges",
+    });
+    const agentComment = (body: string, threadId: string | null): void => {
+      store.tasks.createComment({
+        taskId: task.id,
+        kind: "agent",
+        authorName: `agent (${threadId ?? "legacy"})`,
+        threadId,
+        body,
+        notifiedCount: 0,
+      });
+    };
+    agentComment("Codex", "thr_codex");
+    agentComment("Custom logo", "thr_custom");
+    agentComment("Side chat", "thr_side_chat");
+    agentComment("Uninstalled", "thr_uninstalled");
+    agentComment("Missing thread", "thr_missing");
+    agentComment("Legacy", null);
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "user",
+      authorName: "You",
+      threadId: null,
+      body: "Human note",
+      notifiedCount: 0,
+    });
+
+    const result = tasksRpcContract.listComments.output.parse(
+      await harness.callRpc("listComments", { taskId: task.id }),
+    );
+    const byBody = new Map(
+      result.comments.map((comment) => [comment.body, comment]),
+    );
+    // Built-in provider resolves its display name; built-ins carry no logoUrl.
+    expect(byBody.get("Codex")?.provider).toEqual({
+      id: "codex",
+      name: "Codex",
+      logoUrl: null,
+    });
+    // Custom ACP agent carries the served logo asset URL.
+    expect(byBody.get("Custom logo")?.provider).toEqual({
+      id: "acp-custom",
+      name: "Custom Agent",
+      logoUrl: "/api/v1/system/providers/acp-custom/logo",
+    });
+    // Side chat: provider present (drives the logo) though the title is hidden.
+    expect(byBody.get("Side chat")?.provider).toEqual({
+      id: "claude-code",
+      name: "Claude Code",
+      logoUrl: null,
+    });
+    expect(byBody.get("Side chat")?.threadTitle).toBeNull();
+    // Provider no longer installed: badge falls back to the raw provider id so
+    // the UI can still render a brand glyph by id.
+    expect(byBody.get("Uninstalled")?.provider).toEqual({
+      id: "acp-gone",
+      name: "acp-gone",
+      logoUrl: null,
+    });
+    // Inaccessible thread, legacy no-thread agent comment, and user comment
+    // carry no provider.
+    expect(byBody.get("Missing thread")?.provider).toBeNull();
+    expect(byBody.get("Legacy")?.provider).toBeNull();
+    expect(byBody.get("Human note")?.provider).toBeNull();
+    // The host provider list is read once per listComments, not per comment.
+    expect(harness.sdk.callsTo("providers.list")).toHaveLength(1);
+    await harness.dispose();
+  });
+
   it("lists bb workspace projects as id/name options", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

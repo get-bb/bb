@@ -3,7 +3,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowUp02Icon,
   AttachmentIcon,
-  BotIcon,
   File01Icon,
   Notification02Icon,
 } from "@hugeicons/core-free-icons";
@@ -39,6 +38,7 @@ import {
   useNowTick,
 } from "./time.js";
 import { CommentAuthor } from "./comment-author.js";
+import { CommentProviderAvatar } from "./provider-logo.js";
 
 interface FeedEntry {
   comment: DisplayComment;
@@ -100,17 +100,6 @@ function UserAvatar({ name }: { name: string }) {
       className="z-[1] mt-px flex size-[22px] shrink-0 items-center justify-center rounded-full bg-attention text-2xs font-bold text-background outline outline-2 outline-background"
     >
       {initial}
-    </span>
-  );
-}
-
-function AgentAvatar() {
-  return (
-    <span
-      aria-hidden
-      className="z-[1] mt-px flex size-[22px] shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground outline outline-2 outline-background"
-    >
-      <HugeiconsIcon icon={BotIcon} className="size-3.5" />
     </span>
   );
 }
@@ -196,7 +185,11 @@ function CommentCard({ entry, nowMs }: { entry: FeedEntry; nowMs: number }) {
   const [lightbox, setLightbox] = useState<Attachment | null>(null);
   return (
     <div className="relative mb-3.5 flex gap-2.5">
-      {agent ? <AgentAvatar /> : <UserAvatar name={comment.authorName} />}
+      {agent ? (
+        <CommentProviderAvatar provider={comment.provider} />
+      ) : (
+        <UserAvatar name={comment.authorName} />
+      )}
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-baseline gap-1.5 text-xs">
           <CommentAuthor comment={comment} onOpenThread={navigate.toThread} />
