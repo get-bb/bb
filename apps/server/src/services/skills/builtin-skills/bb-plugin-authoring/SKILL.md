@@ -348,15 +348,17 @@ preview URLs expire and never reveal the host id or absolute root.
 
 ```ts
 bb.events.on("thread.created", ({ thread }) => { ... });
+bb.events.on("thread.active", ({ thread }) => { ... });
 bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
 bb.events.on("thread.deleted", ({ thread }) => { ... });
 ```
 
-Exactly four events. Observe-only: handlers run fire-and-forget after the
-transition and can never block or veto it. `thread` is the same DTO
-`GET /api/v1/threads/:id` serves. Errors are caught, logged, and counted in
-the plugin's handler stats (`bb plugin list`).
+Exactly five events. `thread.active` fires when an applied lifecycle
+transition enters the running `active` state. Observe-only handlers run
+fire-and-forget after the transition and can never block or veto it. `thread`
+is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
+and counted in the plugin's handler stats (`bb plugin list`).
 
 ### bb.http — HTTP routes
 
@@ -1098,8 +1100,9 @@ Remaining reference examples in `examples/plugins/`:
   plugin is `needs-configuration`; `bb plugin reload <id>` remains available
   for other recovery cases.
 - Descriptors without `default` produce `| undefined` values.
-- Thread events are observe-only; there are exactly four
-  (`thread.created`, `thread.idle`, `thread.failed`, `thread.deleted`).
+- Thread events are observe-only; there are exactly five
+  (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
+  `thread.deleted`).
 - Service throw of NeedsConfigurationError changes plugin status; schedule
   throws only set the schedule's last_error. Name-matching means no import
   is needed for the error class.

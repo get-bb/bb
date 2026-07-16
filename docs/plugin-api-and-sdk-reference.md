@@ -304,16 +304,17 @@ Ports must be integers from 1 through 65535. The server deduplicates and sorts t
 
 ### `bb.events.on`
 
-`events.on(event, handler) => void` observes exactly four thread lifecycle events:
+`events.on(event, handler) => void` observes exactly five thread lifecycle events:
 
 | Event | Payload |
 | --- | --- |
 | `thread.created` | `{ thread: ThreadResponse }` |
+| `thread.active` | `{ thread: ThreadResponse }` |
 | `thread.idle` | `{ thread: ThreadResponse, lastAssistantText: string | null }` |
 | `thread.failed` | `{ thread: ThreadResponse, error: string | null }` |
 | `thread.deleted` | `{ thread: ThreadResponse }` |
 
-Listeners are additive and run independently in registration order after the transition. They cannot veto or delay it. Errors are caught, logged, and counted in plugin handler stats.
+Listeners are additive and run independently in registration order after the transition. `thread.active` fires when an applied lifecycle transition enters the `active` running state. Listeners cannot veto or delay transitions. Errors are caught, logged, and counted in plugin handler stats.
 
 ### `bb.onDispose`
 

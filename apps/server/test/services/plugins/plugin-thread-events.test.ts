@@ -72,6 +72,45 @@ function lifecycleDeps(harness: TestAppHarness) {
 }
 
 describe("plugin thread lifecycle events", () => {
+  it("delivers thread.active once when run.started enters active", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__activeEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.active", (payload: any) => {
+          (globalThis as any).__activeEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "starting" },
+      });
+
+      const started = applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        threadId: thread.id,
+        event: { type: "run.started" },
+      });
+      expect(started.applied).toBe(true);
+
+      const duplicate = applyLoggedThreadLifecycleEvent(
+        lifecycleDeps(harness),
+        {
+          threadId: thread.id,
+          event: { type: "run.started" },
+        },
+      );
+      expect(duplicate.applied).toBe(false);
+
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread.id).toBe(thread.id);
+      expect(recorded[0]?.thread.status).toBe("active");
+    } finally {
+      delete globals.__activeEvents;
+      await cleanup();
+    }
+  });
+
   it("delivers thread.idle with the public DTO and lastAssistantText", async () => {
     const recorded: RecordedThreadPayload[] = [];
     globals.__idleEvents = recorded;

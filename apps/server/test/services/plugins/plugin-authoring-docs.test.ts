@@ -114,6 +114,7 @@ void _assertAllAuthModesListed;
  */
 const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.created": ["thread"],
+  "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
   "thread.failed": ["thread", "error"],
   "thread.deleted": ["thread"],

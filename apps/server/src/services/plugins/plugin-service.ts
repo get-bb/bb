@@ -1222,6 +1222,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
+      emitThreadActive(thread) {
+        emitThreadEvent("thread.active", () => ({
+          thread: buildThreadDto(thread),
+        }));
+      },
       emitThreadIdle(thread) {
         emitThreadEvent("thread.idle", () => ({
           thread: buildThreadDto(thread),

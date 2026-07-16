@@ -31,15 +31,17 @@ export function emitPluginThreadDeleted(thread: Thread): void {
 
 /**
  * Called with every lifecycle-event outcome; forwards applied transitions
- * into `idle`/`error` as thread.idle / thread.failed. Those statuses have no
- * self-transitions in THREAD_LIFECYCLE, so an applied outcome landing there
- * always means the thread just entered the state.
+ * into `active`/`idle`/`error` as their curated plugin lifecycle events.
+ * Those statuses have no self-transitions in THREAD_LIFECYCLE, so an applied
+ * outcome landing there always means the thread just entered the state.
  */
 export function emitPluginThreadLifecycleOutcome(
   outcome: ApplyThreadLifecycleEventOutcome,
 ): void {
   if (emitter === undefined || !outcome.applied) return;
-  if (outcome.thread.status === "idle") {
+  if (outcome.thread.status === "active") {
+    emitter.emitThreadActive(outcome.thread);
+  } else if (outcome.thread.status === "idle") {
     emitter.emitThreadIdle(outcome.thread);
   } else if (outcome.thread.status === "error") {
     emitter.emitThreadFailed(outcome.thread);

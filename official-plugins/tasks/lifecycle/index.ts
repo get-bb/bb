@@ -15,13 +15,6 @@ export const THREAD_STATUS_RECONCILE_INTERVAL_MS = 5 * 60_000;
 export const THREAD_STATUS_IDLE_INTERVAL_MS = 60_000;
 
 type SdkThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
-type ThreadRealtimeSubscribeArgs = Extract<
-  Parameters<BbPluginApi["sdk"]["subscribe"]>[0],
-  { event: "thread:changed" }
->;
-type ThreadRealtimeEvent = Parameters<
-  ThreadRealtimeSubscribeArgs["callback"]
->[0];
 
 function liveStatusFromThread(thread: SdkThread): TaskThreadLiveStatus {
   if (thread.status === "error") return "failed";
@@ -140,34 +133,6 @@ async function reconcileTrackedThreads(
   }
 }
 
-export async function handleThreadRealtimeEvent(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  event: ThreadRealtimeEvent,
-): Promise<void> {
-  if (
-    event.id === undefined ||
-    !event.changes.some(
-      (change) =>
-        change === "status-changed" ||
-        change === "thread-created" ||
-        change === "thread-deleted",
-    )
-  ) {
-    return;
-  }
-
-  // Query the authoritative store on each relevant global event. Delegate and
-  // attach write task_threads outside this module, so a cached id set could
-  // miss a newly tracked thread without another synchronization surface.
-  const nonTerminalThreads = trackedThreads(store, event.id).filter(
-    (thread) => !TERMINAL_LIVE_STATUSES.has(thread.liveStatus),
-  );
-  for (const trackedThread of nonTerminalThreads) {
-    await reconcileTrackedThread(bb, store, trackedThread);
-  }
-}
-
 function hasNonTerminalTrackedThreads(store: TasksApiStore): boolean {
   return trackedThreads(store).some(
     (thread) => !TERMINAL_LIVE_STATUSES.has(thread.liveStatus),
@@ -199,6 +164,9 @@ export async function registerLifecycle(
   bb.events.on("thread.created", ({ thread }) => {
     transitionTrackedThread(bb, store, thread.id, liveStatusFromThread(thread));
   });
+  bb.events.on("thread.active", ({ thread }) => {
+    transitionTrackedThread(bb, store, thread.id, "working");
+  });
   bb.events.on("thread.idle", ({ thread }) => {
     transitionTrackedThread(bb, store, thread.id, "idle");
   });
@@ -209,20 +177,11 @@ export async function registerLifecycle(
     transitionTrackedThread(bb, store, thread.id, "completed");
   });
 
-  // Realtime connections can drop silently. Keep a low-frequency sweep as a
-  // safety net while work is active, and otherwise remain idle.
+  // Lifecycle events cover live transitions without a full-SDK subscription.
+  // Reconciliation remains a low-frequency recovery path for transitions that
+  // happen while the plugin is unloaded or while a replacement is loading.
   bb.background.service("thread-status-reconcile", {
     async start(signal) {
-      // Thread status changes are available through the SDK's realtime stream,
-      // so no plugin-platform lifecycle event is needed for entering `active`.
-      const unsubscribe = bb.sdk.subscribe({
-        event: "thread:changed",
-        callback(event) {
-          void handleThreadRealtimeEvent(bb, store, event);
-        },
-      });
-      bb.onDispose(unsubscribe);
-
       while (!signal.aborted) {
         if (!hasNonTerminalTrackedThreads(store)) {
           await waitForNextReconciliation(

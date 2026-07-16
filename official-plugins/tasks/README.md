@@ -113,7 +113,6 @@ Tasks skill, which directs the worker to read and update the tracked task.
 
 ## Known limitations
 
-- Active thread status updates in near-realtime via the server's thread-changed stream (with a 5-minute reconcile sweep as a safety net).
 - The **Auto** delegation preset is deferred; choose an explicit preset.
 - List filters are local UI state and are not persisted in the URL.
 
