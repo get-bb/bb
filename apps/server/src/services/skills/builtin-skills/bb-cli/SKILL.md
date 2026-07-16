@@ -84,9 +84,10 @@ message agents, or inspect projects, providers, and environments.
   through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Pass `--visibility hidden` for background/plugin workers that should remain
-  addressable by ID without appearing in ordinary lists, folders, sidebar or
-  search results, unread attention, or native child-completion notifications.
-  Visible is the default and preserves normal thread behavior.
+  addressable by ID without appearing in ordinary lists, sidebar/search,
+  project prompt history, unread attention, parent lifecycle operations, or
+  native child-completion notifications. Hidden threads cannot be combined
+  with `--folder`. Visible is the default and preserves normal thread behavior.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the

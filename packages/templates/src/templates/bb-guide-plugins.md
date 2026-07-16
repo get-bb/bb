@@ -310,7 +310,8 @@ bb.settings.define (declarative settings incl. secrets, editable via
 bb.storage.database()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
 attributed to the plugin; `visibility: "hidden"` creates directly addressable
-background workers omitted from normal organization and attention surfaces);
+background workers that cannot belong to folders and are omitted from normal
+organization, project prompt history, parent lifecycle, and attention surfaces);
 bb.events.on (observe thread.created/idle/failed/deleted; hidden-thread events
 are routed only to their origin plugin);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with

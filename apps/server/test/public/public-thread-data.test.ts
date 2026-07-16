@@ -4,6 +4,7 @@ import {
   claimQueuedThreadMessage,
   createPromptHistoryEntry,
   createQueuedThreadMessageId,
+  createThreadFolder,
   deleteQueuedThreadMessage,
   deleteHost,
   environments,
@@ -99,6 +100,65 @@ describe("public thread data routes", () => {
         code: "invalid_request",
         message: "folderId and unfiled cannot be used together",
       });
+    });
+  });
+
+  it("rejects creating or assigning a hidden thread in a folder", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const folderResult = createThreadFolder(harness.db, harness.deps.hub, {
+        name: "Work",
+      });
+      if (folderResult.status !== "created") {
+        throw new Error("Expected folder fixture to be created");
+      }
+
+      const createResponse = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "sdk",
+          projectId: project.id,
+          providerId: "codex",
+          input: [{ type: "text", text: "Background work" }],
+          visibility: "hidden",
+          folderId: folderResult.folder.id,
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: { type: "unmanaged", path: null },
+          },
+        }),
+      });
+      expect(createResponse.status).toBe(400);
+      await expect(readJson(createResponse)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Hidden threads cannot belong to folders.",
+      });
+
+      const hiddenThread = seedThread(harness.deps, {
+        projectId: project.id,
+        visibility: "hidden",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${hiddenThread.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ folderId: folderResult.folder.id }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Hidden threads cannot belong to folders.",
+      });
+      expect(getThread(harness.db, hiddenThread.id)?.folderId).toBeNull();
     });
   });
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  HIDDEN_THREAD_FOLDER_ERROR_MESSAGE,
   activeThinkingSchema,
   callerExecutionInputSourceSchema,
   environmentSchema,
@@ -23,6 +24,7 @@ import {
   threadTimelinePendingTodosSchema,
   threadVisibilitySchema,
   threadWithRuntimeSchema,
+  isThreadFolderAssignmentAllowed,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
 import {
@@ -108,7 +110,7 @@ export const createThreadRequestSchema = z
      * origin is "plugin" (enforced below); persisted for attribution.
      */
     originPluginId: z.string().min(1).optional(),
-    /** Hidden threads are omitted from ordinary organization and attention surfaces. */
+    /** Hidden threads are omitted from ordinary organization and attention surfaces and cannot belong to folders. */
     visibility: threadVisibilitySchema.optional(),
     title: z.string().min(1).optional(),
     // A source-derived side-chat preload may establish the cloned provider
@@ -132,6 +134,13 @@ export const createThreadRequestSchema = z
     childOrigin: threadChildOriginSchema.nullable().default(null),
   })
   .superRefine((value, ctx) => {
+    if (!isThreadFolderAssignmentAllowed(value.visibility, value.folderId)) {
+      ctx.addIssue({
+        code: "custom",
+        message: HIDDEN_THREAD_FOLDER_ERROR_MESSAGE,
+        path: ["folderId"],
+      });
+    }
     if (value.origin === "plugin" && value.originPluginId === undefined) {
       ctx.addIssue({
         code: "custom",

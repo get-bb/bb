@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   DbConnection,
@@ -194,14 +194,24 @@ export function deleteThreadFolder(
           projectId: threads.projectId,
         })
         .from(threads)
-        .where(eq(threads.folderId, input.id))
+        .where(
+          and(
+            eq(threads.folderId, input.id),
+            eq(threads.visibility, "visible"),
+          ),
+        )
         .all();
 
       const now = Date.now();
       const affectedProjects = new Set<string>();
       tx.update(threads)
         .set({ folderId: null, updatedAt: now })
-        .where(eq(threads.folderId, input.id))
+        .where(
+          and(
+            eq(threads.folderId, input.id),
+            eq(threads.visibility, "visible"),
+          ),
+        )
         .run();
       for (const thread of matchingThreads) {
         affectedProjects.add(thread.projectId);

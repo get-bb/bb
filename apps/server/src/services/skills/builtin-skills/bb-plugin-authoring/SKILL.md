@@ -281,10 +281,11 @@ threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 
 Use `visibility: "hidden"` for background workers. Hidden threads stay
-directly operable by ID with `threads.get/send/stop/wait`, but are omitted from
-ordinary lists, folders, sidebar/search, unread attention, and BB's native
-child-completion notifications. `threads.open` requires `debugHidden: true`
-for a hidden thread. This is an organization contract, not a security boundary:
+directly operable by ID with `threads.get/send/stop/wait`, but cannot belong to
+folders and are omitted from ordinary lists, sidebar/search, project prompt
+history, unread attention, parent archive/delete operations, and BB's native
+child-completion notifications. `threads.open` requires `debugHidden: true` for
+a hidden thread. This is an organization contract, not a security boundary:
 plugins are full-trust server code.
 
 SDK realtime observation stays separate from plugin lifecycle events:

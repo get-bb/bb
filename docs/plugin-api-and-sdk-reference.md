@@ -670,7 +670,7 @@ These are also full-trust administrative APIs when reached through a plugin.
 
 `ThreadListArgs` supports `archived`, `excludeSideChats`, `folderId`, `hasParent`, `limit`, `offset`, `originKind`, `parentThreadId`, `projectId`, `sourceThreadId`, and `unfiled`. Ordinary list and search queries return visible threads only; a hidden thread remains available to direct ID methods such as `get`, `send`, `stop`, and `wait`.
 
-`spawn` requires exactly one of `prompt: string` or structured `input`. Other fields come from `CreateThreadRequest` except the SDK restates origin/child attribution fields. Plugin wrapping defaults origin attribution automatically. Set `visibility: "hidden"` for a background worker; visible is the backward-compatible default. Hidden threads are omitted from folders, sidebar/search, unread attention, and native child-completion notifications. This is an organization contract rather than a plugin authorization boundary.
+`spawn` requires exactly one of `prompt: string` or structured `input`. Other fields come from `CreateThreadRequest` except the SDK restates origin/child attribution fields. Plugin wrapping defaults origin attribution automatically. Set `visibility: "hidden"` for a background worker; visible is the backward-compatible default. Hidden threads cannot belong to folders and are omitted from ordinary lists, sidebar/search, project prompt history, unread attention, parent archive/delete operations, and native child-completion notifications. This is an organization contract rather than a plugin authorization boundary.
 
 `send` accepts the public send request fields: structured `input`, `mode`, optional execution/model/permission/reasoning/service-tier choices, sender thread, and execution input sources.
 

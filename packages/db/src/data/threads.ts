@@ -27,7 +27,9 @@ import type {
   WorkspaceProvisionType,
 } from "@bb/domain";
 import {
+  HIDDEN_THREAD_FOLDER_ERROR_MESSAGE,
   evaluateThreadLifecycleEvent,
+  isThreadFolderAssignmentAllowed,
   resolveEnvironmentWorkspaceDisplayKind,
   threadSearchSourceKindSchema,
 } from "@bb/domain";
@@ -265,6 +267,10 @@ export function createThread(
   notifier: DbNotifier,
   input: CreateThreadInput,
 ) {
+  const visibility = input.visibility ?? "visible";
+  if (!isThreadFolderAssignmentAllowed(visibility, input.folderId)) {
+    throw new Error(HIDDEN_THREAD_FOLDER_ERROR_MESSAGE);
+  }
   const now = Date.now();
   const id = createThreadId();
   const originKind = input.originKind ?? input.childOrigin ?? null;
@@ -289,7 +295,7 @@ export function createThread(
           originKind,
           childOrigin: null,
           originPluginId: input.originPluginId ?? null,
-          visibility: input.visibility ?? "visible",
+          visibility,
           lastReadAt: now,
           latestAttentionAt: now,
           createdAt: now,
@@ -1284,6 +1290,24 @@ export function listUnarchivedAssignedChildThreads(
     .all();
 }
 
+export function listVisibleUnarchivedAssignedChildThreads(
+  db: ThreadWriteConnection,
+  args: ListUnarchivedAssignedChildThreadsArgs,
+): ThreadRow[] {
+  return db
+    .select()
+    .from(threads)
+    .where(
+      and(
+        eq(threads.parentThreadId, args.parentThreadId),
+        eq(threads.visibility, "visible"),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .all();
+}
+
 export function listUnarchivedSourceThreads(
   db: ThreadWriteConnection,
   args: ListUnarchivedSourceThreadsArgs,
@@ -1295,6 +1319,25 @@ export function listUnarchivedSourceThreads(
       and(
         eq(threads.sourceThreadId, args.sourceThreadId),
         args.originKind ? eq(threads.originKind, args.originKind) : undefined,
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .all();
+}
+
+export function listVisibleUnarchivedSourceThreads(
+  db: ThreadWriteConnection,
+  args: ListUnarchivedSourceThreadsArgs,
+): ThreadRow[] {
+  return db
+    .select()
+    .from(threads)
+    .where(
+      and(
+        eq(threads.sourceThreadId, args.sourceThreadId),
+        args.originKind ? eq(threads.originKind, args.originKind) : undefined,
+        eq(threads.visibility, "visible"),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
       ),
@@ -1623,6 +1666,11 @@ export function updateThread(
   const existing = db.select().from(threads).where(eq(threads.id, id)).get();
   if (!existing) {
     return null;
+  }
+  if (
+    !isThreadFolderAssignmentAllowed(existing.visibility, input.folderId)
+  ) {
+    throw new Error(HIDDEN_THREAD_FOLDER_ERROR_MESSAGE);
   }
 
   const changes: ThreadChangeKind[] = [];

@@ -477,8 +477,10 @@ the resolved file must remain inside the origin workspace. `--source` remains
 an inline alias for `--script`. Run and validate require exactly one of
 `--script`, `--file`, or `--name` (counting `--source` as `--script`).
 
-Workflow worker threads are visible in the `Workflow` sidebar folder and are
-plugin-attributed.
+Workflow worker threads use hidden visibility and are plugin-attributed. They
+cannot belong to folders and remain outside ordinary sidebar/search, project
+prompt history, unread attention, parent lifecycle, and native completion
+surfaces while the Workflows plugin continues to operate them directly by ID.
 
 `maxActiveRuns` is live plugin-global dispatch policy. Shared parent/child agent
 concurrency and call count, worker stall timeout, total run timeout, retention,

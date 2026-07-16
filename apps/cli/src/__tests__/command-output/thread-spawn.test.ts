@@ -262,6 +262,34 @@ describe("bb thread spawn command output", () => {
     );
   });
 
+  it("bb thread spawn rejects folders for hidden workers", async () => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "background work",
+          "--visibility",
+          "hidden",
+          "--folder",
+          "fld_work",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Hidden threads cannot belong to folders.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("bb thread spawn help lists product permission modes", async () => {
     const helpOutput = await getHelpOutput(["thread", "spawn"], register);
     expect(helpOutput).toContain("--permission-mode <mode>");

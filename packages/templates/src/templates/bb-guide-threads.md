@@ -39,8 +39,9 @@ Spawning:
   When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
-  ID but are omitted from ordinary lists, folders, sidebar/search, unread
-  attention, and native child-completion notifications.
+  ID but cannot belong to folders and are omitted from ordinary lists,
+  sidebar/search, project prompt history, unread attention, parent lifecycle
+  operations, and native child-completion notifications.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that

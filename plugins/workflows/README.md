@@ -89,8 +89,9 @@ corrective retries after their initial invalid attempt.
 
 Workflow workers use BB's generic hidden-thread visibility. They remain
 directly operable by the Workflows plugin while staying out of ordinary
-folders, sidebar/search, unread attention, and native child-completion
-notifications. Workflows does not create a temporary Workflow folder.
+sidebar/search, project prompt history, unread attention, parent lifecycle
+operations, and native child-completion notifications. Hidden threads cannot
+belong to folders, so Workflows does not create a temporary Workflow folder.
 
 Workflows may invoke one child workflow level with
 `workflow(nameOrRef, args)`. A string and `{ name }` resolve under

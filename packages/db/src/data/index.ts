@@ -98,6 +98,8 @@ export {
   listThreadEnvironmentAssignmentsOnHost,
   listUnarchivedAssignedChildThreads,
   listUnarchivedSourceThreads,
+  listVisibleUnarchivedAssignedChildThreads,
+  listVisibleUnarchivedSourceThreads,
   listThreads,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,

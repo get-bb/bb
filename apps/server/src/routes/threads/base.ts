@@ -51,6 +51,7 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { assertThreadFolderAssignmentAllowed } from "../../services/threads/thread-folder-visibility.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
@@ -326,6 +327,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
     const folderId = payload.folderId;
     if (folderId !== undefined) {
+      assertThreadFolderAssignmentAllowed({
+        folderId,
+        visibility: thread.visibility,
+      });
       if (folderId !== null) {
         requireThreadFolder(deps, folderId);
       }

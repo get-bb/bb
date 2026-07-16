@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -40,6 +41,7 @@ import {
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
+import { threads } from "../../src/schema.js";
 
 function setup() {
   const db = createConnection(":memory:");
@@ -165,8 +167,10 @@ describe("threads", () => {
 
     expect(getThread(db, hidden.id)?.visibility).toBe("hidden");
     expect(
-      listThreads(db, { projectId: project.id }).map((thread) => thread.id),
-    ).toEqual([visible.id, parent.id]);
+      listThreads(db, { projectId: project.id })
+        .map((thread) => thread.id)
+        .sort(),
+    ).toEqual([visible.id, parent.id].sort());
     expect(
       listActiveVisiblePinnedThreadRoots(db).map((thread) => thread.id),
     ).not.toContain(hidden.id);
@@ -181,6 +185,30 @@ describe("threads", () => {
         parentThreadId: parent.id,
       }),
     ).toBe(1);
+  });
+
+  it("rejects folder assignments for hidden threads", () => {
+    const { db, project } = setup();
+    const folder = mustCreateThreadFolder(db, "Work");
+
+    expect(() =>
+      createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        folderId: folder.id,
+        visibility: "hidden",
+      }),
+    ).toThrow("Hidden threads cannot belong to folders");
+
+    const hidden = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      visibility: "hidden",
+    });
+    expect(() =>
+      updateThread(db, noopNotifier, hidden.id, { folderId: folder.id }),
+    ).toThrow("Hidden threads cannot belong to folders");
+    expect(getThread(db, hidden.id)?.folderId).toBeNull();
   });
 
   it("persists, reads, and clears the thread execution override", () => {
@@ -923,6 +951,39 @@ describe("threads", () => {
     expect(listThreadFolders(db).map((entry) => entry.name)).toEqual([
       "Work / Q3",
     ]);
+  });
+
+  it("excludes legacy hidden members from folder lists and deletion counts", () => {
+    const { db, project } = setup();
+    const folder = mustCreateThreadFolder(db, "Work");
+    const visible = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+    });
+    const hidden = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      visibility: "hidden",
+    });
+    db.update(threads)
+      .set({ folderId: folder.id })
+      .where(eq(threads.id, hidden.id))
+      .run();
+
+    expect(
+      listThreads(db, { projectId: project.id, folderId: folder.id }).map(
+        (thread) => thread.id,
+      ),
+    ).toEqual([visible.id]);
+
+    expect(deleteThreadFolder(db, noopNotifier, { id: folder.id })).toEqual({
+      id: folder.id,
+      name: "Work",
+      updatedThreadCount: 1,
+    });
+    expect(getThread(db, visible.id)?.folderId).toBeNull();
+    expect(getThread(db, hidden.id)?.folderId).toBeNull();
   });
 
   it("removes a folder for threads across every project", () => {

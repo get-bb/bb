@@ -92,6 +92,7 @@ export function listStoredProjectPromptHistoryRows(
       and(
         eq(promptHistoryEntries.projectId, args.projectId),
         eq(promptHistoryEntries.scope, "project"),
+        eq(threads.visibility, "visible"),
         isNull(threads.deletedAt),
       ),
     )

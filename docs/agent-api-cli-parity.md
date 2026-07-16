@@ -101,10 +101,12 @@ bb thread tell <id> <message> --file <path> --image <path>
 Both attachment flags are repeatable. `thread spawn` additionally supports
 `--folder <id>`, `--origin-kind fork|side-chat`, `--source-thread <id>`, and
 `--source-seq-end <seq>`. It also accepts `--visibility visible|hidden`; hidden
-threads remain directly addressable but are omitted from ordinary organization,
-search, attention, and native child-completion surfaces. The SDK accepts the
-equivalent `input`, `folderId`, `originKind`, `sourceThreadId`, `sourceSeqEnd`,
-and `visibility` fields. Explicit app debugging is available through
+threads remain directly addressable but cannot be combined with `--folder` and
+are omitted from ordinary organization, project prompt history, parent
+lifecycle, search, attention, and native child-completion surfaces. The SDK
+accepts the equivalent `input`, `folderId`, `originKind`, `sourceThreadId`,
+`sourceSeqEnd`, and `visibility` fields, with the same hidden-plus-folder
+rejection. Explicit app debugging is available through
 `bb.threads.open({ threadId, debugHidden: true, file: null })` and
 `bb thread open <thread-id> --debug-hidden`.
 

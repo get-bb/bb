@@ -205,6 +205,54 @@ describe("prompt history service", () => {
     ]);
   });
 
+  it("excludes hidden root prompts while preserving visible project history", () => {
+    const { db, firstProject, logger } = setup();
+    const visibleThread = createThread(db, noopNotifier, {
+      projectId: firstProject.id,
+      providerId: "codex",
+    });
+    const hiddenRootThread = createThread(db, noopNotifier, {
+      projectId: firstProject.id,
+      providerId: "codex",
+      visibility: "hidden",
+    });
+
+    insertPromptHistoryEntry({
+      db,
+      projectId: firstProject.id,
+      threadId: visibleThread.id,
+      scope: "project",
+      requestSequence: 1,
+      createdAt: 10,
+      input: textInput("Visible starter prompt"),
+    });
+    insertPromptHistoryEntry({
+      db,
+      projectId: firstProject.id,
+      threadId: hiddenRootThread.id,
+      scope: "project",
+      requestSequence: 1,
+      createdAt: 20,
+      input: textInput("Workflow worker prompt"),
+    });
+
+    expect(
+      listProjectPromptHistory(
+        { db, logger },
+        {
+          projectId: firstProject.id,
+          limit: 50,
+        },
+      ),
+    ).toEqual([
+      {
+        id: expect.stringMatching(/^phist_/u),
+        createdAt: 10,
+        input: textInput("Visible starter prompt"),
+      },
+    ]);
+  });
+
   it("excludes deleted thread starter prompts from project history", () => {
     const { db, firstProject, logger } = setup();
     const liveThread = createThread(db, noopNotifier, {
