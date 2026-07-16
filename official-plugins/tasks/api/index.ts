@@ -696,6 +696,10 @@ export function registerHandlers(
       const task = store.tasks.getTask(input.taskId);
       return { task: task ? apiTask(store, task) : null };
     },
+    getTaskByKey(input) {
+      const task = store.tasks.getTaskByKey(input.taskKey);
+      return { task: task ? apiTask(store, task) : null };
+    },
     updateTask(input) {
       try {
         const current = store.tasks.getTask(input.taskId);

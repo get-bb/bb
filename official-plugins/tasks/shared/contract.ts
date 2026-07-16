@@ -444,6 +444,15 @@ export const tasksRpcContract = defineRpcContract({
     input: z.object({ taskId: idSchema }).strict(),
     output: z.object({ task: taskSchema.nullable() }).strict(),
   },
+  /**
+   * Resolve a task key like "TSK-4" with one targeted query. The prefix is
+   * matched case-insensitively; a malformed key resolves to null rather than
+   * erroring so stale chat references degrade to the card's not-found state.
+   */
+  getTaskByKey: {
+    input: z.object({ taskKey: nonBlankStringSchema }).strict(),
+    output: z.object({ task: taskSchema.nullable() }).strict(),
+  },
   updateTask: {
     input: updateTaskInputSchema,
     output: taskMutationResultSchema,

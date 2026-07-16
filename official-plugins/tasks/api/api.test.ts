@@ -862,6 +862,52 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("resolves task keys case-insensitively and degrades bad keys to null", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Plugin",
+      prefix: "PLUG",
+      color: "blue",
+    });
+    const label = store.tasks.createLabel({
+      projectId: project.id,
+      name: "Backend",
+      color: "green",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Ship task embeds",
+    });
+    store.tasks.addTaskLabel(task.id, label.id);
+
+    const found = tasksRpcContract.getTaskByKey.output.parse(
+      await harness.callRpc("getTaskByKey", { taskKey: task.key }),
+    );
+    expect(found.task).toMatchObject({
+      id: task.id,
+      key: task.key,
+      labelIds: [label.id],
+    });
+
+    const caseInsensitive = tasksRpcContract.getTaskByKey.output.parse(
+      await harness.callRpc("getTaskByKey", {
+        taskKey: task.key.toLowerCase(),
+      }),
+    );
+    expect(caseInsensitive.task?.id).toBe(task.id);
+
+    // Unknown number, unknown prefix, and malformed keys all degrade to null
+    // (the chat card's not-found state), never an RPC error.
+    for (const taskKey of ["PLUG-999", "NOPE-1", "not a key", "PLUG-"]) {
+      const missing = tasksRpcContract.getTaskByKey.output.parse(
+        await harness.callRpc("getTaskByKey", { taskKey }),
+      );
+      expect(missing.task).toBeNull();
+    }
+  });
+
   it("returns a typed error when a task would exceed one sub-task level", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     registerTasksApi(bb, createStore(bb));

@@ -68,6 +68,22 @@ not already exist. Dispatch requires an existing preset.
    bb tasks attach ABC-12
    ```
 
+## Link tasks in responses
+
+When your answer refers the user to a task — including a task you just
+created — emit this leaf directive on its own line instead of writing the
+key as plain text:
+
+```md
+::task{key="ABC-12"}
+```
+
+`key` is required. Optionally add `title="…"` as a display fallback shown
+while the card loads and when the key no longer resolves. The rendered card
+shows the live status, title, and priority, opens the task in the thread
+side panel, and links to the full Tasks app. Emit one directive per line;
+each renders its own card.
+
 ## Invariants
 
 - Valid task statuses are `backlog`, `todo`, `in_progress`, `in_review`,

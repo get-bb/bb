@@ -7,7 +7,6 @@ import {
   useMentionItems,
   useTasksQuery,
   useTasksRpc,
-  type TasksRpc,
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
@@ -495,18 +494,9 @@ function TaskDetail({ task }: { task: Task }) {
   );
 }
 
-async function fetchTaskByKey(
-  rpc: TasksRpc,
-  taskKey: string,
-): Promise<Task | null> {
-  const { tasks } = await rpc.call("listTasks", {});
-  const wanted = taskKey.toUpperCase();
-  return tasks.find((task) => task.key.toUpperCase() === wanted) ?? null;
-}
-
 export function DetailView({ taskKey }: DetailViewProps) {
   const query = useTasksQuery(
-    (rpc) => fetchTaskByKey(rpc, taskKey),
+    async (rpc) => (await rpc.call("getTaskByKey", { taskKey })).task,
     ["tasks:changed"],
     [taskKey],
   );

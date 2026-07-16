@@ -1,5 +1,6 @@
 import { definePluginApp } from "@bb/plugin-sdk/app";
 import { TasksAppShell } from "./shell/app-shell.js";
+import { TaskDirectiveCard, TaskEmbedPanel } from "./views/embed/index.js";
 
 export default definePluginApp((app) => {
   app.slots.navPanel({
@@ -9,4 +10,11 @@ export default definePluginApp((app) => {
     path: "tasks",
     component: TasksAppShell,
   });
+  app.slots.threadPanelAction({
+    id: "task",
+    title: "Task",
+    icon: "ListTodo",
+    component: TaskEmbedPanel,
+  });
+  app.slots.messageDirective({ id: "task", component: TaskDirectiveCard });
 });

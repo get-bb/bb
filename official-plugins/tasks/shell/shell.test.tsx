@@ -61,6 +61,7 @@ function seededRpc(overrides: Record<string, unknown> = {}) {
       projects: [{ projectId: PROJECT_ID, taskCount: 3, activeAgentCount: 1 }],
     }),
     listTasks: () => ({ tasks: [] }),
+    getTaskByKey: () => ({ task: null }),
     ...overrides,
   };
 }
@@ -312,7 +313,7 @@ describe("tasks app shell", () => {
       { subPath: "task/TSK-4" },
       { rpc: seededRpc() },
     );
-    // Seeded listTasks is empty, so the real detail view lands on not-found.
+    // Seeded getTaskByKey is null, so the real detail view lands on not-found.
     await taskSlot.findByText(/Task TSK-4 was not found/);
     // Esc returns to the previous list/board (default: all tasks).
     fireEvent.keyDown(window, { key: "Escape" });

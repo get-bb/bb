@@ -67,6 +67,7 @@ function detailRpc(
     sidebarSummary: () => ({ projects: [] }),
     listTasks: (input: { parentTaskId?: string } | null) =>
       input?.parentTaskId ? { tasks: [] } : { tasks: [task] },
+    getTaskByKey: () => ({ task }),
     listLabels: () => ({ labels: [] }),
     listAttachments: () => ({ attachments: [] }),
     listTaskThreads: () => ({ taskThreads: [] }),

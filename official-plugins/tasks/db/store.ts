@@ -604,6 +604,20 @@ export function createTasksStore(db: PluginDatabase) {
     return row ? taskFromRow(row) : undefined;
   }
 
+  const getTaskByKeyRow = db.prepare<[string, number], TaskRow>(
+    `${taskSelect} WHERE p.prefix = ? COLLATE NOCASE AND t.number = ?`,
+  );
+
+  /** Resolve a task key like "TSK-4" (prefix matched case-insensitively). */
+  function getTaskByKey(key: string): Task | undefined {
+    const match = /^([A-Za-z][A-Za-z0-9]{0,9})-(\d+)$/.exec(key.trim());
+    if (!match) return undefined;
+    const [, prefix, number] = match;
+    if (prefix === undefined || number === undefined) return undefined;
+    const row = getTaskByKeyRow.get(prefix, Number(number));
+    return row ? taskFromRow(row) : undefined;
+  }
+
   function requireTask(id: string): Task {
     const task = getTask(id);
     if (!task) throw new Error(`Task not found: ${id}`);
@@ -1545,6 +1559,7 @@ export function createTasksStore(db: PluginDatabase) {
     deleteProject,
     createTask,
     getTask,
+    getTaskByKey,
     listTasks,
     listSubtasks,
     getSubtaskDoneCounts,
