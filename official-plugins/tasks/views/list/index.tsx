@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Label, Task, TaskThread } from "../../shared/contract.js";
+import type { Label } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/index.js";
+import { DetailToasts, useDetailToasts } from "../detail/toast.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -20,118 +21,26 @@ import {
   type ListPreference,
 } from "./list-preference.js";
 import { sortTasks, type TaskSort } from "../../shared/sort.js";
-import { PriorityIcon, StatusIcon } from "./icons.js";
+import { StatusIcon } from "./icons.js";
 import {
   listScrollScopeKey,
   useListScrollRestoration,
 } from "./scroll-restoration.js";
 import {
-  activeWorkLabel,
-  formatDueDate,
   groupTasksByStatus,
   labelFilterOptions,
-  partitionLabels,
   selectedLabelIds,
   STATUS_LABELS,
 } from "./lib.js";
+import { editedTasks, matchesFilters } from "./optimistic.js";
+import { useListTaskEdits } from "./use-task-edits.js";
+import { TaskRow } from "./row.js";
 
 export interface ListViewProps {
   /** null renders the cross-project "All tasks" list. */
   projectId: string | null;
   /** Only tasks with agents currently working (the Active route). */
   activeOnly?: boolean;
-}
-
-/**
- * Every trailing-rail element shares this pill treatment (Linear-style), so
- * the rail reads as one aligned system rather than mixed chips and bare text.
- */
-const RAIL_CHIP_CLASS =
-  "flex items-center gap-1 rounded-md border border-border px-1.5 py-px text-xs text-muted-foreground";
-
-/**
- * Live-activity chip: a green dot plus an "Active" pill, styled like the
- * label chips so the rail stays uniform. Renders only while an agent is
- * actively starting/working; historical attachments show nothing. The pill
- * text stays constant; the tooltip carries the specific state (starting vs
- * working, agent count).
- */
-function ActiveChip({ threads }: { threads: readonly TaskThread[] }) {
-  if (threads.length === 0) return null;
-  return (
-    <span title={activeWorkLabel(threads)} className={RAIL_CHIP_CLASS}>
-      <span
-        aria-hidden
-        className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
-      />
-      Active
-    </span>
-  );
-}
-
-function LabelChip({ label }: { label: Label }) {
-  return (
-    <span className={`${RAIL_CHIP_CLASS} max-w-32`}>
-      <span
-        aria-hidden
-        className="size-1.5 shrink-0 rounded-full"
-        style={{ backgroundColor: label.color }}
-      />
-      <span className="truncate">{label.name}</span>
-    </span>
-  );
-}
-
-function LabelChipRow({
-  labels,
-  maxVisible,
-}: {
-  labels: readonly Label[];
-  maxVisible: number;
-}) {
-  const { visible, hidden } = partitionLabels(labels, maxVisible);
-  return (
-    <>
-      {visible.map((label) => (
-        <LabelChip key={label.id} label={label} />
-      ))}
-      {hidden.length > 0 ? (
-        <span
-          title={hidden.map((label) => label.name).join(", ")}
-          className={`${RAIL_CHIP_CLASS} tabular-nums`}
-        >
-          +{hidden.length}
-        </span>
-      ) : null}
-    </>
-  );
-}
-
-/**
- * Row label chips, capped so rows keep a bounded metadata width: two chips in
- * regular containers, one in narrow ones (both variants render; container
- * queries on the list body pick which is displayed). Overflow collapses into
- * a "+N" chip whose tooltip lists the hidden names.
- */
-function LabelChips({
-  task,
-  labelsById,
-}: {
-  task: Task;
-  labelsById: Map<string, Label>;
-}) {
-  const labels = task.labelIds.flatMap((id) => labelsById.get(id) ?? []);
-  if (labels.length === 0) return null;
-  return (
-    <>
-      <span className="hidden items-center gap-1.5 @xl:flex">
-        <LabelChipRow labels={labels} maxVisible={2} />
-      </span>
-      <span className="flex items-center gap-1.5 @xl:hidden">
-        <LabelChipRow labels={labels} maxVisible={1} />
-      </span>
-    </>
-  );
 }
 
 function EmptyState({
@@ -183,6 +92,7 @@ function LoadingRows() {
 export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const navigation = useTasksNavigation();
   const projects = useProjects();
+  const { toasts, push, dismiss } = useDetailToasts();
   const preferenceScope = listPreferenceScope(projectId, activeOnly);
   const [preference, setPreference] = useState<ListPreference>(() =>
     loadListPreference(preferenceScope),
@@ -238,18 +148,47 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     labelIds,
   });
   const meta = useTaskListMeta(tasksQuery.data);
+  const edits = useListTaskEdits(tasksQuery.data, (message) =>
+    push("error", message),
+  );
 
   const labelsById = useMemo(
     () => new Map((labels.data ?? []).map((label) => [label.id, label])),
     [labels.data],
   );
+  const labelsByProject = useMemo(() => {
+    const map = new Map<string, Label[]>();
+    for (const label of labels.data ?? []) {
+      const bucket = map.get(label.projectId);
+      if (bucket) bucket.push(label);
+      else map.set(label.projectId, [label]);
+    }
+    return map;
+  }, [labels.data]);
   const projectsById = useMemo(
     () => new Map((projects.data ?? []).map((project) => [project.id, project])),
     [projects.data],
   );
+
+  // Optimistic edits are overlaid before sorting/grouping so an edited row jumps
+  // to its new status group immediately, and the active status/priority/label
+  // filters are re-applied so a row that no longer matches drops out at once
+  // instead of waiting for the server refetch.
+  const displayTasks = useMemo(() => {
+    if (tasksQuery.data === undefined) return undefined;
+    return editedTasks(tasksQuery.data, edits.entries).filter((task) =>
+      matchesFilters(task, filters.statuses, filters.priorities, labelIds ?? []),
+    );
+  }, [
+    tasksQuery.data,
+    edits.entries,
+    filters.statuses,
+    filters.priorities,
+    labelIds,
+  ]);
   const groups = useMemo(
-    () => groupTasksByStatus(sortTasks(tasksQuery.data ?? [], sort)),
-    [tasksQuery.data, sort],
+    () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
+    [displayTasks, sort],
   );
 
   const showProject = projectId === null;
@@ -277,13 +216,13 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   });
 
   let body: React.ReactNode;
-  if (tasksQuery.data === undefined) {
+  if (tasksQuery.data === undefined || displayTasks === undefined) {
     body = tasksQuery.error !== null ? (
       <EmptyState icon="AlertCircle" title="Couldn't load tasks" description={tasksQuery.error} />
     ) : (
       <LoadingRows />
     );
-  } else if (tasksQuery.data.length === 0) {
+  } else if (displayTasks.length === 0) {
     if (filtered) {
       body = (
         <EmptyState
@@ -333,49 +272,20 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             {group.tasks.length}
           </span>
         </div>
-        {group.tasks.map((task) => {
-          const taskMeta = meta.data?.get(task.id);
-          const project = projectsById.get(task.projectId);
-          return (
-            <button
-              key={task.id}
-              type="button"
-              onClick={() =>
-                navigation.go({ kind: "task", taskKey: task.key })
-              }
-              className="flex h-[34px] w-full items-center gap-2 border-b border-border-hairline px-3.5 text-left hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-            >
-              <PriorityIcon priority={task.priority} />
-              <span className="w-14 shrink-0 truncate text-xs tabular-nums text-subtle-foreground">
-                {task.key}
-              </span>
-              <StatusIcon status={task.status} />
-              <span className="min-w-0 flex-1 truncate text-sm">
-                {task.title}
-              </span>
-              <span className="flex shrink-0 items-center gap-1.5 text-xs text-subtle-foreground">
-                {taskMeta ? (
-                  <ActiveChip threads={taskMeta.activeThreads} />
-                ) : null}
-                <LabelChips task={task} labelsById={labelsById} />
-                {task.dueDate !== null ? (
-                  <span className={`${RAIL_CHIP_CLASS} shrink-0 tabular-nums`}>
-                    <Icon name="Clock" className="size-3 shrink-0" />
-                    {formatDueDate(task.dueDate)}
-                  </span>
-                ) : null}
-                {showProject && project !== undefined ? (
-                  <span
-                    aria-hidden
-                    title={project.name}
-                    className="size-2.5 shrink-0 rounded-sm"
-                    style={{ backgroundColor: project.color }}
-                  />
-                ) : null}
-              </span>
-            </button>
-          );
-        })}
+        {group.tasks.map((task) => (
+          <TaskRow
+            key={task.id}
+            task={task}
+            meta={meta.data?.get(task.id)}
+            project={projectsById.get(task.projectId)}
+            showProject={showProject}
+            labelsById={labelsById}
+            projectLabels={labelsByProject.get(task.projectId) ?? []}
+            onEdit={edits.edit}
+            onOpen={() => navigation.go({ kind: "task", taskKey: task.key })}
+            pending={edits.pending.has(task.id)}
+          />
+        ))}
       </section>
     ));
   }
@@ -388,7 +298,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         sort={sort}
         onSortChange={setSort}
         labelOptions={labelOptions}
-        taskCount={tasksQuery.data?.length}
+        taskCount={displayTasks?.length}
       />
       <div
         ref={scrollRef}
@@ -401,6 +311,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         onOpenChange={setNewTaskOpen}
         projectId={projectId}
       />
+      <DetailToasts toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }
