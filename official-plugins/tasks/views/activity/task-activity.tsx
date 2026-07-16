@@ -252,8 +252,17 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
   const removeFile = (id: number) =>
     setPendingFiles((files) => files.filter((entry) => entry.id !== id));
 
+  // Synchronous single-flight guard: double-activating Retry before React
+  // re-renders must not upload (and attach) the same file twice.
+  const retryingRef = useRef(new Set<number>());
   const retryUpload = async (entry: StagedAttachment) => {
-    if (entry.owner === undefined) return;
+    if (entry.owner === undefined || retryingRef.current.has(entry.id)) return;
+    retryingRef.current.add(entry.id);
+    setPendingFiles((files) =>
+      files.map((candidate) =>
+        candidate.id === entry.id ? { ...candidate, busy: true } : candidate,
+      ),
+    );
     try {
       await uploadAttachment(entry.file, entry.owner);
       removeFile(entry.id);
@@ -263,10 +272,12 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
       setPendingFiles((files) =>
         files.map((candidate) =>
           candidate.id === entry.id
-            ? { ...candidate, error: message }
+            ? { ...candidate, busy: false, error: message }
             : candidate,
         ),
       );
+    } finally {
+      retryingRef.current.delete(entry.id);
     }
   };
 

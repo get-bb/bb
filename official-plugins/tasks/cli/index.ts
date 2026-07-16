@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { stat } from "node:fs/promises";
+import { constants, readFileSync } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type {
   BbPluginApi,
@@ -16,6 +16,7 @@ import {
 } from "../api";
 import {
   buildAttachmentUrl,
+  MAX_ATTACHMENT_SIZE_BYTES,
   publishAttachmentChanged,
   readAttachmentToPath,
   saveAttachmentFromPath,
@@ -690,7 +691,7 @@ async function runCreate(
   domain: TasksDomain,
   ctx: PluginCliContext,
   argv: string[],
-): Promise<string> {
+): Promise<string | PluginCliResult> {
   const args = parseArgs(argv);
   if (args.flags.has("help")) return CREATE_HELP;
   assertAllowed(args, [
@@ -705,8 +706,8 @@ async function runCreate(
     "attach",
   ]);
   requirePositionals(args, 0, CREATE_HELP);
-  // Validate attachment sources before creating anything so a typo'd path
-  // cannot leave behind a half-built task.
+  // Validate attachment sources against every upload constraint before
+  // creating anything, so a bad path cannot leave behind a half-built task.
   const attachPaths = options(args, "attach").map((path) =>
     resolve(ctx.cwd ?? process.cwd(), path),
   );
@@ -716,6 +717,12 @@ async function runCreate(
       if (!source?.isFile()) {
         throw new CliError(`attachment source is not a file: ${path}`);
       }
+      if (source.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        throw new CliError(`attachment exceeds the 25 MB limit: ${path}`);
+      }
+      await access(path, constants.R_OK).catch(() => {
+        throw new CliError(`attachment source is not readable: ${path}`);
+      });
     }),
   );
   const project = await selectedProject(
@@ -746,7 +753,10 @@ async function runCreate(
   const task = unwrapTask(
     tasksRpcContract.createTask.output.parse(await domain.createTask(input)),
   );
+  // The task exists now, so every file gets attempted and truthfully
+  // reported; stopping at the first failure would hide the rest.
   const attachments: Attachment[] = [];
+  const failedAttachments: Array<{ path: string; error: string }> = [];
   for (const sourcePath of attachPaths) {
     try {
       const attachment = await saveAttachmentFromPath(store.tasks, sourcePath, {
@@ -755,22 +765,35 @@ async function runCreate(
       publishAttachmentChanged(bb, store.tasks, attachment);
       attachments.push(attachment);
     } catch (error) {
-      throw new CliError(
-        `created ${task.key}, but attaching ${sourcePath} failed: ${
-          error instanceof Error ? error.message : String(error)
-        }. Retry with: bb tasks attachment add ${task.key} --file <path>`,
-      );
+      failedAttachments.push({
+        path: sourcePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
-  return args.flags.has("json")
-    ? json({ task, attachments })
+  const stdout = args.flags.has("json")
+    ? json({ task, attachments, failedAttachments })
     : [
         `Created ${task.key}  ${task.title}`,
         ...attachments.map(
-          (attachment) =>
-            `Attached ${attachment.fileName}  ${attachment.id}`,
+          (attachment) => `Attached ${attachment.fileName}  ${attachment.id}`,
         ),
+        ...failedAttachments.map(
+          (failure) => `Failed to attach ${failure.path}: ${failure.error}`,
+        ),
+        ...(failedAttachments.length > 0
+          ? failedAttachments.map(
+              (failure) =>
+                `Retry with: bb tasks attachment add ${task.key} --file ${failure.path}`,
+            )
+          : []),
       ].join("\n");
+  if (failedAttachments.length === 0) return stdout;
+  return {
+    exitCode: 1,
+    stdout,
+    stderr: `created ${task.key}, but ${failedAttachments.length} of ${attachPaths.length} attachments failed; see stdout for per-file recovery commands`,
+  };
 }
 
 async function labelsForTaskList(
@@ -1707,9 +1730,14 @@ export function registerTasksCli(
           case "folder":
             stdout = await runFolder(bb, store, domain, rest);
             break;
-          case "create":
-            stdout = await runCreate(bb, store, domain, ctx, rest);
+          case "create": {
+            const result = await runCreate(bb, store, domain, ctx, rest);
+            // Partial attachment failure returns a full result: truthful
+            // stdout (task + per-file outcomes) with a non-zero exit.
+            if (typeof result !== "string") return result;
+            stdout = result;
             break;
+          }
           case "list":
             stdout = await runList(domain, ctx, rest);
             break;

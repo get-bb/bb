@@ -1,10 +1,28 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import plugin from "../server";
+
+// Passthrough mock with one injectable failure: files named boom.bin fail at
+// blob-write time, simulating a post-preflight persistence error so the
+// create --attach partial-failure path is deterministic.
+vi.mock("../attachments", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../attachments")>();
+  const saveAttachmentFromPath: typeof actual.saveAttachmentFromPath = async (
+    store,
+    sourcePath,
+    options,
+  ) => {
+    if (sourcePath.endsWith("boom.bin")) {
+      throw new Error("simulated blob write failure");
+    }
+    return actual.saveAttachmentFromPath(store, sourcePath, options);
+  };
+  return { ...actual, saveAttachmentFromPath };
+});
 
 function stdout(result: {
   exitCode: number;
@@ -647,6 +665,23 @@ describe("bb tasks CLI", () => {
       ]);
       expect(missing.exitCode).toBe(1);
       expect(missing.stderr).toContain("attachment source is not a file");
+
+      // Preflight also enforces the shared 25 MB upload limit.
+      const hugePath = join(directory, "huge.bin");
+      await writeFile(hugePath, "");
+      await truncate(hugePath, 25 * 1024 * 1024 + 1);
+      const oversized = await harness.runCli([
+        "create",
+        "--project",
+        "att",
+        "--title",
+        "Oversized attach",
+        "--attach",
+        hugePath,
+      ]);
+      expect(oversized.exitCode).toBe(1);
+      expect(oversized.stderr).toContain("exceeds the 25 MB limit");
+
       expect(
         JSON.parse(
           stdout(await harness.runCli(["list", "--project", "att", "--json"])),
@@ -670,6 +705,7 @@ describe("bb tasks CLI", () => {
         ),
       );
       expect(created.task).toMatchObject({ key: "ATT-1" });
+      expect(created.failedAttachments).toEqual([]);
       expect(created.attachments).toEqual([
         expect.objectContaining({
           taskId: created.task.id,
@@ -698,6 +734,91 @@ describe("bb tasks CLI", () => {
       );
       expect(await readFile(outputPath, "utf8")).toBe(
         "attach me at create\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+      await harness.dispose();
+    }
+  });
+
+  it("attempts every --attach file after create and reports failures truthfully", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-tasks-cli-"));
+    const firstPath = join(directory, "first.txt");
+    const boomPath = join(directory, "boom.bin");
+    const lastPath = join(directory, "last.txt");
+    await writeFile(firstPath, "first", "utf8");
+    await writeFile(boomPath, "will fail at blob write", "utf8");
+    await writeFile(lastPath, "last", "utf8");
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    try {
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          "Mixed",
+          "--prefix",
+          "MIX",
+        ]),
+      );
+
+      // JSON mode: middle file fails, both neighbors are still attempted.
+      const mixed = await harness.runCli([
+        "create",
+        "--project",
+        "mix",
+        "--title",
+        "Mixed outcome",
+        "--attach",
+        firstPath,
+        "--attach",
+        boomPath,
+        "--attach",
+        lastPath,
+        "--json",
+      ]);
+      expect(mixed.exitCode).toBe(1);
+      expect(mixed.stderr).toContain("1 of 3 attachments failed");
+      const payload = JSON.parse(mixed.stdout);
+      expect(payload.task).toMatchObject({ key: "MIX-1" });
+      expect(
+        payload.attachments.map((attachment: { fileName: string }) =>
+          attachment.fileName,
+        ),
+      ).toEqual(["first.txt", "last.txt"]);
+      expect(payload.failedAttachments).toEqual([
+        { path: boomPath, error: "simulated blob write failure" },
+      ]);
+      // Both successes really persisted on the created task.
+      const listed = JSON.parse(
+        stdout(
+          await harness.runCli(["attachment", "list", "MIX-1", "--json"]),
+        ),
+      );
+      expect(listed.attachments).toHaveLength(2);
+
+      // Human mode reports the same outcome with a per-file recovery command.
+      const human = await harness.runCli([
+        "create",
+        "--project",
+        "mix",
+        "--title",
+        "Mixed outcome again",
+        "--attach",
+        firstPath,
+        "--attach",
+        boomPath,
+      ]);
+      expect(human.exitCode).toBe(1);
+      expect(human.stdout).toContain("Created MIX-2");
+      expect(human.stdout).toContain("Attached first.txt");
+      expect(human.stdout).toContain(
+        `Failed to attach ${boomPath}: simulated blob write failure`,
+      );
+      expect(human.stdout).toContain(
+        `Retry with: bb tasks attachment add MIX-2 --file ${boomPath}`,
       );
     } finally {
       await rm(directory, { recursive: true, force: true });

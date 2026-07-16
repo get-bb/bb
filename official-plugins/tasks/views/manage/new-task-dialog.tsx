@@ -206,34 +206,58 @@ export function NewTaskDialog({
     }
   };
 
+  // The submit flow snapshots pendingFiles, so the tray is frozen while a
+  // create/upload pass runs: nothing may be staged or removed mid-flight.
   const stageMore = (files: File[]) => {
-    if (files.length === 0) return;
+    if (files.length === 0 || submitting || createdTask !== null) return;
     setPendingFiles((current) => [...current, ...stageFiles(files)]);
   };
 
-  const removeFile = (id: number) =>
+  const removeFile = (id: number) => {
+    if (submitting) return;
     setPendingFiles((files) => files.filter((entry) => entry.id !== id));
+  };
 
+  // Synchronous single-flight guard: double-activating Retry before React
+  // re-renders must not upload (and attach) the same file twice.
+  const retryingRef = useRef(new Set<number>());
   const retryUpload = async (entry: StagedAttachment) => {
-    if (entry.owner === undefined) return;
+    if (entry.owner === undefined || retryingRef.current.has(entry.id)) return;
+    retryingRef.current.add(entry.id);
+    setPendingFiles((files) =>
+      files.map((candidate) =>
+        candidate.id === entry.id ? { ...candidate, busy: true } : candidate,
+      ),
+    );
     try {
       await uploadAttachment(entry.file, entry.owner);
-      removeFile(entry.id);
+      setPendingFiles((files) =>
+        files.filter((candidate) => candidate.id !== entry.id),
+      );
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       setPendingFiles((files) =>
         files.map((candidate) =>
           candidate.id === entry.id
-            ? { ...candidate, error: message }
+            ? { ...candidate, busy: false, error: message }
             : candidate,
         ),
       );
+    } finally {
+      retryingRef.current.delete(entry.id);
     }
   };
 
   const finish = (task: Task) => {
     onOpenChange(false);
     navigation.go({ kind: "task", taskKey: task.key });
+  };
+
+  // While recovery chips are pending, Escape/overlay/close must not discard
+  // them silently — leaving requires the explicit skip action below.
+  const requestClose = (next: boolean) => {
+    if (!next && createdTask !== null && pendingFiles.length > 0) return;
+    onOpenChange(next);
   };
 
   // Recovery resolves itself: once every failed upload was retried or
@@ -243,10 +267,16 @@ export function NewTaskDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createdTask, pendingFiles.length]);
 
+  // Oversized chips must be removed first — creating around them would
+  // silently drop files the user staged.
+  const hasOversized = pendingFiles.some(
+    (entry) => entry.status === "oversized",
+  );
   const canSubmit =
     effectiveProjectId !== null &&
     title.trim().length > 0 &&
     !submitting &&
+    !hasOversized &&
     createdTask === null;
 
   const submit = async () => {
@@ -331,7 +361,7 @@ export function NewTaskDialog({
   ).length;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={requestClose}>
       <DialogContent
         className="max-w-xl gap-0 p-0"
         onKeyDown={(event) => {
@@ -343,7 +373,8 @@ export function NewTaskDialog({
         onPaste={(event) => {
           // The description editor stages files itself (and prevents the
           // default); this catches pastes everywhere else in the dialog.
-          if (event.defaultPrevented || createdTask !== null) return;
+          if (event.defaultPrevented || submitting || createdTask !== null)
+            return;
           const files = [...(event.clipboardData?.files ?? [])];
           if (files.length === 0) return;
           event.preventDefault();
@@ -372,7 +403,8 @@ export function NewTaskDialog({
               {failedCount === 1 ? "" : "s"} failed to upload.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Retry the uploads below, or remove a file to skip it.
+              Retry the uploads below, remove a file to skip it, or skip them
+              all and open the task.
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {pendingFiles.map((entry) => (
@@ -422,10 +454,17 @@ export function NewTaskDialog({
                 <AttachmentChip
                   key={entry.id}
                   entry={entry}
+                  disabled={submitting}
                   onRemove={() => removeFile(entry.id)}
                 />
               ))}
             </div>
+          ) : null}
+          {hasOversized ? (
+            <p className="mt-2 text-xs text-destructive">
+              Remove attachments over the 25 MB limit before creating the
+              task.
+            </p>
           ) : null}
         </div>
         <div
@@ -629,6 +668,7 @@ export function NewTaskDialog({
             variant="outline"
             size="sm"
             aria-label="Attach files"
+            disabled={submitting}
             className={cn(CHIP_TRIGGER, "border-input font-normal")}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -658,7 +698,7 @@ export function NewTaskDialog({
             <>
               <span />
               <Button size="sm" onClick={() => finish(createdTask)}>
-                Open task
+                Skip attachments and open task
               </Button>
             </>
           ) : (

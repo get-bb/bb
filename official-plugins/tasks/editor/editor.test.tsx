@@ -335,6 +335,57 @@ describe("TasksEditor component", () => {
     ).toBeTruthy();
   });
 
+  it("routes pasted and dropped files to onAttachFiles instead of inline upload", () => {
+    const onAttachFiles = vi.fn();
+    const onUploadImage = vi.fn();
+    let editor: Editor | null = null;
+    render(
+      <TasksEditor
+        value=""
+        onChange={() => undefined}
+        onAttachFiles={onAttachFiles}
+        onUploadImage={onUploadImage}
+        onEditorReady={(ready) => (editor = ready)}
+      />,
+    );
+    const { handlePaste, handleDrop } = editor!.options.editorProps;
+    const file = new File(["png"], "shot.png", { type: "image/png" });
+
+    const pasteEvent = {
+      clipboardData: { files: [file] },
+    } as unknown as ClipboardEvent;
+    expect(
+      handlePaste!.call(editor!.view, editor!.view, pasteEvent, null as never),
+    ).toBe(true);
+    expect(onAttachFiles).toHaveBeenCalledWith([file]);
+    expect(onUploadImage).not.toHaveBeenCalled();
+
+    // A files-free (text) paste falls through so ProseMirror inserts it.
+    const textPaste = {
+      clipboardData: { files: [] },
+    } as unknown as ClipboardEvent;
+    expect(
+      handlePaste!.call(editor!.view, editor!.view, textPaste, null as never),
+    ).toBe(false);
+
+    const preventDefault = vi.fn();
+    const dropEvent = {
+      dataTransfer: { files: [file] },
+      preventDefault,
+    } as unknown as DragEvent;
+    expect(
+      handleDrop!.call(
+        editor!.view,
+        editor!.view,
+        dropEvent,
+        null as never,
+        false,
+      ),
+    ).toBe(true);
+    expect(preventDefault).toHaveBeenCalled();
+    expect(onAttachFiles).toHaveBeenCalledTimes(2);
+  });
+
   it("replaces the document when the value prop changes externally", async () => {
     const onChange = vi.fn();
     const screen = render(

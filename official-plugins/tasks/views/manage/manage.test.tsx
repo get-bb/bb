@@ -247,11 +247,14 @@ describe("NewTaskDialog", () => {
 describe("NewTaskDialog attachments", () => {
   const fetchCalls: string[] = [];
   const failFileNames = new Set<string>();
+  /** When set, uploads of this fileName stall until the promise resolves. */
+  let uploadGate: { fileName: string; promise: Promise<void> } | null = null;
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     fetchCalls.length = 0;
     failFileNames.clear();
+    uploadGate = null;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/plugins/tasks/token")) {
@@ -262,6 +265,9 @@ describe("NewTaskDialog attachments", () => {
       if (url.includes("/attachments/upload")) {
         fetchCalls.push(url);
         const query = new URL(url, "http://bb.test").searchParams;
+        if (uploadGate && query.get("fileName") === uploadGate.fileName) {
+          await uploadGate.promise;
+        }
         return failFileNames.has(query.get("fileName") ?? "")
           ? new Response(JSON.stringify({ error: "disk full" }), {
               status: 500,
@@ -387,7 +393,7 @@ describe("NewTaskDialog attachments", () => {
     expect(retryQuery.get("fileName")).toBe("bad.bin");
   });
 
-  it("rejects oversized files at pick time and never uploads them", async () => {
+  it("blocks creation while an oversized file is staged, until it is removed", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
@@ -402,6 +408,16 @@ describe("NewTaskDialog attachments", () => {
       "Over the 25 MB attachment limit",
     );
 
+    // The rejected chip blocks creation instead of being silently dropped.
+    await slot.findByText(/Remove attachments over the 25 MB limit/);
+    const createButton = slot.getByRole("button", {
+      name: "Create task",
+    }) as HTMLButtonElement;
+    expect(createButton.disabled).toBe(true);
+    fireEvent.click(createButton);
+    expect(slot.navigateCalls).toEqual([]);
+
+    fireEvent.click(slot.getByRole("button", { name: "Remove big.bin" }));
     fireEvent.click(slot.getByRole("button", { name: "Create task" }));
     await waitFor(() =>
       expect(slot.navigateCalls).toContainEqual({
@@ -411,6 +427,119 @@ describe("NewTaskDialog attachments", () => {
       }),
     );
     expect(fetchCalls).toEqual([]);
+  });
+
+  it("freezes the attachment tray while create and uploads are in flight", async () => {
+    let release!: () => void;
+    uploadGate = {
+      fileName: "slow.png",
+      promise: new Promise((resolve) => (release = resolve)),
+    };
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: dialogRpc() },
+    );
+    const titleInput = await openDialogWithTitle(slot, "In flight");
+    pasteFile(titleInput, new File(["x"], "slow.png", { type: "image/png" }));
+    await slot.findByText("slow.png");
+
+    fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+    await waitFor(() => expect(fetchCalls).toHaveLength(1));
+
+    // The submit pass snapshots the tray: staging and removal are locked.
+    pasteFile(titleInput, new File(["y"], "late.txt", { type: "text/plain" }));
+    expect(slot.queryByText("late.txt")).toBeNull();
+    const removeButton = slot.getByRole("button", {
+      name: "Remove slow.png",
+    }) as HTMLButtonElement;
+    expect(removeButton.disabled).toBe(true);
+    fireEvent.click(removeButton);
+    expect(slot.getByText("slow.png")).toBeDefined();
+
+    release();
+    await waitFor(() =>
+      expect(slot.navigateCalls).toContainEqual({
+        method: "toPluginPanel",
+        path: "tasks",
+        options: { subPath: "task/TSK-5" },
+      }),
+    );
+    expect(fetchCalls).toHaveLength(1);
+  });
+
+  it("blocks accidental dismissal during recovery until skipped explicitly", async () => {
+    failFileNames.add("bad.bin");
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: dialogRpc() },
+    );
+    const titleInput = await openDialogWithTitle(slot, "Sticky recovery");
+    pasteFile(
+      titleInput,
+      new File(["nope"], "bad.bin", { type: "application/zip" }),
+    );
+    await slot.findByText("bad.bin");
+    fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+    await slot.findByRole("alert");
+
+    // Escape (and any other onOpenChange-driven dismissal) is swallowed while
+    // failed chips remain; only the explicit skip action leaves.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(slot.getByRole("alert")).toBeDefined();
+    expect(slot.navigateCalls).toEqual([]);
+
+    fireEvent.click(
+      slot.getByRole("button", { name: "Skip attachments and open task" }),
+    );
+    await waitFor(() =>
+      expect(slot.navigateCalls).toContainEqual({
+        method: "toPluginPanel",
+        path: "tasks",
+        options: { subPath: "task/TSK-5" },
+      }),
+    );
+  });
+
+  it("runs retry single-flight so double activation uploads exactly once", async () => {
+    failFileNames.add("bad.bin");
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: dialogRpc() },
+    );
+    const titleInput = await openDialogWithTitle(slot, "Retry once");
+    pasteFile(
+      titleInput,
+      new File(["nope"], "bad.bin", { type: "application/zip" }),
+    );
+    await slot.findByText("bad.bin");
+    fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+    await slot.findByRole("alert");
+    const attemptsBeforeRetry = fetchCalls.length;
+
+    failFileNames.clear();
+    let release!: () => void;
+    uploadGate = {
+      fileName: "bad.bin",
+      promise: new Promise((resolve) => (release = resolve)),
+    };
+    const retryButton = slot.getByRole("button", {
+      name: "Retry upload of bad.bin",
+    });
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+    await slot.findByText("Retrying…");
+    release();
+    await waitFor(() =>
+      expect(slot.navigateCalls).toContainEqual({
+        method: "toPluginPanel",
+        path: "tasks",
+        options: { subPath: "task/TSK-5" },
+      }),
+    );
+    expect(fetchCalls.length - attemptsBeforeRetry).toBe(1);
   });
 });
 
