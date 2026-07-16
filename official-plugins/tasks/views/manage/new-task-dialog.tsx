@@ -664,17 +664,17 @@ export function NewTaskDialog({
               </PopoverContent>
             </Popover>
           ) : null}
-          <Button
-            variant="outline"
-            size="sm"
+          {/* Same muted icon-only affordance as the detail page's editor. */}
+          <button
+            type="button"
+            title="Attach files"
             aria-label="Attach files"
             disabled={submitting}
-            className={cn(CHIP_TRIGGER, "border-input font-normal")}
+            className="flex size-6.5 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Icon name="Paperclip" className="size-3" />
-            Attach
-          </Button>
+            <Icon name="Paperclip" className="size-4" />
+          </button>
           <input
             ref={fileInputRef}
             type="file"
