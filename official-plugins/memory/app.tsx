@@ -1,10 +1,10 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
 import type { memoryRpcContract } from "./server.js";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@bb/shared-ui/button";
+import { Input } from "@bb/shared-ui/input";
+import { Switch } from "@bb/shared-ui/switch";
+import { Textarea } from "@bb/shared-ui/textarea";
 
 const MEMORY_KINDS = [
   "fact",

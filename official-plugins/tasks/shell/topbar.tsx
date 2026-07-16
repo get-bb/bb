@@ -3,9 +3,9 @@ import type { Project, Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
 import { useTasksQuery } from "./data.js";
 import type { TaskViewMode, TasksRoute } from "./routes.js";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
-import { cn } from "@/lib/utils";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export interface PagerPosition {
   /** 1-based position of the task within its sibling list. */

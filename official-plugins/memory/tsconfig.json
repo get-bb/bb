@@ -8,10 +8,7 @@
     "lib": ["ES2022", "DOM"],
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node", "vitest/globals"],
-    "paths": {
-      "@/*": ["./*"]
-    }
+    "types": ["node", "vitest/globals"]
   },
-  "include": ["*.ts", "*.tsx", "components", "lib", "skills"]
+  "include": ["*.ts", "*.tsx", "skills"]
 }

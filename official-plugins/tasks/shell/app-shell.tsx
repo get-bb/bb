@@ -22,8 +22,8 @@ import {
   NewProjectDialog,
   NewTaskDialog,
 } from "../views/manage/index.js";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 
 /** Below this container width (panel splits, not the window) the sidebar
     auto-collapses. */

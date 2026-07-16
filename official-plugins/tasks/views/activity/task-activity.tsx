@@ -8,9 +8,9 @@ import {
   File01Icon,
   Notification02Icon,
 } from "@hugeicons/core-free-icons";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
+import { Button } from "@bb/shared-ui/button";
+import { Switch } from "@bb/shared-ui/switch";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import { useBbNavigate } from "@bb/plugin-sdk/app";
 import {

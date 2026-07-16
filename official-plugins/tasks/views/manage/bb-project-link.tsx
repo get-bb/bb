@@ -1,5 +1,5 @@
 import type { BbProjectOption } from "../../shared/contract.js";
-import { Input } from "@/components/ui/input";
+import { Input } from "@bb/shared-ui/input";
 import {
   Select,
   SelectContent,
@@ -7,7 +7,7 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@bb/shared-ui/select";
 
 const NO_LINK = "__none__";
 const CUSTOM_LINK = "__custom__";

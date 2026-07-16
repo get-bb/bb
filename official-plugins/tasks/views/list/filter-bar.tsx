@@ -10,9 +10,9 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Icon, type IconName } from "@/components/ui/icon";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import {
   PRIORITY_LABELS,

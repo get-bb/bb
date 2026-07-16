@@ -18,8 +18,6 @@
     "server.test.ts",
     "app.tsx",
     "vitest.config.ts",
-    "components",
-    "lib",
-    "hooks"
+    "components"
   ]
 }

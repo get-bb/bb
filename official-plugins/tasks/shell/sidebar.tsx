@@ -12,15 +12,15 @@ import {
   PresetDialog,
   savePresetDraft,
 } from "../views/manage/preset-dialog.js";
-import { Icon } from "@/components/ui/icon";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Icon } from "@bb/shared-ui/icon";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/tooltip";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const SIDEBAR_WIDTH_KEY = "bb-tasks:sidebar-width";
 const SIDEBAR_DEFAULT_WIDTH = 208; // matches the old fixed w-52

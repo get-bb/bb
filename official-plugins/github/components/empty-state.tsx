@@ -1,5 +1,8 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
+// Intentionally local: this is a full-region centered zero state (column
+// layout, generous padding, text-sm), unlike @bb/shared-ui/empty-state's
+// inline hint (EmptyState) or dashed-border box (EmptyStatePanel).
 export function EmptyState({
   message,
   className,

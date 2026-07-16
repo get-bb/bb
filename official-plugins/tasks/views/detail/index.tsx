@@ -28,8 +28,8 @@ import {
 } from "./rail.js";
 import { ThreadsSection } from "./threads.js";
 import { DetailToasts, useDetailToasts } from "./toast.js";
-import { Icon } from "@/components/ui/icon";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Icon } from "@bb/shared-ui/icon";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 
 export interface DetailViewProps {
   /** Task key like TSK-4 (not the ULID). */

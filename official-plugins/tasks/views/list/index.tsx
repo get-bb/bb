@@ -3,9 +3,9 @@ import type { Label, Task } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/index.js";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { useLabels, useListTasks, useTaskListMeta, type TaskRowMeta } from "./data.js";
 import {
   EMPTY_FILTERS,

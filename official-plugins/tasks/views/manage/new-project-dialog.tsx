@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@bb/shared-ui/dialog";
 import {
   Select,
   SelectContent,
@@ -21,10 +21,10 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Icon } from "@/components/ui/icon";
+} from "@bb/shared-ui/select";
+import { Button } from "@bb/shared-ui/button";
+import { Input } from "@bb/shared-ui/input";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   ColorSwatchPicker,
   DEFAULT_COLOR,

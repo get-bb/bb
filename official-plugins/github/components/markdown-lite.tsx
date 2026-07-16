@@ -4,7 +4,7 @@
 // `<img …>` tags (GitHub's attachment uploader emits HTML img tags, not
 // markdown). Everything is built as React elements — img attributes are
 // extracted and whitelisted, so no HTML is ever injected.
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const INLINE_PATTERN =
   // Image forms first: `![…](…)` must win over the link pattern (which

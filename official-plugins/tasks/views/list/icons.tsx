@@ -1,5 +1,5 @@
 import type { TaskPriority, TaskStatus } from "../../shared/contract.js";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 // Linear-style status/priority glyphs from the design mock. Hugeicons has no
 // pie-progress or priority-bars glyphs, so these are tiny local SVGs drawn

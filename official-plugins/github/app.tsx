@@ -25,8 +25,8 @@ import type { githubRpcContract } from "./server.js";
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { FileDiff as PierreFileDiff } from "@pierre/diffs/react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@bb/shared-ui/badge";
+import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,18 +35,18 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+} from "@bb/shared-ui/dropdown-menu";
+import { Input } from "@bb/shared-ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+} from "@bb/shared-ui/select";
+import { Skeleton } from "@bb/shared-ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@bb/shared-ui/tabs";
+import { Textarea } from "@bb/shared-ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { Markdown } from "@/components/markdown-lite";
 import { PageBody } from "@/components/page-body";

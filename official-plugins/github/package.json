@@ -19,7 +19,6 @@
     "server.ts",
     "app.tsx",
     "components",
-    "lib",
     "logo.svg",
     "logo-dark.svg",
     "README.md"
@@ -53,7 +52,6 @@
     "@bb/plugin-sdk": "workspace:*",
     "@pierre/diffs": "^1.2.9",
     "@radix-ui/react-dropdown-menu": "^2.1.20",
-    "@radix-ui/react-select": "^2.3.3",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "sonner": "^1.7.4",
@@ -63,13 +61,8 @@
     "vitest": "^4.1.1"
   },
   "dependencies": {
-    "@hugeicons/core-free-icons": "^4.1.3",
-    "@hugeicons/react": "^1.1.6",
+    "@bb/shared-ui": "workspace:*",
     "@radix-ui/react-slot": "^1.3.0",
-    "@radix-ui/react-tabs": "^1.1.17",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^3.4.0",
     "zod": "^4.3.6"
   }
 }

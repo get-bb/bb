@@ -58,7 +58,7 @@ import {
   SidebarRightIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
   DialogContent,
@@ -66,18 +66,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@bb/shared-ui/dialog";
+import { Input } from "@bb/shared-ui/input";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import { usePortalScopeProps } from "@/lib/portal-scope";
+} from "@bb/shared-ui/select";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { usePortalScopeProps } from "@bb/shared-ui/lib/portal-scope";
 
 interface Vault {
   id: string;

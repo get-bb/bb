@@ -1,9 +1,26 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
+
+// jsdom has no matchMedia; @bb/shared-ui's responsive overlays query it.
+beforeEach(() => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
 
 afterEach(cleanup);
 

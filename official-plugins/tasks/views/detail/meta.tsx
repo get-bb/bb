@@ -3,7 +3,7 @@ import type {
   TaskStatus,
   TaskThread,
 } from "../../shared/contract.js";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",

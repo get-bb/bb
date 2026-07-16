@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Attachment } from "../../shared/contract.js";
 import { formatBytes } from "./meta.js";
-import { Icon } from "@/components/ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 
 /** Frontend twin of attachments/index.ts `buildAttachmentUrl`. */
 export function attachmentDownloadUrl(attachmentId: string): string {

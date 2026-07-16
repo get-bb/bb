@@ -8,10 +8,7 @@
     "lib": ["ES2022", "DOM"],
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"],
-    "paths": {
-      "@/*": ["./*"]
-    }
+    "types": ["node"]
   },
   "include": [
     "server.ts",
@@ -19,8 +16,6 @@
     "app.tsx",
     "vitest.config.ts",
     "components",
-    "editor",
-    "hooks",
-    "lib"
+    "editor"
   ]
 }
