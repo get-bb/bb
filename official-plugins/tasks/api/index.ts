@@ -7,7 +7,7 @@ import {
   type TasksStore,
 } from "../db";
 import { removeAttachmentBlobs } from "../attachments";
-import { deliverCommentToAgents } from "../steer";
+import { deliverCommentToLatestAgent } from "../steer";
 import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
@@ -418,7 +418,7 @@ export async function createComment(
   );
 
   if (input.notify && comment.kind === "user") {
-    const delivery = await deliverCommentToAgents(bb, store.tasks, {
+    const delivery = await deliverCommentToLatestAgent(bb, store.tasks, {
       taskId: comment.taskId,
       commentId: comment.id,
       body: comment.body,

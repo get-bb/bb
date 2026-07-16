@@ -31,7 +31,6 @@ import type {
   Attachment,
   Comment,
   DisplayComment,
-  TaskThread,
 } from "../../shared/contract.js";
 import {
   formatFileSize,
@@ -70,8 +69,27 @@ function useActivityFeed(taskId: string) {
   );
 }
 
-function isRunning(thread: TaskThread): boolean {
-  return thread.liveStatus === "starting" || thread.liveStatus === "working";
+export type AgentNotificationTarget =
+  | { kind: "ready"; title: string }
+  | { kind: "none" }
+  | { kind: "unavailable" };
+
+export function agentNotificationTarget(
+  comments: readonly DisplayComment[],
+): AgentNotificationTarget {
+  let latest: DisplayComment | undefined;
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const comment = comments[index];
+    if (comment?.kind === "agent") {
+      latest = comment;
+      break;
+    }
+  }
+  if (!latest) return { kind: "none" };
+  if (latest.threadId === null || latest.threadTitle === null) {
+    return { kind: "unavailable" };
+  }
+  return { kind: "ready", title: latest.threadTitle };
 }
 
 function UserAvatar({ name }: { name: string }) {
@@ -171,13 +189,7 @@ function SystemEvent({ comment, nowMs }: { comment: Comment; nowMs: number }) {
   );
 }
 
-function CommentCard({
-  entry,
-  nowMs,
-}: {
-  entry: FeedEntry;
-  nowMs: number;
-}) {
+function CommentCard({ entry, nowMs }: { entry: FeedEntry; nowMs: number }) {
   const { comment, attachments } = entry;
   const agent = comment.kind === "agent";
   const navigate = useBbNavigate();
@@ -221,8 +233,7 @@ function CommentCard({
         {comment.kind === "user" && comment.notifiedCount > 0 ? (
           <div className="mt-1 flex items-center gap-1 text-2xs font-medium text-success">
             <HugeiconsIcon icon={Notification02Icon} className="size-2.5" />
-            notified {comment.notifiedCount} working agent
-            {comment.notifiedCount > 1 ? "s" : ""}
+            notified the last responding agent
           </div>
         ) : null}
       </div>
@@ -232,10 +243,10 @@ function CommentCard({
 
 interface ComposerProps {
   taskId: string;
-  runningCount: number;
+  notificationTarget: AgentNotificationTarget;
 }
 
-function CommentComposer({ taskId, runningCount }: ComposerProps) {
+function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
   const rpc = useTasksRpc();
   const navigate = useBbNavigate();
   const mentionItems = useMentionItems();
@@ -292,7 +303,7 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
         await rpc.call("createComment", {
           taskId,
           body: text,
-          notify: notify && runningCount > 0,
+          notify: notify && notificationTarget.kind === "ready",
           allowEmptyBody: text.length === 0,
         })
       ).comment;
@@ -368,19 +379,11 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
         <div className="mt-2 text-xs text-destructive">{error}</div>
       ) : null}
       <div className="mt-2 flex items-center gap-1.5">
-        {runningCount > 0 ? (
-          <label className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-            <HugeiconsIcon icon={Notification02Icon} className="size-3" />
-            <Switch
-              checked={notify}
-              onCheckedChange={setNotify}
-              aria-label="Notify working agents"
-            />
-            Notify {runningCount} working agent{runningCount > 1 ? "s" : ""}
-          </label>
-        ) : (
-          <span className="mr-auto" />
-        )}
+        <AgentNotificationControl
+          target={notificationTarget}
+          checked={notify}
+          onCheckedChange={setNotify}
+        />
         <input
           ref={fileInputRef}
           type="file"
@@ -418,6 +421,36 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
   );
 }
 
+export function AgentNotificationControl({
+  target,
+  checked,
+  onCheckedChange,
+}: {
+  target: AgentNotificationTarget;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  const enabled = target.kind === "ready";
+  const label =
+    target.kind === "ready"
+      ? `Notify ${target.title}`
+      : target.kind === "none"
+        ? "No prior agent reply to notify"
+        : "Latest responding agent can’t be notified";
+  return (
+    <label className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+      <HugeiconsIcon icon={Notification02Icon} className="size-3" />
+      <Switch
+        checked={enabled && checked}
+        disabled={!enabled}
+        onCheckedChange={onCheckedChange}
+        aria-label="Notify last responding agent"
+      />
+      {label}
+    </label>
+  );
+}
+
 export interface TaskActivityProps {
   taskId: string;
   /** Task key like TSK-4; reserved for deep links from feed entries. */
@@ -427,17 +460,12 @@ export interface TaskActivityProps {
 /** Activity feed + comment composer for the task detail page. */
 export function TaskActivity({ taskId }: TaskActivityProps) {
   const feed = useActivityFeed(taskId);
-  const threads = useTasksQuery(
-    async (rpc) => (await rpc.call("listTaskThreads", { taskId })).taskThreads,
-    ["threads:changed"],
-    [taskId],
-  );
   const nowMs = useNowTick();
-  const runningCount = useMemo(
-    () => (threads.data ?? []).filter(isRunning).length,
-    [threads.data],
-  );
   const entries = feed.data ?? [];
+  const notificationTarget = useMemo(
+    () => agentNotificationTarget(entries.map((entry) => entry.comment)),
+    [entries],
+  );
 
   return (
     <section aria-label="Activity">
@@ -468,7 +496,10 @@ export function TaskActivity({ taskId }: TaskActivityProps) {
           ),
         )}
       </div>
-      <CommentComposer taskId={taskId} runningCount={runningCount} />
+      <CommentComposer
+        taskId={taskId}
+        notificationTarget={notificationTarget}
+      />
     </section>
   );
 }

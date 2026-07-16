@@ -10,7 +10,7 @@ import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
-  it("persists successful comment steers and skips completed threads", async () => {
+  it("persists one successful notification to the latest replying agent", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
@@ -45,6 +45,20 @@ describe("Tasks RPC domain API", () => {
         liveStatus,
       });
     }
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "First agent",
+      threadId: "thr_one",
+      body: "First reply",
+    });
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "Second agent",
+      threadId: "thr_two",
+      body: "Latest reply",
+    });
 
     const result = tasksRpcContract.createComment.output.parse(
       await harness.callRpc("createComment", {
@@ -54,12 +68,14 @@ describe("Tasks RPC domain API", () => {
       }),
     );
 
-    expect(result.comment.notifiedCount).toBe(2);
-    expect(store.tasks.getComment(result.comment.id)?.notifiedCount).toBe(2);
-    expect(harness.sdk.callsTo("threads.send")).toHaveLength(2);
+    expect(result.comment.notifiedCount).toBe(1);
+    expect(store.tasks.getComment(result.comment.id)?.notifiedCount).toBe(1);
+    expect(harness.sdk.callsTo("threads.send")).toEqual([
+      [expect.objectContaining({ threadId: "thr_two" })],
+    ]);
     expect(harness.realtimeSignals.at(-1)).toEqual({
       channel: "comments:changed",
-      payload: { taskId: task.id, notifiedCount: 2 },
+      payload: { taskId: task.id, notifiedCount: 1 },
     });
     await harness.dispose();
   });
@@ -525,7 +541,7 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
-  it("keeps the comment and persists only successful steer deliveries", async () => {
+  it("keeps the comment when delivery to the latest responder fails", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
@@ -560,6 +576,20 @@ describe("Tasks RPC domain API", () => {
         liveStatus: "working",
       });
     }
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "Earlier agent",
+      threadId: "thr_success",
+      body: "Earlier reply",
+    });
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "Latest agent",
+      threadId: "thr_failing",
+      body: "Latest reply",
+    });
 
     const result = tasksRpcContract.createComment.output.parse(
       await harness.callRpc("createComment", {
@@ -569,11 +599,12 @@ describe("Tasks RPC domain API", () => {
       }),
     );
 
-    expect(result.comment.notifiedCount).toBe(1);
+    expect(result.comment.notifiedCount).toBe(0);
     expect(store.tasks.getComment(result.comment.id)).toMatchObject({
       body: "This comment must survive delivery failures.",
-      notifiedCount: 1,
+      notifiedCount: 0,
     });
+    expect(harness.sdk.callsTo("threads.send")).toHaveLength(1);
     expect(harness.logEntries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

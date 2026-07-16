@@ -297,6 +297,46 @@ describe("tasks storage", () => {
     }
   });
 
+  it("finds the latest agent comment by reply time and ignores other activity", async () => {
+    const { db, harness, store } = setup();
+    try {
+      const project = createProject(store, "LAR");
+      const task = store.createTask({ projectId: project.id, title: "Task" });
+      const latest = store.createComment({
+        taskId: task.id,
+        kind: "agent",
+        authorName: "Latest responder",
+        threadId: "thr_latest",
+        body: "Latest agent reply",
+      });
+      const older = store.createComment({
+        taskId: task.id,
+        kind: "agent",
+        authorName: "Older responder",
+        threadId: "thr_older",
+        body: "Older agent reply",
+      });
+      store.createComment({
+        taskId: task.id,
+        kind: "user",
+        authorName: "Sawyer",
+        body: "Newer user activity",
+      });
+      const setCreatedAt = db.prepare<[string, string]>(
+        "UPDATE comments SET created_at = ? WHERE id = ?",
+      );
+      setCreatedAt.run("2026-07-15T10:00:00.000Z", older.id);
+      setCreatedAt.run("2026-07-15T11:00:00.000Z", latest.id);
+
+      expect(store.getLatestAgentComment(task.id)).toMatchObject({
+        id: latest.id,
+        threadId: "thr_latest",
+      });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("rejects duplicate preset names", async () => {
     const { harness, store } = setup();
     try {

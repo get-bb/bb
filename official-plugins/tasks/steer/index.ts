@@ -10,7 +10,7 @@ export interface DeliverCommentInput {
 
 export type CommentDeliveryOutcome =
   | { threadId: string; status: "delivered" }
-  | { threadId: string; status: "skipped"; reason: string }
+  | { threadId: string | null; status: "skipped"; reason: string }
   | { threadId: string; status: "failed"; reason: string };
 
 export interface CommentDeliveryResult {
@@ -25,7 +25,7 @@ function steerPrompt(
 ): string {
   return (
     `New comment on task ${taskKey} from ${authorName}: ${body}\n\n` +
-    "This is a steer — fold it into your current work on this task; " +
+    "Treat this as updated context for your work on this task; " +
     `reply via bb tasks comment ${taskKey} when relevant.`
   );
 }
@@ -34,7 +34,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function deliverCommentToAgents(
+export async function deliverCommentToLatestAgent(
   bb: BbPluginApi,
   store: TasksStore,
   input: DeliverCommentInput,
@@ -42,56 +42,53 @@ export async function deliverCommentToAgents(
   const task = store.getTask(input.taskId);
   if (!task) throw new Error(`Task not found: ${input.taskId}`);
 
-  const activeThreads = store
-    .listTaskThreads(input.taskId)
-    .filter(
-      (thread) =>
-        thread.liveStatus === "starting" || thread.liveStatus === "working",
-    );
-  const prompt = steerPrompt(task.key, input.authorName, input.body);
-  const outcomes = await Promise.all(
-    activeThreads.map(async (thread): Promise<CommentDeliveryOutcome> => {
-      try {
-        const current = await bb.sdk.threads.get({
-          threadId: thread.threadId,
-        });
-        if (current.status !== "active") {
-          return {
-            threadId: thread.threadId,
-            status: "skipped",
-            reason: `thread is ${current.status}`,
-          };
-        }
+  const latestReply = store.getLatestAgentComment(input.taskId);
+  if (!latestReply) return { notifiedCount: 0, outcomes: [] };
+  if (latestReply.threadId === null) {
+    return {
+      notifiedCount: 0,
+      outcomes: [
+        {
+          threadId: null,
+          status: "skipped",
+          reason: "latest agent reply has no thread",
+        },
+      ],
+    };
+  }
 
-        // The status can change after this read. The SDK does not yet expose
-        // an atomic active-only send, so send-time 409s remain possible and
-        // are recorded below as non-deliveries.
-        await bb.sdk.threads.send({
-          threadId: thread.threadId,
-          input: [{ type: "text", text: prompt, mentions: [] }],
-          mode: "steer",
-        });
-        return { threadId: thread.threadId, status: "delivered" };
-      } catch (error) {
-        const reason = errorMessage(error);
-        bb.log.warn(
-          `failed to steer comment ${input.commentId} to thread ${thread.threadId}: ${reason}`,
-        );
-        return {
-          threadId: thread.threadId,
-          status: "failed",
-          reason,
-        };
-      }
-    }),
-  );
-  // Deterministic output order: task_threads rows attached within the same
-  // millisecond have no stable DB order, which made this array (and the
-  // tests asserting it) order-flaky.
-  outcomes.sort((a, b) => a.threadId.localeCompare(b.threadId));
+  const threadId = latestReply.threadId;
+  const prompt = steerPrompt(task.key, input.authorName, input.body);
+  let outcome: CommentDeliveryOutcome;
+  try {
+    const thread = await bb.sdk.threads.get({ threadId });
+    if (
+      thread.originKind === "side-chat" ||
+      thread.childOrigin === "side-chat"
+    ) {
+      outcome = {
+        threadId,
+        status: "skipped",
+        reason: "latest agent reply belongs to a side chat",
+      };
+    } else {
+      await bb.sdk.threads.send({
+        threadId,
+        input: [{ type: "text", text: prompt, mentions: [] }],
+        mode: "steer-if-active",
+      });
+      outcome = { threadId, status: "delivered" };
+    }
+  } catch (error) {
+    const reason = errorMessage(error);
+    bb.log.warn(
+      `failed to deliver comment ${input.commentId} to thread ${threadId}: ${reason}`,
+    );
+    outcome = { threadId, status: "failed", reason };
+  }
+
   return {
-    notifiedCount: outcomes.filter((outcome) => outcome.status === "delivered")
-      .length,
-    outcomes,
+    notifiedCount: outcome.status === "delivered" ? 1 : 0,
+    outcomes: [outcome],
   };
 }

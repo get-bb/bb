@@ -48,9 +48,11 @@ at the CLI boundary. You can also delegate from a task's **Delegate** menu,
 choose or create presets under **Manage → Presets**, and type `@` in the bb
 composer to send a task mention to an agent.
 
-When a task has working agents, its comment composer shows a **Notify working
-agents** switch. Leave it on to steer the new comment to those threads, or turn
-it off to record the comment without interrupting them. The CLI equivalent is
+The comment composer shows a **Notify last responding agent** switch. When the
+task has an agent reply, leave it on to send the new comment to the thread that
+authored the latest reply, resuming that thread when it is idle. Turn it off to
+keep the comment in Tasks only. If no agent has replied, the disabled control
+says so explicitly. Agents and scripts can use the same behavior with
 `bb tasks comment PROD-1 --body "New context" --notify`.
 
 ## CLI reference
@@ -58,23 +60,23 @@ it off to record the comment without interrupting them. The CLI equivalent is
 Run `bb tasks --help` or `bb tasks <command> --help` for exact options. Add
 `--json` to commands when another command or agent will consume the output.
 
-| Command | Purpose |
-| --- | --- |
-| `bb tasks status` | Show the installed Tasks plugin name and version. |
-| `bb tasks project create\|list\|show\|update` | Manage tracker projects, folders, colors, prefixes, and bb-project links. |
-| `bb tasks folder create\|list\|update` | Organize tracker projects into nested folders. |
-| `bb tasks create` | Create a task with description, priority, labels, due date, optional parent, and file attachments (repeatable `--attach <path>`). |
-| `bb tasks list` | Filter tasks by project, status, priority, label, active agents, or search text; `--sort priority\|due` orders the results. |
-| `bb tasks show <key-or-id>` | Show the complete task record, including comments, attachments, subtasks, and attached threads. |
-| `bb tasks update <key-or-id>` | Update status, priority, title, description, due date, or labels. |
-| `bb tasks comment <key-or-id>` | Add a Markdown comment from inline text or a file; optionally notify mentioned threads. |
-| `bb tasks attachment add\|get\|list` | Add a task/comment artifact, fetch it to a path, or list a task's attachments. |
-| `bb tasks preset list\|create\|update\|delete` | Manage reusable agent execution presets. |
-| `bb tasks delegate <key>` | Start and attach a new agent thread using a preset. |
-| `bb tasks attach <key-or-id>` | Attach the current bb thread to a task when it was not delegated from Tasks. |
-| `bb tasks threads <key>` | List the bb threads attached to a task. |
-| `bb tasks label create\|list\|delete` | Manage project-scoped labels. |
-| `bb tasks seed-demo --yes` | Create sample folders, projects, labels, tasks, and comments for evaluation. |
+| Command                                        | Purpose                                                                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `bb tasks status`                              | Show the installed Tasks plugin name and version.                                                                                 |
+| `bb tasks project create\|list\|show\|update`  | Manage tracker projects, folders, colors, prefixes, and bb-project links.                                                         |
+| `bb tasks folder create\|list\|update`         | Organize tracker projects into nested folders.                                                                                    |
+| `bb tasks create`                              | Create a task with description, priority, labels, due date, optional parent, and file attachments (repeatable `--attach <path>`). |
+| `bb tasks list`                                | Filter tasks by project, status, priority, label, active agents, or search text; `--sort priority\|due` orders the results.       |
+| `bb tasks show <key-or-id>`                    | Show the complete task record, including comments, attachments, subtasks, and attached threads.                                   |
+| `bb tasks update <key-or-id>`                  | Update status, priority, title, description, due date, or labels.                                                                 |
+| `bb tasks comment <key-or-id>`                 | Add a Markdown comment from inline text or a file; optionally notify mentioned threads.                                           |
+| `bb tasks attachment add\|get\|list`           | Add a task/comment artifact, fetch it to a path, or list a task's attachments.                                                    |
+| `bb tasks preset list\|create\|update\|delete` | Manage reusable agent execution presets.                                                                                          |
+| `bb tasks delegate <key>`                      | Start and attach a new agent thread using a preset.                                                                               |
+| `bb tasks attach <key-or-id>`                  | Attach the current bb thread to a task when it was not delegated from Tasks.                                                      |
+| `bb tasks threads <key>`                       | List the bb threads attached to a task.                                                                                           |
+| `bb tasks label create\|list\|delete`          | Manage project-scoped labels.                                                                                                     |
+| `bb tasks seed-demo --yes`                     | Create sample folders, projects, labels, tasks, and comments for evaluation.                                                      |
 
 Statuses are `backlog`, `todo`, `in_progress`, `in_review`, `done`, and
 `canceled`. Priorities are `urgent`, `high`, `medium`, `low`, and `none`.

@@ -40,6 +40,11 @@ not already exist. Dispatch requires an existing preset.
    bb tasks comment ABC-12 --body "Implemented the change; focused validation now passes."
    ```
 
+   Add `--notify` only when the new comment should be delivered to the thread
+   that authored the task's most recent agent reply. This resumes an idle
+   recipient; with no prior agent reply, the comment is recorded without
+   targeting an unrelated thread.
+
 4. Attach result artifacts that belong with the task, such as reports,
    screenshots, patches, or generated files:
 
