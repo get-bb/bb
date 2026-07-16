@@ -453,6 +453,7 @@ function TaskDetail({ task }: { task: Task }) {
             onRemove={async (attachment) => {
               const result = await rpc.call("deleteAttachment", {
                 attachmentId: attachment.id,
+                removeDescriptionReferences: true,
               });
               if (!result.ok) throw new Error(result.error.message);
               attachments.refresh();

@@ -51,9 +51,11 @@ describe("Tasks RPC domain API", () => {
     expect(store.tasks.getAttachment(attachmentId)).toBeDefined();
     expect(harness.realtimeSignals).toHaveLength(signalsBeforeConflict);
 
-    store.tasks.updateTask(task.id, { description: "Reference removed." });
     const deleted = tasksRpcContract.deleteAttachment.output.parse(
-      await harness.callRpc("deleteAttachment", { attachmentId }),
+      await harness.callRpc("deleteAttachment", {
+        attachmentId,
+        removeDescriptionReferences: true,
+      }),
     );
     expect(deleted).toMatchObject({
       ok: true,
@@ -61,6 +63,7 @@ describe("Tasks RPC domain API", () => {
       attachment: { id: attachmentId },
     });
     expect(store.tasks.getAttachment(attachmentId)).toBeUndefined();
+    expect(store.tasks.getTask(task.id)?.description).toBe("");
     expect(harness.realtimeSignals.at(-1)).toEqual({
       channel: "tasks:changed",
       payload: { taskId: task.id, projectId: project.id },

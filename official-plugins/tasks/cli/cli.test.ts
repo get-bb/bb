@@ -1222,6 +1222,28 @@ describe("bb tasks CLI", () => {
       ]);
       expect(removeMissing.exitCode).toBe(1);
       expect(removeMissing.stderr).toContain("attachment not found");
+
+      const removedReferenced = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "attachment",
+            "remove",
+            pngAttachment.id,
+            "--remove-references",
+            "--json",
+          ]),
+        ),
+      );
+      expect(removedReferenced).toMatchObject({
+        deleted: true,
+        attachment: { id: pngAttachment.id },
+      });
+      const shownAfterReferencedRemove = JSON.parse(
+        stdout(await harness.runCli(["show", "FILE-1", "--json"])),
+      );
+      expect(shownAfterReferencedRemove.task.description).not.toContain(
+        pngAttachment.id,
+      );
     } finally {
       await harness.dispose();
       await rm(directory, { recursive: true, force: true });

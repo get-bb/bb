@@ -104,7 +104,7 @@ const ATTACHMENT_HELP = `Usage:
   bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--json]
   bb tasks attachment get <attachment-id> --out <path> [--json]
   bb tasks attachment list <key> [--json]
-  bb tasks attachment remove <attachment-id> [--json]`;
+  bb tasks attachment remove <attachment-id> [--remove-references] [--json]`;
 const PRESET_HELP = `Usage:
   bb tasks preset list [--json]
   bb tasks preset show <name-or-id> [--json]
@@ -1325,16 +1325,17 @@ async function runAttachment(
   }
 
   if (action === "remove") {
-    assertAllowed(args, []);
+    assertAllowed(args, [], ["remove-references"]);
     const [attachmentId] = requirePositionals(
       args,
       1,
-      "bb tasks attachment remove <attachment-id> [--json]",
+      "bb tasks attachment remove <attachment-id> [--remove-references] [--json]",
     );
     const result = tasksRpcContract.deleteAttachment.output.parse(
       await domain.deleteAttachment(
         tasksRpcContract.deleteAttachment.input.parse({
           attachmentId: attachmentId!.trim(),
+          removeDescriptionReferences: args.flags.has("remove-references"),
         }),
       ),
     );

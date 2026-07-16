@@ -180,8 +180,8 @@ export function AttachmentsGrid({
     const busy = pending.has(attachment.id);
     const base =
       variant === "image"
-        ? "absolute right-1 top-1 flex size-6 items-center justify-center rounded-md bg-popover/90 text-popover-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-popover disabled:opacity-100 [@media(hover:none)]:opacity-100"
-        : "flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground";
+        ? "absolute right-1 top-1 z-10 rounded-full bg-black/55 p-0.5 text-white transition-colors hover:bg-black/70 disabled:opacity-70"
+        : "shrink-0 rounded p-0.5 text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-70";
     return (
       <button
         type="button"
@@ -194,7 +194,7 @@ export function AttachmentsGrid({
           if (!busy) requestRemove(attachment);
         }}
       >
-        {busy ? <RemovalSpinner /> : <Icon name="X" className="size-3.5" />}
+        {busy ? <RemovalSpinner /> : <Icon name="X" className="size-3" />}
       </button>
     );
   };
@@ -268,7 +268,7 @@ export function AttachmentsGrid({
         title="Remove attachment?"
         description={
           confirm
-            ? `"${confirm.fileName}" will be permanently removed from this task. This cannot be undone.`
+            ? `"${confirm.fileName}" will be permanently removed. Any references in the task description will be removed too. This cannot be undone.`
             : ""
         }
         confirmLabel="Remove"

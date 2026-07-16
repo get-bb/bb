@@ -557,7 +557,12 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ attachments: z.array(attachmentSchema) }).strict(),
   },
   deleteAttachment: {
-    input: z.object({ attachmentId: idSchema }).strict(),
+    input: z
+      .object({
+        attachmentId: idSchema,
+        removeDescriptionReferences: z.boolean().default(false),
+      })
+      .strict(),
     output: attachmentDeleteResultSchema,
   },
   listTaskThreads: {

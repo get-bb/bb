@@ -83,6 +83,18 @@ export class AttachmentCleanupError extends Error {
   }
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function removeAttachmentDescriptionReferences(
+  markdown: string,
+  attachmentId: string,
+): string {
+  const url = escapeRegExp(buildAttachmentUrl(attachmentId));
+  return markdown.replace(new RegExp(`!\\[[^\\]]*\\]\\(${url}\\)`, "g"), "");
+}
+
 function pluginDataDirectory(bb: BbPluginApi): string {
   const main = bb.storage
     .database()
@@ -411,16 +423,20 @@ function errorResponse(context: PluginHttpContext, error: unknown): Response {
 
 /**
  * Removes an attachment end to end using one shared policy for HTTP, RPC, and
- * CLI callers. Saved-description references are rejected, blob cleanup must
- * succeed before the row is removed, and realtime is published only after
- * both mutations succeed. A cleanup failure therefore leaves the row and blob
- * reachable for a later retry instead of reporting a false success.
+ * CLI callers. Saved-description references are rejected unless the caller
+ * explicitly opts into removing them, blob cleanup must succeed before the
+ * row is removed, and realtime is published only after every mutation
+ * succeeds. A cleanup failure therefore leaves the row and blob reachable for
+ * a later retry instead of reporting a false success.
  */
 export async function deleteAttachmentById(
   bb: BbPluginApi,
   store: TasksStore,
   attachmentId: string,
-  removeBlobs: typeof removeAttachmentBlobs = removeAttachmentBlobs,
+  options: {
+    removeBlobs?: typeof removeAttachmentBlobs;
+    removeDescriptionReferences?: boolean;
+  } = {},
 ): Promise<Attachment | null> {
   const attachment = store.getAttachment(attachmentId);
   if (!attachment) return null;
@@ -431,14 +447,29 @@ export async function deleteAttachmentById(
       ? store.getComment(attachment.commentId)?.taskId
       : undefined);
   const ownerTask = taskId ? store.getTask(taskId) : undefined;
+  let nextDescription: string | undefined;
   if (ownerTask?.description.includes(buildAttachmentUrl(attachment.id))) {
-    throw new AttachmentReferencedError(attachment);
+    if (!options.removeDescriptionReferences) {
+      throw new AttachmentReferencedError(attachment);
+    }
+    nextDescription = removeAttachmentDescriptionReferences(
+      ownerTask.description,
+      attachment.id,
+    );
+    if (nextDescription === ownerTask.description) {
+      throw new AttachmentReferencedError(attachment);
+    }
   }
 
   try {
-    await removeBlobs(bb, store, [attachment]);
+    await (options.removeBlobs ?? removeAttachmentBlobs)(bb, store, [
+      attachment,
+    ]);
   } catch (error) {
     throw new AttachmentCleanupError(attachment, error);
+  }
+  if (ownerTask && nextDescription !== undefined) {
+    store.updateTask(ownerTask.id, { description: nextDescription });
   }
   if (!store.deleteAttachment(attachment.id)) return null;
   publishAttachmentChanged(bb, store, attachment);
@@ -550,7 +581,11 @@ export function registerAttachments(
             bb,
             store,
             attachmentId,
-            options.removeBlobs,
+            {
+              removeBlobs: options.removeBlobs,
+              removeDescriptionReferences:
+                context.req.query("removeDescriptionReferences") === "true",
+            },
           )
         : null;
       if (!attachment)

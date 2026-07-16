@@ -884,6 +884,9 @@ export function registerHandlers(
           bb,
           store.tasks,
           input.attachmentId,
+          {
+            removeDescriptionReferences: input.removeDescriptionReferences,
+          },
         );
         return attachment
           ? {

@@ -276,34 +276,31 @@ describe("task attachments", () => {
       },
     });
     try {
-      const uploaded = await upload(
-        harness,
-        task.id,
-        "document",
-        "note.txt",
-        "text/plain",
-      );
+      const uploaded = await upload(harness, task.id, "image");
       const { attachmentId } = (await uploaded.json()) as {
         attachmentId: string;
       };
       const attachment = store.getAttachment(attachmentId);
       if (!attachment) throw new Error("attachment row was not created");
+      const description = `![diagram](${buildAttachmentUrl(attachmentId)})`;
+      store.updateTask(task.id, { description });
       const signalsBeforeDelete = harness.realtimeSignals.length;
 
       const response = await harness.fetchHttp(
         "DELETE",
-        `/attachments/delete?attachmentId=${attachmentId}`,
+        `/attachments/delete?attachmentId=${attachmentId}&removeDescriptionReferences=true`,
         { headers: { "content-type": "application/json" } },
       );
 
       expect(response.status).toBe(500);
       await expect(response.json()).resolves.toEqual({
-        error: "Failed to remove attachment blob: note.txt",
+        error: "Failed to remove attachment blob: image.png",
       });
       expect(store.getAttachment(attachmentId)).toEqual(attachment);
+      expect(store.getTask(task.id)?.description).toBe(description);
       await expect(
         readFile(join(root, attachment.blobPath), "utf8"),
-      ).resolves.toBe("document");
+      ).resolves.toBe("image");
       expect(harness.realtimeSignals).toHaveLength(signalsBeforeDelete);
     } finally {
       await harness.dispose();
@@ -340,6 +337,19 @@ describe("task attachments", () => {
         readFile(join(root, attachment.blobPath), "utf8"),
       ).resolves.toBe("image");
       expect(harness.realtimeSignals).toHaveLength(signalsBeforeDelete);
+
+      const confirmed = await harness.fetchHttp(
+        "DELETE",
+        `/attachments/delete?attachmentId=${attachmentId}&removeDescriptionReferences=true`,
+        { headers: { "content-type": "application/json" } },
+      );
+      expect(confirmed.status).toBe(200);
+      expect(store.getAttachment(attachmentId)).toBeUndefined();
+      expect(store.getTask(task.id)?.description).toBe("");
+      await expect(
+        stat(dirname(join(root, attachment.blobPath))),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      expect(harness.realtimeSignals).toHaveLength(signalsBeforeDelete + 1);
     } finally {
       await harness.dispose();
     }

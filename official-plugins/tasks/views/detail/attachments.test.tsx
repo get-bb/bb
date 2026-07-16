@@ -62,16 +62,16 @@ describe("AttachmentsGrid removal", () => {
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps image removal visible when hover is unavailable", () => {
+  it("uses the composer's always-visible image removal treatment", () => {
     const screen = render(
       <AttachmentsGrid
         attachments={[imageAttachment()]}
         onRemove={vi.fn().mockResolvedValue(undefined)}
       />,
     );
-    expect(screen.getByLabelText("Remove diagram.png").className).toContain(
-      "[@media(hover:none)]:opacity-100",
-    );
+    const remove = screen.getByLabelText("Remove diagram.png");
+    expect(remove.className).toContain("rounded-full bg-black/55");
+    expect(remove.className).not.toContain("opacity-0");
   });
 
   it("shows no remove affordance without an onRemove handler", () => {
