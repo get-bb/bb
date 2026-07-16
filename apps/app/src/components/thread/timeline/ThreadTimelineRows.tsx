@@ -46,10 +46,10 @@ import {
 } from "./timeline-auto-expand.js";
 import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
 import type {
+  ThreadTimelineAddToChatHandler,
   ThreadTimelineForkMessageHandler,
   ThreadTimelineSideChatMessageHandler,
   ThreadTimelineSendToMainMessageHandler,
-  ThreadTimelineSelectionAddToChatHandler,
   ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
@@ -128,6 +128,8 @@ export interface ThreadTimelineRowsProps {
   threadChildOrigin?: ThreadChildOrigin | null;
   /** Fork the rendered thread from a specific agent message. */
   onForkMessage?: ThreadTimelineForkMessageHandler;
+  /** Add a complete agent message to the composer draft. */
+  onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   /** Open a side chat anchored on a specific agent message. */
   onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
   /** Hand a specific side-chat agent message back to the main thread. */
@@ -137,7 +139,7 @@ export interface ThreadTimelineRowsProps {
    * omitted the floating selection menu's "Add to chat" action is unavailable
    * (so no menu is shown).
    */
-  onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
+  onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   /**
    * Open a side chat anchored on the active text selection. When omitted the
    * floating selection menu's "Reply in side chat" action is unavailable.
@@ -180,9 +182,10 @@ interface TimelineRendererStaticContextValue {
   canSpawnChild: boolean;
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
+  onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
   onSideChatMessage: ThreadTimelineSideChatMessageHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
-  onSelectionAddToChat: ThreadTimelineSelectionAddToChatHandler | undefined;
+  onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
   /**
    * Reports an assistant message's text selection to the timeline-level
    * controller. `undefined` when no selection action is wired (Add to chat /
@@ -774,6 +777,7 @@ function ConversationRow({
   const {
     canSpawnChild,
     onForkMessage,
+    onMessageAddToChat,
     onSideChatMessage,
     onSendToMainMessage,
     onSelectionAddToChat,
@@ -864,6 +868,7 @@ function ConversationRow({
     <ConversationMessageContent
       attachments={row.attachments}
       id={row.id}
+      onAddToChat={onMessageAddToChat}
       onFork={onFork}
       onSideChat={onSideChat}
       onSendToMain={onSendToMain}
@@ -1810,7 +1815,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const handleSelectionAddToChat = useCallback(
     (
       text: string,
-      attachments?: Parameters<ThreadTimelineSelectionAddToChatHandler>[1],
+      attachments?: Parameters<ThreadTimelineAddToChatHandler>[1],
     ) => {
       if (attachments === undefined) {
         onSelectionAddToChat?.(text);
@@ -1838,6 +1843,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       canSpawnChild: props.canSpawnChild ?? false,
       getViewRows,
       onForkMessage: props.onForkMessage,
+      onMessageAddToChat: props.onMessageAddToChat,
       onSideChatMessage: props.onSideChatMessage,
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,
@@ -1861,6 +1867,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.canSpawnChild,
       getViewRows,
       props.onForkMessage,
+      props.onMessageAddToChat,
       props.onSideChatMessage,
       props.onSendToMainMessage,
       selectionAddToChatHandler,

@@ -31,11 +31,11 @@ export {
 } from "./ThreadContextWindowIndicator.js";
 export type {
   ThreadTimelineForkMessageHandler,
+  ThreadTimelineAddToChatHandler,
   ThreadTimelineSideChatMessageHandler,
   ThreadTimelineSideChatMessageTarget,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineSendToMainMessageTarget,
-  ThreadTimelineSelectionAddToChatHandler,
   ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineImageViewSrcResolver,

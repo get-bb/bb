@@ -2708,6 +2708,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             isThreadTimelinePending,
             timelineError: Boolean(timelineError),
             onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+            onMessageAddToChat: handleSelectionAddToChat,
             onSideChatMessage: canStartSideChat
               ? handleSideChatMessage
               : undefined,

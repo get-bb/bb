@@ -64,13 +64,13 @@ export type ThreadTimelineSendToMainMessageHandler = (
 ) => void;
 
 /**
- * Append selected agent-message text to the active thread's prompt draft as a
- * `> `-prefixed blockquote block ("Add to chat"). The editor renders it as a
- * blockquote and the user types a reply beneath it. Supplied by the timeline
- * host (which owns the composer draft); the floating selection menu invokes it
- * with the selected text. Absent when no composer draft is available.
+ * Append agent-message text or a selected excerpt to the active thread's prompt
+ * draft as a `> `-prefixed blockquote block ("Add to chat"). The editor renders
+ * it as a blockquote and the user types a reply beneath it. Supplied by the
+ * timeline host, which owns the composer draft. Absent when no composer draft
+ * is available.
  */
-export type ThreadTimelineSelectionAddToChatHandler = (
+export type ThreadTimelineAddToChatHandler = (
   text: string,
   attachments?: readonly PromptDraftAttachment[],
 ) => void;

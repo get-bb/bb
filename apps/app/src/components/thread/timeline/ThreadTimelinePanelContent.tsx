@@ -23,6 +23,7 @@ export interface ThreadTimelinePanelContentProps {
   leadingContent?: ReactNode;
   missingThreadLabel?: string;
   onForkMessage?: ThreadTimelineSurfaceProps["onForkMessage"];
+  onMessageAddToChat?: ThreadTimelineSurfaceProps["onMessageAddToChat"];
   onSideChatMessage?: ThreadTimelineSurfaceProps["onSideChatMessage"];
   onSendToMainMessage?: ThreadTimelineSurfaceProps["onSendToMainMessage"];
   onSelectionAddToChat?: ThreadTimelineSurfaceProps["onSelectionAddToChat"];
@@ -50,6 +51,7 @@ export function ThreadTimelinePanelContent({
   leadingContent,
   missingThreadLabel = "This thread is no longer available.",
   onForkMessage,
+  onMessageAddToChat,
   onSideChatMessage,
   onSendToMainMessage,
   onSelectionAddToChat,
@@ -136,6 +138,7 @@ export function ThreadTimelinePanelContent({
       loadingContent={<ThreadTimelinePanelLoadingSkeleton />}
       leadingContent={leadingContent}
       onForkMessage={onForkMessage}
+      onMessageAddToChat={onMessageAddToChat}
       onSideChatMessage={onSideChatMessage}
       onSendToMainMessage={onSendToMainMessage}
       onSelectionAddToChat={onSelectionAddToChat}

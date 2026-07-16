@@ -20,6 +20,7 @@ import type {
   TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
 import type {
+  ThreadTimelineAddToChatHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
   UserAttachmentImageSrcResolver,
@@ -78,7 +79,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
-  onAddToChat?: (text: string) => void;
+  onAddToChat?: ThreadTimelineAddToChatHandler;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onOpenLink?: ThreadTimelineLinkHandler;
@@ -120,6 +121,8 @@ export interface ConversationMessageContentAssistantProps
   // Assistant content and generated system rows render through MarkdownPreview,
   // which is the only message body surface with clickable web links.
   onOpenLink?: ThreadTimelineLinkHandler;
+  /** Add this complete agent response to the active composer draft. */
+  onAddToChat?: ThreadTimelineAddToChatHandler;
   /**
    * Fork the active thread from this agent message. Omitted when forking is
    * unavailable (no host) — the action bar then renders without a Fork button.
@@ -146,7 +149,7 @@ export interface ConversationMessageContentAssistantProps
    * menu. Omitted when no controller is wired in (e.g. delegation output).
    */
   onSelectProse?: (selection: MessageProseSelection | null) => void;
-  /** Shows the hover-revealed copy/fork/side-chat action footer. */
+  /** Shows the hover-revealed message action footer. */
   showActions: boolean;
   /** Mobile presentation for this message's action footer. */
   mobileActionDisplay: "inline" | "overflow";
@@ -172,7 +175,7 @@ interface UserConversationMessageProps {
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   mobileActionDisplay: "inline" | "overflow";
-  onAddToChat?: (text: string) => void;
+  onAddToChat?: ThreadTimelineAddToChatHandler;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -189,7 +192,9 @@ interface UserConversationMessageProps {
 }
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
+  addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
+  onAddToChat?: ThreadTimelineAddToChatHandler;
   onFork?: () => void;
   onSideChat?: () => void;
   onSendToMain?: () => void;
@@ -485,8 +490,10 @@ function UserConversationMessage({
 }
 
 function AssistantConversationMessage({
+  addToChatAttachments,
   attachmentItems,
   id,
+  onAddToChat,
   onFork,
   onSideChat,
   onSendToMain,
@@ -617,11 +624,11 @@ function AssistantConversationMessage({
       />
       {showActions ? (
         /*
-          Copy + fork (S3) + side chat (S4) actions. Each button is dropped
-          entirely (not rendered disabled) when its handler is absent — e.g. fork
-          is omitted for a personal-only source with no host to base a worktree
-          fork on. `disabled` greys both fork and side chat together when the
-          thread is at the spawn-depth cap (both spawn a child thread, one guard).
+          Message actions. Each button is dropped entirely (not rendered
+          disabled) when its handler is absent — e.g. fork is omitted for a
+          personal-only source with no host to base a worktree fork on.
+          `disabled` greys both fork and side chat together when the thread is at
+          the spawn-depth cap (both spawn a child thread, one guard).
         */
         <div className="relative h-5 max-md:pointer-coarse:h-7">
           <div
@@ -634,6 +641,8 @@ function AssistantConversationMessage({
               messageText={text}
               alignment="start"
               mobileActionDisplay={mobileActionDisplay}
+              addToChatAttachments={addToChatAttachments}
+              onAddToChat={onAddToChat}
               onFork={onFork}
               onSideChat={onSideChat}
               onSendToMain={onSendToMain}
@@ -700,8 +709,10 @@ export function ConversationMessageContent(
 
   return (
     <AssistantConversationMessage
+      addToChatAttachments={addToChatAttachments}
       attachmentItems={attachmentItems}
       id={props.id}
+      onAddToChat={props.onAddToChat}
       onFork={props.onFork}
       onSideChat={props.onSideChat}
       onSendToMain={props.onSendToMain}

@@ -62,9 +62,9 @@ import {
   ThreadTimelinePanelContent,
   ThreadTimelineSurface,
   useThreadTimelineController,
+  type ThreadTimelineAddToChatHandler,
   type ThreadTimelineRowFilter,
   type ThreadTimelineSendToMainMessageHandler,
-  type ThreadTimelineSelectionAddToChatHandler,
   type UseThreadTimelineControllerResult,
 } from "@/components/thread/timeline";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -137,7 +137,8 @@ interface SideChatConversationProps {
    * "send to main" action). Undefined only when there is no main-thread target.
    */
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
-  onSelectionAddToChat: ThreadTimelineSelectionAddToChatHandler | undefined;
+  onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
+  onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
 }
 
 const isVisibleSideChatTimelineRow: ThreadTimelineRowFilter = (row) =>
@@ -288,6 +289,7 @@ function SideChatConversation({
   timeline,
   threadId,
   onSendToMainMessage,
+  onMessageAddToChat,
   onSelectionAddToChat,
 }: SideChatConversationProps) {
   return (
@@ -296,6 +298,7 @@ function SideChatConversation({
       leadingContent={leadingContent}
       missingThreadLabel="This side chat is no longer available."
       onSendToMainMessage={onSendToMainMessage}
+      onMessageAddToChat={onMessageAddToChat}
       onSelectionAddToChat={onSelectionAddToChat}
       provisioningLabel="Provisioning side chat..."
       rowFilter={isVisibleSideChatTimelineRow}
@@ -712,14 +715,13 @@ export function SideChatTabContent({
     },
     [childThreadId, createQueuedMessage, sourceThread.id],
   );
-  const handleSelectionAddToChat =
-    useCallback<ThreadTimelineSelectionAddToChatHandler>(
-      (text, attachments) => {
-        promptDraft.addQuote(text, attachments);
-        setComposerFocusNonce((nonce) => nonce + 1);
-      },
-      [promptDraft],
-    );
+  const handleSelectionAddToChat = useCallback<ThreadTimelineAddToChatHandler>(
+    (text, attachments) => {
+      promptDraft.addQuote(text, attachments);
+      setComposerFocusNonce((nonce) => nonce + 1);
+    },
+    [promptDraft],
+  );
 
   const sideChatRuntimeDisplayStatus =
     childThreadQuery.data?.runtime.displayStatus ?? "idle";
@@ -1384,6 +1386,7 @@ export function SideChatTabContent({
             onSendToMainMessage={
               canSendMessageToMain ? sendMessageToMain : undefined
             }
+            onMessageAddToChat={handleSelectionAddToChat}
             onSelectionAddToChat={handleSelectionAddToChat}
           />
         ) : (

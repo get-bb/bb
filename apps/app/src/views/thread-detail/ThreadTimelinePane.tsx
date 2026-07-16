@@ -35,6 +35,7 @@ export function ThreadTimelinePane({
   isThreadTimelinePending,
   timelineError,
   onForkMessage,
+  onMessageAddToChat,
   onSideChatMessage,
   onSendToMainMessage,
   onSelectionAddToChat,
@@ -89,6 +90,7 @@ export function ThreadTimelinePane({
           isThreadTimelinePending={isThreadTimelinePending}
           timelineError={timelineError}
           onForkMessage={onForkMessage}
+          onMessageAddToChat={onMessageAddToChat}
           onSideChatMessage={onSideChatMessage}
           onSendToMainMessage={onSendToMainMessage}
           onSelectionAddToChat={onSelectionAddToChat}

@@ -165,12 +165,11 @@ export function findMessageActionTooltipCollisionBoundary(
 }
 
 /**
- * Hover-revealed footer of per-message actions (copy, and — when wired —
- * fork / side chat). Renders an action only when it is meaningful: copy when
- * there is text to copy, fork/side chat only when their handlers are supplied.
- * S3/S4 supply `onFork` / `onSideChat`; until then the agent footer shows copy
- * alone. `disabled` greys the fork/side-chat buttons (e.g. at the depth cap)
- * while leaving copy usable.
+ * Hover-revealed footer of per-message actions. Renders an action only when it
+ * is meaningful: copy when there is text, add-to-chat when a composer owns the
+ * draft, and fork/side-chat when their handlers are supplied. `disabled` greys
+ * the fork/side-chat buttons (e.g. at the depth cap) while leaving copy and
+ * add-to-chat usable.
  */
 export function MessageActionBar({
   messageText,

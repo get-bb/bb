@@ -231,6 +231,7 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         canSpawnChild
         onForkMessage={vi.fn()}
+        onMessageAddToChat={vi.fn()}
         onSideChatMessage={vi.fn()}
         threadRuntimeDisplayStatus="idle"
         workspaceRootPath={undefined}
@@ -253,6 +254,9 @@ describe("ThreadTimelineRows actions", () => {
     expect(
       latestMessage?.querySelector('[aria-label="Copy message"]')?.className,
     ).toContain("max-md:pointer-coarse:opacity-100");
+    expect(
+      latestMessage?.querySelector('[aria-label="Add to chat"]')?.className,
+    ).toContain("max-md:pointer-coarse:size-7");
     expect(
       latestMessage?.querySelector('[aria-label="Reply in side chat"]')
         ?.className,
@@ -501,6 +505,72 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).toContain("Nested subagent progress.");
     expect(markup).toContain("Nested final answer.");
     expect(markup.match(/aria-label="Copy message"/g)).toHaveLength(1);
+  });
+
+  it("passes agent message text to add-to-chat", () => {
+    const onMessageAddToChat = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "assistant",
+            text: "Quote this agent response.",
+          }),
+        ]}
+        onMessageAddToChat={onMessageAddToChat}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onMessageAddToChat).toHaveBeenCalledWith(
+      "Quote this agent response.",
+    );
+  });
+
+  it("passes agent message attachments to add-to-chat", () => {
+    const onMessageAddToChat = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "assistant",
+            text: "Quote this agent response.",
+            attachments: {
+              webImages: 1,
+              localImages: 1,
+              localFiles: 1,
+              imageUrls: ["https://example.com/remote.png"],
+              localImagePaths: ["uploads/screenshot.png"],
+              localFilePaths: ["uploads/spec.md"],
+            },
+          }),
+        ]}
+        onMessageAddToChat={onMessageAddToChat}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onMessageAddToChat).toHaveBeenCalledWith(
+      "Quote this agent response.",
+      [
+        {
+          type: "localImage",
+          path: "uploads/screenshot.png",
+          name: "screenshot.png",
+          sizeBytes: 0,
+        },
+        {
+          type: "localFile",
+          path: "uploads/spec.md",
+          name: "spec.md",
+          sizeBytes: 0,
+        },
+      ],
+    );
   });
 
   it("passes regular user message text to add-to-chat", () => {
