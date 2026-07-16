@@ -59,6 +59,8 @@ import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import { resolveModelPickerToggle } from "./modelPickerToggle";
 
 interface ModelLabelParts {
   base: string;
@@ -535,22 +537,26 @@ export function ModelReasoningPicker({
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
   );
 
+  // Scope Cmd+Shift+M to the focused split pane; standalone/single-pane
+  // surfaces have no pane context and default to focused.
+  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   useAppCommandContext("modelPickerOpen", open && !disabled);
   useAppCommandHandler(
     "modelPicker.toggle",
     ({ target }) => {
-      if (disabled) return false;
-      if (open) {
-        setOpen(false);
-        return true;
-      }
-      if (!(target instanceof HTMLElement)) return false;
-      const targetComposer = target.closest("[data-app-composer]");
-      const pickerComposer = triggerRef.current?.closest("[data-app-composer]");
-      if (targetComposer === null || targetComposer !== pickerComposer) {
-        return false;
-      }
-      setOpen(true);
+      const action = resolveModelPickerToggle({
+        open,
+        disabled: disabled ?? false,
+        isFocusedPane,
+        targetComposer:
+          target instanceof HTMLElement
+            ? target.closest("[data-app-composer]")
+            : null,
+        pickerComposer:
+          triggerRef.current?.closest("[data-app-composer]") ?? null,
+      });
+      if (action === "ignore") return false;
+      setOpen(action === "open");
       return true;
     },
     50,

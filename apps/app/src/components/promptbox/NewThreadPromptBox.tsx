@@ -26,6 +26,7 @@ import {
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
   BranchPicker,
   type BranchPickerMenuKind,
@@ -215,8 +216,11 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   execution,
 }: NewThreadPromptBoxUIProps) {
   const promptBoxRef = useRef<PromptBoxHandle>(null);
+  // Scope Cmd+Shift+C to the focused split pane (see FollowUpPromptBox).
+  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   useAppCommandContext("promptAvailable", true);
   useAppCommandHandler("composer.focus", () => {
+    if (!isFocusedPane) return false;
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
   });

@@ -37,6 +37,7 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
@@ -258,8 +259,13 @@ function FollowUpPromptBoxWithComposer({
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const promptBoxRef = useRef<PromptBoxHandle>(null);
+  // Scope Cmd+Shift+C to the focused split pane. Every pane mounts its own
+  // composer, so an ungated handler would let an arbitrary pane win dispatch.
+  // Standalone/single-pane surfaces have no pane context and default to focused.
+  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   useAppCommandContext("promptAvailable", true);
   useAppCommandHandler("composer.focus", () => {
+    if (!isFocusedPane) return false;
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
   });
