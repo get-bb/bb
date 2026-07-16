@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Label, Task } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
@@ -21,6 +21,10 @@ import {
 } from "./list-preference.js";
 import { sortTasks, type TaskSort } from "../../shared/sort.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
+import {
+  listScrollScopeKey,
+  useListScrollRestoration,
+} from "./scroll-restoration.js";
 import {
   formatDueDate,
   groupTasksByStatus,
@@ -203,6 +207,27 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const showProject = projectId === null;
   const filtered = hasActiveFilters(filters);
 
+  // Remember/restore the list's scroll offset per distinct list+filter+sort
+  // context, so opening a task and returning (or refreshing) lands where the
+  // user left off. Restore only once the real rows have loaded.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scopeKey = listScrollScopeKey({ projectId, activeOnly, filters, sort });
+  // `useListTasks` keeps the previous scope's rows on screen while it refetches
+  // and only flips `isLoading` in a later effect, so on the first render after a
+  // filter/sort change the rows are stale but `isLoading` is still false. Treat
+  // the scope as loading until fresh data for it has settled, giving scroll
+  // restoration a synchronously-correct signal that more rows are still coming.
+  const settledScope = useRef(scopeKey);
+  const scopeChanged = settledScope.current !== scopeKey;
+  useEffect(() => {
+    if (!tasksQuery.isLoading) settledScope.current = scopeKey;
+  }, [scopeKey, tasksQuery.isLoading, tasksQuery.data]);
+  useListScrollRestoration(scrollRef, scopeKey, {
+    contentReady: tasksQuery.data !== undefined && tasksQuery.data.length > 0,
+    loading: tasksQuery.isLoading || scopeChanged,
+    revision: tasksQuery.data?.length ?? 0,
+  });
+
   let body: React.ReactNode;
   if (tasksQuery.data === undefined) {
     body = tasksQuery.error !== null ? (
@@ -324,7 +349,9 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         labelOptions={labelOptions}
         taskCount={tasksQuery.data?.length}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto">{body}</div>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        {body}
+      </div>
       <NewTaskDialog
         open={newTaskOpen}
         onOpenChange={setNewTaskOpen}
