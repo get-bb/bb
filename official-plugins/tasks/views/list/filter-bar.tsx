@@ -10,8 +10,6 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -96,20 +94,24 @@ function SortChip({
           ) : null}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuRadioGroup
-          value={sort}
-          onValueChange={(value) => {
-            const next = TASK_SORTS.find((sort) => sort === value);
-            if (next !== undefined) onChange(next);
-          }}
-        >
-          {TASK_SORTS.map((option) => (
-            <DropdownMenuRadioItem key={option} value={option}>
-              {SORT_LABELS[option]}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+      {/* Checkbox items with exactly-one-checked semantics: the shared radio
+          primitives render nothing on compact viewports. */}
+      <DropdownMenuContent
+        align="end"
+        className="min-w-44"
+        mobileTitle="Sort tasks"
+      >
+        {TASK_SORTS.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option}
+            checked={sort === option}
+            onCheckedChange={(checked) => {
+              if (checked === true) onChange(option);
+            }}
+          >
+            {SORT_LABELS[option]}
+          </DropdownMenuCheckboxItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
