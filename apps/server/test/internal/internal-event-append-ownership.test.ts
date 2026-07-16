@@ -525,4 +525,58 @@ describe("internal event append ownership", () => {
       await harness.cleanup();
     }
   });
+
+  it("does not notify a parent when a hidden child provider process exits", async () => {
+    const { environment, harness, project, session } = await setupEventRoute();
+    const parentThread = seedThread(harness.deps, {
+      environmentId: environment.id,
+      projectId: project.id,
+      status: "idle",
+    });
+    seedThreadRuntimeState(harness.deps, {
+      environmentId: environment.id,
+      inputText: "Coordinate hidden child work",
+      providerThreadId: "provider-hidden-parent-provider-exit",
+      threadId: parentThread.id,
+    });
+    const childThread = seedThread(harness.deps, {
+      environmentId: environment.id,
+      parentThreadId: parentThread.id,
+      projectId: project.id,
+      status: "active",
+      visibility: "hidden",
+    });
+    try {
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: childThread.id,
+            event: {
+              type: "system/error",
+              threadId: childThread.id,
+              scope: threadScope(),
+              code: "provider_process_exited",
+              message: "Provider process exited",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(getThread(harness.db, childThread.id)?.status).toBe("error");
+      await expect(
+        waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "turn.submit" &&
+            command.threadId === parentThread.id,
+          100,
+        ),
+      ).rejects.toThrow("Timed out waiting for queued command");
+    } finally {
+      await harness.cleanup();
+    }
+  });
 });

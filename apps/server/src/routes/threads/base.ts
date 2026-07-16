@@ -1,7 +1,7 @@
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
-  countVisibleNonDeletedAssignedChildThreads,
+  countNonDeletedAssignedChildThreads,
   getEnvironment,
   getThreadFolderById,
   listThreadsWithPendingInteractionState,
@@ -51,7 +51,6 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
-import { assertThreadFolderAssignmentAllowed } from "../../services/threads/thread-folder-visibility.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
@@ -280,12 +279,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   function getThreadChildSummary(threadId: string): ThreadChildSummaryResponse {
-    const nonDeletedChildCount = countVisibleNonDeletedAssignedChildThreads(
-      deps.db,
-      {
-        parentThreadId: threadId,
-      },
-    );
+    const nonDeletedChildCount = countNonDeletedAssignedChildThreads(deps.db, {
+      parentThreadId: threadId,
+    });
     return {
       nonDeletedChildCount,
     };
@@ -327,10 +323,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
     const folderId = payload.folderId;
     if (folderId !== undefined) {
-      assertThreadFolderAssignmentAllowed({
-        folderId,
-        visibility: thread.visibility,
-      });
       if (folderId !== null) {
         requireThreadFolder(deps, folderId);
       }

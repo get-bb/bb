@@ -1,8 +1,6 @@
 import { Command } from "commander";
 import {
-  HIDDEN_THREAD_FOLDER_ERROR_MESSAGE,
   PERSONAL_PROJECT_ID,
-  isThreadFolderAssignmentAllowed,
   threadVisibilitySchema,
   type Thread,
 } from "@bb/domain";
@@ -271,9 +269,6 @@ export function registerSpawnCommand(
           opts.visibility === undefined
             ? undefined
             : threadVisibilitySchema.parse(opts.visibility);
-        if (!isThreadFolderAssignmentAllowed(visibility, opts.folder)) {
-          throw new Error(HIDDEN_THREAD_FOLDER_ERROR_MESSAGE);
-        }
         const parentThreadId = resolveSpawnParentThreadId({
           parentSelf: opts.parentSelf,
           parentThread: opts.parentThread,

@@ -205,7 +205,7 @@ describe("prompt history service", () => {
     ]);
   });
 
-  it("excludes hidden root prompts while preserving visible project history", () => {
+  it("includes hidden root prompts in ordinary project history", () => {
     const { db, firstProject, logger } = setup();
     const visibleThread = createThread(db, noopNotifier, {
       projectId: firstProject.id,
@@ -245,6 +245,11 @@ describe("prompt history service", () => {
         },
       ),
     ).toEqual([
+      {
+        id: expect.stringMatching(/^phist_/u),
+        createdAt: 20,
+        input: textInput("Workflow worker prompt"),
+      },
       {
         id: expect.stringMatching(/^phist_/u),
         createdAt: 10,

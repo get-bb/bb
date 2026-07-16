@@ -39,9 +39,9 @@ Spawning:
   When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
-  ID but cannot belong to folders and are omitted from ordinary lists,
-  sidebar/search, project prompt history, unread attention, parent lifecycle
-  operations, and native child-completion notifications.
+  ID while staying out of sidebar organization, unread/pending favicon
+  attention, and native parent notifications. Ordinary list, search, history,
+  folder, lifecycle, parent-operation, and direct-open behavior is unchanged.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
@@ -99,7 +99,6 @@ Opening threads and files in the app:
 
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
-    --debug-hidden                        Explicitly open a hidden thread by ID
     --line <number>                        Line number to focus
     --split <placement>                    right, down, left, top, or replace (requires Thread splits)
 
@@ -110,9 +109,6 @@ Opening threads and files in the app:
   duplicated. At four panes, edge placement replaces the focused pane.
   Enable the "Thread splits" experiment in Settings → Experiments before using
   --split; ordinary thread/file opens without --split remain available while off.
-  Hidden threads have no ordinary navigation affordance. Use
-  `bb thread open <thread-id> --debug-hidden` only for explicit debugging.
-
   Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
   thread-storage files for the current thread. Use this for Markdown or HTML

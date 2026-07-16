@@ -1208,8 +1208,8 @@ describe("server-contract canonical schemas", () => {
     ).toBe("hidden");
   });
 
-  it("rejects assigning a hidden thread to a folder at creation", () => {
-    expect(() =>
+  it("allows assigning a hidden thread to a folder at creation", () => {
+    expect(
       createThreadRequestSchema.parse({
         projectId: "proj_123",
         providerId: "codex",
@@ -1222,8 +1222,8 @@ describe("server-contract canonical schemas", () => {
           hostId: "host_abc",
           workspace: { type: "unmanaged", path: null },
         },
-      }),
-    ).toThrow("Hidden threads cannot belong to folders");
+      }).folderId,
+    ).toBe("fld_work");
   });
 
   it("rejects empty input for a normal thread start", () => {

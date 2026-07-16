@@ -207,8 +207,6 @@ export interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
 }
 
 export interface ThreadOpenArgs {
-  /** Required to intentionally open a hidden background thread in the app. */
-  debugHidden?: boolean;
   threadId: string;
   split?: ThreadOpenSplit;
   file: ThreadOpenFile | null;
@@ -831,9 +829,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].open.$post({
           param: { id: input.threadId },
           json: {
-            ...(input.debugHidden === undefined
-              ? {}
-              : { debugHidden: input.debugHidden }),
             ...(input.split === undefined ? {} : { split: input.split }),
             file: input.file,
           },

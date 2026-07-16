@@ -282,7 +282,7 @@ describe("plugin bb.sdk against a running server", () => {
       ).resolves.toMatchObject({ matched: true, threadId: thread.id });
       await expect(
         api.sdk.threads.list({ projectId: project.id }),
-      ).resolves.not.toContainEqual(expect.objectContaining({ id: thread.id }));
+      ).resolves.toContainEqual(expect.objectContaining({ id: thread.id }));
 
       const operable = seedThread(server.deps, {
         environmentId: environment.id,

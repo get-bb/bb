@@ -1,7 +1,7 @@
 import {
   listLiveThreadsInEnvironment,
-  listVisibleUnarchivedAssignedChildThreads,
-  listVisibleUnarchivedSourceThreads,
+  listUnarchivedAssignedChildThreads,
+  listUnarchivedSourceThreads,
 } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -111,10 +111,10 @@ export function archiveThreadAndChildren(
   deps: AppDeps,
   args: ArchiveThreadAndChildrenArgs,
 ): string[] {
-  const childThreads = listVisibleUnarchivedAssignedChildThreads(deps.db, {
+  const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThread.id,
   });
-  const sideChatThreads = listVisibleUnarchivedSourceThreads(deps.db, {
+  const sideChatThreads = listUnarchivedSourceThreads(deps.db, {
     sourceThreadId: args.parentThread.id,
     originKind: "side-chat",
   });

@@ -196,7 +196,7 @@ describe("public thread parenting routes", () => {
     });
   });
 
-  it("ignores hidden children in confirmation and native archive cascades", async () => {
+  it("keeps hidden children in ordinary confirmation and archive cascades", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -220,8 +220,8 @@ describe("public thread parenting routes", () => {
         },
       );
 
-      expect(deleteResponse.status).toBe(200);
-      expect(getThread(harness.db, deleteParent.id)?.deletedAt).not.toBeNull();
+      expect(deleteResponse.status).toBe(409);
+      expect(getThread(harness.db, deleteParent.id)?.deletedAt).toBeNull();
       expect(getThread(harness.db, hiddenDeleteChild.id)?.deletedAt).toBeNull();
 
       const environment = seedEnvironment(harness.deps, {
@@ -248,13 +248,16 @@ describe("public thread parenting routes", () => {
       const archiveResult = threadArchiveAllResponseSchema.parse(
         await readJson(archiveResponse),
       );
-      expect(archiveResult.archivedThreadIds).toEqual([archiveParent.id]);
+      expect(archiveResult.archivedThreadIds).toEqual([
+        hiddenArchiveChild.id,
+        archiveParent.id,
+      ]);
       expect(
         getThread(harness.db, archiveParent.id)?.archivedAt,
       ).not.toBeNull();
       expect(
         getThread(harness.db, hiddenArchiveChild.id)?.archivedAt,
-      ).toBeNull();
+      ).not.toBeNull();
     });
   });
 

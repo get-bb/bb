@@ -84,10 +84,10 @@ message agents, or inspect projects, providers, and environments.
   through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Pass `--visibility hidden` for background/plugin workers that should remain
-  addressable by ID without appearing in ordinary lists, sidebar/search,
-  project prompt history, unread attention, parent lifecycle operations, or
-  native child-completion notifications. Hidden threads cannot be combined
-  with `--folder`. Visible is the default and preserves normal thread behavior.
+  out of sidebar organization without contributing unread/pending favicon
+  attention or native parent notifications. Hidden threads otherwise retain
+  ordinary list, search, prompt-history, folder, lifecycle, parent-operation,
+  and direct-open behavior. Visible is the default.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the
@@ -240,8 +240,6 @@ For review or fix pipelines, get the environment ID from
   replaces the focused pane. Explicit `--split` placement requires the
   **"Thread splits"** experiment in Settings → Experiments; ordinary opens
   without `--split` continue to work while it is off.
-- Hidden threads have no ordinary navigation affordance. Use `bb thread open
-  <thread-id> --debug-hidden` only when explicitly debugging one by ID.
 - A file path is optional when a thread ID is explicit:
   `bb thread open <thread-id> [path] [--split <placement>]`.
 - Paths can be thread-relative workspace paths, or absolute paths inside the

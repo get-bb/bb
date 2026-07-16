@@ -1,4 +1,4 @@
-import { countVisibleNonDeletedAssignedChildThreads } from "@bb/db";
+import { countNonDeletedAssignedChildThreads } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -29,12 +29,9 @@ export function requireChildThreadsConfirmation({
     return;
   }
 
-  const nonDeletedChildCount = countVisibleNonDeletedAssignedChildThreads(
-    deps.db,
-    {
-      parentThreadId: thread.id,
-    },
-  );
+  const nonDeletedChildCount = countNonDeletedAssignedChildThreads(deps.db, {
+    parentThreadId: thread.id,
+  });
   if (nonDeletedChildCount === 0) {
     return;
   }

@@ -112,7 +112,7 @@ describe("public thread open", () => {
     });
   });
 
-  it("opens hidden threads only through the explicit debugging path", async () => {
+  it("opens a hidden thread through the ordinary direct path", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-thread-open-hidden",
@@ -128,15 +128,8 @@ describe("public thread open", () => {
       const socket = createMockHubSocket();
       harness.deps.hub.registerClient(socket);
 
-      const ordinary = await postOpen(harness, thread.id, { file: null });
-      expect(ordinary.status).toBe(404);
-      expect(socket.messages).toHaveLength(0);
-
-      const debug = await postOpen(harness, thread.id, {
-        debugHidden: true,
-        file: null,
-      });
-      expect(debug.status).toBe(200);
+      const response = await postOpen(harness, thread.id, { file: null });
+      expect(response.status).toBe(200);
       expect(JSON.parse(socket.messages[0]!)).toMatchObject({
         type: "thread-open",
         projectId: project.id,

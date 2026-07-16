@@ -103,7 +103,7 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("rejects creating or assigning a hidden thread in a folder", async () => {
+  it("allows creating or assigning a hidden thread in a folder", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -133,11 +133,10 @@ describe("public thread data routes", () => {
           },
         }),
       });
-      expect(createResponse.status).toBe(400);
-      await expect(readJson(createResponse)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: "Hidden threads cannot belong to folders.",
-      });
+      expect(createResponse.status).toBe(201);
+      const createdThread = threadSchema.parse(await readJson(createResponse));
+      expect(createdThread.folderId).toBe(folderResult.folder.id);
+      expect(createdThread.visibility).toBe("hidden");
 
       const hiddenThread = seedThread(harness.deps, {
         projectId: project.id,
@@ -153,12 +152,12 @@ describe("public thread data routes", () => {
         },
       );
 
-      expect(response.status).toBe(400);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: "Hidden threads cannot belong to folders.",
-      });
-      expect(getThread(harness.db, hiddenThread.id)?.folderId).toBeNull();
+      expect(response.status).toBe(200);
+      const updatedThread = threadSchema.parse(await readJson(response));
+      expect(updatedThread.folderId).toBe(folderResult.folder.id);
+      expect(getThread(harness.db, hiddenThread.id)?.folderId).toBe(
+        folderResult.folder.id,
+      );
     });
   });
 

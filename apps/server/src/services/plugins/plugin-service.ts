@@ -9,7 +9,6 @@ import {
   formatPluginThemeId,
   type JsonValue,
   type PluginThemeMeta,
-  type Thread,
   type ToolCallResponse,
 } from "@bb/domain";
 import type {
@@ -997,14 +996,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return contributions.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
   }
 
-  function threadEventRecipientPluginId(
-    thread: Thread,
-  ): string | null | undefined {
-    if (thread.visibility === "visible") return null;
-    // Hidden non-plugin threads have no lifecycle-event owner.
-    return thread.originPluginId ?? undefined;
-  }
-
   /**
    * Rewrite (or remove) the generated plugin-commands skill after any
    * load/dispose transition, so agent threads always see current commands.
@@ -1227,13 +1218,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     events: {
       emitThreadCreated(thread) {
-        emitThreadEvent(
-          "thread.created",
-          threadEventRecipientPluginId(thread),
-          () => ({
-            thread: buildThreadDto(thread),
-          }),
-        );
+        emitThreadEvent("thread.created", () => ({
+          thread: buildThreadDto(thread),
+        }));
       },
       emitThreadActive(thread) {
         emitThreadEvent("thread.active", () => ({
@@ -1241,33 +1228,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }));
       },
       emitThreadIdle(thread) {
-        emitThreadEvent(
-          "thread.idle",
-          threadEventRecipientPluginId(thread),
-          () => ({
-            thread: buildThreadDto(thread),
-            lastAssistantText: getLastThreadOutput(deps.db, thread.id),
-          }),
-        );
+        emitThreadEvent("thread.idle", () => ({
+          thread: buildThreadDto(thread),
+          lastAssistantText: getLastThreadOutput(deps.db, thread.id),
+        }));
       },
       emitThreadFailed(thread) {
-        emitThreadEvent(
-          "thread.failed",
-          threadEventRecipientPluginId(thread),
-          () => ({
-            thread: buildThreadDto(thread),
-            error: getLastThreadErrorMessage(deps.db, thread.id),
-          }),
-        );
+        emitThreadEvent("thread.failed", () => ({
+          thread: buildThreadDto(thread),
+          error: getLastThreadErrorMessage(deps.db, thread.id),
+        }));
       },
       emitThreadDeleted(thread) {
-        emitThreadEvent(
-          "thread.deleted",
-          threadEventRecipientPluginId(thread),
-          () => ({
-            thread: buildThreadDto(thread),
-          }),
-        );
+        emitThreadEvent("thread.deleted", () => ({
+          thread: buildThreadDto(thread),
+        }));
       },
     },
 

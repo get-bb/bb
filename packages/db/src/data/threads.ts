@@ -27,9 +27,7 @@ import type {
   WorkspaceProvisionType,
 } from "@bb/domain";
 import {
-  HIDDEN_THREAD_FOLDER_ERROR_MESSAGE,
   evaluateThreadLifecycleEvent,
-  isThreadFolderAssignmentAllowed,
   resolveEnvironmentWorkspaceDisplayKind,
   threadSearchSourceKindSchema,
 } from "@bb/domain";
@@ -268,9 +266,6 @@ export function createThread(
   input: CreateThreadInput,
 ) {
   const visibility = input.visibility ?? "visible";
-  if (!isThreadFolderAssignmentAllowed(visibility, input.folderId)) {
-    throw new Error(HIDDEN_THREAD_FOLDER_ERROR_MESSAGE);
-  }
   const now = Date.now();
   const id = createThreadId();
   const originKind = input.originKind ?? input.childOrigin ?? null;
@@ -633,7 +628,6 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
   const originKind = options.originKind ?? options.childOrigin;
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
-    eq(threads.visibility, "visible"),
     options.folderId ? eq(threads.folderId, options.folderId) : undefined,
     options.unfiled ? isNull(threads.folderId) : undefined,
     isNull(threads.deletedAt),
@@ -915,7 +909,6 @@ function listThreadSearchLimitedThreadRows(
       FROM token_matches
       JOIN threads AS t ON t.id = token_matches.threadId
       WHERE t.deleted_at IS NULL
-        AND t.visibility = 'visible'
         AND ${archiveFilter}
       GROUP BY threadId
       HAVING COUNT(DISTINCT token_matches.tokenIndex) = ${args.tokenMatchQueries.length}
@@ -1254,25 +1247,6 @@ export function countNonDeletedAssignedChildThreads(
   return assignedChildThreadCount?.count ?? 0;
 }
 
-export function countVisibleNonDeletedAssignedChildThreads(
-  db: DbConnection,
-  args: CountNonDeletedAssignedChildThreadsArgs,
-): number {
-  const assignedChildThreadCount = db
-    .select({ count: count() })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        eq(threads.visibility, "visible"),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .get();
-
-  return assignedChildThreadCount?.count ?? 0;
-}
-
 export function listUnarchivedAssignedChildThreads(
   db: ThreadWriteConnection,
   args: ListUnarchivedAssignedChildThreadsArgs,
@@ -1283,24 +1257,6 @@ export function listUnarchivedAssignedChildThreads(
     .where(
       and(
         eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
-}
-
-export function listVisibleUnarchivedAssignedChildThreads(
-  db: ThreadWriteConnection,
-  args: ListUnarchivedAssignedChildThreadsArgs,
-): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        eq(threads.visibility, "visible"),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
       ),
@@ -1319,25 +1275,6 @@ export function listUnarchivedSourceThreads(
       and(
         eq(threads.sourceThreadId, args.sourceThreadId),
         args.originKind ? eq(threads.originKind, args.originKind) : undefined,
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
-}
-
-export function listVisibleUnarchivedSourceThreads(
-  db: ThreadWriteConnection,
-  args: ListUnarchivedSourceThreadsArgs,
-): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.sourceThreadId, args.sourceThreadId),
-        args.originKind ? eq(threads.originKind, args.originKind) : undefined,
-        eq(threads.visibility, "visible"),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
       ),
@@ -1667,12 +1604,6 @@ export function updateThread(
   if (!existing) {
     return null;
   }
-  if (
-    !isThreadFolderAssignmentAllowed(existing.visibility, input.folderId)
-  ) {
-    throw new Error(HIDDEN_THREAD_FOLDER_ERROR_MESSAGE);
-  }
-
   const changes: ThreadChangeKind[] = [];
   if ("title" in input || "folderId" in input) changes.push("title-changed");
   if ("lastReadAt" in input) changes.push("read-state-changed");

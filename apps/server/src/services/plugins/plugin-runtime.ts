@@ -352,14 +352,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
-  function hasThreadEventHandlers(
-    event: PluginThreadEventName,
-    recipientPluginId: string | null | undefined,
-  ): boolean {
-    if (recipientPluginId === undefined) return false;
+  function hasThreadEventHandlers(event: PluginThreadEventName): boolean {
     if (loaded.size === 0) return false;
-    for (const [id, plugin] of loaded) {
-      if (recipientPluginId !== null && id !== recipientPluginId) continue;
+    for (const plugin of loaded.values()) {
       if (plugin.handle.threadEventHandlers[event].length > 0) return true;
     }
     return false;
@@ -455,10 +450,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
    */
   function emitThreadEvent<E extends PluginThreadEventName>(
     event: E,
-    recipientPluginId: string | null | undefined,
     buildPayload: () => PluginThreadEventPayloads[E],
   ): void {
-    if (!hasThreadEventHandlers(event, recipientPluginId)) return;
+    if (!hasThreadEventHandlers(event)) return;
     setImmediate(() => {
       let payload: PluginThreadEventPayloads[E];
       try {
@@ -470,7 +464,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         return;
       }
       for (const [id, plugin] of loaded) {
-        if (recipientPluginId !== null && id !== recipientPluginId) continue;
         for (const handler of [...plugin.handle.threadEventHandlers[event]]) {
           void invokeThreadEventHandler(id, event, handler, payload);
         }

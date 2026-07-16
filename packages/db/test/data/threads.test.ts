@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -8,7 +7,6 @@ import {
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
-  countVisibleNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
@@ -18,6 +16,7 @@ import {
   listActiveVisiblePinnedThreadRoots,
   listThreadEnvironmentAssignmentsOnHost,
   listThreads,
+  listThreadsWithPendingInteractionStateForProjects,
   listThreadsWithPendingInteractionState,
   updateThread,
   deleteThread,
@@ -41,7 +40,6 @@ import {
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
-import { threads } from "../../src/schema.js";
 
 function setup() {
   const db = createConnection(":memory:");
@@ -136,7 +134,7 @@ describe("threads", () => {
     expect(fetched).toMatchObject({ id: thread.id });
   });
 
-  it("keeps hidden threads out of ordinary organization and attention queries", () => {
+  it("keeps hidden threads out of sidebar and attention queries only", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -170,7 +168,12 @@ describe("threads", () => {
       listThreads(db, { projectId: project.id })
         .map((thread) => thread.id)
         .sort(),
-    ).toEqual([visible.id, parent.id].sort());
+    ).toEqual([hidden.id, visible.id, parent.id].sort());
+    expect(
+      listThreadsWithPendingInteractionStateForProjects(db, {
+        projectIds: [project.id],
+      }).map((thread) => thread.id),
+    ).not.toContain(hidden.id);
     expect(
       listActiveVisiblePinnedThreadRoots(db).map((thread) => thread.id),
     ).not.toContain(hidden.id);
@@ -180,35 +183,28 @@ describe("threads", () => {
         parentThreadId: parent.id,
       }),
     ).toBe(2);
-    expect(
-      countVisibleNonDeletedAssignedChildThreads(db, {
-        parentThreadId: parent.id,
-      }),
-    ).toBe(1);
   });
 
-  it("rejects folder assignments for hidden threads", () => {
+  it("allows hidden threads to belong to folders", () => {
     const { db, project } = setup();
     const folder = mustCreateThreadFolder(db, "Work");
+    const createdInFolder = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+      visibility: "hidden",
+    });
+    expect(createdInFolder.folderId).toBe(folder.id);
 
-    expect(() =>
-      createThread(db, noopNotifier, {
-        projectId: project.id,
-        providerId: "codex",
-        folderId: folder.id,
-        visibility: "hidden",
-      }),
-    ).toThrow("Hidden threads cannot belong to folders");
-
-    const hidden = createThread(db, noopNotifier, {
+    const movedIntoFolder = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
       visibility: "hidden",
     });
-    expect(() =>
-      updateThread(db, noopNotifier, hidden.id, { folderId: folder.id }),
-    ).toThrow("Hidden threads cannot belong to folders");
-    expect(getThread(db, hidden.id)?.folderId).toBeNull();
+    updateThread(db, noopNotifier, movedIntoFolder.id, {
+      folderId: folder.id,
+    });
+    expect(getThread(db, movedIntoFolder.id)?.folderId).toBe(folder.id);
   });
 
   it("persists, reads, and clears the thread execution override", () => {
@@ -953,7 +949,7 @@ describe("threads", () => {
     ]);
   });
 
-  it("excludes legacy hidden members from folder lists and deletion counts", () => {
+  it("includes hidden members in folder lists and deletion counts", () => {
     const { db, project } = setup();
     const folder = mustCreateThreadFolder(db, "Work");
     const visible = createThread(db, noopNotifier, {
@@ -964,23 +960,20 @@ describe("threads", () => {
     const hidden = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
+      folderId: folder.id,
       visibility: "hidden",
     });
-    db.update(threads)
-      .set({ folderId: folder.id })
-      .where(eq(threads.id, hidden.id))
-      .run();
 
     expect(
-      listThreads(db, { projectId: project.id, folderId: folder.id }).map(
-        (thread) => thread.id,
-      ),
-    ).toEqual([visible.id]);
+      listThreads(db, { projectId: project.id, folderId: folder.id })
+        .map((thread) => thread.id)
+        .sort(),
+    ).toEqual([visible.id, hidden.id].sort());
 
     expect(deleteThreadFolder(db, noopNotifier, { id: folder.id })).toEqual({
       id: folder.id,
       name: "Work",
-      updatedThreadCount: 1,
+      updatedThreadCount: 2,
     });
     expect(getThread(db, visible.id)?.folderId).toBeNull();
     expect(getThread(db, hidden.id)?.folderId).toBeNull();

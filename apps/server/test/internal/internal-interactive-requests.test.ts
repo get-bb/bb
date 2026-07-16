@@ -118,8 +118,8 @@ describe("internal interactive request lifecycle", () => {
     await withTestHarness(async (harness) => {
       const { session, environment, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-interaction-resolve",
-      },
+          id: "host-interaction-resolve",
+        },
       });
       seedTurnStarted(harness.deps, {
         threadId: thread.id,
@@ -289,8 +289,8 @@ describe("internal interactive request lifecycle", () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-user-question-enabled",
-      },
+          id: "host-user-question-enabled",
+        },
         thread: { providerId: "claude-code" },
       });
 
@@ -333,8 +333,8 @@ describe("internal interactive request lifecycle", () => {
     await withTestHarness(async (harness) => {
       const { session, environment, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-interaction-session-resolve",
-      },
+          id: "host-interaction-session-resolve",
+        },
       });
       seedTurnStarted(harness.deps, {
         threadId: thread.id,
@@ -438,8 +438,8 @@ describe("internal interactive request lifecycle", () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-interaction-registration-retry",
-      },
+          id: "host-interaction-registration-retry",
+        },
       });
       const body = buildCommandApprovalInteractiveRequest({
         sessionId: session.id,
@@ -588,12 +588,73 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
+  it("does not notify a parent when a hidden child needs attention", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-hidden-child-needs-attention",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const parentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/hidden-child-needs-attention-parent",
+        projectId: project.id,
+      });
+      const childEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/hidden-child-needs-attention-child",
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: parentEnvironment.id,
+        projectId: project.id,
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: parentEnvironment.id,
+        inputText: "Coordinate hidden child work",
+        providerThreadId: "provider-hidden-child-needs-attention-parent",
+        threadId: parentThread.id,
+      });
+      const childThread = seedThread(harness.deps, {
+        environmentId: childEnvironment.id,
+        parentThreadId: parentThread.id,
+        projectId: project.id,
+        visibility: "hidden",
+      });
+
+      const response = await registerInteractiveRequest({
+        body: buildCommandApprovalInteractiveRequest({
+          sessionId: session.id,
+          suffix: "hidden-child-needs-attention",
+          threadId: childThread.id,
+        }),
+        harness,
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        outcome: "created",
+        status: "pending",
+      });
+      await expect(
+        waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "turn.submit" &&
+            command.threadId === parentThread.id,
+          100,
+        ),
+      ).rejects.toThrow("Timed out waiting for queued command");
+    });
+  });
+
   it("returns retryable 503 when interactive request turn/started has not landed", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-interaction-turn-start-timeout",
-      },
+          id: "host-interaction-turn-start-timeout",
+        },
       });
       const body = buildCommandApprovalInteractiveRequest({
         sessionId: session.id,
@@ -620,8 +681,8 @@ describe("internal interactive request lifecycle", () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-interaction-registration-retry-resolving",
-      },
+          id: "host-interaction-registration-retry-resolving",
+        },
       });
       const body = buildCommandApprovalInteractiveRequest({
         sessionId: session.id,
@@ -668,8 +729,8 @@ describe("internal interactive request lifecycle", () => {
     await withTestHarness(async (harness) => {
       const { session, environment, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-interaction-interrupt",
-      },
+          id: "host-interaction-interrupt",
+        },
       });
       seedTurnStarted(harness.deps, {
         threadId: thread.id,
@@ -841,8 +902,8 @@ describe("internal interactive request lifecycle", () => {
     await withTestHarness(async (harness) => {
       const { session, environment, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-interaction-delete-thread",
-      },
+          id: "host-interaction-delete-thread",
+        },
       });
       seedTurnStarted(harness.deps, {
         threadId: thread.id,
@@ -914,8 +975,8 @@ describe("internal interactive request lifecycle", () => {
     await withTestHarness(async (harness) => {
       const { session, environment, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-claude-interaction-resolve",
-      },
+          id: "host-claude-interaction-resolve",
+        },
         thread: { providerId: "claude-code" },
       });
       seedTurnStarted(harness.deps, {

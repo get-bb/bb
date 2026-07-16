@@ -50,7 +50,7 @@ describe("public thread search route", () => {
         [...body.active.results, ...body.archived.results].map(
           (result) => result.thread.id,
         ),
-      ).not.toContain(hiddenThread.id);
+      ).toContain(hiddenThread.id);
     });
   });
 

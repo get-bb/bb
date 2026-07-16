@@ -14,7 +14,6 @@ import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
 import type { ThreadCreateServiceRequest } from "./thread-create-request.js";
-import { assertThreadFolderAssignmentAllowed } from "./thread-folder-visibility.js";
 import { sanitizeGeneratedBranchSlug } from "./title-generation.js";
 
 /**
@@ -165,10 +164,6 @@ export function createThreadRecord(
   },
 ) {
   const folderId = args.request.folderId ?? null;
-  assertThreadFolderAssignmentAllowed({
-    folderId,
-    visibility: args.request.visibility,
-  });
   if (folderId !== null && !getThreadFolderById(deps.db, folderId)) {
     throw new ApiError(404, "folder_not_found", "Folder not found");
   }

@@ -478,9 +478,10 @@ an inline alias for `--script`. Run and validate require exactly one of
 `--script`, `--file`, or `--name` (counting `--source` as `--script`).
 
 Workflow worker threads use hidden visibility and are plugin-attributed. They
-cannot belong to folders and remain outside ordinary sidebar/search, project
-prompt history, unread attention, parent lifecycle, and native completion
-surfaces while the Workflows plugin continues to operate them directly by ID.
+stay out of sidebar organization without contributing unread/pending favicon
+attention or native parent notifications. Ordinary search, prompt history,
+lifecycle, and direct operations remain available. Workflows does not create a
+temporary Workflow folder.
 
 `maxActiveRuns` is live plugin-global dispatch policy. Shared parent/child agent
 concurrency and call count, worker stall timeout, total run timeout, retention,

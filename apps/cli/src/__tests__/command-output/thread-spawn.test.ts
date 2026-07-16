@@ -262,32 +262,39 @@ describe("bb thread spawn command output", () => {
     );
   });
 
-  it("bb thread spawn rejects folders for hidden workers", async () => {
-    const post = vi.fn();
+  it("bb thread spawn allows folders for hidden workers", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      folderId: "fld_work",
+      id: "thread-hidden-folder",
+      projectId: "proj-1",
+      providerId: "codex",
+      visibility: "hidden",
+    });
+    const post = vi.fn(async () => thread);
     stubServerApi({ "v1.threads.$post": post });
 
-    await expect(
-      runCommand(
-        [
-          "thread",
-          "spawn",
-          "--project",
-          "proj-1",
-          "--prompt",
-          "background work",
-          "--visibility",
-          "hidden",
-          "--folder",
-          "fld_work",
-        ],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(console.error).toHaveBeenCalledWith(
-      "Error: Hidden threads cannot belong to folders.",
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "background work",
+        "--visibility",
+        "hidden",
+        "--folder",
+        "fld_work",
+      ],
+      register,
     );
-    expect(post).not.toHaveBeenCalled();
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        folderId: "fld_work",
+        visibility: "hidden",
+      }),
+    });
   });
 
   it("bb thread spawn help lists product permission modes", async () => {

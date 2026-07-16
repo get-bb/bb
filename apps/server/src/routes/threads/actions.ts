@@ -377,9 +377,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.open, (context, payload) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
-    if (publicThread.visibility === "hidden" && !payload.debugHidden) {
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
     if (payload.split !== undefined && !getExperiments(deps.db).threadSplits) {
       throw new ApiError(
         403,

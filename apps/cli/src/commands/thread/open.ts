@@ -14,7 +14,6 @@ import {
 import { outputJson, printContextLabel, type ResolvedId } from "../helpers.js";
 
 interface ThreadOpenCommandOptions {
-  debugHidden?: boolean;
   line?: string;
   json?: boolean;
   split?: string;
@@ -43,7 +42,6 @@ export function registerOpenCommand(
     .usage("[id] [path] [options]")
     .argument("[id]", "Thread ID. Omit inside a BB thread.")
     .argument("[path]", "Thread-relative or absolute file path to open")
-    .option("--debug-hidden", "Explicitly open a hidden thread for debugging")
     .option("--line <number>", "Line number to focus")
     .option(
       "--split <placement>",
@@ -60,7 +58,7 @@ export function registerOpenCommand(
           const target = resolveThreadOpenTarget(
             first,
             second,
-            opts.split !== undefined || opts.debugHidden === true,
+            opts.split !== undefined,
           );
           const lineNumber = parseLineNumber(opts.line);
           const requestedSplit =
@@ -84,7 +82,6 @@ export function registerOpenCommand(
                   lineNumber,
                 };
           const result = await sdk.threads.open({
-            ...(opts.debugHidden === true ? { debugHidden: true } : {}),
             threadId: target.threadId,
             ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
             file,

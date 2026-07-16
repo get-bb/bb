@@ -234,7 +234,7 @@ describe("plugin thread lifecycle events", () => {
     }
   });
 
-  it("delivers hidden lifecycle events only to the originating plugin", async () => {
+  it("broadcasts hidden lifecycle events like visible lifecycle events", async () => {
     const recorded: RecordedThreadPayload[] = [];
     globals.__hiddenCreatedEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
@@ -266,12 +266,12 @@ describe("plugin thread lifecycle events", () => {
         );
 
       createHidden("other-plugin");
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      expect(recorded).toHaveLength(0);
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread.visibility).toBe("hidden");
 
       const owned = createHidden("observer");
-      await vi.waitFor(() => expect(recorded).toHaveLength(1));
-      expect(recorded[0]?.thread).toMatchObject({
+      await vi.waitFor(() => expect(recorded).toHaveLength(2));
+      expect(recorded[1]?.thread).toMatchObject({
         id: owned.id,
         visibility: "hidden",
       });
@@ -336,11 +336,14 @@ describe("plugin thread lifecycle events", () => {
         thread: { status: "idle" },
       });
 
-      const response = await harness.app.request(`/api/v1/threads/${thread.id}`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ childThreadsConfirmed: false }),
-      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
 
       expect(response.status).toBe(200);
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
@@ -366,11 +369,14 @@ describe("plugin thread lifecycle events", () => {
         thread: { status: "idle" },
       });
 
-      const response = await harness.app.request(`/api/v1/threads/${thread.id}`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ childThreadsConfirmed: false }),
-      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
 
       expect(response.status).toBe(200);
       await vi.waitFor(() => {
@@ -380,9 +386,7 @@ describe("plugin thread lifecycle events", () => {
         expect(entry?.handlerStats.count).toBe(1);
         expect(entry?.handlerStats.errorCount).toBe(1);
         expect(entry?.status).toBe("running");
-        expect(entry?.statusDetail).toContain(
-          "thread.deleted handler failed",
-        );
+        expect(entry?.statusDetail).toContain("thread.deleted handler failed");
       });
     } finally {
       await cleanup();

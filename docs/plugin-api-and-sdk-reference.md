@@ -650,7 +650,7 @@ These are also full-trust administrative APIs when reached through a plugin.
 | `list` | `ThreadListArgs?` | lists/filter threads. |
 | `markRead` | `{ threadId }` | marks read. |
 | `markUnread` | `{ threadId }` | marks unread. |
-| `open` | `{ threadId, debugHidden?, split?, file }` | asks the app to open/focus a thread and optional file; hidden threads require `debugHidden: true`. |
+| `open` | `{ threadId, split?, file }` | asks the app to open/focus a thread and optional file. |
 | `output` | `{ threadId }` | gets latest assembled assistant output. |
 | `pin` | `{ threadId }` | pins a thread. |
 | `promptHistory` | `{ threadId, ...PromptHistoryQuery }` | gets thread prompt history. |
@@ -668,9 +668,9 @@ These are also full-trust administrative APIs when reached through a plugin.
 | `update` | `{ threadId, title?, folderId?, parentThreadId?, model?, reasoningLevel? }` | updates forwarded thread fields. |
 | `wait` | `ThreadWaitArgs` | polls for a target status or event with timeout/unreachable errors. |
 
-`ThreadListArgs` supports `archived`, `excludeSideChats`, `folderId`, `hasParent`, `limit`, `offset`, `originKind`, `parentThreadId`, `projectId`, `sourceThreadId`, and `unfiled`. Ordinary list and search queries return visible threads only; a hidden thread remains available to direct ID methods such as `get`, `send`, `stop`, and `wait`.
+`ThreadListArgs` supports `archived`, `excludeSideChats`, `folderId`, `hasParent`, `limit`, `offset`, `originKind`, `parentThreadId`, `projectId`, `sourceThreadId`, and `unfiled`. Hidden threads remain available through ordinary list/search queries and direct ID methods such as `get`, `send`, `stop`, and `wait`; visibility affects sidebar and attention behavior only.
 
-`spawn` requires exactly one of `prompt: string` or structured `input`. Other fields come from `CreateThreadRequest` except the SDK restates origin/child attribution fields. Plugin wrapping defaults origin attribution automatically. Set `visibility: "hidden"` for a background worker; visible is the backward-compatible default. Hidden threads cannot belong to folders and are omitted from ordinary lists, sidebar/search, project prompt history, unread attention, parent archive/delete operations, and native child-completion notifications. This is an organization contract rather than a plugin authorization boundary.
+`spawn` requires exactly one of `prompt: string` or structured `input`. Other fields come from `CreateThreadRequest` except the SDK restates origin/child attribution fields. Plugin wrapping defaults origin attribution automatically. Set `visibility: "hidden"` for a background worker; visible is the backward-compatible default. Hidden threads stay out of sidebar organization and do not contribute unread/pending attention to the favicon or native parent notifications. They otherwise retain ordinary list, search, prompt-history, folder, lifecycle, parent-operation, and direct-open behavior. This is an organization contract rather than a plugin authorization boundary.
 
 `send` accepts the public send request fields: structured `input`, `mode`, optional execution/model/permission/reasoning/service-tier choices, sender thread, and execution input sources.
 

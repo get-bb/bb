@@ -281,12 +281,11 @@ threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 
 Use `visibility: "hidden"` for background workers. Hidden threads stay
-directly operable by ID with `threads.get/send/stop/wait`, but cannot belong to
-folders and are omitted from ordinary lists, sidebar/search, project prompt
-history, unread attention, parent archive/delete operations, and BB's native
-child-completion notifications. `threads.open` requires `debugHidden: true` for
-a hidden thread. This is an organization contract, not a security boundary:
-plugins are full-trust server code.
+out of sidebar organization and do not contribute unread/pending favicon
+attention or native parent notifications. They otherwise retain ordinary
+list, search, prompt-history, folder, lifecycle, parent-operation, direct-open,
+and direct-ID behavior. This is an organization contract, not a security
+boundary: plugins are full-trust server code.
 
 SDK realtime observation stays separate from plugin lifecycle events:
 `bb.sdk.subscribe({ event, callback, ...selector })` returns an unsubscribe
@@ -369,10 +368,8 @@ fire-and-forget after the transition and can never block or veto it. `thread`
 is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
 and counted in the plugin's handler stats (`bb plugin list`).
 
-Visible-thread lifecycle events are broadcast to all loaded plugins. Hidden
-thread events are delivered only to the plugin recorded in
-`thread.originPluginId`; plugin thread spawning fills that attribution
-automatically.
+Lifecycle events are broadcast to all loaded plugins regardless of sidebar
+visibility.
 
 ### bb.http — HTTP routes
 
