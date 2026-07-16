@@ -18,6 +18,7 @@ function plugin(
     statusDetail: null,
     description: null,
     name: null,
+    source: "npm:@example/linear@^1.6.0",
     icon: null,
     logoUrl: null,
     logoDarkUrl: null,

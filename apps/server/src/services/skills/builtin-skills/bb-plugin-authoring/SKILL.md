@@ -133,13 +133,11 @@ bb plugin install npm:bb-plugin-notes@^1.0.0
 bb plugin install git:https://github.com/acme/bb-plugin-notes.git@main
 ```
 
-BB has one maintained official catalog; users cannot add third-party catalogs.
-Catalog inclusion is a BB release decision, not part of the plugin authoring
-workflow. The official catalog may point to npm, Git, or GitHub Release
-artifacts, but never local paths. GitHub Release packages are npm-compatible
-`.tgz` archives produced after `bb plugin build`; BB selects published,
-non-draft releases with GitHub-provided SHA-256 digests and verifies the archive
-before installation.
+BB has one maintained set of official plugins; users cannot add third-party
+catalogs. Official-plugin inclusion is a BB release decision, not part of the
+plugin authoring workflow: official plugins ship bundled inside the app itself
+and install from that local copy — no network fetch, no separate publish
+pipeline.
 
 ## The backend factory
 
@@ -1059,11 +1057,12 @@ application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
 
 BB Official plugins in `official-plugins/` (a bb checkout):
 
-- `github` — vendored-component showcase: a gh-CLI-backed issue/PR browser
-  in a single navPanel (with `headerContent`), subPath-based sub-navigation,
-  vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
-  throughout, background sync service, rpc + realtime, project setting, a
-  `bb github` CLI command, and agent-spawn buttons.
+- `github` — a gh-CLI-backed issue/PR browser in a single navPanel (with
+  `headerContent`), subPath-based sub-navigation, shared-ui
+  Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast throughout (in-repo
+  plugins import `@bb/shared-ui`; out-of-repo authors vendor the same
+  components from the registry), background sync service, rpc + realtime,
+  project setting, a `bb github` CLI command, and agent-spawn buttons.
 - `docs` (stable plugin id `simple-notes`) — multi-host Docs vaults over
   `bb.sdk.files`, with a Tiptap
   markdown WYSIWYG, nested navigation, images and sandboxed HTML, CLI/HTTP

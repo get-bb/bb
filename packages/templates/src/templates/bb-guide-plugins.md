@@ -76,8 +76,8 @@ deletion.
 Project writes use the invoking CLI's current project. Global writes require
 the explicit `--scope global` flag.
 
-The Tasks plugin is an opt-in install from the default BB Official marketplace:
-`bb plugin install tasks@bb-official`. It adds a task tracker, agent delegation,
+The Tasks plugin is an opt-in official plugin bundled with the app:
+`bb plugin install tasks`. It adds a task tracker, agent delegation,
 and the `bb tasks` command. Common agent operations are:
 
   bb tasks show <key-or-id> [--json]

@@ -52,14 +52,18 @@
   },
   "devDependencies": {
     "@bb/plugin-sdk": "workspace:*",
+    "@radix-ui/react-dialog": "^1.1.19",
+    "@radix-ui/react-dropdown-menu": "^2.1.20",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
+    "vaul": "^1.1.2",
     "vitest": "^4.1.1"
   }
 }

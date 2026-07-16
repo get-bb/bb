@@ -39,6 +39,7 @@ export interface PluginListItem {
   logoDarkUrl: string | null;
   hasSettings: boolean;
   provenance: PluginProvenance;
+  source: string;
   isOrphanedBuiltin: boolean;
   sourceDisplay: string;
   updateState: PluginUpdateState;
@@ -83,6 +84,7 @@ function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     logoDarkUrl: plugin.logoDarkUrl,
     hasSettings: plugin.hasSettings,
     provenance: plugin.provenance,
+    source: plugin.source,
     isOrphanedBuiltin: plugin.isOrphanedBuiltin,
     sourceDisplay: plugin.sourceDisplay,
     updateState: {

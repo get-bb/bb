@@ -295,8 +295,8 @@ For review or fix pipelines, get the environment ID from
 
 ## Tasks
 
-- Tasks is an opt-in plugin in the default BB Official marketplace. Install it
-  with `bb plugin install tasks@bb-official` before using `bb tasks ...`.
+- Tasks is an opt-in official plugin bundled with the app. Install it with
+  `bb plugin install tasks` before using `bb tasks ...`.
 - Start tracked work with `bb tasks show <key-or-id> --json`. Fetch relevant
   files with `bb tasks attachment get <attachment-id> --out <path>`.
 - Leave substantive milestone updates with `bb tasks comment <key-or-id>
@@ -456,10 +456,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   it with services, schedules, HTTP/RPC endpoints, settings — and `bb` CLI
   subcommands that agents run through bash like any other command.
 - **Enable user-installed plugins first.** Plugins are an experiment, off by
-  default: turn on **"Plugins"** under Settings → Experiments. Builtin plugins
-  (`builtin:<name>`) ship with bb and remain available even when the experiment
-  is off, except `connect`, which is gated by the **"bb connect"**
-  experiment.
+  default: turn on **"Plugins"** under Settings → Experiments. Auto-installed
+  builtin plugins ship with bb and remain available even when the experiment
+  is off (except `connect`, which is gated by the **"bb connect"**
+  experiment); store-installed official plugins are a user opt-in and stay
+  behind the Plugins experiment like other installs.
 - **BB Official plugins** (store under `/api/v1/plugin-catalog`):
   - BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside
     the app and install from the local copy — no network. Installed official

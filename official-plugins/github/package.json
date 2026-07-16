@@ -51,6 +51,7 @@
   "devDependencies": {
     "@bb/plugin-sdk": "workspace:*",
     "@pierre/diffs": "^1.2.9",
+    "@radix-ui/react-dialog": "^1.1.19",
     "@radix-ui/react-dropdown-menu": "^2.1.20",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",

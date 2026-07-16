@@ -9,7 +9,10 @@ import {
   pluginListQueryKey,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { PluginUpdatesSourceCard } from "./PluginUpdatesCard";
+import {
+  PluginUpdatesSourceCard,
+  pluginHasUpdateSurfaces,
+} from "./PluginUpdatesCard";
 
 interface RecordedRequest {
   url: string;
@@ -33,6 +36,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     description: null,
     name: "Linear",
     icon: null,
+    source: "npm:@example/linear@^1.6.0",
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
@@ -48,6 +52,29 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("pluginHasUpdateSurfaces", () => {
+  it("hides update surfaces for bundled plugins regardless of provenance", () => {
+    // A store-installed official: catalog provenance over a bundled source.
+    expect(
+      pluginHasUpdateSurfaces(
+        plugin({ provenance: "catalog", source: "builtin:github" }),
+      ),
+    ).toBe(false);
+    expect(
+      pluginHasUpdateSurfaces(
+        plugin({ provenance: "builtin", source: "builtin:secrets" }),
+      ),
+    ).toBe(false);
+    // Managed direct/catalog installs keep manual update controls.
+    expect(pluginHasUpdateSurfaces(plugin({ provenance: "direct" }))).toBe(
+      true,
+    );
+    expect(pluginHasUpdateSurfaces(plugin({ provenance: "catalog" }))).toBe(
+      true,
+    );
+  });
 });
 
 describe("PluginUpdatesSourceCard check now", () => {

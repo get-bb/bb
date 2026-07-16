@@ -26,10 +26,12 @@ import { UpdatePluginDialog } from "./UpdatePluginDialog";
  * here — human source line, last check — with the full technical detail one
  * disclosure deeper under "Source details".
  *
- * Builtins update with the bb app release itself, so none of these surfaces
- * render for them.
+ * Bundled plugins — auto builtins and store-installed officials alike — are
+ * pinned to the copy shipped inside the app and update with bb releases, so
+ * none of these surfaces render for them.
  */
 export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
+  if (plugin.source.startsWith("builtin:")) return false;
   return plugin.provenance === "direct" || plugin.provenance === "catalog";
 }
 

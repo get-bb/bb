@@ -18,6 +18,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     status: "running",
     statusDetail: null,
     description: null,
+    source: "npm:@example/linear@^1.6.0",
     name: "Linear",
     icon: null,
     logoUrl: null,

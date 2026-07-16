@@ -567,10 +567,9 @@ For `commands`, `fileContent`, `files`, and `paths`, `ProjectWorkspaceRoutingArg
 | `getSettings` | `{ pluginId }` | gets plugin settings metadata/values as `JsonValue`. |
 | `getSource` | `{ pluginId }` | gets normalized source/provenance detail. |
 | `install` | `{ source }` | installs from a plugin source string. |
-| `catalog.install` | `{ entryId }` | installs an official catalog entry. |
-| `catalog.refresh` | none | conditionally refreshes the official catalog, retaining last-known-good data on failure. |
-| `catalog.search` | `{ query }` | searches the official catalog. |
-| `catalog.status` | none | reads catalog freshness and the last refresh error. |
+| `catalog.install` | `{ entryId }` | installs an official plugin bundled with the app. |
+| `catalog.search` | `{ query }` | searches the bundled official plugins. |
+| `catalog.status` | none | reads the bundled official plugin count. |
 | `list` | none | lists plugin status as `JsonValue`. |
 | `listUpdateResults` | none | reads the most recently persisted update-check results. |
 | `reload` | `{ pluginId? }?` | reloads one plugin or all plugins. |
@@ -749,7 +748,7 @@ All names below are exported portable aliases (except the generic `TOutput`, con
 - `files`: `read → FileReadResult`, `write → FileWriteResult`, `list → FileListResult`, `listPaths → PathListResult`, `mkdir → FileMkdirResult`, `move → FileMoveResult`, `remove → FileRemoveResult`, `createPreview → FilePreviewResult`.
 - `guide`: `render → GuideRenderResult` synchronously.
 - `hosts`: `createJoinCode → HostCreateJoinCodeResult`, `delete → HostDeleteResult`, `directory → HostDirectoryResult`, `get → HostGetResult`, `cloneDefaultPath → HostCloneDefaultPathResult`, `installProviderCli → HostProviderCliInstallResult`, `list → HostListResult`, `pathsExist → HostPathsExistResult`, `pickFolder → HostPickFolderResult`, `providerCliStatus → HostProviderCliStatusResult`, `update → HostUpdateResult`.
-- `plugins`: `applyUpdate → PluginApplyUpdateResult`, `callRpc → TOutput`, `checkUpdates/listUpdateResults → PluginCheckUpdatesResult`, `disable → PluginDisableResult`, `enable → PluginEnableResult`, `getSettings → PluginGetSettingsResult`, `getSource → PluginGetSourceResult`, `install/catalog.install → PluginInstallResult`, `list → PluginListResult`, `reload → PluginReloadResult`, `remove → PluginRemoveResult`, `token → PluginTokenResult`, `updateSettings → PluginUpdateSettingsResult`; nested catalog methods return status, search results, or refresh status.
+- `plugins`: `applyUpdate → PluginApplyUpdateResult`, `callRpc → TOutput`, `checkUpdates/listUpdateResults → PluginCheckUpdatesResult`, `disable → PluginDisableResult`, `enable → PluginEnableResult`, `getSettings → PluginGetSettingsResult`, `getSource → PluginGetSourceResult`, `install/catalog.install → PluginInstallResult`, `list → PluginListResult`, `reload → PluginReloadResult`, `remove → PluginRemoveResult`, `token → PluginTokenResult`, `updateSettings → PluginUpdateSettingsResult`; nested catalog methods return the bundled plugin count or search results.
 - `projects`: `branches → ProjectBranchesResult`, `commands → ProjectCommandsResult`, `create → ProjectCreateResult`, `defaultExecutionOptions → ProjectDefaultExecutionOptionsResult`, `delete → ProjectDeleteResult`, `fileContent → ProjectFileContentResult`, `files → ProjectFilesResult`, `get → ProjectGetResult`, `list → ProjectListResult`, `paths → ProjectPathsResult`, `promptHistory → ProjectPromptHistoryResult`, `reorder → ProjectReorderResult`, `update → ProjectUpdateResult`; `attachments.read/upload → ProjectAttachmentReadResult/ProjectAttachmentUploadResult`; `sources.add/delete/update → ProjectSourceAddResult/ProjectSourceDeleteResult/ProjectSourceUpdateResult`.
 - `providers`: `list → ProviderListResult`; `models → ProviderModelsResult`.
 - `status`: `get → StatusResult`.

@@ -244,6 +244,7 @@ function rowPlugin(
     logoDarkUrl: null,
     hasSettings: true,
     provenance: "builtin" as const,
+    source: "builtin:linear",
     isOrphanedBuiltin: false,
     sourceDisplay: "builtin",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
