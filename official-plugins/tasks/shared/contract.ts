@@ -141,6 +141,19 @@ export const commentSchema = z
   })
   .strict();
 
+/**
+ * A comment enriched for display with the current human title of the agent
+ * thread that authored it. `threadTitle` is resolved at read time against the
+ * live thread and is null for user/system comments, legacy agent comments that
+ * carry no `threadId`, and threads that are deleted, hidden, or otherwise
+ * inaccessible — callers fall back to `authorName` and render no link.
+ */
+export const displayCommentSchema = commentSchema
+  .extend({
+    threadTitle: z.string().nullable(),
+  })
+  .strict();
+
 export const attachmentSchema = z
   .object({
     id: idSchema,
@@ -487,7 +500,7 @@ export const tasksRpcContract = defineRpcContract({
   },
   listComments: {
     input: z.object({ taskId: idSchema }).strict(),
-    output: z.object({ comments: z.array(commentSchema) }).strict(),
+    output: z.object({ comments: z.array(displayCommentSchema) }).strict(),
   },
   listAttachments: {
     input: z.union([
@@ -648,6 +661,7 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 export type Label = z.infer<typeof labelSchema>;
 export type Comment = z.infer<typeof commentSchema>;
+export type DisplayComment = z.infer<typeof displayCommentSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
 export type TaskThread = z.infer<typeof taskThreadSchema>;
 export type Preset = z.infer<typeof presetSchema>;

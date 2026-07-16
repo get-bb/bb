@@ -1,4 +1,31 @@
 import { useEffect, useState } from "react";
+import type { DisplayComment } from "../../shared/contract.js";
+
+export type CommentByline =
+  | { kind: "thread-link"; threadId: string; title: string }
+  | { kind: "text"; name: string };
+
+/**
+ * How a comment's byline should render. Agent comments whose authoring thread
+ * is still resolvable link to that chat by its human title; every other case
+ * (users, system events, legacy agent comments with no thread, and deleted,
+ * hidden, or inaccessible threads) falls back to the stored author name so the
+ * byline is never blank and no unresolved thread is exposed.
+ */
+export function commentByline(comment: DisplayComment): CommentByline {
+  if (
+    comment.kind === "agent" &&
+    comment.threadId !== null &&
+    comment.threadTitle !== null
+  ) {
+    return {
+      kind: "thread-link",
+      threadId: comment.threadId,
+      title: comment.threadTitle,
+    };
+  }
+  return { kind: "text", name: comment.authorName };
+}
 
 /** "just now" / "4m ago" / "3h ago" / "2d ago" — matches the mock's cadence. */
 export function formatRelativeTime(iso: string, nowMs: number): string {

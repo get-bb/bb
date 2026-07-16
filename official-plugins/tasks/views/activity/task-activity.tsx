@@ -19,8 +19,14 @@ import {
   useTasksRpc,
 } from "../../shell/data.js";
 import { Lightbox } from "../detail/attachments.js";
-import type { Attachment, Comment, TaskThread } from "../../shared/contract.js";
+import type {
+  Attachment,
+  Comment,
+  DisplayComment,
+  TaskThread,
+} from "../../shared/contract.js";
 import {
+  commentByline,
   formatFileSize,
   formatRelativeTime,
   splitSystemBody,
@@ -92,7 +98,7 @@ function attachmentDownloadUrl(attachmentId: string): string {
 }
 
 interface FeedEntry {
-  comment: Comment;
+  comment: DisplayComment;
   attachments: Attachment[];
 }
 
@@ -221,6 +227,35 @@ function SystemEvent({ comment, nowMs }: { comment: Comment; nowMs: number }) {
   );
 }
 
+/**
+ * Comment byline. Agent comments whose thread is still resolvable render the
+ * thread's human title as a link that opens the chat; everything else (users,
+ * legacy agent comments with no thread, deleted/hidden threads) falls back to
+ * the stored author name so the byline is never blank.
+ */
+function CommentAuthor({
+  comment,
+  onOpenThread,
+}: {
+  comment: DisplayComment;
+  onOpenThread: (threadId: string) => void;
+}) {
+  const byline = commentByline(comment);
+  if (byline.kind === "thread-link") {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenThread(byline.threadId)}
+        className="truncate font-semibold text-primary hover:underline"
+        title={byline.title}
+      >
+        {byline.title}
+      </button>
+    );
+  }
+  return <span className="font-semibold">{byline.name}</span>;
+}
+
 function CommentCard({
   entry,
   nowMs,
@@ -237,7 +272,7 @@ function CommentCard({
       {agent ? <AgentAvatar /> : <UserAvatar name={comment.authorName} />}
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-baseline gap-1.5 text-xs">
-          <span className="font-semibold">{comment.authorName}</span>
+          <CommentAuthor comment={comment} onOpenThread={navigate.toThread} />
           {agent && comment.presetName ? (
             <span className="rounded-sm bg-secondary px-1 py-px text-2xs font-semibold text-muted-foreground">
               {comment.presetName}

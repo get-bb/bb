@@ -349,6 +349,38 @@ function attachmentsForTasks(
   ]);
 }
 
+/**
+ * Resolve the current human title of each distinct agent thread that authored
+ * one of `comments`, keyed by thread id. Titles come from the live thread so
+ * renames are reflected. Threads that are deleted, hidden, or otherwise
+ * inaccessible resolve to no entry, so callers fall back to `authorName`
+ * without leaking a thread the viewer cannot open.
+ */
+async function resolveAgentThreadTitles(
+  bb: BbPluginApi,
+  comments: readonly StoredComment[],
+): Promise<Map<string, string>> {
+  const threadIds = new Set<string>();
+  for (const comment of comments) {
+    if (comment.kind === "agent" && comment.threadId !== null) {
+      threadIds.add(comment.threadId);
+    }
+  }
+  const titles = new Map<string, string>();
+  await Promise.all(
+    [...threadIds].map(async (threadId) => {
+      try {
+        const thread = await bb.sdk.threads.get({ threadId });
+        const title = thread.title ?? thread.titleFallback ?? "";
+        if (title.trim() !== "") titles.set(threadId, title);
+      } catch {
+        // Deleted, hidden, or inaccessible threads leave no title.
+      }
+    }),
+  );
+  return titles;
+}
+
 interface CreateCommentInput {
   taskId: string;
   kind: StoredComment["kind"];
@@ -651,8 +683,18 @@ export function registerHandlers(
       });
       return { comment };
     },
-    listComments(input) {
-      return { comments: store.tasks.listComments(input.taskId) };
+    async listComments(input) {
+      const comments = store.tasks.listComments(input.taskId);
+      const threadTitles = await resolveAgentThreadTitles(bb, comments);
+      return {
+        comments: comments.map((comment) => ({
+          ...comment,
+          threadTitle:
+            comment.kind === "agent" && comment.threadId !== null
+              ? (threadTitles.get(comment.threadId) ?? null)
+              : null,
+        })),
+      };
     },
     listAttachments(input) {
       const attachments =

@@ -931,7 +931,9 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
       comments.map((comment) => [
         comment.createdAt,
         comment.kind,
-        comment.authorName,
+        // Agent comments show the authoring thread's human title when it
+        // resolves; otherwise the stored author name (which carries the id).
+        comment.threadTitle ?? comment.authorName,
         comment.body,
       ]),
       "(none)",

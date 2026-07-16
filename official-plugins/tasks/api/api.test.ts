@@ -64,6 +64,104 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("resolves the live thread title for agent comments and falls back otherwise", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) => {
+            if (threadId === "thr_titled") {
+              return makeThreadResponse({
+                id: threadId,
+                title: "Fix the login bug",
+              });
+            }
+            if (threadId === "thr_fallback_only") {
+              return makeThreadResponse({
+                id: threadId,
+                title: null,
+                titleFallback: "Untitled work",
+              });
+            }
+            // Deleted / hidden / inaccessible threads reject.
+            throw new Error("thread_not_found");
+          },
+        },
+      },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Notifications",
+      prefix: "NTF",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Wire up comments",
+    });
+    // Agent comment whose thread has a human title.
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "agent (thr_titled)",
+      threadId: "thr_titled",
+      body: "Titled",
+      notifiedCount: 0,
+    });
+    // Agent comment whose thread only has a fallback title.
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "agent (thr_fallback_only)",
+      threadId: "thr_fallback_only",
+      body: "Fallback title",
+      notifiedCount: 0,
+    });
+    // Agent comment whose thread is gone/inaccessible.
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "agent (thr_missing)",
+      threadId: "thr_missing",
+      body: "Missing thread",
+      notifiedCount: 0,
+    });
+    // Legacy agent comment with no thread id.
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "agent (legacy)",
+      threadId: null,
+      body: "Legacy",
+      notifiedCount: 0,
+    });
+    // User comment never resolves a thread title.
+    store.tasks.createComment({
+      taskId: task.id,
+      kind: "user",
+      authorName: "You",
+      threadId: null,
+      body: "Human note",
+      notifiedCount: 0,
+    });
+
+    const result = tasksRpcContract.listComments.output.parse(
+      await harness.callRpc("listComments", { taskId: task.id }),
+    );
+    const titleByBody = new Map(
+      result.comments.map((comment) => [comment.body, comment.threadTitle]),
+    );
+    expect(titleByBody.get("Titled")).toBe("Fix the login bug");
+    expect(titleByBody.get("Fallback title")).toBe("Untitled work");
+    expect(titleByBody.get("Missing thread")).toBeNull();
+    expect(titleByBody.get("Legacy")).toBeNull();
+    expect(titleByBody.get("Human note")).toBeNull();
+    // Each distinct agent thread is resolved once, not per comment.
+    expect(harness.sdk.callsTo("threads.get")).toHaveLength(3);
+    await harness.dispose();
+  });
+
   it("lists bb workspace projects as id/name options", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
