@@ -69,12 +69,16 @@
       ]
     },
     "bb-app#build": {
+      // copy-builtin-plugins bundles every plugin in BUNDLED_PLUGINS; the
+      // tasks plugin's app bundle imports the @bb/plugin-sdk root at runtime
+      // (shared RPC contract), so the SDK dist must exist first.
       "dependsOn": [
         "@bb/app#build",
         "@bb/server#build",
         "@bb/host-daemon#build",
         "@bb/cli#build",
-        "@bb/sdk#build"
+        "@bb/sdk#build",
+        "@bb/plugin-sdk#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -98,18 +102,30 @@
         "$TURBO_ROOT$/plugins/connect/**",
         "!$TURBO_ROOT$/plugins/connect/dist/**",
         "!$TURBO_ROOT$/plugins/connect/node_modules/**",
+        "$TURBO_ROOT$/plugins/custom-instructions/**",
+        "!$TURBO_ROOT$/plugins/custom-instructions/dist/**",
+        "!$TURBO_ROOT$/plugins/custom-instructions/node_modules/**",
         "$TURBO_ROOT$/plugins/inline-vis/**",
         "!$TURBO_ROOT$/plugins/inline-vis/dist/**",
         "!$TURBO_ROOT$/plugins/inline-vis/node_modules/**",
-        "$TURBO_ROOT$/official-plugins/memory/**",
-        "!$TURBO_ROOT$/official-plugins/memory/dist/**",
-        "!$TURBO_ROOT$/official-plugins/memory/node_modules/**",
         "$TURBO_ROOT$/plugins/secrets/**",
         "!$TURBO_ROOT$/plugins/secrets/dist/**",
         "!$TURBO_ROOT$/plugins/secrets/node_modules/**",
         "$TURBO_ROOT$/plugins/workflows/**",
         "!$TURBO_ROOT$/plugins/workflows/dist/**",
         "!$TURBO_ROOT$/plugins/workflows/node_modules/**",
+        "$TURBO_ROOT$/official-plugins/docs/**",
+        "!$TURBO_ROOT$/official-plugins/docs/dist/**",
+        "!$TURBO_ROOT$/official-plugins/docs/node_modules/**",
+        "$TURBO_ROOT$/official-plugins/github/**",
+        "!$TURBO_ROOT$/official-plugins/github/dist/**",
+        "!$TURBO_ROOT$/official-plugins/github/node_modules/**",
+        "$TURBO_ROOT$/official-plugins/memory/**",
+        "!$TURBO_ROOT$/official-plugins/memory/dist/**",
+        "!$TURBO_ROOT$/official-plugins/memory/node_modules/**",
+        "$TURBO_ROOT$/official-plugins/tasks/**",
+        "!$TURBO_ROOT$/official-plugins/tasks/dist/**",
+        "!$TURBO_ROOT$/official-plugins/tasks/node_modules/**",
         "$TURBO_ROOT$/scripts/*.mjs"
       ],
       "outputs": [

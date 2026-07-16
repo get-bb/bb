@@ -295,7 +295,7 @@ type ExpectedPluginsKey =
   | "token"
   | "updateSettings";
 
-type ExpectedPluginCatalogKey = "install" | "refresh" | "search" | "status";
+type ExpectedPluginCatalogKey = "install" | "search" | "status";
 
 type ExpectedProjectsKey =
   | "attachments"
