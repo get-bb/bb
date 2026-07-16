@@ -9,6 +9,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { Task } from "../../shared/contract.js";
 import { useTasksRpc } from "../../shell/data.js";
+import { TasksRefreshProvider } from "../../shell/refresh.js";
 import { PANEL_PATH, tasksRouteToSubPath } from "../../shell/routes.js";
 import { DetailView } from "../detail/index.js";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../detail/meta.js";
@@ -292,7 +293,7 @@ export function TaskDirectiveCard({
  * composition (editing, comments, attachments, delegation) rendered
  * panel-sized — TaskDetail's own container queries adapt the layout.
  */
-export function TaskEmbedPanel({ params }: PluginThreadPanelProps) {
+function TaskEmbedPanelContent({ params }: PluginThreadPanelProps) {
   const taskKey =
     isRecord(params) && typeof params.taskKey === "string"
       ? params.taskKey
@@ -319,5 +320,13 @@ export function TaskEmbedPanel({ params }: PluginThreadPanelProps) {
         <DetailView taskKey={taskKey.trim()} />
       </div>
     </div>
+  );
+}
+
+export function TaskEmbedPanel(props: PluginThreadPanelProps) {
+  return (
+    <TasksRefreshProvider>
+      <TaskEmbedPanelContent {...props} />
+    </TasksRefreshProvider>
   );
 }

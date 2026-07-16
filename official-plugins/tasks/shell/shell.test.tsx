@@ -409,6 +409,7 @@ describe("tasks app shell", () => {
       { subPath: "task/TSK-4" },
       {
         rpc: seededRpc({
+          getTaskByKey: () => ({ task: { ...task, title } }),
           listTasks: () => ({ tasks: [{ ...task, title }] }),
           listLabels: () => ({ labels: [] }),
           listAttachments: () => ({ attachments: [] }),

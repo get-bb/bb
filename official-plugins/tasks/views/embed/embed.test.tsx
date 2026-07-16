@@ -56,6 +56,21 @@ function directiveProps(attributes: Record<string, string>) {
   };
 }
 
+function taskDetailRpc(getTaskByKey: () => { task: typeof task }) {
+  return {
+    getTaskByKey,
+    listProjects: () => ({ projects: [] }),
+    getTask: () => ({ task: null }),
+    listTasks: () => ({ tasks: [] }),
+    listLabels: () => ({ labels: [] }),
+    listAttachments: () => ({ attachments: [] }),
+    listTaskThreads: () => ({ taskThreads: [] }),
+    listPresets: () => ({ presets: [] }),
+    listComments: () => ({ comments: [] }),
+    searchThreads: () => ({ threads: [] }),
+  };
+}
+
 describe("Tasks app slots", () => {
   it("registers the task directive card and thread panel action", () => {
     expect(app.messageDirectives).toHaveLength(1);
@@ -238,18 +253,7 @@ describe("Task embed panel", () => {
       app.threadPanelActions[0]!,
       { threadId: "thr_1", params: { taskKey: "TSK-4" } },
       {
-        rpc: {
-          getTaskByKey: () => ({ task }),
-          listProjects: () => ({ projects: [] }),
-          getTask: () => ({ task: null }),
-          listTasks: () => ({ tasks: [] }),
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listPresets: () => ({ presets: [] }),
-          listComments: () => ({ comments: [] }),
-          searchThreads: () => ({ threads: [] }),
-        },
+        rpc: taskDetailRpc(() => ({ task })),
       },
     );
     await slot.findByRole("textbox", { name: "Task title" });
@@ -259,6 +263,25 @@ describe("Task embed panel", () => {
       path: "tasks",
       options: { subPath: "task/TSK-4" },
     });
+  });
+
+  it("resyncs the embedded task detail after reconnect", async () => {
+    let title = "Stale embedded detail";
+    const slot = renderSlot(
+      app.threadPanelActions[0]!,
+      { threadId: "thr_1", params: { taskKey: "TSK-4" } },
+      {
+        realtimeConnectionState: "connected",
+        rpc: taskDetailRpc(() => ({ task: { ...task, title } })),
+      },
+    );
+    await slot.findByText("Stale embedded detail");
+
+    title = "Recovered embedded detail";
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    expect(slot.queryByText("Recovered embedded detail")).toBeNull();
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Recovered embedded detail");
   });
 
   it("shows a hint when opened without a task key", () => {
