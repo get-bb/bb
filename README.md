@@ -24,7 +24,7 @@ or hand off to another agent.
 > and surfaces are still evolving.
 
 <p align="center">
-  <img alt="bb desktop app showing a thread sidebar, manager conversation, and live STATUS dashboard" src="assets/app-screenshot.png" width="800">
+  <img alt="bb desktop app showing a code review thread, dispatch panel, and task board" src="assets/app-screenshot.png" width="800">
 </p>
 
 ## Use bb
