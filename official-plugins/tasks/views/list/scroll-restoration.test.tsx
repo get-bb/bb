@@ -45,6 +45,24 @@ describe("listScrollScopeKey", () => {
     );
   });
 
+  it("does not collide distinct label filters that share a delimiter", () => {
+    // Label names are arbitrary strings; a naive comma-join would make these
+    // two different filters share a key and restore each other's offset.
+    const withComma: ListFilterState = {
+      statuses: [],
+      priorities: [],
+      labelNames: ["a,b"],
+    };
+    const twoLabels: ListFilterState = {
+      statuses: [],
+      priorities: [],
+      labelNames: ["a", "b"],
+    };
+    expect(listScrollScopeKey({ ...base, filters: withComma })).not.toBe(
+      listScrollScopeKey({ ...base, filters: twoLabels }),
+    );
+  });
+
   it("distinguishes sort while holding the list fixed", () => {
     expect(listScrollScopeKey(base)).not.toBe(
       listScrollScopeKey({ ...base, sort: "priority" }),
@@ -66,6 +84,8 @@ describe("resolveRestoreTarget", () => {
 });
 
 describe("scroll store", () => {
+  // Storage key contract: keep in sync with STORAGE_PREFIX in the module.
+  const PREFIX = "bb-tasks:list-scroll:";
   beforeEach(() => window.sessionStorage.clear());
   afterEach(() => window.sessionStorage.clear());
 
@@ -74,6 +94,37 @@ describe("scroll store", () => {
     expect(readListScroll("all|")).toBe(124);
     writeListScroll("all|", -5);
     expect(readListScroll("all|")).toBe(0);
+  });
+
+  it("persists to sessionStorage under the scoped key", () => {
+    writeListScroll("proj:x|", 250);
+    expect(window.sessionStorage.getItem(`${PREFIX}proj:x|`)).toBe("250");
+  });
+
+  it("reads a value seeded directly in sessionStorage (survives refresh)", () => {
+    // A fresh page load starts with an empty in-memory map, so this proves the
+    // sessionStorage read path rather than the memory fallback.
+    window.sessionStorage.setItem(`${PREFIX}fresh|`, "333");
+    expect(readListScroll("fresh|")).toBe(333);
+  });
+
+  it("rejects malformed stored values instead of truncating them", () => {
+    for (const bad of ["400garbage", "-5", "12.5", "", "NaN", "1e3"]) {
+      window.sessionStorage.setItem(`${PREFIX}bad|`, bad);
+      expect(readListScroll("bad|")).toBeNull();
+    }
+  });
+
+  it("falls back to null when a read throws", () => {
+    const original = Storage.prototype.getItem;
+    Storage.prototype.getItem = () => {
+      throw new Error("blocked");
+    };
+    try {
+      expect(readListScroll("boom|")).toBeNull();
+    } finally {
+      Storage.prototype.getItem = original;
+    }
   });
 
   it("returns null for an unknown scope", () => {
@@ -216,6 +267,48 @@ describe("useListScrollRestoration", () => {
     );
     // Now the full offset is honored (1498 - 500 = 998 >= 680).
     expect(node.scrollTop).toBe(680);
+  });
+
+  it("abandons an unreached pending target once the user scrolls", () => {
+    // Regression: a target that never fit the (short) content stays pending; a
+    // later rerender must not yank the user back to it after they scroll away.
+    writeListScroll("cancel|", 900);
+    let el: HTMLDivElement | null = null;
+    const capture = (node: HTMLDivElement) => {
+      el = node;
+    };
+    const view = render(
+      <Harness
+        scopeKey="cancel|"
+        contentReady
+        loading
+        revision={1}
+        scrollHeight={1000}
+        onReady={capture}
+      />,
+    );
+    const node = el as unknown as HTMLDivElement;
+    expect(node.scrollTop).toBe(500); // clamped; 900 still pending, loading
+
+    // User scrolls elsewhere.
+    act(() => {
+      node.scrollTop = 120;
+      node.dispatchEvent(new Event("scroll"));
+    });
+
+    // A later refetch rerenders with a taller list that *could* honor 900.
+    view.rerender(
+      <Harness
+        scopeKey="cancel|"
+        contentReady
+        loading={false}
+        revision={2}
+        scrollHeight={2000}
+        onReady={capture}
+      />,
+    );
+    // The pending restore was abandoned on the user scroll — they stay put.
+    expect(node.scrollTop).toBe(120);
   });
 
   it("flushes the observed offset, not a detached container's zeroed scrollTop", () => {

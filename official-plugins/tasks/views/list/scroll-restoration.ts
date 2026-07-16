@@ -44,9 +44,12 @@ export function listScrollScopeKey(params: {
       : params.activeOnly
         ? "active"
         : "all";
-  const statuses = [...params.filters.statuses].sort().join(",");
-  const priorities = [...params.filters.priorities].sort().join(",");
-  const labels = [...params.filters.labelNames].sort().join(",");
+  // JSON-serialize each array (sorted for order independence). Label names are
+  // arbitrary user strings, so a delimiter join would let e.g. `["a,b"]` and
+  // `["a","b"]` collide into the same key and restore each other's offset.
+  const statuses = JSON.stringify([...params.filters.statuses].sort());
+  const priorities = JSON.stringify([...params.filters.priorities].sort());
+  const labels = JSON.stringify([...params.filters.labelNames].sort());
   return `${list}|s=${statuses}|p=${priorities}|l=${labels}|sort=${params.sort}`;
 }
 
@@ -55,10 +58,19 @@ export function readListScroll(scopeKey: string): number | null {
   if (memory !== undefined) return memory;
   const store = storage();
   if (store === null) return null;
-  const raw = store.getItem(STORAGE_PREFIX + scopeKey);
-  if (raw === null) return null;
+  let raw: string | null;
+  try {
+    // getItem itself can throw in some locked-down storage contexts, not just
+    // the initial `window.sessionStorage` access — keep the read total.
+    raw = store.getItem(STORAGE_PREFIX + scopeKey);
+  } catch {
+    return null;
+  }
+  // Only accept a complete non-negative integer; reject partials like
+  // "400garbage" that Number.parseInt would otherwise truncate to 400.
+  if (raw === null || !/^\d+$/.test(raw)) return null;
   const value = Number.parseInt(raw, 10);
-  return Number.isFinite(value) && value >= 0 ? value : null;
+  return Number.isFinite(value) ? value : null;
 }
 
 export function writeListScroll(scopeKey: string, offset: number): void {
@@ -138,6 +150,10 @@ export function useListScrollRestoration(
   // null once reached / finalized. Guards the re-apply pass from disturbing a
   // settled list on later refetches.
   const pending = useRef<number | null>(null);
+  // The offset our own programmatic writes last set. A scroll event landing on
+  // a materially different offset is the user, and cancels any pending restore
+  // so a later refetch can never yank them back to the target.
+  const lastApplied = useRef<number | null>(null);
   // The last offset observed from a real scroll event *while the container was
   // connected*, per active scope. We flush this on unmount rather than reading
   // `el.scrollTop` there: by the time the cleanup runs React has already
@@ -160,11 +176,13 @@ export function useListScrollRestoration(
     const saved = readListScroll(scopeKey);
     if (saved === null) {
       el.scrollTop = 0;
+      lastApplied.current = 0;
       pending.current = null;
       return;
     }
     const clamped = resolveRestoreTarget(saved, el.scrollHeight, el.clientHeight);
     el.scrollTop = clamped;
+    lastApplied.current = clamped;
     // Keep chasing the target only if the current height can't honor it yet and
     // more rows may still arrive; otherwise we're done.
     pending.current = clamped < saved && loading ? saved : null;
@@ -183,6 +201,7 @@ export function useListScrollRestoration(
       el.clientHeight,
     );
     el.scrollTop = clamped;
+    lastApplied.current = clamped;
     if (clamped >= pending.current || !loading) pending.current = null;
   }, [ref, scopeKey, revision, loading]);
 
@@ -197,6 +216,14 @@ export function useListScrollRestoration(
       // Don't persist until this scope has been restored, otherwise the
       // pinned-to-top or transitional offset would clobber the saved value.
       if (restoredScope.current !== scopeKey) return;
+      // A scroll to an offset we didn't programmatically apply is the user;
+      // abandon any in-flight restore so a later refetch can't override them.
+      if (
+        pending.current !== null &&
+        Math.abs(el.scrollTop - (lastApplied.current ?? el.scrollTop)) > 2
+      ) {
+        pending.current = null;
+      }
       lastOffset.current = el.scrollTop;
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => writeListScroll(scopeKey, el.scrollTop));
