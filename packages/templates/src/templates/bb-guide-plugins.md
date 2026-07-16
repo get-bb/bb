@@ -81,7 +81,7 @@ The Tasks plugin is an opt-in official plugin bundled with the app:
 and the `bb tasks` command. Common agent operations are:
 
   bb tasks show <key-or-id> [--json]
-  bb tasks list [--project <prefix-or-id>] [filters...] [--json]
+  bb tasks list [--project <prefix-or-id>] [filters...] [--sort manual|priority|due] [--json]
   bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--json]
   bb tasks attachment get <attachment-id> --out <path> [--json]
   bb tasks attach <key-or-id> [--json]

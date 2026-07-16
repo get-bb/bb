@@ -64,7 +64,7 @@ Run `bb tasks --help` or `bb tasks <command> --help` for exact options. Add
 | `bb tasks project create\|list\|show\|update` | Manage tracker projects, folders, colors, prefixes, and bb-project links. |
 | `bb tasks folder create\|list\|update` | Organize tracker projects into nested folders. |
 | `bb tasks create` | Create a task with description, priority, labels, due date, and optional parent. |
-| `bb tasks list` | Filter tasks by project, status, priority, label, active agents, or search text. |
+| `bb tasks list` | Filter tasks by project, status, priority, label, active agents, or search text; `--sort priority\|due` orders the results. |
 | `bb tasks show <key-or-id>` | Show the complete task record, including comments, attachments, subtasks, and attached threads. |
 | `bb tasks update <key-or-id>` | Update status, priority, title, description, due date, or labels. |
 | `bb tasks comment <key-or-id>` | Add a Markdown comment from inline text or a file; optionally notify mentioned threads. |

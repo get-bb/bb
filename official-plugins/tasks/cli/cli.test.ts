@@ -87,10 +87,10 @@ describe("bb tasks CLI", () => {
 
     const listResult = await harness.runCli(["list", "--project", "CLI"]);
     expect(stdout(listResult)).toContain(
-      "KEY    STATUS   PRIORITY  TITLE                   LABELS   AGENTS",
+      "KEY    STATUS   PRIORITY  DUE  TITLE                   LABELS   AGENTS",
     );
     expect(listResult.stdout).toContain(
-      "CLI-1  backlog  medium    Ship the canonical CLI  Backend  0",
+      "CLI-1  backlog  medium    -    Ship the canonical CLI  Backend  0",
     );
 
     const showResult = await harness.runCli(["show", "cli-1", "--json"]);
@@ -156,6 +156,72 @@ describe("bb tasks CLI", () => {
         expect.objectContaining({ kind: "agent", body: "Ready for review." }),
       ]),
     );
+
+    await harness.dispose();
+  });
+
+  it("sorts list output by priority or due date and rejects unknown sorts", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Sorted",
+        "--prefix",
+        "SRT",
+        "--json",
+      ]),
+    );
+    const seed = [
+      { title: "No priority", args: [] },
+      { title: "High later", args: ["--priority", "high", "--due", "2026-08-01"] },
+      { title: "High soon", args: ["--priority", "high", "--due", "2026-07-20"] },
+      { title: "Urgent undated", args: ["--priority", "urgent"] },
+    ];
+    for (const task of seed) {
+      stdout(
+        await harness.runCli([
+          "create",
+          "--project",
+          "SRT",
+          "--title",
+          task.title,
+          ...task.args,
+          "--json",
+        ]),
+      );
+    }
+
+    const byPriority = JSON.parse(
+      stdout(
+        await harness.runCli(["list", "--project", "SRT", "--sort", "priority", "--json"]),
+      ),
+    );
+    expect(byPriority.tasks.map((task: { title: string }) => task.title)).toEqual([
+      "Urgent undated",
+      "High soon",
+      "High later",
+      "No priority",
+    ]);
+
+    const byDue = JSON.parse(
+      stdout(
+        await harness.runCli(["list", "--project", "SRT", "--sort", "due", "--json"]),
+      ),
+    );
+    expect(byDue.tasks.map((task: { title: string }) => task.title)).toEqual([
+      "High soon",
+      "High later",
+      "Urgent undated",
+      "No priority",
+    ]);
+
+    const invalid = await harness.runCli(["list", "--sort", "sideways"]);
+    expect(invalid.exitCode).not.toBe(0);
+    expect(invalid.stderr).toContain("invalid sort");
 
     await harness.dispose();
   });

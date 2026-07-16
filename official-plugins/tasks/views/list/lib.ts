@@ -5,6 +5,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
+import type { TaskSort } from "../../shared/sort.js";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
@@ -23,6 +24,12 @@ export const PRIORITY_LABELS: Record<TaskPriority, string> = {
   none: "No priority",
 };
 
+export const SORT_LABELS: Record<TaskSort, string> = {
+  manual: "Manual",
+  priority: "Priority",
+  due: "Due date",
+};
+
 export interface StatusGroup {
   status: TaskStatus;
   tasks: Task[];
@@ -30,7 +37,8 @@ export interface StatusGroup {
 
 /**
  * Buckets tasks into canonical status order, dropping empty groups. Within a
- * group the server's ordering (board position) is preserved.
+ * group the incoming order is preserved, so callers control ordering by
+ * pre-sorting (the server default is board position).
  */
 export function groupTasksByStatus(tasks: readonly Task[]): StatusGroup[] {
   const byStatus = new Map<TaskStatus, Task[]>();

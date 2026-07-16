@@ -5,10 +5,13 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
+import { TASK_SORTS, type TaskSort } from "../../shared/sort.js";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -16,6 +19,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import {
   PRIORITY_LABELS,
+  SORT_LABELS,
   STATUS_LABELS,
   type LabelFilterOption,
 } from "./lib.js";
@@ -65,6 +69,52 @@ function FilterChip({
   );
 }
 
+function SortChip({
+  sort,
+  onChange,
+}: {
+  sort: TaskSort;
+  onChange: (sort: TaskSort) => void;
+}) {
+  const active = sort !== "manual";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs",
+            active
+              ? "border-border bg-secondary text-foreground"
+              : "border-dashed border-border text-muted-foreground hover:border-input hover:text-foreground",
+          )}
+        >
+          <Icon name="Sort" className="size-3" />
+          Sort
+          {active ? (
+            <span className="font-medium">{SORT_LABELS[sort]}</span>
+          ) : null}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44">
+        <DropdownMenuRadioGroup
+          value={sort}
+          onValueChange={(value) => {
+            const next = TASK_SORTS.find((sort) => sort === value);
+            if (next !== undefined) onChange(next);
+          }}
+        >
+          {TASK_SORTS.map((option) => (
+            <DropdownMenuRadioItem key={option} value={option}>
+              {SORT_LABELS[option]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export interface ListFilterState {
   statuses: TaskStatus[];
   priorities: TaskPriority[];
@@ -88,11 +138,15 @@ export function hasActiveFilters(filters: ListFilterState): boolean {
 export function ListFilterBar({
   filters,
   onChange,
+  sort,
+  onSortChange,
   labelOptions,
   taskCount,
 }: {
   filters: ListFilterState;
   onChange: (filters: ListFilterState) => void;
+  sort: TaskSort;
+  onSortChange: (sort: TaskSort) => void;
   labelOptions: readonly LabelFilterOption[];
   taskCount: number | undefined;
 }) {
@@ -197,10 +251,13 @@ export function ListFilterBar({
           Clear
         </button>
       ) : null}
-      <span className="ml-auto text-xs tabular-nums text-subtle-foreground">
-        {taskCount === undefined
-          ? ""
-          : `${taskCount} ${taskCount === 1 ? "task" : "tasks"}`}
+      <span className="ml-auto flex items-center gap-2">
+        <SortChip sort={sort} onChange={onSortChange} />
+        <span className="text-xs tabular-nums text-subtle-foreground">
+          {taskCount === undefined
+            ? ""
+            : `${taskCount} ${taskCount === 1 ? "task" : "tasks"}`}
+        </span>
       </span>
     </div>
   );

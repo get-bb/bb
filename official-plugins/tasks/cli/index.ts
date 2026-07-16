@@ -33,6 +33,7 @@ import {
   type Task,
   type TaskMutationResult,
 } from "../shared/contract";
+import { sortTasks, TASK_SORTS } from "../shared/sort";
 import {
   assertAllowed,
   CliError,
@@ -87,7 +88,7 @@ const FOLDER_HELP = `Usage:
 const CREATE_HELP =
   "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--json]";
 const LIST_HELP =
-  "Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--json]";
+  "Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--json]";
 const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
 const UPDATE_HELP =
   "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--add-label <name>]... [--remove-label <name>]... [--json]";
@@ -755,10 +756,15 @@ async function runList(
   if (args.flags.has("help")) return LIST_HELP;
   assertAllowed(
     args,
-    ["project", "status", "priority", "label", "search"],
+    ["project", "status", "priority", "label", "search", "sort"],
     ["active"],
   );
   requirePositionals(args, 0, LIST_HELP);
+  const sortOption = option(args, "sort") ?? "manual";
+  const sort = TASK_SORTS.find((candidate) => candidate === sortOption);
+  if (sort === undefined) {
+    throw new CliError(`invalid sort: ${sortOption} (${TASK_SORTS.join(", ")})`);
+  }
   const project = await selectedProject(
     domain,
     ctx,
@@ -799,7 +805,7 @@ async function runList(
     ),
   );
   const tasks = [];
-  for (const task of result.tasks) {
+  for (const task of sortTasks(result.tasks, sort)) {
     const threadResult = tasksRpcContract.listTaskThreads.output.parse(
       await domain.listTaskThreads(
         tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
@@ -816,11 +822,12 @@ async function runList(
   return args.flags.has("json")
     ? json({ tasks })
     : table(
-        ["KEY", "STATUS", "PRIORITY", "TITLE", "LABELS", "AGENTS"],
+        ["KEY", "STATUS", "PRIORITY", "DUE", "TITLE", "LABELS", "AGENTS"],
         tasks.map((task) => [
           task.key,
           task.status,
           task.priority,
+          task.dueDate ?? "-",
           task.title,
           task.labels.join(", ") || "-",
           task.agentsWorking,

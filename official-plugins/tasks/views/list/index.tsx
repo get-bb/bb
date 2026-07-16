@@ -13,6 +13,7 @@ import {
   ListFilterBar,
   type ListFilterState,
 } from "./filter-bar.js";
+import { sortTasks, type TaskSort } from "../../shared/sort.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import {
   formatDueDate,
@@ -125,6 +126,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const navigation = useTasksNavigation();
   const projects = useProjects();
   const [filters, setFilters] = useState<ListFilterState>(EMPTY_FILTERS);
+  const [sort, setSort] = useState<TaskSort>("manual");
   const [newTaskOpen, setNewTaskOpen] = useState(false);
 
   const labelProjectIds = useMemo(
@@ -160,8 +162,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     [projects.data],
   );
   const groups = useMemo(
-    () => groupTasksByStatus(tasksQuery.data ?? []),
-    [tasksQuery.data],
+    () => groupTasksByStatus(sortTasks(tasksQuery.data ?? [], sort)),
+    [tasksQuery.data, sort],
   );
 
   const showProject = projectId === null;
@@ -283,6 +285,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       <ListFilterBar
         filters={filters}
         onChange={setFilters}
+        sort={sort}
+        onSortChange={setSort}
         labelOptions={labelOptions}
         taskCount={tasksQuery.data?.length}
       />
