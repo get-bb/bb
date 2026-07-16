@@ -67,7 +67,7 @@ Commands:
   update                         Update a task
   comment                        Add a task comment
   label create|list|delete
-  attachment add|get|list
+  attachment add|get|list|remove
   preset list|show|create|update|delete
   dispatch                       Dispatch a task to a new agent thread
   attach                         Attach an agent thread to a task
@@ -103,7 +103,8 @@ const LABEL_HELP = `Usage:
 const ATTACHMENT_HELP = `Usage:
   bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--json]
   bb tasks attachment get <attachment-id> --out <path> [--json]
-  bb tasks attachment list <key> [--json]`;
+  bb tasks attachment list <key> [--json]
+  bb tasks attachment remove <attachment-id> [--json]`;
 const PRESET_HELP = `Usage:
   bb tasks preset list [--json]
   bb tasks preset show <name-or-id> [--json]
@@ -1323,6 +1324,29 @@ async function runAttachment(
         );
   }
 
+  if (action === "remove") {
+    assertAllowed(args, []);
+    const [attachmentId] = requirePositionals(
+      args,
+      1,
+      "bb tasks attachment remove <attachment-id> [--json]",
+    );
+    const result = tasksRpcContract.deleteAttachment.output.parse(
+      await domain.deleteAttachment(
+        tasksRpcContract.deleteAttachment.input.parse({
+          attachmentId: attachmentId!.trim(),
+        }),
+      ),
+    );
+    if (!result.ok) throw new CliError(result.error.message);
+    if (!result.deleted) {
+      throw new CliError(`attachment not found: ${attachmentId}`);
+    }
+    return args.flags.has("json")
+      ? json({ deleted: true, attachment: result.attachment })
+      : `Removed attachment ${result.attachment.fileName}  ${result.attachment.id}`;
+  }
+
   throw new CliError(`unknown attachment subcommand: ${action}`);
 }
 
@@ -1692,7 +1716,7 @@ export function registerTasksCli(
       },
       {
         name: "attachment",
-        summary: "Add, download, or list task attachments",
+        summary: "Add, download, list, or remove task attachments",
         usage: ATTACHMENT_HELP,
       },
       {

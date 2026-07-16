@@ -12,3 +12,23 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
     value: () => {},
   });
 }
+
+// The shared-ui Dialog resolves a responsive layout via matchMedia, which
+// jsdom does not implement. Default to the non-compact (desktop) branch.
+if (typeof window !== "undefined" && !window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string): MediaQueryList =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  });
+}

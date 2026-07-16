@@ -396,4 +396,25 @@ describe("TasksEditor component", () => {
     // Echoing our own onChange output back must not reset the document.
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("stays editable when the description is only a single image", async () => {
+    // A lone block image gives no text caret on its own; the fix relies on a
+    // trailing gap cursor so the user can still add text. Placing the caret at
+    // the end and typing must keep the image and add a paragraph, not replace
+    // or select the image node.
+    let editor: Editor | null = null;
+    render(
+      <TasksEditor
+        value={"![shot](https://example.com/a.png)"}
+        onChange={() => undefined}
+        onEditorReady={(ready) => (editor = ready)}
+      />,
+    );
+    editor!.chain().focus("end").insertContent("caption").run();
+    await waitFor(() => {
+      const markdown = editor!.storage.markdown.getMarkdown() as string;
+      expect(markdown).toContain("![shot](https://example.com/a.png)");
+      expect(markdown).toContain("caption");
+    });
+  });
 });

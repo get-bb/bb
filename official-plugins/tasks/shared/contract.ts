@@ -225,6 +225,7 @@ export const tasksDomainErrorSchema = z
       "label_project_mismatch",
       "project_not_empty",
       "project_prefix_conflict",
+      "attachment_referenced",
     ]),
     message: z.string(),
   })
@@ -242,6 +243,24 @@ const projectMutationResultSchema = z.discriminatedUnion("ok", [
 
 const projectDeleteResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), deleted: z.boolean() }).strict(),
+  z.object({ ok: z.literal(false), error: tasksDomainErrorSchema }).strict(),
+]);
+
+const attachmentDeleteResultSchema = z.union([
+  z
+    .object({
+      ok: z.literal(true),
+      deleted: z.literal(true),
+      attachment: attachmentSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ok: z.literal(true),
+      deleted: z.literal(false),
+      attachment: z.null(),
+    })
+    .strict(),
   z.object({ ok: z.literal(false), error: tasksDomainErrorSchema }).strict(),
 ]);
 
@@ -536,6 +555,10 @@ export const tasksRpcContract = defineRpcContract({
       z.object({ commentId: idSchema }).strict(),
     ]),
     output: z.object({ attachments: z.array(attachmentSchema) }).strict(),
+  },
+  deleteAttachment: {
+    input: z.object({ attachmentId: idSchema }).strict(),
+    output: attachmentDeleteResultSchema,
   },
   listTaskThreads: {
     input: z.object({ taskId: idSchema }).strict(),

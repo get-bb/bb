@@ -448,7 +448,17 @@ function TaskDetail({ task }: { task: Task }) {
             />
           </div>
 
-          <AttachmentsGrid attachments={attachments.data ?? []} />
+          <AttachmentsGrid
+            attachments={attachments.data ?? []}
+            onRemove={async (attachment) => {
+              const result = await rpc.call("deleteAttachment", {
+                attachmentId: attachment.id,
+              });
+              if (!result.ok) throw new Error(result.error.message);
+              attachments.refresh();
+            }}
+            onError={(message) => push("error", message)}
+          />
 
           <SubTasksSection
             ref={subtasksRef}

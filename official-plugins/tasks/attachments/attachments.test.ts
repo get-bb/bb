@@ -5,11 +5,12 @@ import { describe, expect, it } from "vitest";
 import { createTasksStore } from "../db";
 import {
   buildAttachmentUrl,
+  deleteAttachmentById,
   MAX_ATTACHMENT_SIZE_BYTES,
   registerAttachments,
 } from ".";
 
-function setup() {
+function setup(options?: Parameters<typeof registerAttachments>[2]) {
   const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
   const db = bb.storage.database();
   const store = createTasksStore(db);
@@ -22,13 +23,13 @@ function setup() {
     projectId: project.id,
     title: "Attachment owner",
   });
-  registerAttachments(bb, store);
+  registerAttachments(bb, store, options);
   const database = db
     .prepare<[], { name: string; file: string }>("PRAGMA database_list")
     .all()
     .find((entry) => entry.name === "main");
   if (!database) throw new Error("test database path is missing");
-  return { harness, store, task, root: dirname(database.file) };
+  return { bb, harness, store, task, root: dirname(database.file) };
 }
 
 async function upload(
@@ -235,6 +236,121 @@ describe("task attachments", () => {
           payload: { taskId: task.id, projectId: task.projectId },
         },
       ]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("deleteAttachmentById removes the row and blob and returns the attachment", async () => {
+    const { bb, harness, root, store, task } = setup();
+    try {
+      const uploaded = await upload(
+        harness,
+        task.id,
+        "document",
+        "note.txt",
+        "text/plain",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      const attachment = store.getAttachment(attachmentId);
+      if (!attachment) throw new Error("attachment row was not created");
+      const blobDirectory = dirname(join(root, attachment.blobPath));
+
+      const deleted = await deleteAttachmentById(bb, store, attachmentId);
+      expect(deleted).toMatchObject({ id: attachmentId });
+      expect(store.getAttachment(attachmentId)).toBeUndefined();
+      await expect(stat(blobDirectory)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("keeps the row and blob reachable and publishes nothing when cleanup fails", async () => {
+    const { harness, root, store, task } = setup({
+      removeBlobs: async () => {
+        throw new Error("simulated rm failure");
+      },
+    });
+    try {
+      const uploaded = await upload(
+        harness,
+        task.id,
+        "document",
+        "note.txt",
+        "text/plain",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      const attachment = store.getAttachment(attachmentId);
+      if (!attachment) throw new Error("attachment row was not created");
+      const signalsBeforeDelete = harness.realtimeSignals.length;
+
+      const response = await harness.fetchHttp(
+        "DELETE",
+        `/attachments/delete?attachmentId=${attachmentId}`,
+        { headers: { "content-type": "application/json" } },
+      );
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({
+        error: "Failed to remove attachment blob: note.txt",
+      });
+      expect(store.getAttachment(attachmentId)).toEqual(attachment);
+      await expect(
+        readFile(join(root, attachment.blobPath), "utf8"),
+      ).resolves.toBe("document");
+      expect(harness.realtimeSignals).toHaveLength(signalsBeforeDelete);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("rejects deletion when the saved task description references the attachment", async () => {
+    const { harness, root, store, task } = setup();
+    try {
+      const uploaded = await upload(harness, task.id, "image");
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      const attachment = store.getAttachment(attachmentId);
+      if (!attachment) throw new Error("attachment row was not created");
+      store.updateTask(task.id, {
+        description: `![diagram](${buildAttachmentUrl(attachmentId)})`,
+      });
+      const signalsBeforeDelete = harness.realtimeSignals.length;
+
+      const response = await harness.fetchHttp(
+        "DELETE",
+        `/attachments/delete?attachmentId=${attachmentId}`,
+        { headers: { "content-type": "application/json" } },
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          'Attachment "image.png" is used in the task description. Remove it from the description before deleting the attachment.',
+      });
+      expect(store.getAttachment(attachmentId)).toEqual(attachment);
+      await expect(
+        readFile(join(root, attachment.blobPath), "utf8"),
+      ).resolves.toBe("image");
+      expect(harness.realtimeSignals).toHaveLength(signalsBeforeDelete);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("deleteAttachmentById is a safe no-op for an unknown id", async () => {
+    const { bb, harness, store } = setup();
+    try {
+      await expect(
+        deleteAttachmentById(bb, store, "01JZZZZZZZZZZZZZZZZZZZZZZZ"),
+      ).resolves.toBeNull();
     } finally {
       await harness.dispose();
     }

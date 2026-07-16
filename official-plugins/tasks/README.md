@@ -73,7 +73,7 @@ Run `bb tasks --help` or `bb tasks <command> --help` for exact options. Add
 | `bb tasks show <key-or-id>`                    | Show the complete task record, including comments, attachments, subtasks, and attached threads.                                   |
 | `bb tasks update <key-or-id>`                  | Update status, priority, title, description, due date, or labels.                                                                 |
 | `bb tasks comment <key-or-id>`                 | Add a Markdown comment from inline text or a file; optionally notify the latest responding task agent.                            |
-| `bb tasks attachment add\|get\|list`           | Add a task/comment artifact, fetch it to a path, or list a task's attachments.                                                    |
+| `bb tasks attachment add\|get\|list\|remove`  | Add a task/comment artifact, fetch it to a path, list a task's attachments, or remove one by id. Removal is rejected while the saved task description references the attachment. |
 | `bb tasks preset list\|create\|update\|delete` | Manage reusable agent execution presets.                                                                                          |
 | `bb tasks delegate <key>`                      | Start and attach a new agent thread using a preset.                                                                               |
 | `bb tasks attach <key-or-id>`                  | Attach the current bb thread to a task when it was not delegated from Tasks.                                                      |

@@ -5,11 +5,73 @@ import {
   makeThreadResponse,
 } from "@bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
-import { registerAttachments } from "../attachments";
+import { buildAttachmentUrl, registerAttachments } from "../attachments";
 import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
+  it("deletes through the typed RPC policy and rejects saved-description references", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerAttachments(bb, store.tasks);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Attachments",
+      prefix: "ATT",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Referenced image",
+    });
+    const uploaded = await harness.fetchHttp(
+      "POST",
+      `/attachments/upload?taskId=${task.id}&fileName=diagram.png&mime=image%2Fpng`,
+      { body: "image", headers: { "content-type": "image/png" } },
+    );
+    const { attachmentId } = (await uploaded.json()) as {
+      attachmentId: string;
+    };
+    store.tasks.updateTask(task.id, {
+      description: `![diagram](${buildAttachmentUrl(attachmentId)})`,
+    });
+    const signalsBeforeConflict = harness.realtimeSignals.length;
+
+    const conflict = tasksRpcContract.deleteAttachment.output.parse(
+      await harness.callRpc("deleteAttachment", { attachmentId }),
+    );
+    expect(conflict).toEqual({
+      ok: false,
+      error: {
+        code: "attachment_referenced",
+        message:
+          'Attachment "diagram.png" is used in the task description. Remove it from the description before deleting the attachment.',
+      },
+    });
+    expect(store.tasks.getAttachment(attachmentId)).toBeDefined();
+    expect(harness.realtimeSignals).toHaveLength(signalsBeforeConflict);
+
+    store.tasks.updateTask(task.id, { description: "Reference removed." });
+    const deleted = tasksRpcContract.deleteAttachment.output.parse(
+      await harness.callRpc("deleteAttachment", { attachmentId }),
+    );
+    expect(deleted).toMatchObject({
+      ok: true,
+      deleted: true,
+      attachment: { id: attachmentId },
+    });
+    expect(store.tasks.getAttachment(attachmentId)).toBeUndefined();
+    expect(harness.realtimeSignals.at(-1)).toEqual({
+      channel: "tasks:changed",
+      payload: { taskId: task.id, projectId: project.id },
+    });
+
+    await expect(
+      harness.callRpc("deleteAttachment", { attachmentId }),
+    ).resolves.toEqual({ ok: true, deleted: false, attachment: null });
+    await harness.dispose();
+  });
+
   it("persists one successful notification to the latest replying agent", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

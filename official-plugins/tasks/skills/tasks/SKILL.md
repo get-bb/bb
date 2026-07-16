@@ -56,7 +56,11 @@ not already exist. Dispatch requires an existing preset.
 
    Use `--json` when capturing the returned attachment metadata. When creating
    a task that should start with files, pass repeatable `--attach <path>` to
-   `bb tasks create` instead of attaching afterwards.
+   `bb tasks create` instead of attaching afterwards. Remove an attachment by
+   id with `bb tasks attachment remove <attachment-id>` (row and blob are
+   deleted together); reuse the ids from `bb tasks attachment list <key>`.
+   Remove any saved task-description reference first; referenced attachments
+   are rejected so the command cannot leave broken description content.
 
 5. When the work is ready for review, update the task:
 

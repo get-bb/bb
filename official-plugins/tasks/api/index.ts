@@ -6,7 +6,11 @@ import {
   type Task as StoredTask,
   type TasksStore,
 } from "../db";
-import { removeAttachmentBlobs } from "../attachments";
+import {
+  AttachmentReferencedError,
+  deleteAttachmentById,
+  removeAttachmentBlobs,
+} from "../attachments";
 import { deliverCommentToLatestAgent } from "../steer";
 import {
   tasksRpcContract,
@@ -873,6 +877,33 @@ export function registerHandlers(
       return {
         attachments: attachments.map(attachmentMetadata),
       };
+    },
+    async deleteAttachment(input) {
+      try {
+        const attachment = await deleteAttachmentById(
+          bb,
+          store.tasks,
+          input.attachmentId,
+        );
+        return attachment
+          ? {
+              ok: true,
+              deleted: true,
+              attachment: attachmentMetadata(attachment),
+            }
+          : { ok: true, deleted: false, attachment: null };
+      } catch (error) {
+        if (error instanceof AttachmentReferencedError) {
+          return {
+            ok: false,
+            error: {
+              code: "attachment_referenced",
+              message: error.message,
+            },
+          };
+        }
+        throw error;
+      }
     },
     listTaskThreads(input) {
       return { taskThreads: store.tasks.listTaskThreads(input.taskId) };
