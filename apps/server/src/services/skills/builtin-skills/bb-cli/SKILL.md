@@ -127,6 +127,8 @@ message agents, or inspect projects, providers, and environments.
   to bind a new project's local path to a connected enrolled machine. Use
   `--host` as an alias. Omitting both selectors preserves the existing local
   CLI machine fallback (normally the primary machine).
+- `bb project list` preserves the ordinary-project-only default. Pass
+  `--include-personal` when the singleton personal project must be discoverable.
 - Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
   to register a path on another connected machine. It uses the same selector
   resolution and fallback as project create. Use `--clone` instead of `--path`

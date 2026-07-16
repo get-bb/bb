@@ -35,7 +35,6 @@ import {
 } from "./shared.js";
 import {
   BbProjectLinkPicker,
-  bbProjectLinkError,
   emptyBbProjectLinkState,
   resolveBbProjectLink,
   type BbProjectLinkState,
@@ -68,8 +67,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // BB workspace projects for the linked-project picker. When the list is
-  // unavailable (or empty) the dialog falls back to the raw id input.
+  // BB workspace projects, including Personal, for the linked-project picker.
   const bbProjects = useTasksQuery(
     async (rpc) => (await rpc.call("listBbProjects")).bbProjects,
     [],
@@ -100,14 +98,12 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
     return clash ? `Already used by ${clash.name}.` : null;
   }, [prefix, projects.data]);
 
-  const linkedTrimmed = resolveBbProjectLink(linkState, bbProjectList);
-  const linkedError = bbProjectLinkError(linkState, bbProjectList);
+  const linkedTrimmed = resolveBbProjectLink(linkState);
 
   const canSubmit =
     name.trim().length > 0 &&
     prefix.length > 0 &&
     prefixError === null &&
-    linkedError === null &&
     !submitting;
 
   const folderList = folders.data ?? [];
@@ -279,10 +275,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
           </Field>
           <Field
             label="Linked bb project"
-            hint={
-              linkedError ??
-              "Optional. Linking a bb project enables dispatching to agents."
-            }
+            hint="Optional. Linking a bb project enables dispatching to agents."
           >
             <BbProjectLinkPicker
               state={linkState}

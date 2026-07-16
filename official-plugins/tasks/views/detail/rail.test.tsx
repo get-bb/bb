@@ -77,13 +77,16 @@ function detailRpc(
 }
 
 describe("dispatch target rail control", () => {
-  it("links a bb project via the custom-id input and flags bad ids", async () => {
+  it("links a discovered bb project", async () => {
     const updateCalls: Array<Record<string, unknown>> = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "task/TSK-5" },
       {
         rpc: detailRpc(null, {
+          listBbProjects: () => ({
+            bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
+          }),
           updateProject: (input: Record<string, unknown>) => {
             updateCalls.push(input);
             return {
@@ -98,17 +101,8 @@ describe("dispatch target rail control", () => {
     fireEvent.click(
       await slot.findByRole("button", { name: "Edit dispatch target" }),
     );
-    const input = await slot.findByPlaceholderText("proj_…");
-
-    // A malformed id surfaces the error and disables Save.
-    fireEvent.change(input, { target: { value: "thread_123" } });
-    await slot.findByText("bb project ids start with proj_.");
-    expect(
-      (slot.getByRole("button", { name: "Save" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-
-    fireEvent.change(input, { target: { value: `  ${BB_PROJECT_ID}  ` } });
+    fireEvent.click(await slot.findByLabelText("Linked bb project"));
+    fireEvent.click(await slot.findByRole("option", { name: "bb monorepo" }));
     fireEvent.click(slot.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(updateCalls).toHaveLength(1));
     expect(updateCalls[0]).toEqual({

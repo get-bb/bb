@@ -544,7 +544,7 @@ This is static template rendering and does not use the transport.
 | `fileContent` | `ProjectFileContentArgs` | reads workspace text as UTF-8 or binary as base64 with MIME type and size. |
 | `files` | `ProjectFilesArgs` | lists workspace files. |
 | `get` | `{ projectId }` | gets a project. |
-| `list` | `ProjectListQuery?` | lists projects. |
+| `list` | `ProjectListArgs?` | lists ordinary projects by default; pass `{ includePersonal: true }` to also return the singleton personal project. |
 | `paths` | `ProjectPathsArgs` | gets project path metadata. |
 | `promptHistory` | `{ projectId, ...PromptHistoryQuery }` | gets prompt history. |
 | `reorder` | `{ projectId, ...ReorderProjectRequest }` | reorders the project. |

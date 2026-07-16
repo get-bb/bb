@@ -115,8 +115,6 @@ Tasks skill, which directs the worker to read and update the tracked task.
 
 - Active thread status updates in near-realtime via the server's thread-changed stream (with a 5-minute reconcile sweep as a safety net).
 - The **Auto** delegation preset is deferred; choose an explicit preset.
-- Linking a personal project that is unavailable in the picker requires its
-  project id through the **Custom id…** free-text option.
 - List filters are local UI state and are not persisted in the URL.
 
 ## Fast follow

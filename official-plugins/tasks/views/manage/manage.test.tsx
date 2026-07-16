@@ -469,7 +469,7 @@ describe("NewProjectDialog", () => {
     );
   });
 
-  it("flags malformed prefixes and bb project ids before submit", async () => {
+  it("flags malformed prefixes before submit", async () => {
     const slot = renderEmptyState();
     fireEvent.click(await slot.findByRole("button", { name: /New project/ }));
     const prefix = slot.getByPlaceholderText("TSK");
@@ -479,10 +479,6 @@ describe("NewProjectDialog", () => {
     await slot.findByText(
       "Use 1–10 uppercase letters and digits, starting with a letter.",
     );
-    fireEvent.change(slot.getByPlaceholderText("proj_…"), {
-      target: { value: "thread_123" },
-    });
-    await slot.findByText("bb project ids start with proj_.");
     // Create stays disabled while invalid.
     expect(
       (
@@ -491,5 +487,31 @@ describe("NewProjectDialog", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  it("links the personal project from the discovered project picker", async () => {
+    const createCalls: Array<Record<string, unknown>> = [];
+    const slot = renderEmptyState({
+      listBbProjects: () => ({
+        bbProjects: [{ id: "proj_personal", name: "Personal" }],
+      }),
+      createProject: (input: Record<string, unknown>) => {
+        createCalls.push(input);
+        return { project: { ...project, ...input, id: PROJECT_ID } };
+      },
+    });
+    fireEvent.click(await slot.findByRole("button", { name: /New project/ }));
+    fireEvent.change(await slot.findByPlaceholderText("e.g. Tasks Plugin"), {
+      target: { value: "Personal Tasks" },
+    });
+    fireEvent.click(slot.getByLabelText("Linked bb project"));
+    fireEvent.click(await slot.findByRole("option", { name: "Personal" }));
+    fireEvent.click(slot.getByRole("button", { name: "Create project" }));
+
+    await waitFor(() => expect(createCalls).toHaveLength(1));
+    expect(createCalls[0]).toMatchObject({
+      linkedBbProjectId: "proj_personal",
+    });
+    expect(slot.queryByPlaceholderText("proj_…")).toBeNull();
   });
 });

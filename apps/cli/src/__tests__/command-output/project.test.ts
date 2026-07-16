@@ -211,6 +211,25 @@ describe("bb project command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(projects);
+    expect(get).toHaveBeenCalledWith({ query: {} });
+  });
+
+  it("bb project list can include the personal project", async () => {
+    const projects = [{ id: "proj_personal", name: "Personal" }];
+    const get = vi.fn(async () => projects);
+    stubServerApi({ "v1.projects.$get": get });
+
+    await runCommand(
+      ["project", "list", "--include-personal", "--json"],
+      register,
+    );
+
+    expect(get).toHaveBeenCalledWith({
+      query: { includePersonal: "true" },
+    });
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(projects);
   });
 
   it("bb project list renders the shared borderless table", async () => {

@@ -827,7 +827,7 @@ export function registerHandlers(
       };
     },
     async listBbProjects() {
-      const projects = await bb.sdk.projects.list();
+      const projects = await bb.sdk.projects.list({ includePersonal: true });
       return {
         bbProjects: projects.map((project) => ({
           id: project.id,

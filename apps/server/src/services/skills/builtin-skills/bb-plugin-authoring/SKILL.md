@@ -260,6 +260,10 @@ from the moment factories run there — but isolated harnesses may not, so
 prefer using it from handlers, services, timers, and event handlers for
 portability.
 
+`bb.sdk.projects.list()` preserves the ordinary-project-only default. Plugins
+that need the singleton personal project use
+`bb.sdk.projects.list({ includePersonal: true })`.
+
 ```ts
 const thread = await bb.sdk.threads.spawn({
   projectId,

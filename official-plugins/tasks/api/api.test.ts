@@ -236,6 +236,9 @@ describe("Tasks RPC domain API", () => {
       { id: "proj_personal", name: "Personal" },
       { id: "proj_bb", name: "bb" },
     ]);
+    expect(harness.sdk.callsTo("projects.list")).toEqual([
+      [{ includePersonal: true }],
+    ]);
     await harness.dispose();
   });
 

@@ -9,7 +9,7 @@ import {
   setExperiments,
   type DbConnection,
 } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
+import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -220,6 +220,33 @@ describe("plugin bb.sdk against a running server", () => {
       // A plain read proves the loopback SDK reaches this server instance.
       const projects = await api.sdk.projects.list();
       expect(projects.map((p) => p.id)).toContain(project.id);
+      expect(projects.map((p) => p.id)).not.toContain(PERSONAL_PROJECT_ID);
+      const projectsWithoutPersonal = await api.sdk.projects.list({
+        includePersonal: false,
+      });
+      expect(projectsWithoutPersonal.map((p) => p.id)).toEqual([project.id]);
+
+      const projectsWithPersonal = await api.sdk.projects.list({
+        includePersonal: true,
+      });
+      expect(projectsWithPersonal.map((p) => p.id)).toEqual([
+        PERSONAL_PROJECT_ID,
+        project.id,
+      ]);
+      const projectsWithThreadsAndPersonal = await api.sdk.projects.list({
+        include: "threads",
+        includePersonal: true,
+      });
+      expect(projectsWithThreadsAndPersonal.map((p) => p.id)).toEqual([
+        PERSONAL_PROJECT_ID,
+        project.id,
+      ]);
+      expect(projectsWithThreadsAndPersonal).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: PERSONAL_PROJECT_ID, threads: [] }),
+          expect.objectContaining({ id: project.id, threads: [] }),
+        ]),
+      );
 
       // Spawn with the server-resolved default environment. The plugin api
       // must fill in origin "plugin" + its own id without being asked.

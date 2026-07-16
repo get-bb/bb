@@ -133,6 +133,29 @@ function buildProjectResponses(
   return buildProjectResponsesFromRows(deps, projects);
 }
 
+interface ProjectListOptions {
+  includePersonal: boolean;
+}
+
+function listDiscoverableProjects(
+  deps: AppDeps,
+  options: ProjectListOptions,
+): ProjectResponseRow[] {
+  const projects = listPublicProjects(deps.db);
+  if (!options.includePersonal) {
+    return projects;
+  }
+  const personalProject = getPersonalProject(deps.db);
+  if (!personalProject) {
+    throw new ApiError(
+      500,
+      "internal_error",
+      "Personal project is not initialized",
+    );
+  }
+  return [personalProject, ...projects];
+}
+
 function toProjectOrderResponse(
   deps: AppDeps,
   result: ReorderProjectResult,
@@ -165,10 +188,11 @@ function parseProjectListIncludes(
 
 function buildProjectsWithThreadsResponse(
   deps: AppDeps,
+  options: ProjectListOptions,
 ): ProjectWithThreadsResponse[] {
   return buildProjectsWithThreadsResponseFromRows(
     deps,
-    listPublicProjects(deps.db),
+    listDiscoverableProjects(deps, options),
   );
 }
 
@@ -311,10 +335,20 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.list, (context, query) => {
     const includes = parseProjectListIncludes(query);
+    // Compatibility is resolved once at the HTTP boundary: ordinary projects
+    // remain the default, and all internal list paths receive an explicit flag.
+    const options: ProjectListOptions = {
+      includePersonal: query.includePersonal === "true",
+    };
     if (includes.has("threads")) {
-      return context.json(buildProjectsWithThreadsResponse(deps));
+      return context.json(buildProjectsWithThreadsResponse(deps, options));
     }
-    return context.json(buildProjectResponses(deps));
+    return context.json(
+      buildProjectResponsesFromRows(
+        deps,
+        listDiscoverableProjects(deps, options),
+      ),
+    );
   });
 
   get(routes.sidebarBootstrap, (context) =>
