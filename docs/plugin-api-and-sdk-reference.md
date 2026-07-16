@@ -953,7 +953,7 @@ The source tests snapshot backend roots/types, RPC types, frontend declaration/r
 - [x] manifest/package fields
 - [x] backend factory and disposal lifecycle
 - [x] every `BbPluginApi` root member
-- [x] all four lifecycle events
+- [x] all five lifecycle events
 - [x] all frontend runtime functions
 - [x] all nine frontend slots and their component/callback props
 - [x] all 13 `BbSdk` areas and all 144 callable paths including realtime
