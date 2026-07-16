@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Label, Task } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
@@ -13,6 +13,12 @@ import {
   ListFilterBar,
   type ListFilterState,
 } from "./filter-bar.js";
+import {
+  listPreferenceScope,
+  loadListPreference,
+  storeListPreference,
+  type ListPreference,
+} from "./list-preference.js";
 import { sortTasks, type TaskSort } from "../../shared/sort.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import {
@@ -125,8 +131,31 @@ function LoadingRows() {
 export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const navigation = useTasksNavigation();
   const projects = useProjects();
-  const [filters, setFilters] = useState<ListFilterState>(EMPTY_FILTERS);
-  const [sort, setSort] = useState<TaskSort>("manual");
+  const preferenceScope = listPreferenceScope(projectId, activeOnly);
+  const [preference, setPreference] = useState<ListPreference>(() =>
+    loadListPreference(preferenceScope),
+  );
+  // Remounts already re-read storage; this covers prop-scope changes if the
+  // same ListView instance is reused across routes.
+  useEffect(() => {
+    setPreference(loadListPreference(preferenceScope));
+  }, [preferenceScope]);
+  const filters = preference.filters;
+  const sort = preference.sort;
+  const setFilters = (next: ListFilterState) => {
+    setPreference((current) => {
+      const updated: ListPreference = { filters: next, sort: current.sort };
+      storeListPreference(preferenceScope, updated);
+      return updated;
+    });
+  };
+  const setSort = (next: TaskSort) => {
+    setPreference((current) => {
+      const updated: ListPreference = { filters: current.filters, sort: next };
+      storeListPreference(preferenceScope, updated);
+      return updated;
+    });
+  };
   const [newTaskOpen, setNewTaskOpen] = useState(false);
 
   const labelProjectIds = useMemo(
@@ -141,10 +170,15 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     () => labelFilterOptions(labels.data ?? []),
     [labels.data],
   );
-  const labelIds = useMemo(
-    () => selectedLabelIds(labelOptions, filters.labelNames),
-    [labelOptions, filters.labelNames],
-  );
+  // null = no label filter. Once the catalog is loaded, unresolved selected
+  // names become an active empty id list so the query matches nothing (not
+  // every task). While labels are still loading, defer the filter to avoid a
+  // flash of empty results before options arrive.
+  const labelIds = useMemo((): readonly string[] | null => {
+    if (filters.labelNames.length === 0) return null;
+    if (labels.data === undefined) return null;
+    return selectedLabelIds(labelOptions, filters.labelNames);
+  }, [filters.labelNames, labelOptions, labels.data]);
 
   const tasksQuery = useListTasks(projectId, activeOnly, {
     statuses: filters.statuses,

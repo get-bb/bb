@@ -10,7 +10,12 @@ import type {
 export interface ListTaskFilters {
   statuses: readonly TaskStatus[];
   priorities: readonly TaskPriority[];
-  labelIds: readonly string[];
+  /**
+   * `null` means no label filter. An array (including empty) is an active
+   * label filter: empty matches nothing once the catalog is known, which is
+   * how stale/deleted label names recover without silently showing all tasks.
+   */
+  labelIds: readonly string[] | null;
 }
 
 /**
@@ -33,7 +38,7 @@ export function useListTasks(
           ...(filters.priorities.length > 0
             ? { priorities: [...filters.priorities] }
             : {}),
-          ...(filters.labelIds.length > 0
+          ...(filters.labelIds !== null
             ? { labelIds: [...filters.labelIds] }
             : {}),
           activeOnly,
@@ -46,7 +51,7 @@ export function useListTasks(
       activeOnly,
       filters.statuses.join(),
       filters.priorities.join(),
-      filters.labelIds.join(),
+      filters.labelIds === null ? "" : `active:${filters.labelIds.join()}`,
     ],
   );
 }
