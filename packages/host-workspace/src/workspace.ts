@@ -635,6 +635,15 @@ export class Workspace {
    * {@link getPullRequestForBranch}.
    */
   async getPullRequest(): Promise<GitHostPullRequestLookup> {
+    // A vanished workspace (deleted worktree dir) means the lookup cannot
+    // run; without this check getCurrentBranch folds it into "no branch" and
+    // the missing workspace would masquerade as "no PR exists".
+    if (!(await this.exists)) {
+      return {
+        outcome: "unavailable",
+        message: `Workspace path no longer exists: ${this.path}`,
+      };
+    }
     const branch = await getCurrentBranch(this.path);
     if (!branch) {
       return { outcome: "none" };
