@@ -34,12 +34,13 @@ const BRAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
 
 const AVATAR_LAYOUT_CLASS =
   "z-[1] mt-px flex size-[22px] shrink-0 items-center justify-center";
+const PROVIDER_AVATAR_CLASS = `${AVATAR_LAYOUT_CLASS} rounded-full border border-border bg-secondary text-foreground`;
 const FALLBACK_AVATAR_CLASS = `${AVATAR_LAYOUT_CLASS} rounded-full bg-primary text-primary-foreground outline outline-2 outline-background`;
 
 /**
- * Renders a served provider logo (custom ACP agents expose a `logoUrl`) without
- * an avatar chip, matching provider marks in the model picker. Falls back to
- * the brand glyph / bot avatar if the image fails to load.
+ * Renders a served provider logo (custom ACP agents expose a `logoUrl`) in the
+ * same subtle chip as bundled provider marks. Falls back to the brand glyph /
+ * bot avatar if the image fails to load.
  */
 function ProviderLogoImage({ provider }: { provider: CommentProvider }) {
   const [failed, setFailed] = useState(false);
@@ -47,7 +48,11 @@ function ProviderLogoImage({ provider }: { provider: CommentProvider }) {
     return <ProviderBrandAvatar provider={provider} />;
   }
   return (
-    <span role="img" aria-label={provider.name} className={AVATAR_LAYOUT_CLASS}>
+    <span
+      role="img"
+      aria-label={provider.name}
+      className={PROVIDER_AVATAR_CLASS}
+    >
       <img
         src={provider.logoUrl}
         alt=""
@@ -60,10 +65,11 @@ function ProviderLogoImage({ provider }: { provider: CommentProvider }) {
 }
 
 /**
- * Known provider marks render bare, like the model picker. The generic bot for
- * unknown/unavailable providers keeps the legacy avatar chip so it remains
- * recognizable as a fallback. Kept SDK-free so it renders in a plain jsdom
- * test.
+ * Known provider marks use a subtle background and hairline border so the
+ * activity timeline does not show through transparent glyphs. The generic bot
+ * for unknown/unavailable providers keeps the stronger legacy avatar chip so
+ * it remains recognizable as a fallback. Kept SDK-free so it renders in a
+ * plain jsdom test.
  */
 function ProviderBrandAvatar({
   provider,
@@ -76,7 +82,7 @@ function ProviderBrandAvatar({
       <span
         role="img"
         aria-label={provider?.name ?? "Agent"}
-        className={`${AVATAR_LAYOUT_CLASS} text-foreground`}
+        className={PROVIDER_AVATAR_CLASS}
       >
         <Brand className="size-4" />
       </span>

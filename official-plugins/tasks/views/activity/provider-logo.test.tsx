@@ -17,8 +17,9 @@ describe("CommentProviderAvatar", () => {
 
     // The avatar chip is labeled with the provider name for screen readers.
     const avatar = screen.getByRole("img", { name: "Codex" });
-    expect(avatar.className).not.toContain("rounded-full");
-    expect(avatar.className).not.toContain("bg-primary");
+    expect(avatar.className).toContain("rounded-full");
+    expect(avatar.className).toContain("bg-secondary");
+    expect(avatar.className).toContain("border-border");
     // ...and shows the OpenAI brand mark for the codex provider.
     expect(container.querySelector("svg > title")?.textContent).toBe("OpenAI");
     expect(container.querySelector("svg")?.className.baseVal).toContain(
@@ -37,7 +38,9 @@ describe("CommentProviderAvatar", () => {
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
     const avatar = screen.getByRole("img", { name: "Hermes Agent" });
-    expect(avatar.className).not.toContain("rounded-full");
+    expect(avatar.className).toContain("rounded-full");
+    expect(avatar.className).toContain("bg-secondary");
+    expect(avatar.className).toContain("border-border");
     expect(container.querySelector("svg > title")?.textContent).toBe(
       "Hermes Agent",
     );
@@ -52,8 +55,9 @@ describe("CommentProviderAvatar", () => {
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
     const avatar = screen.getByRole("img", { name: "Custom Agent" });
-    expect(avatar.className).not.toContain("rounded-full");
-    expect(avatar.className).not.toContain("border");
+    expect(avatar.className).toContain("rounded-full");
+    expect(avatar.className).toContain("bg-secondary");
+    expect(avatar.className).toContain("border-border");
     const img = container.querySelector("img");
     expect(img?.getAttribute("src")).toBe(
       "/api/v1/system/providers/acp-custom/logo",
@@ -74,9 +78,10 @@ describe("CommentProviderAvatar", () => {
 
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("svg > title")?.textContent).toBe("OpenAI");
-    expect(screen.getByRole("img", { name: "Codex" }).className).not.toContain(
-      "rounded-full",
-    );
+    const avatar = screen.getByRole("img", { name: "Codex" });
+    expect(avatar.className).toContain("rounded-full");
+    expect(avatar.className).toContain("bg-secondary");
+    expect(avatar.className).toContain("border-border");
   });
 
   it("falls back to the generic glyph when an unknown served logo fails", () => {
