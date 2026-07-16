@@ -370,6 +370,37 @@ For review or fix pipelines, get the environment ID from
 - Treat the returned path and added/updated/unchanged counts as verification.
   Do not inspect the completed file with `cat`, `sed`, `env`, or similar tools.
 
+## Workflows
+
+- The builtin `workflows` plugin runs durable provider-independent JavaScript
+  orchestration and is disabled on fresh installations. Enable it under
+  Settings → Plugins or with `bb plugin enable workflows` before using its
+  command.
+- Author and check sources with `bb workflows validate (--script <javascript>|
+--source <javascript>|--file <path>|--name <name>)`; start a background run
+  with the same selector via `bb workflows run ... [--args <json>] [--resume
+<run-id>]`.
+- Poll compact progress with `bb workflows status <run-id>` and list compact
+  run summaries with `bb workflows list [--limit <1-50>]`. For details,
+  redirect one bounded
+  `bb workflows history <run-id> [--cursor <call-index>] [--limit <1-100>]`
+  JSONL page into `$BB_THREAD_STORAGE`, inspect it with file tools, and continue
+  from the final page record's `nextCursor`. This shell redirection writes on
+  the thread's execution host, including remote hosts; do not print the raw
+  history into the agent transcript. Cancel with `bb workflows stop <run-id>`.
+- Before choosing an explicit provider/model/reasoning tuple, run `bb provider
+list --environment "$BB_ENVIRONMENT_ID" --json`, then query only the chosen
+  provider with `bb provider models <provider-id> --environment
+"$BB_ENVIRONMENT_ID" --json`. Never guess ACP model IDs. Run every Workflows
+  command from a BB project thread.
+- Configure its seven settings with `bb plugin config workflows set <key>
+<value>`: `maxActiveRuns` (default 4, range 1–32), `maxConcurrentAgents` (8,
+  1–64), `maxAgentCalls` (100, 1–1000), `workerStallTimeoutMs` (1800000,
+  60000–86400000), `totalRunTimeoutMs` (86400000, 60000–604800000),
+  `retentionDays` (30, 1–3650), and `maxNotificationBytes` (16384,
+  1024–262144). `maxActiveRuns` applies live; the other six are snapshotted per
+  run. No plugin reload is needed after changing them.
+
 ## Theming
 
 - `bb theme` controls the **app-wide color palette** — a set of CSS-variable

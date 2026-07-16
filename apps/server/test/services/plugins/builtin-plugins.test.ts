@@ -187,6 +187,7 @@ describe("builtin plugin reconciliation", () => {
       ["custom-instructions", "EditFile"],
       ["inline-vis", "AppWindow"],
       ["secrets", "Lock"],
+      ["workflows", "Workflow"],
     ]);
 
     expect(BUILTIN_PLUGINS).toHaveLength(expectedIcons.size);
@@ -352,6 +353,31 @@ describe("builtin plugin reconciliation", () => {
 
     expect(service.list()).toMatchObject([
       { id: "builtin-fixture", enabled: true, status: "running" },
+    ]);
+  });
+
+  it("ships Workflows disabled on a fresh database", async () => {
+    const workflows = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "workflows",
+    );
+    expect(workflows?.defaultEnabled).toBe(false);
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "workflows",
+      defaultEnabled: workflows?.defaultEnabled,
+      rootDir: resolveBuiltinPluginRootPath("workflows"),
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "workflows",
+        source: "builtin:workflows",
+        enabled: false,
+        status: "disabled",
+      },
     ]);
   });
 

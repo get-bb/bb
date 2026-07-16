@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./activity-row-styles": {
+      "source": "./src/components/ui/activity-row-styles.ts",
+      "types": "./src/components/ui/activity-row-styles.ts",
+      "default": "./src/components/ui/activity-row-styles.ts"
+    },
     "./accordion": {
       "source": "./src/components/ui/accordion.tsx",
       "types": "./src/components/ui/accordion.tsx",
@@ -263,6 +268,11 @@
       "source": "./src/components/ui/tooltip.tsx",
       "types": "./src/components/ui/tooltip.tsx",
       "default": "./src/components/ui/tooltip.tsx"
+    },
+    "./workflow-progress": {
+      "source": "./src/components/ui/workflow-progress.tsx",
+      "types": "./src/components/ui/workflow-progress.tsx",
+      "default": "./src/components/ui/workflow-progress.tsx"
     },
     "./hooks/use-compact-viewport": {
       "source": "./src/components/ui/hooks/use-compact-viewport.tsx",

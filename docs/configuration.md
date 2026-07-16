@@ -448,6 +448,26 @@ database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
 
+### Workflows plugin
+
+The builtin Workflows plugin is disabled on fresh installations. Enable it
+under Settings → Plugins or with `bb plugin enable workflows`. Its seven
+settings accept base-10 integer strings through Settings → Plugins or
+`bb plugin config workflows set <key> <value>`:
+
+| Key                    |    Default |       Allowed range | Behavior                                                       |
+| ---------------------- | ---------: | ------------------: | -------------------------------------------------------------- |
+| `maxActiveRuns`        |        `4` |            `1`–`32` | Concurrent runs across the plugin; changes apply live.         |
+| `maxConcurrentAgents`  |        `8` |            `1`–`64` | Concurrent agent calls within one run.                         |
+| `maxAgentCalls`        |      `100` |          `1`–`1000` | Total agent calls within one run.                              |
+| `workerStallTimeoutMs` |  `1800000` |  `60000`–`86400000` | Milliseconds without persisted worker activity before failure. |
+| `totalRunTimeoutMs`    | `86400000` | `60000`–`604800000` | Maximum total run duration in milliseconds.                    |
+| `retentionDays`        |       `30` |          `1`–`3650` | Days to retain completed workflow data.                        |
+| `maxNotificationBytes` |    `16384` |     `1024`–`262144` | Maximum UTF-8 size of a completion notification.               |
+
+The six settings other than `maxActiveRuns` are snapshotted into each new run.
+Settings changes do not require a plugin reload.
+
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
 (packages are installed with `--ignore-scripts`). Git plugins without prebuilt
 frontend artifacts also use npm with lifecycle scripts disabled, then discard
@@ -462,7 +482,7 @@ refuse plugins whose optional `engines.bb` or `engines.bbPluginSdk` ranges
 do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
 does not match the package manifest; installing a non-builtin source whose
 derived id collides with a builtin name (automations, connect,
-custom-instructions, inline-vis, secrets) is also refused.
+custom-instructions, inline-vis, secrets, workflows) is also refused.
 
 The same tracking intent drives updates: `bb plugin outdated` checks for
 compatible candidates (and reports blocked incompatible newer releases);

@@ -20,6 +20,7 @@ export const BUILTIN_PLUGINS = [
   { name: "custom-instructions", defaultEnabled: true },
   { name: "inline-vis", defaultEnabled: true },
   { name: "secrets", defaultEnabled: true },
+  { name: "workflows", defaultEnabled: false },
 ] as const satisfies readonly {
   name: string;
   defaultEnabled: boolean;
