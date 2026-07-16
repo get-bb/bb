@@ -17,6 +17,7 @@ import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
 } from "@/components/thread/ThreadActionsMenu";
+import { APP_COMMAND_SHORTCUT_HINT_CLASS } from "@/components/commands/AppCommandShortcutHint";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -595,7 +596,7 @@ function ThreadRowComponent({
       {shortcut ? (
         <kbd
           aria-hidden="true"
-          className="pointer-events-none inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent px-1 text-xs font-medium tabular-nums text-muted-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]"
+          className={APP_COMMAND_SHORTCUT_HINT_CLASS}
         >
           {shortcut.label}
         </kbd>
