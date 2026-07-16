@@ -19,6 +19,7 @@ function call(index: number, phase: string | null): WorkflowCallInspection {
     resolvedPermissionMode: "full",
     status: "succeeded",
     childThreadId: `thr_${index}`,
+    providerRetryAttempts: 0,
     repairAttempts: 0,
     resultJson: '"done"',
     error: null,

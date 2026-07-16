@@ -197,7 +197,7 @@ function buildSharedWorkflowView(run: WorkflowRunView): SharedWorkflowView {
     label: call.label,
     state: workflowAgentState(call.status),
     model: call.model,
-    attempt: call.repairAttempts + 1,
+    attempt: call.providerRetryAttempts + call.repairAttempts + 1,
     cached: call.cached,
     lastProgressAt: call.finishedAt ?? call.startedAt ?? call.createdAt,
     phaseIndex:

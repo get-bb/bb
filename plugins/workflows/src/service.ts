@@ -30,9 +30,9 @@ import {
   listRunningCalls,
   listStalledCalls,
   listTimedOutRuns,
-  lowerReplayBarrier,
   markCallReplayedSameRun,
   markNotificationSent,
+  queueCallProviderRetry,
   recordNotificationFailure,
   recoverInterruptedRuns,
   settleNotificationUndeliverable,
@@ -95,9 +95,40 @@ const SCHEMA_LIMITS = { bytes: 64 * 1024, nodes: 4_096, depth: 64 };
 const VALUE_LIMITS = { bytes: 1024 * 1024, nodes: 100_000, depth: 128 };
 const NOTIFICATION_RETRY_BASE_MS = 1_000;
 const NOTIFICATION_RETRY_MAX_MS = 60 * 60 * 1_000;
+const PROVIDER_RETRY_DELAYS_MS = [1_000, 4_000] as const;
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function isRetryableProviderFailure(error: unknown): boolean {
+  if (typeof error === "object" && error !== null) {
+    const candidate = error as Record<string, unknown>;
+    if (candidate.retryable === true) return true;
+    const status = candidate.status ?? candidate.statusCode;
+    if (
+      typeof status === "number" &&
+      [429, 500, 502, 503, 504, 529].includes(status)
+    ) {
+      return true;
+    }
+    if (
+      typeof candidate.code === "string" &&
+      /^(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH)$/.test(
+        candidate.code,
+      )
+    ) {
+      return true;
+    }
+  }
+  const detail = message(error).toLowerCase();
+  return [
+    /provider[^\n]*(?:overload|capacity|busy|temporar|unavailable|rate.?limit)/,
+    /(?:rate.?limit|too many requests)/,
+    /(?:http|status|api error|error)\s*(?:429|500|502|503|504|529)\b/,
+    /\b(?:econnreset|econnrefused|etimedout|ehostunreach|enetunreach)\b/,
+    /(?:connection reset|connection closed|socket hang up|network error)/,
+  ].some((pattern) => pattern.test(detail));
 }
 
 function utf8Prefix(text: string, maximumBytes: number): string {
@@ -587,11 +618,8 @@ export function createWorkflowService(
     return `${header}\n\n${prompt}\n\nUse bb_workflow_result to return your final response in the requested structured format. You MUST call this tool exactly once at the end of your response with {"value": ...} to provide the structured output. The value must satisfy this JSON Schema:\n${JSON.stringify(options.outputSchema, null, 2)}\nIf the tool is unavailable during startup, return only the JSON value in your final response as a fallback. If the tool reports validation errors, correct the value and retry. You have at most ${MAX_REPAIR_ATTEMPTS} corrective retries.`;
   }
 
-  function canReplayCall(run: WorkflowRunRow, callIndex: number): boolean {
-    return (
-      run.replaySafetyVersion === 1 &&
-      (run.replayBarrierIndex === null || callIndex < run.replayBarrierIndex)
-    );
+  function canReplayCall(run: WorkflowRunRow): boolean {
+    return run.replaySafetyVersion === 1;
   }
 
   function waitForCall(
@@ -655,7 +683,7 @@ export function createWorkflowService(
       if (replay.prefix) {
         if (sameRunCall !== null) {
           const sourceRun = getRunRequired(db, run.id);
-          if (!canReplayCall(sourceRun, callIndex)) {
+          if (!canReplayCall(sourceRun)) {
             replay.prefix = false;
           }
           if (replay.prefix) {
@@ -676,10 +704,7 @@ export function createWorkflowService(
         } else if (run.resumedFromRunId !== null) {
           const currentRun = getRunRequired(db, run.id);
           const sourceRun = getRunRequired(db, run.resumedFromRunId);
-          if (
-            !canReplayCall(currentRun, callIndex) ||
-            !canReplayCall(sourceRun, callIndex)
-          ) {
+          if (!canReplayCall(currentRun) || !canReplayCall(sourceRun)) {
             replay.prefix = false;
           }
           if (replay.prefix) {
@@ -727,55 +752,74 @@ export function createWorkflowService(
     } finally {
       replayDecision.release();
     }
-    throwIfCancelled(signal);
-    const child = await bb.sdk.threads.spawn({
-      projectId: run.projectId,
-      environment: { type: "reuse", environmentId: run.environmentId },
-      prompt: childPrompt(run, prompt, options),
-      title: options.title ?? `${run.name} · ${callIndex + 1}`,
-      providerId: selection.providerId,
-      model: selection.model,
-      reasoningLevel: selection.reasoningLevel,
-      permissionMode: selection.permissionMode,
-      visibility: "hidden",
-    });
-    if (signal.aborted) {
-      await stopChild(child.id);
-      throw new Error("Workflow cancelled");
-    }
-    const attached = attachCallThread(db, call.id, child.id);
-    if (!attached || signal.aborted) {
-      await stopChild(child.id);
-      throw new Error("Workflow cancelled");
-    }
-    const stopOnAbort = () => void stopChild(child.id);
-    signal.addEventListener("abort", stopOnAbort, { once: true });
-    try {
-      const current = await bb.sdk.threads.get({ threadId: child.id });
-      throwIfCancelled(signal);
-      if (current.status === "idle") {
-        const output = await bb.sdk.threads.output({ threadId: child.id });
+    while (true) {
+      try {
         throwIfCancelled(signal);
-        onThreadIdle(child.id, output.output);
-      } else if (current.status === "error") {
-        failThreadCall(
-          child.id,
-          "Workflow worker failed before attachment completed",
+        const child = await bb.sdk.threads.spawn({
+          projectId: run.projectId,
+          environment: { type: "reuse", environmentId: run.environmentId },
+          prompt: childPrompt(run, prompt, options),
+          title: options.title ?? `${run.name} · ${callIndex + 1}`,
+          providerId: selection.providerId,
+          model: selection.model,
+          reasoningLevel: selection.reasoningLevel,
+          permissionMode: selection.permissionMode,
+          visibility: "hidden",
+        });
+        if (signal.aborted) {
+          await stopChild(child.id);
+          throw new Error("Workflow cancelled");
+        }
+        const attached = attachCallThread(db, call.id, child.id);
+        if (!attached || signal.aborted) {
+          await stopChild(child.id);
+          throw new Error("Workflow cancelled");
+        }
+        const stopOnAbort = () => void stopChild(child.id);
+        signal.addEventListener("abort", stopOnAbort, { once: true });
+        try {
+          const current = await bb.sdk.threads.get({ threadId: child.id });
+          throwIfCancelled(signal);
+          if (current.status === "idle") {
+            const output = await bb.sdk.threads.output({ threadId: child.id });
+            throwIfCancelled(signal);
+            onThreadIdle(child.id, output.output);
+          } else if (current.status === "error") {
+            failThreadCall(
+              child.id,
+              "Workflow worker failed before attachment completed",
+            );
+          }
+        } catch (error) {
+          if (signal.aborted) {
+            await stopChild(child.id);
+            throw error;
+          }
+          bb.log.warn(
+            `Could not reconcile new workflow worker ${child.id}: ${message(error)}`,
+          );
+        }
+        try {
+          return await waitForCall(call, signal);
+        } finally {
+          signal.removeEventListener("abort", stopOnAbort);
+        }
+      } catch (error) {
+        throwIfCancelled(signal);
+        const delay = PROVIDER_RETRY_DELAYS_MS[call.providerRetryAttempts];
+        if (delay === undefined || !isRetryableProviderFailure(error)) {
+          throw error;
+        }
+        const detail = message(error);
+        const queued = queueCallProviderRetry(db, call.id, detail);
+        if (queued === null) throw error;
+        call = queued;
+        bb.log.warn(
+          `[${run.id}] Retrying agent call ${callIndex + 1} after transient provider failure ` +
+            `(${call.providerRetryAttempts}/${PROVIDER_RETRY_DELAYS_MS.length}) in ${delay} ms: ${detail}`,
         );
+        await sleep(delay, signal);
       }
-    } catch (error) {
-      if (signal.aborted) {
-        await stopChild(child.id);
-        throw error;
-      }
-      bb.log.warn(
-        `Could not reconcile new workflow worker ${child.id}: ${message(error)}`,
-      );
-    }
-    try {
-      return await waitForCall(call, signal);
-    } finally {
-      signal.removeEventListener("abort", stopOnAbort);
     }
   }
 
@@ -1099,7 +1143,6 @@ export function createWorkflowService(
     let callIndex = 0;
     const replay = { prefix: true };
     const inFlightCalls = new Set<Promise<JsonValue>>();
-    const hostVisibleAgentIndices = new Set<number>();
     let previousCacheKey = Promise.resolve<string | null>(null);
     let previousReplayDecision = Promise.resolve();
     let nestedLaunchQueue = Promise.resolve();
@@ -1107,10 +1150,6 @@ export function createWorkflowService(
       agent(prompt, options, callSignal) {
         const index = callIndex;
         callIndex += 1;
-        if (hostVisibleAgentIndices.size > 0) {
-          lowerReplayBarrier(db, run.id, Math.min(...hostVisibleAgentIndices));
-        }
-        hostVisibleAgentIndices.add(index);
         const computeIdentity = async (previousKey: string | null) => {
           const selection = await validateSelection(run, options, callSignal);
           const cacheKey = computeWorkflowCallCacheKey({
@@ -1158,7 +1197,6 @@ export function createWorkflowService(
         void call
           .finally(() => {
             inFlightCalls.delete(call);
-            hostVisibleAgentIndices.delete(index);
           })
           .catch(() => undefined);
         return call;
@@ -1238,9 +1276,6 @@ export function createWorkflowService(
           maxConcurrentAgents: runSettings.maxConcurrentAgents,
         },
       });
-      // parallel() deliberately maps branch failures to null. During service
-      // shutdown that must not turn cancellation into a successful terminal
-      // run before durable recovery can requeue it.
       if (shuttingDown && signal.aborted) return;
       if (parsed.metadata.outputSchema !== null) {
         const validation = validateValue(parsed.metadata.outputSchema, result);

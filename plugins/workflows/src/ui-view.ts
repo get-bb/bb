@@ -30,6 +30,7 @@ function callView(
     reasoningLevel: call.execution.reasoningLevel,
     cached: call.source === "cached",
     childThreadId: call.childThreadId,
+    providerRetryAttempts: call.providerRetryAttempts,
     repairAttempts: call.repairAttempts,
     error: call.error,
     createdAt: call.createdAt,

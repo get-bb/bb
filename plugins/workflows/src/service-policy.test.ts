@@ -11,6 +11,7 @@ import plugin from "./server.js";
 import {
   createWorkflowService,
   formatWorkflowNotification,
+  isRetryableProviderFailure,
   type WorkflowService,
 } from "./service.js";
 import {
@@ -1129,5 +1130,37 @@ describe("workflow service policy integration", () => {
     expect(text).toContain("[truncated]");
     expect(text).toContain(`bb workflows status ${run.id}`);
     expect(text).not.toContain("�");
+  });
+});
+
+describe("provider retry classification", () => {
+  it("recognizes transient provider and network failures", () => {
+    expect(
+      isRetryableProviderFailure(
+        "Provider command failed: Provider overload, try again later",
+      ),
+    ).toBe(true);
+    expect(isRetryableProviderFailure("API error 529")).toBe(true);
+    expect(isRetryableProviderFailure("read ECONNRESET")).toBe(true);
+    expect(
+      isRetryableProviderFailure(
+        Object.assign(new Error("request failed"), { status: 503 }),
+      ),
+    ).toBe(true);
+    expect(
+      isRetryableProviderFailure(
+        Object.assign(new Error("opaque provider failure"), {
+          retryable: true,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not retry deterministic failures", () => {
+    expect(isRetryableProviderFailure("Authentication failed")).toBe(false);
+    expect(isRetryableProviderFailure("Unknown model configuration")).toBe(
+      false,
+    );
+    expect(isRetryableProviderFailure("Result schema is invalid")).toBe(false);
   });
 });
