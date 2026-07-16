@@ -116,6 +116,14 @@
         "server/**"
       ]
     },
+    "bb-plugin-tasks#build": {
+      // The tasks plugin's app bundle imports the @bb/plugin-sdk root at
+      // runtime (shared RPC contract), so the SDK dist must exist first.
+      "dependsOn": [
+        "topo",
+        "@bb/plugin-sdk#build"
+      ]
+    },
     "@bb/desktop#build": {
       "dependsOn": [
         "bb-app#build"
