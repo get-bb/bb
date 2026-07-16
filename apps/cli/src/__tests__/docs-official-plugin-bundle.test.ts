@@ -94,11 +94,14 @@ describe("Docs official plugin frontend bundle", () => {
       radixDialog: componentStub,
       radixSelect: componentStub,
     };
-    // Some browser-bundle dependencies touch `document` at module scope.
+    // Some browser-bundle dependencies touch `document` at module scope
+    // (shared-ui's overlay-trigger registers input-modality listeners).
     // Registration evaluation never renders, so inert stubs suffice.
     (globalThis as { document?: unknown }).document = {
       createElement: () => ({ innerHTML: "", textContent: "", style: {} }),
       documentElement: { style: {} },
+      addEventListener: () => {},
+      removeEventListener: () => {},
     };
     const mod = (await import(
       /* @vite-ignore */ pathToFileURL(jsPath).href

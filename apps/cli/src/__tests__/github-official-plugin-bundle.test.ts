@@ -1,6 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -51,18 +49,17 @@ describe("GitHub official plugin frontend bundle", () => {
         return name !== "dist" && name !== "node_modules";
       },
     });
-    // The temp copy has no node_modules; link the deps the bundle actually
-    // inlines (shimmed packages — react, radix portal families, sonner, vaul
-    // — never resolve from disk) so buildPluginApp can bundle them.
-    await linkBundledDeps(pluginDir, [
-      "class-variance-authority",
-      "clsx",
-      "tailwind-merge",
-      "@radix-ui/react-slot",
-      "@radix-ui/react-tabs",
-      "@hugeicons/react",
-      "@hugeicons/core-free-icons",
-    ]);
+    // The temp copy has no node_modules; link @bb/shared-ui (the plugin's UI
+    // components — its own deps resolve through the workspace realpath) so
+    // buildPluginApp can bundle it. Shimmed packages — react, radix portal
+    // families, sonner, vaul, pierre — never resolve from disk.
+    const sharedUiLink = join(pluginDir, "node_modules", "@bb", "shared-ui");
+    await mkdir(dirname(sharedUiLink), { recursive: true });
+    await symlink(
+      fileURLToPath(new URL("../../../../packages/shared-ui", import.meta.url)),
+      sharedUiLink,
+      "dir",
+    );
     const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test");
 
     const registered: Record<string, SlotRegistration[]> = {
@@ -147,39 +144,3 @@ describe("GitHub official plugin frontend bundle", () => {
     expect(registered.sidebarFooterAction).toHaveLength(0);
   });
 });
-
-/**
- * Symlinks real packages (resolved through apps/app, which depends on all of
- * them) into the temp plugin dir's node_modules — same pattern as
- * plugin-build.test.ts's linkScaffoldDeps.
- */
-async function linkBundledDeps(
-  targetDir: string,
-  packageNames: string[],
-): Promise<void> {
-  const testDir = dirname(fileURLToPath(import.meta.url));
-  const appRequire = createRequire(
-    join(testDir, "..", "..", "..", "app", "package.json"),
-  );
-  for (const name of packageNames) {
-    const entry = appRequire.resolve(name);
-    let packageRoot = dirname(entry);
-    while (true) {
-      const candidate = join(packageRoot, "package.json");
-      if (existsSync(candidate)) {
-        const parsed = JSON.parse(readFileSync(candidate, "utf8")) as {
-          name?: string;
-        };
-        if (parsed.name === name) break;
-      }
-      const parent = dirname(packageRoot);
-      if (parent === packageRoot) {
-        throw new Error(`could not find package root for ${name}`);
-      }
-      packageRoot = parent;
-    }
-    const linkPath = join(targetDir, "node_modules", name);
-    await mkdir(dirname(linkPath), { recursive: true });
-    await symlink(packageRoot, linkPath, "dir");
-  }
-}
