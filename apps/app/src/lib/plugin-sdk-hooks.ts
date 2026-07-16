@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
@@ -7,6 +12,7 @@ import type {
   BbNavigate,
   PluginComposerApi,
   PluginComposerMention,
+  PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
   PluginSettingsState,
@@ -25,6 +31,7 @@ import {
   getThreadRoutePath,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
+import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 
 /**
@@ -214,6 +221,11 @@ export function useRealtime(
       }),
     [pluginId, channel],
   );
+}
+
+/** Exposes the lifecycle of the same socket that backs `useRealtime`. */
+export function useRealtimeConnectionState(): PluginRealtimeConnectionState {
+  return useServerConnectionState();
 }
 
 export function useSettings(): PluginSettingsState {

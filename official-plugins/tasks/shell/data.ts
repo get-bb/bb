@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtime, useRpc } from "@bb/plugin-sdk/app";
 import type { TasksRpcContract } from "../shared/contract.js";
 import type { MentionItem } from "../editor/extensions.js";
+import { useTasksRefresh } from "./refresh.js";
 
 /** Typed RPC client bound to the tasks contract. */
 export function useTasksRpc() {
@@ -57,6 +58,7 @@ export function useTasksQuery<T>(
   deps: readonly unknown[] = [],
 ): TasksQuery<T> {
   const rpc = useTasksRpc();
+  const { generation } = useTasksRefresh();
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
   const [state, setState] = useState<{
@@ -86,7 +88,7 @@ export function useTasksQuery<T>(
   useEffect(() => {
     setState((current) => ({ ...current, isLoading: true }));
     refresh();
-  }, [refresh]);
+  }, [refresh, generation]);
   useInvalidation(channels, refresh);
   return { ...state, refresh };
 }

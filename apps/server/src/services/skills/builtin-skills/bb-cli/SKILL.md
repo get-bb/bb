@@ -518,7 +518,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend
     entry plus a typecheck-only `tsconfig.json`; scaffold sets
-    `engines.bbPluginSdk` to `^0.3.0`); `bb plugin build [path]` —
+    `engines.bbPluginSdk` to `^0.3.1`); `bb plugin build [path]` —
     compile the plugin into `dist/`: the backend bundle (`server.js` +
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
@@ -530,7 +530,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - Frontend entries default-export `definePluginApp` from
     `@bb/plugin-sdk/app` and register UI slots (homepageSection,
     settingsSection, navPanel, threadPanelAction, composerAccessory,
-    fileOpener) with hooks (useRpc, useRealtime, useSettings, useBbContext,
+    fileOpener) with hooks (useRpc, useRealtime, useRealtimeConnectionState,
+    useSettings, useBbContext,
     useBbNavigate, useComposer for scoped text editing / quote / mention /
     focus access); components are vendored shadcn source the
     plugin owns. Installed

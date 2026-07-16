@@ -48,6 +48,7 @@ const runtime = ((globalThis as PluginRuntimeHost).__bbPluginRuntime
 export const definePluginApp = runtime.definePluginApp;
 export const useRpc = runtime.useRpc;
 export const useRealtime = runtime.useRealtime;
+export const useRealtimeConnectionState = runtime.useRealtimeConnectionState;
 export const useSettings = runtime.useSettings;
 export const useBbContext = runtime.useBbContext;
 export const useBbNavigate = runtime.useBbNavigate;

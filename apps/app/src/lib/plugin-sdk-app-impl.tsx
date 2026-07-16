@@ -5,6 +5,7 @@ import {
   useBbNavigate,
   useComposer,
   useRealtime,
+  useRealtimeConnectionState,
   useRpc,
   useSettings,
 } from "./plugin-sdk-hooks";
@@ -30,6 +31,7 @@ export const pluginSdkAppImplementation = {
   useBbNavigate,
   useComposer,
   useRealtime,
+  useRealtimeConnectionState,
   useRpc,
   useSettings,
 } satisfies PluginSdkApp;

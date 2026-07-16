@@ -30,7 +30,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.3.0" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.3.1" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -80,7 +80,7 @@ The manifest is `package.json`:
   a dark variant when needed).
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.3.0`; the scaffold writes `"^0.3.0"`). Absent means a legacy
+  (currently `0.3.1`; the scaffold writes `"^0.3.1"`). Absent means a legacy
   manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
   the running SDK; path installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
@@ -683,6 +683,7 @@ import {
   definePluginApp,
   useRpc,
   useRealtime,
+  useRealtimeConnectionState,
   useSettings,
   useBbContext,
   useBbNavigate,
@@ -741,8 +742,9 @@ Slot props contracts (versioned, additive-only):
   form for running, needs-configuration, and degraded plugins. Registration:
   `{ id, title?, description?, component }`; `title` is an optional host-rendered
   section heading and `description` is optional supporting copy rendered with
-  that heading. Use the existing hooks (`useRpc`, `useRealtime`, `useSettings`,
-  `useBbNavigate`, `useBbContext`) for data. Enabled plugins appear in the
+  that heading. Use the existing hooks (`useRpc`, `useRealtime`,
+  `useRealtimeConnectionState`, `useSettings`, `useBbNavigate`, `useBbContext`)
+  for data. Enabled plugins appear in the
   settings sidebar when they declare settings descriptors OR register
   settings sections. Slot-derived sidebar entries work for builtin plugin
   frontends even when the user-installed Plugins experiment is off; the
@@ -851,6 +853,10 @@ Hooks:
   input, and result inference from a type-only backend contract import.
 - `useRealtime(channel, handler)` — fires for this plugin's
   `bb.realtime.publish(channel, …)` signals while mounted.
+- `useRealtimeConnectionState()` — returns `"connecting"`, `"connected"`, or
+  `"reconnecting"` for the same shared socket used by `useRealtime`. Reconcile
+  durable server state on subsequent transitions to `connected` (not the first
+  connection) because plugin signals are ephemeral and are not replayed.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
@@ -1034,9 +1040,11 @@ const slot = renderSlot(
     }, // method → handler, calls logged
     settings: { greeting: "hi" }, // useSettings() values
     context: { projectId: "p1", threadId: null }, // useBbContext()
+    realtimeConnectionState: "reconnecting", // useRealtimeConnectionState()
   },
 );
 await slot.findByText("…"); // Testing Library queries
+await slot.behavior.setRealtimeConnectionState("connected");
 slot.inspection.rpcCalls;
 slot.inspection.navigateCalls;
 slot.inspection.composer.quotes; // recorded hook activity

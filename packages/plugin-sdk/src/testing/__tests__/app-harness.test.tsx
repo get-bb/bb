@@ -13,8 +13,13 @@ import { defineRpcContract } from "../../rpc-contract.js";
 // Install before touching @bb/plugin-sdk/app — it binds the runtime global
 // at import time (same constraint real plugin app.tsx files have).
 installTestPluginRuntime();
-const { definePluginApp, useComposer, useRealtime, useRpc } =
-  await import("../../app.js");
+const {
+  definePluginApp,
+  useComposer,
+  useRealtime,
+  useRealtimeConnectionState,
+  useRpc,
+} = await import("../../app.js");
 
 const typedRpcContract = defineRpcContract({
   getItem: {
@@ -60,6 +65,11 @@ function Panel({ subPath }: PluginNavPanelProps) {
       ))}
     </div>
   );
+}
+
+function RealtimeConnectionProbe() {
+  const state = useRealtimeConnectionState();
+  return <div>Realtime: {state}</div>;
 }
 
 function InlineVis({
@@ -136,6 +146,11 @@ const app = await loadPluginApp(
     builder.slots.composerAccessory({
       id: "composer",
       component: ComposerProbe,
+    });
+    builder.slots.homepageSection({
+      id: "realtime-connection",
+      title: "Realtime connection",
+      component: RealtimeConnectionProbe,
     });
   }),
 );
@@ -215,6 +230,21 @@ describe("typed rpc test runtime", () => {
 });
 
 describe("renderSlot", () => {
+  it("drives the shared realtime connection lifecycle", async () => {
+    const slot = renderSlot(
+      app.homepageSections[0]!,
+      { projectId: null },
+      { realtimeConnectionState: "connecting" },
+    );
+    await slot.findByText("Realtime: connecting");
+
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Realtime: connected");
+
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    await slot.findByText("Realtime: reconnecting");
+  });
+
   it("refreshes rendered RPC data after a realtime event", async () => {
     let listing = ["a.md"];
     const slot = renderSlot(

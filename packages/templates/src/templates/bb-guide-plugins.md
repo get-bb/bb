@@ -230,7 +230,10 @@ openWorkspaceFile(path) callback for opening a worktree-relative file in the
 host workspace viewer and a nullable
 openThreadPanel({ actionId, title?, params? }) callback for opening one of the
 same plugin's thread-panel actions). Hooks:
-useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
+useRpc, useRealtime, useRealtimeConnectionState (the shared realtime socket's
+connecting/connected/reconnecting lifecycle; reconcile on later connected
+transitions, not the initial connection), useSettings (secrets excluded),
+useBbContext,
 useBbNavigate, and useComposer (read/replace/update/clear scoped composer
 text, quote selections, insert mention pills, and focus the composer;
 plain-text edits preserve attachments and reconcile only inline mentions
@@ -275,7 +278,7 @@ least `icon` or `logo.light`, `bb.server`
 into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^0.3.0"` for SDK 0.3.0). The plugin id is the package name minus
+writes `"^0.3.1"` for SDK 0.3.1). The plugin id is the package name minus
 `bb-plugin-`.
 
 Plugins can contribute palettes with `bb.themes`: an array of

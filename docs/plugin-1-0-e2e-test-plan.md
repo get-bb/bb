@@ -88,8 +88,8 @@ coverage.
 - [T] SDK engine compatibility is displayed and incompatible managed installs are refused.
 - [x] The running frontend bundles report compatible SDK metadata and load successfully.
 - [x] Plugin/package/API versions remain pre-1.0. The live pass ran on SDK
-      `0.2.0`; release coordination subsequently moved the same tested contract to
-      `0.3.0` without changing runtime behavior.
+      `0.2.0`; release coordination moved the contract to `0.3.0`, and the
+      additive realtime connection hook advanced it to `0.3.1`.
 
 ## 3. Plugin management UI
 
@@ -432,8 +432,8 @@ thread events; `status.needsConfiguration`; `server.loopbackBaseUrl`;
 `onDispose`.
 
 Frontend inventory is likewise exact: runtime exports `definePluginApp`,
-`useRpc`, `useRealtime`, `useSettings`, `useBbContext`, `useBbNavigate`, and
-`useComposer`; slots `homepageSection`, `settingsSection`, `navPanel`,
+`useRpc`, `useRealtime`, `useRealtimeConnectionState`, `useSettings`,
+`useBbContext`, `useBbNavigate`, and `useComposer`; slots `homepageSection`, `settingsSection`, `navPanel`,
 `threadPanelAction`, `composerAccessory`, `pendingInteraction`,
 `sidebarFooterAction`, `fileOpener`, and `messageDirective`.
 

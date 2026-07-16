@@ -3,7 +3,7 @@
 Status: final Plugin 1.0 contract reference<br>
 Snapshot date: 2026-07-14<br>
 Integrated source base: `e185d27094eab68b2f39d5ca50923c009e773d45`<br>
-Plugin SDK and product versions at this source snapshot: `@bb/plugin-sdk` is `0.3.0`; this document fixes the contract selected for the eventual 1.0 compatibility boundary while keeping it on a pre-1.0 compatibility line.
+Plugin SDK and product versions at this source snapshot: `@bb/plugin-sdk` is `0.3.1`; this document fixes the contract selected for the eventual 1.0 compatibility boundary while keeping it on a pre-1.0 compatibility line.
 
 ## Purpose and coverage
 
@@ -43,7 +43,7 @@ The committed root/app declarations under `packages/plugin-sdk/bundled-types/` a
 | --- | --- |
 | Manifest | package identity plus required `bb.name`, `bb.description`, explicit branding, server/app entries, skills, and themes |
 | Backend plugin API | complete root and nested logging, settings, storage, wire, background, CLI, agent, UI/input, event, host, status, server, SDK, and disposal capabilities |
-| Frontend app SDK | 7 runtime exports and 9 registration slots |
+| Frontend app SDK | 8 runtime exports and 9 registration slots |
 | `bb.sdk` | 144 callable paths across 13 named areas plus realtime `subscribe()` |
 | Backend testing | externally shipped fake host, fake SDK, fixture builder, behavior/inspection/lifecycle views |
 | Frontend testing | runtime installer, app loader, slot renderer, realtime driver, and call logs |
@@ -52,7 +52,7 @@ The committed root/app declarations under `packages/plugin-sdk/bundled-types/` a
 
 - Plugins are full-trust TypeScript packages loaded in-process by the bb server.
 - `engines.bb` describes compatible bb product versions.
-- `engines.bbPluginSdk` describes compatible plugin SDK versions. The current advertised version is `0.3.0`; the scaffold emits `^0.3.0`.
+- `engines.bbPluginSdk` describes compatible plugin SDK versions. The current advertised version is `0.3.1`; the scaffold emits `^0.3.1`.
 - This release line does not publish 1.0. It advances the pre-1.0 SDK compatibility boundary from `0.2.x` to `0.3.x`; the source snapshot remains `0.x`.
 - Before 1.0 there is no compatibility promise: additions may land in a minor release, and breaking removals, renames, DTO changes, validation changes, or host-behavior changes require a documented deprecation/removal decision and the appropriate pre-1.0 minor bump. Never silently reinterpret an existing field or routing default.
 - Once 1.0 is declared, additive optional fields and new methods are compatible; removing or renaming a symbol, making an optional input required, narrowing accepted values, changing a result's meaning, error code, lifecycle ordering, security boundary, routing classification, or documented fallback is breaking and requires the next major. Deprecations remain functional for at least one documented migration window before removal.
@@ -343,19 +343,20 @@ The app entry default-exports the result of `definePluginApp`. React and the SDK
 
 ### Runtime exports
 
-These are the seven intended runtime exports:
+These are the eight intended runtime exports:
 
 | Export | Signature | Purpose |
 | --- | --- | --- |
 | `definePluginApp` | `(setup: PluginAppSetup) => PluginAppDefinition` | brands and returns the app definition consumed by the host. |
 | `useRpc` | `<Contract>() => PluginRpcClient<Contract>` | calls this plugin's schema contract with inferred method arguments/results; rejects with `code` and optional `issues`. |
 | `useRealtime` | `(channel, handler) => void` | subscribes while mounted to this plugin's signal channel. |
+| `useRealtimeConnectionState` | `() => "connecting" \| "connected" \| "reconnecting"` | observes the shared connection that delivers realtime signals, so a plugin can reconcile missed ephemeral updates after a later connection. |
 | `useSettings` | `() => { values, isLoading }` | reads effective non-secret settings. |
 | `useBbContext` | `() => { projectId, threadId }` | reads current route selection; ids may be null. |
 | `useBbNavigate` | `() => BbNavigate` | navigates to bb and plugin routes. |
 | `useComposer` | `() => PluginComposerApi` | reads and arbitrarily edits the scoped shared composer draft. |
 
-The packaged runtime module, app shim, and bundled declaration expose exactly these seven values; registration regexes are host-internal implementation details, not author-importable runtime values.
+The packaged runtime module, app shim, and bundled declaration expose exactly these eight values; registration regexes are host-internal implementation details, not author-importable runtime values.
 
 ### Navigation hook
 
@@ -459,7 +460,7 @@ Unknown, disabled, malformed, incomplete, code-fenced, conflicting, or crashing 
 
 ### Frontend validation and security boundary
 
-Slot ids and nav paths use letters, digits, `_`, and `-`; directive ids use lowercase kebab case; file extensions are normalized lowercase names without a dot. Duplicate ids/paths and invalid registrations fail app interpretation before a partial set is installed. Registration patterns are host-internal and are intentionally absent from the seven-value runtime surface.
+Slot ids and nav paths use letters, digits, `_`, and `-`; directive ids use lowercase kebab case; file extensions are normalized lowercase names without a dot. Duplicate ids/paths and invalid registrations fail app interpretation before a partial set is installed. Registration patterns are host-internal and are intentionally absent from the eight-value runtime surface.
 
 `@bb/plugin-sdk/app` is deliberately narrower than backend `BbPluginApi`: it exposes only this plugin's RPC client and realtime channels, non-secret settings, route context/navigation, composer editing, and registered slot callbacks. It does not expose `bb.sdk`, storage, secret settings, files, terminals, plugin administration, host control, agent registration, server URLs, HTTP tokens, or arbitrary backend capabilities. Privileged operations must be implemented in the full-trust backend and exposed through a schema-validated plugin RPC method. This is an API/capability boundary, not a claim that third-party JavaScript shares no browser process: install only trusted plugins, validate every RPC/directive/panel input, and use sandboxed iframes for untrusted HTML.
 
@@ -897,6 +898,7 @@ Unstubbed methods throw with the exact path to stub. Recorded `threads.spawn` ca
 | `renderSlot(registration, props, options?)` | mounts a component using Testing Library and fake hook backends. |
 | rendered `inspection.rpcCalls` | ordered `{ method, input }[]`. |
 | rendered `behavior.emitRealtime(channel, payload)` | pushes a JSON-round-tripped signal inside React `act`. |
+| rendered `behavior.setRealtimeConnectionState(state)` | drives the shared realtime lifecycle inside React `act`. |
 | rendered `inspection.navigateCalls` | discriminated call log for every navigation method. |
 | rendered `inspection.composer` | `{ text, quotes, mentions, focusCount }` write log. |
 | rendered `lifecycle.rerender(ui)` / `unmount()` | Testing Library mount controls separated from behavior/logs. |
@@ -908,6 +910,7 @@ Unstubbed methods throw with the exact path to stub. Recorded `threads.spawn` ca
 - `rpc`: method-to-handler map;
 - `settings`: non-secret setting values;
 - `context`: nullable project/thread selection;
+- `realtimeConnectionState`: initial shared connection state, defaulting to `connected`;
 - `composer`: optional initial composer scope/text.
 
 Use a dynamic import thunk with `loadPluginApp` so the runtime is installed before `app.tsx` binds its imports. Tests that use `renderSlot` need a jsdom environment.
@@ -920,9 +923,9 @@ The root `@bb/plugin-sdk` declaration exports these public type families:
 - RPC/JSON: `JsonValue`, `PluginRpcCallArgs`, `PluginRpcContract`, `PluginRpcError`, `PluginRpcErrorCode`, `PluginRpcHandlers`, `PluginRpcIssuePathSegment`, `PluginRpcMethodContract`, `PluginRpcResult`, `PluginRpcValidationIssue`, `StandardSchemaV1`, `StandardSchemaV1InferInput`, `StandardSchemaV1InferOutput`, `StandardSchemaV1Issue`, and `StandardSchemaV1Result`;
 - app definition: `PluginSdkApp`, `PluginAppBuilder`, `PluginAppSlots`, `PluginAppSetup`, and `PluginAppDefinition`;
 - slot props/registrations: homepage, settings, nav panel, thread panel action, composer accessory, pending interaction, sidebar footer action, file opener, and message directive types documented above;
-- hooks: `PluginRpcClient`, `PluginSettingsState`, `BbContext`, `BbNavigate`, `PluginComposerApi`, `PluginComposerScope`, `PluginComposerMention`.
+- hooks: `PluginRpcClient`, `PluginSettingsState`, `PluginRealtimeConnectionState`, `BbContext`, `BbNavigate`, `PluginComposerApi`, `PluginComposerScope`, `PluginComposerMention`.
 
-The root declaration is side-effect-free for app/backend types and also exports `defineRpcContract`. The `/app` runtime subpath exports exactly the seven hook/setup functions listed above plus app types; slot/directive validation regexes and the runtime export-name list are host-internal and are not declared author imports.
+The root declaration is side-effect-free for app/backend types and also exports `defineRpcContract`. The `/app` runtime subpath exports exactly the eight hook/setup functions listed above plus app types; slot/directive validation regexes and the runtime export-name list are host-internal and are not declared author imports.
 
 ## Security and trust boundaries
 
@@ -938,8 +941,8 @@ The root declaration is side-effect-free for app/backend types and also exports 
 ## Final 1.0 audit closure
 
 - **D1 / full trust:** `bb.sdk` is deliberately the complete `BbSdk`, including plugin administration, global settings/experiments/keybindings, hosts, projects, files, terminals, themes, and mutations. Compatibility applies to every reachable area, nested method, exported DTO/result, routing classification, and documented fallback.
-- **D2 / portable distribution:** package version and `PLUGIN_SDK_VERSION` are both `0.3.0` at this snapshot. Root, `/app`, `/testing`, and `/testing/app` have distributable runtime files and bundled declarations. External scaffold tests run with `skipLibCheck: false` and read representative result fields.
-- **Declaration/runtime parity:** the `/app` declaration and runtime both expose exactly seven values. Validation regexes remain internal. Root exposes the schema helper intentionally.
+- **D2 / portable distribution:** package version and `PLUGIN_SDK_VERSION` are both `0.3.1` at this snapshot. Root, `/app`, `/testing`, and `/testing/app` have distributable runtime files and bundled declarations. External scaffold tests run with `skipLibCheck: false` and read representative result fields.
+- **Declaration/runtime parity:** the `/app` declaration and runtime both expose exactly eight values. Validation regexes remain internal. Root exposes the schema helper intentionally.
 - **JSON boundary:** panel parameters, RPC payloads/results, interaction values, and composer/directive data use the shared static `JsonValue` boundary where they cross persistence or transport. Realtime deliberately accepts `unknown`; the host applies a `JSON.stringify`/`JSON.parse` round trip, normalizes top-level `undefined` to `null`, preserves normal JSON coercions, and throws when no JSON representation can be produced.
 - **RPC contract:** Standard Schema v1 input/output schemas, `defineRpcContract`, inferred handlers/client calls, stable error codes, validation issue paths, and strict JSON serialization are the supported contract.
 - **Registration semantics:** the registration/reload matrix above is normative and is enforced by production and fake hosts. Candidate reload is atomic; keyed duplicates reject; listeners accumulate; shared-port declarations replace per plugin+host.

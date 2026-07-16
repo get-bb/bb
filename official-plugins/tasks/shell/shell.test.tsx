@@ -286,6 +286,155 @@ describe("tasks app shell", () => {
     ).toBe("false");
   });
 
+  it("does not treat the first connection as a reconnect", async () => {
+    let requests = 0;
+    let title = "Initial connection title";
+    const task = {
+      ...pagerTask("TSK-4", "todo", 1),
+      description: "",
+      labelIds: [],
+    };
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        realtimeConnectionState: "connecting",
+        rpc: seededRpc({
+          listTasks: () => {
+            requests += 1;
+            return { tasks: [{ ...task, title }] };
+          },
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByText("Initial connection title");
+    const initialRequests = requests;
+    expect(initialRequests).toBeGreaterThan(0);
+
+    await slot.behavior.setRealtimeConnectionState("connected");
+    expect(requests).toBe(initialRequests);
+
+    title = "Recovered from connecting state";
+    await slot.behavior.setRealtimeConnectionState("connecting");
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Recovered from connecting state");
+    expect(requests).toBeGreaterThan(initialRequests);
+  });
+
+  it("recovers when the shell mounts during an existing outage", async () => {
+    let serverAvailable = false;
+    const task = {
+      ...pagerTask("TSK-4", "todo", 1),
+      title: "Loaded after existing outage",
+      description: "",
+      labelIds: [],
+    };
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        realtimeConnectionState: "reconnecting",
+        rpc: seededRpc({
+          listTasks: async () => {
+            if (!serverAvailable) throw new Error("server unavailable");
+            return { tasks: [task] };
+          },
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await waitFor(() =>
+      expect(
+        slot.inspection.rpcCalls.some((call) => call.method === "listTasks"),
+      ).toBe(true),
+    );
+    expect(slot.queryByText("Loaded after existing outage")).toBeNull();
+
+    serverAvailable = true;
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Loaded after existing outage");
+  });
+
+  it("resyncs the task list after reconnect and supports manual refresh", async () => {
+    let title = "Stale list title";
+    const task = {
+      ...pagerTask("TSK-4", "todo", 1),
+      title,
+      description: "",
+      labelIds: [],
+    };
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listTasks: () => ({ tasks: [{ ...task, title }] }),
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByText("Stale list title");
+
+    title = "Recovered list title";
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    expect(slot.queryByText("Recovered list title")).toBeNull();
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Recovered list title");
+
+    title = "Manually refreshed list title";
+    fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
+    await slot.findByText("Manually refreshed list title");
+  });
+
+  it("resyncs an open task detail after reconnect", async () => {
+    let title = "Stale detail title";
+    const task = {
+      ...pagerTask("TSK-4", "todo", 1),
+      title,
+      description: "",
+      labelIds: [],
+    };
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "task/TSK-4" },
+      {
+        rpc: seededRpc({
+          listTasks: () => ({ tasks: [{ ...task, title }] }),
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByRole("textbox", { name: "Task title" });
+    expect(slot.getByRole("textbox", { name: "Task title" }).textContent).toBe(
+      "Stale detail title",
+    );
+
+    title = "Recovered detail title";
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    expect(slot.getByRole("textbox", { name: "Task title" }).textContent).toBe(
+      "Stale detail title",
+    );
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await waitFor(() =>
+      expect(
+        slot.getByRole("textbox", { name: "Task title" }).textContent,
+      ).toBe("Recovered detail title"),
+    );
+  });
+
   it("shows the empty state and opens the New project dialog", async () => {
     const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {
       rpc: emptyRpc,

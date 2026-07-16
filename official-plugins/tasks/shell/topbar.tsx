@@ -6,6 +6,7 @@ import type { TaskViewMode, TasksRoute } from "./routes.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useTasksRefresh } from "./refresh.js";
 
 export interface PagerPosition {
   /** 1-based position of the task within its sibling list. */
@@ -154,6 +155,7 @@ export function TasksTopbar({
   onNewTask,
   onBack,
 }: TasksTopbarProps) {
+  const { refresh } = useTasksRefresh();
   const project = useMemo(() => {
     if (route.kind === "project") {
       return (projects ?? []).find((p) => p.id === route.projectId) ?? null;
@@ -273,6 +275,15 @@ export function TasksTopbar({
           New task
         </Button>
       ) : null}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1.5"
+        onClick={refresh}
+      >
+        <Icon name="RotateCcw" className="size-3.5" />
+        Refresh
+      </Button>
       <Button
         variant="ghost"
         size="icon"

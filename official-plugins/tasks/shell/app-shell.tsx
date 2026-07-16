@@ -28,6 +28,7 @@ import {
 } from "../views/manage/index.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { TasksRefreshProvider } from "./refresh.js";
 
 /** Below this container width (panel splits, not the window) the sidebar
     auto-collapses. */
@@ -94,7 +95,7 @@ function RouteOutlet({ route }: { route: TasksRoute }) {
   }
 }
 
-export function TasksAppShell({ subPath }: PluginNavPanelProps) {
+function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   const route = parseTasksRoute(subPath);
   const navigation = useTasksNavigation();
   const [sidebarCollapsed, setSidebarCollapsed] =
@@ -242,5 +243,13 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
         onOpenChange={setNewProjectOpen}
       />
     </div>
+  );
+}
+
+export function TasksAppShell(props: PluginNavPanelProps) {
+  return (
+    <TasksRefreshProvider>
+      <TasksAppShellContent {...props} />
+    </TasksRefreshProvider>
   );
 }
