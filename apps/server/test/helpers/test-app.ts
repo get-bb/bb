@@ -191,9 +191,7 @@ export async function createTestAppHarness(
     watchInterests,
     sharedPorts,
   };
-  const { app, pluginCatalogService, pluginService } = createApp(deps, {
-    startPluginCatalogRefresh: false,
-  });
+  const { app, pluginCatalogService, pluginService } = createApp(deps);
 
   return {
     app,
@@ -243,7 +241,6 @@ export async function startTestServer(
   let addressInfo: AddressInfo | null = null;
   const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     harness.deps,
-    { startPluginCatalogRefresh: false },
   );
   const server = serve(
     {

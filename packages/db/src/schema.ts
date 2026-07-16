@@ -316,25 +316,6 @@ export const pluginStateSnapshots = sqliteTable(
   ],
 );
 
-// Singleton state for BB's server-owned official plugin catalog. The catalog
-// URL is product policy and intentionally is not configurable or persisted.
-export const pluginCatalog = sqliteTable(
-  "plugin_catalog",
-  {
-    id: integer("id").primaryKey(),
-    // Validated last-known-good JSON. Searches and installs never need network.
-    catalogJson: text("catalog_json").notNull(),
-    etag: text("etag"),
-    lastModified: text("last_modified"),
-    lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
-    lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
-    lastError: text("last_error"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [check("plugin_catalog_singleton", sql`${table.id} = 1`)],
-);
-
 // Namespaced plugin key/value storage (`bb.storage.kv`). Values are JSON text;
 // the plugin API caps them at 256KB before they reach this table.
 export const pluginKv = sqliteTable(

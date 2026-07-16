@@ -309,12 +309,12 @@ bb.plugins.updateSettings({ pluginId, values })
 bb.plugins.token({ pluginId, rotate })
 bb.plugins.catalog.status()
 bb.plugins.catalog.search({ query })
-bb.plugins.catalog.refresh()
 ```
 
 Direct and catalog installs are separate methods so source strings and catalog
-entry ids cannot be confused. Catalog installs use the source declared by the
-entry; callers that need a different npm version use a direct `npm:` install.
+entry ids cannot be confused. Catalog installs resolve to the official plugin
+bundled with the app; callers that need a different npm version use a direct
+`npm:` install.
 These administration methods are available to backend plugins via the complete
 `bb.sdk`; they are intentionally absent from the restricted
 `@bb/plugin-sdk/app` frontend contract.

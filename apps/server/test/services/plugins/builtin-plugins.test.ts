@@ -27,6 +27,7 @@ import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import {
   BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
+  OFFICIAL_PLUGINS,
   resolveBuiltinPluginRootPath,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
@@ -129,6 +130,7 @@ function createService(args: {
   dataDir: string;
   db: DbConnection;
   builtinName?: string;
+  autoInstall?: boolean;
   defaultEnabled?: boolean;
   isEnabled?: () => boolean;
   includeBuiltin?: boolean;
@@ -146,12 +148,17 @@ function createService(args: {
     dataDir: args.dataDir,
     appVersion: "0.9.0",
     isEnabled: args.isEnabled ?? (() => false),
-    builtinPlugins:
+    bundledPlugins:
       args.includeBuiltin === false
         ? []
         : [
             {
               name: args.builtinName ?? "fixture",
+              pluginId: args.builtinName ?? "fixture",
+              autoInstall: args.autoInstall ?? true,
+              repoDirectory: args.autoInstall === false
+                ? ("official-plugins" as const)
+                : ("plugins" as const),
               rootDir: args.rootDir ?? fixtureRoot,
               defaultEnabled: args.defaultEnabled ?? true,
             },
@@ -174,10 +181,12 @@ describe("builtin plugin reconciliation", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
   });
 
-  it("does not reserve the catalog Memory plugin as a builtin", () => {
+  it("keeps official plugins bundled but out of the auto-install builtins", () => {
     expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(
       "memory",
     );
+    expect(OFFICIAL_PLUGINS.map((plugin) => plugin.name)).toContain("memory");
+    expect(OFFICIAL_PLUGINS.every((plugin) => !plugin.autoInstall)).toBe(true);
   });
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
@@ -557,6 +566,7 @@ describe("builtin plugin reconciliation", () => {
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
       build: false,
+      plugins: BUILTIN_PLUGINS,
       sourceModuleDir,
       targetRoot,
     });
@@ -595,6 +605,7 @@ describe("builtin plugin reconciliation", () => {
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
       build: false,
+      plugins: BUILTIN_PLUGINS,
       sourceModuleDir,
       targetRoot,
     });
@@ -635,6 +646,7 @@ describe("builtin plugin reconciliation", () => {
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
       build: false,
+      plugins: BUILTIN_PLUGINS,
       sourceModuleDir,
       targetRoot,
     });
@@ -678,6 +690,7 @@ describe("builtin plugin packaging", () => {
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
       build: false,
+      plugins: BUILTIN_PLUGINS,
       sourceModuleDir,
       targetRoot,
     });

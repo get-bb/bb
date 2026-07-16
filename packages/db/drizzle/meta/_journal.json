@@ -519,6 +519,13 @@
       "when": 1784156543551,
       "tag": "0073_glorious_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "6",
+      "when": 1784188800245,
+      "tag": "0074_legal_wither",
+      "breakpoints": true
     }
   ]
 }

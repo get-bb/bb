@@ -391,29 +391,6 @@ export function deleteInstalledPlugin(db: DbConnection, id: string): boolean {
   return result.changes > 0;
 }
 
-export function listInstalledPluginsFromCatalog(
-  db: DbConnection,
-): InstalledPluginRow[] {
-  return db
-    .select({ plugin: installedPlugins, artifactPath: pluginArtifacts.path })
-    .from(installedPlugins)
-    .leftJoin(pluginArtifacts, eq(installedPlugins.activeArtifactId, pluginArtifacts.id))
-    .where(
-      and(
-        eq(installedPlugins.provenance, "catalog"),
-        isNull(installedPlugins.removedAt),
-      ),
-    )
-    .all()
-    .map(({ plugin, artifactPath }) => ({
-      ...plugin,
-      rootDir:
-        plugin.activeArtifactId !== null && artifactPath !== null
-          ? artifactPath
-          : plugin.rootDir,
-    }));
-}
-
 export function markInstalledPluginRemoved(
   db: DbConnection,
   id: string,

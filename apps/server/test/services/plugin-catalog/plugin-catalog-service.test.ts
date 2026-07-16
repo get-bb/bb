@@ -1,358 +1,175 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   createConnection,
-  getPluginCatalog,
+  markInstalledPluginRemoved,
   migrate,
-  upsertPluginCatalog,
+  upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginService } from "../../../src/services/plugins/plugin-service.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import {
-  createPluginCatalogService,
-  PLUGIN_CATALOG_MAX_BODY_BYTES,
-  PLUGIN_CATALOG_REFRESH_INTERVAL_MS,
-} from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
-import { BUNDLED_PLUGIN_CATALOG } from "../../../src/services/plugin-catalog/official-catalog.js";
+  OFFICIAL_PLUGINS,
+  listBundledPluginRegistrations,
+} from "../../../src/services/plugins/builtin-registry.js";
 
-function response(body: BodyInit | null, init?: ResponseInit): Response {
-  return new Response(body, init);
-}
-
-describe("singleton plugin catalog service", () => {
+describe("bundled plugin catalog service", () => {
   let db: DbConnection;
-  let installArgs:
-    | Parameters<PluginService["installFromCatalog"]>[0]
-    | undefined;
+  let installedNames: string[];
 
   beforeEach(() => {
     db = createConnection(":memory:");
     migrate(db);
-    installArgs = undefined;
+    installedNames = [];
   });
 
   afterEach(() => db.$client.close());
 
-  function plugins(enabled = true) {
-    return {
-      isEnabled: () => enabled,
-      installFromCatalog: async (
-        args: Parameters<PluginService["installFromCatalog"]>[0],
-      ) => {
-        installArgs = args;
-        throw new Error("installation stopped by test");
+  function service(options?: {
+    enabled?: boolean;
+    officialPlugins?: Parameters<
+      typeof createPluginCatalogService
+    >[0]["officialPlugins"];
+    warn?: (message: string) => void;
+  }) {
+    return createPluginCatalogService({
+      db,
+      appVersion: "1.0.0",
+      plugins: {
+        isEnabled: () => options?.enabled ?? true,
+        installOfficialPlugin: async (name: string) => {
+          installedNames.push(name);
+          throw new Error("installation stopped by test");
+        },
       },
-    };
+      ...(options?.officialPlugins === undefined
+        ? {}
+        : { officialPlugins: options.officialPlugins }),
+      ...(options?.warn === undefined ? {} : { warn: options.warn }),
+    });
   }
 
-  it("starts from the bundled LKG and repairs invalid persisted JSON", () => {
-    const service = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: vi.fn(),
-    });
-    expect(service.status()).toMatchObject({
-      pluginCount: BUNDLED_PLUGIN_CATALOG.plugins.length,
-    });
-
-    upsertPluginCatalog(db, {
-      catalogJson: '{"schemaVersion":99}',
-      etag: '"bad"',
-      lastModified: null,
-      lastSuccessfulRefreshAt: 10,
-      lastAttemptedRefreshAt: 20,
-      lastError: null,
-    });
-    const repaired = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: vi.fn(),
-    });
-    expect(repaired.status()).toMatchObject({
-      pluginCount: BUNDLED_PLUGIN_CATALOG.plugins.length,
-      lastAttemptAt: 20,
-      lastError: expect.stringContaining("bundled fallback"),
-    });
-    expect(getPluginCatalog(db)).toMatchObject({ etag: null });
-  });
-
-  it("repairs persisted catalogs that fail semantic source validation", () => {
-    upsertPluginCatalog(db, {
-      catalogJson: JSON.stringify({
-        schemaVersion: 1,
-        plugins: [
-          {
-            id: "escaping-plugin",
-            displayName: "Escaping plugin",
-            description: "Invalid persisted source",
-            source: {
-              git: {
-                url: "https://github.com/example/plugin.git",
-                ref: "main",
-                subdir: "../outside",
-              },
-            },
-          },
-        ],
-      }),
-      etag: '"invalid-semantic-lkg"',
-      lastModified: null,
-      lastSuccessfulRefreshAt: 10,
-      lastAttemptedRefreshAt: 20,
-      lastError: null,
-    });
-
-    const repaired = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: vi.fn(),
-    });
-
-    expect(repaired.status()).toMatchObject({
-      pluginCount: BUNDLED_PLUGIN_CATALOG.plugins.length,
-      lastAttemptAt: 20,
-      lastError: expect.stringContaining("git subdir must stay inside"),
-    });
-    expect(getPluginCatalog(db)).toMatchObject({
-      etag: null,
-      lastSuccessfulRefreshAt: null,
-    });
-  });
-
-  it("retains and normalizes the trustworthy legacy official LKG", () => {
-    upsertPluginCatalog(db, {
-      catalogJson: JSON.stringify({
-        ...BUNDLED_PLUGIN_CATALOG,
-        name: "bb-official",
-        displayName: "BB Official",
-      }),
-      etag: '"legacy"',
-      lastModified: "Tue, 14 Jul 2026 12:00:00 GMT",
-      lastSuccessfulRefreshAt: 10,
-      lastAttemptedRefreshAt: 20,
-      lastError: "offline",
-    });
-    const service = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: vi.fn(),
-    });
-    expect(service.status()).toEqual({
-      pluginCount: BUNDLED_PLUGIN_CATALOG.plugins.length,
-      lastRefreshAt: 10,
-      lastAttemptAt: 20,
-      lastError: "offline",
-    });
-    const persisted = getPluginCatalog(db);
-    expect(persisted).toMatchObject({
-      etag: '"legacy"',
-      lastModified: "Tue, 14 Jul 2026 12:00:00 GMT",
-    });
-    expect(JSON.parse(persisted?.catalogJson ?? "null")).toEqual(
-      BUNDLED_PLUGIN_CATALOG,
-    );
-  });
-
-  it("conditionally fetches with persisted validators and emits on 200 and 304 status changes", async () => {
-    const changedCatalog = {
-      ...BUNDLED_PLUGIN_CATALOG,
-      plugins: BUNDLED_PLUGIN_CATALOG.plugins.slice(0, 2),
-    };
-    const requests: RequestInit[] = [];
-    const fetch = vi
-      .fn(async (_url: string, init: RequestInit) => {
-        requests.push(init);
-        return response(JSON.stringify(changedCatalog), {
-          status: 200,
-          headers: {
-            etag: '"v2"',
-            "last-modified": "Wed, 15 Jul 2026 12:00:00 GMT",
-          },
-        });
-      })
-      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
-        requests.push(init);
-        return response(JSON.stringify(changedCatalog), {
-          status: 200,
-          headers: {
-            etag: '"v2"',
-            "last-modified": "Wed, 15 Jul 2026 12:00:00 GMT",
-          },
-        });
-      })
-      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
-        requests.push(init);
-        return response(null, { status: 304 });
-      });
-    const notify = vi.fn();
-    const service = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: notify,
-      fetch,
-    });
-
-    await expect(service.refresh(100)).resolves.toMatchObject({
-      pluginCount: 2,
-      lastRefreshAt: 100,
-      lastAttemptAt: 100,
-    });
-    await expect(service.refresh(200)).resolves.toMatchObject({
-      pluginCount: 2,
-      lastRefreshAt: 200,
-      lastAttemptAt: 200,
-    });
-    expect(notify).toHaveBeenCalledTimes(2);
-    const secondHeaders = new Headers(requests[1]?.headers);
-    expect(secondHeaders.get("if-none-match")).toBe('"v2"');
-    expect(secondHeaders.get("if-modified-since")).toBe(
-      "Wed, 15 Jul 2026 12:00:00 GMT",
-    );
-    expect(requests[0]?.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it("bounds response bodies and retains the previous catalog on failure", async () => {
-    const notify = vi.fn();
-    const service = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: notify,
-      fetch: async () =>
-        response("too large", {
-          headers: {
-            "content-length": String(PLUGIN_CATALOG_MAX_BODY_BYTES + 1),
-          },
-        }),
-    });
-    await expect(service.refresh(300)).rejects.toThrow(/exceeds/);
-    expect(service.status()).toMatchObject({
-      pluginCount: BUNDLED_PLUGIN_CATALOG.plugins.length,
-      lastAttemptAt: 300,
-      lastError: expect.stringContaining("exceeds"),
-    });
-    expect(notify).toHaveBeenCalledOnce();
-  });
-
-  it("rejects redirects and coalesces concurrent refresh requests", async () => {
-    let resolveFetch: ((response: Response) => void) | undefined;
-    const fetch = vi.fn(
-      (_url: string, init: RequestInit) =>
-        new Promise<Response>((resolve) => {
-          expect(init.redirect).toBe("error");
-          resolveFetch = resolve;
-        }),
-    );
-    const service = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: vi.fn(),
-      fetch,
-    });
-    const first = service.refresh(400);
-    const second = service.refresh(500);
-    expect(fetch).toHaveBeenCalledOnce();
-    resolveFetch?.(response(JSON.stringify(BUNDLED_PLUGIN_CATALOG)));
-    await expect(Promise.all([first, second])).resolves.toEqual([
-      expect.objectContaining({ lastAttemptAt: 400 }),
-      expect.objectContaining({ lastAttemptAt: 400 }),
-    ]);
-    expect(service.status()).toMatchObject({ lastAttemptAt: 400 });
-  });
-
-  it("refreshes immediately on startup, then schedules the six-hour interval", async () => {
-    upsertPluginCatalog(db, {
-      catalogJson: JSON.stringify(BUNDLED_PLUGIN_CATALOG),
-      etag: null,
-      lastModified: null,
-      lastSuccessfulRefreshAt: 900,
-      lastAttemptedRefreshAt: 1_000,
-      lastError: null,
-    });
-    const delays: number[] = [];
-    const cancel = vi.fn();
-    const fetch = vi.fn(async () => response(null, { status: 304 }));
-    const service = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: vi.fn(),
-      fetch,
-      now: () => 1_500,
-      schedule: (_callback, delay) => {
-        delays.push(delay);
-        return cancel;
+  function registerInstalledOfficial(args: {
+    pluginId: string;
+    name: string;
+  }): void {
+    upsertInstalledPlugin(db, {
+      id: args.pluginId,
+      source: `builtin:${args.name}`,
+      provenance: { kind: "catalog", entryId: args.name },
+      sourceIntent: { kind: "builtin", name: args.name },
+      exactResolution: { kind: "builtin" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
       },
+      activeArtifactId: null,
+      rootDir: `/bundled/${args.name}`,
+      version: "0.0.1",
+      enabled: true,
     });
-    service.startPeriodicRefresh();
-    expect(fetch).toHaveBeenCalledOnce();
-    await vi.waitFor(() => {
-      expect(delays).toEqual([PLUGIN_CATALOG_REFRESH_INTERVAL_MS]);
+  }
+
+  it("lists every bundled official plugin from its manifest", async () => {
+    const catalog = service();
+    expect(catalog.status()).toEqual({
+      pluginCount: OFFICIAL_PLUGINS.length,
     });
-    expect(service.status()).toMatchObject({ lastAttemptAt: 1_500 });
-    service.stopPeriodicRefresh();
-    expect(cancel).toHaveBeenCalledOnce();
+
+    const results = await catalog.search("");
+    expect(results.map((entry) => entry.entryId).sort()).toEqual(
+      OFFICIAL_PLUGINS.map((plugin) => plugin.name).sort(),
+    );
+    const docs = results.find((entry) => entry.entryId === "docs");
+    expect(docs).toMatchObject({
+      displayName: "Docs",
+      icon: "FileText",
+      category: "Productivity",
+      source: "builtin:docs",
+      installed: false,
+      compatible: true,
+      incompatibleReason: null,
+    });
+    expect(results.map((entry) => entry.displayName)).toEqual(
+      [...results.map((entry) => entry.displayName)].sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    );
   });
 
-  it("resets the periodic deadline after a manual refresh", async () => {
-    upsertPluginCatalog(db, {
-      catalogJson: JSON.stringify(BUNDLED_PLUGIN_CATALOG),
-      etag: null,
-      lastModified: null,
-      lastSuccessfulRefreshAt: 900,
-      lastAttemptedRefreshAt: 1_000,
-      lastError: null,
-    });
-    let currentTime = 1_500;
-    const delays: number[] = [];
-    const cancel = vi.fn();
-    const service = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: vi.fn(),
-      fetch: async () => response(null, { status: 304 }),
-      now: () => currentTime,
-      schedule: (_callback, delay) => {
-        delays.push(delay);
-        return cancel;
-      },
-    });
-    service.startPeriodicRefresh();
-    await vi.waitFor(() => {
-      expect(delays).toEqual([PLUGIN_CATALOG_REFRESH_INTERVAL_MS]);
-    });
-    currentTime = 2_000;
-    await service.refresh();
-
-    expect(delays).toEqual([
-      PLUGIN_CATALOG_REFRESH_INTERVAL_MS,
-      PLUGIN_CATALOG_REFRESH_INTERVAL_MS,
-    ]);
-    expect(cancel).toHaveBeenCalledOnce();
-    service.stopPeriodicRefresh();
+  it("matches queries against entry id, plugin id, and manifest text", async () => {
+    const catalog = service();
+    const byEntryId = await catalog.search("docs");
+    expect(byEntryId.map((entry) => entry.entryId)).toContain("docs");
+    // The docs directory installs under the plugin id "simple-notes".
+    const byPluginId = await catalog.search("simple-notes");
+    expect(byPluginId.map((entry) => entry.entryId)).toEqual(["docs"]);
+    expect(await catalog.search("no-such-plugin")).toEqual([]);
   });
 
-  it("resolves catalog install sources without changing the entry's intent", async () => {
-    const service = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      plugins: plugins(),
-      notifyCatalogChanged: vi.fn(),
-    });
-    await expect(service.install("memory")).rejects.toThrow(
+  it("reflects install and remove in the installed flag", async () => {
+    const catalog = service();
+    registerInstalledOfficial({ pluginId: "simple-notes", name: "docs" });
+    let docs = (await catalog.search("docs"))[0];
+    expect(docs?.installed).toBe(true);
+
+    markInstalledPluginRemoved(db, "simple-notes");
+    docs = (await catalog.search("docs"))[0];
+    expect(docs?.installed).toBe(false);
+  });
+
+  it("delegates install to the plugin service by bundled name", async () => {
+    const catalog = service();
+    await expect(catalog.install("docs")).rejects.toThrow(
       "installation stopped by test",
     );
-    expect(installArgs).toMatchObject({
-      entryId: "memory",
-      source: "npm:bb-plugin-memory@^0.2.0",
-      npmRegistry: expect.stringContaining("github-release"),
+    expect(installedNames).toEqual(["docs"]);
+  });
+
+  it("refuses installs while the plugins experiment is disabled", async () => {
+    const catalog = service({ enabled: false });
+    await expect(catalog.install("docs")).rejects.toThrow(
+      "Plugins are disabled",
+    );
+    expect(installedNames).toEqual([]);
+  });
+
+  it("rejects unknown catalog entries", async () => {
+    const catalog = service();
+    await expect(catalog.install("does-not-exist")).rejects.toThrow(
+      'unknown plugin catalog entry "does-not-exist"',
+    );
+  });
+
+  it("drops entries whose bundled manifest is unreadable", async () => {
+    const missingRoot = await mkdtemp(join(tmpdir(), "bb-missing-plugin-"));
+    await rm(missingRoot, { recursive: true, force: true });
+    const warnings: string[] = [];
+    const [github] = listBundledPluginRegistrations().filter(
+      (plugin) => plugin.name === "github",
+    );
+    if (github === undefined) throw new Error("github registration missing");
+    const catalog = service({
+      officialPlugins: [
+        github,
+        {
+          name: "broken",
+          pluginId: "broken",
+          autoInstall: false,
+          defaultEnabled: true,
+          repoDirectory: "official-plugins",
+          category: "Productivity",
+          rootDir: missingRoot,
+        },
+      ],
+      warn: (message) => warnings.push(message),
     });
-    expect(installArgs).not.toHaveProperty("marketplaceId");
+    const results = await catalog.search("");
+    expect(results.map((entry) => entry.entryId)).toEqual(["github"]);
+    expect(warnings.some((warning) => warning.includes("broken"))).toBe(true);
   });
 });

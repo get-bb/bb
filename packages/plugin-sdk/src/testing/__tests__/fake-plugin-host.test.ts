@@ -500,12 +500,7 @@ describe("sdk", () => {
   });
 
   it("keeps nested plugin administration available through the backend SDK", async () => {
-    const catalog = {
-      pluginCount: 1,
-      lastRefreshAt: null,
-      lastAttemptAt: null,
-      lastError: null,
-    };
+    const catalog = { pluginCount: 1 };
     const { bb, harness } = createFakePluginHost({
       sdk: {
         plugins: {

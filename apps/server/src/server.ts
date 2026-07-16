@@ -109,7 +109,6 @@ function normalizeInternalAuthPath(path: string): string {
 
 interface CreateAppOptions {
   bbAppArtifactService?: BbAppArtifactService;
-  startPluginCatalogRefresh?: boolean;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
 }
@@ -442,13 +441,8 @@ export function createApp(
     db: deps.db,
     appVersion: deps.config.appVersion,
     plugins: pluginService,
-    notifyCatalogChanged: () =>
-      deps.hub.notifySystem(["plugin-catalog-changed"]),
     warn: (message) => deps.logger.warn(message),
   });
-  if (options?.startPluginCatalogRefresh !== false) {
-    pluginCatalogService.startPeriodicRefresh();
-  }
   registerProjectRoutes(publicApi, deps);
   registerThreadFolderRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);

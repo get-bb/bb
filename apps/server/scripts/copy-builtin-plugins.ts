@@ -6,8 +6,9 @@ import { pluginPackageJsonSchema } from "@bb/domain";
 import { z } from "zod";
 import {
   BUILTIN_PLUGINS_DIRECTORY_NAME,
-  BUILTIN_PLUGIN_NAMES,
+  BUNDLED_PLUGINS,
   resolveBuiltinPluginRootPathForModuleDir,
+  type BundledPluginDefinition,
 } from "../src/services/plugins/builtin-registry.js";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -146,27 +147,30 @@ async function copyBuiltinPlugin(args: {
 export async function copyBuiltinPlugins(args: {
   bbVersion: string;
   build?: boolean;
+  plugins?: readonly Pick<BundledPluginDefinition, "name" | "repoDirectory">[];
   sourceModuleDir?: string;
   targetRoot?: string;
 }): Promise<void> {
   const resolvedSourceModuleDir = args.sourceModuleDir ?? sourceModuleDir;
   const resolvedTargetRoot = args.targetRoot ?? targetRoot;
+  const plugins = args.plugins ?? BUNDLED_PLUGINS;
   const build = args.build ?? true;
 
   await rm(resolvedTargetRoot, { recursive: true, force: true });
 
-  if (BUILTIN_PLUGIN_NAMES.length > 0) {
+  if (plugins.length > 0) {
     await mkdir(resolvedTargetRoot, { recursive: true });
   }
 
-  for (const name of BUILTIN_PLUGIN_NAMES) {
+  for (const plugin of plugins) {
     await copyBuiltinPlugin({
       bbVersion: args.bbVersion,
       build,
-      name,
+      name: plugin.name,
       sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
         moduleDir: resolvedSourceModuleDir,
-        name,
+        name: plugin.name,
+        repoDirectory: plugin.repoDirectory,
       }),
       targetRoot: resolvedTargetRoot,
     });

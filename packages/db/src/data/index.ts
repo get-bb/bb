@@ -191,7 +191,6 @@ export {
   type PluginSourceIntent,
   type PluginUpdateState,
   type UpsertInstalledPluginInput,
-  listInstalledPluginsFromCatalog,
 } from "./plugins.js";
 export {
   createPluginArtifact,
@@ -204,13 +203,6 @@ export {
   type CreatePluginArtifactInput,
   type PluginArtifactRow,
 } from "./plugin-artifacts.js";
-export {
-  getPluginCatalog,
-  updatePluginCatalogRefreshFailure,
-  upsertPluginCatalog,
-  type PluginCatalogRow,
-  type UpsertPluginCatalogInput,
-} from "./plugin-catalog.js";
 export {
   deleteAllPluginSettings,
   deletePluginKvValue,

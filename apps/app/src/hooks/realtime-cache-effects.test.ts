@@ -35,10 +35,6 @@ import {
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
 import { pluginContributionsQueryKey } from "./queries/plugin-contribution-queries";
-import {
-  pluginCatalogSearchQueryKey,
-  pluginCatalogStatusQueryKey,
-} from "./queries/plugin-catalog-queries";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
@@ -235,31 +231,6 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(summaryKey)?.isInvalidated).toBe(true);
     effects.dispose();
-  });
-
-  it("invalidates only catalog caches on plugin-catalog-changed", () => {
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const statusKey = pluginCatalogStatusQueryKey();
-    const searchKey = pluginCatalogSearchQueryKey("");
-    const contributionsKey = pluginContributionsQueryKey(true);
-    queryClient.setQueryData(statusKey, { pluginCount: 0 });
-    queryClient.setQueryData(searchKey, []);
-    queryClient.setQueryData(contributionsKey, {
-      threadActions: [],
-      mentionProviders: [],
-    });
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "system",
-      changes: ["plugin-catalog-changed"],
-    });
-
-    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(searchKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(contributionsKey)?.isInvalidated).not.toBe(
-      true,
-    );
   });
 
   it.each(PROJECT_PROMPT_HISTORY_THREAD_CHANGES)(

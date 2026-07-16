@@ -10,7 +10,7 @@ import {
 } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
-import type { BuiltinPluginRegistration } from "./builtin-registry.js";
+import type { BundledPluginRegistration } from "./builtin-registry.js";
 import type { PluginManifest } from "./manifest.js";
 import type {
   PluginApiHandle,
@@ -63,6 +63,8 @@ export interface LoadedPlugin {
   services: ServiceRuntime[];
   isBuiltin: boolean;
   builtinName: string | null;
+  /** Loads/exposes regardless of the "Plugins" experiment (builtin provenance). */
+  experimentExempt: boolean;
 }
 
 export interface PluginServiceDeps {
@@ -95,8 +97,8 @@ export interface PluginServiceDeps {
   appVersion: string;
   /** The `plugins` experiment gate for user-installed plugins, read live. */
   isEnabled: () => boolean;
-  /** Declared first-party plugins installed by default; test-only override. */
-  builtinPlugins?: readonly BuiltinPluginRegistration[];
+  /** Declared first-party plugins bundled with the app; test-only override. */
+  bundledPlugins?: readonly BundledPluginRegistration[];
   /** Managed source-development only: rebuild and reload builtin frontends. */
   watchBuiltinPluginSources?: boolean;
   /** Factory-execution time box; overridable in tests. */

@@ -152,20 +152,12 @@ export async function applyPluginUpdate(
 
 export interface PluginCatalogStatus {
   pluginCount: number;
-  lastRefreshAt: number | null;
-  lastAttemptAt: number | null;
-  lastError: string | null;
 }
 
 function toPluginCatalogStatus(
   data: SdkPluginCatalogStatus,
 ): PluginCatalogStatus {
-  return {
-    pluginCount: data.pluginCount,
-    lastRefreshAt: data.lastRefreshAt ?? null,
-    lastAttemptAt: data.lastAttemptAt ?? null,
-    lastError: data.lastError ?? null,
-  };
+  return { pluginCount: data.pluginCount };
 }
 
 export async function fetchPluginCatalogStatus(
@@ -173,14 +165,6 @@ export async function fetchPluginCatalogStatus(
 ): Promise<PluginCatalogStatus> {
   return toPluginCatalogStatus(
     await createPluginsClient(fetchImpl).catalog.status(),
-  );
-}
-
-export async function refreshPluginCatalog(
-  fetchImpl: FetchLike,
-): Promise<PluginCatalogStatus> {
-  return toPluginCatalogStatus(
-    await createPluginsClient(fetchImpl).catalog.refresh(),
   );
 }
 
@@ -202,7 +186,7 @@ export interface PluginCatalogSearchEntry {
   displayName: string;
   description: string;
   icon: string | null;
-  category: string | null;
+  category: string;
   source: string;
   installed: boolean;
   compatible: boolean;
@@ -217,7 +201,7 @@ function toPluginCatalogSearchEntry(
     displayName: data.displayName,
     description: data.description,
     icon: data.icon,
-    category: data.category ?? null,
+    category: data.category,
     source: data.source,
     installed: data.installed,
     compatible: data.compatible,

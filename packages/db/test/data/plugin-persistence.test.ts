@@ -6,13 +6,10 @@ import {
   deleteInstalledPlugin,
   getInstalledPluginRegistration,
   getInstalledPlugin,
-  getPluginCatalog,
   listPluginArtifacts,
   migrate,
   setInstalledPluginActiveArtifact,
   upsertInstalledPlugin,
-  updatePluginCatalogRefreshFailure,
-  upsertPluginCatalog,
   type DbConnection,
 } from "../../src/index.js";
 
@@ -90,25 +87,6 @@ describe("normalized plugin persistence", () => {
     expect(getInstalledPluginRegistration(db, "linear")?.activeArtifactId).toBe(
       null,
     );
-  });
-
-  it("upserts singleton catalog state and records refresh failures", () => {
-    upsertPluginCatalog(db, {
-      catalogJson: '{"schemaVersion":1}',
-      etag: '"v1"',
-      lastModified: "Wed, 15 Jul 2026 12:00:00 GMT",
-      lastSuccessfulRefreshAt: null,
-      lastAttemptedRefreshAt: null,
-      lastError: null,
-    });
-
-    expect(getPluginCatalog(db)).toMatchObject({ id: 1, etag: '"v1"' });
-    updatePluginCatalogRefreshFailure(db, 123, "offline");
-    expect(getPluginCatalog(db)).toMatchObject({
-      lastAttemptedRefreshAt: 123,
-      lastError: "offline",
-      catalogJson: '{"schemaVersion":1}',
-    });
   });
 
   it("rejects an npm artifact without registry integrity at runtime", () => {

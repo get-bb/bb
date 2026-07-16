@@ -605,28 +605,33 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return null;
   }
 
+  // Auto-installed builtins load regardless of the "Plugins" experiment;
+  // store-installed officials share bundled (builtin) sources but were a
+  // user opt-in through the catalog, so they stay behind the experiment.
+  function experimentGateExempt(row: InstalledPluginRow): boolean {
+    return row.provenance === "builtin";
+  }
+
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
-    return row?.sourceKind === "builtin";
+    return row !== undefined && experimentGateExempt(row);
   }
 
   function experimentGateDisabledDetail(
     row: InstalledPluginRow,
   ): string | null {
-    if (builtinName(row) === null) {
+    if (!experimentGateExempt(row)) {
       return 'disabled by the "Plugins" experiment';
     }
     return null;
   }
 
   function shouldLoadRow(row: InstalledPluginRow): boolean {
-    const name = builtinName(row);
-    if (name !== null) return true;
-    return deps.isEnabled();
+    return experimentGateExempt(row) || deps.isEnabled();
   }
 
   function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
-    return plugin.builtinName !== null || deps.isEnabled();
+    return plugin.experimentExempt || deps.isEnabled();
   }
 
   function shouldExposePluginId(id: string): boolean {
@@ -943,6 +948,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       })),
       isBuiltin: loadedBuiltinName !== null,
       builtinName: loadedBuiltinName,
+      experimentExempt: experimentGateExempt(row),
     };
     if (previous !== undefined) {
       await disposePluginInstance(row.id, previous);

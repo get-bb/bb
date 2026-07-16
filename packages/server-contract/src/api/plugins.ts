@@ -283,9 +283,6 @@ export type PluginTokenResponse = z.infer<typeof pluginTokenResponseSchema>;
 
 export const pluginCatalogStatusSchema = z.object({
   pluginCount: z.number(),
-  lastRefreshAt: z.number().nullable(),
-  lastAttemptAt: z.number().nullable(),
-  lastError: z.string().nullable(),
 });
 export type PluginCatalogStatus = z.infer<typeof pluginCatalogStatusSchema>;
 
@@ -296,17 +293,12 @@ export type PluginCatalogStatusResponse = z.infer<
   typeof pluginCatalogStatusResponseSchema
 >;
 
-export const pluginCatalogRefreshRequestSchema = z.object({}).strict();
-export type PluginCatalogRefreshRequest = z.infer<
-  typeof pluginCatalogRefreshRequestSchema
->;
-
 export const pluginCatalogSearchResultSchema = z.object({
   entryId: z.string(),
   displayName: z.string(),
   description: z.string(),
   icon: z.string().nullable(),
-  category: z.string().nullable(),
+  category: z.string(),
   source: z.string(),
   installed: z.boolean(),
   compatible: z.boolean(),

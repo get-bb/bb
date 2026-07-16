@@ -9,7 +9,6 @@ import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
   PluginCatalogSearchResult,
-  PluginCatalogStatus,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
 import { installedPluginSchema } from "@bb/server-contract";
@@ -161,37 +160,10 @@ function formatMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
 }
 
-function formatRelativeDate(value: string | number | null | undefined): string {
-  if (value == null) return "never";
-  const elapsed = Date.now() - new Date(value).getTime();
-  if (!Number.isFinite(elapsed)) return String(value);
-  const future = elapsed < 0;
-  const absolute = Math.abs(elapsed);
-  const units = [
-    [86_400_000, "day"],
-    [3_600_000, "hour"],
-    [60_000, "minute"],
-  ] as const;
-  const selected = units.find(([milliseconds]) => absolute >= milliseconds);
-  const count = selected ? Math.max(1, Math.floor(absolute / selected[0])) : 0;
-  const unit = selected?.[1] ?? "minute";
-  const phrase = `${count} ${unit}${count === 1 ? "" : "s"}`;
-  return future ? `in ${phrase}` : `${phrase} ago`;
-}
-
 function formatAbsoluteDate(value: string | number | undefined): string {
   if (value === undefined) return "unknown date";
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : String(value);
-}
-
-function printCatalogStatus(catalog: PluginCatalogStatus): void {
-  console.log("Plugin catalog");
-  console.log(`  plugins: ${catalog.pluginCount}`);
-  console.log(`  last refreshed: ${formatRelativeDate(catalog.lastRefreshAt)}`);
-  if (catalog.lastError) {
-    console.log(`  state: refresh failed — ${catalog.lastError}`);
-  }
 }
 
 function dualInterpretationError(source: string): string {
@@ -374,43 +346,9 @@ export function registerPluginCommands(
     // pass flags after <id> through to the plugin command untouched.
     .enablePositionalOptions();
 
-  const catalog = plugin
-    .command("catalog")
-    .description("Inspect and refresh the BB plugin catalog");
-
-  catalog
-    .command("status")
-    .description("Show plugin catalog refresh status")
-    .option("--json", "Output JSON")
-    .action(
-      action(async (opts: JsonOutputOptions) => {
-        const status = await createCliBbSdk(getUrl()).plugins.catalog.status();
-        if (opts.json) {
-          outputJson(opts, status);
-          return;
-        }
-        printCatalogStatus(status);
-      }),
-    );
-
-  catalog
-    .command("refresh")
-    .description("Refresh the plugin catalog")
-    .option("--json", "Output JSON")
-    .action(
-      action(async (opts: JsonOutputOptions) => {
-        const status = await createCliBbSdk(getUrl()).plugins.catalog.refresh();
-        if (opts.json) {
-          outputJson(opts, status);
-          return;
-        }
-        printCatalogStatus(status);
-      }),
-    );
-
   plugin
     .command("search <query>")
-    .description("Search the BB plugin catalog")
+    .description("Search BB's official plugins (bundled with the app)")
     .option("--json", "Output JSON")
     .action(
       action(async (query: string, opts: JsonOutputOptions) => {
@@ -510,7 +448,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install an exact catalog entry, local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; builtin ids are reserved)",
+      "Install a bundled official plugin by name, local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")
@@ -521,7 +459,7 @@ export function registerPluginCommands(
           let summary =
             intent.kind === "source"
               ? intent.summary
-              : `Installing ${intent.entry.displayName} from the plugin catalog (${intent.entry.source})`;
+              : `Installing ${intent.entry.displayName}, bundled with BB (${intent.entry.source})`;
           if (intent.kind === "source" && intent.source.startsWith("path:")) {
             const path = intent.source.slice(5);
             // Best effort — a missing/invalid manifest is the server's

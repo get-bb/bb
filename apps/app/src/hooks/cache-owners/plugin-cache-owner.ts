@@ -4,11 +4,7 @@ import {
   pluginSettingsViewQueryKey,
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
-import {
-  allPluginCatalogSearchQueryKeyPrefix,
-  pluginCatalogStatusQueryKey,
-  type PluginCatalogStatus,
-} from "../queries/plugin-catalog-queries";
+import { allPluginCatalogSearchQueryKeyPrefix } from "../queries/plugin-catalog-queries";
 
 /**
  * Cache owner for plugin management data. The PUT /plugins/:id/settings
@@ -39,20 +35,9 @@ export function invalidatePluginList(args: { queryClient: QueryClient }): void {
 }
 
 /**
- * Store a catalog refresh response immediately so status text and errors do
- * not wait for another request.
- */
-export function applyPluginCatalogStatus(args: {
-  queryClient: QueryClient;
-  status: PluginCatalogStatus;
-}): void {
-  args.queryClient.setQueryData(pluginCatalogStatusQueryKey(), args.status);
-}
-
-/**
- * Refetch catalog results after a successful refresh or install. Search rows
- * carry installed and compatibility state, so plugin lifecycle changes also
- * invalidate this prefix. Failed refreshes intentionally keep cached rows.
+ * Refetch catalog results after an install. Search rows carry installed and
+ * compatibility state, so plugin lifecycle changes also invalidate this
+ * prefix.
  */
 export function invalidatePluginCatalogSearch(args: {
   queryClient: QueryClient;

@@ -1,7 +1,6 @@
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   pluginCatalogInstallRequestSchema,
-  pluginCatalogRefreshRequestSchema,
   pluginCatalogSearchResponseSchema,
   pluginCatalogStatusResponseSchema,
   pluginApplyUpdateRequestSchema,
@@ -88,11 +87,9 @@ export type PluginApplyUpdateResult = PluginApplyUpdateContract;
 
 export type PluginCatalogStatusResult = PluginCatalogStatusContract;
 export type PluginCatalogSearchResult = PluginCatalogSearchContract[];
-export type PluginCatalogRefreshResult = PluginCatalogStatusContract;
 
 export interface PluginCatalogArea {
   install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
-  refresh(): Promise<PluginCatalogRefreshResult>;
   search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
   status(): Promise<PluginCatalogStatusResult>;
 }
@@ -157,15 +154,6 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         jsonInit("POST", body),
       );
       return response.plugin;
-    },
-    async refresh() {
-      const body = pluginCatalogRefreshRequestSchema.parse({});
-      const response = await requestParsed(
-        "/api/v1/plugin-catalog/refresh",
-        pluginCatalogStatusResponseSchema,
-        jsonInit("POST", body),
-      );
-      return response.catalog;
     },
     async search(input) {
       const query = z.string().parse(input.query);

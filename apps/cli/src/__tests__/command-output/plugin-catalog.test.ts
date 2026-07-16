@@ -9,20 +9,13 @@ import {
 } from "../helpers/command-output-harness.js";
 import { registerPluginCommands } from "../../commands/plugin.js";
 
-const catalog = {
-  pluginCount: 2,
-  lastRefreshAt: Date.parse("2026-07-12T12:00:00.000Z"),
-  lastAttemptAt: Date.parse("2026-07-12T12:00:00.000Z"),
-  lastError: null,
-};
-
 const searchResult = {
   entryId: "linear",
   displayName: "Linear",
   description: "Linear issue tools",
   icon: null,
-  category: null,
-  source: "npm:@example/linear@1.4.2",
+  category: "Developer tools",
+  source: "builtin:linear",
   installed: false,
   compatible: true,
   incompatibleReason: null,
@@ -30,13 +23,13 @@ const searchResult = {
 
 const installedPlugin = {
   id: "linear",
-  source: "catalog:linear",
+  source: "builtin:linear",
   rootDir: "/plugins/linear",
   version: "1.4.2",
   provenance: "catalog",
   isOrphanedBuiltin: false,
   catalogEntryId: "linear",
-  sourceDisplay: "npm · @example/linear · tracks compatible",
+  sourceDisplay: "builtin · linear",
   updateState: {},
   enabled: true,
   description: "Linear issue tools",
@@ -65,28 +58,6 @@ describe("bb plugin catalog", () => {
   setupCommandOutputTestEnvironment();
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
-
-  it("shows singleton catalog status", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(json({ catalog }));
-
-    await runCommand(["plugin", "catalog", "status"], register);
-
-    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
-    expect(output).toContain("Plugin catalog");
-    expect(output).toContain("plugins: 2");
-  });
-
-  it("refreshes the singleton catalog with a strict empty body", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(json({ catalog }));
-
-    await runCommand(["plugin", "catalog", "refresh"], register);
-
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith(
-      "http://server/api/v1/plugin-catalog/refresh",
-      expect.objectContaining({ method: "POST", body: "{}" }),
-    );
-  });
 
   it("renders catalog search without marketplace qualifiers", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json({ results: [searchResult] }));
@@ -154,7 +125,7 @@ describe("bb plugin catalog", () => {
       entryId: "linear",
     });
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
-      "from the plugin catalog",
+      "bundled with BB",
     );
   });
 
@@ -198,16 +169,11 @@ describe("bb plugin catalog", () => {
     expect(error).toContain("git:<url>@<ref>");
   });
 
-  it("advertises only singleton catalog commands", async () => {
+  it("no longer advertises the remote catalog command group", async () => {
     const pluginHelp = await getHelpOutput(["plugin"], register);
-    expect(pluginHelp).toContain("catalog");
+    expect(pluginHelp).not.toContain("catalog");
     expect(pluginHelp).not.toContain("marketplace");
-
-    const catalogHelp = await getHelpOutput(["plugin", "catalog"], register);
-    expect(catalogHelp).toContain("status");
-    expect(catalogHelp).toContain("refresh");
-    expect(catalogHelp).not.toContain("add");
-    expect(catalogHelp).not.toContain("remove");
+    expect(pluginHelp).toContain("search");
 
     const installHelp = await getHelpOutput(["plugin", "install"], register);
     expect(installHelp).not.toContain("--version");

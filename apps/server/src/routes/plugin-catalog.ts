@@ -1,7 +1,4 @@
-import {
-  pluginCatalogInstallRequestSchema,
-  pluginCatalogRefreshRequestSchema,
-} from "@bb/server-contract";
+import { pluginCatalogInstallRequestSchema } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { PluginCatalogService } from "../services/plugin-catalog/plugin-catalog-service.js";
 
@@ -17,21 +14,11 @@ export function registerPluginCatalogRoutes(
     context.json({ catalog: catalog.status() }),
   );
 
-  app.get("/plugin-catalog/search", (context) =>
-    context.json({ results: catalog.search(context.req.query("q") ?? "") }),
+  app.get("/plugin-catalog/search", async (context) =>
+    context.json({
+      results: await catalog.search(context.req.query("q") ?? ""),
+    }),
   );
-
-  app.post("/plugin-catalog/refresh", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    if (!pluginCatalogRefreshRequestSchema.safeParse(json).success) {
-      return context.json({ error: "expected an empty JSON object" }, 422);
-    }
-    try {
-      return context.json({ catalog: await catalog.refresh() });
-    } catch (error) {
-      return context.json({ error: message(error) }, 422);
-    }
-  });
 
   app.post("/plugin-catalog/install", async (context) => {
     const json: unknown = await context.req.json().catch(() => null);

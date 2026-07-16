@@ -12,11 +12,10 @@ import {
   type PluginProvenance,
   type PluginSourceIntent,
 } from "@bb/db";
-import { catalogPolicyWideningProblem } from "../plugin-catalog/catalog.js";
 import {
-  BUILTIN_PLUGIN_NAMES,
+  BUNDLED_PLUGINS,
   builtinPluginSource,
-  type BuiltinPluginRegistration,
+  type BundledPluginRegistration,
 } from "./builtin-registry.js";
 import {
   isCommitSha,
@@ -34,7 +33,6 @@ import type {
   PluginServiceDeps,
 } from "./plugin-service-internal.js";
 import {
-  evaluateCompatibility,
   gitResolvedVersion,
   resolveGitRef,
   type GitRefKind,
@@ -44,7 +42,7 @@ import {
 
 export interface PluginRegistrationContext {
   deps: PluginServiceDeps;
-  builtinPlugins: readonly BuiltinPluginRegistration[];
+  bundledPlugins: readonly BundledPluginRegistration[];
   withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
   disposeOne: (id: string) => Promise<void>;
   loadOne: (row: InstalledPluginRow) => Promise<void>;
@@ -59,7 +57,7 @@ export interface PluginRegistrationContext {
 export function createPluginRegistration(context: PluginRegistrationContext) {
   const {
     deps,
-    builtinPlugins,
+    bundledPlugins,
     withLifecycleLock,
     disposeOne,
     loadOne,
@@ -76,12 +74,15 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
    * Shared install tail: validate the materialized files (unless the caller
    * already validated them in a staging dir), upsert the row, and (re)load.
    */
-  const builtinPluginIds = new Set<string>(BUILTIN_PLUGIN_NAMES);
+  const bundledPluginNamesById = new Map<string, string>(
+    BUNDLED_PLUGINS.map((plugin) => [plugin.pluginId, plugin.name]),
+  );
 
   function refuseBuiltinShadow(pluginId: string): void {
-    if (!builtinPluginIds.has(pluginId)) return;
+    const bundledName = bundledPluginNamesById.get(pluginId);
+    if (bundledName === undefined) return;
     throw new Error(
-      `install refused: plugin id "${pluginId}" is reserved by the builtin plugin of the same name; install "builtin:${pluginId}" instead`,
+      `install refused: plugin id "${pluginId}" is reserved by the bundled plugin "${bundledName}"; install "builtin:${bundledName}" instead`,
     );
   }
 
@@ -214,27 +215,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       args,
       initialManifest.id,
     );
-    const catalogEngines = args.installation?.engines;
-    const wideningProblem = catalogPolicyWideningProblem(
-      args.installation,
-      initialManifest,
-    );
-    if (wideningProblem !== null) {
-      throw new Error(`install refused: ${wideningProblem}`);
-    }
-    if (catalogEngines !== undefined) {
-      const catalogCompatibility = evaluateCompatibility({
-        bbRange: catalogEngines.bb,
-        sdkRange: catalogEngines.bbPluginSdk,
-        appVersion: deps.appVersion,
-      });
-      if (catalogCompatibility.effective.length > 0) {
-        throw new Error(
-          `install refused by catalog compatibility policy: ${catalogCompatibility.effective.map((problem) => problem.message).join("; ")}`,
-        );
-      }
-    }
-    if (args.provenance.kind !== "builtin") {
+    if (args.provenance.kind !== "builtin" && args.sourceIntent.kind !== "builtin") {
       refuseBuiltinShadow(initialManifest.id);
     }
     const manifest = args.validated
@@ -298,9 +279,6 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       exactResolution: { kind: "path" },
       refuseEngineMismatch: false,
       validated: false,
-      ...(context.installation === undefined
-        ? {}
-        : { installation: context.installation }),
     });
   }
 
@@ -452,23 +430,33 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     });
   }
 
-  function findBuiltinPlugin(
+  function findBundledPlugin(
     name: string,
-  ): BuiltinPluginRegistration | undefined {
-    return builtinPlugins.find((plugin) => plugin.name === name);
+  ): BundledPluginRegistration | undefined {
+    return bundledPlugins.find((plugin) => plugin.name === name);
+  }
+
+  function bundledPluginProvenance(
+    plugin: BundledPluginRegistration,
+  ): PluginProvenance {
+    // Auto-installed builtins are provenance "builtin"; store-only officials
+    // record the user's opt-in as a catalog install of the bundled entry.
+    return plugin.autoInstall
+      ? { kind: "builtin" }
+      : { kind: "catalog", entryId: plugin.name };
   }
 
   async function installBuiltinSource(
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "builtin" }>,
   ): Promise<PluginListEntry> {
-    const builtin = findBuiltinPlugin(parsed.name);
-    if (!builtin) {
+    const bundled = findBundledPlugin(parsed.name);
+    if (!bundled) {
       throw new Error(`unknown builtin plugin "${parsed.name}"`);
     }
     return registerInstalled({
-      rootDir: builtin.rootDir,
+      rootDir: bundled.rootDir,
       source: builtinPluginSource(parsed.name),
-      provenance: { kind: "builtin" },
+      provenance: bundledPluginProvenance(bundled),
       sourceIntent: { kind: "builtin", name: parsed.name },
       exactResolution: { kind: "builtin" },
       refuseEngineMismatch: false,
@@ -476,15 +464,16 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     });
   }
 
-  async function reconcileBuiltins(): Promise<void> {
-    for (const builtin of builtinPlugins) {
-      const source = builtinPluginSource(builtin.name);
+  async function reconcileBundled(): Promise<void> {
+    for (const bundled of bundledPlugins) {
+      const source = builtinPluginSource(bundled.name);
+      const provenance = bundledPluginProvenance(bundled);
       let manifest: PluginManifest;
       try {
-        manifest = await readPluginManifest(builtin.rootDir);
+        manifest = await readPluginManifest(bundled.rootDir);
       } catch (error) {
         logger.warn(
-          `builtin plugin ${builtin.name} is unavailable: ${
+          `bundled plugin ${bundled.name} is unavailable: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -494,35 +483,39 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       if (existing?.removedAt !== null && existing?.removedAt !== undefined) {
         continue;
       }
+      // Store-only plugins install on demand; reconcile only refreshes
+      // registrations the user already opted into.
+      if (!bundled.autoInstall && existing === undefined) {
+        continue;
+      }
       if (
         existing !== undefined &&
-        !rowMatchesInstallSource(
-          existing,
-          { kind: "builtin" },
-          { kind: "builtin", name: builtin.name },
-        )
+        !rowMatchesInstallSource(existing, provenance, {
+          kind: "builtin",
+          name: bundled.name,
+        })
       ) {
         logger.warn(
-          `builtin plugin ${builtin.name} resolved to id "${manifest.id}", but that id is already installed from ${existing.source}; skipping builtin reconciliation`,
+          `bundled plugin ${bundled.name} resolved to id "${manifest.id}", but that id is already installed from ${existing.source}; skipping bundled reconciliation`,
         );
         continue;
       }
       if (
         existing === undefined ||
         existing.version !== manifest.version ||
-        existing.rootDir !== builtin.rootDir
+        existing.rootDir !== bundled.rootDir
       ) {
         upsertInstalledPlugin(deps.db, {
           id: manifest.id,
           source,
-          provenance: { kind: "builtin" },
-          sourceIntent: { kind: "builtin", name: builtin.name },
+          provenance,
+          sourceIntent: { kind: "builtin", name: bundled.name },
           exactResolution: { kind: "builtin" },
           updateState: emptyPluginUpdateState(),
           activeArtifactId: null,
-          rootDir: builtin.rootDir,
+          rootDir: bundled.rootDir,
           version: manifest.version,
-          enabled: existing?.enabled ?? builtin.defaultEnabled,
+          enabled: existing?.enabled ?? bundled.defaultEnabled,
         });
       }
     }
@@ -608,7 +601,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     installedUpdateVersion,
     npmIntentForRow,
     provenanceForRow,
-    reconcileBuiltins,
+    reconcileBundled,
     registerInstalled,
     registrationMatchesForActivation,
     refuseBuiltinShadow,

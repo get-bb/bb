@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   pluginCatalogInstallRequestSchema,
-  pluginCatalogRefreshRequestSchema,
   pluginCatalogSearchResultSchema,
   pluginCatalogStatusSchema,
 } from "../src/index.js";
@@ -26,28 +25,14 @@ describe("plugin catalog contracts", () => {
     ).toThrow();
   });
 
-  it("requires refresh requests to be a strict empty object", () => {
-    expect(pluginCatalogRefreshRequestSchema.parse({})).toEqual({});
-    expect(() =>
-      pluginCatalogRefreshRequestSchema.parse({ force: true }),
-    ).toThrow();
-  });
-
-  it("requires explicit nullable catalog status and search fields", () => {
-    expect(
-      pluginCatalogStatusSchema.parse({
-        pluginCount: 3,
-        lastRefreshAt: null,
-        lastAttemptAt: null,
-        lastError: null,
-      }),
-    ).toEqual({
-      pluginCount: 3,
-      lastRefreshAt: null,
-      lastAttemptAt: null,
-      lastError: null,
+  it("keeps status to the bundled plugin count and search fields required", () => {
+    expect(pluginCatalogStatusSchema.parse({ pluginCount: 4 })).toEqual({
+      pluginCount: 4,
     });
-    expect(() => pluginCatalogStatusSchema.parse({ pluginCount: 3 })).toThrow();
+    // Refresh-era freshness fields no longer survive parsing.
+    expect(
+      pluginCatalogStatusSchema.parse({ pluginCount: 4, lastError: null }),
+    ).toEqual({ pluginCount: 4 });
 
     expect(() =>
       pluginCatalogSearchResultSchema.parse({
@@ -55,7 +40,7 @@ describe("plugin catalog contracts", () => {
         displayName: "Notes",
         description: "Notes",
         icon: null,
-        source: "npm:notes",
+        source: "builtin:notes",
         installed: false,
         compatible: true,
       }),

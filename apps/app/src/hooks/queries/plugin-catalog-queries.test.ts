@@ -5,7 +5,6 @@ import {
   fetchPluginCatalogStatus,
   installCatalogPlugin,
   installPlugin,
-  refreshPluginCatalog,
   searchPluginCatalog,
 } from "./plugin-catalog-queries";
 
@@ -131,37 +130,13 @@ describe("plugin installs", () => {
 });
 
 describe("plugin catalog queries", () => {
-  it("binds browser fetch and maps nullable catalog status fields", async () => {
+  it("binds browser fetch and parses the status count", async () => {
     const status = await fetchPluginCatalogStatus(
       receiverSensitiveFetch({
-        catalog: {
-          pluginCount: 3,
-          lastRefreshAt: 1_752_300_000_000,
-          lastAttemptAt: null,
-          lastError: "fetch failed",
-        },
+        catalog: { pluginCount: 4 },
       }),
     );
-    expect(status).toEqual({
-      pluginCount: 3,
-      lastRefreshAt: 1_752_300_000_000,
-      lastAttemptAt: null,
-      lastError: "fetch failed",
-    });
-  });
-
-  it("refreshes the singleton catalog with an empty body", async () => {
-    const { fetchImpl, calls } = recordingFetch({
-      catalog: {
-        pluginCount: 3,
-        lastRefreshAt: null,
-        lastAttemptAt: null,
-        lastError: null,
-      },
-    });
-    await refreshPluginCatalog(fetchImpl);
-    expect(calls[0]?.url).toBe("/api/v1/plugin-catalog/refresh");
-    expect(calls[0]?.init?.body).toBe("{}");
+    expect(status).toEqual({ pluginCount: 4 });
   });
 
   it("parses search results without source-catalog identity", async () => {

@@ -427,22 +427,21 @@ Plugin state lives under the data dir:
                                    commands, injected into agent threads)
 ```
 
-BB ships one official plugin catalog. Its bundled last-known-good snapshot is
-available without network access; the server conditionally fetches the fixed
-HTTPS `plugin-catalog.json` source at startup and every six hours thereafter,
-persisting HTTP validators, refresh timestamps, and the last error. Refresh
-failures retain the previous catalog and never alter installed plugins. Use
-`bb plugin catalog status` or `bb plugin catalog refresh`; users cannot add,
-remove, or configure catalogs.
-Catalog entries use npm, Git, or GitHub Release sources. Local path installs
-remain available directly through `bb plugin install ./path` or `path:...`.
+BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside the
+app and install from the local bundled copy — no network, no remote catalog.
+Discover them with `bb plugin search` or Settings → Plugins → Browse; users
+cannot add, remove, or configure the official plugin set. Installed official
+plugins are pinned to the bundled copy and update with BB app releases. Local
+path installs remain available directly through `bb plugin install ./path` or
+`path:...`, and direct `npm:`/`git:` installs stay supported.
 
 ### Plugin updates
 
-Plugin updates are manual. `bb plugin outdated` checks tracking sources and
-`bb plugin update <id>` / `bb plugin update --all` applies compatible
-candidates. Catalog metadata refreshes periodically, but there is no automatic
-plugin update application or update audit feed. Reinstalling an already-installed managed plugin is
+Bundled builtin and official plugins update with BB app releases. For direct
+`git:`/`npm:` installs, updates are manual: `bb plugin outdated` checks
+tracking sources and `bb plugin update <id>` / `bb plugin update --all`
+applies compatible candidates; there is no automatic plugin update
+application or update audit feed. Reinstalling an already-installed managed plugin is
 refused — use `bb plugin update`. Before activation bb snapshots the plugin
 database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on

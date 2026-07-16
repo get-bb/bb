@@ -48,7 +48,7 @@ import {
   readPluginManifest,
   type PluginManifest,
 } from "./manifest.js";
-import { listBuiltinPluginRegistrations } from "./builtin-registry.js";
+import { listBundledPluginRegistrations } from "./builtin-registry.js";
 import {
   RESERVED_AGENT_TOOL_NAMES,
   type BbPluginApi,
@@ -79,7 +79,6 @@ import {
 import { createPluginActivation } from "./plugin-activation.js";
 import {
   createManagedPluginArtifacts,
-  type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
 import { createPluginRegistration } from "./plugin-registration.js";
@@ -138,7 +137,7 @@ export interface PluginSkillRootContribution {
 export interface PluginService {
   /** Whether the `plugins` experiment is currently on. */
   isEnabled(): boolean;
-  /** Whether this installed plugin is a builtin. */
+  /** Whether this installed plugin has builtin provenance (experiment-exempt). */
   isBuiltin(id: string): boolean;
   /** Thread lifecycle event emitter, called from the lifecycle seams. */
   events: PluginThreadEventEmitter;
@@ -167,13 +166,11 @@ export interface PluginService {
    * use update for an existing managed plugin.
    */
   install(source: string): Promise<PluginListEntry>;
-  installFromCatalog(args: {
-    source: string;
-    entryId: string;
-    installation?: { engines: { bb?: string; bbPluginSdk?: string } };
-    gitSubdirectory?: string;
-    npmRegistry?: string;
-  }): Promise<PluginListEntry>;
+  /**
+   * Install a bundled official plugin by its registry name (store install).
+   * Registers with catalog provenance so the opt-in survives reconciliation.
+   */
+  installOfficialPlugin(name: string): Promise<PluginListEntry>;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   listUpdateResults(): PluginUpdateCheckEntry[];
@@ -813,8 +810,8 @@ function normalizePluginAgentConfiguration(args: {
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
-  const builtinPlugins =
-    deps.builtinPlugins ?? listBuiltinPluginRegistrations();
+  const bundledPlugins =
+    deps.bundledPlugins ?? listBundledPluginRegistrations();
   const mentionSearchTimeoutMs =
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
@@ -886,7 +883,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     installedUpdateVersion,
     npmIntentForRow,
     provenanceForRow,
-    reconcileBuiltins,
+    reconcileBundled,
     registerInstalled,
     registrationMatchesForActivation,
     refuseBuiltinShadow,
@@ -894,7 +891,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     sourceFingerprint,
   } = createPluginRegistration({
     deps,
-    builtinPlugins,
+    bundledPlugins,
     withLifecycleLock,
     disposeOne,
     loadOne,
@@ -1124,8 +1121,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : { catalogEntryId: row.catalogEntryId }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
-            !builtinPlugins.some(
-              (builtin) => builtin.name === row.sourceBuiltinName,
+            !bundledPlugins.some(
+              (bundled) => bundled.name === row.sourceBuiltinName,
             ),
           sourceDisplay: sourceDisplayForRow(row),
           updateState: updateStateForRow(row),
@@ -1252,23 +1249,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         REGISTRATION_MUTATION_KEY,
         recoverIncompletePluginRollbacks,
       );
-      await reconcileBuiltins();
+      await reconcileBundled();
       await loadAll();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
       if (deps.watchBuiltinPluginSources) {
-        for (const builtin of builtinPlugins) {
+        for (const bundled of bundledPlugins) {
           const row = listInstalledPlugins(deps.db).find(
             (candidate) =>
               candidate.sourceKind === "builtin" &&
-              candidate.sourceBuiltinName === builtin.name,
+              candidate.sourceBuiltinName === bundled.name,
           );
           if (row === undefined) continue;
-          const manifest = await readPluginManifest(builtin.rootDir);
+          const manifest = await readPluginManifest(bundled.rootDir);
           const loop = createPluginDevLoop({
             pluginId: row.id,
             hasApp: manifest.appEntry !== undefined,
             buildApp: async () => {
-              await buildPluginApp(builtin.rootDir, deps.appVersion);
+              await buildPluginApp(bundled.rootDir, deps.appVersion);
             },
             reloadPlugin: async () => {
               await withLifecycleLock(row.id, async () => {
@@ -1283,7 +1280,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             log: (message) => logger.info(`plugin ${row.id}: ${message}`),
           });
           const watcher = watch(
-            builtin.rootDir,
+            bundled.rootDir,
             { recursive: true },
             (_event, filename) => {
               if (typeof filename === "string" && filename.length > 0) {
@@ -1327,34 +1324,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
     },
 
-    async installFromCatalog(args) {
+    async installOfficialPlugin(name) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
-        const parsed = parsePluginSource(args.source);
-        const context: InstallContext = {
-          provenance: {
-            kind: "catalog",
-            entryId: args.entryId,
-          },
-          ...(args.installation === undefined
-            ? {}
-            : { installation: args.installation }),
-          ...(args.gitSubdirectory === undefined
-            ? {}
-            : { gitSubdirectory: args.gitSubdirectory }),
-          ...(args.npmRegistry === undefined
-            ? {}
-            : { npmRegistry: args.npmRegistry }),
-        };
-        if (parsed.kind === "builtin") {
-          throw new Error("catalog entries may not install builtin sources");
+        const bundled = bundledPlugins.find(
+          (plugin) => plugin.name === name && !plugin.autoInstall,
+        );
+        if (bundled === undefined) {
+          throw new Error(`unknown official plugin "${name}"`);
         }
-        if (parsed.kind === "git")
-          return installGitSource(parsed, args.source, context);
-        if (parsed.kind === "npm") {
-          refuseBuiltinShadow(derivePluginId(parsed.name));
-          return installNpmSource(parsed, args.source, context);
-        }
-        return installPathSource(parsed.path, context);
+        return installBuiltinSource({ kind: "builtin", name });
       });
     },
 

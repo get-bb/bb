@@ -10,6 +10,7 @@ import type {
   PluginService,
   PluginWireLookup,
 } from "../services/plugins/plugin-service.js";
+import { findBundledPlugin } from "../services/plugins/builtin-registry.js";
 import { parsePluginSource } from "../services/plugins/install-sources.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
@@ -201,9 +202,16 @@ export function registerPluginRoutes(
   };
   const gateAllowsPlugin = (id: string): boolean =>
     plugins.isEnabled() || plugins.isBuiltin(id);
+  // Only auto-install builtins are exempt from the "Plugins" experiment at
+  // runtime; store-only officials share the builtin: source shape but load
+  // behind the gate, so installing them while it is off must refuse too.
   const sourceBypassesGate = (source: string): boolean => {
     try {
-      return parsePluginSource(source).kind === "builtin";
+      const parsed = parsePluginSource(source);
+      return (
+        parsed.kind === "builtin" &&
+        findBundledPlugin(parsed.name)?.autoInstall === true
+      );
     } catch {
       return false;
     }

@@ -281,7 +281,7 @@ For review or fix pipelines, get the environment ID from
 
 ## Memory
 
-- Memory is an opt-in plugin in the BB Official catalog. Install it with
+- Memory is an opt-in official plugin bundled with the app. Install it with
   `bb plugin install memory` before using `bb memory ...`.
 - Use `bb memory catalog` to inspect the compact index, `bb memory search
 <query>` to find candidates, and `bb memory get <id>` to progressively
@@ -460,35 +460,31 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   (`builtin:<name>`) ship with bb and remain available even when the experiment
   is off, except `connect`, which is gated by the **"bb connect"**
   experiment.
-- **BB Official catalog** (singleton under `/api/v1/plugin-catalog`):
-  - BB ships a bundled last-known-good snapshot and checks one hard-coded HTTPS
-    JSON source at server startup and every six hours thereafter. Users cannot
-    add or remove catalogs.
-  - `bb plugin catalog status [--json]` — show plugin count, freshness, and the
-    last refresh error. `bb plugin catalog refresh [--json]` checks now. A
-    failed check retains the last-known-good catalog and never changes installed
-    plugins.
-  - `bb plugin search <query> [--json]` — search the official catalog by id,
+- **BB Official plugins** (store under `/api/v1/plugin-catalog`):
+  - BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside
+    the app and install from the local copy — no network. Installed official
+    plugins are pinned to the bundled copy and update with BB app releases.
+  - `bb plugin search <query> [--json]` — search the official plugins by id,
     name, description, or category; status shows installed / compatible /
     requires newer bb.
 - Commands:
-  - `bb plugin install <src>` — official catalog entry id, local path, `builtin:<name>`,
+  - `bb plugin install <src>` — official plugin name (github, docs, memory,
+    tasks), local path, `builtin:<name>`,
     `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
     required for `npm:`). Prefixes `path:` / `npm:` / `git:` / `builtin:` skip
-    catalog resolution. To pin or range an npm package, install with
-    `npm:<package>@…` (catalog installs use the catalog entry's source).
+    official-plugin resolution. To pin or range an npm package, install with
+    `npm:<package>@…`.
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
-    track, while exact versions are pinned. Catalog GitHub Release semver
-    ranges track published, SHA-256-verified `.tgz` assets. Git branches track;
+    track, while exact versions are pinned. Git branches track;
     tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
     refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
     are built at install time for path sources and git sources without a
     prebuilt app when their imported dependencies are already available;
     git/npm packages can also ship a metadata-validated prebuilt `dist/`, and
-    npm/GitHub Release packages must. Managed git/npm installs refuse `engines.bb` /
+    npm packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
-    and ids reserved by builtins.
+    and ids reserved by bundled plugins.
   - `bb plugin outdated` — check installed plugins for compatible updates
     (table; `--json` for raw results). Shows latest compatible candidate and
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate

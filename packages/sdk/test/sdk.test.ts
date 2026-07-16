@@ -1022,12 +1022,7 @@ describe("@bb/sdk", () => {
       logoUrl: null,
       logoDarkUrl: null,
     };
-    const catalog = {
-      pluginCount: 1,
-      lastRefreshAt: 10,
-      lastAttemptAt: 10,
-      lastError: null,
-    };
+    const catalog = { pluginCount: 1 };
     const checked = {
       id: "notes",
       outcome: "update-available" as const,
@@ -1067,7 +1062,7 @@ describe("@bb/sdk", () => {
               displayName: "Notes",
               description: "Notes",
               icon: null,
-              category: null,
+              category: "Productivity",
               source: "npm:@bb/notes@^1",
               installed: true,
               compatible: true,
@@ -1076,7 +1071,6 @@ describe("@bb/sdk", () => {
           ],
         },
       },
-      { body: { catalog } },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -1112,7 +1106,6 @@ describe("@bb/sdk", () => {
     await expect(
       sdk.plugins.catalog.search({ query: "notes" }),
     ).resolves.toMatchObject([{ entryId: "notes", compatible: true }]);
-    await expect(sdk.plugins.catalog.refresh()).resolves.toEqual(catalog);
 
     expect(queue.requests).toEqual([
       {
@@ -1161,11 +1154,6 @@ describe("@bb/sdk", () => {
         bodyText: undefined,
         method: "GET",
         url: "http://bb.test/api/v1/plugin-catalog/search?q=notes",
-      },
-      {
-        bodyText: "{}",
-        method: "POST",
-        url: "http://bb.test/api/v1/plugin-catalog/refresh",
       },
     ]);
   });

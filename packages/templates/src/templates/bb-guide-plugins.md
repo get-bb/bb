@@ -54,7 +54,7 @@ provider list --environment "$BB_ENVIRONMENT_ID" --json` and then `bb provider
 models <provider-id> --environment "$BB_ENVIRONMENT_ID" --json` before writing
 an explicit selection; never guess ACP model IDs.
 
-The Memory plugin is an opt-in install from the BB Official catalog:
+The Memory plugin is an opt-in install, bundled with the app:
 `bb plugin install memory`. Once installed, it injects a compact global and
 current-project memory index into agent context and progressively discloses
 full records through CLI-only commands. Because its store works across
@@ -103,10 +103,10 @@ never appear in command arguments, model-visible output, or persisted
 interaction data; success prints only the path, variable names, and
 added/updated/unchanged counts.
 
-  bb plugin catalog status       Show official catalog freshness and errors
-  bb plugin catalog refresh      Refresh the official catalog now
-  bb plugin search <query>       Search the BB Official catalog
-  bb plugin install <entry>      Install an official catalog entry, a local
+  bb plugin search <query>       Search BB's official plugins (bundled with
+                                 the app)
+  bb plugin install <entry>      Install a bundled official plugin by name
+                                 (github, docs, memory, tasks), a local
                                  path, builtin:<name>,
                                  git:<url>@<ref>, or
                                  npm:<package>[@<version|tag|range>]
@@ -114,7 +114,7 @@ added/updated/unchanged counts.
                                  pass --yes to skip). Managed git:/npm:
                                  installs refuse engines.bb / engines.bbPluginSdk
                                  mismatches, manifest/artifact identity
-                                 mismatches, and ids reserved by builtins
+                                 mismatches, and ids reserved by bundled plugins
                                  Omitted npm specs, ranges, dist-tags, and git
                                  branches track; exact npm versions, git tags,
                                  and git commits are pinned
@@ -160,51 +160,41 @@ added/updated/unchanged counts.
                                  (if it declares bb.app) and reload the
                                  plugin; Ctrl+C to stop
 
-BB Official catalog
+BB Official plugins
 
-BB ships a bundled snapshot of one fixed official catalog and checks its
-hard-coded HTTPS JSON source at server startup and every six hours thereafter.
-`bb plugin catalog status` shows freshness and the last refresh error;
-`bb plugin catalog refresh` checks now.
-A failed check keeps the last-known-good catalog. Catalog refresh changes only
-discovery metadata; `bb plugin outdated` / `bb plugin update` move installed
-plugin artifacts.
+BB's official plugins — GitHub, Docs, Memory, and Tasks — ship bundled inside
+the app itself. They appear in Settings → Plugins → Browse and install with
+one click from the local bundled copy: no network, no download, no separate
+release. Install from the CLI by bare name (`bb plugin install github`,
+`bb plugin install docs`, `bb plugin install memory`, or
+`bb plugin install tasks`). Installed official plugins are pinned to the
+bundled copy and update automatically when the BB app updates.
 
-The catalog includes GitHub, Docs, Memory, and Tasks as opt-in installs
-(`bb plugin install github`, `bb plugin install simple-notes`,
-`bb plugin install memory`, or `bb plugin install tasks`). Catalog entries may
-resolve to npm, Git, or a GitHub Release archive. Catalogs cannot contain local
-path sources and users cannot add or remove catalogs.
+For direct git:/npm: installs, updates are manual: `bb plugin outdated`
+checks tracking sources and `bb plugin update` applies compatible candidates.
+Reinstalling an already-installed managed plugin is refused — use
+`bb plugin update`. A failed activation restores the pre-update snapshot and
+leaves the latest failure visible as needing attention. Exact npm versions,
+git tags and commits, path sources, and bundled official plugins are pinned;
+npm ranges/omitted specs/dist-tags and git branches track compatible updates.
 
-Updates are manual: `bb plugin outdated` checks tracking sources and
-`bb plugin update` applies compatible candidates. Reinstalling an
-already-installed managed plugin is refused — use `bb plugin update`. A failed
-activation restores the pre-update snapshot and leaves the latest failure
-visible as needing attention. Exact npm versions, git tags and commits, and path
-sources are pinned; npm ranges/omitted specs/dist-tags, GitHub Release semver
-ranges, and git branches track compatible updates. GitHub Release entries use
-published `.tgz` assets and BB verifies GitHub's current SHA-256 digest before
-install. Release assets may be mutable, so replacing an asset under an existing
-tag changes what a future install receives.
-
-`bb plugin search <query>` matches id, display name, description, and category
-in the official catalog (status: installed / compatible / requires newer bb).
-Install a catalog entry by its bare id. To select an npm version, tag, or range,
-use a direct `npm:<package>@<version|tag|range>` install. Direct `path:`, `npm:`,
-`git:`, and `builtin:` sources—and path-like syntax—continue to bypass catalog
-resolution.
+`bb plugin search <query>` matches id, display name, description, and
+category across the bundled official plugins (status: installed / compatible
+/ requires newer bb). Install an official plugin by its bare name. Direct
+`path:`, `npm:`, `git:`, and `builtin:` sources—and path-like
+syntax—continue to bypass official-plugin resolution.
 
 Frontend builds are automatic once installed: path installs and git installs
 without a prebuilt app compile dist/ at install time (a build failure fails the
 install), provided their imported dependencies are already available. Git and
-npm plugins may also ship a metadata-validated prebuilt app; npm and GitHub
-Release packages must do so or the install is refused. The server rebuilds
-source-built apps after a bb upgrade.
+npm plugins may also ship a metadata-validated prebuilt app; npm packages must
+do so or the install is refused. The server rebuilds source-built apps after a
+bb upgrade.
 
-The backend half is prebuilt too: when a builtin/git/npm or GitHub Release
-install ships a dist/server.js built for the running SDK major, the server
-loads it instead of the TypeScript source. Path installs always load server.ts
-from source, so `bb plugin dev`/reload see edits immediately.
+The backend half is prebuilt too: when a builtin/official/git/npm install
+ships a dist/server.js built for the running SDK major, the server loads it
+instead of the TypeScript source. Path installs always load server.ts from
+source, so `bb plugin dev`/reload see edits immediately.
 
 `bb plugin dev` is the edit loop: it requires the directory to already be
 installed as a plugin (`bb plugin install .` first), ignores dist/,
