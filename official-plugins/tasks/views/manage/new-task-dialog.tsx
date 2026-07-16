@@ -664,29 +664,6 @@ export function NewTaskDialog({
               </PopoverContent>
             </Popover>
           ) : null}
-          {/* Same muted icon-only affordance as the detail page's editor. */}
-          <button
-            type="button"
-            title="Attach files"
-            aria-label="Attach files"
-            disabled={submitting}
-            className="flex size-6.5 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Icon name="Paperclip" className="size-4" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            aria-hidden
-            tabIndex={-1}
-            className="hidden"
-            onChange={(event) => {
-              stageMore([...(event.target.files ?? [])]);
-              event.target.value = "";
-            }}
-          />
         </div>
         {error ? (
           <p role="alert" className="px-4 pt-2 text-xs text-destructive">
@@ -708,13 +685,40 @@ export function NewTaskDialog({
                 onCheckedChange={setCreateMore}
                 label="Create more"
               />
-              <Button
-                size="sm"
-                disabled={!canSubmit}
-                onClick={() => void submit()}
-              >
-                {subtaskMode ? "Create sub-task" : "Create task"}
-              </Button>
+              <div className="flex items-center gap-1.5">
+                {/* Same muted icon-only affordance as the detail editor and
+                    comment composer; lives beside the primary action so the
+                    chip row never wraps just for it. */}
+                <button
+                  type="button"
+                  title="Attach files"
+                  aria-label="Attach files"
+                  disabled={submitting}
+                  className="flex size-6.5 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Icon name="Paperclip" className="size-4" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  aria-hidden
+                  tabIndex={-1}
+                  className="hidden"
+                  onChange={(event) => {
+                    stageMore([...(event.target.files ?? [])]);
+                    event.target.value = "";
+                  }}
+                />
+                <Button
+                  size="sm"
+                  disabled={!canSubmit}
+                  onClick={() => void submit()}
+                >
+                  {subtaskMode ? "Create sub-task" : "Create task"}
+                </Button>
+              </div>
             </>
           )}
         </DialogFooter>
