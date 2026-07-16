@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
 
 const rootDirectory = import.meta.dirname;
-const repositoryRoot = resolve(rootDirectory, "../../..");
+const repositoryRoot = resolve(rootDirectory, "../..");
 const bbPackage = JSON.parse(
   await readFile(
     resolve(repositoryRoot, "packages/bb-app/package.json"),

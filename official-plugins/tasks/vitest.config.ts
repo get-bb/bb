@@ -1,5 +1,5 @@
 import path from "node:path";
-import { defineWorkspaceTestConfig } from "../../../vitest.shared.js";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
 export default defineWorkspaceTestConfig({
   resolve: {
