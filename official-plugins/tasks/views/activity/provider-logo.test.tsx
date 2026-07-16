@@ -16,9 +16,14 @@ describe("CommentProviderAvatar", () => {
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
     // The avatar chip is labeled with the provider name for screen readers.
-    expect(screen.getByRole("img", { name: "Codex" })).toBeTruthy();
+    const avatar = screen.getByRole("img", { name: "Codex" });
+    expect(avatar.className).not.toContain("rounded-full");
+    expect(avatar.className).not.toContain("bg-primary");
     // ...and shows the OpenAI brand mark for the codex provider.
     expect(container.querySelector("svg > title")?.textContent).toBe("OpenAI");
+    expect(container.querySelector("svg")?.className.baseVal).toContain(
+      "size-4",
+    );
     // No <img>: built-in providers render a bundled glyph, not a served asset.
     expect(container.querySelector("img")).toBeNull();
   });
@@ -31,7 +36,8 @@ describe("CommentProviderAvatar", () => {
     };
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
-    expect(screen.getByRole("img", { name: "Hermes Agent" })).toBeTruthy();
+    const avatar = screen.getByRole("img", { name: "Hermes Agent" });
+    expect(avatar.className).not.toContain("rounded-full");
     expect(container.querySelector("svg > title")?.textContent).toBe(
       "Hermes Agent",
     );
@@ -45,7 +51,9 @@ describe("CommentProviderAvatar", () => {
     };
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
-    expect(screen.getByRole("img", { name: "Custom Agent" })).toBeTruthy();
+    const avatar = screen.getByRole("img", { name: "Custom Agent" });
+    expect(avatar.className).not.toContain("rounded-full");
+    expect(avatar.className).not.toContain("border");
     const img = container.querySelector("img");
     expect(img?.getAttribute("src")).toBe(
       "/api/v1/system/providers/acp-custom/logo",
@@ -66,7 +74,9 @@ describe("CommentProviderAvatar", () => {
 
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("svg > title")?.textContent).toBe("OpenAI");
-    expect(screen.getByRole("img", { name: "Codex" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Codex" }).className).not.toContain(
+      "rounded-full",
+    );
   });
 
   it("falls back to the generic glyph when an unknown served logo fails", () => {
@@ -83,13 +93,17 @@ describe("CommentProviderAvatar", () => {
 
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("svg > title")).toBeNull();
-    expect(screen.getByRole("img", { name: "Custom Agent" })).toBeTruthy();
+    expect(
+      screen.getByRole("img", { name: "Custom Agent" }).className,
+    ).toContain("rounded-full");
   });
 
   it("falls back to the generic agent glyph when no provider resolves", () => {
     const { container } = render(<CommentProviderAvatar provider={null} />);
 
-    expect(screen.getByRole("img", { name: "Agent" })).toBeTruthy();
+    const avatar = screen.getByRole("img", { name: "Agent" });
+    expect(avatar.className).toContain("rounded-full");
+    expect(avatar.className).toContain("bg-primary");
     expect(container.querySelector("img")).toBeNull();
     // No brand mark is rendered for an unresolved provider.
     expect(container.querySelector("svg > title")).toBeNull();
@@ -104,7 +118,9 @@ describe("CommentProviderAvatar", () => {
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
     // Unknown/unvendored providers still name themselves for accessibility...
-    expect(screen.getByRole("img", { name: "Unknown Agent" })).toBeTruthy();
+    const avatar = screen.getByRole("img", { name: "Unknown Agent" });
+    expect(avatar.className).toContain("rounded-full");
+    expect(avatar.className).toContain("bg-primary");
     // ...and fall back to the generic glyph (no brand <title>).
     expect(container.querySelector("svg > title")).toBeNull();
     expect(container.querySelector("img")).toBeNull();
