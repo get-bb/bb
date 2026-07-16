@@ -48,14 +48,37 @@ not already exist. Dispatch requires an existing preset.
    targets the prior latest responder rather than the new comment itself.
 
 4. Attach result artifacts that belong with the task, such as reports,
-   screenshots, patches, or generated files:
+   screenshots, patches, or generated files. `--file` accepts images and
+   other files (for example `.png`, `.jpg`, `.svg`, `.pdf`, `.md`, `.patch`,
+   or logs).
+
+   **Task-level attachment** — pass the task key so the file sits on the
+   task itself:
 
    ```sh
-   bb tasks attachment add ABC-12 --file <path>
+   bb tasks attachment add ABC-12 --file ./report.md
+   bb tasks attachment add ABC-12 --file ./screenshot.png
    ```
 
-   Use `--json` when capturing the returned attachment metadata. When creating
-   a task that should start with files, pass repeatable `--attach <path>` to
+   **Comment-level attachment** — pass a comment ID so the file sits on that
+   comment (for example a screenshot that belongs with a specific milestone
+   note). Create the comment with `--json`, capture `.comment.id`, then add
+   the attachment:
+
+   ```sh
+   comment_id=$(
+     bb tasks comment ABC-12 \
+       --body "Screenshot of the failing step." \
+       --json | jq -r '.comment.id'
+   )
+   bb tasks attachment add "$comment_id" --file ./screenshot.png
+   bb tasks attachment add "$comment_id" --file ./trace.log
+   ```
+
+   A task key attaches at task level; a comment ID attaches to that comment.
+   Do not pass a task key when the file should hang off a comment. Use
+   `--json` when capturing the returned attachment metadata. When creating a
+   task that should start with files, pass repeatable `--attach <path>` to
    `bb tasks create` instead of attaching afterwards. Remove an attachment by
    id with `bb tasks attachment remove <attachment-id>` (row and blob are
    deleted together); reuse the ids from `bb tasks attachment list <key>`.

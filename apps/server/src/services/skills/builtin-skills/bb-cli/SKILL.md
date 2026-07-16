@@ -308,7 +308,9 @@ For review or fix pipelines, get the environment ID from
 - Start tracked work with `bb tasks show <key-or-id> --json`. Fetch relevant
   files with `bb tasks attachment get <attachment-id> --out <path>`.
 - Leave substantive milestone updates with `bb tasks comment <key-or-id>
-  --body <markdown>` and attach result artifacts. Avoid progress spam.
+  --body <markdown>` and attach result artifacts with `bb tasks attachment
+  add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
+  = that comment). Avoid progress spam.
 - Delegated threads are attached automatically. For work started independently,
   run `bb tasks attach <key-or-id>` from the working thread.
 - When implementation is ready for review, run `bb tasks update <key-or-id>
