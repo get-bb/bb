@@ -3,7 +3,7 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ThreadPullRequest } from "@bb/domain";
 import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { environmentPullRequestQueryKey } from "./query-keys";
@@ -13,13 +13,9 @@ import {
   useEnvironmentPullRequest,
 } from "./environment-queries";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getEnvironmentPullRequest: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: { environments: { pullRequest: vi.fn() } },
+}));
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useEnvironmentDetailRealtimeSubscription: vi.fn(),
@@ -69,7 +65,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.mocked(api.getEnvironmentPullRequest).mockReset();
+  vi.mocked(sdk.environments.pullRequest).mockReset();
 });
 
 describe("useEnvironmentPullRequest", () => {
@@ -167,14 +163,14 @@ describe("useEnvironmentPullRequest", () => {
 
   it("refetches stale pull request data on mount and always refetches on window focus", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
-    vi.mocked(api.getEnvironmentPullRequest).mockResolvedValue(
+    vi.mocked(sdk.environments.pullRequest).mockResolvedValue(
       pullRequestResponse(pullRequestFixture),
     );
 
     renderHook(() => useEnvironmentPullRequest(ENVIRONMENT_ID), { wrapper });
 
     await waitFor(() => {
-      expect(api.getEnvironmentPullRequest).toHaveBeenCalledTimes(1);
+      expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(1);
     });
 
     const query = queryClient.getQueryCache().find({

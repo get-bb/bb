@@ -11,7 +11,7 @@ import { ProviderCliInstallLogDialog } from "@/components/dialogs/ProviderCliIns
 import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import { appToast } from "@/components/ui/app-toast";
 import { AppToastCommandDescription } from "@/components/ui/app-toast-descriptions";
-import { installHostProviderCli } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 
 type ProviderCliInstallCompletedEvent = Extract<
   ProviderCliInstallEvent,
@@ -302,45 +302,45 @@ export function useProviderCliInstallRunner({
         description: <AppToastCommandDescription command={action.command} />,
       });
 
-      void installHostProviderCli({
-        hostId: installHostId,
-        request: {
+      void sdk.hosts
+        .installProviderCli({
+          hostId: installHostId,
           provider,
           actionKind: action.kind,
-        },
-        onEvent: (event) => {
-          if (event.provider !== provider) {
-            return;
+        })
+        .then((events) => {
+          for (const event of events) {
+            if (event.provider !== provider) {
+              continue;
+            }
+            switch (event.type) {
+              case "started":
+                installLogChunks = [`$ ${event.command}\n`];
+                appToast.loading(
+                  getProviderCliTitle({ issue, phase: "progress" }),
+                  {
+                    id: runToastId,
+                    description: (
+                      <AppToastCommandDescription command={event.command} />
+                    ),
+                  },
+                );
+                break;
+              case "output":
+                if (event.text.length > 0) {
+                  installLogChunks.push(event.text);
+                }
+                break;
+              case "completed":
+                completedEvent = event;
+                break;
+              case "error":
+                errorMessage = event.message;
+                installLogChunks.push(`\n${event.message}\n`);
+                break;
+            }
           }
-          switch (event.type) {
-            case "started":
-              installLogChunks = [`$ ${event.command}\n`];
-              appToast.loading(
-                getProviderCliTitle({ issue, phase: "progress" }),
-                {
-                  id: runToastId,
-                  description: (
-                    <AppToastCommandDescription command={event.command} />
-                  ),
-                },
-              );
-              break;
-            case "output":
-              if (event.text.length > 0) {
-                installLogChunks.push(event.text);
-              }
-              break;
-            case "completed":
-              completedEvent = event;
-              break;
-            case "error":
-              errorMessage = event.message;
-              installLogChunks.push(`\n${event.message}\n`);
-              break;
-          }
-        },
-      })
-        .then(() => {
+
           if (completedEvent?.success) {
             appToast.success(getProviderCliTitle({ issue, phase: "success" }), {
               id: runToastId,

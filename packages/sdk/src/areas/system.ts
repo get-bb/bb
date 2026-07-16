@@ -18,13 +18,31 @@ import type {
 import { systemVoiceTranscriptionResponseSchema } from "@bb/server-contract";
 import type { CreateSdkAreaArgs } from "./common.js";
 
+export interface SystemAttentionArgs {
+  signal?: AbortSignal;
+}
+
+export interface SystemConfigArgs {
+  signal?: AbortSignal;
+}
+
+export interface SystemExecutionOptionsArgs extends SystemExecutionOptionsQuery {
+  signal?: AbortSignal;
+}
+
+export interface SystemUsageLimitsArgs extends SystemUsageLimitsQuery {
+  signal?: AbortSignal;
+}
+
 export interface SystemVersionArgs {
   force?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface SystemVoiceTranscriptionArgs {
   file: Blob;
   prompt?: string;
+  signal?: AbortSignal;
 }
 
 export type SystemAttentionResult = SystemAttentionResponse;
@@ -39,10 +57,10 @@ export type SystemUsageLimitsResult = ProviderUsageResponse;
 export type SystemVersionResult = SystemVersionResponse;
 
 export interface SystemArea {
-  attention(): Promise<SystemAttentionResult>;
-  config(): Promise<SystemConfigResult>;
+  attention(args?: SystemAttentionArgs): Promise<SystemAttentionResult>;
+  config(args?: SystemConfigArgs): Promise<SystemConfigResult>;
   executionOptions(
-    args?: SystemExecutionOptionsQuery,
+    args?: SystemExecutionOptionsArgs,
   ): Promise<SystemExecutionOptionsResult>;
   reloadConfig(): Promise<SystemReloadConfigResult>;
   transcribeVoice(
@@ -55,7 +73,7 @@ export interface SystemArea {
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
   ): Promise<SystemUpdateKeyboardSettingsResult>;
-  usageLimits(args?: SystemUsageLimitsQuery): Promise<SystemUsageLimitsResult>;
+  usageLimits(args?: SystemUsageLimitsArgs): Promise<SystemUsageLimitsResult>;
   version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
 }
 
@@ -68,15 +86,34 @@ function versionQuery(args: SystemVersionArgs | undefined): SystemVersionQuery {
 export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
   const { transport } = args;
   return {
-    async attention() {
-      return transport.readJson(transport.api.v1.system.attention.$get());
+    async attention(input) {
+      return transport.readJson(
+        transport.api.v1.system.attention.$get(
+          {},
+          { init: { signal: input?.signal } },
+        ),
+      );
     },
-    async config() {
-      return transport.readJson(transport.api.v1.system.config.$get());
+    async config(input) {
+      return transport.readJson(
+        transport.api.v1.system.config.$get(
+          {},
+          { init: { signal: input?.signal } },
+        ),
+      );
     },
     async executionOptions(input = {}) {
       return transport.readJson(
-        transport.api.v1.system["execution-options"].$get({ query: input }),
+        transport.api.v1.system["execution-options"].$get(
+          {
+            query: {
+              environmentId: input.environmentId,
+              hostId: input.hostId,
+              providerId: input.providerId,
+            },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async reloadConfig() {
@@ -94,6 +131,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.fetch(`${baseUrl}/api/v1/system/voice-transcription`, {
           method: "POST",
           body: form,
+          signal: input.signal,
         }),
       );
       return systemVoiceTranscriptionResponseSchema.parse(
@@ -117,12 +155,18 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async usageLimits(input = {}) {
       return transport.readJson(
-        transport.api.v1.system["usage-limits"].$get({ query: input }),
+        transport.api.v1.system["usage-limits"].$get(
+          { query: { hostId: input.hostId } },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async version(input) {
       return transport.readJson(
-        transport.api.v1.system.version.$get({ query: versionQuery(input) }),
+        transport.api.v1.system.version.$get(
+          { query: versionQuery(input) },
+          { init: { signal: input?.signal } },
+        ),
       );
     },
   };

@@ -16,19 +16,25 @@ import {
   useFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "./fixed-panel-tabs";
-import { HttpError } from "./api";
+import { BbHttpError } from "./sdk";
 
 const apiMocks = vi.hoisted(() => ({
   getThreadTabs: vi.fn(),
   updateThreadTabs: vi.fn(),
 }));
 
-vi.mock("./api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./api")>();
+vi.mock("./sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./sdk")>();
   return {
     ...actual,
-    getThreadTabs: apiMocks.getThreadTabs,
-    updateThreadTabs: apiMocks.updateThreadTabs,
+    sdk: {
+      threads: {
+        tabs: {
+          get: apiMocks.getThreadTabs,
+          update: apiMocks.updateThreadTabs,
+        },
+      },
+    },
   };
 });
 
@@ -156,9 +162,10 @@ describe("fixed panel tab server sync", () => {
     });
 
     await waitFor(() => {
-      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith(threadId, {
+      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith({
         expectedRevision: 0,
         tabs: [localTab],
+        threadId,
       });
     });
   });
@@ -190,7 +197,8 @@ describe("fixed panel tab server sync", () => {
       .mockResolvedValueOnce({ revision: 0, tabs: [] })
       .mockResolvedValueOnce({ revision: 1, tabs: [serverTab] });
     apiMocks.updateThreadTabs.mockRejectedValueOnce(
-      new HttpError({
+      new BbHttpError({
+        body: null,
         code: "thread_tabs_conflict",
         message: "changed",
         status: 409,
@@ -203,9 +211,10 @@ describe("fixed panel tab server sync", () => {
     );
 
     await waitFor(() => {
-      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith(threadId, {
+      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith({
         expectedRevision: 0,
         tabs: [localTab],
+        threadId,
       });
     });
     await waitFor(() => {
@@ -243,9 +252,10 @@ describe("fixed panel tab server sync", () => {
       }));
     });
     await waitFor(() => {
-      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith(threadId, {
+      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith({
         expectedRevision: 2,
         tabs: [savedTab],
+        threadId,
       });
     });
 
@@ -277,7 +287,8 @@ describe("fixed panel tab server sync", () => {
         tabs: [originalTab, concurrentTab],
       });
     apiMocks.updateThreadTabs.mockRejectedValueOnce(
-      new HttpError({
+      new BbHttpError({
+        body: null,
         code: "thread_tabs_conflict",
         message: "changed",
         status: 409,
@@ -306,9 +317,10 @@ describe("fixed panel tab server sync", () => {
     });
 
     await waitFor(() => {
-      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith(threadId, {
+      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith({
         expectedRevision: 1,
         tabs: [originalTab, localTab],
+        threadId,
       });
     });
     await waitFor(() => {

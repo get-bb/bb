@@ -137,7 +137,7 @@ describe("removePlugin", () => {
     }) as unknown as typeof fetch;
     await removePlugin(fetchImpl, "demo/widget");
     expect(calls[0]?.url).toBe("/api/v1/plugins/demo%2Fwidget");
-    expect(calls[0]?.init).toEqual({ method: "DELETE" });
+    expect(calls[0]?.init).toMatchObject({ method: "DELETE" });
   });
 
   it("throws the server's error message on failure", async () => {

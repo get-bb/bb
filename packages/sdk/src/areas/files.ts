@@ -19,6 +19,7 @@ export interface FileReadArgs {
   hostId?: string;
   path: string;
   rootPath?: string;
+  signal?: AbortSignal;
 }
 
 export interface FileWriteArgs {
@@ -45,6 +46,7 @@ export interface FileListArgs {
   path: string;
   query?: string;
   limit?: number;
+  signal?: AbortSignal;
 }
 
 export interface PathListArgs extends FileListArgs {
@@ -76,6 +78,7 @@ export interface FileRemoveArgs {
 export interface FilePreviewArgs {
   hostId?: string;
   rootPath: string;
+  signal?: AbortSignal;
   ttlMs?: number;
 }
 
@@ -104,7 +107,16 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
   return {
     async read(input) {
       return transport.readJson(
-        transport.api.v1.files.read.$post({ json: input }),
+        transport.api.v1.files.read.$post(
+          {
+            json: {
+              hostId: input.hostId,
+              path: input.path,
+              rootPath: input.rootPath,
+            },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async write(input) {
@@ -114,12 +126,34 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
     },
     async list(input) {
       return transport.readJson(
-        transport.api.v1.files.list.$post({ json: input }),
+        transport.api.v1.files.list.$post(
+          {
+            json: {
+              hostId: input.hostId,
+              limit: input.limit,
+              path: input.path,
+              query: input.query,
+            },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async listPaths(input) {
       return transport.readJson(
-        transport.api.v1.files.paths.$post({ json: input }),
+        transport.api.v1.files.paths.$post(
+          {
+            json: {
+              hostId: input.hostId,
+              includeDirectories: input.includeDirectories,
+              includeFiles: input.includeFiles,
+              limit: input.limit,
+              path: input.path,
+              query: input.query,
+            },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async mkdir(input) {
@@ -139,7 +173,16 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
     },
     async createPreview(input) {
       return transport.readJson(
-        transport.api.v1.files.previews.$post({ json: input }),
+        transport.api.v1.files.previews.$post(
+          {
+            json: {
+              hostId: input.hostId,
+              rootPath: input.rootPath,
+              ttlMs: input.ttlMs,
+            },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
   };

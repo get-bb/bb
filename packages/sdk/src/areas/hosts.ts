@@ -19,6 +19,11 @@ import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface HostGetArgs {
   hostId: string;
+  signal?: AbortSignal;
+}
+
+export interface HostDeleteArgs {
+  hostId: string;
 }
 
 export interface HostUpdateArgs extends UpdateHostRequest {
@@ -27,22 +32,30 @@ export interface HostUpdateArgs extends UpdateHostRequest {
 
 export interface HostDirectoryArgs extends HostDirectoryQuery {
   hostId: string;
+  signal?: AbortSignal;
 }
 
 export interface HostCloneDefaultPathArgs extends HostCloneDefaultPathQuery {
   hostId: string;
+  signal?: AbortSignal;
 }
 
 export interface HostPathsExistArgs extends HostPathsExistRequest {
   hostId: string;
+  signal?: AbortSignal;
 }
 
 export interface HostPickFolderArgs extends HostPickFolderRequest {
   hostId: string;
+  signal?: AbortSignal;
 }
 
 export interface HostProviderCliInstallArgs extends HostProviderCliInstallRequest {
   hostId: string;
+}
+
+export interface HostListArgs {
+  signal?: AbortSignal;
 }
 
 export type HostCreateJoinCodeResult = CreateHostJoinCodeResponse;
@@ -59,7 +72,7 @@ export type HostUpdateResult = Host;
 
 export interface HostsArea {
   createJoinCode(): Promise<HostCreateJoinCodeResult>;
-  delete(args: HostGetArgs): Promise<HostDeleteResult>;
+  delete(args: HostDeleteArgs): Promise<HostDeleteResult>;
   directory(args: HostDirectoryArgs): Promise<HostDirectoryResult>;
   get(args: HostGetArgs): Promise<HostGetResult>;
   cloneDefaultPath(
@@ -68,7 +81,7 @@ export interface HostsArea {
   installProviderCli(
     args: HostProviderCliInstallArgs,
   ): Promise<HostProviderCliInstallResult>;
-  list(): Promise<HostListResult>;
+  list(args?: HostListArgs): Promise<HostListResult>;
   pathsExist(args: HostPathsExistArgs): Promise<HostPathsExistResult>;
   pickFolder(args: HostPickFolderArgs): Promise<HostPickFolderResult>;
   providerCliStatus(args: HostGetArgs): Promise<HostProviderCliStatusResult>;
@@ -93,25 +106,34 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     },
     async directory(input) {
       return transport.readJson(
-        transport.api.v1.hosts[":id"].directory.$get({
-          param: { id: input.hostId },
-          query: { path: input.path },
-        }),
+        transport.api.v1.hosts[":id"].directory.$get(
+          {
+            param: { id: input.hostId },
+            query: { path: input.path },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async get(input) {
       return transport.readJson(
-        transport.api.v1.hosts[":id"].$get({
-          param: { id: input.hostId },
-        }),
+        transport.api.v1.hosts[":id"].$get(
+          {
+            param: { id: input.hostId },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async cloneDefaultPath(input) {
       return transport.readJson(
-        transport.api.v1.hosts[":id"]["clone-default-path"].$get({
-          param: { id: input.hostId },
-          query: { projectId: input.projectId },
-        }),
+        transport.api.v1.hosts[":id"]["clone-default-path"].$get(
+          {
+            param: { id: input.hostId },
+            query: { projectId: input.projectId },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async installProviderCli(input) {
@@ -132,31 +154,44 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           hostProviderCliInstallEventSchema.parse(JSON.parse(line)),
         );
     },
-    async list() {
-      return transport.readJson(transport.api.v1.hosts.$get());
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.hosts.$get(
+          {},
+          { init: { signal: input?.signal } },
+        ),
+      );
     },
     async pathsExist(input) {
-      const { hostId, ...json } = input;
       return transport.readJson(
-        transport.api.v1.hosts[":id"].paths.exist.$post({
-          param: { id: hostId },
-          json,
-        }),
+        transport.api.v1.hosts[":id"].paths.exist.$post(
+          {
+            param: { id: input.hostId },
+            json: { paths: input.paths },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async pickFolder(input) {
       return transport.readJson(
-        transport.api.v1.hosts[":id"]["pick-folder"].$post({
-          param: { id: input.hostId },
-          json: { clientHostId: input.clientHostId },
-        }),
+        transport.api.v1.hosts[":id"]["pick-folder"].$post(
+          {
+            param: { id: input.hostId },
+            json: { clientHostId: input.clientHostId },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async providerCliStatus(input) {
       return transport.readJson(
-        transport.api.v1.hosts[":id"]["provider-clis"].status.$get({
-          param: { id: input.hostId },
-        }),
+        transport.api.v1.hosts[":id"]["provider-clis"].status.$get(
+          {
+            param: { id: input.hostId },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async update(input) {

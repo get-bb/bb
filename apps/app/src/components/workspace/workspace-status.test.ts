@@ -5,7 +5,7 @@ import {
   makeWorkspaceStatus,
   makeWorkspaceWorkingTree,
 } from "@bb/test-helpers";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@bb/sdk/browser";
 import { getGitStatusDisplay } from "./workspace-status";
 
 interface MakeStatusOptions {
@@ -166,10 +166,14 @@ describe("workspace-status", () => {
   });
 
   it("reports a missing workspace when the path is gone", () => {
-    const error = new HttpError({
+    const error = new BbHttpError({
       status: 502,
       message: "Managed workspace path does not exist",
       code: "path_not_found",
+      body: {
+        code: "path_not_found",
+        message: "Managed workspace path does not exist",
+      },
     });
     expect(getGitStatusDisplay(undefined, { error })).toMatchObject({
       label: "Unknown",
@@ -178,7 +182,7 @@ describe("workspace-status", () => {
   });
 
   it("reports lifecycle-aware workspace errors before generic fallbacks", () => {
-    const error = new HttpError({
+    const error = new BbHttpError({
       status: 409,
       message: "Environment unavailable",
       code: "environment_not_ready",

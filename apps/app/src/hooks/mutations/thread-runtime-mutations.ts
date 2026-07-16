@@ -2,12 +2,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
+  CreateThreadRequest,
   SendQueuedMessageMode,
   SendQueuedMessageResponse,
   ThreadQueuedMessageListResponse,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
-import type { AppCreateThreadRequest } from "@/lib/api";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import type { SendThreadMessageMutationRequest } from "./mutation-request-types";
@@ -44,6 +44,17 @@ interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRe
   id: string;
 }
 
+type AppCreateThreadRequest = Omit<
+  CreateThreadRequest,
+  "origin" | "startedOnBehalfOf" | "originKind" | "childOrigin"
+> &
+  Partial<
+    Pick<
+      CreateThreadRequest,
+      "startedOnBehalfOf" | "originKind" | "childOrigin"
+    >
+  >;
+
 interface SendThreadQueuedMessageMutationRequest {
   id: string;
   mode: SendQueuedMessageMode;
@@ -65,7 +76,7 @@ interface SetThreadQueuedMessageGroupBoundaryMutationRequest {
   id: string;
 }
 
-function getHttpErrorBodyMessage(error: api.HttpError): string | null {
+function getHttpErrorBodyMessage(error: BbHttpError): string | null {
   const body = error.body;
   if (
     typeof body !== "object" ||
@@ -80,7 +91,7 @@ function getHttpErrorBodyMessage(error: api.HttpError): string | null {
 
 function isQueuedMessageNotFoundError(error: unknown): boolean {
   return (
-    error instanceof api.HttpError &&
+    error instanceof BbHttpError &&
     error.status === 404 &&
     error.code === "invalid_request" &&
     getHttpErrorBodyMessage(error) === "Queued message not found"
@@ -92,7 +103,7 @@ async function deleteThreadQueuedMessageOrConfirmMissing({
   queuedMessageId,
 }: DeleteThreadQueuedMessageMutationRequest): Promise<void> {
   try {
-    await api.deleteThreadQueuedMessage(id, queuedMessageId);
+    await sdk.threads.queuedMessages.delete({ threadId: id, queuedMessageId });
   } catch (error) {
     if (isQueuedMessageNotFoundError(error)) {
       return;
@@ -109,7 +120,14 @@ export function useCreateThread() {
       errorMessage: "Failed to create thread.",
       lifecycleOperation: "create_thread",
     },
-    mutationFn: (request: AppCreateThreadRequest) => api.createThread(request),
+    mutationFn: (request: AppCreateThreadRequest) =>
+      sdk.threads.spawn({
+        ...request,
+        childOrigin: request.childOrigin ?? null,
+        origin: "app",
+        originKind: request.originKind ?? request.childOrigin ?? null,
+        startedOnBehalfOf: request.startedOnBehalfOf ?? null,
+      }),
     onMutate: async () => beginCreateThreadTransaction({ queryClient }),
     onSuccess: (thread, variables) => {
       applyCreateThreadResult({
@@ -130,7 +148,7 @@ export function useSendThreadMessage() {
       lifecycleOperation: "send_message",
       showErrorToast: false,
     },
-    mutationFn: ({
+    mutationFn: async ({
       id,
       input,
       model,
@@ -140,8 +158,9 @@ export function useSendThreadMessage() {
       mode,
       senderThreadId,
       executionInputSources,
-    }: SendThreadMessageMutationRequest) =>
-      api.sendThreadMessage(id, {
+    }: SendThreadMessageMutationRequest) => {
+      await sdk.threads.send({
+        threadId: id,
         input,
         model,
         serviceTier,
@@ -152,7 +171,8 @@ export function useSendThreadMessage() {
         // Non-null only for cross-thread sends (e.g. a side chat handing a
         // result back); the target renders it as "Message from {sender}".
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
-      }),
+      });
+    },
     onMutate: async (variables): Promise<SendThreadMessageTransaction> =>
       beginSendThreadMessageTransaction({
         queryClient,
@@ -195,7 +215,8 @@ export function useCreateThreadQueuedMessage() {
       senderThreadId,
       executionInputSources,
     }: CreateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
-      api.createThreadQueuedMessage(id, {
+      sdk.threads.queuedMessages.create({
+        threadId: id,
         input,
         model,
         serviceTier,
@@ -241,7 +262,7 @@ export function useSendThreadQueuedMessage() {
       mode,
       queuedMessageId,
     }: SendThreadQueuedMessageMutationRequest): Promise<SendQueuedMessageResponse> =>
-      api.sendThreadQueuedMessage(id, queuedMessageId, { mode }),
+      sdk.threads.queuedMessages.send({ threadId: id, queuedMessageId, mode }),
     onMutate: async (variables): Promise<RemoveQueuedMessageTransaction> =>
       beginSendQueuedMessageTransaction({
         queryClient,
@@ -279,7 +300,9 @@ export function useReorderThreadQueuedMessage() {
       groupBoundaryQueuedMessageId,
       queuedMessageId,
     }: ReorderThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessageListResponse> =>
-      api.reorderThreadQueuedMessage(id, queuedMessageId, {
+      sdk.threads.queuedMessages.reorder({
+        threadId: id,
+        queuedMessageId,
         previousQueuedMessageId,
         nextQueuedMessageId,
         groupBoundaryQueuedMessageId,
@@ -320,7 +343,8 @@ export function useSetThreadQueuedMessageGroupBoundary() {
       groupBoundaryQueuedMessageId,
       id,
     }: SetThreadQueuedMessageGroupBoundaryMutationRequest): Promise<ThreadQueuedMessageListResponse> =>
-      api.setThreadQueuedMessageGroupBoundary(id, {
+      sdk.threads.queuedMessages.setGroupBoundary({
+        threadId: id,
         expectedGroupedPrefixQueuedMessageIds,
         groupBoundaryQueuedMessageId,
       }),
@@ -389,7 +413,9 @@ export function useStopThread() {
       errorMessage: "Failed to stop thread.",
       lifecycleOperation: "stop_thread",
     },
-    mutationFn: (threadId: string) => api.stopThread(threadId),
+    mutationFn: async (threadId: string) => {
+      await sdk.threads.stop({ threadId });
+    },
     onMutate: async (threadId): Promise<StopThreadTransaction> =>
       beginStopThreadTransaction({
         queryClient,

@@ -6,7 +6,7 @@ import type {
   DiffPatchEntry,
   EnvironmentDiffPatchResponse,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { removeEnvironmentDiffPatchQueries } from "../cache-owners/query-cache";
@@ -14,13 +14,9 @@ import { bumpAllDiffPatchEvictionGenerations } from "../cache-owners/environment
 import { environmentDiffPatchQueryKey } from "./query-keys";
 import { useEnvironmentDiffPatches } from "./use-environment-diff-patches";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getEnvironmentDiffPatches: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: { environments: { diffPatch: vi.fn() } },
+}));
 
 const ENVIRONMENT_ID = "env-1";
 const TARGET: WorkspaceDiffTarget = { type: "all", mergeBaseBranch: "main" };
@@ -30,7 +26,9 @@ function patchKey() {
   return environmentDiffPatchQueryKey(ENVIRONMENT_ID, "all", "main", PATH);
 }
 
-function availableResponse(entry: DiffPatchEntry): EnvironmentDiffPatchResponse {
+function availableResponse(
+  entry: DiffPatchEntry,
+): EnvironmentDiffPatchResponse {
   return { outcome: "available", patches: [entry] };
 }
 
@@ -53,7 +51,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.mocked(api.getEnvironmentDiffPatches).mockReset();
+  vi.mocked(sdk.environments.diffPatch).mockReset();
 });
 
 describe("useEnvironmentDiffPatches", () => {
@@ -64,9 +62,7 @@ describe("useEnvironmentDiffPatches", () => {
       mergeBaseBranch: "main",
     };
     const firstFetch = deferred<EnvironmentDiffPatchResponse>();
-    vi.mocked(api.getEnvironmentDiffPatches).mockReturnValue(
-      firstFetch.promise,
-    );
+    vi.mocked(sdk.environments.diffPatch).mockReturnValue(firstFetch.promise);
 
     const { result, rerender } = renderHook(
       ({ target }) => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target }),
@@ -78,11 +74,10 @@ describe("useEnvironmentDiffPatches", () => {
     });
 
     await waitFor(() => {
-      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(1);
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
     });
-    const request = vi.mocked(api.getEnvironmentDiffPatches).mock.calls[0]?.[1];
+    const request = vi.mocked(sdk.environments.diffPatch).mock.calls[0]?.[0];
     expect(request?.signal?.aborted).toBe(false);
-
     rerender({ target: changedTarget });
 
     expect(request?.signal?.aborted).toBe(true);
@@ -105,7 +100,7 @@ describe("useEnvironmentDiffPatches", () => {
 
     // First fetch hangs until we resolve it by hand, so we can evict mid-flight.
     const firstFetch = deferred<EnvironmentDiffPatchResponse>();
-    vi.mocked(api.getEnvironmentDiffPatches)
+    vi.mocked(sdk.environments.diffPatch)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -119,7 +114,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(1);
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
       expect(result.current.getPatchState(PATH).status).toBe("loading");
@@ -153,7 +148,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(2);
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
       const state = result.current.getPatchState(PATH);
@@ -180,7 +175,7 @@ describe("useEnvironmentDiffPatches", () => {
     };
 
     const firstFetch = deferred<EnvironmentDiffPatchResponse>();
-    vi.mocked(api.getEnvironmentDiffPatches)
+    vi.mocked(sdk.environments.diffPatch)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -193,7 +188,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(1);
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
       expect(result.current.getPatchState(PATH).status).toBe("loading");
@@ -213,7 +208,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(2);
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
       const state = result.current.getPatchState(PATH);
@@ -262,7 +257,7 @@ describe("useEnvironmentDiffPatches", () => {
     };
 
     const firstFetch = deferred<EnvironmentDiffPatchResponse>();
-    vi.mocked(api.getEnvironmentDiffPatches)
+    vi.mocked(sdk.environments.diffPatch)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -275,7 +270,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(1);
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
       expect(result.current.getPatchState(PATH).status).toBe("loading");
@@ -302,7 +297,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(2);
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
       const state = result.current.getPatchState(PATH);
@@ -319,7 +314,7 @@ describe("useEnvironmentDiffPatches", () => {
       patch: "diff --git a/file.ts b/file.ts\n+content\n",
       truncated: false,
     };
-    vi.mocked(api.getEnvironmentDiffPatches).mockResolvedValue(
+    vi.mocked(sdk.environments.diffPatch).mockResolvedValue(
       availableResponse(patch),
     );
 

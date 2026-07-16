@@ -7,7 +7,7 @@ import type {
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { useThreadTimeline } from "@/hooks/queries/thread-queries";
-import * as api from "@/lib/api";
+import { BbHttpError, sdk } from "@/lib/sdk";
 
 export type ThreadTimelineRowFilter = (row: TimelineRow) => boolean;
 
@@ -340,7 +340,7 @@ export function recoverLoadedTimelineAfterStaleCursor({
 
 export function isStaleTimelinePaginationCursorError(error: Error): boolean {
   return (
-    error instanceof api.HttpError &&
+    error instanceof BbHttpError &&
     error.status === 400 &&
     error.code === "invalid_request"
   );
@@ -424,9 +424,10 @@ export function useThreadTimelineController({
 
     setIsLoadingOlderTimelineRows(true);
     try {
-      const response = await api.getThreadTimeline({
-        beforeCursor: nextOlderCursor,
-        id: threadId,
+      const response = await sdk.threads.timeline({
+        beforeAnchorId: nextOlderCursor.anchorId,
+        beforeAnchorSeq: String(nextOlderCursor.anchorSeq),
+        threadId,
       });
       const olderRows = filterTimelineRows({
         rowFilter,

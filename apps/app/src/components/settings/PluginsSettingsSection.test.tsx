@@ -313,7 +313,7 @@ describe("PluginSettingsDetail settings gating", () => {
     await vi.waitFor(() => {
       expect(requests).toContainEqual({
         url: "/api/v1/plugins/linear",
-        init: { method: "DELETE" },
+        init: expect.objectContaining({ method: "DELETE" }),
       });
     });
   });

@@ -5,7 +5,7 @@ import type {
   ThreadResponse,
   UpdateThreadRequest,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import type { LifecycleErrorOperation } from "@/lib/lifecycle-errors";
 import {
   applyReorderPinnedThreadResult,
@@ -13,7 +13,6 @@ import {
   applyThreadReadStateResult,
   applyThreadUpdateResult,
   beginArchiveThreadAndChildrenTransaction,
-  beginArchiveThreadTransaction,
   beginDeleteThreadTransaction,
   beginPinThreadTransaction,
   beginThreadReadStateTransaction,
@@ -51,10 +50,6 @@ interface UpdateThreadMutationOptions {
   lifecycleOperation?: LifecycleErrorOperation | undefined;
 }
 
-interface ArchiveThreadMutationRequest {
-  id: string;
-}
-
 interface ArchiveThreadAndChildrenMutationRequest {
   id: string;
 }
@@ -80,7 +75,7 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
         : {}),
     },
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
-      api.updateThread(id, request),
+      sdk.threads.update({ threadId: id, ...request }),
     onMutate: ({
       folderId,
       id,
@@ -117,7 +112,8 @@ export function usePinThread() {
     meta: {
       errorMessage: "Failed to pin thread.",
     },
-    mutationFn: ({ id }: ThreadMutationRequest) => api.pinThread(id),
+    mutationFn: ({ id }: ThreadMutationRequest) =>
+      sdk.threads.pin({ threadId: id }),
     onMutate: async ({ id }): Promise<ThreadListMutationTransaction> =>
       beginPinThreadTransaction({
         pinnedAt: Date.now(),
@@ -150,7 +146,8 @@ export function useUnpinThread() {
     meta: {
       errorMessage: "Failed to unpin thread.",
     },
-    mutationFn: ({ id }: ThreadMutationRequest) => api.unpinThread(id),
+    mutationFn: ({ id }: ThreadMutationRequest) =>
+      sdk.threads.unpin({ threadId: id }),
     onMutate: async ({ id }): Promise<ThreadListMutationTransaction> =>
       beginUnpinThreadTransaction({ queryClient, threadId: id }),
     onError: (_error, variables, context) => {
@@ -185,8 +182,8 @@ export function useUnpinAndMoveThread() {
       errorMessage: "Failed to unpin and move thread.",
     },
     mutationFn: async ({ folderId, id }) => {
-      await api.unpinThread(id);
-      return api.updateThread(id, { folderId });
+      await sdk.threads.unpin({ threadId: id });
+      return sdk.threads.update({ folderId, threadId: id });
     },
     onMutate: async ({ folderId, id }) =>
       beginUnpinAndMoveThreadTransaction({
@@ -226,7 +223,8 @@ export function useReorderPinnedThread() {
       previousThreadId,
       nextThreadId,
     }: ReorderPinnedThreadMutationRequest) =>
-      api.reorderPinnedThread(id, {
+      sdk.threads.reorderPinned({
+        threadId: id,
         previousThreadId,
         nextThreadId,
       }),
@@ -244,34 +242,6 @@ export function useReorderPinnedThread() {
   });
 }
 
-export function useArchiveThread() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to archive thread.",
-      lifecycleOperation: "archive_thread",
-      showErrorToast: false,
-    },
-    mutationFn: ({ id }: ArchiveThreadMutationRequest) => api.archiveThread(id),
-    onMutate: async ({ id }): Promise<ThreadListMutationTransaction> =>
-      beginArchiveThreadTransaction({ queryClient, threadId: id }),
-    onError: (_error, variables, context) => {
-      rollbackThreadListMutationTransaction({
-        queryClient,
-        threadId: variables.id,
-        transaction: context,
-      });
-    },
-    onSettled: (_data, _error, variables) => {
-      settleThreadListMembershipMutation({
-        queryClient,
-        threadId: variables.id,
-      });
-    },
-  });
-}
-
 export function useArchiveThreadAndChildren() {
   const queryClient = useQueryClient();
 
@@ -284,7 +254,7 @@ export function useArchiveThreadAndChildren() {
     mutationFn: ({
       id,
     }: ArchiveThreadAndChildrenMutationRequest): Promise<ThreadArchiveAllResponse> =>
-      api.archiveThreadAndChildren(id),
+      sdk.threads.archiveAll({ threadId: id }),
     onMutate: async ({ id }): Promise<ArchiveThreadsTransaction> =>
       beginArchiveThreadAndChildrenTransaction({
         queryClient,
@@ -310,7 +280,9 @@ export function useUnarchiveThread() {
     meta: {
       errorMessage: "Failed to unarchive thread.",
     },
-    mutationFn: ({ id }: ThreadMutationRequest) => api.unarchiveThread(id),
+    mutationFn: async ({ id }: ThreadMutationRequest) => {
+      await sdk.threads.unarchive({ threadId: id });
+    },
     onMutate: async ({ id }): Promise<ThreadListMutationTransaction> =>
       beginUnarchiveThreadTransaction({ queryClient, threadId: id }),
     onError: (_error, variables, context) => {
@@ -336,8 +308,12 @@ export function useDeleteThread() {
     meta: {
       errorMessage: "Failed to delete thread.",
     },
-    mutationFn: ({ childThreadsConfirmed, id }: DeleteThreadMutationRequest) =>
-      api.deleteThread(id, { childThreadsConfirmed }),
+    mutationFn: async ({
+      childThreadsConfirmed,
+      id,
+    }: DeleteThreadMutationRequest) => {
+      await sdk.threads.delete({ childThreadsConfirmed, threadId: id });
+    },
     onMutate: async ({ id }): Promise<DeleteThreadTransaction> =>
       beginDeleteThreadTransaction({ queryClient, threadId: id }),
     onError: (_error, variables, context) => {
@@ -365,7 +341,7 @@ export function useMarkThreadRead() {
       errorMessage: "Failed to mark thread read.",
       showErrorToast: false,
     },
-    mutationFn: (threadId: string) => api.markThreadRead(threadId),
+    mutationFn: (threadId: string) => sdk.threads.markRead({ threadId }),
     onMutate: (threadId): Promise<ThreadListMutationTransaction> =>
       beginThreadReadStateTransaction({
         lastReadAt: Date.now(),
@@ -393,7 +369,7 @@ export function useMarkThreadUnread() {
       errorMessage: "Failed to mark thread unread.",
       showErrorToast: false,
     },
-    mutationFn: (threadId: string) => api.markThreadUnread(threadId),
+    mutationFn: (threadId: string) => sdk.threads.markUnread({ threadId }),
     onMutate: (threadId): Promise<ThreadListMutationTransaction> =>
       beginThreadReadStateTransaction({
         lastReadAt: null,

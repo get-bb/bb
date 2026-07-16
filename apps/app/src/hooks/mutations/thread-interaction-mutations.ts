@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PendingInteraction } from "@bb/domain";
 import type { ResolvePendingInteractionRequest } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { invalidateThreadPendingInteractionResolutionQueries } from "../cache-owners/mutation-cache-effects";
 
 export interface ResolveThreadPendingInteractionMutationRequest {
@@ -23,7 +23,11 @@ export function useResolveThreadPendingInteraction() {
       interactionId,
       resolution,
     }: ResolveThreadPendingInteractionMutationRequest): Promise<PendingInteraction> =>
-      api.resolveThreadPendingInteraction(threadId, interactionId, resolution),
+      sdk.threads.interactions.resolve({
+        interactionId,
+        resolution,
+        threadId,
+      }),
     onSuccess: (interaction, variables) => {
       invalidateThreadPendingInteractionResolutionQueries({
         queryClient,

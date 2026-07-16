@@ -12,7 +12,7 @@ import type {
   PluginSettingsState,
 } from "@bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
-import { getThread } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import {
   usePromptDraftStorage,
@@ -245,7 +245,7 @@ export function useBbNavigate(): BbNavigate {
       // The canonical thread path carries the owning project, which the
       // plugin does not know — resolve it, falling back to the projectless
       // path when the lookup fails.
-      void getThread(threadId)
+      void sdk.threads.get({ threadId })
         .then((thread) =>
           navigate(
             getThreadRoutePath({ projectId: thread.projectId, threadId }),

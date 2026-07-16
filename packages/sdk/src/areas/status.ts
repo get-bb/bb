@@ -10,6 +10,7 @@ import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface StatusGetArgs {
   projectId?: string;
+  signal?: AbortSignal;
   threadId?: string;
 }
 
@@ -66,23 +67,30 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
   return {
     async get(input = {}) {
       const projectId = input.projectId;
+      const signal = input.signal;
       const threadId = input.threadId;
       const [project, thread] = await Promise.all([
         projectId
           ? fetchSilent(() =>
               transport.readJson(
-                transport.api.v1.projects[":id"].$get({
-                  param: { id: projectId },
-                }),
+                transport.api.v1.projects[":id"].$get(
+                  {
+                    param: { id: projectId },
+                  },
+                  { init: { signal } },
+                ),
               ),
             )
           : Promise.resolve(null),
         threadId
           ? fetchSilent(() =>
               transport.readJson(
-                transport.api.v1.threads[":id"].$get({
-                  param: { id: threadId },
-                }),
+                transport.api.v1.threads[":id"].$get(
+                  {
+                    param: { id: threadId },
+                  },
+                  { init: { signal } },
+                ),
               ),
             )
           : Promise.resolve(null),
@@ -92,10 +100,13 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
           ? null
           : await fetchSilent(async () => {
               const timeline: StatusTimeline = await transport.readJson(
-                transport.api.v1.threads[":id"].timeline.$get({
-                  param: { id: thread.id },
-                  query: { summaryOnly: "true" },
-                }),
+                transport.api.v1.threads[":id"].timeline.$get(
+                  {
+                    param: { id: thread.id },
+                    query: { summaryOnly: "true" },
+                  },
+                  { init: { signal } },
+                ),
               );
               return timeline.pendingTodos;
             });
@@ -104,12 +115,15 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
           ? null
           : await fetchSilent(() =>
               transport.readJson(
-                transport.api.v1.threads.$get({
-                  query: {
-                    projectId: thread.projectId,
-                    parentThreadId: thread.id,
+                transport.api.v1.threads.$get(
+                  {
+                    query: {
+                      projectId: thread.projectId,
+                      parentThreadId: thread.id,
+                    },
                   },
-                }),
+                  { init: { signal } },
+                ),
               ),
             );
 

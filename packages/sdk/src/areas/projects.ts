@@ -1,5 +1,6 @@
 import type {
   CommandListResponse,
+  CopyProjectAttachmentsRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
   ProjectBranchesResponse,
@@ -24,12 +25,15 @@ import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import type { ProjectExecutionDefaults, ProjectSource } from "@bb/domain";
 import type { CreateSdkAreaArgs } from "./common.js";
 
-export interface ProjectListArgs extends ProjectListQuery {}
+export interface ProjectListArgs extends ProjectListQuery {
+  signal?: AbortSignal;
+}
 
 export interface ProjectCreateArgs extends CreateProjectRequest {}
 
 export interface ProjectGetArgs {
   projectId: string;
+  signal?: AbortSignal;
 }
 
 export interface ProjectUpdateArgs extends UpdateProjectRequest {
@@ -46,6 +50,7 @@ export interface ProjectReorderArgs extends ReorderProjectRequest {
 
 export interface ProjectPromptHistoryArgs extends PromptHistoryQuery {
   projectId: string;
+  signal?: AbortSignal;
 }
 
 /** Select one project workspace source, or omit both for the primary host. */
@@ -57,29 +62,35 @@ export type ProjectWorkspaceRoutingArgs =
 export type ProjectFilesArgs = ProjectWorkspaceRoutingArgs &
   Omit<ProjectFilesQuery, "environmentId" | "hostId"> & {
     projectId: string;
+    signal?: AbortSignal;
   };
 
 export type ProjectPathsArgs = ProjectWorkspaceRoutingArgs &
   Omit<ProjectPathsQuery, "environmentId" | "hostId"> & {
     projectId: string;
+    signal?: AbortSignal;
   };
 
 export type ProjectCommandsArgs = ProjectWorkspaceRoutingArgs &
   Omit<ProjectCommandsQuery, "environmentId" | "hostId"> & {
     projectId: string;
+    signal?: AbortSignal;
   };
 
 export type ProjectFileContentArgs = ProjectWorkspaceRoutingArgs &
   Omit<ProjectFileContentQuery, "environmentId" | "hostId"> & {
     projectId: string;
+    signal?: AbortSignal;
   };
 
 export interface ProjectBranchesArgs extends ProjectBranchesQuery {
   projectId: string;
+  signal?: AbortSignal;
 }
 
 export interface ProjectDefaultExecutionOptionsArgs {
   projectId: string;
+  signal?: AbortSignal;
 }
 
 export interface ProjectAttachmentFileLike {
@@ -118,6 +129,11 @@ export type ProjectAttachmentUploadArgs = ProjectAttachmentUploadArgsBase &
 
 export interface ProjectAttachmentReadArgs {
   path: string;
+  projectId: string;
+  signal?: AbortSignal;
+}
+
+export interface ProjectAttachmentCopyArgs extends CopyProjectAttachmentsRequest {
   projectId: string;
 }
 
@@ -174,6 +190,7 @@ export interface ProjectSourcesArea {
 }
 
 export interface ProjectAttachmentsArea {
+  copy(args: ProjectAttachmentCopyArgs): Promise<void>;
   read(args: ProjectAttachmentReadArgs): Promise<ProjectAttachmentReadResult>;
   upload(
     args: ProjectAttachmentUploadArgs,
@@ -300,12 +317,24 @@ function encodeBase64(bytes: Uint8Array): string {
 export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
   const { transport } = args;
   const attachments: ProjectAttachmentsArea = {
+    async copy(input) {
+      const { projectId, ...json } = input;
+      await transport.readVoid(
+        transport.api.v1.projects[":id"].attachments.copy.$post({
+          param: { id: projectId },
+          json,
+        }),
+      );
+    },
     async read(input) {
       const response = await transport.resolve(
-        transport.api.v1.projects[":id"].attachments.content.$get({
-          param: { id: input.projectId },
-          query: { path: input.path },
-        }),
+        transport.api.v1.projects[":id"].attachments.content.$get(
+          {
+            param: { id: input.projectId },
+            query: { path: input.path },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
       const bytes = new Uint8Array(await response.arrayBuffer());
       return {
@@ -367,21 +396,27 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
   return {
     attachments,
     async branches(input) {
-      const { projectId, ...query } = input;
+      const { projectId, signal, ...query } = input;
       return transport.readJson(
-        transport.api.v1.projects[":id"].branches.$get({
-          param: { id: projectId },
-          query,
-        }),
+        transport.api.v1.projects[":id"].branches.$get(
+          {
+            param: { id: projectId },
+            query,
+          },
+          { init: { signal } },
+        ),
       );
     },
     async commands(input) {
-      const { projectId, ...query } = input;
+      const { projectId, signal, ...query } = input;
       return transport.readJson(
-        transport.api.v1.projects[":id"].commands.$get({
-          param: { id: projectId },
-          query,
-        }),
+        transport.api.v1.projects[":id"].commands.$get(
+          {
+            param: { id: projectId },
+            query,
+          },
+          { init: { signal } },
+        ),
       );
     },
     async create(input) {
@@ -401,19 +436,25 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
     },
     async defaultExecutionOptions(input) {
       return transport.readJson(
-        transport.api.v1.projects[":id"]["default-execution-options"].$get({
-          param: { id: input.projectId },
-          query: {},
-        }),
+        transport.api.v1.projects[":id"]["default-execution-options"].$get(
+          {
+            param: { id: input.projectId },
+            query: {},
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async fileContent(input) {
-      const { projectId, ...query } = input;
+      const { projectId, signal, ...query } = input;
       const response = await transport.resolve(
-        transport.api.v1.projects[":id"].files.content.$get({
-          param: { id: projectId },
-          query,
-        }),
+        transport.api.v1.projects[":id"].files.content.$get(
+          {
+            param: { id: projectId },
+            query,
+          },
+          { init: { signal } },
+        ),
       );
       const bytes = new Uint8Array(await response.arrayBuffer());
       const contentEncoding = response.headers.get("x-bb-content-encoding");
@@ -434,43 +475,59 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       };
     },
     async files(input) {
-      const { projectId, ...query } = input;
+      const { projectId, signal, ...query } = input;
       return transport.readJson(
-        transport.api.v1.projects[":id"].files.$get({
-          param: { id: projectId },
-          query,
-        }),
+        transport.api.v1.projects[":id"].files.$get(
+          {
+            param: { id: projectId },
+            query,
+          },
+          { init: { signal } },
+        ),
       );
     },
     async get(input) {
       return transport.readJson(
-        transport.api.v1.projects[":id"].$get({
-          param: { id: input.projectId },
-        }),
+        transport.api.v1.projects[":id"].$get(
+          {
+            param: { id: input.projectId },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async list(input = {}) {
+      const { signal, ...query } = input;
       return transport.readJson(
-        transport.api.v1.projects.$get({
-          query: input,
-        }),
+        transport.api.v1.projects.$get(
+          {
+            query,
+          },
+          { init: { signal } },
+        ),
       );
     },
     async paths(input) {
-      const { projectId, ...query } = input;
+      const { projectId, signal, ...query } = input;
       return transport.readJson(
-        transport.api.v1.projects[":id"].paths.$get({
-          param: { id: projectId },
-          query,
-        }),
+        transport.api.v1.projects[":id"].paths.$get(
+          {
+            param: { id: projectId },
+            query,
+          },
+          { init: { signal } },
+        ),
       );
     },
     async promptHistory(input) {
       return transport.readJson(
-        transport.api.v1.projects[":id"]["prompt-history"].$get({
-          param: { id: input.projectId },
-          query: { limit: input.limit },
-        }),
+        transport.api.v1.projects[":id"]["prompt-history"].$get(
+          {
+            param: { id: input.projectId },
+            query: { limit: input.limit },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async reorder(input) {

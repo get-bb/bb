@@ -25,7 +25,7 @@ import {
   useUnpinThread,
   useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
-import { getThreadChildSummary } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
@@ -200,7 +200,10 @@ export function ThreadActionsProvider({
       signal: AbortSignal,
     ): Promise<ThreadActionContext | null> => {
       try {
-        const childSummary = await getThreadChildSummary(thread.id, signal);
+        const childSummary = await sdk.threads.childSummary({
+          signal,
+          threadId: thread.id,
+        });
         if (signal.aborted) return null;
 
         return {

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { assertNever } from "@bb/core-ui";
 import type { WorkspaceStatus } from "@bb/domain";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@bb/sdk/browser";
 import { describeLifecycleError } from "@/lib/lifecycle-errors";
 
 export interface ThreadGitStatusDisplay {
@@ -93,7 +93,7 @@ export function getGitStatusDisplay(
     }
 
     const isPathNotFound =
-      options?.error instanceof HttpError &&
+      options?.error instanceof BbHttpError &&
       options.error.code === "path_not_found";
     if (options?.workspaceDeleted || isPathNotFound) {
       return plainDisplay("Unknown", "Workspace not found.");

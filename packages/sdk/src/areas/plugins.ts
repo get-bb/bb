@@ -60,6 +60,7 @@ export interface PluginTokenArgs extends PluginIdArgs {
 
 export interface PluginCheckUpdatesArgs {
   pluginId?: string;
+  signal?: AbortSignal;
 }
 
 export interface PluginRpcArgs<TOutput> extends PluginIdArgs {
@@ -70,6 +71,27 @@ export interface PluginRpcArgs<TOutput> extends PluginIdArgs {
 
 export interface PluginCatalogSearchArgs {
   query: string;
+  signal?: AbortSignal;
+}
+
+export interface PluginCatalogStatusArgs {
+  signal?: AbortSignal;
+}
+
+export interface PluginGetSettingsArgs extends PluginIdArgs {
+  signal?: AbortSignal;
+}
+
+export interface PluginGetSourceArgs extends PluginIdArgs {
+  signal?: AbortSignal;
+}
+
+export interface PluginListArgs {
+  signal?: AbortSignal;
+}
+
+export interface PluginListUpdateResultsArgs {
+  signal?: AbortSignal;
 }
 
 export type PluginDisableResult = InstalledPlugin;
@@ -91,7 +113,7 @@ export type PluginCatalogSearchResult = PluginCatalogSearchContract[];
 export interface PluginCatalogArea {
   install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
   search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
-  status(): Promise<PluginCatalogStatusResult>;
+  status(args?: PluginCatalogStatusArgs): Promise<PluginCatalogStatusResult>;
 }
 
 export interface PluginsArea {
@@ -103,11 +125,13 @@ export interface PluginsArea {
   catalog: PluginCatalogArea;
   disable(args: PluginIdArgs): Promise<PluginDisableResult>;
   enable(args: PluginIdArgs): Promise<PluginEnableResult>;
-  getSettings(args: PluginIdArgs): Promise<PluginGetSettingsResult>;
-  getSource(args: PluginIdArgs): Promise<PluginGetSourceResult>;
+  getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;
+  getSource(args: PluginGetSourceArgs): Promise<PluginGetSourceResult>;
   install(args: PluginInstallArgs): Promise<PluginInstallResult>;
-  list(): Promise<PluginListResult>;
-  listUpdateResults(): Promise<PluginCheckUpdatesResult>;
+  list(args?: PluginListArgs): Promise<PluginListResult>;
+  listUpdateResults(
+    args?: PluginListUpdateResultsArgs,
+  ): Promise<PluginCheckUpdatesResult>;
   reload(args?: PluginReloadArgs): Promise<PluginReloadResult>;
   remove(args: PluginIdArgs): Promise<PluginRemoveResult>;
   token(args: PluginTokenArgs): Promise<PluginTokenResult>;
@@ -160,13 +184,15 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       const response = await requestParsed(
         `/api/v1/plugin-catalog/search?q=${encodeURIComponent(query)}`,
         pluginCatalogSearchResponseSchema,
+        { signal: input.signal },
       );
       return response.results;
     },
-    async status() {
+    async status(input = {}) {
       const response = await requestParsed(
         "/api/v1/plugin-catalog",
         pluginCatalogStatusResponseSchema,
+        { signal: input.signal },
       );
       return response.catalog;
     },
@@ -196,7 +222,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       const response = await requestParsed(
         "/api/v1/plugins/updates/check",
         pluginUpdateCheckResponseSchema,
-        jsonInit("POST", body),
+        { ...jsonInit("POST", body), signal: input.signal },
       );
       return response.results;
     },
@@ -221,12 +247,14 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return requestParsed(
         pluginPath(input.pluginId, "/settings"),
         pluginSettingsResponseSchema,
+        { signal: input.signal },
       );
     },
     async getSource(input) {
       return requestParsed(
         pluginPath(input.pluginId, "/source"),
         pluginSourceDetailSchema,
+        { signal: input.signal },
       );
     },
     async install(input) {
@@ -238,13 +266,16 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
       return response.plugin;
     },
-    async list() {
-      return requestParsed("/api/v1/plugins", pluginListResponseSchema);
+    async list(input = {}) {
+      return requestParsed("/api/v1/plugins", pluginListResponseSchema, {
+        signal: input.signal,
+      });
     },
-    async listUpdateResults() {
+    async listUpdateResults(input = {}) {
       const response = await requestParsed(
         "/api/v1/plugins/updates",
         pluginUpdateCheckResponseSchema,
+        { signal: input.signal },
       );
       return response.results;
     },

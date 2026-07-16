@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { checkHostPathsExist } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { hostPathExistenceQueryKey } from "./query-keys";
 
 export type HostPathExistence = Record<string, boolean>;
@@ -23,8 +23,14 @@ export function useHostPathExistence(
   const query = useQuery({
     queryKey: hostPathExistenceQueryKey(hostId, sortedPaths),
     queryFn: enabledHostId
-      ? ({ signal }) =>
-          checkHostPathsExist(enabledHostId, sortedPaths, signal)
+      ? async ({ signal }) =>
+          (
+            await sdk.hosts.pathsExist({
+              hostId: enabledHostId,
+              paths: sortedPaths,
+              signal,
+            })
+          ).existence
       : skipToken,
     staleTime: 10_000,
   });

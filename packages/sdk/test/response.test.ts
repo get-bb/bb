@@ -251,6 +251,49 @@ describe("readJsonResponse()", () => {
     );
   });
 
+  it("carries the parsed JSON error body for structured consumers", async () => {
+    const response = new Response(
+      JSON.stringify({
+        code: "environment_not_ready",
+        message: "Environment is not ready",
+        details: { reason: "provisioning" },
+      }),
+      {
+        status: 409,
+        statusText: "Conflict",
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+
+    await expect(readJson(response)).rejects.toMatchObject({
+      body: {
+        code: "environment_not_ready",
+        message: "Environment is not ready",
+        details: { reason: "provisioning" },
+      },
+      code: "environment_not_ready",
+      name: "BbHttpError",
+    });
+  });
+
+  it("falls back to statusText for HTML error bodies", async () => {
+    const response = new Response(
+      "<!doctype html><html><body>Sign in required</body></html>",
+      {
+        status: 502,
+        statusText: "Bad Gateway",
+        headers: { "Content-Type": "text/html" },
+      },
+    );
+
+    await expect(readJson(response)).rejects.toMatchObject({
+      body: null,
+      message: "HTTP 502: Bad Gateway",
+      name: "BbHttpError",
+      status: 502,
+    });
+  });
+
   it("throws HTTP error with statusText when body is empty", async () => {
     const response = new Response("", {
       status: 500,

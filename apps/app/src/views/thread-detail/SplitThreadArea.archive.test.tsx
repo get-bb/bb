@@ -61,10 +61,11 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
 
 // The real network transport never settles, so the mount refetch can't clobber
 // the seeded/optimistic cache state the test controls directly.
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return { ...actual, getThread: () => new Promise<never>(() => {}) };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: {
+    threads: { get: () => new Promise<never>(() => {}) },
+  },
+}));
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandContext: () => undefined,

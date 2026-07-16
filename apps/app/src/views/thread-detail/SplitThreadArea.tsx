@@ -19,7 +19,7 @@ import {
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { useIsMutating } from "@tanstack/react-query";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -869,7 +869,8 @@ function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
     predicate: (mutation) =>
       mutation.options.meta?.lifecycleOperation === "archive_thread",
   });
-  const isGone = isError && error instanceof HttpError && error.status === 404;
+  const isGone =
+    isError && error instanceof BbHttpError && error.status === 404;
   const isDeleted =
     isSuccess && thread !== undefined && thread.deletedAt !== null;
   const isConfirmedArchived =

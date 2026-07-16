@@ -1,0 +1,39 @@
+import type { ThreadChildOrigin } from "@bb/domain";
+import type { CreateThreadRequest } from "@bb/server-contract";
+
+export type AppCreateThreadRequest = Omit<
+  CreateThreadRequest,
+  "origin" | "startedOnBehalfOf" | "originKind" | "childOrigin"
+> &
+  Partial<
+    Pick<
+      CreateThreadRequest,
+      "startedOnBehalfOf" | "originKind" | "childOrigin"
+    >
+  >;
+
+export interface ThreadListFilters {
+  projectId?: string;
+  parentThreadId?: string;
+  sourceThreadId?: string;
+  /** Restrict to threads filed directly under this folder. */
+  folderId?: string;
+  /** Restrict to loose threads — those not filed under any folder. */
+  unfiled?: boolean;
+  hasParent?: boolean;
+  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  originKind?: ThreadChildOrigin;
+  /** Exclude source-derived side-chat threads. */
+  excludeSideChats?: boolean;
+  /** @deprecated Use originKind. */
+  childOrigin?: ThreadChildOrigin;
+  /** App callers must choose active or archived; server omission intentionally means both. */
+  archived: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ThreadSearchFilters {
+  query: string;
+  limitPerGroup?: number;
+}

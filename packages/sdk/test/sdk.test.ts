@@ -117,6 +117,27 @@ describe("@bb/sdk", () => {
     expect("on" in sdk).toBe(false);
   });
 
+  it("forwards read abort signals to fetch", async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | null | undefined;
+    const fetch: FetchImplementation = async (_input, init) => {
+      receivedSignal = init?.signal;
+      return jsonResponse({ body: [] });
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.list({ signal: controller.signal }),
+    ).resolves.toEqual([]);
+    expect(receivedSignal).toBe(controller.signal);
+  });
+
   it("sends a complete appearance selection through the theme transport", async () => {
     const appearance = {
       themeId: "nord",

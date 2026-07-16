@@ -3,7 +3,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { useThreadCreationOptions } from "./useThreadCreationOptions";
@@ -12,13 +12,9 @@ const PROJECT_ID = "proj_prompt_defaults";
 const GLOBAL_PROVIDER_ID = "global-provider";
 const PROJECT_PROVIDER_ID = "project-provider";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getSystemExecutionOptions: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: { system: { executionOptions: vi.fn() } },
+}));
 
 function executionOptionsResponse(): SystemExecutionOptionsResponse {
   return {
@@ -99,7 +95,7 @@ function setProjectScopedValue(baseKey: string, value: string): void {
 }
 
 beforeEach(() => {
-  vi.mocked(api.getSystemExecutionOptions).mockResolvedValue(
+  vi.mocked(sdk.system.executionOptions).mockResolvedValue(
     executionOptionsResponse(),
   );
 });
@@ -153,14 +149,14 @@ describe("useThreadCreationOptions", () => {
     );
 
     await waitFor(() => {
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
           hostId: "project-host",
           providerId: GLOBAL_PROVIDER_ID,
         }),
       );
-      expect(api.getSystemExecutionOptions).not.toHaveBeenCalledWith(
+      expect(sdk.system.executionOptions).not.toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
           hostId: "project-host",
@@ -231,7 +227,7 @@ describe("useThreadCreationOptions", () => {
     );
 
     await waitFor(() => {
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
           providerId: GLOBAL_PROVIDER_ID,
@@ -254,14 +250,14 @@ describe("useThreadCreationOptions", () => {
     renderHook(() => useThreadCreationOptions(), { wrapper });
 
     await waitFor(() => {
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
           hostId: undefined,
           providerId: "codex",
         }),
       );
-      expect(api.getSystemExecutionOptions).not.toHaveBeenCalledWith(
+      expect(sdk.system.executionOptions).not.toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
           hostId: undefined,
@@ -287,7 +283,7 @@ describe("useThreadCreationOptions", () => {
     });
 
     await waitFor(() => {
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: "env-remote",
           hostId: undefined,

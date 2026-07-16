@@ -4,7 +4,7 @@ import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useDialogState } from "@/hooks/useDialogState";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
-import { pickHostFolder } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import type {
   ProjectPathDialogSubmitHandler,
   ProjectPathDialogTarget,
@@ -92,7 +92,9 @@ export function useLocalPathPicker({
         void (async () => {
           let selectedPath: string | null;
           try {
-            selectedPath = await pickHostFolder(hostId, clientHostId);
+            selectedPath = (
+              await sdk.hosts.pickFolder({ hostId, clientHostId })
+            ).path;
           } catch {
             projectPathDialog.onOpen(target);
             return;

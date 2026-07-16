@@ -66,14 +66,18 @@ export interface ThreadListArgs {
   originKind?: ThreadListQuery["originKind"];
   parentThreadId?: string;
   projectId?: string;
+  signal?: AbortSignal;
   sourceThreadId?: string;
   unfiled?: boolean;
 }
 
-export interface ThreadSearchArgs extends ThreadSearchQuery {}
+export interface ThreadSearchArgs extends ThreadSearchQuery {
+  signal?: AbortSignal;
+}
 
 export interface ThreadGetArgs {
   include?: ThreadGetQuery["include"];
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -156,10 +160,12 @@ export interface ThreadSendArgs extends SendMessageRequest {
 }
 
 export interface ThreadStatusArgs {
+  signal?: AbortSignal;
   threadId: string;
 }
 
 export interface ThreadPromptHistoryArgs extends PromptHistoryQuery {
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -168,6 +174,7 @@ export interface ThreadPinOrderArgs extends ReorderPinnedThreadRequest {
 }
 
 export interface ThreadQueuedMessageArgs {
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -191,14 +198,17 @@ export interface ThreadQueuedMessageGroupBoundaryArgs extends SetQueuedMessageGr
 }
 
 export interface ThreadStorageFilesArgs extends ThreadStorageFilesQuery {
+  signal?: AbortSignal;
   threadId: string;
 }
 
 export interface ThreadStoragePathsArgs extends ThreadStoragePathsQuery {
+  signal?: AbortSignal;
   threadId: string;
 }
 
 export interface ThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsQuery {
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -215,25 +225,30 @@ export interface ThreadOpenArgs {
 export interface ThreadEventsListArgs {
   afterSeq?: string;
   limit?: string;
+  signal?: AbortSignal;
   threadId: string;
 }
 
 export interface ThreadEventWaitArgs {
   afterSeq?: string;
+  signal?: AbortSignal;
   threadId: string;
   type: string;
   waitMs: string;
 }
 
 export interface ThreadTimelineArgs extends ThreadTimelineQuery {
+  signal?: AbortSignal;
   threadId: string;
 }
 
 export interface ThreadOutputArgs {
+  signal?: AbortSignal;
   threadId: string;
 }
 
 export interface ThreadInteractionListArgs {
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -256,6 +271,7 @@ export type ThreadWaitTarget =
 export interface ThreadWaitArgs {
   event?: string;
   pollIntervalMs?: number;
+  signal?: AbortSignal;
   status?: ThreadStatus;
   threadId: string;
   timeoutMs?: number;
@@ -400,7 +416,9 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.sourceThreadId ? { sourceThreadId: args.sourceThreadId } : {}),
     ...(args?.folderId ? { folderId: args.folderId } : {}),
     ...(args?.originKind ? { originKind: args.originKind } : {}),
-    ...(args?.archived ? { archived: "true" } : {}),
+    ...(args?.archived === undefined
+      ? {}
+      : { archived: args.archived ? "true" : "false" }),
     ...(args?.unfiled === undefined
       ? {}
       : { unfiled: args.unfiled ? "true" : "false" }),
@@ -483,6 +501,13 @@ function eventWaitQuery(args: ThreadEventWaitArgs): ThreadEventWaitQuery {
   };
 }
 
+function searchQuery(args: ThreadSearchArgs): ThreadSearchQuery {
+  return {
+    limitPerGroup: args.limitPerGroup,
+    query: args.query,
+  };
+}
+
 function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
   return {
     ...(args.includeNestedRows !== undefined
@@ -499,6 +524,9 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
       : {}),
     ...(args.beforeAnchorId !== undefined
       ? { beforeAnchorId: args.beforeAnchorId }
+      : {}),
+    ...(args.afterSequence !== undefined
+      ? { afterSequence: args.afterSequence }
       : {}),
   };
 }
@@ -569,28 +597,37 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   const { transport } = args;
   const getThread = (input: ThreadGetArgs) =>
     transport.readJson(
-      transport.api.v1.threads[":id"].$get({
-        param: { id: input.threadId },
-        ...(input.include === undefined
-          ? {}
-          : { query: { include: input.include } }),
-      }),
+      transport.api.v1.threads[":id"].$get(
+        {
+          param: { id: input.threadId },
+          ...(input.include === undefined
+            ? {}
+            : { query: { include: input.include } }),
+        },
+        { init: { signal: input.signal } },
+      ),
     );
   const events: ThreadEventsArea = {
     async list(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].events.$get({
-          param: { id: input.threadId },
-          query: eventsListQuery(input),
-        }),
+        transport.api.v1.threads[":id"].events.$get(
+          {
+            param: { id: input.threadId },
+            query: eventsListQuery(input),
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async wait(input) {
       const response = await transport.resolve(
-        transport.api.v1.threads[":id"].events.wait.$get({
-          param: { id: input.threadId },
-          query: eventWaitQuery(input),
-        }),
+        transport.api.v1.threads[":id"].events.wait.$get(
+          {
+            param: { id: input.threadId },
+            query: eventWaitQuery(input),
+          },
+          { init: { signal: input.signal } },
+        ),
       );
       const statusCode: number = response.status;
       if (statusCode === 204) {
@@ -611,19 +648,23 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
     async get(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].interactions[":interactionId"].$get({
-          param: {
-            id: input.threadId,
-            interactionId: input.interactionId,
+        transport.api.v1.threads[":id"].interactions[":interactionId"].$get(
+          {
+            param: {
+              id: input.threadId,
+              interactionId: input.interactionId,
+            },
           },
-        }),
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async list(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].interactions.$get({
-          param: { id: input.threadId },
-        }),
+        transport.api.v1.threads[":id"].interactions.$get(
+          { param: { id: input.threadId } },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async resolve(input) {
@@ -675,9 +716,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
     async list(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"].$get({
-          param: { id: input.threadId },
-        }),
+        transport.api.v1.threads[":id"]["queued-messages"].$get(
+          { param: { id: input.threadId } },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async reorder(input) {
@@ -728,9 +770,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   const tabs: ThreadTabsArea = {
     async get(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].tabs.$get({
-          param: { id: input.threadId },
-        }),
+        transport.api.v1.threads[":id"].tabs.$get(
+          { param: { id: input.threadId } },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async update(input) {
@@ -765,23 +808,26 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
     async childSummary(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"]["child-summary"].$get({
-          param: { id: input.threadId },
-        }),
+        transport.api.v1.threads[":id"]["child-summary"].$get(
+          { param: { id: input.threadId } },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async conversationOutline(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"]["conversation-outline"].$get({
-          param: { id: input.threadId },
-        }),
+        transport.api.v1.threads[":id"]["conversation-outline"].$get(
+          { param: { id: input.threadId } },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async defaultExecutionOptions(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"]["default-execution-options"].$get({
-          param: { id: input.threadId },
-        }),
+        transport.api.v1.threads[":id"]["default-execution-options"].$get(
+          { param: { id: input.threadId } },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async delete(input) {
@@ -800,7 +846,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     interactions,
     async list(input) {
       return transport.readJson(
-        transport.api.v1.threads.$get({ query: listQuery(input) }),
+        transport.api.v1.threads.$get(
+          { query: listQuery(input) },
+          { init: { signal: input?.signal } },
+        ),
       );
     },
     async markRead(input) {
@@ -819,9 +868,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
     async output(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].output.$get({
-          param: { id: input.threadId },
-        }),
+        transport.api.v1.threads[":id"].output.$get(
+          { param: { id: input.threadId } },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async open(input) {
@@ -844,10 +894,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
     async promptHistory(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"]["prompt-history"].$get({
-          param: { id: input.threadId },
-          query: { limit: input.limit },
-        }),
+        transport.api.v1.threads[":id"]["prompt-history"].$get(
+          {
+            param: { id: input.threadId },
+            query: { limit: input.limit },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     queuedMessages,
@@ -864,7 +917,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
     async search(input) {
       return transport.readJson(
-        transport.api.v1.threads.search.$get({ query: input }),
+        transport.api.v1.threads.search.$get(
+          { query: searchQuery(input) },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async send(input) {
@@ -894,43 +950,55 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     tabs,
     async timeline(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].timeline.$get({
-          param: { id: input.threadId },
-          query: timelineQuery(input),
-        }),
+        transport.api.v1.threads[":id"].timeline.$get(
+          {
+            param: { id: input.threadId },
+            query: timelineQuery(input),
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async timelineTurnSummaryDetails(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].timeline["turn-summary-details"].$get({
-          param: { id: input.threadId },
-          query: {
-            turnId: input.turnId,
-            sourceSeqStart: input.sourceSeqStart,
-            sourceSeqEnd: input.sourceSeqEnd,
+        transport.api.v1.threads[":id"].timeline["turn-summary-details"].$get(
+          {
+            param: { id: input.threadId },
+            query: {
+              turnId: input.turnId,
+              sourceSeqStart: input.sourceSeqStart,
+              sourceSeqEnd: input.sourceSeqEnd,
+            },
           },
-        }),
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async storageFiles(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"]["thread-storage"].files.$get({
-          param: { id: input.threadId },
-          query: { query: input.query, limit: input.limit },
-        }),
+        transport.api.v1.threads[":id"]["thread-storage"].files.$get(
+          {
+            param: { id: input.threadId },
+            query: { query: input.query, limit: input.limit },
+          },
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async storagePaths(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"]["thread-storage"].paths.$get({
-          param: { id: input.threadId },
-          query: {
-            query: input.query,
-            limit: input.limit,
-            includeFiles: input.includeFiles,
-            includeDirectories: input.includeDirectories,
+        transport.api.v1.threads[":id"]["thread-storage"].paths.$get(
+          {
+            param: { id: input.threadId },
+            query: {
+              query: input.query,
+              limit: input.limit,
+              includeFiles: input.includeFiles,
+              includeDirectories: input.includeDirectories,
+            },
           },
-        }),
+          { init: { signal: input.signal } },
+        ),
       );
     },
     async unarchive(input) {
@@ -962,7 +1030,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       const deadline = Date.now() + timeoutMs;
       while (true) {
         if (target.kind === "status") {
-          const thread = await getThread({ threadId: input.threadId });
+          const thread = await getThread({
+            signal: input.signal,
+            threadId: input.threadId,
+          });
           if (thread.status === target.status) {
             return {
               matched: true,
@@ -991,6 +1062,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         const remainingMs = Math.max(0, deadline - Date.now());
         const waitMs = Math.floor(Math.min(remainingMs, 30_000));
         const event = await events.wait({
+          signal: input.signal,
           threadId: input.threadId,
           type: target.eventType,
           waitMs: String(waitMs),

@@ -10,7 +10,7 @@ import {
   defaultExperiments,
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -18,13 +18,9 @@ import {
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { PluginNavIcon, useSettingsNavState } from "./settings-nav";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getSystemConfig: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: { system: { config: vi.fn() } },
+}));
 
 vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
@@ -76,7 +72,7 @@ afterEach(() => {
 
 describe("useSettingsNavState", () => {
   it("resolves Codex and Claude Code as separate provider pages", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(false));
 
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/providers/claude-code"),
@@ -92,7 +88,7 @@ describe("useSettingsNavState", () => {
   });
 
   it("shows the Machines section", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(false));
 
     const result = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/machines"),
@@ -105,7 +101,7 @@ describe("useSettingsNavState", () => {
   });
 
   it("resolves archived threads as a settings section", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(false));
 
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/archived"),
@@ -120,7 +116,7 @@ describe("useSettingsNavState", () => {
   });
 
   it("shows slot-backed plugin settings entries while the plugins experiment is off", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(false));
     setPluginSlotRegistrations("connect", {
       homepageSections: [],
       settingsSections: [{ id: "remote", component: Component }],
@@ -184,7 +180,10 @@ describe("useSettingsNavState", () => {
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins", undefined);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/plugins",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
 
     const icon = render(
       <PluginNavIcon plugin={result.current.pluginEntries[0]!} />,

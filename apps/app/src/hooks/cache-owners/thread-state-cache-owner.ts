@@ -507,18 +507,6 @@ export function applyReorderPinnedThreadResult({
   applyPinnedRootResponseToLists({ orderedRoots, queryClient });
 }
 
-export function beginArchiveThreadTransaction({
-  queryClient,
-  threadId,
-}: ThreadIdCacheArgs): Promise<ThreadListMutationTransaction> {
-  return runOptimisticThreadFieldTransaction({
-    applyToLists: removeThreadFromLists,
-    patch: { archivedAt: Date.now() },
-    queryClient,
-    threadId,
-  });
-}
-
 export function beginUnarchiveThreadTransaction({
   queryClient,
   threadId,

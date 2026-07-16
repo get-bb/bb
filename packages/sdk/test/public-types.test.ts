@@ -315,7 +315,7 @@ type ExpectedProjectsKey =
   | "update";
 
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
-type ExpectedProjectAttachmentsKey = "read" | "upload";
+type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
 type ExpectedProvidersKey = "list" | "models";
 

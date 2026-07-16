@@ -5,7 +5,7 @@ import type {
   ServiceTier,
 } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
-import type { AppCreateThreadRequest } from "@/lib/api";
+import type { AppCreateThreadRequest } from "@/lib/api-types";
 import { resolveChildThreadEnvironment } from "@/lib/child-thread-environment";
 
 /**

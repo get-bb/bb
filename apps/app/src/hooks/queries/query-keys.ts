@@ -1,5 +1,5 @@
 import type { WorkspaceDiffTarget } from "@bb/domain";
-import type { ThreadListFilters, ThreadSearchFilters } from "@/lib/api";
+import type { ThreadListFilters, ThreadSearchFilters } from "@/lib/api-types";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
