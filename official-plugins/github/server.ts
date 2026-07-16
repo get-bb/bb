@@ -1237,10 +1237,11 @@ export default async function plugin(bb: BbPluginApi) {
           environmentId?: string | null;
         };
         if (thread?.environmentId) {
-          const result = (await bb.sdk.environments.pullRequest({
+          const result = await bb.sdk.environments.pullRequest({
             environmentId: thread.environmentId,
-          })) as unknown as { pullRequest?: { url?: unknown } | null };
-          const url = result?.pullRequest?.url;
+          });
+          const url =
+            result.outcome === "available" ? result.pullRequest.url : null;
           const match =
             typeof url === "string"
               ? url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/)

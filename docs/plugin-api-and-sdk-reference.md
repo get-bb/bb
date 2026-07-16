@@ -479,7 +479,7 @@ Every SDK area exports concrete, portable, named argument and result DTO aliases
 | `diffFiles` | `EnvironmentDiffArgs` | lists changed files for a selected target. |
 | `diffPatch` | `EnvironmentDiffPatchArgs` | creates/returns a patch for the selected environment diff. |
 | `get` | `{ environmentId }` | gets an environment. |
-| `pullRequest` | `{ environmentId }` | gets pull-request state. |
+| `pullRequest` | `{ environmentId }` | gets pull-request state as an `available` / `absent` / `unavailable` outcome (`unavailable` means the lookup failed — gh missing/unauthenticated, timeout — not that no PR exists). |
 | `markPullRequestDraft` | `{ environmentId }` | marks its PR draft. |
 | `markPullRequestReady` | `{ environmentId }` | marks its PR ready. |
 | `mergePullRequest` | `{ environmentId, method }` | merges its PR with a `PullRequestMergeMethod`. |

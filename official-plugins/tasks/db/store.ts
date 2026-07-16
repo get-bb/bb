@@ -140,9 +140,22 @@ interface PresetRow {
   created_at: string;
 }
 
+// Monotonic ULIDs (per the ULID spec): rows created in the same millisecond
+// still sort in creation order, which `ORDER BY created_at/attached_at, id`
+// queries rely on for stable list ordering.
+let lastUlidMs = -1;
+let lastUlidRandom = 0n;
+
 function createUlid(now = Date.now()): string {
-  let random = 0n;
-  for (const byte of randomBytes(10)) random = (random << 8n) | BigInt(byte);
+  let random: bigint;
+  if (now === lastUlidMs) {
+    random = lastUlidRandom + 1n;
+  } else {
+    random = 0n;
+    for (const byte of randomBytes(10)) random = (random << 8n) | BigInt(byte);
+  }
+  lastUlidMs = now;
+  lastUlidRandom = random;
   let value = (BigInt(now) << 80n) | random;
 
   let id = "";

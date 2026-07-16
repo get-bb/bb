@@ -533,9 +533,11 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ taskThreads: z.array(taskThreadSchema) }).strict(),
   },
   // Pull requests reached through the task's attached threads, deduplicated
-  // by URL. Threads whose PR lookup failed (deleted thread, unreachable
-  // workspace) are reported in `unavailableThreadIds` rather than failing the
-  // whole call; threads with no environment or no PR are simply absent.
+  // by URL. Threads whose PR lookup failed (deleted thread, gh missing or
+  // unauthenticated, unreachable workspace) are reported in
+  // `unavailableThreadIds` rather than failing the whole call — distinct from
+  // threads with no environment or a genuinely absent PR, which produce
+  // nothing.
   listTaskPullRequests: {
     input: z.object({ taskId: idSchema }).strict(),
     output: z

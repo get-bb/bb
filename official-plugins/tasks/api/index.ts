@@ -440,12 +440,45 @@ interface TaskPullRequestsResult {
   unavailableThreadIds: string[];
 }
 
+/** Cap on simultaneous environment PR lookups — each one may shell out to
+ *  `gh` on the host, so a task with many worktrees must not stampede it. */
+const PULL_REQUEST_LOOKUP_CONCURRENCY = 4;
+
+/**
+ * Run `work` over every item with at most `limit` invocations in flight.
+ * Results keep item order. Rejections propagate to the caller.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await work(items[index]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
 /**
  * Resolve the pull requests reachable from a task's attached threads: each
  * thread's environment PR (the branch its agent pushed), deduplicated by URL.
- * Environment lookups are memoized so threads sharing an environment cost one
- * daemon round-trip. Per-thread failures (deleted thread, unreachable
- * workspace) degrade to `unavailableThreadIds` instead of failing the call.
+ * Thread metadata resolves concurrently, then threads are grouped by
+ * environment so each distinct environment costs exactly one lookup, and
+ * those lookups run with bounded concurrency. A thread lands in
+ * `unavailableThreadIds` when its metadata cannot be read (deleted thread) or
+ * its environment lookup reports/throws "unavailable" (gh missing, not
+ * authenticated, unreachable workspace); threads with no environment or a
+ * genuinely absent PR simply produce nothing.
  */
 async function listTaskPullRequests(
   bb: BbPluginApi,
@@ -453,53 +486,98 @@ async function listTaskPullRequests(
   taskId: string,
 ): Promise<TaskPullRequestsResult> {
   const taskThreads = store.tasks.listTaskThreads(taskId);
-  const pullRequestByEnvironment = new Map<
-    string,
-    ReturnType<BbPluginApi["sdk"]["environments"]["pullRequest"]>
-  >();
-  const byUrl = new Map<string, TaskPullRequest>();
-  const unavailableThreadIds: string[] = [];
 
-  for (const taskThread of taskThreads) {
-    try {
-      const thread = await bb.sdk.threads.get({
-        threadId: taskThread.threadId,
-      });
-      if (!thread.environmentId) continue;
-      let lookup = pullRequestByEnvironment.get(thread.environmentId);
-      if (!lookup) {
-        lookup = bb.sdk.environments.pullRequest({
-          environmentId: thread.environmentId,
+  const unavailable = new Set<string>();
+  const threadIdsByEnvironment = new Map<string, string[]>();
+  await Promise.all(
+    taskThreads.map(async (taskThread) => {
+      try {
+        const thread = await bb.sdk.threads.get({
+          threadId: taskThread.threadId,
         });
-        pullRequestByEnvironment.set(thread.environmentId, lookup);
+        if (!thread.environmentId) return;
+        const group = threadIdsByEnvironment.get(thread.environmentId) ?? [];
+        group.push(taskThread.threadId);
+        threadIdsByEnvironment.set(thread.environmentId, group);
+      } catch {
+        unavailable.add(taskThread.threadId);
       }
-      const { pullRequest } = await lookup;
-      if (!pullRequest) continue;
+    }),
+  );
+
+  const byUrl = new Map<string, TaskPullRequest>();
+  await mapWithConcurrency(
+    [...threadIdsByEnvironment.entries()],
+    PULL_REQUEST_LOOKUP_CONCURRENCY,
+    async ([environmentId, threadIds]) => {
+      let result: Awaited<
+        ReturnType<BbPluginApi["sdk"]["environments"]["pullRequest"]>
+      >;
+      try {
+        result = await bb.sdk.environments.pullRequest({ environmentId });
+      } catch {
+        for (const threadId of threadIds) unavailable.add(threadId);
+        return;
+      }
+      if (result.outcome === "unavailable") {
+        for (const threadId of threadIds) unavailable.add(threadId);
+        return;
+      }
+      if (result.outcome === "absent") return;
+      const { pullRequest } = result;
       const existing = byUrl.get(pullRequest.url);
-      if (existing) {
-        existing.threadIds.push(taskThread.threadId);
-      } else {
+      if (!existing) {
         byUrl.set(pullRequest.url, {
           url: pullRequest.url,
           number: pullRequest.number,
           title: pullRequest.title,
           state: pullRequest.state,
           updatedAt: pullRequest.updatedAt,
-          threadIds: [taskThread.threadId],
+          threadIds: [...threadIds],
         });
+        return;
       }
-    } catch {
-      unavailableThreadIds.push(taskThread.threadId);
-    }
-  }
+      // Two environments can surface the same PR (e.g. two worktrees on the
+      // same branch). Union the threads and keep the freshest payload so a
+      // stale duplicate never masks a newer state.
+      const threadIdUnion = [...existing.threadIds, ...threadIds];
+      if (pullRequest.updatedAt.localeCompare(existing.updatedAt) > 0) {
+        byUrl.set(pullRequest.url, {
+          url: pullRequest.url,
+          number: pullRequest.number,
+          title: pullRequest.title,
+          state: pullRequest.state,
+          updatedAt: pullRequest.updatedAt,
+          threadIds: threadIdUnion,
+        });
+      } else {
+        existing.threadIds = threadIdUnion;
+      }
+    },
+  );
+
+  // Keep both lists in stable task-thread order regardless of lookup timing.
+  const threadOrder = new Map(
+    taskThreads.map((taskThread, index) => [taskThread.threadId, index]),
+  );
+  const orderByThread = (threadId: string) =>
+    threadOrder.get(threadId) ?? Number.MAX_SAFE_INTEGER;
+  const pullRequests = [...byUrl.values()].map((pullRequest) => ({
+    ...pullRequest,
+    threadIds: [...pullRequest.threadIds].sort(
+      (left, right) => orderByThread(left) - orderByThread(right),
+    ),
+  }));
 
   return {
     // Most recently updated first, matching how the threads list surfaces
     // the freshest work.
-    pullRequests: [...byUrl.values()].sort((left, right) =>
+    pullRequests: pullRequests.sort((left, right) =>
       right.updatedAt.localeCompare(left.updatedAt),
     ),
-    unavailableThreadIds,
+    unavailableThreadIds: [...unavailable].sort(
+      (left, right) => orderByThread(left) - orderByThread(right),
+    ),
   };
 }
 

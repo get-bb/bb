@@ -351,15 +351,30 @@ export const environmentStatusResponseSchema = z.discriminatedUnion("outcome", [
 ]);
 
 /**
- * `pullRequest` is required + nullable: `null` means "no PR for this branch"
- * (a real, distinct state), covering every detection failure the daemon folds
- * together. Non-git environments resolve to `null` without a daemon call.
+ * Structured pull-request lookup outcome. "absent" is a real answer — the
+ * host checked and the branch has no PR (non-git environments resolve to
+ * "absent" without a daemon call). "unavailable" means the lookup itself
+ * failed (gh missing, not authenticated, timeout, unreachable workspace), so
+ * callers must not render it as "no PR exists".
  */
-export const environmentPullRequestResponseSchema = z
-  .object({
-    pullRequest: threadPullRequestSchema.nullable(),
-  })
-  .strict();
+export const environmentPullRequestResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z
+      .object({
+        outcome: z.literal("available"),
+        pullRequest: threadPullRequestSchema,
+      })
+      .strict(),
+    z.object({ outcome: z.literal("absent") }).strict(),
+    z
+      .object({
+        outcome: z.literal("unavailable"),
+        message: z.string().min(1),
+      })
+      .strict(),
+  ],
+);
 export type EnvironmentPullRequestResponse = z.infer<
   typeof environmentPullRequestResponseSchema
 >;

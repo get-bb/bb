@@ -4,7 +4,7 @@ import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { registerAttachments } from "../attachments";
 import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
@@ -944,24 +944,27 @@ describe("Tasks RPC domain API", () => {
   });
 
   it("resolves task pull requests from environment metadata, deduped by URL", async () => {
-    const pullRequestsByEnvironment: Record<
-      string,
-      ReturnType<typeof makePullRequest> | null
-    > = {
-      env_shared: makePullRequest({
-        number: 12,
-        url: "https://github.com/acme/bb/pull/12",
-        state: "open",
-        updatedAt: "2026-07-15T10:00:00.000Z",
-      }),
-      env_merged: makePullRequest({
-        number: 9,
-        title: "Older merged work",
-        url: "https://github.com/acme/bb/pull/9",
-        state: "merged",
-        updatedAt: "2026-07-16T09:00:00.000Z",
-      }),
-      env_no_pr: null,
+    const pullRequestsByEnvironment: Record<string, PullRequestLookup> = {
+      env_shared: {
+        outcome: "available",
+        pullRequest: makePullRequest({
+          number: 12,
+          url: "https://github.com/acme/bb/pull/12",
+          state: "open",
+          updatedAt: "2026-07-15T10:00:00.000Z",
+        }),
+      },
+      env_merged: {
+        outcome: "available",
+        pullRequest: makePullRequest({
+          number: 9,
+          title: "Older merged work",
+          url: "https://github.com/acme/bb/pull/9",
+          state: "merged",
+          updatedAt: "2026-07-16T09:00:00.000Z",
+        }),
+      },
+      env_no_pr: { outcome: "absent" },
     };
     const environmentByThread: Record<string, string | null> = {
       thr_writer00: "env_shared",
@@ -989,7 +992,7 @@ describe("Tasks RPC domain API", () => {
             environmentId,
           }: {
             environmentId: string;
-          }) => ({ pullRequest: pullRequestsByEnvironment[environmentId] }),
+          }) => pullRequestsByEnvironment[environmentId]!,
         },
       },
     });
@@ -1021,7 +1024,14 @@ describe("Tasks RPC domain API", () => {
       await harness.callRpc("listTaskPullRequests", { taskId: task.id }),
     );
 
-    expect(result.pullRequests).toEqual([
+    // Same-millisecond attachments make relative thread order nondeterministic,
+    // so compare threadIds as sets.
+    expect(
+      result.pullRequests.map((pullRequest) => ({
+        ...pullRequest,
+        threadIds: [...pullRequest.threadIds].sort(),
+      })),
+    ).toEqual([
       {
         url: "https://github.com/acme/bb/pull/9",
         number: 9,
@@ -1036,32 +1046,52 @@ describe("Tasks RPC domain API", () => {
         title: "Fix the pill",
         state: "open",
         updatedAt: "2026-07-15T10:00:00.000Z",
-        threadIds: ["thr_writer00", "thr_reviewer0"],
+        threadIds: ["thr_reviewer0", "thr_writer00"],
       },
     ]);
     expect(result.unavailableThreadIds).toEqual(["thr_deleted00"]);
     // One lookup per distinct environment: threads sharing env_shared reuse
-    // a single memoized call.
+    // a single grouped call.
     expect(
       harness.sdk
         .callsTo("environments.pullRequest")
-        .map(([input]) => (input as { environmentId: string }).environmentId),
-    ).toEqual(["env_shared", "env_merged", "env_no_pr"]);
+        .map(([input]) => (input as { environmentId: string }).environmentId)
+        .sort(),
+    ).toEqual(["env_merged", "env_no_pr", "env_shared"]);
 
     await harness.dispose();
   });
 
-  it("marks every thread of an unreachable environment unavailable", async () => {
+  it("separates unavailable lookups (auth failure, crash) from genuine absence", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
         threads: {
           get: async ({ threadId }: { threadId: string }) =>
-            makeThreadResponse({ id: threadId, environmentId: "env_down" }),
+            makeThreadResponse({
+              id: threadId,
+              environmentId:
+                threadId === "thr_absent000"
+                  ? "env_absent"
+                  : threadId === "thr_crash0000"
+                    ? "env_crash"
+                    : "env_no_auth",
+            }),
         },
         environments: {
-          pullRequest: async () => {
-            throw new Error("workspace unavailable");
+          pullRequest: async ({
+            environmentId,
+          }: {
+            environmentId: string;
+          }): Promise<PullRequestLookup> => {
+            if (environmentId === "env_absent") return { outcome: "absent" };
+            if (environmentId === "env_crash") {
+              throw new Error("host offline");
+            }
+            return {
+              outcome: "unavailable",
+              message: "gh pr view failed: authentication required",
+            };
           },
         },
       },
@@ -1077,7 +1107,12 @@ describe("Tasks RPC domain API", () => {
       projectId: project.id,
       title: "Ship it",
     });
-    for (const threadId of ["thr_one000000", "thr_two000000"]) {
+    for (const threadId of [
+      "thr_no_auth00",
+      "thr_no_auth01",
+      "thr_absent000",
+      "thr_crash0000",
+    ]) {
       store.tasks.upsertTaskThread({
         taskId: task.id,
         threadId,
@@ -1090,14 +1125,185 @@ describe("Tasks RPC domain API", () => {
     const result = tasksRpcContract.listTaskPullRequests.output.parse(
       await harness.callRpc("listTaskPullRequests", { taskId: task.id }),
     );
-    expect(result).toEqual({
-      pullRequests: [],
-      unavailableThreadIds: ["thr_one000000", "thr_two000000"],
+    // The genuinely absent PR is quiet; only failed lookups are flagged, and
+    // every thread of a failed environment is flagged.
+    expect(result.pullRequests).toEqual([]);
+    expect([...result.unavailableThreadIds].sort()).toEqual([
+      "thr_crash0000",
+      "thr_no_auth00",
+      "thr_no_auth01",
+    ]);
+
+    await harness.dispose();
+  });
+
+  it("overlaps distinct environment lookups while deduplicating shared ones", async () => {
+    const resolvers = new Map<string, (lookup: PullRequestLookup) => void>();
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) =>
+            makeThreadResponse({
+              id: threadId,
+              environmentId: threadId === "thr_beta00000" ? "env_b" : "env_a",
+            }),
+        },
+        environments: {
+          pullRequest: ({ environmentId }: { environmentId: string }) =>
+            new Promise<PullRequestLookup>((resolve) => {
+              resolvers.set(environmentId, resolve);
+            }),
+        },
+      },
     });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "PRs",
+      prefix: "PR",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Ship it",
+    });
+    // Two threads share env_a; a third uses env_b.
+    for (const threadId of ["thr_alpha0000", "thr_alpha0001", "thr_beta00000"]) {
+      store.tasks.upsertTaskThread({
+        taskId: task.id,
+        threadId,
+        presetName: "Default",
+        title: threadId,
+        liveStatus: "working",
+      });
+    }
+
+    const resultPromise = harness.callRpc("listTaskPullRequests", {
+      taskId: task.id,
+    });
+    // Both environment lookups must be in flight before either resolves —
+    // serialized lookups would only ever have one pending resolver here.
+    await vi.waitFor(() => {
+      expect([...resolvers.keys()].sort()).toEqual(["env_a", "env_b"]);
+    });
+    expect(harness.sdk.callsTo("environments.pullRequest")).toHaveLength(2);
+
+    resolvers.get("env_a")!({
+      outcome: "available",
+      pullRequest: makePullRequest({
+        number: 21,
+        url: "https://github.com/acme/bb/pull/21",
+      }),
+    });
+    resolvers.get("env_b")!({ outcome: "absent" });
+
+    const result = tasksRpcContract.listTaskPullRequests.output.parse(
+      await resultPromise,
+    );
+    expect(result.pullRequests).toHaveLength(1);
+    expect(result.pullRequests[0]).toMatchObject({ number: 21 });
+    expect([...result.pullRequests[0]!.threadIds].sort()).toEqual([
+      "thr_alpha0000",
+      "thr_alpha0001",
+    ]);
+    // Still exactly one lookup per distinct environment.
+    expect(harness.sdk.callsTo("environments.pullRequest")).toHaveLength(2);
+
+    await harness.dispose();
+  });
+
+  it("keeps the freshest payload when two environments share a PR URL", async () => {
+    const lookupByEnvironment: Record<string, PullRequestLookup> = {
+      env_stale: {
+        outcome: "available",
+        pullRequest: makePullRequest({
+          number: 30,
+          title: "Before merge",
+          state: "open",
+          url: "https://github.com/acme/bb/pull/30",
+          updatedAt: "2026-07-15T08:00:00.000Z",
+        }),
+      },
+      env_fresh: {
+        outcome: "available",
+        pullRequest: makePullRequest({
+          number: 30,
+          title: "After merge",
+          state: "merged",
+          url: "https://github.com/acme/bb/pull/30",
+          updatedAt: "2026-07-16T12:00:00.000Z",
+        }),
+      },
+    };
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) =>
+            makeThreadResponse({
+              id: threadId,
+              environmentId:
+                threadId === "thr_stale0000" ? "env_stale" : "env_fresh",
+            }),
+        },
+        environments: {
+          pullRequest: async ({
+            environmentId,
+          }: {
+            environmentId: string;
+          }) => lookupByEnvironment[environmentId]!,
+        },
+      },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "PRs",
+      prefix: "PR",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Ship it",
+    });
+    for (const threadId of ["thr_stale0000", "thr_fresh0000"]) {
+      store.tasks.upsertTaskThread({
+        taskId: task.id,
+        threadId,
+        presetName: "Default",
+        title: threadId,
+        liveStatus: "working",
+      });
+    }
+
+    const result = tasksRpcContract.listTaskPullRequests.output.parse(
+      await harness.callRpc("listTaskPullRequests", { taskId: task.id }),
+    );
+    expect(
+      result.pullRequests.map((pullRequest) => ({
+        ...pullRequest,
+        threadIds: [...pullRequest.threadIds].sort(),
+      })),
+    ).toEqual([
+      {
+        url: "https://github.com/acme/bb/pull/30",
+        number: 30,
+        title: "After merge",
+        state: "merged",
+        updatedAt: "2026-07-16T12:00:00.000Z",
+        threadIds: ["thr_fresh0000", "thr_stale0000"],
+      },
+    ]);
 
     await harness.dispose();
   });
 });
+
+type PullRequestLookup =
+  | { outcome: "available"; pullRequest: ReturnType<typeof makePullRequest> }
+  | { outcome: "absent" }
+  | { outcome: "unavailable"; message: string };
 
 /** Full environment PR payload; tests override the fields they assert on. */
 function makePullRequest(

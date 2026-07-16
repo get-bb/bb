@@ -55,6 +55,7 @@ interface FakeWorkspaceState {
   listedModelsProviderId: string | undefined;
   listedModelsAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   pullRequest: GitHostPullRequest | null;
+  pullRequestLookupError: string | null;
   resetCount: number;
   statusReads: number;
 }
@@ -133,6 +134,7 @@ export function createFakeWorkspace(pathname: string) {
     listedModelsAcpLaunchSpec: undefined,
     lastPullRequestAction: undefined,
     pullRequest: null,
+    pullRequestLookupError: null,
   };
   const workspace: FakeHostWorkspace = {
     path: pathname,
@@ -208,7 +210,15 @@ export function createFakeWorkspace(pathname: string) {
       return [];
     },
     async getPullRequest() {
-      return state.pullRequest;
+      if (state.pullRequestLookupError !== null) {
+        return {
+          outcome: "unavailable" as const,
+          message: state.pullRequestLookupError,
+        };
+      }
+      return state.pullRequest === null
+        ? { outcome: "none" as const }
+        : { outcome: "found" as const, pullRequest: state.pullRequest };
     },
     async runPullRequestAction(action) {
       state.lastPullRequestAction = action;

@@ -165,8 +165,8 @@ describe("bb environment command output", () => {
   it("bb environment pull-request show reports absence and presence", async () => {
     const get = vi
       .fn()
-      .mockResolvedValueOnce({ pullRequest: null })
-      .mockResolvedValueOnce({ pullRequest });
+      .mockResolvedValueOnce({ outcome: "absent" })
+      .mockResolvedValueOnce({ outcome: "available", pullRequest });
     stubServerApi({ "v1.environments.:id.pull-request.$get": get });
 
     await runCommand(
@@ -198,10 +198,10 @@ describe("bb environment command output", () => {
     );
   });
 
-  it("bb environment pull-request show --json preserves null", async () => {
+  it("bb environment pull-request show --json preserves the outcome", async () => {
     stubServerApi({
       "v1.environments.:id.pull-request.$get": vi.fn(async () => ({
-        pullRequest: null,
+        outcome: "absent",
       })),
     });
 
@@ -212,7 +212,25 @@ describe("bb environment command output", () => {
 
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
-    ).toEqual({ pullRequest: null });
+    ).toEqual({ outcome: "absent" });
+  });
+
+  it("bb environment pull-request show reports a failed lookup", async () => {
+    stubServerApi({
+      "v1.environments.:id.pull-request.$get": vi.fn(async () => ({
+        outcome: "unavailable",
+        message: "gh pr view failed: authentication required",
+      })),
+    });
+
+    await runCommand(
+      ["environment", "pull-request", "show", "env-pr-down"],
+      register,
+    );
+
+    expect(vi.mocked(console.log).mock.calls.map((call) => call[0])).toEqual([
+      "Pull request lookup unavailable: gh pr view failed: authentication required",
+    ]);
   });
 
   it("bb environment branches returns local and remote results", async () => {

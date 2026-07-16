@@ -709,11 +709,15 @@ export function registerEnvironmentCommands(
           environmentId: id,
         });
         if (outputJson(opts, result)) return;
-        const pr = result.pullRequest;
-        if (!pr) {
+        if (result.outcome === "unavailable") {
+          console.log(`Pull request lookup unavailable: ${result.message}`);
+          return;
+        }
+        if (result.outcome === "absent") {
           console.log("No pull request found");
           return;
         }
+        const pr = result.pullRequest;
         console.log(`Pull request: #${pr.number} ${pr.state} - ${pr.title}`);
         console.log(`URL: ${pr.url}`);
         console.log(`Branch: ${pr.headRefName} -> ${pr.baseRefName}`);

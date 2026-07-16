@@ -37,6 +37,8 @@ export interface DetailViewProps {
 }
 
 const DESCRIPTION_SAVE_DELAY_MS = 800;
+/** Poll cadence for PR state while any attached PR is still open or draft. */
+const ACTIVE_PULL_REQUEST_REFRESH_MS = 60_000;
 
 function SubTaskDonut({
   subtasks,
@@ -270,6 +272,27 @@ function TaskDetail({ task }: { task: Task }) {
     ["threads:changed"],
     [task.id],
   );
+  // GitHub-side transitions (draft→open→merged) never emit a Tasks realtime
+  // event, so revalidate the way the main app's PR query does: always on
+  // window focus, plus a slow poll while any PR is still active. The poll
+  // stays bounded — each round costs one gh lookup per distinct environment.
+  const refreshPullRequests = pullRequests.refresh;
+  const hasActivePullRequest = (pullRequests.data?.pullRequests ?? []).some(
+    (pullRequest) =>
+      pullRequest.state === "open" || pullRequest.state === "draft",
+  );
+  useEffect(() => {
+    window.addEventListener("focus", refreshPullRequests);
+    return () => window.removeEventListener("focus", refreshPullRequests);
+  }, [refreshPullRequests]);
+  useEffect(() => {
+    if (!hasActivePullRequest) return;
+    const timer = window.setInterval(
+      refreshPullRequests,
+      ACTIVE_PULL_REQUEST_REFRESH_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [hasActivePullRequest, refreshPullRequests]);
 
   const updateTask = async (
     input: TaskPropertyUpdate & { title?: string; description?: string },

@@ -767,7 +767,7 @@ describe("@bb/sdk", () => {
   });
 
   it("routes environment pull request calls through the HTTP transport", async () => {
-    const response = { pullRequest: null };
+    const response = { outcome: "absent" };
     const queue = createFetchQueue([{ body: response }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({

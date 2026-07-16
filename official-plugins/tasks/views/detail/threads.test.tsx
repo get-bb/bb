@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup } from "@testing-library/react";
+import { cleanup, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 
@@ -152,5 +152,52 @@ describe("task detail pull request pills", () => {
     expect(slot.getAllByText("PR unavailable")).toHaveLength(1);
     // The healthy thread with no PR renders no pill and no link.
     expect(slot.queryByRole("link")).toBeNull();
+  });
+
+  it("revalidates PR state on window focus without a task-thread mutation", async () => {
+    const basePullRequest = {
+      url: "https://github.com/acme/bb/pull/12",
+      number: 12,
+      title: "Ship the PR pill",
+      updatedAt: "2026-07-16T10:00:00.000Z",
+      threadIds: ["thr_worker000"],
+    };
+    let lookupCount = 0;
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "task/TSK-5" },
+      {
+        rpc: detailRpc({
+          // First fetch sees an open PR; every revalidation sees it merged.
+          listTaskPullRequests: () => {
+            lookupCount += 1;
+            return {
+              pullRequests: [
+                {
+                  ...basePullRequest,
+                  state: lookupCount === 1 ? "open" : "merged",
+                },
+              ],
+              unavailableThreadIds: [],
+            };
+          },
+        }),
+      },
+    );
+
+    await slot.findByRole("link", {
+      name: "Pull request #12: Ship the PR pill (Open)",
+    });
+
+    // GitHub merged the PR; no Tasks realtime event fires for that.
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => {
+      expect(
+        slot.getByRole("link", {
+          name: "Pull request #12: Ship the PR pill (Merged)",
+        }),
+      ).toBeTruthy();
+    });
   });
 });

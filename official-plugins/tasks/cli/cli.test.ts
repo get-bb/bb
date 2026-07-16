@@ -836,35 +836,44 @@ describe("bb tasks CLI", () => {
             title: `Worker ${threadId}`,
             titleFallback: null,
             status: "active",
-            environmentId: threadId === "thr_pr_worker" ? "env_pr" : null,
+            environmentId:
+              threadId === "thr_pr_worker"
+                ? "env_pr"
+                : threadId === "thr_absent_pr"
+                  ? "env_absent"
+                  : null,
           }),
         },
         environments: {
-          pullRequest: async () => ({
-            pullRequest: {
-              number: 12,
-              title: "BB-15 Show PRs in tasks",
-              state: "draft",
-              url: "https://github.com/acme/bb/pull/12",
-              baseRefName: "main",
-              headRefName: "bb/bb-15",
-              updatedAt: "2026-07-16T10:00:00.000Z",
-              checks: {
-                state: "pending",
-                totalCount: 1,
-                passedCount: 0,
-                failedCount: 0,
-                pendingCount: 1,
-              },
-              review: { state: "none", reviewRequestCount: 0 },
-              mergeability: {
-                state: "draft",
-                mergeStateStatus: null,
-                mergeable: null,
-              },
-              attention: "draft",
-            },
-          }),
+          pullRequest: async ({ environmentId }: { environmentId: string }) =>
+            environmentId === "env_absent"
+              ? { outcome: "absent" }
+              : {
+                  outcome: "available",
+                  pullRequest: {
+                    number: 12,
+                    title: "BB-15 Show PRs in tasks",
+                    state: "draft",
+                    url: "https://github.com/acme/bb/pull/12",
+                    baseRefName: "main",
+                    headRefName: "bb/bb-15",
+                    updatedAt: "2026-07-16T10:00:00.000Z",
+                    checks: {
+                      state: "pending",
+                      totalCount: 1,
+                      passedCount: 0,
+                      failedCount: 0,
+                      pendingCount: 1,
+                    },
+                    review: { state: "none", reviewRequestCount: 0 },
+                    mergeability: {
+                      state: "draft",
+                      mergeStateStatus: null,
+                      mergeable: null,
+                    },
+                    attention: "draft",
+                  },
+                },
         },
       },
     });
@@ -881,11 +890,16 @@ describe("bb tasks CLI", () => {
     stdout(
       await harness.runCli(["attach", "PRS-1", "--thread", "thr_no_env_00"]),
     );
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_absent_pr"]),
+    );
 
     const shown = stdout(await harness.runCli(["show", "PRS-1"]));
     expect(shown).toContain("Pull requests");
     expect(shown).toContain("#12  draft  BB-15 Show PRs in tasks");
     expect(shown).toContain("https://github.com/acme/bb/pull/12");
+    // Genuine absence (no environment, or gh reported no PR) stays quiet —
+    // it must not read as a failed lookup.
     expect(shown).not.toContain("PR lookup unavailable");
 
     const payload = JSON.parse(
@@ -920,9 +934,10 @@ describe("bb tasks CLI", () => {
           }),
         },
         environments: {
-          pullRequest: async () => {
-            throw new Error("workspace unavailable");
-          },
+          pullRequest: async () => ({
+            outcome: "unavailable",
+            message: "gh pr view failed: authentication required",
+          }),
         },
       },
     });

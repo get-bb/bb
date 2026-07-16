@@ -1013,14 +1013,25 @@ const workspaceDiffPatchResultSchema = z.discriminatedUnion("outcome", [
     .strict(),
 ]);
 
-// Every failure mode (gh missing / not authed / no remote / no PR / malformed
-// output / unresolvable workspace) collapses to `pullRequest: null`, so there
-// is no available/unavailable discrimination here.
-const workspacePullRequestResultSchema = z
-  .object({
-    pullRequest: gitHostPullRequestSchema.nullable(),
-  })
-  .strict();
+// "absent" is a real answer (gh ran and reported no PR for the branch, or a
+// detached HEAD has no branch); "unavailable" means the lookup itself failed
+// (gh missing / not authed / timeout / malformed output / unresolvable
+// workspace) and must not be treated as "no PR exists".
+const workspacePullRequestResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      pullRequest: gitHostPullRequestSchema,
+    })
+    .strict(),
+  z.object({ outcome: z.literal("absent") }).strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      message: z.string().min(1),
+    })
+    .strict(),
+]);
 
 const fileListResultSchema = z.object({
   files: z.array(z.object({ path: z.string(), name: z.string() })),
