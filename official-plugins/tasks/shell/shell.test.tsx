@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 
 // jsdom lacks matchMedia; the vendored Dialog's responsive root needs it.
@@ -22,8 +22,14 @@ if (!window.matchMedia) {
 const app = await loadPluginApp(() => import("../app"));
 const { parseTasksRoute, tasksRouteToSubPath } = await import("./routes.js");
 const { pagerPosition } = await import("./topbar.js");
+const { SIDEBAR_COLLAPSED_STORAGE_KEY } =
+  await import("./sidebar-preference.js");
 
-afterEach(cleanup);
+beforeEach(() => window.localStorage.clear());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
 const FOLDER_ID = "01HZZZZZZZZZZZZZZZZZZZZZF1";
@@ -164,6 +170,121 @@ describe("task pager", () => {
 });
 
 describe("tasks app shell", () => {
+  it("keeps the first-use sidebar expanded without writing a preference", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await slot.findByText("Tasks Plugin");
+
+    expect(
+      slot
+        .getByRole("button", { name: "Collapse sidebar" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(
+      window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY),
+    ).toBeNull();
+  });
+
+  it("persists collapsed state across route changes and remounts", async () => {
+    const registration = app.navPanels[0]!;
+    const slot = renderSlot(
+      registration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await slot.findByText("Tasks Plugin");
+
+    fireEvent.click(slot.getByRole("button", { name: "Collapse sidebar" }));
+    expect(slot.queryByRole("button", { name: "Manage" })).toBeNull();
+    expect(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY)).toBe(
+      "true",
+    );
+
+    const Shell = registration.component;
+    slot.lifecycle.rerender(<Shell subPath={`${PROJECT_ID}?view=board`} />);
+    await slot.findByText("Backlog");
+    expect(
+      slot
+        .getByRole("button", { name: "Expand sidebar" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+
+    slot.lifecycle.unmount();
+    const remounted = renderSlot(
+      registration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await remounted.findByText("All tasks");
+    expect(remounted.queryByRole("button", { name: "Manage" })).toBeNull();
+    expect(
+      remounted.getByRole("button", { name: "Expand sidebar" }),
+    ).toBeDefined();
+  });
+
+  it("persists expanded state after restoring a collapsed preference", async () => {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, "true");
+    const registration = app.navPanels[0]!;
+    const slot = renderSlot(
+      registration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await slot.findByText("All tasks");
+    fireEvent.click(slot.getByRole("button", { name: "Expand sidebar" }));
+
+    expect(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY)).toBe(
+      "false",
+    );
+    await slot.findByRole("button", { name: "Manage" });
+
+    slot.lifecycle.unmount();
+    const remounted = renderSlot(
+      registration,
+      { subPath: "manage" },
+      {
+        rpc: seededRpc({ listLabels: () => ({ labels: [] }) }),
+      },
+    );
+    await remounted.findByText("Labels, agent presets, and folders.");
+    expect(
+      remounted.getByRole("button", { name: "Collapse sidebar" }),
+    ).toBeDefined();
+    expect(remounted.getByRole("button", { name: "Manage" })).toBeDefined();
+  });
+
+  it("keeps toggling usable when client storage rejects writes", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage is disabled", "SecurityError");
+    });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await slot.findByText("Tasks Plugin");
+
+    fireEvent.click(slot.getByRole("button", { name: "Collapse sidebar" }));
+    expect(
+      slot
+        .getByRole("button", { name: "Expand sidebar" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+
   it("shows the empty state and opens the New project dialog", async () => {
     const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {
       rpc: emptyRpc,
