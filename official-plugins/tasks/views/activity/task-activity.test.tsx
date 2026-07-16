@@ -90,7 +90,7 @@ describe("agent notification target", () => {
 });
 
 describe("AgentNotificationControl", () => {
-  it("exposes an enabled accessible opt-in for the latest responder", () => {
+  it("exposes an enabled, on-by-default switch named for the latest responder", () => {
     const onCheckedChange = vi.fn();
     render(
       <AgentNotificationControl
@@ -100,51 +100,91 @@ describe("AgentNotificationControl", () => {
       />,
     );
 
+    // Icon-only: the destination lives in the accessible name (and tooltip),
+    // not inline text, so it never stretches the composer row.
     const toggle = screen.getByRole("switch", {
       name: "Notify Fix the login bug",
     });
-    expect(toggle.hasAttribute("disabled")).toBe(false);
-    expect(screen.getByText("Notify Fix the login bug")).toBeTruthy();
+    expect(toggle.getAttribute("aria-disabled")).toBe("false");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(toggle);
     expect(onCheckedChange).toHaveBeenCalledWith(false);
   });
 
-  it("clearly disables notification when no agent has replied", () => {
+  it("reads as off and toggles on when the opt-in is unchecked", () => {
+    const onCheckedChange = vi.fn();
     render(
       <AgentNotificationControl
-        target={{ kind: "none" }}
+        target={{ kind: "ready", title: "Fix the login bug" }}
+        checked={false}
+        onCheckedChange={onCheckedChange}
+      />,
+    );
+
+    const toggle = screen.getByRole("switch", {
+      name: "Notify Fix the login bug",
+    });
+    expect(toggle.getAttribute("aria-disabled")).toBe("false");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onCheckedChange).toHaveBeenCalledWith(true);
+  });
+
+  it("names the full destination even for a long thread title", () => {
+    const title =
+      "Make all of the filters in the task list remembered across reloads";
+    render(
+      <AgentNotificationControl
+        target={{ kind: "ready", title }}
         checked
         onCheckedChange={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("No prior agent reply to notify")).toBeTruthy();
+    // No inline text to truncate: the whole destination is the accessible name,
+    // so screen readers and the tooltip always get the complete title.
     expect(
-      screen
-        .getByRole("switch", { name: "No prior agent reply to notify" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+      screen.getByRole("switch", { name: `Notify ${title}` }),
+    ).toBeTruthy();
   });
 
-  it("does not expose a private or missing latest thread as a target", () => {
+  it("never reads as on and cannot be toggled while unavailable", () => {
+    const onCheckedChange = vi.fn();
     render(
       <AgentNotificationControl
         target={{ kind: "unavailable" }}
         checked
-        onCheckedChange={vi.fn()}
+        onCheckedChange={onCheckedChange}
       />,
     );
 
-    expect(
-      screen.getByText("Latest responding agent can’t be notified"),
-    ).toBeTruthy();
-    expect(
-      screen
-        .getByRole("switch", {
-          name: "Latest responding agent can’t be notified",
-        })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+    const toggle = screen.getByRole("switch", {
+      name: "Latest responding agent can’t be notified",
+    });
+    expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    // `checked` is ignored when there is no valid target: the control must not
+    // advertise an armed notification it can't deliver, and clicking is inert.
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onCheckedChange).not.toHaveBeenCalled();
+  });
+
+  it("disables and explains the control when no agent has replied", () => {
+    const onCheckedChange = vi.fn();
+    render(
+      <AgentNotificationControl
+        target={{ kind: "none" }}
+        checked
+        onCheckedChange={onCheckedChange}
+      />,
+    );
+
+    const toggle = screen.getByRole("switch", {
+      name: "No prior agent reply to notify",
+    });
+    expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(toggle);
+    expect(onCheckedChange).not.toHaveBeenCalled();
   });
 });
 

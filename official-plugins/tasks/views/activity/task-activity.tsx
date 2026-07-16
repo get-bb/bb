@@ -1,13 +1,19 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowUp02Icon,
   AttachmentIcon,
   File01Icon,
   Notification02Icon,
+  NotificationOff02Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@bb/shared-ui/button";
-import { Switch } from "@bb/shared-ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import { useBbNavigate } from "@bb/plugin-sdk/app";
@@ -395,7 +401,7 @@ export function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
           size="icon"
           variant="ghost"
           aria-label="Attach file"
-          className="size-6.5 text-muted-foreground"
+          className="size-6.5 shrink-0 text-muted-foreground"
           onClick={() => fileInputRef.current?.click()}
         >
           <HugeiconsIcon icon={AttachmentIcon} className="size-3.5" />
@@ -405,7 +411,7 @@ export function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
           size="icon"
           aria-label="Comment"
           disabled={!canSend}
-          className="size-6.5 rounded-md bg-foreground text-background hover:bg-foreground/90"
+          className="size-6.5 shrink-0 rounded-md bg-foreground text-background hover:bg-foreground/90"
           onClick={() => void send()}
         >
           <HugeiconsIcon icon={ArrowUp02Icon} className="size-3.5" />
@@ -424,25 +430,51 @@ export function AgentNotificationControl({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) {
-  const labelId = useId();
   const enabled = target.kind === "ready";
+  const on = enabled && checked;
   const label =
     target.kind === "ready"
       ? `Notify ${target.title}`
       : target.kind === "none"
         ? "No prior agent reply to notify"
         : "Latest responding agent can’t be notified";
+  // Subtle icon-only toggle that sits with the composer's other action buttons.
+  // The bell/bell-off glyph plus the ghost-button color carry the on/off state;
+  // the tooltip (and accessible name) name the destination so a long thread
+  // title never has to render inline. `aria-disabled` rather than `disabled`
+  // keeps the trigger hoverable so the tooltip can still explain why an
+  // unavailable target can't be notified.
   return (
-    <label className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-      <HugeiconsIcon icon={Notification02Icon} className="size-3" />
-      <Switch
-        checked={enabled && checked}
-        disabled={!enabled}
-        onCheckedChange={onCheckedChange}
-        aria-labelledby={labelId}
-      />
-      <span id={labelId}>{label}</span>
-    </label>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            role="switch"
+            aria-checked={on}
+            aria-disabled={!enabled}
+            aria-label={label}
+            onClick={() => {
+              if (enabled) onCheckedChange(!checked);
+            }}
+            className={cn(
+              "mr-auto size-6.5 shrink-0",
+              on ? "text-foreground" : "text-muted-foreground",
+              !enabled &&
+                "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-muted-foreground",
+            )}
+          >
+            <HugeiconsIcon
+              icon={on ? Notification02Icon : NotificationOff02Icon}
+              className="size-3.5"
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
