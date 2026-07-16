@@ -2,7 +2,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
+  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -16,11 +18,14 @@ export interface PaneContextValue {
   paneId: string;
   isFocused: boolean;
   /**
-   * Whether this pane may show its secondary panel. Always true for the page
-   * surface; false for unfocused panes once the split reaches ≥3
-   * panes (no room for two secondary panels).
+   * Window-level secondary-panel host for a multi-pane workspace. Pane views
+   * publish their already-assembled panel model here while retaining ownership
+   * of panel tabs, selection, commands, and product policy. Null on standalone
+   * and single-pane surfaces, which keep their existing inline/drawer layout.
    */
-  canShowSecondaryPanel: boolean;
+  secondaryPanelHost: PaneSecondaryPanelRegistration | null;
+  /** Whether this pane owns the window's top-right control footprint. */
+  reservesWindowPanelToggle: boolean;
   /**
    * Closes this pane, or null when closing isn't available (single pane or
    * page). Bridges the pane close affordance and archive/delete-when-split.
@@ -50,6 +55,98 @@ export interface PaneContextValue {
   beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
 }
 
+export interface PaneSecondaryPanelViewModel {
+  collapsedRail: ReactNode | null;
+  /**
+   * Identity of the content backing this panel (threadId, or a surface name
+   * for non-thread panes). The workspace host uses it to tell "the focused
+   * pane now shows different content" apart from "the same content opened or
+   * closed its panel": only the latter may change the window-level panel
+   * visibility.
+   */
+  contentKey: string;
+  isMainCollapsed: boolean;
+  isOpen: boolean;
+  panel: ReactNode;
+  onToggle: () => void;
+}
+
+export interface PaneSecondaryPanelRegistration {
+  clear: () => void;
+  publish: (model: PaneSecondaryPanelViewModel) => void;
+}
+
+type PaneSecondaryPanelRegistryListener = () => void;
+
+export interface PaneSecondaryPanelRegistry {
+  clear: (paneId: string) => void;
+  getSnapshot: (paneId: string) => PaneSecondaryPanelViewModel | null;
+  publish: (paneId: string, model: PaneSecondaryPanelViewModel) => void;
+  subscribe: (
+    paneId: string,
+    listener: PaneSecondaryPanelRegistryListener,
+  ) => () => void;
+}
+
+export function createPaneSecondaryPanelRegistry(): PaneSecondaryPanelRegistry {
+  const models = new Map<string, PaneSecondaryPanelViewModel>();
+  const listeners = new Map<string, Set<PaneSecondaryPanelRegistryListener>>();
+  const notify = (paneId: string) => {
+    listeners.get(paneId)?.forEach((listener) => listener());
+  };
+
+  return {
+    clear: (paneId) => {
+      if (!models.delete(paneId)) return;
+      notify(paneId);
+    },
+    getSnapshot: (paneId) => models.get(paneId) ?? null,
+    publish: (paneId, model) => {
+      models.set(paneId, model);
+      notify(paneId);
+    },
+    subscribe: (paneId, listener) => {
+      const paneListeners = listeners.get(paneId) ?? new Set();
+      paneListeners.add(listener);
+      listeners.set(paneId, paneListeners);
+      return () => {
+        paneListeners.delete(listener);
+        if (paneListeners.size === 0) listeners.delete(paneId);
+      };
+    },
+  };
+}
+
+export function usePaneSecondaryPanelModel(
+  registry: PaneSecondaryPanelRegistry,
+  paneId: string,
+): PaneSecondaryPanelViewModel | null {
+  const subscribe = useCallback(
+    (listener: PaneSecondaryPanelRegistryListener) =>
+      registry.subscribe(paneId, listener),
+    [paneId, registry],
+  );
+  const getSnapshot = useCallback(
+    () => registry.getSnapshot(paneId),
+    [paneId, registry],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export function usePaneSecondaryPanelRegistration(
+  registration: PaneSecondaryPanelRegistration | null,
+  model: PaneSecondaryPanelViewModel,
+): void {
+  useLayoutEffect(() => {
+    if (registration === null) return;
+    registration.publish(model);
+  }, [model, registration]);
+  useLayoutEffect(
+    () => (registration === null ? undefined : registration.clear),
+    [registration],
+  );
+}
+
 export const PaneContext = createContext<PaneContextValue | null>(null);
 
 export function usePaneContext(): PaneContextValue {
@@ -58,6 +155,10 @@ export function usePaneContext(): PaneContextValue {
     throw new Error("usePaneContext must be used within a <PaneContext>");
   }
   return context;
+}
+
+export function useOptionalPaneContext(): PaneContextValue | null {
+  return useContext(PaneContext);
 }
 
 interface DefaultPaneContextProviderProps {
@@ -78,7 +179,8 @@ export function DefaultPaneContextProvider({
     () => ({
       paneId: "main",
       isFocused: true,
-      canShowSecondaryPanel: true,
+      secondaryPanelHost: null,
+      reservesWindowPanelToggle: false,
       onRequestClose: null,
       isBoundedPane: false,
       isTopRow: true,

@@ -32,7 +32,9 @@ vi.mock("./ThreadDetailView", () => ({
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandContext: () => undefined,
   useAppCommandHandler: () => undefined,
+  useAppCommandShortcut: () => null,
   useIndexedAppCommandHandlers: () => undefined,
+  useIsAppCommandModifierHeld: () => false,
 }));
 
 // Split panes mount a PaneStaleWatcher that reads the thread query; keep it in a

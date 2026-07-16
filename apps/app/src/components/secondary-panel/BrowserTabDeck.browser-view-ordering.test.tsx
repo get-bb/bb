@@ -144,6 +144,17 @@ function callIndex(
   return calls.findIndex(predicate);
 }
 
+function lastCallIndex(
+  calls: readonly BrowserCall[],
+  predicate: (call: BrowserCall) => boolean,
+): number {
+  for (let index = calls.length - 1; index >= 0; index -= 1) {
+    const call = calls[index];
+    if (call !== undefined && predicate(call)) return index;
+  }
+  return -1;
+}
+
 describe("BrowserTabDeck native browser first-show ordering", () => {
   const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
   const originalMatchMedia = window.matchMedia;
@@ -215,8 +226,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     const attachIndex = callIndex(calls, (call) => call.type === "attach");
     const boundsIndex = callIndex(
       calls,
-      (call) =>
-        call.type === "setBounds" && call.request.tabId === "tab-url",
+      (call) => call.type === "setBounds" && call.request.tabId === "tab-url",
     );
     const showIndex = callIndex(
       calls,
@@ -234,6 +244,61 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
       bounds: { x: 12, y: 24, width: 420, height: 260 },
     });
     expect(visibility.at(-1)).toEqual({ tabId: "tab-url", visible: true });
+
+    // Focus leaving the owning pane drives readiness false. Returning focus
+    // must recompute bounds before exposing the retained native view again.
+    view.rerender(
+      <BrowserTabDeck
+        browserTabs={[makeBrowserTab("tab-url", "https://example.com")]}
+        activeBrowserTabId="tab-url"
+        environmentId="env-1"
+        canShowNativeBrowserView={false}
+        threadId="thread-1"
+        onUpdate={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(visibility.at(-1)).toEqual({
+        tabId: "tab-url",
+        visible: false,
+      });
+    });
+    const hideIndex = lastCallIndex(
+      calls,
+      (call) =>
+        call.type === "setVisible" &&
+        call.request.tabId === "tab-url" &&
+        !call.request.visible,
+    );
+
+    view.rerender(
+      <BrowserTabDeck
+        browserTabs={[makeBrowserTab("tab-url", "https://example.com")]}
+        activeBrowserTabId="tab-url"
+        environmentId="env-1"
+        canShowNativeBrowserView={true}
+        threadId="thread-1"
+        onUpdate={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      const visibleShows = visibility.filter((request) => request.visible);
+      expect(visibleShows).toHaveLength(2);
+    });
+    const restoredBoundsIndex = lastCallIndex(
+      calls,
+      (call) => call.type === "setBounds" && call.request.tabId === "tab-url",
+    );
+    const restoredShowIndex = lastCallIndex(
+      calls,
+      (call) =>
+        call.type === "setVisible" &&
+        call.request.tabId === "tab-url" &&
+        call.request.visible,
+    );
+    expect(hideIndex).toBeGreaterThan(showIndex);
+    expect(restoredBoundsIndex).toBeGreaterThan(hideIndex);
+    expect(restoredShowIndex).toBeGreaterThan(restoredBoundsIndex);
   });
 
   it("focuses the address bar when an empty browser tab requests focus", () => {

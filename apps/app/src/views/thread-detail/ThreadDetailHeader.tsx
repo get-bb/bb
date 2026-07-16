@@ -1,4 +1,5 @@
 import {
+  useContext,
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -22,6 +23,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { usePaneContext } from "./PaneContext";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
@@ -67,7 +69,15 @@ export function ThreadDetailHeader({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // The title doubles as the pane-reorder drag handle when the layout is split;
   // beginPaneDrag is undefined on the single-pane and page surfaces.
-  const { beginPaneDrag, isFocused, isTopRow } = usePaneContext();
+  const {
+    beginPaneDrag,
+    isFocused,
+    isTopRow,
+    reservesWindowPanelToggle,
+    secondaryPanelHost,
+  } = usePaneContext();
+  const isWindowPanelOpen =
+    useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
   const showFocusedPaneTitlePill = beginPaneDrag !== undefined && isFocused;
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (!beginPaneDrag || event.button !== 0) {
@@ -79,11 +89,12 @@ export function ThreadDetailHeader({
     ? "Hide right panel"
     : "Show right panel";
   const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
-  // The header is a full-width bar, so the toggle holds a stable position at the
-  // window edge — keep it mounted across open/close on wide layouts (the panel no
-  // longer renders its own inline hide control). The drawer still hides it while
-  // open, since the drawer carries its own close affordance.
-  const showRightPanelToggle = !renderAsDrawer || !isSecondaryPanelOpen;
+  // Standalone thread pages keep their header toggle mounted across open/close
+  // on wide layouts. Split panes publish to the one workspace-level toggle, so
+  // no pane header renders its own copy. The drawer still hides the standalone
+  // toggle while open because the drawer carries its own close affordance.
+  const showRightPanelToggle =
+    secondaryPanelHost === null && (!renderAsDrawer || !isSecondaryPanelOpen);
 
   const center = (
     <>
@@ -195,6 +206,14 @@ export function ThreadDetailHeader({
         >
           <Icon name="X" />
         </Button>
+      ) : null}
+      {reservesWindowPanelToggle && !isWindowPanelOpen ? (
+        // Reserve only the fixed 28px corner button. Its modifier-held hint is
+        // positioned below the chrome row by the workspace host, so it never
+        // consumes or covers this pane-action row. With the window panel open,
+        // the toggle overlays the panel's own chrome instead, so the pane
+        // actions sit flush at the pane edge.
+        <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
       ) : null}
     </>
   );

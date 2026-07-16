@@ -141,7 +141,6 @@ import {
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
-  getBbDesktopInfo,
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
 } from "@/lib/bb-desktop";
@@ -171,7 +170,6 @@ import {
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
 import {
-  ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS,
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
@@ -224,6 +222,8 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
+import { useOptionalPaneContext } from "./thread-detail/PaneContext";
+import { RootComposePanelCommandHandlers } from "./RootComposePanelCommandHandlers";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -406,10 +406,6 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
     return false;
   }
   return "focusPrompt" in state && state.focusPrompt === true;
-}
-
-interface RootComposeViewProps {
-  isBoundedPane: boolean;
 }
 
 interface BuildMobileRecentThreadsArgs {
@@ -956,12 +952,14 @@ export function RootComposeRoute() {
       poolOptions={FILE_PREVIEW_WORKER_POOL_OPTIONS}
       highlighterOptions={FILE_PREVIEW_HIGHLIGHTER_OPTIONS}
     >
-      <RootComposeView isBoundedPane={false} />
+      <RootComposeView />
     </WorkerPoolContextProvider>
   );
 }
 
-export function RootComposeView(props: RootComposeViewProps) {
+export function RootComposeView() {
+  const paneContext = useOptionalPaneContext();
+  const isFocusedPane = paneContext?.isFocused ?? true;
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
@@ -2524,10 +2522,12 @@ export function RootComposeView(props: RootComposeViewProps) {
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openTab]);
   useAppCommandHandler("panel.newTab", () => {
+    if (!isFocusedPane) return false;
     handleOpenNewTab();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
+    if (!isFocusedPane) return false;
     handleOpenNewTab();
     return true;
   });
@@ -2592,6 +2592,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   ]);
   useAppCommandHandler("terminal.open", () => {
     if (
+      !isFocusedPane ||
       !canCreateRootTerminal ||
       rootPanelTerminalTarget === null ||
       createEnvironmentTerminalMutation.isPending ||
@@ -2683,23 +2684,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
-  useAppCommandHandler("panel.toggle", () => {
-    handleToggleSecondaryPanel();
-    return true;
-  });
-  useAppCommandHandler("panel.close", () => {
-    return handleCloseWindowRequest();
-  });
-  useEffect(() => {
-    const desktopInfo = getBbDesktopInfo();
-    if (
-      desktopInfo === null ||
-      desktopInfo.onCloseWindowRequest === undefined
-    ) {
-      return;
-    }
-    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
-  }, [handleCloseWindowRequest]);
   const fileTabs = (() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
@@ -3004,6 +2988,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       }
     : undefined;
   useAppCommandHandler("workspace.openPreferred", () => {
+    if (!isFocusedPane) return false;
     if (
       activeWorkspaceFilePath !== null &&
       activeWorkspaceFileEnvironmentId !== null &&
@@ -3190,24 +3175,18 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [openWorkspaceFile],
   );
-  // Keep the panel toggle pinned to the viewport corner on the full page and to
-  // the pane corner in a split. A bounded pane shifts it left by one action slot
-  // so its close button can own the outermost position. The panel reserves a
-  // matching slot via inlinePanelToggle="reserved". The drawer layout has no
-  // pinned slot, so there the toggle only opens the drawer and its close control
-  // lives inside the drawer.
+  // Standalone compose keeps its panel toggle pinned to the viewport corner.
+  // Multi-pane compose publishes its panel model to SplitThreadArea instead,
+  // which owns the one stable window-level toggle.
   // The shared position class keeps this footprint paired with the no-drag
   // cutout the macOS window-drag strip carves for it while the panel is closed
   // (see RootComposeSecondaryContent).
-  const isBoundedPage = props.isBoundedPane;
-  const panelTogglePositionClassName = isBoundedPage
-    ? ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS
-    : ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
+  const panelTogglePositionClassName =
+    ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
   const rootPanelToggle =
-    !renderSecondaryPanelAsDrawer || !isSecondaryPanelOpen ? (
-      <div
-        className={`${isBoundedPage ? "absolute" : "fixed"} z-40 ${panelTogglePositionClassName}`}
-      >
+    (paneContext?.secondaryPanelHost ?? null) === null &&
+    (!renderSecondaryPanelAsDrawer || !isSecondaryPanelOpen) ? (
+      <div className={`fixed z-40 ${panelTogglePositionClassName}`}>
         <RootComposeRightPanelToggle
           isOpen={isSecondaryPanelOpen}
           onToggle={handleToggleSecondaryPanel}
@@ -3591,6 +3570,11 @@ export function RootComposeView(props: RootComposeViewProps) {
 
   return (
     <>
+      <RootComposePanelCommandHandlers
+        isFocused={isFocusedPane}
+        onClose={handleCloseWindowRequest}
+        onToggle={handleToggleSecondaryPanel}
+      />
       {providerCliInstallLogDialog}
       {machineSetupDialog}
       {rootPanelToggle}
@@ -3601,6 +3585,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
         }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
+        onToggleSecondaryPanel={handleToggleSecondaryPanel}
         panelTogglePositionClassName={panelTogglePositionClassName}
         secondaryPanel={{
           activeTab: activeFixedSecondaryTab,

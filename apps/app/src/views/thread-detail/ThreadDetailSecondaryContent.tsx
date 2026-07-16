@@ -33,6 +33,11 @@ import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { ConversationCollapsedRail } from "@/components/secondary-panel/ConversationCollapsedRail";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import {
+  usePaneContext,
+  usePaneSecondaryPanelRegistration,
+  type PaneSecondaryPanelViewModel,
+} from "./PaneContext";
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
 const COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT = 0;
@@ -69,7 +74,9 @@ interface ThreadDetailSecondaryContentProps {
    * without stretching it).
    */
   isBoundedPane: boolean;
+  onToggleSecondaryPanel: () => void;
   onToggleConversationCollapse: () => void;
+  renderHostedPanel: (panel: ReactNode) => ReactNode;
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
   timeline: ThreadTimelinePaneProps;
@@ -82,11 +89,14 @@ export function ThreadDetailSecondaryContent({
   isSecondaryPanelOpen,
   isConversationCollapsed,
   isBoundedPane,
+  onToggleSecondaryPanel,
   onToggleConversationCollapse,
+  renderHostedPanel,
   metadata,
   secondaryPanel,
   timeline,
 }: ThreadDetailSecondaryContentProps) {
+  const { isFocused, paneId, secondaryPanelHost } = usePaneContext();
   const stableMetadata = metadata;
   const stableSecondaryPanel = secondaryPanel;
   const stableTimeline = timeline;
@@ -193,7 +203,7 @@ export function ThreadDetailSecondaryContent({
   );
   const canShowNativeBrowserView = renderAsDrawer
     ? isSecondaryPanelOpen && isCompactDrawerContentSettled
-    : isSecondaryPanelOpen;
+    : isSecondaryPanelOpen && (secondaryPanelHost === null || isFocused);
   const { renderBrowserDeck, ...threadSecondaryPanelProps } =
     stableSecondaryPanel;
   const browserDeck = useMemo(
@@ -267,7 +277,14 @@ export function ThreadDetailSecondaryContent({
       // The full-width header bar owns the (stable) right-panel toggle, so the
       // panel drops its own inline hide control entirely — no reserved slot, so
       // the trailing expand control sits flush at the edge.
-      inlinePanelToggle="hidden"
+      inlinePanelToggle={secondaryPanelHost === null ? "hidden" : "reserved"}
+      // In the split-workspace host, panes' panels share one PanelGroup, so
+      // each pane's Panel needs its own layout identity (see the prop doc).
+      resizablePanelId={
+        secondaryPanelHost === null
+          ? undefined
+          : `thread-detail-secondary-panel-${paneId}`
+      }
       metadataContent={metadataContent}
     />
   ) : null;
@@ -281,6 +298,53 @@ export function ThreadDetailSecondaryContent({
       metadataContent={metadataContent}
     />
   ) : null;
+  const hostedCollapsedRail = (
+    <ConversationCollapsedRail
+      collapsed={isConversationCollapsedActive}
+      isWorking={isConversationWorking}
+      reserveTopForDesktopTrafficLights={false}
+      onExpand={onToggleConversationCollapse}
+    />
+  );
+  const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
+    () => ({
+      collapsedRail: hostedCollapsedRail,
+      contentKey: stableTimeline.threadId,
+      isMainCollapsed: isConversationCollapsedActive,
+      isOpen: isSecondaryPanelOpen,
+      panel: renderHostedPanel(inlineSecondaryPanelContent),
+      onToggle: onToggleSecondaryPanel,
+    }),
+    [
+      hostedCollapsedRail,
+      inlineSecondaryPanelContent,
+      isConversationCollapsedActive,
+      isSecondaryPanelOpen,
+      onToggleSecondaryPanel,
+      renderHostedPanel,
+      stableTimeline.threadId,
+    ],
+  );
+  usePaneSecondaryPanelRegistration(secondaryPanelHost, hostedPanelModel);
+
+  if (secondaryPanelHost !== null) {
+    return (
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">
+        {header}
+        <div
+          data-conversation-collapsed={isConversationCollapsedActive}
+          inert={isConversationCollapsedActive}
+          className={cn(
+            "flex min-h-0 min-w-0 flex-1 flex-col transition-opacity",
+            PANEL_COLLAPSE_TRANSITION_CLASS,
+            isConversationCollapsedActive && "opacity-0",
+          )}
+        >
+          <ThreadTimelinePane {...stableTimeline} footer={footer} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -456,29 +456,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
 
 function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const { projectId, threadId } = props;
-  const {
-    isFocused,
-    navigateInPane,
-    canShowSecondaryPanel,
-    onRequestClose,
-    isBoundedPane,
-  } = usePaneContext();
+  const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
+    usePaneContext();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
-  const isPersistedSecondaryPanelOpenForSurface =
-    isPersistedSecondaryPanelOpen && canShowSecondaryPanel;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
   const openFixedSecondaryTab = getOpenFixedSecondaryTab({
     activeFixedSecondaryTab,
-    isSecondaryPanelOpen: isPersistedSecondaryPanelOpenForSurface,
+    isSecondaryPanelOpen: isPersistedSecondaryPanelOpen,
   });
   const retainedTerminalId = getRetainedTerminalTabId({
     activeTab: activeFixedSecondaryTab,
-    isPanelOpen: isPersistedSecondaryPanelOpenForSurface,
+    isPanelOpen: isPersistedSecondaryPanelOpen,
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
@@ -966,7 +959,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     togglePanel: toggleSecondaryPanel,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeThreadSecondaryPanel,
-    isPersistedOpen: isPersistedSecondaryPanelOpenForSurface,
+    isPersistedOpen: isPersistedSecondaryPanelOpen,
     isCompactViewport: renderSecondaryPanelAsDrawer,
     openPersistedCommitDiff,
     openPersistedDiffFile,
@@ -2519,7 +2512,21 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           isSecondaryPanelOpen={isSecondaryPanelOpen}
           isConversationCollapsed={isConversationCollapsed}
           isBoundedPane={isBoundedPane}
+          onToggleSecondaryPanel={toggleSecondaryPanel}
           onToggleConversationCollapse={toggleConversationCollapse}
+          renderHostedPanel={(panel) => (
+            <MarkdownLocalFileContextMenuContext.Provider
+              value={getLocalFileContextMenuItems}
+            >
+              <UrlOpenRoutingProvider
+                openInAppBrowser={
+                  canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
+                }
+              >
+                {panel}
+              </UrlOpenRoutingProvider>
+            </MarkdownLocalFileContextMenuContext.Provider>
+          )}
           metadata={{
             thread,
             projectId,

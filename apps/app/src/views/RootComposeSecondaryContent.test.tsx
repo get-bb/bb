@@ -5,7 +5,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
-  ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS,
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
@@ -156,6 +155,7 @@ function renderRootCompose(args: RenderRootComposeArgs) {
     >
       <RootComposeSecondaryContent
         isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
+        onToggleSecondaryPanel={() => undefined}
         panelTogglePositionClassName={
           renderArgs.panelTogglePositionClassName ??
           ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS
@@ -177,6 +177,7 @@ function renderRootCompose(args: RenderRootComposeArgs) {
         >
           <RootComposeSecondaryContent
             isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
+            onToggleSecondaryPanel={() => undefined}
             panelTogglePositionClassName={
               renderArgs.panelTogglePositionClassName ??
               ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS
@@ -239,22 +240,6 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     )) {
       expect(cutout.className).toContain(positionClass);
     }
-  });
-
-  it("moves the drag-strip cutout with the bounded-pane toggle", () => {
-    setMacosDesktopChrome();
-
-    renderRootCompose({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: false,
-      panelTogglePositionClassName:
-        ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS,
-    });
-
-    const cutout = screen.getByTestId("root-compose-drag-strip-toggle-cutout");
-    const cutoutClasses = cutout.className.split(" ");
-    expect(cutoutClasses).toContain("right-12");
-    expect(cutoutClasses).not.toContain("right-4");
   });
 
   it("keeps the drag strip whole while the panel is open (the panel chrome carves instead)", () => {
