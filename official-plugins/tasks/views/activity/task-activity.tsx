@@ -4,7 +4,6 @@ import {
   ArrowUp02Icon,
   AttachmentIcon,
   BotIcon,
-  Cancel01Icon,
   File01Icon,
   Notification02Icon,
 } from "@hugeicons/core-free-icons";
@@ -18,7 +17,16 @@ import {
   useTasksQuery,
   useTasksRpc,
 } from "../../shell/data.js";
-import { Lightbox } from "../detail/attachments.js";
+import {
+  attachmentDownloadUrl,
+  Lightbox,
+  uploadAttachment,
+} from "../detail/attachments.js";
+import {
+  AttachmentChip,
+  stageFiles,
+  type StagedAttachment,
+} from "../../components/staged-attachments.js";
 import type {
   Attachment,
   Comment,
@@ -32,70 +40,6 @@ import {
   useNowTick,
 } from "./time.js";
 import { CommentAuthor } from "./comment-author.js";
-
-const PLUGIN_HTTP_BASE = "/api/v1/plugins/tasks/http";
-const TOKEN_URL = "/api/v1/plugins/tasks/token";
-
-// The plugin HTTP token is stable across requests (rotation is an explicit
-// admin action), so one fetch per page load is enough.
-let tokenPromise: Promise<string> | null = null;
-
-async function fetchPluginToken(): Promise<string> {
-  const response = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  if (!response.ok) {
-    throw new Error(`token request failed with status ${response.status}`);
-  }
-  const payload: unknown = await response.json();
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("token" in payload) ||
-    typeof payload.token !== "string"
-  ) {
-    throw new Error("token request returned an unexpected payload");
-  }
-  return payload.token;
-}
-
-function pluginToken(): Promise<string> {
-  tokenPromise ??= fetchPluginToken().catch((error: unknown) => {
-    tokenPromise = null;
-    throw error;
-  });
-  return tokenPromise;
-}
-
-async function uploadCommentAttachment(
-  commentId: string,
-  file: File,
-): Promise<void> {
-  const token = await pluginToken();
-  const mime = file.type || "application/octet-stream";
-  const query = new URLSearchParams({
-    commentId,
-    fileName: file.name,
-    mime,
-  });
-  const response = await fetch(
-    `${PLUGIN_HTTP_BASE}/attachments/upload?${query.toString()}`,
-    {
-      method: "POST",
-      headers: { "x-bb-plugin-token": token, "Content-Type": mime },
-      body: file,
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`upload of ${file.name} failed (${response.status})`);
-  }
-}
-
-function attachmentDownloadUrl(attachmentId: string): string {
-  return `${PLUGIN_HTTP_BASE}/attachments/download?attachmentId=${encodeURIComponent(attachmentId)}`;
-}
 
 interface FeedEntry {
   comment: DisplayComment;
@@ -291,93 +235,6 @@ interface ComposerProps {
   runningCount: number;
 }
 
-export const MAX_COMMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-
-interface StagedAttachment {
-  id: number;
-  file: File;
-  /**
-   * staged: waiting for send · oversized: rejected at pick time, never sent ·
-   * failed: the comment posted but this upload failed; retry targets commentId.
-   */
-  status: "staged" | "oversized" | "failed";
-  commentId?: string;
-  error?: string;
-}
-
-let nextStagedId = 0;
-
-/** Size-validates picked files: oversized ones become rejected chips. */
-export function stageFiles(files: readonly File[]): StagedAttachment[] {
-  return files.map((file) =>
-    file.size > MAX_COMMENT_ATTACHMENT_BYTES
-      ? {
-          id: nextStagedId++,
-          file,
-          status: "oversized" as const,
-          error: `Over the 25 MB attachment limit (${formatFileSize(file.size)})`,
-        }
-      : { id: nextStagedId++, file, status: "staged" as const },
-  );
-}
-
-function AttachmentChip({
-  entry,
-  onRemove,
-  onRetry,
-}: {
-  entry: StagedAttachment;
-  onRemove: () => void;
-  onRetry?: () => void;
-}) {
-  const broken = entry.status !== "staged";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
-        broken
-          ? "border-destructive/50 bg-destructive/10 text-destructive"
-          : "border-border bg-background",
-      )}
-      title={entry.error}
-    >
-      <HugeiconsIcon
-        icon={File01Icon}
-        className={cn("size-3", broken ? undefined : "text-muted-foreground")}
-      />
-      <span className="max-w-40 truncate">{entry.file.name}</span>
-      <span
-        className={cn(
-          "text-2xs",
-          broken ? "text-destructive/80" : "text-muted-foreground",
-        )}
-      >
-        {formatFileSize(entry.file.size)}
-      </span>
-      {entry.status === "failed" && onRetry ? (
-        <button
-          type="button"
-          aria-label={`Retry upload of ${entry.file.name}`}
-          className="font-medium underline underline-offset-2"
-          onClick={onRetry}
-        >
-          Retry
-        </button>
-      ) : null}
-      <button
-        type="button"
-        aria-label={`Remove ${entry.file.name}`}
-        className={cn(
-          !broken && "text-muted-foreground hover:text-foreground",
-        )}
-        onClick={onRemove}
-      >
-        <HugeiconsIcon icon={Cancel01Icon} className="size-3" />
-      </button>
-    </span>
-  );
-}
-
 function CommentComposer({ taskId, runningCount }: ComposerProps) {
   const rpc = useTasksRpc();
   const navigate = useBbNavigate();
@@ -396,9 +253,9 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
     setPendingFiles((files) => files.filter((entry) => entry.id !== id));
 
   const retryUpload = async (entry: StagedAttachment) => {
-    if (entry.commentId === undefined) return;
+    if (entry.owner === undefined) return;
     try {
-      await uploadCommentAttachment(entry.commentId, entry.file);
+      await uploadAttachment(entry.file, entry.owner);
       removeFile(entry.id);
       setError(null);
     } catch (cause) {
@@ -440,12 +297,12 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
     const failed: StagedAttachment[] = [];
     for (const entry of staged) {
       try {
-        await uploadCommentAttachment(comment.id, entry.file);
+        await uploadAttachment(entry.file, { commentId: comment.id });
       } catch (cause) {
         failed.push({
           ...entry,
           status: "failed",
-          commentId: comment.id,
+          owner: { commentId: comment.id },
           error: cause instanceof Error ? cause.message : String(cause),
         });
       }

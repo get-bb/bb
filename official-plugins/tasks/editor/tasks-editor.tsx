@@ -188,6 +188,12 @@ export interface TasksEditorProps {
   onUploadImage?: (
     file: File,
   ) => Promise<{ url: string; attachmentId: string }>;
+  /**
+   * Stages pasted/dropped files instead of uploading them inline; takes
+   * precedence over onUploadImage and accepts any file type. Used where the
+   * attachment owner does not exist yet (e.g. the new-task dialog).
+   */
+  onAttachFiles?: (files: File[]) => void;
   mentionItems?: (query: string) => Promise<MentionItem[]>;
   /** Invoked when a thread-mention pill is clicked (edit and read-only). */
   onOpenThread?: (threadId: string) => void;
@@ -203,6 +209,7 @@ export function TasksEditor({
   autofocus = false,
   variant = "doc",
   onUploadImage,
+  onAttachFiles,
   mentionItems,
   onOpenThread,
   onEditorReady,
@@ -218,6 +225,8 @@ export function TasksEditor({
   placeholderRef.current = placeholder;
   const uploadRef = useRef(onUploadImage);
   uploadRef.current = onUploadImage;
+  const attachFilesRef = useRef(onAttachFiles);
+  attachFilesRef.current = onAttachFiles;
   const mentionItemsRef = useRef(mentionItems);
   mentionItemsRef.current = mentionItems;
   const openThreadRef = useRef(onOpenThread);
@@ -312,18 +321,31 @@ export function TasksEditor({
       autofocus: autofocusRef.current && !readOnly ? "end" : false,
       editorProps: {
         handlePaste(_view, event) {
+          const files = [...(event.clipboardData?.files ?? [])];
+          if (attachFilesRef.current) {
+            if (files.length === 0) return false;
+            attachFilesRef.current(files);
+            return true;
+          }
           if (!uploadRef.current) return false;
-          const file = [...(event.clipboardData?.files ?? [])].find(
-            (candidate) => candidate.type.startsWith("image/"),
+          const file = files.find((candidate) =>
+            candidate.type.startsWith("image/"),
           );
           if (!file) return false;
           void upload(file);
           return true;
         },
         handleDrop(_view, event) {
+          const files = [...(event.dataTransfer?.files ?? [])];
+          if (attachFilesRef.current) {
+            if (files.length === 0) return false;
+            event.preventDefault();
+            attachFilesRef.current(files);
+            return true;
+          }
           if (!uploadRef.current) return false;
-          const file = [...(event.dataTransfer?.files ?? [])].find(
-            (candidate) => candidate.type.startsWith("image/"),
+          const file = files.find((candidate) =>
+            candidate.type.startsWith("image/"),
           );
           if (!file) return false;
           event.preventDefault();

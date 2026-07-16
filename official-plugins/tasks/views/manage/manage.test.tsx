@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
 
@@ -241,6 +241,176 @@ describe("NewTaskDialog", () => {
     fireEvent.click(createBtn);
     await waitFor(() => expect(createLabelCalls).toHaveLength(1));
     expect(createLabelCalls[0]).toMatchObject({ projectId: PROJECT_ID, name: "dank" });
+  });
+});
+
+describe("NewTaskDialog attachments", () => {
+  const fetchCalls: string[] = [];
+  const failFileNames = new Set<string>();
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    fetchCalls.length = 0;
+    failFileNames.clear();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/plugins/tasks/token")) {
+        return new Response(JSON.stringify({ token: "test-token" }), {
+          status: 200,
+        });
+      }
+      if (url.includes("/attachments/upload")) {
+        fetchCalls.push(url);
+        const query = new URL(url, "http://bb.test").searchParams;
+        return failFileNames.has(query.get("fileName") ?? "")
+          ? new Response(JSON.stringify({ error: "disk full" }), {
+              status: 500,
+            })
+          : new Response(
+              JSON.stringify({ attachmentId: "att-1", url: "/download" }),
+              { status: 201 },
+            );
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const dialogRpc = () => ({
+    listProjects: () => ({ projects: [project] }),
+    listFolders: () => ({ folders: [] }),
+    listPresets: () => ({ presets: [] }),
+    sidebarSummary: () => ({ projects: [] }),
+    listTasks: () => ({ tasks: [] }),
+    listLabels: () => ({ labels: [] }),
+    createTask: (input: Record<string, unknown>) => ({
+      ok: true,
+      task: createdTask(input),
+    }),
+  });
+
+  const openDialogWithTitle = async (
+    slot: ReturnType<typeof renderSlot>,
+    title: string,
+  ) => {
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    const titleInput = await slot.findByLabelText("Task title");
+    fireEvent.change(titleInput, { target: { value: title } });
+    return titleInput;
+  };
+
+  const pasteFile = (target: Element, file: File) =>
+    fireEvent.paste(target, { clipboardData: { files: [file], types: [] } });
+
+  it("uploads staged files to the created task and navigates on success", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: dialogRpc() },
+    );
+    const titleInput = await openDialogWithTitle(slot, "With files");
+    pasteFile(
+      titleInput,
+      new File(["png"], "shot.png", { type: "image/png" }),
+    );
+    await slot.findByText("shot.png");
+
+    // Picker path: stage a second file, then remove it before creating.
+    const picker = document.querySelector<HTMLInputElement>(
+      'input[type="file"]',
+    )!;
+    fireEvent.change(picker, {
+      target: {
+        files: [new File(["doc"], "notes.txt", { type: "text/plain" })],
+      },
+    });
+    await slot.findByText("notes.txt");
+    fireEvent.click(slot.getByRole("button", { name: "Remove notes.txt" }));
+    expect(slot.queryByText("notes.txt")).toBeNull();
+
+    fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+    await waitFor(() =>
+      expect(slot.navigateCalls).toContainEqual({
+        method: "toPluginPanel",
+        path: "tasks",
+        options: { subPath: "task/TSK-5" },
+      }),
+    );
+    // Only the still-staged file uploaded, to the freshly created task.
+    expect(fetchCalls).toHaveLength(1);
+    const query = new URL(fetchCalls[0]!, "http://bb.test").searchParams;
+    expect(query.get("taskId")).toBe(TASK_ID);
+    expect(query.get("fileName")).toBe("shot.png");
+  });
+
+  it("recovers from a failed upload with a retryable chip bound to the created task", async () => {
+    failFileNames.add("bad.bin");
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: dialogRpc() },
+    );
+    const titleInput = await openDialogWithTitle(slot, "Partial failure");
+    pasteFile(titleInput, new File(["ok"], "good.png", { type: "image/png" }));
+    pasteFile(
+      titleInput,
+      new File(["nope"], "bad.bin", { type: "application/zip" }),
+    );
+    await slot.findByText("bad.bin");
+
+    fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+    const alert = await slot.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "was created, but 1 attachment failed to upload",
+    );
+    // The task exists but the dialog stays open; nothing navigated away and
+    // the successful chip left the tray.
+    expect(slot.navigateCalls).toEqual([]);
+    expect(slot.queryByText("good.png")).toBeNull();
+
+    failFileNames.clear();
+    fireEvent.click(
+      slot.getByRole("button", { name: "Retry upload of bad.bin" }),
+    );
+    await waitFor(() =>
+      expect(slot.navigateCalls).toContainEqual({
+        method: "toPluginPanel",
+        path: "tasks",
+        options: { subPath: "task/TSK-5" },
+      }),
+    );
+    const retryQuery = new URL(fetchCalls.at(-1)!, "http://bb.test")
+      .searchParams;
+    expect(retryQuery.get("taskId")).toBe(TASK_ID);
+    expect(retryQuery.get("fileName")).toBe("bad.bin");
+  });
+
+  it("rejects oversized files at pick time and never uploads them", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: dialogRpc() },
+    );
+    const titleInput = await openDialogWithTitle(slot, "Too big");
+    const big = new File(["x"], "big.bin", { type: "application/zip" });
+    Object.defineProperty(big, "size", { value: 25 * 1024 * 1024 + 1 });
+    pasteFile(titleInput, big);
+    const chip = await slot.findByText("big.bin");
+    expect(chip.closest("span")?.parentElement?.getAttribute("title")).toContain(
+      "Over the 25 MB attachment limit",
+    );
+
+    fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+    await waitFor(() =>
+      expect(slot.navigateCalls).toContainEqual({
+        method: "toPluginPanel",
+        path: "tasks",
+        options: { subPath: "task/TSK-5" },
+      }),
+    );
+    expect(fetchCalls).toEqual([]);
   });
 });
 

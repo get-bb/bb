@@ -286,7 +286,7 @@ function TaskDetail({ task }: { task: Task }) {
   }, [task.id]);
 
   const uploadForTask = async (file: File) => {
-    const result = await uploadAttachment(file, task.id);
+    const result = await uploadAttachment(file, { taskId: task.id });
     attachments.refresh();
     return result;
   };
@@ -294,7 +294,7 @@ function TaskDetail({ task }: { task: Task }) {
   const onPickFiles = async (files: FileList | null) => {
     for (const file of files ?? []) {
       try {
-        await uploadAttachment(file, task.id);
+        await uploadAttachment(file, { taskId: task.id });
       } catch (error) {
         push(
           "error",

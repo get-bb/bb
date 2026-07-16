@@ -38,13 +38,16 @@ function pluginToken(): Promise<string> {
   return tokenPromise;
 }
 
+/** Client-side twin of attachments/index.ts `AttachmentOwner`. */
+export type AttachmentOwnerRef = { taskId: string } | { commentId: string };
+
 export async function uploadAttachment(
   file: File,
-  taskId: string,
+  owner: AttachmentOwnerRef,
 ): Promise<{ attachmentId: string; url: string }> {
   const token = await pluginToken();
   const query = new URLSearchParams({
-    taskId,
+    ...owner,
     fileName: file.name || "attachment",
     mime: file.type || "application/octet-stream",
   });

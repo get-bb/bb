@@ -611,6 +611,100 @@ describe("bb tasks CLI", () => {
     await harness.dispose();
   });
 
+  it("creates a task with --attach files after validating every source path", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-tasks-cli-"));
+    const notesPath = join(directory, "notes.txt");
+    const pngPath = join(directory, "pixel.png");
+    await writeFile(notesPath, "attach me at create\n", "utf8");
+    await writeFile(
+      pngPath,
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    try {
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          "Attach",
+          "--prefix",
+          "ATT",
+        ]),
+      );
+
+      // A bad path fails before anything is created — no half-built task.
+      const missing = await harness.runCli([
+        "create",
+        "--project",
+        "att",
+        "--title",
+        "Broken attach",
+        "--attach",
+        join(directory, "missing.bin"),
+      ]);
+      expect(missing.exitCode).toBe(1);
+      expect(missing.stderr).toContain("attachment source is not a file");
+      expect(
+        JSON.parse(
+          stdout(await harness.runCli(["list", "--project", "att", "--json"])),
+        ).tasks,
+      ).toEqual([]);
+
+      const created = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "create",
+            "--project",
+            "att",
+            "--title",
+            "Starts with files",
+            "--attach",
+            notesPath,
+            "--attach",
+            pngPath,
+            "--json",
+          ]),
+        ),
+      );
+      expect(created.task).toMatchObject({ key: "ATT-1" });
+      expect(created.attachments).toEqual([
+        expect.objectContaining({
+          taskId: created.task.id,
+          commentId: null,
+          fileName: "notes.txt",
+          isImage: false,
+        }),
+        expect.objectContaining({
+          taskId: created.task.id,
+          commentId: null,
+          fileName: "pixel.png",
+          mime: "image/png",
+          isImage: true,
+        }),
+      ]);
+
+      const outputPath = join(directory, "roundtrip.txt");
+      stdout(
+        await harness.runCli([
+          "attachment",
+          "get",
+          created.attachments[0].id,
+          "--out",
+          outputPath,
+        ]),
+      );
+      expect(await readFile(outputPath, "utf8")).toBe(
+        "attach me at create\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+      await harness.dispose();
+    }
+  });
+
   it("adds and downloads an attachment with an exact file round-trip", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bb-tasks-cli-"));
     const inputPath = join(directory, "input.txt");

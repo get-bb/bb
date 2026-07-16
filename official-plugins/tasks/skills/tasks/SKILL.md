@@ -45,7 +45,9 @@ not already exist. Dispatch requires an existing preset.
    bb tasks attachment add ABC-12 --file <path>
    ```
 
-   Use `--json` when capturing the returned attachment metadata.
+   Use `--json` when capturing the returned attachment metadata. When creating
+   a task that should start with files, pass repeatable `--attach <path>` to
+   `bb tasks create` instead of attaching afterwards.
 
 5. When the work is ready for review, update the task:
 

@@ -2,9 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
+  type Task,
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
+import { uploadAttachment } from "../detail/attachments.js";
+import {
+  AttachmentChip,
+  stageFiles,
+  type StagedAttachment,
+} from "../../components/staged-attachments.js";
 import { useProjects, useTasksQuery, useTasksRpc } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
@@ -102,7 +109,12 @@ export function NewTaskDialog({
   const [error, setError] = useState<string | null>(null);
   const [labelQuery, setLabelQuery] = useState("");
   const [creatingLabel, setCreatingLabel] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<StagedAttachment[]>([]);
+  // Set once createTask succeeded but some attachment uploads failed: the
+  // dialog switches to a recovery view so nothing is double-created or lost.
+  const [createdTask, setCreatedTask] = useState<Task | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Each open starts a fresh draft seeded from the invoking context.
   useEffect(() => {
@@ -116,6 +128,8 @@ export function NewTaskDialog({
     setDueDate("");
     setParentTaskId(defaultParentTaskId ?? null);
     setLabelQuery("");
+    setPendingFiles([]);
+    setCreatedTask(null);
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -192,8 +206,48 @@ export function NewTaskDialog({
     }
   };
 
+  const stageMore = (files: File[]) => {
+    if (files.length === 0) return;
+    setPendingFiles((current) => [...current, ...stageFiles(files)]);
+  };
+
+  const removeFile = (id: number) =>
+    setPendingFiles((files) => files.filter((entry) => entry.id !== id));
+
+  const retryUpload = async (entry: StagedAttachment) => {
+    if (entry.owner === undefined) return;
+    try {
+      await uploadAttachment(entry.file, entry.owner);
+      removeFile(entry.id);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setPendingFiles((files) =>
+        files.map((candidate) =>
+          candidate.id === entry.id
+            ? { ...candidate, error: message }
+            : candidate,
+        ),
+      );
+    }
+  };
+
+  const finish = (task: Task) => {
+    onOpenChange(false);
+    navigation.go({ kind: "task", taskKey: task.key });
+  };
+
+  // Recovery resolves itself: once every failed upload was retried or
+  // explicitly removed, the created task opens like a normal success.
+  useEffect(() => {
+    if (createdTask && pendingFiles.length === 0) finish(createdTask);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createdTask, pendingFiles.length]);
+
   const canSubmit =
-    effectiveProjectId !== null && title.trim().length > 0 && !submitting;
+    effectiveProjectId !== null &&
+    title.trim().length > 0 &&
+    !submitting &&
+    createdTask === null;
 
   const submit = async () => {
     if (!canSubmit || effectiveProjectId === null) return;
@@ -214,15 +268,48 @@ export function NewTaskDialog({
         setError(result.error.message);
         return;
       }
+      // The task now exists; upload the staged files to it. Failures become
+      // retryable chips bound to the created task instead of vanishing.
+      const staged = pendingFiles.filter((entry) => entry.status === "staged");
+      const failed: StagedAttachment[] = [];
+      for (const entry of staged) {
+        try {
+          await uploadAttachment(entry.file, { taskId: result.task.id });
+        } catch (cause) {
+          failed.push({
+            ...entry,
+            status: "failed",
+            owner: { taskId: result.task.id },
+            error: cause instanceof Error ? cause.message : String(cause),
+          });
+        }
+      }
+      if (failed.length > 0) {
+        // Uploaded entries leave the tray; failures come back as retryable
+        // chips. Oversized (never-sendable) chips stay visible for removal.
+        setPendingFiles((files) =>
+          files.flatMap((entry) => {
+            const failure = failed.find(
+              (candidate) => candidate.id === entry.id,
+            );
+            if (failure) return [failure];
+            return staged.some((candidate) => candidate.id === entry.id)
+              ? []
+              : [entry];
+          }),
+        );
+        setCreatedTask(result.task);
+        return;
+      }
       if (createMore) {
         setTitle("");
         setDescription("");
         setLabelIds([]);
         setDueDate("");
+        setPendingFiles([]);
         titleRef.current?.focus();
       } else {
-        onOpenChange(false);
-        navigation.go({ kind: "task", taskKey: result.task.key });
+        finish(result.task);
       }
     } catch (submitError) {
       setError(
@@ -239,6 +326,9 @@ export function NewTaskDialog({
     () => (labels.data ?? []).filter((label) => labelIds.includes(label.id)),
     [labels.data, labelIds],
   );
+  const failedCount = pendingFiles.filter(
+    (entry) => entry.status === "failed",
+  ).length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -249,6 +339,15 @@ export function NewTaskDialog({
             event.preventDefault();
             void submit();
           }
+        }}
+        onPaste={(event) => {
+          // The description editor stages files itself (and prevents the
+          // default); this catches pastes everywhere else in the dialog.
+          if (event.defaultPrevented || createdTask !== null) return;
+          const files = [...(event.clipboardData?.files ?? [])];
+          if (files.length === 0) return;
+          event.preventDefault();
+          stageMore(files);
         }}
       >
         <DialogTitle className="flex items-center gap-2 px-4 pt-4 text-xs font-normal text-muted-foreground">
@@ -263,9 +362,35 @@ export function NewTaskDialog({
           {project ? ` · ${project.name}` : ""}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Create a task with a title, description, and attributes.
+          Create a task with a title, description, attributes, and attachments.
         </DialogDescription>
-        <div className="px-4 pt-2">
+        {createdTask ? (
+          <div className="px-4 pt-2">
+            <p role="alert" className="text-sm">
+              Task <span className="font-medium">{createdTask.key}</span> was
+              created, but {failedCount} attachment
+              {failedCount === 1 ? "" : "s"} failed to upload.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Retry the uploads below, or remove a file to skip it.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {pendingFiles.map((entry) => (
+                <AttachmentChip
+                  key={entry.id}
+                  entry={entry}
+                  onRemove={() => removeFile(entry.id)}
+                  onRetry={
+                    entry.status === "failed"
+                      ? () => void retryUpload(entry)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className={cn("px-4 pt-2", createdTask && "hidden")}>
           <input
             ref={titleRef}
             autoFocus
@@ -289,9 +414,26 @@ export function NewTaskDialog({
             onChange={setDescription}
             placeholder="Description — rich text, round-trips as markdown for agents"
             className="mt-2 min-h-16"
+            onAttachFiles={stageMore}
           />
+          {pendingFiles.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {pendingFiles.map((entry) => (
+                <AttachmentChip
+                  key={entry.id}
+                  entry={entry}
+                  onRemove={() => removeFile(entry.id)}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-1.5 px-4 pt-3",
+            createdTask && "hidden",
+          )}
+        >
           {!subtaskMode ? (
             <Select
               value={effectiveProjectId ?? undefined}
@@ -483,6 +625,28 @@ export function NewTaskDialog({
               </PopoverContent>
             </Popover>
           ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Attach files"
+            className={cn(CHIP_TRIGGER, "border-input font-normal")}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Icon name="Paperclip" className="size-3" />
+            Attach
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            aria-hidden
+            tabIndex={-1}
+            className="hidden"
+            onChange={(event) => {
+              stageMore([...(event.target.files ?? [])]);
+              event.target.value = "";
+            }}
+          />
         </div>
         {error ? (
           <p role="alert" className="px-4 pt-2 text-xs text-destructive">
@@ -490,14 +654,29 @@ export function NewTaskDialog({
           </p>
         ) : null}
         <DialogFooter className="mt-4 flex-row items-center border-t border-border-hairline px-4 py-3 sm:justify-between">
-          <CheckboxField
-            checked={createMore}
-            onCheckedChange={setCreateMore}
-            label="Create more"
-          />
-          <Button size="sm" disabled={!canSubmit} onClick={() => void submit()}>
-            {subtaskMode ? "Create sub-task" : "Create task"}
-          </Button>
+          {createdTask ? (
+            <>
+              <span />
+              <Button size="sm" onClick={() => finish(createdTask)}>
+                Open task
+              </Button>
+            </>
+          ) : (
+            <>
+              <CheckboxField
+                checked={createMore}
+                onCheckedChange={setCreateMore}
+                label="Create more"
+              />
+              <Button
+                size="sm"
+                disabled={!canSubmit}
+                onClick={() => void submit()}
+              >
+                {subtaskMode ? "Create sub-task" : "Create task"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

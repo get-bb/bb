@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type {
   BbPluginApi,
@@ -86,7 +87,7 @@ const FOLDER_HELP = `Usage:
   bb tasks folder update <id-or-name> [--name <name>] [--parent <id-or-name> | --no-parent] [--json]`;
 
 const CREATE_HELP =
-  "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--json]";
+  "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--json]";
 const LIST_HELP =
   "Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--json]";
 const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
@@ -684,6 +685,8 @@ async function runFolder(
 }
 
 async function runCreate(
+  bb: BbPluginApi,
+  store: TasksApiStore,
   domain: TasksDomain,
   ctx: PluginCliContext,
   argv: string[],
@@ -699,8 +702,22 @@ async function runCreate(
     "label",
     "due",
     "parent",
+    "attach",
   ]);
   requirePositionals(args, 0, CREATE_HELP);
+  // Validate attachment sources before creating anything so a typo'd path
+  // cannot leave behind a half-built task.
+  const attachPaths = options(args, "attach").map((path) =>
+    resolve(ctx.cwd ?? process.cwd(), path),
+  );
+  await Promise.all(
+    attachPaths.map(async (path) => {
+      const source = await stat(path).catch(() => null);
+      if (!source?.isFile()) {
+        throw new CliError(`attachment source is not a file: ${path}`);
+      }
+    }),
+  );
   const project = await selectedProject(
     domain,
     ctx,
@@ -729,9 +746,31 @@ async function runCreate(
   const task = unwrapTask(
     tasksRpcContract.createTask.output.parse(await domain.createTask(input)),
   );
+  const attachments: Attachment[] = [];
+  for (const sourcePath of attachPaths) {
+    try {
+      const attachment = await saveAttachmentFromPath(store.tasks, sourcePath, {
+        taskId: task.id,
+      });
+      publishAttachmentChanged(bb, store.tasks, attachment);
+      attachments.push(attachment);
+    } catch (error) {
+      throw new CliError(
+        `created ${task.key}, but attaching ${sourcePath} failed: ${
+          error instanceof Error ? error.message : String(error)
+        }. Retry with: bb tasks attachment add ${task.key} --file <path>`,
+      );
+    }
+  }
   return args.flags.has("json")
-    ? json({ task })
-    : `Created ${task.key}  ${task.title}`;
+    ? json({ task, attachments })
+    : [
+        `Created ${task.key}  ${task.title}`,
+        ...attachments.map(
+          (attachment) =>
+            `Attached ${attachment.fileName}  ${attachment.id}`,
+        ),
+      ].join("\n");
 }
 
 async function labelsForTaskList(
@@ -1669,7 +1708,7 @@ export function registerTasksCli(
             stdout = await runFolder(bb, store, domain, rest);
             break;
           case "create":
-            stdout = await runCreate(domain, ctx, rest);
+            stdout = await runCreate(bb, store, domain, ctx, rest);
             break;
           case "list":
             stdout = await runList(domain, ctx, rest);
