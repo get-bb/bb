@@ -70,6 +70,10 @@ function detailRpc(
     listLabels: () => ({ labels: [] }),
     listAttachments: () => ({ attachments: [] }),
     listTaskThreads: () => ({ taskThreads: [] }),
+    listTaskPullRequests: () => ({
+      pullRequests: [],
+      unavailableThreadIds: [],
+    }),
     listComments: () => ({ comments: [] }),
     listBbProjects: () => ({ bbProjects: [] }),
     ...overrides,

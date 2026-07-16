@@ -14,6 +14,7 @@ import {
   type ProjectsChangedEvent,
   type SidebarProjectSummary,
   type Task,
+  type TaskPullRequest,
   type TasksChangedEvent,
   type TasksDomainError,
   type TaskStatus,
@@ -434,6 +435,74 @@ export async function createComment(
   return comment;
 }
 
+interface TaskPullRequestsResult {
+  pullRequests: TaskPullRequest[];
+  unavailableThreadIds: string[];
+}
+
+/**
+ * Resolve the pull requests reachable from a task's attached threads: each
+ * thread's environment PR (the branch its agent pushed), deduplicated by URL.
+ * Environment lookups are memoized so threads sharing an environment cost one
+ * daemon round-trip. Per-thread failures (deleted thread, unreachable
+ * workspace) degrade to `unavailableThreadIds` instead of failing the call.
+ */
+async function listTaskPullRequests(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  taskId: string,
+): Promise<TaskPullRequestsResult> {
+  const taskThreads = store.tasks.listTaskThreads(taskId);
+  const pullRequestByEnvironment = new Map<
+    string,
+    ReturnType<BbPluginApi["sdk"]["environments"]["pullRequest"]>
+  >();
+  const byUrl = new Map<string, TaskPullRequest>();
+  const unavailableThreadIds: string[] = [];
+
+  for (const taskThread of taskThreads) {
+    try {
+      const thread = await bb.sdk.threads.get({
+        threadId: taskThread.threadId,
+      });
+      if (!thread.environmentId) continue;
+      let lookup = pullRequestByEnvironment.get(thread.environmentId);
+      if (!lookup) {
+        lookup = bb.sdk.environments.pullRequest({
+          environmentId: thread.environmentId,
+        });
+        pullRequestByEnvironment.set(thread.environmentId, lookup);
+      }
+      const { pullRequest } = await lookup;
+      if (!pullRequest) continue;
+      const existing = byUrl.get(pullRequest.url);
+      if (existing) {
+        existing.threadIds.push(taskThread.threadId);
+      } else {
+        byUrl.set(pullRequest.url, {
+          url: pullRequest.url,
+          number: pullRequest.number,
+          title: pullRequest.title,
+          state: pullRequest.state,
+          updatedAt: pullRequest.updatedAt,
+          threadIds: [taskThread.threadId],
+        });
+      }
+    } catch {
+      unavailableThreadIds.push(taskThread.threadId);
+    }
+  }
+
+  return {
+    // Most recently updated first, matching how the threads list surfaces
+    // the freshest work.
+    pullRequests: [...byUrl.values()].sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    ),
+    unavailableThreadIds,
+  };
+}
+
 export function registerHandlers(
   bb: BbPluginApi,
   store: TasksApiStore,
@@ -719,6 +788,9 @@ export function registerHandlers(
     },
     listTaskThreads(input) {
       return { taskThreads: store.tasks.listTaskThreads(input.taskId) };
+    },
+    async listTaskPullRequests(input) {
+      return listTaskPullRequests(bb, store, input.taskId);
     },
     createPreset(input) {
       const preset = store.tasks.createPreset({ ...input, builtin: false });

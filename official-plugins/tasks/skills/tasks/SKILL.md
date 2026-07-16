@@ -21,7 +21,9 @@ not already exist. Dispatch requires an existing preset.
    ```
 
    The detail includes the description, status, priority, labels, subtasks,
-   comments, attachments, and attached worker threads. Use
+   comments, attachments, attached worker threads, and the GitHub pull
+   requests those threads produced (from environment metadata, with state
+   open/draft/merged/closed). Use
    `bb tasks show ABC-12 --json` when the result will drive commands or code.
 
 2. Fetch every relevant attachment before making assumptions about it:

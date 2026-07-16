@@ -826,6 +826,121 @@ describe("bb tasks CLI", () => {
     }
   });
 
+  it("shows attached-thread pull requests in show output and JSON", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) => ({
+            id: threadId,
+            title: `Worker ${threadId}`,
+            titleFallback: null,
+            status: "active",
+            environmentId: threadId === "thr_pr_worker" ? "env_pr" : null,
+          }),
+        },
+        environments: {
+          pullRequest: async () => ({
+            pullRequest: {
+              number: 12,
+              title: "BB-15 Show PRs in tasks",
+              state: "draft",
+              url: "https://github.com/acme/bb/pull/12",
+              baseRefName: "main",
+              headRefName: "bb/bb-15",
+              updatedAt: "2026-07-16T10:00:00.000Z",
+              checks: {
+                state: "pending",
+                totalCount: 1,
+                passedCount: 0,
+                failedCount: 0,
+                pendingCount: 1,
+              },
+              review: { state: "none", reviewRequestCount: 0 },
+              mergeability: {
+                state: "draft",
+                mergeStateStatus: null,
+                mergeable: null,
+              },
+              attention: "draft",
+            },
+          }),
+        },
+      },
+    });
+    await plugin(bb);
+    stdout(
+      await harness.runCli(["project", "create", "--name", "PRs", "--prefix", "PRS"]),
+    );
+    stdout(
+      await harness.runCli(["create", "--project", "PRS", "--title", "Ship the pill"]),
+    );
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_pr_worker"]),
+    );
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_no_env_00"]),
+    );
+
+    const shown = stdout(await harness.runCli(["show", "PRS-1"]));
+    expect(shown).toContain("Pull requests");
+    expect(shown).toContain("#12  draft  BB-15 Show PRs in tasks");
+    expect(shown).toContain("https://github.com/acme/bb/pull/12");
+    expect(shown).not.toContain("PR lookup unavailable");
+
+    const payload = JSON.parse(
+      stdout(await harness.runCli(["show", "PRS-1", "--json"])),
+    );
+    expect(payload.pullRequests).toEqual([
+      {
+        url: "https://github.com/acme/bb/pull/12",
+        number: 12,
+        title: "BB-15 Show PRs in tasks",
+        state: "draft",
+        updatedAt: "2026-07-16T10:00:00.000Z",
+        threadIds: ["thr_pr_worker"],
+      },
+    ]);
+    expect(payload.pullRequestUnavailableThreadIds).toEqual([]);
+
+    await harness.dispose();
+  });
+
+  it("flags threads whose PR lookup failed in show output", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) => ({
+            id: threadId,
+            title: `Worker ${threadId}`,
+            titleFallback: null,
+            status: "active",
+            environmentId: "env_down",
+          }),
+        },
+        environments: {
+          pullRequest: async () => {
+            throw new Error("workspace unavailable");
+          },
+        },
+      },
+    });
+    await plugin(bb);
+    stdout(
+      await harness.runCli(["project", "create", "--name", "PRs", "--prefix", "PRS"]),
+    );
+    stdout(
+      await harness.runCli(["create", "--project", "PRS", "--title", "Ship the pill"]),
+    );
+    stdout(await harness.runCli(["attach", "PRS-1", "--thread", "thr_down_0000"]));
+
+    const shown = stdout(await harness.runCli(["show", "PRS-1"]));
+    expect(shown).toContain("PR lookup unavailable for: thr_down_0000");
+
+    await harness.dispose();
+  });
+
   it("adds and downloads an attachment with an exact file round-trip", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bb-tasks-cli-"));
     const inputPath = join(directory, "input.txt");

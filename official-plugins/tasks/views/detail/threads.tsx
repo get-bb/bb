@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
-import type { Preset, TaskThread } from "../../shared/contract.js";
+import type {
+  Preset,
+  TaskPullRequest,
+  TaskThread,
+} from "../../shared/contract.js";
 import {
+  PR_STATE_META,
   THREAD_STATUS_META,
   formatRelativeTime,
   isActiveThread,
@@ -24,7 +29,59 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
 
-function ThreadCard({ thread }: { thread: TaskThread }) {
+/**
+ * PR pill on a thread card: a real link to GitHub when the thread's
+ * environment has a pull request, a quiet muted marker when the lookup
+ * failed, nothing while loading or when no PR exists.
+ */
+function ThreadPullRequestPill({
+  pullRequest,
+  unavailable,
+}: {
+  pullRequest: TaskPullRequest | undefined;
+  unavailable: boolean;
+}) {
+  if (pullRequest) {
+    const meta = PR_STATE_META[pullRequest.state];
+    return (
+      <a
+        href={pullRequest.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`${pullRequest.title} (${meta.label})`}
+        aria-label={`Pull request #${pullRequest.number}: ${pullRequest.title} (${meta.label})`}
+        className={cn(
+          "flex shrink-0 items-center gap-1 rounded-full border border-border bg-secondary px-2 py-0.5 text-xs font-medium shadow-2xs hover:border-input",
+          meta.textClassName,
+        )}
+      >
+        <Icon name={meta.icon} className="size-3" />
+        #{pullRequest.number}
+      </a>
+    );
+  }
+  if (unavailable) {
+    return (
+      <span
+        title="Couldn't check this thread's pull request"
+        className="shrink-0 text-xs text-muted-foreground"
+      >
+        PR unavailable
+      </span>
+    );
+  }
+  return null;
+}
+
+function ThreadCard({
+  thread,
+  pullRequest,
+  pullRequestUnavailable,
+}: {
+  thread: TaskThread;
+  pullRequest: TaskPullRequest | undefined;
+  pullRequestUnavailable: boolean;
+}) {
   const navigate = useBbNavigate();
   const meta = THREAD_STATUS_META[thread.liveStatus];
   return (
@@ -47,6 +104,10 @@ function ThreadCard({ thread }: { thread: TaskThread }) {
           {thread.presetName} · attached {formatRelativeTime(thread.attachedAt)}
         </div>
       </div>
+      <ThreadPullRequestPill
+        pullRequest={pullRequest}
+        unavailable={pullRequestUnavailable}
+      />
       <button
         type="button"
         className="flex shrink-0 items-center gap-1 text-xs font-medium underline decoration-input underline-offset-2 hover:decoration-current"
@@ -238,13 +299,27 @@ export function DispatchControl({
 
 export interface ThreadsSectionProps {
   threads: TaskThread[];
+  /** Undefined while the PR lookup is in flight (cards render without pills). */
+  pullRequests: TaskPullRequest[] | undefined;
+  unavailableThreadIds: string[];
 }
 
 /** Attached-thread list; the caller skips it entirely when there are none.
  *  Dispatching lives in a single DispatchControl (rail on wide layouts,
  *  inline property row on narrow), not here. */
-export function ThreadsSection({ threads }: ThreadsSectionProps) {
+export function ThreadsSection({
+  threads,
+  pullRequests,
+  unavailableThreadIds,
+}: ThreadsSectionProps) {
   const activeCount = threads.filter(isActiveThread).length;
+  const pullRequestByThread = new Map<string, TaskPullRequest>();
+  for (const pullRequest of pullRequests ?? []) {
+    for (const threadId of pullRequest.threadIds) {
+      pullRequestByThread.set(threadId, pullRequest);
+    }
+  }
+  const unavailable = new Set(unavailableThreadIds);
 
   return (
     <section>
@@ -255,7 +330,12 @@ export function ThreadsSection({ threads }: ThreadsSectionProps) {
         ) : null}
       </div>
       {threads.map((thread) => (
-        <ThreadCard key={thread.id} thread={thread} />
+        <ThreadCard
+          key={thread.id}
+          thread={thread}
+          pullRequest={pullRequestByThread.get(thread.threadId)}
+          pullRequestUnavailable={unavailable.has(thread.threadId)}
+        />
       ))}
     </section>
   );

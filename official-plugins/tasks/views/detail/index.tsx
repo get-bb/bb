@@ -263,6 +263,13 @@ function TaskDetail({ task }: { task: Task }) {
     async (query) => (await query.call("listPresets")).presets,
     ["projects:changed"],
   );
+  // Quiet by design: while loading (or if the lookup errors) thread cards
+  // simply render without PR pills.
+  const pullRequests = useTasksQuery(
+    async (query) => query.call("listTaskPullRequests", { taskId: task.id }),
+    ["threads:changed"],
+    [task.id],
+  );
 
   const updateTask = async (
     input: TaskPropertyUpdate & { title?: string; description?: string },
@@ -432,7 +439,13 @@ function TaskDetail({ task }: { task: Task }) {
               rail's Dispatch button is the entry point. */}
           {(threads.data ?? []).length > 0 ? (
             <div className="mt-6">
-              <ThreadsSection threads={threads.data ?? []} />
+              <ThreadsSection
+                threads={threads.data ?? []}
+                pullRequests={pullRequests.data?.pullRequests}
+                unavailableThreadIds={
+                  pullRequests.data?.unavailableThreadIds ?? []
+                }
+              />
             </div>
           ) : null}
 

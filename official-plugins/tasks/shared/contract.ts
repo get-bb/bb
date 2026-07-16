@@ -180,6 +180,25 @@ export const taskThreadSchema = z
   })
   .strict();
 
+/**
+ * A GitHub pull request associated with a task through an attached thread's
+ * environment (the branch the delegated agent pushed). Assembled server-side
+ * from environment pull-request metadata — never scraped from comments.
+ * `state` matches the server's product-facing PR state, which already folds
+ * GitHub's isDraft flag into a single enum.
+ */
+export const taskPullRequestSchema = z
+  .object({
+    url: z.string().url(),
+    number: z.number().int().positive(),
+    title: z.string(),
+    state: z.enum(["open", "draft", "merged", "closed"]),
+    updatedAt: z.string(),
+    /** Task threads whose environment resolved to this pull request. */
+    threadIds: z.array(z.string().startsWith("thr_")).min(1),
+  })
+  .strict();
+
 export const presetSchema = z
   .object({
     id: idSchema,
@@ -513,6 +532,19 @@ export const tasksRpcContract = defineRpcContract({
     input: z.object({ taskId: idSchema }).strict(),
     output: z.object({ taskThreads: z.array(taskThreadSchema) }).strict(),
   },
+  // Pull requests reached through the task's attached threads, deduplicated
+  // by URL. Threads whose PR lookup failed (deleted thread, unreachable
+  // workspace) are reported in `unavailableThreadIds` rather than failing the
+  // whole call; threads with no environment or no PR are simply absent.
+  listTaskPullRequests: {
+    input: z.object({ taskId: idSchema }).strict(),
+    output: z
+      .object({
+        pullRequests: z.array(taskPullRequestSchema),
+        unavailableThreadIds: z.array(z.string().startsWith("thr_")),
+      })
+      .strict(),
+  },
   createPreset: {
     input: z
       .object({
@@ -664,6 +696,7 @@ export type Comment = z.infer<typeof commentSchema>;
 export type DisplayComment = z.infer<typeof displayCommentSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
 export type TaskThread = z.infer<typeof taskThreadSchema>;
+export type TaskPullRequest = z.infer<typeof taskPullRequestSchema>;
 export type Preset = z.infer<typeof presetSchema>;
 export type TasksDomainError = z.infer<typeof tasksDomainErrorSchema>;
 export type TaskMutationResult = z.infer<typeof taskMutationResultSchema>;
