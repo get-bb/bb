@@ -838,35 +838,43 @@ export function createTasksStore(db: PluginDatabase) {
       parameters.projectId = filters.projectId;
     }
     if (filters.statuses !== undefined) {
-      if (filters.statuses.length === 0) return { tasks: [], nextCursor: null };
-      const names = filters.statuses.map((status, index) => {
-        const name = `status${index}`;
-        parameters[name] = status;
-        return `@${name}`;
-      });
-      clauses.push(`t.status IN (${names.join(", ")})`);
+      if (filters.statuses.length === 0) {
+        clauses.push("0 = 1");
+      } else {
+        const names = filters.statuses.map((status, index) => {
+          const name = `status${index}`;
+          parameters[name] = status;
+          return `@${name}`;
+        });
+        clauses.push(`t.status IN (${names.join(", ")})`);
+      }
     }
     if (filters.priorities !== undefined) {
-      if (filters.priorities.length === 0)
-        return { tasks: [], nextCursor: null };
-      const names = filters.priorities.map((priority, index) => {
-        const name = `priority${index}`;
-        parameters[name] = priority;
-        return `@${name}`;
-      });
-      clauses.push(`t.priority IN (${names.join(", ")})`);
+      if (filters.priorities.length === 0) {
+        clauses.push("0 = 1");
+      } else {
+        const names = filters.priorities.map((priority, index) => {
+          const name = `priority${index}`;
+          parameters[name] = priority;
+          return `@${name}`;
+        });
+        clauses.push(`t.priority IN (${names.join(", ")})`);
+      }
     }
     if (filters.labelIds !== undefined) {
-      if (filters.labelIds.length === 0) return { tasks: [], nextCursor: null };
-      const names = filters.labelIds.map((labelId, index) => {
-        const name = `label${index}`;
-        parameters[name] = labelId;
-        return `@${name}`;
-      });
-      clauses.push(`EXISTS (
-        SELECT 1 FROM task_labels tl
-        WHERE tl.task_id = t.id AND tl.label_id IN (${names.join(", ")})
-      )`);
+      if (filters.labelIds.length === 0) {
+        clauses.push("0 = 1");
+      } else {
+        const names = filters.labelIds.map((labelId, index) => {
+          const name = `label${index}`;
+          parameters[name] = labelId;
+          return `@${name}`;
+        });
+        clauses.push(`EXISTS (
+          SELECT 1 FROM task_labels tl
+          WHERE tl.task_id = t.id AND tl.label_id IN (${names.join(", ")})
+        )`);
+      }
     }
     if (filters.activeOnly === true) {
       clauses.push(`EXISTS (

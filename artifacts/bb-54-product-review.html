@@ -66,7 +66,7 @@
         <span class="chip"><strong>Branch</strong> bb/bb-54-plugin-cli-output-limits-and-tasks-paginat-thr_8fgu3u7gdn</span>
         <span class="chip good">Live product QA passed</span>
         <span class="chip"><strong>Dataset</strong> 221 tasks · 6 pages</span>
-        <span class="chip warn">1 initial defect · fixed and reverified</span>
+        <span class="chip warn">1 QA defect + 1 review finding · fixed and reverified</span>
       </div>
     </header>
 
@@ -154,7 +154,7 @@
           <table>
             <thead><tr><th>Area</th><th>Status</th><th>Evidence</th></tr></thead>
             <tbody>
-              <tr><td>Tasks automated suite</td><td class="pass">Pass</td><td>301/301 tests, including deterministic sort/filter pagination, query mismatch, and add/remove/update/reorder mutation behavior.</td></tr>
+              <tr><td>Tasks automated suite</td><td class="pass">Pass</td><td>302/302 tests, including deterministic sort/filter pagination, query mismatch, empty-array cursor validation, and add/remove/update/reorder mutation behavior.</td></tr>
               <tr><td>CLI post-fix suite</td><td class="pass">Pass</td><td>335/335 tests, including an asynchronous 1 MiB stream-flush regression.</td></tr>
               <tr><td>Focused server boundary</td><td class="pass">Pass</td><td>13/13 tests at below, exact, and above-limit boundaries for human and JSON modes.</td></tr>
               <tr><td>Plugin SDK</td><td class="pass">Pass</td><td>55/55 tests; fake host and public generated declarations share the same contract.</td></tr>
@@ -179,13 +179,23 @@
             <li>Human, JSON, direct, and explicit over-limit cases: exit 1, typed atomic error, no payload leakage.</li>
             <li>Full post-fix CLI suite: 335/335 passing.</li>
           </ul>
+          <h3>Single independent review gate</h3>
+          <p>The mandated readonly GPT-5.6 Sol Medium review returned <strong>REQUEST CHANGES</strong> with one blocking Medium finding: empty <code>statuses</code>, <code>priorities</code>, or <code>labelIds</code> arrays returned an empty page before decoding and validating a supplied cursor. The shortcuts now add an always-false SQL predicate and continue through limit, fingerprint, sort, and database-revision validation.</p>
+          <p class="resolved">Reviewer finding addressed without a second review:</p>
+          <ul>
+            <li>All three empty-array filters reject malformed cursors.</li>
+            <li>All three reject cursors issued for a different query.</li>
+            <li>A cursor matching the empty query returns an empty success page while its revision is current.</li>
+            <li>After a list-relevant mutation, all three matching cursors fail as stale.</li>
+            <li>Updated Tasks suite: 302/302; Tasks typecheck and build pass; the same matrix passes through the restarted live RPC server.</li>
+          </ul>
         </section>
 
         <section id="risk">
           <h2>7 · Remaining risk and deliberate decisions</h2>
           <p>Cursor invalidation is intentionally conservative: any list-relevant mutation stales existing cursors, even if a sophisticated snapshot system might have permitted some continuations. The trade-off is explicit retry over invisible data loss or duplication. UI helpers restart at the beginning only when callers initiate a new load; the CLI/API surface returns the error to the caller.</p>
           <p>Compatibility list helpers may traverse several 500-row pages for internal views that require a complete project dataset. Individual database and RPC operations remain bounded, but extremely large projects still require proportionally more requests and client memory to render the complete board. That preserves existing UI semantics while removing unbounded single-query/output behavior.</p>
-          <p>No unresolved BB-54 product defect remains from the live evidence pass. The only broader-suite anomaly is the unrelated install-machine fixture noted above.</p>
+          <p>No unresolved BB-54 product defect or unaddressed independent-review finding remains. The single reviewer’s recorded verdict remains REQUEST CHANGES because the required workflow forbids requesting a second review; the finding and its revalidation are preserved in the evidence archive. The only broader-suite anomaly is the unrelated install-machine fixture noted above.</p>
         </section>
 
         <section id="try">

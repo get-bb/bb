@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createTasksStore, TasksPageCursorError } from "./db";
@@ -17,6 +18,33 @@ function createProject(
     prefix,
     color: "blue",
   });
+}
+
+function cursorForEmptyArrayFilter(
+  cursor: string,
+  projectId: string,
+  filter: "statuses" | "priorities" | "labelIds",
+): string {
+  const decoded: unknown = JSON.parse(
+    Buffer.from(cursor, "base64url").toString("utf8"),
+  );
+  if (typeof decoded !== "object" || decoded === null) {
+    throw new Error("expected an object cursor fixture");
+  }
+  const normalized = JSON.stringify({
+    projectId,
+    statuses: filter === "statuses" ? [] : null,
+    priorities: filter === "priorities" ? [] : null,
+    labelIds: filter === "labelIds" ? [] : null,
+    activeOnly: false,
+    parentTaskId: { specified: false, value: null },
+    search: null,
+    sort: "manual",
+  });
+  const query = createHash("sha256").update(normalized).digest("base64url");
+  return Buffer.from(JSON.stringify({ ...decoded, query }), "utf8").toString(
+    "base64url",
+  );
 }
 
 describe("tasks storage", () => {
@@ -380,6 +408,82 @@ describe("tasks storage", () => {
           cursor,
         }),
       ).toThrow("does not match --sort");
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("validates invalid, mismatched, and stale cursors for empty array filters", async () => {
+    const { harness, store } = setup();
+    try {
+      const project = createProject(store, "EMP");
+      for (let index = 0; index < 3; index += 1) {
+        store.createTask({
+          projectId: project.id,
+          title: `Task ${index + 1}`,
+          status: "todo",
+        });
+      }
+      const cursor = store.listTasksPage({
+        projectId: project.id,
+        statuses: ["todo"],
+        limit: 1,
+      }).nextCursor;
+      if (cursor === null) throw new Error("expected another task page");
+
+      const filters = ["statuses", "priorities", "labelIds"] as const;
+      const matchingCursors = new Map(
+        filters.map((filter) => [
+          filter,
+          cursorForEmptyArrayFilter(cursor, project.id, filter),
+        ]),
+      );
+      for (const filter of filters) {
+        const emptyFilter = { [filter]: [] };
+        expect(
+          store.listTasksPage({
+            projectId: project.id,
+            ...emptyFilter,
+            cursor: matchingCursors.get(filter),
+          }),
+        ).toEqual({ tasks: [], nextCursor: null });
+        expect(() =>
+          store.listTasksPage({
+            projectId: project.id,
+            ...emptyFilter,
+            cursor: "not-a-cursor",
+          }),
+        ).toThrow("invalid task-list cursor");
+        expect(() =>
+          store.listTasksPage({
+            projectId: project.id,
+            ...emptyFilter,
+            cursor,
+          }),
+        ).toThrow("does not match the current filters");
+      }
+      expect(() =>
+        store.listTasksPage({
+          projectId: project.id,
+          statuses: [],
+          limit: 0,
+        }),
+      ).toThrow("Task page limit must be an integer");
+
+      store.createTask({
+        projectId: project.id,
+        title: "Mutation",
+        status: "todo",
+      });
+      for (const filter of filters) {
+        expect(() =>
+          store.listTasksPage({
+            projectId: project.id,
+            [filter]: [],
+            cursor: matchingCursors.get(filter),
+          }),
+        ).toThrow("task-list data changed after this cursor was issued");
+      }
     } finally {
       await harness.dispose();
     }
