@@ -2,19 +2,15 @@
 
 ## 0.0.31
 
-Splits headline this release: split views graduate out of experiments for everyone, with twice the pane capacity, per-pane maximize, and a smarter side panel.
+This release brings split views to everyone and redesigns queued messages in the composer.
 
-### Splits, out of experiments
+### Features
 
-- Split views are now on for everyone: arrange up to eight chats side by side, drag threads in from the sidebar, and move between panes with keyboard shortcuts.
-- Maximize a single pane and restore the layout with Mod+Shift+E or the pane header control.
-- The right panel (diffs, previews, terminals) now follows the focused pane and stays open as you switch panes and threads.
-- Sidebar actions show a split preview, so you can see where a thread will open before you click.
-- Lots of polish: smoother resizing, better divider hit testing, and correct macOS traffic-light spacing.
+- Split views are now available: arrange up to eight chats side by side, drag threads in from the sidebar, and move between panes with keyboard shortcuts.
+- Queued messages in the composer got a redesign: a compact drawer that scales to long queues, with fullscreen editing.
 
 ### Improvements
 
-- Queued messages in the composer got a redesign: a compact drawer that scales to long queues, with fullscreen editing.
 - New compact composer on mobile.
 - Sidebar sections are unified and drag-reorderable, with drag-to-pin; archived threads moved into Settings.
 - Usage limits now show which account email each provider is signed in with, and Cursor usage limits are now supported.
