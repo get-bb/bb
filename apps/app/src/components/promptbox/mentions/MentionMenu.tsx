@@ -176,7 +176,7 @@ function getPathSectionLabel(kind: PathMentionSectionKind): string {
   return "Workspace";
 }
 
-function getMentionIconName(item: PromptMentionSuggestion): IconName {
+function getMentionIconName(item: PromptMentionSuggestion): IconName | null {
   return promptMentionIconName(promptMentionResourceFromSuggestion(item));
 }
 
@@ -266,12 +266,12 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
       />
     );
   }
+  const iconName = getMentionIconName(item);
+  if (iconName === null) {
+    return null;
+  }
   return (
-    <Icon
-      name={getMentionIconName(item)}
-      className={ROW_ICON_CLASS}
-      aria-hidden
-    />
+    <Icon name={iconName} className={ROW_ICON_CLASS} aria-hidden />
   );
 }
 

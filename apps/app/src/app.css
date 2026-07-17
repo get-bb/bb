@@ -98,9 +98,10 @@
     box-shadow: var(--pill-shadow);
   }
 
-  /* Leading mention icon: a plain near-black outline glyph (near-white in dark),
-   * no fill. */
-  .prompt-mention-pill svg {
+  /* Leading mention identity: a plain near-black outline glyph or section
+   * marker (near-white in dark), with no fill. */
+  .prompt-mention-pill svg,
+  .prompt-mention-pill [data-section-mention-marker] {
     color: var(--pill-icon);
   }
 

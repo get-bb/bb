@@ -47,7 +47,7 @@ export function promptMentionIconLabel(
  */
 export function promptMentionIconName(
   resource: PromptMentionResource,
-): IconName {
+): IconName | null {
   if (resource.kind === "thread") {
     return "MessageSquare";
   }
@@ -55,7 +55,7 @@ export function promptMentionIconName(
     return "Folder";
   }
   if (resource.kind === "section") {
-    return "Folder";
+    return null;
   }
   if (resource.kind === "command") {
     return promptCommandIconName(resource);

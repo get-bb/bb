@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { promptMentionIconName } from "./prompt-mention-display";
 
 describe("promptMentionIconName", () => {
-  it("uses the same section icon for project and section mentions", () => {
+  it("uses a folder icon for projects and no icon for sections", () => {
     expect(
       promptMentionIconName({
         kind: "project",
@@ -16,6 +16,6 @@ describe("promptMentionIconName", () => {
         sectionId: "sec_test",
         label: "Test section",
       }),
-    ).toBe("Folder");
+    ).toBeNull();
   });
 });
