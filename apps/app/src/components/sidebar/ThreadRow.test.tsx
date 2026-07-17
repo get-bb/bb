@@ -77,11 +77,15 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
 };
 
 function ThreadRowTestHarness({
+  accessibleTitle,
+  displayTitle,
   isActive = false,
   options = DEFAULT_OPTIONS,
   shortcutKey,
   thread,
 }: {
+  accessibleTitle?: string;
+  displayTitle?: string;
   isActive?: boolean;
   options?: ThreadRowOptions;
   shortcutKey?: string;
@@ -105,6 +109,8 @@ function ThreadRowTestHarness({
           isActive={isActive}
           hasComposerDraft={false}
           options={options}
+          displayTitle={displayTitle}
+          accessibleTitle={accessibleTitle}
         />
       </SidebarThreadShortcutKeysContext.Provider>
     </MemoryRouter>
@@ -184,6 +190,68 @@ describe("ThreadRow", () => {
     expect(screen.getByText("Legacy section").closest("a")).toBeNull();
     expect(screen.getByTitle("apps/app/src/ThreadRow.tsx")).not.toBeNull();
     expect(screen.queryByText("@thread:thr_mentioned")).toBeNull();
+    const resolvedTitle =
+      "Compare Mention target in Mention project, Mention section, legacy Legacy section, and ThreadRow.tsx";
+    expect(
+      screen.getByRole("link", { name: `Open ${resolvedTitle}` }),
+    ).not.toBeNull();
+    expect(screen.getByTitle(resolvedTitle)).not.toBeNull();
+  });
+
+  it("keeps an explicit accessible title while resolving its mentions", () => {
+    const mentionedThread = createThread({
+      id: "thr_visible",
+      title: "Visible target",
+      titleFallback: "Visible target",
+    });
+    const onToggleCollapsed = vi.fn();
+
+    render(
+      <SidebarThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map([["sec_accessible", "Accessible section"]])}
+        projectNamesById={new Map()}
+        threadById={new Map([[mentionedThread.id, mentionedThread]])}
+      >
+        <ThreadRowTestHarness
+          accessibleTitle="Full path in @section:sec_accessible"
+          displayTitle="Leaf @thread:thr_visible"
+          thread={createThread({ title: "Fallback raw title" })}
+          options={{
+            kind: "parent",
+            depth: 1,
+            isCompact: false,
+            isCollapsed: false,
+            childCount: 1,
+            childActivity: {
+              pending: false,
+              working: false,
+              runtimeWorking: false,
+              workflow: false,
+              backgroundAgent: false,
+              backgroundCommand: false,
+              planMode: false,
+              goal: false,
+              unread: false,
+              unreadError: false,
+            },
+            onToggleCollapsed,
+          }}
+        />
+      </SidebarThreadTitleMentionResourcesProvider>,
+    );
+
+    expect(screen.getByText("Visible target")).not.toBeNull();
+    expect(
+      screen.getByRole("link", {
+        name: "Open Full path in Accessible section",
+      }),
+    ).not.toBeNull();
+    expect(screen.getByTitle("Full path in Accessible section")).not.toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Collapse Full path in Accessible section threads",
+      }),
+    ).not.toBeNull();
   });
 
   it("renders a complete Unicode path mention instead of an ASCII prefix", () => {

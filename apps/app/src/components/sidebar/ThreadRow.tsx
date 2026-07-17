@@ -66,6 +66,7 @@ import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 import { APP_COMMAND_SHORTCUT_HINT_CLASS } from "@/components/commands/AppCommandShortcutHint";
+import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -462,7 +463,7 @@ function ThreadRowComponent({
   const threadTitle = getThreadDisplayTitle(thread);
   // Inside a section the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
-  const labelTitle = accessibleTitle ?? threadTitle;
+  const labelTitle = useThreadTitleDisplayText(accessibleTitle ?? threadTitle);
   const threadSplitsEnabled = useThreadSplitsEnabled();
   const splitIndicator = usePaneContentSplitIndicator(
     { kind: "thread", projectId, threadId: thread.id },
@@ -472,7 +473,7 @@ function ThreadRowComponent({
     useThreadRowSplitDrag({
       projectId,
       threadId: thread.id,
-      title: threadTitle,
+      title: labelTitle,
     });
   // Splits are disabled on compact viewports; the drag hook signals that by
   // withholding its pointer handler, so gate the click/menu entry points on it.
@@ -584,8 +585,8 @@ function ThreadRowComponent({
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
-            expandLabel={`Expand ${threadTitle} threads`}
-            collapseLabel={`Collapse ${threadTitle} threads`}
+            expandLabel={`Expand ${labelTitle} threads`}
+            collapseLabel={`Collapse ${labelTitle} threads`}
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
             revealOnHover
           />

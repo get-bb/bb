@@ -12,6 +12,7 @@ import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMention
 import { PROMPT_MENTION_PILL_CLASS } from "@/components/promptbox/mentions/prompt-mention-display";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { parseAgentMessageEnvelope } from "@bb/thread-view";
+import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 
 export interface TocItem {
   id: string;
@@ -172,7 +173,7 @@ function TocThreadMention({
   threadId: string;
   threadTitle: string | null;
 }) {
-  const label = threadTitle ?? "Agent";
+  const label = useThreadTitleDisplayText(threadTitle ?? "Agent");
   return (
     <span
       className={cn(

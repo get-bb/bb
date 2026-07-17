@@ -1661,7 +1661,9 @@ describe("host-daemon command schemas", () => {
     ).toThrow();
   });
 
-  it("parses thread.start with workspacePath", () => {
+  it("parses section mentions in thread.start", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(57);
+
     expect(
       hostDaemonCommandSchema.parse({
         type: "thread.start",
@@ -1719,6 +1721,7 @@ describe("host-daemon command schemas", () => {
               resource: {
                 kind: "section",
                 sectionId: "sec_release",
+                label: "Release QA",
               },
             },
           ],
@@ -1728,6 +1731,71 @@ describe("host-daemon command schemas", () => {
         workspacePath: "/tmp/workspace",
         workspaceProvisionType: "unmanaged",
       },
+    });
+  });
+
+  it("parses section mentions in turn.submit follow-ups", () => {
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "turn.submit",
+        environmentId: "env_123",
+        threadId: "thr_123",
+        requestId: CLIENT_REQUEST_ID,
+        input: [
+          {
+            type: "text",
+            text: "Review @release",
+            mentions: [
+              {
+                start: 7,
+                end: 15,
+                resource: {
+                  kind: "section",
+                  sectionId: "sec_release",
+                  label: "Release QA",
+                },
+              },
+            ],
+          },
+        ],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionEscalation: null,
+        },
+        resumeContext: {
+          workspaceContext: {
+            workspacePath: "/tmp/workspace",
+            workspaceProvisionType: "unmanaged",
+          },
+          projectId: "proj_123",
+          providerId: "codex",
+          providerThreadId: "provider_123",
+          instructions: "Be a helpful coding agent.",
+          dynamicTools: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        target: { mode: "start" },
+      }),
+    ).toMatchObject({
+      type: "turn.submit",
+      input: [
+        {
+          mentions: [
+            {
+              resource: {
+                kind: "section",
+                sectionId: "sec_release",
+                label: "Release QA",
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 

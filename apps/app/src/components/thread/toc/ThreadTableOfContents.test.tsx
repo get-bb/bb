@@ -40,6 +40,7 @@ import {
   ThreadTableOfContents,
   type TocItem,
 } from "./ThreadTableOfContents";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 
 class ResizeObserverMock implements ResizeObserver {
   observe: ResizeObserver["observe"] = vi.fn();
@@ -458,16 +459,24 @@ describe("ThreadTableOfContents", () => {
     ).toBeNull();
   });
 
-  it("uses and refreshes the sender thread title in a ToC mention", async () => {
+  it("uses and refreshes a sender title with a nested thread mention", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    const nestedThread = threadListEntry({
+      id: "thr_nested",
+      title: "Calendar specialist",
+    });
     queryClient.setQueryData(
       sidebarNavigationQueryKey(),
-      sidebarNavigation([threadListEntry({ title: "Calendar worker" })]),
+      sidebarNavigation([
+        threadListEntry({ title: "Ask @thread:thr_nested" }),
+        nestedThread,
+      ]),
     );
     queryClient.setQueryData(threadListQueryKey({ archived: false }), [
-      threadListEntry({ title: "Calendar worker" }),
+      threadListEntry({ title: "Ask @thread:thr_nested" }),
+      nestedThread,
     ]);
     setOutline([
       {
@@ -493,20 +502,30 @@ describe("ThreadTableOfContents", () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <TocHost timelineRows={[]} />
+        <ThreadTitleMentionResourcesProvider
+          sectionNamesById={new Map()}
+          projectNamesById={new Map()}
+          threadById={new Map([[nestedThread.id, nestedThread]])}
+        >
+          <TocHost timelineRows={[]} />
+        </ThreadTitleMentionResourcesProvider>
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("Calendar worker")).not.toBeNull();
+    expect(await screen.findByText("Ask Calendar specialist")).not.toBeNull();
+    expect(screen.queryByText("@thread:thr_nested")).toBeNull();
 
     queryClient.setQueryData(
       sidebarNavigationQueryKey(),
       sidebarNavigation([
-        threadListEntry({ title: "Updated calendar worker" }),
+        threadListEntry({ title: "Updated @thread:thr_nested" }),
+        nestedThread,
       ]),
     );
 
-    expect(await screen.findByText("Updated calendar worker")).not.toBeNull();
+    expect(
+      await screen.findByText("Updated Calendar specialist"),
+    ).not.toBeNull();
   });
 
   it("scrolls straight to a message already loaded in the window", async () => {

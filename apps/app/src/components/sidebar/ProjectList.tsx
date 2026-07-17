@@ -148,6 +148,10 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
+import {
+  resolveThreadTitleDisplayText,
+  type ThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
 
 interface ProjectListProps {
   onNewProject?: () => void;
@@ -401,9 +405,16 @@ function normalizeCollapsedSidebarSectionIds(
 function compareByTitleAscending(
   left: ThreadListEntry,
   right: ThreadListEntry,
+  resources?: ThreadTitleMentionResources,
 ): number {
-  const titleDelta = getThreadDisplayTitle(left).localeCompare(
-    getThreadDisplayTitle(right),
+  const leftTitle = getThreadDisplayTitle(left);
+  const rightTitle = getThreadDisplayTitle(right);
+  const titleDelta = (
+    resources ? resolveThreadTitleDisplayText(leftTitle, resources) : leftTitle
+  ).localeCompare(
+    resources
+      ? resolveThreadTitleDisplayText(rightTitle, resources)
+      : rightTitle,
   );
   if (titleDelta !== 0) {
     return titleDelta;
@@ -412,26 +423,46 @@ function compareByTitleAscending(
   return left.id.localeCompare(right.id);
 }
 
-function getProjectThreadItemAlphaLabel(item: ProjectThreadItem): string {
+function getProjectThreadItemAlphaLabel(
+  item: ProjectThreadItem,
+  resources?: ThreadTitleMentionResources,
+): string {
+  let label: string;
   switch (item.kind) {
     case "thread":
-      return getThreadDisplayTitle(item.node.thread);
+      label = getThreadDisplayTitle(item.node.thread);
+      break;
     case "environment":
-      return getThreadDisplayTitle(item.group.nodes[0].thread);
+      label = getThreadDisplayTitle(item.group.nodes[0].thread);
+      break;
     case "section":
       return item.group.name;
   }
+  return resources ? resolveThreadTitleDisplayText(label, resources) : label;
 }
 
 function compareProjectThreadItemsByTitleAscending(
   left: ProjectThreadItem,
   right: ProjectThreadItem,
+  resources?: ThreadTitleMentionResources,
 ): number {
-  const labelDelta = getProjectThreadItemAlphaLabel(left).localeCompare(
-    getProjectThreadItemAlphaLabel(right),
-  );
+  const labelDelta = getProjectThreadItemAlphaLabel(
+    left,
+    resources,
+  ).localeCompare(getProjectThreadItemAlphaLabel(right, resources));
   if (labelDelta !== 0) {
     return labelDelta;
+  }
+
+  if (left.kind !== "section" && right.kind !== "section") {
+    const leftThread =
+      left.kind === "thread" ? left.node.thread : left.group.nodes[0].thread;
+    const rightThread =
+      right.kind === "thread" ? right.node.thread : right.group.nodes[0].thread;
+    const threadIdDelta = leftThread.id.localeCompare(rightThread.id);
+    if (threadIdDelta !== 0) {
+      return threadIdDelta;
+    }
   }
 
   const kindDelta = left.kind.localeCompare(right.kind);
@@ -446,12 +477,15 @@ function compareProjectThreadItemsByTitleAscending(
 
 export function getSidebarThreadComparator(
   sort: SidebarChronologicalSort,
+  resources?: ThreadTitleMentionResources,
 ): ThreadComparator {
   const normalizedSort = sort === "none" ? "updated" : sort;
 
   if (normalizedSort === "alpha") {
-    const comparator: ThreadComparator = compareByTitleAscending;
-    comparator.compareItems = compareProjectThreadItemsByTitleAscending;
+    const comparator: ThreadComparator = (left, right) =>
+      compareByTitleAscending(left, right, resources);
+    comparator.compareItems = (left, right) =>
+      compareProjectThreadItemsByTitleAscending(left, right, resources);
     return comparator;
   }
 
@@ -1698,8 +1732,8 @@ function ProjectListComponent({
     sidebarCollapsedThreadSectionsAtom,
   );
   const sidebarThreadComparator = useMemo<ThreadComparator>(
-    () => getSidebarThreadComparator(chronologicalSort),
-    [chronologicalSort],
+    () => getSidebarThreadComparator(chronologicalSort, titleMentionResources),
+    [chronologicalSort, titleMentionResources],
   );
   const collapsedThreadIds = useMemo(
     () => new Set(collapsedThreadIdList),

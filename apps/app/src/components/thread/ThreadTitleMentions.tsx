@@ -3,7 +3,7 @@ import type { PromptMentionResource, ThreadListEntry } from "@bb/domain";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
-interface ThreadTitleMentionResources {
+export interface ThreadTitleMentionResources {
   sectionNamesById: ReadonlyMap<string, string>;
   projectNamesById: ReadonlyMap<string, string>;
   threadById: ReadonlyMap<string, ThreadListEntry>;
@@ -194,14 +194,21 @@ function threadTitleTextSegments(
   return segments;
 }
 
+/** Resolves serialized mentions in a thread title without requiring React context. */
+export function resolveThreadTitleDisplayText(
+  title: string,
+  resources: ThreadTitleMentionResources,
+): string {
+  return threadTitleTextSegments(title, resources)
+    .map((segment) => segment.text)
+    .join("");
+}
+
 /** Resolves serialized mentions in a thread title to one plain display label. */
 export function useThreadTitleDisplayText(title: string): string {
   const resources = useContext(ThreadTitleMentionResourcesContext);
   return useMemo(
-    () =>
-      threadTitleTextSegments(title, resources)
-        .map((segment) => segment.text)
-        .join(""),
+    () => resolveThreadTitleDisplayText(title, resources),
     [resources, title],
   );
 }
