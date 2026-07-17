@@ -262,6 +262,8 @@ function FollowUpPromptBoxWithComposer({
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const promptBoxRef = useRef<PromptBoxHandle>(null);
+  const bottomComposerAnchorRef = useRef<HTMLDivElement>(null);
+  const [composerPortalHost] = useState(() => document.createElement("div"));
   useAppCommandContext("promptAvailable", true);
   useAppCommandHandler("composer.focus", () => {
     promptBoxRef.current?.focusEnd();
@@ -275,6 +277,24 @@ function FollowUpPromptBoxWithComposer({
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
+  useLayoutEffect(() => {
+    const destination = composerTarget ?? bottomComposerAnchorRef.current;
+    if (!destination) return;
+
+    // The portal container never changes. Moving its DOM node preserves the
+    // live editor instance (including selection, history, and local state)
+    // while changing where it appears.
+    destination.append(composerPortalHost);
+    if (composerTarget) {
+      promptBoxRef.current?.focusEnd();
+    }
+  }, [composerPortalHost, composerTarget]);
+  useLayoutEffect(
+    () => () => {
+      composerPortalHost.remove();
+    },
+    [composerPortalHost],
+  );
   const compactConfig = useMemo(
     () =>
       isCompactViewport
@@ -572,9 +592,8 @@ function FollowUpPromptBoxWithComposer({
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>
-        {composerTarget
-          ? createPortal(composerElement, composerTarget)
-          : composerElement}
+        <div ref={bottomComposerAnchorRef} data-follow-up-composer-anchor="" />
+        {createPortal(composerElement, composerPortalHost)}
       </div>
     </>
   );

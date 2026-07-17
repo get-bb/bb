@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -78,6 +78,7 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { HttpError } from "@/lib/api";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { promptDraftToInput } from "@/lib/prompt-draft";
 import type { PromptDraftState } from "@/lib/prompt-draft";
@@ -108,8 +109,15 @@ const ignorePromptBannerFileClick = () => {};
 
 interface InlineQueuedMessageEditState {
   draft: PromptDraftState;
+  editSessionId: number;
+  expectedUpdatedAt: number;
+  model: ThreadQueuedMessage["model"];
+  ownerThreadId: string;
+  permissionMode: ThreadQueuedMessage["permissionMode"];
   queuedMessageId: string;
   queuedMessageIndex: number;
+  reasoningLevel: ThreadQueuedMessage["reasoningLevel"];
+  serviceTier: ThreadQueuedMessage["serviceTier"];
 }
 
 export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
@@ -277,12 +285,30 @@ export function ThreadDetailPromptArea({
   } | null>(null);
   const [inlineEditingQueuedMessage, setInlineEditingQueuedMessage] =
     useState<InlineQueuedMessageEditState | null>(null);
+  const inlineEditSessionIdRef = useRef(0);
   const [inlineComposerTarget, setInlineComposerTarget] =
     useState<HTMLDivElement | null>(null);
   const dismissInlineQueuedMessageEditor = useCallback(() => {
     setInlineComposerTarget(null);
     setInlineEditingQueuedMessage(null);
   }, []);
+  useEffect(() => {
+    if (
+      inlineEditingQueuedMessage &&
+      (inlineEditingQueuedMessage.ownerThreadId !== thread.id ||
+        !queuedMessages.some(
+          (message) =>
+            message.id === inlineEditingQueuedMessage.queuedMessageId,
+        ))
+    ) {
+      dismissInlineQueuedMessageEditor();
+    }
+  }, [
+    dismissInlineQueuedMessageEditor,
+    inlineEditingQueuedMessage,
+    queuedMessages,
+    thread.id,
+  ]);
   const inlineEditor = useMemo<QueuedMessageInlineEditor | undefined>(
     () =>
       inlineEditingQueuedMessage
@@ -567,32 +593,6 @@ export function ThreadDetailPromptArea({
     },
     [inlineEditingQueuedMessage, promptDraft.setTextAndMentions],
   );
-  const addActiveComposerAttachment = useCallback(
-    (attachment: PromptDraftState["attachments"][number]) => {
-      if (inlineEditingQueuedMessage) {
-        setInlineEditingQueuedMessage((current) => {
-          if (
-            !current ||
-            current.draft.attachments.some(
-              (existing) => existing.path === attachment.path,
-            )
-          ) {
-            return current;
-          }
-          return {
-            ...current,
-            draft: {
-              ...current.draft,
-              attachments: [...current.draft.attachments, attachment],
-            },
-          };
-        });
-        return;
-      }
-      promptDraft.addAttachment(attachment);
-    },
-    [inlineEditingQueuedMessage, promptDraft.addAttachment],
-  );
   const removeActiveComposerAttachment = useCallback(
     (path: string) => {
       if (inlineEditingQueuedMessage) {
@@ -664,6 +664,17 @@ export function ThreadDetailPromptArea({
         return;
       }
 
+      const attachmentOwner = inlineEditingQueuedMessage
+        ? {
+            kind: "queued" as const,
+            editSessionId: inlineEditingQueuedMessage.editSessionId,
+            ownerThreadId: inlineEditingQueuedMessage.ownerThreadId,
+            queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
+          }
+        : {
+            addAttachment: promptDraft.addAttachment,
+            kind: "bottom" as const,
+          };
       setAttachmentError(null);
       const failedFiles: string[] = [];
       for (const file of files) {
@@ -672,7 +683,30 @@ export function ThreadDetailPromptArea({
             projectId,
             file,
           });
-          addActiveComposerAttachment(uploaded);
+          if (attachmentOwner.kind === "bottom") {
+            attachmentOwner.addAttachment(uploaded);
+          } else {
+            setInlineEditingQueuedMessage((current) => {
+              if (
+                !current ||
+                current.editSessionId !== attachmentOwner.editSessionId ||
+                current.ownerThreadId !== attachmentOwner.ownerThreadId ||
+                current.queuedMessageId !== attachmentOwner.queuedMessageId ||
+                current.draft.attachments.some(
+                  (existing) => existing.path === uploaded.path,
+                )
+              ) {
+                return current;
+              }
+              return {
+                ...current,
+                draft: {
+                  ...current.draft,
+                  attachments: [...current.draft.attachments, uploaded],
+                },
+              };
+            });
+          }
         } catch {
           failedFiles.push(file.name);
         }
@@ -681,7 +715,12 @@ export function ThreadDetailPromptArea({
         setAttachmentError(`Failed to attach: ${failedFiles.join(", ")}`);
       }
     },
-    [addActiveComposerAttachment, projectId, uploadPromptAttachment],
+    [
+      inlineEditingQueuedMessage,
+      projectId,
+      promptDraft.addAttachment,
+      uploadPromptAttachment,
+    ],
   );
 
   const handleSend = useCallback(async () => {
@@ -871,15 +910,22 @@ export function ThreadDetailPromptArea({
 
       setInlineEditingQueuedMessage({
         draft: queuedInputToDraft(queuedMessage.content),
+        editSessionId: (inlineEditSessionIdRef.current += 1),
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        model: queuedMessage.model,
+        ownerThreadId: thread.id,
+        permissionMode: queuedMessage.permissionMode,
         queuedMessageId,
         queuedMessageIndex,
+        reasoningLevel: queuedMessage.reasoningLevel,
+        serviceTier: queuedMessage.serviceTier,
       });
       setAttachmentError(null);
       // Focus the composer caret at the end so the restored draft is ready to
       // keep typing (FollowUpPromptBox `focusEndKey`).
       setEditFocusNonce((nonce) => nonce + 1);
     },
-    [],
+    [thread.id],
   );
 
   const handleSaveInlineQueuedMessage = useCallback(async () => {
@@ -890,17 +936,31 @@ export function ThreadDetailPromptArea({
     ) {
       return;
     }
-    const queuedMessageId = inlineEditingQueuedMessage.queuedMessageId;
+    if (
+      inlineEditingQueuedMessage.ownerThreadId !== thread.id ||
+      !queuedMessagesByIdRef.current.has(
+        inlineEditingQueuedMessage.queuedMessageId,
+      )
+    ) {
+      dismissInlineQueuedMessageEditor();
+      return;
+    }
+    const { expectedUpdatedAt, ownerThreadId, queuedMessageId } =
+      inlineEditingQueuedMessage;
     setProcessingQueuedMessage({ id: queuedMessageId, action: "edit" });
     try {
       await updateQueuedMessage.mutateAsync({
-        id: thread.id,
+        expectedUpdatedAt,
+        id: ownerThreadId,
         input: activeComposerDraftInput,
         queuedMessageId,
       });
       setAttachmentError(null);
       dismissInlineQueuedMessageEditor();
     } catch (nextError) {
+      if (nextError instanceof HttpError && nextError.status === 404) {
+        dismissInlineQueuedMessageEditor();
+      }
       appToast.error(
         getMutationErrorMessage({
           error: nextError,
@@ -1121,10 +1181,14 @@ export function ThreadDetailPromptArea({
         displayName: selectedProviderDisplayName,
       },
       model: {
-        active: effectiveSelectedModel
-          ? { model: effectiveSelectedModel }
-          : null,
-        selected: selectedModel,
+        active: inlineEditingQueuedMessage
+          ? { model: inlineEditingQueuedMessage.model }
+          : effectiveSelectedModel
+            ? { model: effectiveSelectedModel }
+            : null,
+        selected: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.model
+          : selectedModel,
         options: modelOptions,
         moreOptions: moreModelOptions,
         isLoading: isLoadingModels,
@@ -1133,20 +1197,28 @@ export function ThreadDetailPromptArea({
         onChange: handleModelChange,
       },
       serviceTier: {
-        value: serviceTier,
+        value: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.serviceTier
+          : serviceTier,
         onChange: setServiceTier,
         supported: supportsServiceTier,
         supportByProvider: serviceTierSupportByProvider,
       },
       reasoning: {
-        value: reasoningLevel,
+        value: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.reasoningLevel
+          : reasoningLevel,
         options: reasoningOptions,
         onChange: setReasoningLevel,
       },
-      footerAction: {
-        label: "Handoff to new thread",
-        onClick: handleHandoffToNewThread,
-      },
+      ...(inlineEditingQueuedMessage
+        ? {}
+        : {
+            footerAction: {
+              label: "Handoff to new thread",
+              onClick: handleHandoffToNewThread,
+            },
+          }),
     }),
     [
       effectiveSelectedModel,
@@ -1154,6 +1226,7 @@ export function ThreadDetailPromptArea({
       hasMultipleProviders,
       handleHandoffToNewThread,
       handleModelChange,
+      inlineEditingQueuedMessage,
       isLoadingModels,
       modelLoadFailed,
       modelLoadError,
@@ -1175,7 +1248,11 @@ export function ThreadDetailPromptArea({
 
   const permissionConfig = useMemo(
     () => ({
-      value: hasConcreteDefaultExecutionOptions ? permissionMode : undefined,
+      value: inlineEditingQueuedMessage
+        ? inlineEditingQueuedMessage.permissionMode
+        : hasConcreteDefaultExecutionOptions
+          ? permissionMode
+          : undefined,
       options: hasConcreteDefaultExecutionOptions ? permissionModeOptions : [],
       onChange: setPermissionMode,
       supported:
@@ -1183,6 +1260,7 @@ export function ThreadDetailPromptArea({
     }),
     [
       hasConcreteDefaultExecutionOptions,
+      inlineEditingQueuedMessage,
       permissionMode,
       permissionModeOptions,
       setPermissionMode,
@@ -1436,7 +1514,9 @@ export function ThreadDetailPromptArea({
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
       execution={executionConfig}
+      executionReadOnly={inlineEditingQueuedMessage !== null}
       permission={permissionConfig}
+      permissionReadOnly={inlineEditingQueuedMessage !== null}
       typeahead={typeaheadConfig}
       {...providerPromptActionProps}
     />

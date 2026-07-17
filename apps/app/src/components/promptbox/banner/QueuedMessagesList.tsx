@@ -21,6 +21,8 @@ import {
   useSensor,
   useSensors,
   type ClientRect,
+  type Collision,
+  type CollisionDetection,
   type DragEndEvent,
   type Modifier,
 } from "@dnd-kit/core";
@@ -413,6 +415,68 @@ export function clampQueuedMessageDragTransform({
   };
 }
 
+export function snapGroupBoundaryDragTransform({
+  activeId,
+  activeNodeRect,
+  overId,
+  overRect,
+  transform,
+}: {
+  activeId: string | null;
+  activeNodeRect: ClientRect | null;
+  overId: string | null;
+  overRect: ClientRect | null;
+  transform: Transform;
+}): Transform {
+  if (activeId !== GROUP_DIVIDER_ID || !activeNodeRect) {
+    return transform;
+  }
+  if (overId === GROUP_DIVIDER_ID || !overRect) {
+    return { ...transform, x: 0 };
+  }
+
+  const activeCenterY = activeNodeRect.top + activeNodeRect.height / 2;
+  return {
+    ...transform,
+    x: 0,
+    y: overRect.bottom - activeCenterY,
+  };
+}
+
+function collisionDistance(collision: Collision): number {
+  const value = collision.data?.value;
+  return typeof value === "number" ? value : Number.POSITIVE_INFINITY;
+}
+
+export const queuedMessageCollisionDetection: CollisionDetection = (args) => {
+  if (
+    String(args.active.id) !== GROUP_DIVIDER_ID ||
+    !args.pointerCoordinates
+  ) {
+    return closestCenter(args);
+  }
+
+  // Use the raw pointer position for the group boundary. The handle itself is
+  // snapped by a modifier, so deriving collisions from its transformed rect
+  // would create a feedback loop that can trap it on its current boundary.
+  const collisions: Collision[] = [];
+  for (const droppableContainer of args.droppableContainers) {
+    if (String(droppableContainer.id) === GROUP_DIVIDER_ID) continue;
+    const rect = args.droppableRects.get(droppableContainer.id);
+    if (!rect) continue;
+    collisions.push({
+      id: droppableContainer.id,
+      data: {
+        droppableContainer,
+        value: Math.abs(args.pointerCoordinates.y - rect.bottom),
+      },
+    });
+  }
+  return collisions.sort(
+    (left, right) => collisionDistance(left) - collisionDistance(right),
+  );
+};
+
 export function queuedMessageSortingStrategy(
   sortableIds: readonly string[],
   args: Parameters<SortingStrategy>[0],
@@ -584,7 +648,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       style={rowStyle}
       data-queued-message-row=""
       className={cn(
-        "group/row relative border-b border-border/35 px-2.5 py-0.5 last:border-b-0",
+        "group/row relative border-b border-border/35 px-2.5 py-0.5",
+        !hasGroupDividerAfter && "last:border-b-0",
         isDragging &&
           "z-20 rounded-lg border border-border bg-background opacity-90 shadow-lift",
       )}
@@ -730,10 +795,10 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
   return (
     <div
       data-queued-message-group-divider=""
-      className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-0"
+      className="pointer-events-none absolute inset-x-0 bottom-[-0.5px] z-10 h-0"
     >
       <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2">
-        <div className="group/boundary-handle pointer-events-none">
+        <div className="pointer-events-none">
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -747,13 +812,13 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
                     transition: isDragging ? transition : undefined,
                   }}
                   className={cn(
-                    "flex size-6 shrink-0 touch-none select-none items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    "pointer-events-auto flex size-6 shrink-0 touch-none select-none items-center justify-center rounded-full border border-transparent bg-transparent text-muted-foreground transition-[background-color,border-color,box-shadow,color] focus-visible:border-border focus-visible:bg-background focus-visible:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover/row:border-border group-hover/row:bg-background group-hover/row:shadow-sm group-focus-within/row:border-border group-focus-within/row:bg-background group-focus-within/row:shadow-sm hover:border-border hover:bg-background hover:shadow-sm [@media(hover:none)]:border-border [@media(hover:none)]:bg-background [@media(hover:none)]:shadow-sm",
                     anotherItemIsDragging
                       ? "pointer-events-none opacity-0"
-                      : "pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/boundary-handle:pointer-events-auto group-hover/boundary-handle:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+                      : "opacity-100",
                     !disabled && "cursor-grab active:cursor-grabbing",
                     isDragging &&
-                      "pointer-events-auto cursor-grabbing text-foreground opacity-100",
+                      "pointer-events-auto cursor-grabbing border-border bg-background text-foreground opacity-100 shadow-sm",
                   )}
                   disabled={disabled}
                   aria-label="Messages above send together"
@@ -762,7 +827,7 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
                 >
                   <Icon
                     name="DragDropHorizontal"
-                    className="size-3.5"
+                    className="size-3.5 opacity-55 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-focus/row:opacity-100 [@media(hover:none)]:opacity-100"
                     aria-hidden="true"
                   />
                 </button>
@@ -854,6 +919,7 @@ export function QueuedMessagesList({
   const surfaceDragOffsetRef = useRef(0);
   const surfaceDraggingRef = useRef(false);
   const wasInlineEditingRef = useRef(false);
+  const inlineEditorDismissModeRef = useRef<QueueSurfaceMode | null>(null);
   const {
     aboveOverflow,
     belowOverflow,
@@ -963,12 +1029,27 @@ export function QueuedMessagesList({
     },
     [scrollRef],
   );
+  const snapGroupBoundaryToRowStroke = useCallback<Modifier>(
+    ({ active, activeNodeRect, over, transform }) =>
+      snapGroupBoundaryDragTransform({
+        activeId: active ? String(active.id) : null,
+        activeNodeRect,
+        overId: over ? String(over.id) : null,
+        overRect: over?.rect ?? null,
+        transform,
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (inlineEditor) {
+      if (!wasInlineEditingRef.current) {
+        inlineEditorDismissModeRef.current = null;
+      }
       setMode("workspace");
     } else if (wasInlineEditingRef.current) {
-      setMode("drawer");
+      setMode(inlineEditorDismissModeRef.current ?? "drawer");
+      inlineEditorDismissModeRef.current = null;
     }
     wasInlineEditingRef.current = inlineEditor !== undefined;
   }, [inlineEditor]);
@@ -980,12 +1061,14 @@ export function QueuedMessagesList({
   }, []);
   const dockWorkspace = useCallback(() => {
     setMode("drawer");
+    inlineEditorDismissModeRef.current = "drawer";
     inlineEditor?.onDismiss();
     setSurfaceDragOffset(0);
     surfaceDragOffsetRef.current = 0;
   }, [inlineEditor]);
   const collapseDrawer = useCallback(() => {
     setMode("collapsed");
+    inlineEditorDismissModeRef.current = "collapsed";
     inlineEditor?.onDismiss();
     setSurfaceDragOffset(0);
     surfaceDragOffsetRef.current = 0;
@@ -1227,8 +1310,8 @@ export function QueuedMessagesList({
           <div ref={topSentinelRef} aria-hidden className="h-px w-full" />
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
-            modifiers={[restrictToListBounds]}
+            collisionDetection={queuedMessageCollisionDetection}
+            modifiers={[restrictToListBounds, snapGroupBoundaryToRowStroke]}
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={sortableIds} strategy={sortingStrategy}>

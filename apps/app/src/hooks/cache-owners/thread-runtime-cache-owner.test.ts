@@ -223,6 +223,7 @@ describe("thread runtime cache owner", () => {
       previousQueue,
     );
     const request = {
+      expectedUpdatedAt: 1,
       id: "thread-1",
       input: [{ type: "text" as const, text: "Edited", mentions: [] }],
       queuedMessageId: "qmsg-edit",
@@ -270,14 +271,139 @@ describe("thread runtime cache owner", () => {
         ?.map((queuedMessage) => queuedMessage.id),
     ).toEqual(["qmsg-first", "qmsg-edit", "qmsg-last"]);
 
+    expect(transaction.previousQueuedMessage).toEqual(previousQueue[1]);
+  });
+
+  it("rolls back only edited fields while preserving concurrent queue changes", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    const first = makeQueuedMessage({ id: "qmsg-first" });
+    const edited = makeQueuedMessage({
+      id: "qmsg-edit",
+      content: [{ type: "text", text: "Original", mentions: [] }],
+      groupWithNext: true,
+      updatedAt: 5,
+    });
+    const last = makeQueuedMessage({ id: "qmsg-last" });
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      first,
+      edited,
+      last,
+    ]);
+    const request = {
+      expectedUpdatedAt: edited.updatedAt,
+      id: "thread-1",
+      input: [{ type: "text" as const, text: "Edited", mentions: [] }],
+      queuedMessageId: edited.id,
+    };
+    const transaction = await beginUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+    });
+    const added = makeQueuedMessage({ id: "qmsg-added" });
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      last,
+      {
+        ...edited,
+        content: request.input,
+        groupWithNext: false,
+        updatedAt: transaction.optimisticUpdatedAt!,
+      },
+      added,
+    ]);
+
     rollbackUpdateQueuedMessageTransaction({
       queryClient,
       request,
       transaction,
     });
+
+    expect(
+      queryClient.getQueryData<ThreadQueuedMessage[]>(
+        threadQueuedMessagesQueryKey("thread-1"),
+      ),
+    ).toEqual([last, { ...edited, groupWithNext: false }, added]);
+  });
+
+  it("does not roll back a newer update to the same queued message", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    const edited = makeQueuedMessage({
+      id: "qmsg-edit",
+      content: [{ type: "text", text: "Original", mentions: [] }],
+      updatedAt: 5,
+    });
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      edited,
+    ]);
+    const request = {
+      expectedUpdatedAt: edited.updatedAt,
+      id: "thread-1",
+      input: [{ type: "text" as const, text: "First edit", mentions: [] }],
+      queuedMessageId: edited.id,
+    };
+    const transaction = await beginUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+    });
+    const newerQueuedMessage = {
+      ...edited,
+      content: [{ type: "text" as const, text: "Newer edit", mentions: [] }],
+      updatedAt: transaction.optimisticUpdatedAt! + 1,
+    };
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      newerQueuedMessage,
+    ]);
+
+    rollbackUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+      transaction,
+    });
+
     expect(
       queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
-    ).toEqual(previousQueue);
+    ).toEqual([newerQueuedMessage]);
+  });
+
+  it("does not resurrect an edited message removed before rollback", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    const edited = makeQueuedMessage({ id: "qmsg-edit", updatedAt: 5 });
+    const remaining = makeQueuedMessage({ id: "qmsg-remaining" });
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      edited,
+      remaining,
+    ]);
+    const request = {
+      expectedUpdatedAt: edited.updatedAt,
+      id: "thread-1",
+      input: [{ type: "text" as const, text: "Edited", mentions: [] }],
+      queuedMessageId: edited.id,
+    };
+    const transaction = await beginUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+    });
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      remaining,
+    ]);
+
+    rollbackUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+      transaction,
+    });
+
+    expect(
+      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
+    ).toEqual([remaining]);
   });
 
   it("optimistically queues queue-if-active sends", async () => {

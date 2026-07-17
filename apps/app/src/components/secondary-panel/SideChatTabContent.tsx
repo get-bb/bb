@@ -97,6 +97,7 @@ import {
 } from "@/lib/side-chat-create-request";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { HttpError } from "@/lib/api";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
@@ -109,8 +110,15 @@ const noop = () => {};
 
 interface InlineQueuedMessageEditState {
   draft: PromptDraftState;
+  editSessionId: number;
+  expectedUpdatedAt: number;
+  model: ThreadQueuedMessage["model"];
+  ownerThreadId: string;
+  permissionMode: ThreadQueuedMessage["permissionMode"];
   queuedMessageId: string;
   queuedMessageIndex: number;
+  reasoningLevel: ThreadQueuedMessage["reasoningLevel"];
+  serviceTier: ThreadQueuedMessage["serviceTier"];
 }
 
 export interface SetSideChatThreadId {
@@ -478,6 +486,7 @@ export function SideChatTabContent({
   } | null>(null);
   const [inlineEditingQueuedMessage, setInlineEditingQueuedMessage] =
     useState<InlineQueuedMessageEditState | null>(null);
+  const inlineEditSessionIdRef = useRef(0);
   const [inlineComposerTarget, setInlineComposerTarget] =
     useState<HTMLDivElement | null>(null);
   const dismissInlineQueuedMessageEditor = useCallback(() => {
@@ -547,32 +556,6 @@ export function SideChatTabContent({
       promptDraft.setTextAndMentions(nextValue, nextMentions);
     },
     [inlineEditingQueuedMessage, promptDraft.setTextAndMentions],
-  );
-  const addActiveComposerAttachment = useCallback(
-    (attachment: PromptDraftState["attachments"][number]) => {
-      if (inlineEditingQueuedMessage) {
-        setInlineEditingQueuedMessage((current) => {
-          if (
-            !current ||
-            current.draft.attachments.some(
-              (existing) => existing.path === attachment.path,
-            )
-          ) {
-            return current;
-          }
-          return {
-            ...current,
-            draft: {
-              ...current.draft,
-              attachments: [...current.draft.attachments, attachment],
-            },
-          };
-        });
-        return;
-      }
-      promptDraft.addAttachment(attachment);
-    },
-    [inlineEditingQueuedMessage, promptDraft.addAttachment],
   );
   const removeActiveComposerAttachment = useCallback(
     (path: string) => {
@@ -683,6 +666,23 @@ export function SideChatTabContent({
     }
     return next;
   }, [queuedMessages]);
+  useEffect(() => {
+    if (
+      inlineEditingQueuedMessage &&
+      (inlineEditingQueuedMessage.ownerThreadId !== childThreadId ||
+        !queuedMessages.some(
+          (message) =>
+            message.id === inlineEditingQueuedMessage.queuedMessageId,
+        ))
+    ) {
+      dismissInlineQueuedMessageEditor();
+    }
+  }, [
+    childThreadId,
+    dismissInlineQueuedMessageEditor,
+    inlineEditingQueuedMessage,
+    queuedMessages,
+  ]);
 
   childThreadIdRef.current = childThreadId;
   if (observedChildThreadIdRef.current !== childThreadId) {
@@ -888,6 +888,17 @@ export function SideChatTabContent({
         return;
       }
 
+      const attachmentOwner = inlineEditingQueuedMessage
+        ? {
+            kind: "queued" as const,
+            editSessionId: inlineEditingQueuedMessage.editSessionId,
+            ownerThreadId: inlineEditingQueuedMessage.ownerThreadId,
+            queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
+          }
+        : {
+            addAttachment: promptDraft.addAttachment,
+            kind: "bottom" as const,
+          };
       setAttachmentError(null);
       const failedFiles: string[] = [];
       for (const file of files) {
@@ -896,7 +907,30 @@ export function SideChatTabContent({
             projectId: sourceThread.projectId,
             file,
           });
-          addActiveComposerAttachment(uploaded);
+          if (attachmentOwner.kind === "bottom") {
+            attachmentOwner.addAttachment(uploaded);
+          } else {
+            setInlineEditingQueuedMessage((current) => {
+              if (
+                !current ||
+                current.editSessionId !== attachmentOwner.editSessionId ||
+                current.ownerThreadId !== attachmentOwner.ownerThreadId ||
+                current.queuedMessageId !== attachmentOwner.queuedMessageId ||
+                current.draft.attachments.some(
+                  (existing) => existing.path === uploaded.path,
+                )
+              ) {
+                return current;
+              }
+              return {
+                ...current,
+                draft: {
+                  ...current.draft,
+                  attachments: [...current.draft.attachments, uploaded],
+                },
+              };
+            });
+          }
         } catch {
           failedFiles.push(file.name);
         }
@@ -906,7 +940,8 @@ export function SideChatTabContent({
       }
     },
     [
-      addActiveComposerAttachment,
+      inlineEditingQueuedMessage,
+      promptDraft.addAttachment,
       sourceThread.projectId,
       uploadPromptAttachment,
     ],
@@ -1084,8 +1119,15 @@ export function SideChatTabContent({
       }
       setInlineEditingQueuedMessage({
         draft: queuedInputToDraft(queuedMessage.content),
+        editSessionId: (inlineEditSessionIdRef.current += 1),
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        model: queuedMessage.model,
+        ownerThreadId: childThreadId,
+        permissionMode: queuedMessage.permissionMode,
         queuedMessageId,
         queuedMessageIndex,
+        reasoningLevel: queuedMessage.reasoningLevel,
+        serviceTier: queuedMessage.serviceTier,
       });
       setAttachmentError(null);
       setComposerFocusNonce((nonce) => nonce + 1);
@@ -1102,17 +1144,29 @@ export function SideChatTabContent({
     ) {
       return;
     }
-    const queuedMessageId = inlineEditingQueuedMessage.queuedMessageId;
+    if (
+      inlineEditingQueuedMessage.ownerThreadId !== childThreadId ||
+      !queuedMessagesById.has(inlineEditingQueuedMessage.queuedMessageId)
+    ) {
+      dismissInlineQueuedMessageEditor();
+      return;
+    }
+    const { expectedUpdatedAt, ownerThreadId, queuedMessageId } =
+      inlineEditingQueuedMessage;
     setProcessingQueuedMessage({ id: queuedMessageId, action: "edit" });
     try {
       await updateQueuedMessage.mutateAsync({
-        id: childThreadId,
+        expectedUpdatedAt,
+        id: ownerThreadId,
         input: activeComposerDraftInput,
         queuedMessageId,
       });
       setAttachmentError(null);
       dismissInlineQueuedMessageEditor();
     } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        dismissInlineQueuedMessageEditor();
+      }
       appToast.error(
         getMutationErrorMessage({
           error,
@@ -1130,6 +1184,7 @@ export function SideChatTabContent({
     childThreadId,
     dismissInlineQueuedMessageEditor,
     inlineEditingQueuedMessage,
+    queuedMessagesById,
     updateQueuedMessage,
   ]);
 
@@ -1382,8 +1437,12 @@ export function SideChatTabContent({
         displayName: selectedProviderDisplayName,
       },
       model: {
-        active: activeModel,
-        selected: selectedModel,
+        active: inlineEditingQueuedMessage
+          ? { model: inlineEditingQueuedMessage.model }
+          : activeModel,
+        selected: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.model
+          : selectedModel,
         options: modelOptions,
         moreOptions: moreModelOptions,
         loadError: modelLoadError,
@@ -1392,13 +1451,17 @@ export function SideChatTabContent({
         onChange: setSelectedModel,
       },
       serviceTier: {
-        value: serviceTier,
+        value: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.serviceTier
+          : serviceTier,
         onChange: setServiceTier,
         supported: supportsServiceTier,
         supportByProvider: serviceTierSupportByProvider,
       },
       reasoning: {
-        value: reasoningLevel,
+        value: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.reasoningLevel
+          : reasoningLevel,
         options: reasoningOptions,
         onChange: setReasoningLevel,
       },
@@ -1407,6 +1470,7 @@ export function SideChatTabContent({
       activeModel,
       executionOptionsRouting,
       hasMultipleProviders,
+      inlineEditingQueuedMessage,
       isLoadingModels,
       modelLoadFailed,
       modelLoadError,
@@ -1431,12 +1495,17 @@ export function SideChatTabContent({
     () => ({
       // Pinned to the same constant the create request uses, so the displayed
       // label can't drift from the side chat's actual (always read-only) reach.
-      value: SIDE_CHAT_PERMISSION_MODE,
+      value:
+        inlineEditingQueuedMessage?.permissionMode ?? SIDE_CHAT_PERMISSION_MODE,
       options: permissionModeOptions,
       onChange: noop,
       supported: supportsPermissionModeSelection,
     }),
-    [permissionModeOptions, supportsPermissionModeSelection],
+    [
+      inlineEditingQueuedMessage?.permissionMode,
+      permissionModeOptions,
+      supportsPermissionModeSelection,
+    ],
   );
 
   const environmentSummary = useMemo(() => {
@@ -1494,6 +1563,7 @@ export function SideChatTabContent({
           environmentSummary={environmentSummary}
           contextWindowUsage={null}
           execution={executionConfig}
+          executionReadOnly={inlineEditingQueuedMessage !== null}
           permission={permissionConfig}
           permissionReadOnly
           typeahead={typeaheadConfig}

@@ -2072,6 +2072,11 @@ describe("public thread data routes", () => {
           provider: "codex",
         },
       });
+      const queuedMessageBeforeUpdate = getQueuedThreadMessage(
+        harness.db,
+        queuedMessage.id,
+      );
+      expect(queuedMessageBeforeUpdate).not.toBeNull();
 
       const updateResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
@@ -2081,6 +2086,7 @@ describe("public thread data routes", () => {
             "content-type": "application/json",
           },
           body: JSON.stringify({
+            expectedUpdatedAt: queuedMessageBeforeUpdate?.updatedAt,
             input: [{ type: "text", text: "Edited queued message" }],
           }),
         },
@@ -2098,6 +2104,32 @@ describe("public thread data routes", () => {
         ]),
         id: queuedMessage.id,
       });
+
+      const staleUpdateResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedUpdatedAt: queuedMessageBeforeUpdate?.updatedAt,
+            input: [{ type: "text", text: "Stale queued message edit" }],
+          }),
+        },
+      );
+      expect(staleUpdateResponse.status).toBe(409);
+      await expect(readJson(staleUpdateResponse)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Queued message changed since editing began",
+      });
+      expect(
+        getQueuedThreadMessage(harness.db, queuedMessage.id)?.content,
+      ).toBe(
+        JSON.stringify([
+          { type: "text", text: "Edited queued message", mentions: [] },
+        ]),
+      );
 
       const deleteResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,

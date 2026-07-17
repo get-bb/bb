@@ -37,6 +37,7 @@ export interface CreateQueuedThreadMessageInput {
 
 export interface UpdateQueuedThreadMessageInput {
   content: PromptInput[];
+  expectedUpdatedAt: number;
   id: string;
   threadId: string;
 }
@@ -169,7 +170,8 @@ export type SetQueuedThreadMessageGroupBoundaryResult =
 export type UpdateQueuedThreadMessageResult =
   | { kind: "updated"; queuedMessage: QueuedThreadMessageRow }
   | { kind: "not_found" }
-  | { kind: "claimed" };
+  | { kind: "claimed" }
+  | { kind: "stale" };
 
 export type ReleaseQueuedMessageClaimArgs = ClaimedQueuedThreadMessageMutationArgs;
 
@@ -523,12 +525,15 @@ export function updateQueuedThreadMessage(
       if (isQueuedThreadMessageClaimed(existing)) {
         return { kind: "claimed" };
       }
+      if (existing.updatedAt !== input.expectedUpdatedAt) {
+        return { kind: "stale" };
+      }
 
       const queuedMessage = tx
         .update(queuedThreadMessages)
         .set({
           content: JSON.stringify(input.content),
-          updatedAt: Date.now(),
+          updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
         })
         .where(eq(queuedThreadMessages.id, input.id))
         .returning()

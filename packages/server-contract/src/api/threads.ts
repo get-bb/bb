@@ -200,6 +200,7 @@ export type CreateQueuedMessageRequest = z.infer<
 >;
 
 export const updateQueuedMessageRequestSchema = z.object({
+  expectedUpdatedAt: z.number().int().nonnegative(),
   input: z.array(promptInputSchema).min(1),
 });
 export type UpdateQueuedMessageRequest = z.infer<

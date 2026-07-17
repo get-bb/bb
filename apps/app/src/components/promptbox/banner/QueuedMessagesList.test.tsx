@@ -9,11 +9,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import type { Active, DroppableContainer } from "@dnd-kit/core";
 import {
   QueuedMessagesList,
   clampQueuedMessageDragTransform,
+  queuedMessageCollisionDetection,
   queuedMessageSortingStrategy,
   resolveQueuedMessageDrag,
+  snapGroupBoundaryDragTransform,
 } from "./QueuedMessagesList";
 
 const noop = () => {};
@@ -303,6 +306,51 @@ describe("QueuedMessagesList", () => {
     });
   });
 
+  it("keeps an explicitly collapsed inline editor collapsed after dismissal", async () => {
+    const onDismiss = vi.fn();
+    const queuedMessages = [
+      makeQueuedMessage("q_one", "First queued message"),
+      makeQueuedMessage("q_two", "Second queued message"),
+    ];
+    const sharedProps = {
+      queuedMessages,
+      sendDisabled: false,
+      actionDisabled: false,
+      processingMessageId: null,
+      processingAction: null,
+      onSendImmediately: noop,
+      onReorder: noop,
+      onSetGroupBoundary: noop,
+      onEdit: noop,
+      onDelete: noop,
+    } as const;
+    const { container, getByRole, rerender } = render(
+      <QueuedMessagesList
+        {...sharedProps}
+        inlineEditor={{
+          queuedMessageId: "q_one",
+          queuedMessageIndex: 0,
+          ready: true,
+          onComposerTargetChange: noop,
+          onDismiss,
+        }}
+      />,
+    );
+
+    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+
+    rerender(<QueuedMessagesList {...sharedProps} />);
+
+    await waitFor(() => {
+      expect(
+        container
+          .querySelector("[data-queued-messages-mode]")
+          ?.getAttribute("data-queued-messages-mode"),
+      ).toBe("collapsed");
+    });
+  });
+
   it("renders queued blockquote markdown as a compact quote preview", () => {
     const { container } = renderQueuedMessages([
       makeQueuedMessage(
@@ -548,6 +596,31 @@ describe("QueuedMessagesList", () => {
     expect(divider?.className).toContain("h-0");
   });
 
+  it("keeps the final row stroke when every queued message is grouped", () => {
+    const queuedMessages = [
+      {
+        ...makeQueuedMessage("q_one", "First queued message"),
+        groupWithNext: true,
+      },
+      {
+        ...makeQueuedMessage("q_two", "Second queued message"),
+        groupWithNext: true,
+      },
+      makeQueuedMessage("q_three", "Third queued message"),
+    ];
+    const { container, getByLabelText } = renderQueuedMessages(queuedMessages);
+    const rows = container.querySelectorAll("[data-queued-message-row]");
+    const finalRow = rows[2];
+    const divider = finalRow?.querySelector(
+      "[data-queued-message-group-divider]",
+    );
+
+    expect(finalRow?.className).toContain("border-b");
+    expect(finalRow?.className).not.toContain("last:border-b-0");
+    expect(divider?.className).toContain("bottom-[-0.5px]");
+    expect(getByLabelText("Messages above send together")).not.toBeNull();
+  });
+
   it("uses the existing row border for grouping instead of a sortable divider row", () => {
     const { container } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
@@ -572,15 +645,21 @@ describe("QueuedMessagesList", () => {
     );
   });
 
-  it("makes the group divider handle visible on focus and non-hover devices", () => {
+  it("shows a subtle grip at rest and reveals its circular target on row focus or hover", () => {
     const { getByLabelText } = renderQueuedMessages(
       makeGroupedQueuedMessages(),
     );
     const control = getByLabelText("Messages above send together");
+    const grip = control.querySelector('[data-icon="DragDropHorizontal"]');
 
-    expect(control.className).toContain("group-hover/row:opacity-100");
-    expect(control.className).toContain("focus-visible:opacity-100");
-    expect(control.className).toContain("[@media(hover:none)]:opacity-100");
+    expect(control.className).toContain("border-transparent");
+    expect(control.className).toContain("bg-transparent");
+    expect(control.className).toContain("group-hover/row:border-border");
+    expect(control.className).toContain("group-focus-within/row:bg-background");
+    expect(grip?.getAttribute("class")).toContain("opacity-55");
+    expect(grip?.getAttribute("class")).toContain(
+      "group-hover/row:opacity-100",
+    );
   });
 
   it("preserves grouping when reordering a row across the divider", () => {
@@ -663,6 +742,83 @@ describe("QueuedMessagesList", () => {
         transform: { x: 12, y: 96, scaleX: 1, scaleY: 1 },
       }),
     ).toEqual({ x: 0, y: 32, scaleX: 1, scaleY: 1 });
+  });
+
+  it("snaps the group handle center to the hovered row stroke", () => {
+    expect(
+      snapGroupBoundaryDragTransform({
+        activeId: "__queued_message_group_divider__",
+        activeNodeRect: rect({ top: 28, bottom: 52 }),
+        overId: "q_three",
+        overRect: rect({ top: 72, bottom: 112 }),
+        transform: { x: 8, y: 51, scaleX: 1, scaleY: 1 },
+      }),
+    ).toEqual({ x: 0, y: 72, scaleX: 1, scaleY: 1 });
+  });
+
+  it("keeps ordinary row drags continuous", () => {
+    const transform = { x: 8, y: 51, scaleX: 1, scaleY: 1 };
+
+    expect(
+      snapGroupBoundaryDragTransform({
+        activeId: "q_two",
+        activeNodeRect: rect({ top: 28, bottom: 52 }),
+        overId: "q_three",
+        overRect: rect({ top: 72, bottom: 112 }),
+        transform,
+      }),
+    ).toBe(transform);
+  });
+
+  it("lets the group handle leave its own collision target before snapping", () => {
+    expect(
+      snapGroupBoundaryDragTransform({
+        activeId: "__queued_message_group_divider__",
+        activeNodeRect: rect({ top: 28, bottom: 52 }),
+        overId: "__queued_message_group_divider__",
+        overRect: rect({ top: 28, bottom: 52 }),
+        transform: { x: 8, y: 18, scaleX: 1, scaleY: 1 },
+      }),
+    ).toEqual({ x: 0, y: 18, scaleX: 1, scaleY: 1 });
+  });
+
+  it("chooses group-boundary targets from pointer distance to row strokes", () => {
+    const makeContainer = (id: string): DroppableContainer => ({
+      data: { current: undefined },
+      disabled: false,
+      id,
+      key: id,
+      node: { current: null },
+      rect: { current: null },
+    });
+    const containers = [
+      makeContainer("q_one"),
+      makeContainer("__queued_message_group_divider__"),
+      makeContainer("q_two"),
+      makeContainer("q_three"),
+    ];
+    const collisions = queuedMessageCollisionDetection({
+      active: {
+        data: { current: undefined },
+        id: "__queued_message_group_divider__",
+        rect: { current: { initial: null, translated: null } },
+      } satisfies Active,
+      collisionRect: rect({ top: 28, bottom: 52 }),
+      droppableContainers: containers,
+      droppableRects: new Map([
+        ["q_one", rect({ top: 0, bottom: 40 })],
+        ["__queued_message_group_divider__", rect({ top: 28, bottom: 52 })],
+        ["q_two", rect({ top: 40, bottom: 72 })],
+        ["q_three", rect({ top: 72, bottom: 112 })],
+      ]),
+      pointerCoordinates: { x: 50, y: 75 },
+    });
+
+    expect(collisions.map((collision) => collision.id)).toEqual([
+      "q_two",
+      "q_one",
+      "q_three",
+    ]);
   });
 
   it("keeps message row geometry fixed while dragging the group handle", () => {

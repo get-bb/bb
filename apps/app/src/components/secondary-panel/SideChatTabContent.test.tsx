@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Thread } from "@bb/domain";
+import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import {
   cleanup,
   fireEvent,
@@ -31,7 +31,10 @@ const mocks = vi.hoisted(() => ({
     onSendToMainMessage?: (target: { messageText: string }) => void;
   }>,
   threadRuntimeDisplayStatus: "idle",
+  queuedMessages: [] as ThreadQueuedMessage[],
+  toastError: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
+  updateQueuedMessageMutateAsync: vi.fn(),
 }));
 
 vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
@@ -39,13 +42,16 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     attachments,
     composer,
     execution,
+    executionReadOnly,
     focusEndKey,
+    permission,
     permissionReadOnly,
     readOnly,
     stack,
     typeahead,
   }: {
     attachments: {
+      items: readonly unknown[];
       onAttachFiles?: (files: File[]) => void | Promise<void>;
     };
     composer: Pick<
@@ -63,13 +69,17 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       };
       reasoning: {
         onChange: (value: "high") => void;
+        value: string;
       };
       serviceTier?: {
         onChange: (value: "fast") => void;
+        value?: string;
       };
     };
+    executionReadOnly?: boolean;
     focusEndKey?: string | number;
     permissionReadOnly?: boolean;
+    permission: { value?: string };
     readOnly?: boolean;
     typeahead: {
       command: {
@@ -136,12 +146,28 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <span data-testid="side-chat-selected-model">
         {execution.model.selected}
       </span>
+      <span data-testid="side-chat-selected-reasoning">
+        {execution.reasoning.value}
+      </span>
+      <span data-testid="side-chat-selected-service-tier">
+        {execution.serviceTier?.value}
+      </span>
+      <span data-testid="side-chat-selected-permission">
+        {permission.value}
+      </span>
+      <span data-testid="side-chat-attachment-count">
+        {attachments.items.length}
+      </span>
+      <span data-testid="side-chat-execution-read-only">
+        {executionReadOnly ? "true" : "false"}
+      </span>
       <span data-testid="side-chat-read-only">
         {readOnly ? "true" : "false"}
       </span>
       <span data-testid="side-chat-permission-read-only">
         {permissionReadOnly ? "true" : "false"}
       </span>
+      {stack}
       <button
         type="button"
         disabled={!composer.canModifierSubmit}
@@ -158,7 +184,40 @@ vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
 }));
 
 vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
-  QueuedMessagesList: () => <div />,
+  QueuedMessagesList: ({
+    inlineEditor,
+    onEdit,
+    queuedMessages,
+  }: {
+    inlineEditor?: { onDismiss: () => void };
+    onEdit: (request: {
+      queuedMessageId: string;
+      queuedMessageIndex: number;
+    }) => void;
+    queuedMessages: readonly ThreadQueuedMessage[];
+  }) => (
+    <div>
+      {queuedMessages.map((message, index) => (
+        <button
+          key={message.id}
+          type="button"
+          onClick={() =>
+            onEdit({
+              queuedMessageId: message.id,
+              queuedMessageIndex: index,
+            })
+          }
+        >
+          Edit side queue {index + 1}
+        </button>
+      ))}
+      {inlineEditor ? (
+        <button type="button" onClick={inlineEditor.onDismiss}>
+          Cancel side queue edit
+        </button>
+      ) : null}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
@@ -268,7 +327,7 @@ vi.mock("@bb/shared-ui/skeleton", () => ({
 }));
 
 vi.mock("@/components/ui/app-toast", () => ({
-  appToast: { error: vi.fn() },
+  appToast: { error: mocks.toastError },
 }));
 
 vi.mock("@/hooks/useTheme", () => ({
@@ -364,7 +423,7 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     error: null,
     status: "success",
   }),
-  useThreadQueuedMessages: () => ({ data: [] }),
+  useThreadQueuedMessages: () => ({ data: mocks.queuedMessages }),
   useThreadTimeline: () => ({
     data: { activeThinking: null, rows: mocks.threadTimelineRows },
     isError: false,
@@ -414,7 +473,7 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   }),
   useUpdateThreadQueuedMessage: () => ({
     isPending: false,
-    mutateAsync: mocks.noopMutateAsync,
+    mutateAsync: mocks.updateQueuedMessageMutateAsync,
   }),
 }));
 
@@ -439,16 +498,43 @@ afterEach(() => {
   mocks.commandSuggestionArgs.length = 0;
   mocks.defaultExecutionOptionsThreadIds.length = 0;
   mocks.promptMentionArgs.length = 0;
+  mocks.queuedMessages = [];
   mocks.threadTimelineRows.length = 0;
   mocks.timelineRowsProps.length = 0;
   mocks.threadCreationReasoningLevel = "medium";
   mocks.threadCreationSelectedModel = "gpt-5";
   mocks.threadCreationServiceTier = undefined;
   mocks.threadRuntimeDisplayStatus = "idle";
+  mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   vi.clearAllMocks();
 });
 
 describe("SideChatTabContent", () => {
+  function makeQueuedMessage(
+    overrides: Partial<ThreadQueuedMessage> = {},
+  ): ThreadQueuedMessage {
+    return {
+      content: [{ type: "text", text: "Queued side message", mentions: [] }],
+      createdAt: 1,
+      groupWithNext: false,
+      id: "qmsg_side_1",
+      model: "queued-model",
+      permissionMode: "full",
+      reasoningLevel: "high",
+      serviceTier: "fast",
+      updatedAt: 17,
+      ...overrides,
+    };
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((resolvePromise) => {
+      resolve = resolvePromise;
+    });
+    return { promise, resolve };
+  }
+
   function renderDraftSideChat() {
     return renderSideChat({ threadId: null });
   }
@@ -553,6 +639,132 @@ describe("SideChatTabContent", () => {
 
     expect(screen.getByTestId("side-chat-selected-model").textContent).toBe(
       "o4-mini",
+    );
+  });
+
+  it("updates an inline queue row with its captured version and execution values", async () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+    renderSideChat({ threadId: "thr_side" });
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Untouched bottom side draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Queued side message",
+    );
+    expect(screen.getByTestId("side-chat-selected-model").textContent).toBe(
+      "queued-model",
+    );
+    expect(screen.getByTestId("side-chat-selected-reasoning").textContent).toBe(
+      "high",
+    );
+    expect(
+      screen.getByTestId("side-chat-selected-service-tier").textContent,
+    ).toBe("fast");
+    expect(
+      screen.getByTestId("side-chat-selected-permission").textContent,
+    ).toBe("full");
+    expect(
+      screen.getByTestId("side-chat-execution-read-only").textContent,
+    ).toBe("true");
+    expect(
+      screen.getByTestId("side-chat-permission-read-only").textContent,
+    ).toBe("true");
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Edited side queue" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
+        expectedUpdatedAt: 17,
+        id: "thr_side",
+        input: [{ type: "text", text: "Edited side queue", mentions: [] }],
+        queuedMessageId: "qmsg_side_1",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+        "value",
+        "Untouched bottom side draft",
+      ),
+    );
+    expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("dismisses the side queue editor when its child thread changes or row disappears", async () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+    const onSetThreadId = vi.fn();
+    const { rerender } = render(
+      buildSideChatElement({ onSetThreadId, threadId: "thr_side" }),
+    );
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Bottom side draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+
+    rerender(
+      buildSideChatElement({ onSetThreadId, threadId: "thr_side_next" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+        "value",
+        "Bottom side draft",
+      ),
+    );
+
+    rerender(buildSideChatElement({ onSetThreadId, threadId: "thr_side" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+    mocks.queuedMessages = [];
+    rerender(buildSideChatElement({ onSetThreadId, threadId: "thr_side" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+        "value",
+        "Bottom side draft",
+      ),
+    );
+  });
+
+  it("does not move a delayed side-queue upload into a later editor or bottom draft", async () => {
+    const upload = deferred<{
+      mimeType: string;
+      name: string;
+      path: string;
+      sizeBytes: number;
+      type: "localFile";
+    }>();
+    mocks.uploadPromptAttachmentMutateAsync.mockReturnValueOnce(upload.promise);
+    mocks.queuedMessages = [makeQueuedMessage()];
+    renderSideChat({ threadId: "thr_side" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Attach" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel side queue edit" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+
+    upload.resolve({
+      mimeType: "text/plain",
+      name: "note.md",
+      path: "thread-storage/uploads/note.md",
+      sizeBytes: 5,
+      type: "localFile",
+    });
+
+    await waitFor(() =>
+      expect(mocks.uploadPromptAttachmentMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+      "0",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel side queue edit" }),
+    );
+    expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+      "0",
     );
   });
 
@@ -668,6 +880,11 @@ describe("SideChatTabContent", () => {
         projectId: "proj_parent",
         file: expect.objectContaining({ name: "note.md" }),
       }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+        "1",
+      ),
     );
 
     fireEvent.change(screen.getByTestId("side-chat-composer"), {

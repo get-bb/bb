@@ -48,6 +48,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     footerStart,
     compact,
     onSubmit,
+    promptBoxRef,
     submission,
     zenMode,
     heightAnimationKey,
@@ -58,6 +59,12 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       placeholder?: string;
     };
     onSubmit: () => void;
+    promptBoxRef?: {
+      current: {
+        captureHeightForLayoutChange: () => void;
+        focusEnd: () => void;
+      } | null;
+    };
     submission?: { onModifierSubmit?: () => void };
     zenMode?: { resetKey: string | number };
     heightAnimationKey?: string | number;
@@ -69,7 +76,21 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       data-height-animation-key={heightAnimationKey}
     >
       {footerStart}
-      <input aria-label="Follow-up prompt" />
+      <input
+        aria-label="Follow-up prompt"
+        ref={(node) => {
+          if (!promptBoxRef) return;
+          promptBoxRef.current = node
+            ? {
+                captureHeightForLayoutChange: () => {},
+                focusEnd: () => {
+                  node.focus();
+                  node.setSelectionRange(node.value.length, node.value.length);
+                },
+              }
+            : null;
+        }}
+      />
       {compact?.isCompact ? <span>{compact.placeholder}</span> : null}
       <button type="button" onClick={onSubmit}>
         Submit
@@ -209,19 +230,46 @@ beforeEach(() => {
 });
 
 describe("FollowUpPromptBox", () => {
-  it("moves the one live composer into a supplied queue editor target", () => {
+  it("moves one stateful composer between the bottom and inline targets without remounting", () => {
     const target = document.createElement("div");
     target.setAttribute("data-test-composer-target", "");
     document.body.append(target);
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
 
-    render(<FollowUpPromptBox {...props} composerTarget={target} />);
+    const { container, rerender } = render(<FollowUpPromptBox {...props} />);
+    const promptBox = screen.getByTestId("prompt-box");
+    const input = screen.getByLabelText<HTMLInputElement>("Follow-up prompt");
+    input.value = "Uncommitted editor state";
+    input.focus();
+    input.setSelectionRange(0, 0);
 
-    expect(target.querySelector('[data-testid="prompt-box"]')).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-follow-up-composer-anchor]")
+        ?.querySelector('[data-testid="prompt-box"]'),
+    ).toBe(promptBox);
+
+    rerender(<FollowUpPromptBox {...props} composerTarget={target} />);
+
+    expect(target.querySelector('[data-testid="prompt-box"]')).toBe(promptBox);
     expect(screen.getAllByTestId("prompt-box")).toHaveLength(1);
+    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
+    expect(input.value).toBe("Uncommitted editor state");
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(input.value.length);
 
     fireEvent.click(screen.getByText("Submit"));
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
+
+    rerender(<FollowUpPromptBox {...props} composerTarget={null} />);
+
+    expect(
+      container
+        .querySelector("[data-follow-up-composer-anchor]")
+        ?.querySelector('[data-testid="prompt-box"]'),
+    ).toBe(promptBox);
+    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
+    expect(input.value).toBe("Uncommitted editor state");
 
     target.remove();
   });

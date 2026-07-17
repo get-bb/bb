@@ -7,6 +7,7 @@ import {
   outputJson,
   requireThreadIdOrSelf,
 } from "../helpers.js";
+import { buildPromptInputs, collectOption } from "./helpers.js";
 
 interface JsonOptions {
   json?: boolean;
@@ -30,6 +31,11 @@ interface HistoryOptions extends JsonOptions {
 
 interface QueueCreateOptions extends JsonOptions {
   model?: string;
+}
+
+interface QueueUpdateOptions extends JsonOptions {
+  file?: string[];
+  image?: string[];
 }
 
 interface QueueSendOptions extends JsonOptions {
@@ -251,7 +257,19 @@ export function registerOrganizationCommands(
     );
   queue
     .command("update <threadId> <messageId> <message>")
-    .description("Update a queued text message in place")
+    .description("Update a queued message in place")
+    .option(
+      "--file <path>",
+      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
+      collectOption,
+      [],
+    )
+    .option(
+      "--image <path>",
+      "Pass a host-readable absolute or uploaded attachment image path (repeatable)",
+      collectOption,
+      [],
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
@@ -259,14 +277,27 @@ export function registerOrganizationCommands(
           threadId: string,
           messageId: string,
           message: string,
-          opts: JsonOptions,
+          opts: QueueUpdateOptions,
         ) => {
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).threads.queuedMessages.update({
+          const queuedMessages =
+            createCliBbSdk(getUrl()).threads.queuedMessages;
+          const existing = (await queuedMessages.list({ threadId })).find(
+            (queuedMessage) => queuedMessage.id === messageId,
+          );
+          if (!existing) {
+            throw new Error(
+              `Queued message ${messageId} not found on thread ${threadId}.`,
+            );
+          }
+          const result = await queuedMessages.update({
             threadId,
             queuedMessageId: messageId,
-            input: [{ type: "text", text: message, mentions: [] }],
+            expectedUpdatedAt: existing.updatedAt,
+            input: buildPromptInputs({
+              message,
+              files: opts.file,
+              images: opts.image,
+            }),
           });
           if (outputJson(opts, result)) return;
           console.log(`Queued message ${messageId} updated`);

@@ -260,7 +260,8 @@ export interface CreateQueuedMessageTransaction {
 }
 
 export interface UpdateQueuedMessageTransaction {
-  previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
+  optimisticUpdatedAt: number | null;
+  previousQueuedMessage: ThreadQueuedMessage | undefined;
 }
 
 export interface RemoveQueuedMessageTransaction {
@@ -898,8 +899,12 @@ export async function beginUpdateQueuedMessageTransaction({
 }: UpdateQueuedMessageTransactionArgs): Promise<UpdateQueuedMessageTransaction> {
   const queryKey = threadQueuedMessagesQueryKey(request.id);
   await queryClient.cancelQueries({ queryKey });
-  const previousQueuedMessages =
-    queryClient.getQueryData<ThreadQueuedMessageListResponse>(queryKey);
+  const previousQueuedMessage = queryClient
+    .getQueryData<ThreadQueuedMessageListResponse>(queryKey)
+    ?.find((queuedMessage) => queuedMessage.id === request.queuedMessageId);
+  const optimisticUpdatedAt = previousQueuedMessage
+    ? Math.max(Date.now(), previousQueuedMessage.updatedAt + 1)
+    : null;
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     queryKey,
     (currentQueuedMessages) =>
@@ -908,12 +913,12 @@ export async function beginUpdateQueuedMessageTransaction({
           ? {
               ...queuedMessage,
               content: request.input,
-              updatedAt: Date.now(),
+              updatedAt: optimisticUpdatedAt ?? queuedMessage.updatedAt,
             }
           : queuedMessage,
       ),
   );
-  return { previousQueuedMessages };
+  return { optimisticUpdatedAt, previousQueuedMessage };
 }
 
 export function rollbackUpdateQueuedMessageTransaction({
@@ -921,10 +926,26 @@ export function rollbackUpdateQueuedMessageTransaction({
   request,
   transaction,
 }: RollbackUpdateQueuedMessageTransactionArgs): void {
-  if (transaction?.previousQueuedMessages !== undefined) {
+  const previousQueuedMessage = transaction?.previousQueuedMessage;
+  const optimisticUpdatedAt = transaction?.optimisticUpdatedAt;
+  if (
+    previousQueuedMessage !== undefined &&
+    optimisticUpdatedAt !== null &&
+    optimisticUpdatedAt !== undefined
+  ) {
     queryClient.setQueryData<ThreadQueuedMessageListResponse>(
       threadQueuedMessagesQueryKey(request.id),
-      transaction.previousQueuedMessages,
+      (currentQueuedMessages) =>
+        currentQueuedMessages?.map((queuedMessage) =>
+          queuedMessage.id === request.queuedMessageId &&
+          queuedMessage.updatedAt === optimisticUpdatedAt
+            ? {
+                ...queuedMessage,
+                content: previousQueuedMessage.content,
+                updatedAt: previousQueuedMessage.updatedAt,
+              }
+            : queuedMessage,
+        ),
     );
   }
   invalidateThreadQueueQueries({ queryClient, threadId: request.id });

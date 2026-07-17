@@ -137,6 +137,7 @@ describe("queued thread messages", () => {
 
     const result = updateQueuedThreadMessage(db, noopNotifier, {
       content: textInput("edited in place"),
+      expectedUpdatedAt: before?.updatedAt ?? -1,
       id: first.id,
       threadId: thread.id,
     });
@@ -158,6 +159,68 @@ describe("queued thread messages", () => {
     });
   });
 
+  it("rejects a second update based on the same queued message version", () => {
+    const { db, thread } = setup();
+    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+
+    expect(
+      updateQueuedThreadMessage(db, noopNotifier, {
+        content: textInput("first edit"),
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        id: queuedMessage.id,
+        threadId: thread.id,
+      }).kind,
+    ).toBe("updated");
+    expect(
+      updateQueuedThreadMessage(db, noopNotifier, {
+        content: textInput("stale edit"),
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        id: queuedMessage.id,
+        threadId: thread.id,
+      }),
+    ).toEqual({ kind: "stale" });
+    expect(getQueuedThreadMessage(db, queuedMessage.id)?.content).toBe(
+      JSON.stringify(textInput("first edit")),
+    );
+  });
+
+  it("advances updatedAt when an update occurs within the same millisecond", () => {
+    const fixedNow = Date.now();
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(fixedNow);
+    try {
+      const { db, thread } = setup();
+      const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: thread.id,
+        content: defaultInput,
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+
+      const result = updateQueuedThreadMessage(db, noopNotifier, {
+        content: altInput,
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        id: queuedMessage.id,
+        threadId: thread.id,
+      });
+
+      expect(result).toMatchObject({
+        kind: "updated",
+        queuedMessage: { updatedAt: fixedNow + 1 },
+      });
+    } finally {
+      dateNow.mockRestore();
+    }
+  });
+
   it("does not update a queued message that is already claimed for sending", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
@@ -173,6 +236,7 @@ describe("queued thread messages", () => {
     expect(
       updateQueuedThreadMessage(db, noopNotifier, {
         content: altInput,
+        expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
         threadId: thread.id,
       }),

@@ -354,6 +354,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
       content: payload.input,
+      expectedUpdatedAt: payload.expectedUpdatedAt,
       id: context.req.param("queuedMessageId"),
       threadId: thread.id,
     });
@@ -365,6 +366,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         409,
         "invalid_request",
         "Queued message is already being sent",
+      );
+    }
+    if (result.kind === "stale") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Queued message changed since editing began",
       );
     }
     return context.json(toThreadQueuedMessage(result.queuedMessage));
