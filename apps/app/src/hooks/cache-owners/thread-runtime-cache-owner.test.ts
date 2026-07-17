@@ -11,14 +11,17 @@ import {
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
   applyQueuedMessageCreateResult,
+  applyQueuedMessageUpdateResult,
   beginCreateQueuedMessageTransaction,
   beginRemoveQueuedMessageTransaction,
   beginReorderQueuedMessageTransaction,
   beginSendQueuedMessageTransaction,
   beginSendThreadMessageTransaction,
+  beginUpdateQueuedMessageTransaction,
   rollbackCreateQueuedMessageTransaction,
   rollbackRemoveQueuedMessageTransaction,
   rollbackSendThreadMessageTransaction,
+  rollbackUpdateQueuedMessageTransaction,
 } from "./thread-runtime-cache-owner";
 
 function makeTimelineResponse(): ThreadTimelineResponse {
@@ -200,6 +203,78 @@ describe("thread runtime cache owner", () => {
       transaction,
     });
 
+    expect(
+      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
+    ).toEqual(previousQueue);
+  });
+
+  it("updates queued message content without changing its queue position", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    const previousQueue = [
+      makeQueuedMessage({ id: "qmsg-first" }),
+      makeQueuedMessage({ id: "qmsg-edit", groupWithNext: true }),
+      makeQueuedMessage({ id: "qmsg-last" }),
+    ];
+    queryClient.setQueryData(
+      threadQueuedMessagesQueryKey("thread-1"),
+      previousQueue,
+    );
+    const request = {
+      id: "thread-1",
+      input: [{ type: "text" as const, text: "Edited", mentions: [] }],
+      queuedMessageId: "qmsg-edit",
+    };
+
+    const transaction = await beginUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+    });
+    expect(
+      queryClient
+        .getQueryData<
+          ThreadQueuedMessage[]
+        >(threadQueuedMessagesQueryKey("thread-1"))
+        ?.map((queuedMessage) => ({
+          content: queuedMessage.content,
+          groupWithNext: queuedMessage.groupWithNext,
+          id: queuedMessage.id,
+        })),
+    ).toEqual([
+      expect.objectContaining({ id: "qmsg-first" }),
+      {
+        content: [{ type: "text", text: "Edited", mentions: [] }],
+        groupWithNext: true,
+        id: "qmsg-edit",
+      },
+      expect.objectContaining({ id: "qmsg-last" }),
+    ]);
+
+    applyQueuedMessageUpdateResult({
+      queryClient,
+      queuedMessage: makeQueuedMessage({
+        id: "qmsg-edit",
+        content: [{ type: "text", text: "Edited", mentions: [] }],
+        groupWithNext: true,
+        updatedAt: 2,
+      }),
+      threadId: "thread-1",
+    });
+    expect(
+      queryClient
+        .getQueryData<
+          ThreadQueuedMessage[]
+        >(threadQueuedMessagesQueryKey("thread-1"))
+        ?.map((queuedMessage) => queuedMessage.id),
+    ).toEqual(["qmsg-first", "qmsg-edit", "qmsg-last"]);
+
+    rollbackUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+      transaction,
+    });
     expect(
       queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
     ).toEqual(previousQueue);

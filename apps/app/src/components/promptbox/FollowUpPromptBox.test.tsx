@@ -209,6 +209,23 @@ beforeEach(() => {
 });
 
 describe("FollowUpPromptBox", () => {
+  it("moves the one live composer into a supplied queue editor target", () => {
+    const target = document.createElement("div");
+    target.setAttribute("data-test-composer-target", "");
+    document.body.append(target);
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+
+    render(<FollowUpPromptBox {...props} composerTarget={target} />);
+
+    expect(target.querySelector('[data-testid="prompt-box"]')).not.toBeNull();
+    expect(screen.getAllByTestId("prompt-box")).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("Submit"));
+    expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
+
+    target.remove();
+  });
+
   it("scrolls to the bottom after submitting a ready follow-up", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     render(<FollowUpPromptBox {...props} />);

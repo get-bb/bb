@@ -412,6 +412,10 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     mutate: mocks.noopMutate,
     variables: null,
   }),
+  useUpdateThreadQueuedMessage: () => ({
+    isPending: false,
+    mutateAsync: mocks.noopMutateAsync,
+  }),
 }));
 
 vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
@@ -792,9 +796,9 @@ describe("SideChatTabContent", () => {
       text: "Side-chat answer",
     });
     renderSideChat({ threadId: "thr_side" });
-    const handoff = mocks.timelineRowsProps[
-      mocks.timelineRowsProps.length - 1
-    ]?.onSendToMainMessage;
+    const handoff =
+      mocks.timelineRowsProps[mocks.timelineRowsProps.length - 1]
+        ?.onSendToMainMessage;
     expect(handoff).toEqual(expect.any(Function));
     if (!handoff) {
       throw new Error("Expected the side-chat handoff action");

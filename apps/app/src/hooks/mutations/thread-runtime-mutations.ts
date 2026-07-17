@@ -5,6 +5,7 @@ import type {
   SendQueuedMessageMode,
   SendQueuedMessageResponse,
   ThreadQueuedMessageListResponse,
+  UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import type { AppCreateThreadRequest } from "@/lib/api";
@@ -18,6 +19,7 @@ import {
   applyQueuedMessageGroupBoundaryResult,
   applyQueuedMessageReorderResult,
   applyQueuedMessageSendResult,
+  applyQueuedMessageUpdateResult,
   applySendThreadMessageSuccess,
   beginCreateQueuedMessageTransaction,
   beginCreateThreadTransaction,
@@ -27,21 +29,29 @@ import {
   beginSendQueuedMessageTransaction,
   beginSendThreadMessageTransaction,
   beginStopThreadTransaction,
+  beginUpdateQueuedMessageTransaction,
   rollbackCreateQueuedMessageTransaction,
   rollbackRemoveQueuedMessageTransaction,
   rollbackReorderQueuedMessageTransaction,
   rollbackSendThreadMessageTransaction,
   rollbackStopThreadTransaction,
+  rollbackUpdateQueuedMessageTransaction,
   settleStopThreadTransaction,
   type CreateQueuedMessageTransaction,
   type RemoveQueuedMessageTransaction,
   type ReorderQueuedMessageTransaction,
   type SendThreadMessageTransaction,
   type StopThreadTransaction,
+  type UpdateQueuedMessageTransaction,
 } from "../cache-owners/thread-runtime-cache-owner";
 
 interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
   id: string;
+}
+
+interface UpdateThreadQueuedMessageMutationRequest extends UpdateQueuedMessageRequest {
+  id: string;
+  queuedMessageId: string;
 }
 
 interface SendThreadQueuedMessageMutationRequest {
@@ -222,6 +232,43 @@ export function useCreateThreadQueuedMessage() {
         queuedMessage,
         threadId: variables.id,
         transaction: context,
+      });
+    },
+  });
+}
+
+export function useUpdateThreadQueuedMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to update queued message.",
+      lifecycleOperation: "update_queued_message",
+      showErrorToast: false,
+    },
+    mutationFn: ({
+      id,
+      input,
+      queuedMessageId,
+    }: UpdateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
+      api.updateThreadQueuedMessage(id, queuedMessageId, { input }),
+    onMutate: async (variables): Promise<UpdateQueuedMessageTransaction> =>
+      beginUpdateQueuedMessageTransaction({
+        queryClient,
+        request: variables,
+      }),
+    onError: (_error, variables, context) => {
+      rollbackUpdateQueuedMessageTransaction({
+        queryClient,
+        request: variables,
+        transaction: context,
+      });
+    },
+    onSuccess: (queuedMessage, variables) => {
+      applyQueuedMessageUpdateResult({
+        queryClient,
+        queuedMessage,
+        threadId: variables.id,
       });
     },
   });

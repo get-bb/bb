@@ -250,6 +250,30 @@ export function registerOrganizationCommands(
       ),
     );
   queue
+    .command("update <threadId> <messageId> <message>")
+    .description("Update a queued text message in place")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          threadId: string,
+          messageId: string,
+          message: string,
+          opts: JsonOptions,
+        ) => {
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).threads.queuedMessages.update({
+            threadId,
+            queuedMessageId: messageId,
+            input: [{ type: "text", text: message, mentions: [] }],
+          });
+          if (outputJson(opts, result)) return;
+          console.log(`Queued message ${messageId} updated`);
+        },
+      ),
+    );
+  queue
     .command("send <threadId> <messageId>")
     .description("Send and remove a queued message")
     .option("--mode <mode>", "Delivery mode: auto or steer", "auto")

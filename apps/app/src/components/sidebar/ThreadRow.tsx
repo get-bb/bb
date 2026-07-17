@@ -217,7 +217,7 @@ export function ThreadStatusGlyph({
   if (hasPendingInteraction) {
     return (
       <Icon
-        name="MessageQuestion"
+        name="BubbleChatQuestion"
         className={cn(
           "text-muted-foreground/75",
           COARSE_POINTER_ICON_SIZE_CLASS,

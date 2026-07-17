@@ -35,6 +35,12 @@ export interface CreateQueuedThreadMessageInput {
   serviceTier: string;
 }
 
+export interface UpdateQueuedThreadMessageInput {
+  content: PromptInput[];
+  id: string;
+  threadId: string;
+}
+
 export type QueuedThreadMessageRow = typeof queuedThreadMessages.$inferSelect;
 
 export interface ClaimedQueuedThreadMessageRow extends QueuedThreadMessageRow {
@@ -159,6 +165,11 @@ export type SetQueuedThreadMessageGroupBoundaryResult =
   | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions
   | QueuedThreadMessageGroupBoundaryStaleOrder
   | ReorderQueuedThreadMessageClaimed;
+
+export type UpdateQueuedThreadMessageResult =
+  | { kind: "updated"; queuedMessage: QueuedThreadMessageRow }
+  | { kind: "not_found" }
+  | { kind: "claimed" };
 
 export type ReleaseQueuedMessageClaimArgs = ClaimedQueuedThreadMessageMutationArgs;
 
@@ -496,6 +507,44 @@ export function createQueuedThreadMessage(
   );
   notifier.notifyThread(input.threadId, ["queue-changed"]);
   return row;
+}
+
+export function updateQueuedThreadMessage(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: UpdateQueuedThreadMessageInput,
+): UpdateQueuedThreadMessageResult {
+  const result = db.transaction(
+    (tx): UpdateQueuedThreadMessageResult => {
+      const existing = getQueuedThreadMessageForMutation(tx, input.id);
+      if (!existing || existing.threadId !== input.threadId) {
+        return { kind: "not_found" };
+      }
+      if (isQueuedThreadMessageClaimed(existing)) {
+        return { kind: "claimed" };
+      }
+
+      const queuedMessage = tx
+        .update(queuedThreadMessages)
+        .set({
+          content: JSON.stringify(input.content),
+          updatedAt: Date.now(),
+        })
+        .where(eq(queuedThreadMessages.id, input.id))
+        .returning()
+        .get();
+      if (!queuedMessage) {
+        return { kind: "not_found" };
+      }
+      return { kind: "updated", queuedMessage };
+    },
+    { behavior: "immediate" },
+  );
+
+  if (result.kind === "updated") {
+    notifier.notifyThread(input.threadId, ["queue-changed"]);
+  }
+  return result;
 }
 
 export function getQueuedThreadMessage(db: DbConnection, id: string) {

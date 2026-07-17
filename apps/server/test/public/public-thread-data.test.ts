@@ -2073,6 +2073,32 @@ describe("public thread data routes", () => {
         },
       });
 
+      const updateResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Edited queued message" }],
+          }),
+        },
+      );
+      expect(updateResponse.status).toBe(200);
+      await expect(readJson(updateResponse)).resolves.toMatchObject({
+        id: queuedMessage.id,
+        content: [{ type: "text", text: "Edited queued message" }],
+      });
+      expect(
+        getQueuedThreadMessage(harness.db, queuedMessage.id),
+      ).toMatchObject({
+        content: JSON.stringify([
+          { type: "text", text: "Edited queued message", mentions: [] },
+        ]),
+        id: queuedMessage.id,
+      });
+
       const deleteResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
         {

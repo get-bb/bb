@@ -1,13 +1,19 @@
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export type OverflowFadePlacement = "above" | "below" | "left" | "right";
-export type OverflowFadeTone = "background" | "sidebar";
+export type OverflowFadeTone = "background" | "sidebar" | "surface-raised";
 export type OverflowFadeSize = "default" | "sm";
 
 export interface OverflowFadeProps {
   className?: string;
   placement: OverflowFadePlacement;
   tone?: OverflowFadeTone;
+  /**
+   * Places a vertical fade inside the named edge of its containing block.
+   * The default places vertical fades just outside the edge, which is useful
+   * for fixed footers. Horizontal fades are already inset and are unchanged.
+   */
+  inset?: boolean;
   /**
    * Named size variants so the fade thickness stays sanctioned. For vertical
    * placements (`above`/`below`) the variant drives height + the matching
@@ -46,13 +52,16 @@ const OVERFLOW_FADE_HORIZONTAL_WIDTH_CLASS: Record<OverflowFadeSize, string> = {
   sm: "w-2",
 };
 
-function isHorizontalPlacement(placement: OverflowFadePlacement): boolean {
+function isHorizontalPlacement(
+  placement: OverflowFadePlacement,
+): placement is "left" | "right" {
   return placement === "left" || placement === "right";
 }
 
 interface OverflowFadeGradientClasses {
   background: string;
   sidebar: string;
+  "surface-raised": string;
 }
 
 // Each fade runs transparent (content side) → surface color (outer edge). Both
@@ -68,31 +77,62 @@ const OVERFLOW_FADE_GRADIENT_CLASSES: Record<
   above: {
     background: "bg-gradient-to-b from-transparent to-background",
     sidebar: "bg-gradient-to-b from-transparent to-sidebar",
+    "surface-raised":
+      "bg-gradient-to-b from-transparent to-surface-raised-solid",
   },
   below: {
     background: "bg-gradient-to-b to-transparent from-background",
     sidebar: "bg-gradient-to-b to-transparent from-sidebar",
+    "surface-raised":
+      "bg-gradient-to-b to-transparent from-surface-raised-solid",
   },
   left: {
     background: "bg-gradient-to-l from-transparent to-background",
     sidebar: "bg-gradient-to-l from-transparent to-sidebar",
+    "surface-raised":
+      "bg-gradient-to-l from-transparent to-surface-raised-solid",
   },
   right: {
     background: "bg-gradient-to-r from-transparent to-background",
     sidebar: "bg-gradient-to-r from-transparent to-sidebar",
+    "surface-raised":
+      "bg-gradient-to-r from-transparent to-surface-raised-solid",
+  },
+};
+
+const OVERFLOW_FADE_INSET_VERTICAL_GRADIENT_CLASSES: Record<
+  "above" | "below",
+  OverflowFadeGradientClasses
+> = {
+  above: {
+    background: "bg-gradient-to-b from-background to-transparent",
+    sidebar: "bg-gradient-to-b from-sidebar to-transparent",
+    "surface-raised":
+      "bg-gradient-to-b from-surface-raised-solid to-transparent",
+  },
+  below: {
+    background: "bg-gradient-to-b from-transparent to-background",
+    sidebar: "bg-gradient-to-b from-transparent to-sidebar",
+    "surface-raised":
+      "bg-gradient-to-b from-transparent to-surface-raised-solid",
   },
 };
 
 function getOverflowFadeGradientClass(
   placement: OverflowFadePlacement,
   tone: OverflowFadeTone,
+  inset: boolean,
 ): string {
+  if (inset && !isHorizontalPlacement(placement)) {
+    return OVERFLOW_FADE_INSET_VERTICAL_GRADIENT_CLASSES[placement][tone];
+  }
   return OVERFLOW_FADE_GRADIENT_CLASSES[placement][tone];
 }
 
 function getOverflowFadeLayoutClasses(
   placement: OverflowFadePlacement,
   size: OverflowFadeSize,
+  inset: boolean,
 ): string {
   if (isHorizontalPlacement(placement)) {
     const widthClass = OVERFLOW_FADE_HORIZONTAL_WIDTH_CLASS[size];
@@ -101,8 +141,13 @@ function getOverflowFadeLayoutClasses(
   }
 
   const sizeClasses = OVERFLOW_FADE_VERTICAL_SIZE_CLASSES[size];
-  const offsetClass =
-    placement === "above" ? sizeClasses.aboveOffset : sizeClasses.belowOffset;
+  const offsetClass = inset
+    ? placement === "above"
+      ? "top-0"
+      : "bottom-0"
+    : placement === "above"
+      ? sizeClasses.aboveOffset
+      : sizeClasses.belowOffset;
   return cn("inset-x-0", sizeClasses.height, offsetClass);
 }
 
@@ -110,6 +155,7 @@ export function OverflowFade({
   className,
   placement,
   tone = "background",
+  inset = false,
   size = "default",
 }: OverflowFadeProps) {
   return (
@@ -117,10 +163,11 @@ export function OverflowFade({
       aria-hidden
       data-overflow-fade={placement}
       data-overflow-fade-tone={tone}
+      data-overflow-fade-inset={inset ? "" : undefined}
       className={cn(
         "pointer-events-none absolute",
-        getOverflowFadeLayoutClasses(placement, size),
-        getOverflowFadeGradientClass(placement, tone),
+        getOverflowFadeLayoutClasses(placement, size, inset),
+        getOverflowFadeGradientClass(placement, tone, inset),
         className,
       )}
     />

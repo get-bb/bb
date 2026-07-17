@@ -22,6 +22,7 @@ export type LifecycleErrorOperation =
   | "set_queued_message_group_boundary"
   | "squash_merge"
   | "stop_thread"
+  | "update_queued_message"
   | "update_merge_base";
 
 export interface LifecycleErrorDescription {
@@ -110,6 +111,8 @@ function operationTitle(operation: LifecycleErrorOperation): string {
       return "Squash merge failed";
     case "stop_thread":
       return "Failed to stop thread";
+    case "update_queued_message":
+      return "Failed to update queued message";
     case "update_merge_base":
       return "Failed to update merge base";
     default:

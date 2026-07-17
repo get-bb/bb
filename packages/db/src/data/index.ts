@@ -495,6 +495,7 @@ export {
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
+  updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
 export type {
   ClaimedQueuedThreadMessageRow,
@@ -511,6 +512,8 @@ export type {
   ReorderQueuedThreadMessageResult,
   SetQueuedThreadMessageGroupBoundaryArgs,
   SetQueuedThreadMessageGroupBoundaryResult,
+  UpdateQueuedThreadMessageInput,
+  UpdateQueuedThreadMessageResult,
 } from "./queued-thread-messages.js";
 
 export {

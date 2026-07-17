@@ -218,7 +218,7 @@ or artifacts, validation performed, and blockers.
 
 - Use `bb thread search`, `history`, `read|unread`, and `folder` for the same
   organization and recall features as the sidebar. `bb thread queue` exposes
-  queued-message list/create/send/reorder/group/delete operations.
+  queued-message list/create/update/send/reorder/group/delete operations.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.

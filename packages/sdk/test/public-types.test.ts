@@ -383,7 +383,8 @@ type ExpectedThreadQueuedMessagesKey =
   | "list"
   | "reorder"
   | "send"
-  | "setGroupBoundary";
+  | "setGroupBoundary"
+  | "update";
 type ExpectedThreadTabsKey = "get" | "update";
 type ExpectedTerminalsKey =
   | "close"

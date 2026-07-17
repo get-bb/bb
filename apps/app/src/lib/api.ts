@@ -87,6 +87,7 @@ import type {
   UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
+  UpdateQueuedMessageRequest,
   UpdateThreadTabsRequest,
   UpdateProjectSourceRequest,
   UploadedPromptAttachment,
@@ -1154,6 +1155,19 @@ export async function createThreadQueuedMessage(
   return request<ThreadQueuedMessage>(
     apiClient.threads[":id"]["queued-messages"].$post({
       param: { id },
+      json: req,
+    }),
+  );
+}
+
+export async function updateThreadQueuedMessage(
+  id: string,
+  queuedMessageId: string,
+  req: UpdateQueuedMessageRequest,
+): Promise<ThreadQueuedMessage> {
+  return request<ThreadQueuedMessage>(
+    apiClient.threads[":id"]["queued-messages"][":queuedMessageId"].$patch({
+      param: { id, queuedMessageId },
       json: req,
     }),
   );

@@ -147,6 +147,18 @@ function renderThreadRow({
 afterEach(cleanup);
 
 describe("ThreadRow", () => {
+  it("uses the chat-question glyph when the thread needs user input", () => {
+    renderThreadRow({
+      thread: createThread({ hasPendingInteraction: true }),
+    });
+
+    expect(
+      screen
+        .getByLabelText("Thread needs user input")
+        .getAttribute("data-icon"),
+    ).toBe("BubbleChatQuestion");
+  });
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread" }),

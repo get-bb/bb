@@ -54,6 +54,25 @@ describe("bb thread organization commands", () => {
     });
   });
 
+  it("updates a queued message in place", async () => {
+    const update = vi.fn(async () => ({ id: "queued-1" }));
+    stubServerApi({
+      "v1.threads.:id.queued-messages.:queuedMessageId.$patch": update,
+    });
+
+    await runCommand(
+      ["thread", "queue", "update", "thread-1", "queued-1", "revised task"],
+      register,
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      param: { id: "thread-1", queuedMessageId: "queued-1" },
+      json: {
+        input: [{ type: "text", text: "revised task", mentions: [] }],
+      },
+    });
+  });
+
   it("reorders pinned threads with explicit neighbors", async () => {
     const reorder = vi.fn(async () => []);
     stubServerApi({ "v1.threads.:id.pin-order.$patch": reorder });

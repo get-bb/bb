@@ -199,6 +199,13 @@ export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema
 >;
 
+export const updateQueuedMessageRequestSchema = z.object({
+  input: z.array(promptInputSchema).min(1),
+});
+export type UpdateQueuedMessageRequest = z.infer<
+  typeof updateQueuedMessageRequestSchema
+>;
+
 export const sendQueuedMessageRequestSchema = z.object({
   mode: sendQueuedMessageModeSchema,
 });
