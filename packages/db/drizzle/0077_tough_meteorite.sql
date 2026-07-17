@@ -1,0 +1,1 @@
+ALTER TABLE `system_experiments` DROP COLUMN `thread_splits`;

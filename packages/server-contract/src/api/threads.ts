@@ -465,9 +465,8 @@ export const threadOpenSignalLenientSchema = z.object({
 /** Request body for POST /threads/:id/open (threadId comes from the path). */
 export const threadOpenRequestSchema = z
   .object({
-    // Omission is semantically distinct from an explicit placement: ordinary
-    // thread/file opens remain available while the Thread splits experiment is
-    // off, while any supplied split request is server-gated.
+    // Omission preserves ordinary thread/file-open behavior, while an explicit
+    // placement lets callers choose how the pane should open.
     split: threadOpenSplitSchema.optional(),
     file: threadOpenFileSchema.nullable(),
   })

@@ -336,19 +336,12 @@ function ExperimentsStory() {
           claudeCodeMockCliTraffic: enabled,
         }))
       }
-      onThreadSplitsEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          threadSplits: enabled,
-        }))
-      }
       onPluginsEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
           plugins: enabled,
         }))
       }
-      threadSplitsEnabled={state.experiments.threadSplits}
       pluginsEnabled={state.experiments.plugins}
     />
   );

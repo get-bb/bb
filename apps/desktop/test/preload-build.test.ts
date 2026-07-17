@@ -123,7 +123,6 @@ async function startDesktopSmokeServer(
           dataDir: args.dataDir,
           experiments: {
             claudeCodeMockCliTraffic: false,
-            threadSplits: false,
             plugins: false,
           },
           featureFlags: {

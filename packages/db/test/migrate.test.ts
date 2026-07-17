@@ -240,9 +240,8 @@ function dropRewindAddedTables(db: DbConnection): void {
   dropThreadSectionSchema(db);
   // system_experiments predates thread search, so the table itself isn't
   // rewound. Later migrations add plugins, bb_connect, multi_machine, and
-  // thread_splits; the current schema has already removed bb_connect and
-  // multi_machine, so only drop those two when an older migration under test
-  // left them present.
+  // thread_splits; the current schema has removed all three, so only drop a
+  // column when an older migration under test left it present.
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
     .run();
@@ -262,9 +261,11 @@ function dropRewindAddedTables(db: DbConnection): void {
       .prepare("ALTER TABLE system_experiments DROP COLUMN multi_machine")
       .run();
   }
-  db.$client
-    .prepare("ALTER TABLE system_experiments DROP COLUMN thread_splits")
-    .run();
+  if (experimentColumns.has("thread_splits")) {
+    db.$client
+      .prepare("ALTER TABLE system_experiments DROP COLUMN thread_splits")
+      .run();
+  }
   // Thread visibility was added after the legacy checkpoints these tests
   // replay, so remove it before applying the forward migration chain again.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN visibility").run();
@@ -312,6 +313,7 @@ const cleanupRequestedAtDropMigrationWhen = 1781557500000;
 const threadSourceOriginMigrationWhen = 1781660000000;
 const threadlessTerminalSessionsMigrationWhen = 1782173519934;
 const threadSectionsMigrationWhen = 1782252763916;
+const threadSectionsRepairMigrationWhen = 1784257485616;
 const queuedMessageGroupingMigrationWhen = 1782273194188;
 const pendingInteractionsMigrationWhen = 1783626227375;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
@@ -1387,10 +1389,20 @@ describe("migrate", () => {
       migrate(db);
       dropThreadSectionSchema(db);
       db.$client
+        .prepare(
+          "ALTER TABLE system_experiments ADD COLUMN thread_splits integer DEFAULT false NOT NULL",
+        )
+        .run();
+      db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at = ?",
         )
         .run(threadSectionsMigrationWhen);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(threadSectionsRepairMigrationWhen);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at = ?",
@@ -1475,7 +1487,14 @@ describe("migrate", () => {
         ALTER TABLE threads RENAME COLUMN section_id TO folder_id;
         CREATE INDEX threads_folder_archived_deleted_idx
           ON threads (folder_id, archived_at, deleted_at, id);
+        ALTER TABLE system_experiments
+          ADD COLUMN thread_splits integer DEFAULT false NOT NULL;
       `);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(threadSectionsRepairMigrationWhen);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at = ?",

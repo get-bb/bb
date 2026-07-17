@@ -1,5 +1,4 @@
-import { getThread, setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
+import { getThread } from "@bb/db";
 import { threadOpenResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { readJson } from "../helpers/json.js";
@@ -152,10 +151,6 @@ describe("public thread open", () => {
 
   it("opens a thread without a file and validates split placement", async () => {
     await withTestHarness(async (harness) => {
-      setExperiments(harness.db, {
-        ...defaultExperiments,
-        threadSplits: true,
-      });
       const { host } = seedHostSession(harness.deps, {
         id: "host-thread-open-split",
       });
@@ -189,40 +184,8 @@ describe("public thread open", () => {
     });
   });
 
-  it("rejects explicit split placement when the Thread splits experiment is off", async () => {
+  it("broadcasts pane actions", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-thread-open-split-disabled",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/thread-open-split-disabled-source",
-      });
-      const thread = seedThread(harness.deps, { projectId: project.id });
-      const socket = createMockHubSocket();
-      harness.deps.hub.registerClient(socket);
-
-      const response = await postOpen(harness, thread.id, {
-        split: "right",
-        file: null,
-      });
-
-      expect(response.status).toBe(403);
-      expect(await readJson(response)).toEqual({
-        code: "experiment_disabled",
-        message:
-          'Thread splits are disabled — enable the "Thread splits" experiment in Settings → Experiments.',
-      });
-      expect(socket.messages).toHaveLength(0);
-    });
-  });
-
-  it("broadcasts pane actions when thread splits are enabled", async () => {
-    await withTestHarness(async (harness) => {
-      setExperiments(harness.db, {
-        ...defaultExperiments,
-        threadSplits: true,
-      });
       const { host } = seedHostSession(harness.deps, {
         id: "host-thread-pane-action",
       });
@@ -249,21 +212,4 @@ describe("public thread open", () => {
     });
   });
 
-  it("rejects pane actions when thread splits are disabled", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-thread-pane-action-disabled",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/thread-pane-action-disabled-source",
-      });
-      const thread = seedThread(harness.deps, { projectId: project.id });
-
-      const response = await postPaneAction(harness, thread.id, {
-        action: "restore",
-      });
-      expect(response.status).toBe(403);
-    });
-  });
 });

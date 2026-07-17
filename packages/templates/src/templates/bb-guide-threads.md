@@ -100,7 +100,7 @@ Opening threads and files in the app:
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
     --line <number>                        Line number to focus
-    --split <placement>                    right, down, left, top, or replace (requires Thread splits)
+    --split <placement>                    right, down, left, top, or replace
   bb thread pane <action> [thread-id]      Maximize, restore, or toggle an open thread pane
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
@@ -109,10 +109,8 @@ Opening threads and files in the app:
   as the first argument. A thread already open in a pane is focused instead of
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
-  Enable the "Thread splits" experiment in Settings → Experiments before using
-  --split; ordinary thread/file opens without --split remain available while off.
   Pane actions broadcast to connected BB app windows and affect the matching
-  already-open pane without changing its split tree. They require Thread splits.
+  already-open pane without changing its split tree.
   Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
   thread-storage files for the current thread. Use this for Markdown or HTML

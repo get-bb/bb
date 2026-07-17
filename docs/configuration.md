@@ -362,27 +362,25 @@ back to npm only when the package route returns 404. Installed services enable
 and reload the service to opt out. Updates only move to a newer server protocol,
 are limited to one attempt per 15 minutes, and never downgrade a daemon.
 
-## Thread splits Experiment
+## Thread splits
 
-The **Thread splits** experiment (Settings → Experiments, off by default)
-enables up to eight panes in the app's multi-pane thread view and its sidebar,
-menu, and keyboard split controls. Edge placement creates panes through the
-eighth pane; at the eight-pane limit, opening a new thread with an edge
-placement replaces the focused pane. Every pane header can temporarily maximize
-that pane without unmounting or resizing the underlying split tree; the same
-control restores the exact arrangement. Maximization follows focus and newly
-opened panes, closing the maximized pane restores the surviving layout, and both
-the split tree and maximized pane restore after reload. Compact viewports show
-the ordinary single-page surface while preserving that desktop layout state.
+Thread splits enable up to eight panes in the app's multi-pane thread view and
+its sidebar, menu, and keyboard split controls. Edge placement creates panes
+through the eighth pane; at the eight-pane limit, opening a new thread with an
+edge placement replaces the focused pane. Every pane header can temporarily
+maximize that pane without unmounting or resizing the underlying split tree;
+the same control restores the exact arrangement. Maximization follows focus and
+newly opened panes, closing the maximized pane restores the surviving layout,
+and both the split tree and maximized pane restore after reload. Compact
+viewports show the ordinary single-page surface while preserving that desktop
+layout state.
 It also enables explicit split placement through
 `bb thread open <thread-id> --split right|down|left|top|replace` and the matching
 SDK request, plus ephemeral maximize/restore delivery through
 `bb thread pane maximize|restore|toggle [thread-id]` and
 `sdk.threads.paneAction({ threadId, action })`. Pane actions apply only when the
 target thread is already open in a multi-pane app window; the response reports
-how many connected clients received the broadcast. Ordinary thread and file
-opens without an explicit split placement continue to work while the experiment
-is off.
+how many connected clients received the broadcast.
 
 ## bb connect
 

@@ -200,9 +200,7 @@ export interface ExperimentsSettingsSectionProps {
   claudeCodeMockCliTrafficEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
-  onThreadSplitsEnabledChange: (enabled: boolean) => void;
   pluginsEnabled: boolean;
-  threadSplitsEnabled: boolean;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -878,7 +876,6 @@ export function ProviderSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
-const THREAD_SPLITS_EXPERIMENT_LABEL = "Thread splits";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
 
 export function ExperimentsSettingsSection({
@@ -886,9 +883,7 @@ export function ExperimentsSettingsSection({
   disabled,
   onClaudeCodeMockCliTrafficEnabledChange,
   onPluginsEnabledChange,
-  onThreadSplitsEnabledChange,
   pluginsEnabled,
-  threadSplitsEnabled,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -906,18 +901,6 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
             aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label={THREAD_SPLITS_EXPERIMENT_LABEL}
-          description="Split the thread view into up to 8 panes; drag threads from the sidebar to split."
-        >
-          <Switch
-            checked={threadSplitsEnabled}
-            disabled={disabled}
-            onCheckedChange={onThreadSplitsEnabledChange}
-            aria-label={THREAD_SPLITS_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1087,19 +1070,12 @@ export function SettingsView() {
             claudeCodeMockCliTraffic: enabled,
           })
         }
-        onThreadSplitsEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            threadSplits: enabled,
-          })
-        }
         onPluginsEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
             plugins: enabled,
           })
         }
-        threadSplitsEnabled={experiments.threadSplits}
         pluginsEnabled={experiments.plugins}
       />
     );

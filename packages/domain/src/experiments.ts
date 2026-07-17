@@ -15,11 +15,6 @@ export const experimentsSchema = z.object({
    */
   claudeCodeMockCliTraffic: z.boolean(),
   /**
-   * Thread splits: enables the multi-pane thread view and its split-opening
-   * entry points in the app and public API.
-   */
-  threadSplits: z.boolean(),
-  /**
    * Plugins: enables the plugin system (loader, `bb plugin` commands, plugin
    * API routes). Off by default — when off no plugin code is loaded and the
    * plugin endpoints return a structured "disabled" error.
@@ -30,6 +25,5 @@ export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
-  threadSplits: false,
   plugins: false,
 };

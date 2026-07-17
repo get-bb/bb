@@ -45,7 +45,7 @@ export function registerOpenCommand(
     .option("--line <number>", "Line number to focus")
     .option(
       "--split <placement>",
-      "Open in right, down, left, top, or replace placement; edge placements add panes through pane 8, then replace the focused pane (requires the Thread splits experiment)",
+      "Open in right, down, left, top, or replace placement; edge placements add panes through pane 8, then replace the focused pane",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(

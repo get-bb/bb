@@ -47,7 +47,6 @@ import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-pa
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 
 export interface ThreadActionsContextValue {
   archiveThreadAndChildren: (thread: Thread) => void;
@@ -108,9 +107,6 @@ export function ThreadActionsProvider({
   const unpinThread = useUnpinThread();
   const deleteThread = useDeleteThread();
   const updateThread = useUpdateThread();
-  const systemConfigQuery = useSystemConfig();
-  const threadSplitsEnabled =
-    systemConfigQuery.data?.experiments.threadSplits === true;
   const threadActionContextAbortRef = useRef<AbortController | null>(null);
   // Destructure `.mutate` so useCallback deps see stable references across
   // renders. Depending on the full mutation objects would churn callback
@@ -260,16 +256,12 @@ export function ThreadActionsProvider({
               threadId: thread.id,
             });
             closeDialog();
-            if (threadSplitsEnabled) {
-              // In a split, close the pane holding this thread and move the URL
-              // to the surviving focused pane; single pane falls through to the
-              // navigate-away.
-              syncNavigationAfterClose(closePanesForThreads([thread.id]), () =>
-                navigateAwayIfViewing(thread),
-              );
-            } else {
-              navigateAwayIfViewing(thread);
-            }
+            // In a split, close the pane holding this thread and move the URL
+            // to the surviving focused pane; single pane falls through to the
+            // navigate-away.
+            syncNavigationAfterClose(closePanesForThreads([thread.id]), () =>
+              navigateAwayIfViewing(thread),
+            );
           },
         },
       );
@@ -279,7 +271,6 @@ export function ThreadActionsProvider({
       deleteMutate,
       navigateAwayIfViewing,
       syncNavigationAfterClose,
-      threadSplitsEnabled,
     ],
   );
 
@@ -330,17 +321,13 @@ export function ThreadActionsProvider({
                 navigate(getRootComposeRoutePath());
               }
             };
-            if (threadSplitsEnabled) {
-              // Close any split panes showing archived threads and sync the URL
-              // to the surviving focused pane; only navigate the window away
-              // when nothing closed and the viewed thread was archived.
-              syncNavigationAfterClose(
-                closePanesForThreads(response.archivedThreadIds),
-                navigateAwayIfArchived,
-              );
-            } else {
-              navigateAwayIfArchived();
-            }
+            // Close any split panes showing archived threads and sync the URL
+            // to the surviving focused pane; only navigate the window away
+            // when nothing closed and the viewed thread was archived.
+            syncNavigationAfterClose(
+              closePanesForThreads(response.archivedThreadIds),
+              navigateAwayIfArchived,
+            );
             const toastId = `thread-archived-${thread.id}`;
             appToast.success(
               <ArchivedThreadToastTitle
@@ -376,7 +363,6 @@ export function ThreadActionsProvider({
       closePanesForThreads,
       navigate,
       syncNavigationAfterClose,
-      threadSplitsEnabled,
     ],
   );
 
