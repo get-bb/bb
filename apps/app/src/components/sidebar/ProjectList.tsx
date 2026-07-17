@@ -652,7 +652,6 @@ export function SidebarDisplayOptionsMenu({
       <DropdownMenuContent
         align="end"
         mobileTitle="Display options"
-        className="min-w-[13rem]"
       >
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
           Organize
