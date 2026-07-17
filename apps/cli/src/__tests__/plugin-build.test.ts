@@ -130,8 +130,11 @@ describe("buildPluginApp", () => {
     // tw-animate-css utilities (host idiom for overlay open/close animation).
     expect(css).toContain(".animate-in");
     expect(css).toContain(".fade-in-0");
-    // Utilities stay plugin-scoped.
-    expect(css).toContain("@scope ([data-bb-plugin-root])");
+    // Utilities stay scoped to this plugin's own mounts, with a generic-root
+    // fallback for hosts whose portals predate the per-plugin id attribute.
+    expect(css).toContain(
+      '@scope ([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
+    );
 
     const meta = JSON.parse(await readFile(result.metaPath, "utf8"));
     expect(meta).toEqual({

@@ -5,7 +5,8 @@ import { PluginContext } from "@/components/plugin/plugin-context";
  * Shared DOM attributes for portaled UI content. Overlay content (dialog,
  * select, popover, …) portals into document.body — outside every
  * `[data-bb-plugin-root]` mount — so a plugin's compiled stylesheet
- * (`@scope ([data-bb-plugin-root])`, see PluginSlotMount) would not style it.
+ * (`@scope ([data-bb-plugin="<id>"], …)`, see PluginSlotMount) would not
+ * style it.
  * Spreading these props on the portaled element re-attaches the plugin scope
  * inside a plugin slot. Every portal also carries a stable overlay marker so
  * the desktop stylesheet can carve interactive portal content out of Electron
@@ -19,6 +20,7 @@ import { PluginContext } from "@/components/plugin/plugin-context";
 export function usePortalScopeProps(): {
   "data-bb-portaled-overlay": "";
   "data-bb-plugin-root"?: "";
+  "data-bb-plugin"?: string;
 } {
   const pluginId = useContext(PluginContext);
   return pluginId === null
@@ -26,5 +28,6 @@ export function usePortalScopeProps(): {
     : {
         "data-bb-portaled-overlay": "",
         "data-bb-plugin-root": "",
+        "data-bb-plugin": pluginId,
       };
 }
