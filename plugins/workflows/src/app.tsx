@@ -110,14 +110,16 @@ function settledAgentCount(agents: readonly WorkflowProgressAgent[]): number {
   ).length;
 }
 
+// A running workflow shows no pill: the shimmering header, phase strip, and
+// per-agent spinners already say it is live.
 function runPillState(
   status: WorkflowRunView["status"],
-): WorkflowStatusPillState {
+): WorkflowStatusPillState | null {
   switch (status) {
     case "queued":
       return "queued";
     case "running":
-      return "running";
+      return null;
     case "succeeded":
       return "completed";
     case "failed":
@@ -365,6 +367,7 @@ function WorkflowPreviewLoaded({
   const run = state.run;
   const shared = buildSharedWorkflowView(run);
   const activityState = runActivityState(run);
+  const pillState = runPillState(run.status);
   const duration = formatDuration(run.startedAt, run.finishedAt);
   const settledAgents = settledAgentCount(shared.progress.agents);
   return (
@@ -421,7 +424,7 @@ function WorkflowPreviewLoaded({
             </span>
           )}
         </span>
-        <WorkflowStatusPill state={runPillState(run.status)} />
+        {pillState === null ? null : <WorkflowStatusPill state={pillState} />}
         <Icon
           name="ChevronDown"
           className={cn(
@@ -535,6 +538,7 @@ function WorkflowRunPanelLoaded({
       <EmptyOrError>No workflow runs were found for this thread.</EmptyOrError>
     );
   }
+  const pillState = runPillState(run.status);
   const duration = formatDuration(run.startedAt, run.finishedAt);
   const settledAgents = settledAgentCount(shared.progress.agents);
   const completedCalls = shared.progress.agents.filter(
@@ -570,7 +574,9 @@ function WorkflowRunPanelLoaded({
               {run.description}
             </p>
           </div>
-          <WorkflowStatusPill state={runPillState(run.status)} />
+          {pillState === null ? null : (
+            <WorkflowStatusPill state={pillState} />
+          )}
         </div>
         <div className="mt-2 flex items-center gap-2 text-2xs tabular-nums text-subtle-foreground">
           <span>

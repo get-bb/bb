@@ -61,6 +61,9 @@ interface WorkflowPhaseGroup {
 const ACTIVE_PHASE_SCROLL_OFFSET = 12;
 const PROMPT_STACK_ACTIVE_ROW_CLASS = "shadow-none ring-0";
 const PROMPT_STACK_ACTIVE_ICON_CLASS = "text-foreground";
+// Inside the phase tree the shine shimmer is reserved for the card's top-level
+// header; running rows already carry a spinner, so their text stays static.
+const PROMPT_STACK_ACTIVE_TEXT_CLASS = "font-medium text-foreground";
 
 function isSettledAgentState(state: WorkflowProgressAgentState): boolean {
   return (
@@ -268,6 +271,16 @@ function promptStackActivityIconClass(
   return activityIconClass(state, className);
 }
 
+function promptStackActivityTextClass(
+  state: ActivityRowState,
+  className?: string,
+): string {
+  if (state === "active") {
+    return cn(PROMPT_STACK_ACTIVE_TEXT_CLASS, className);
+  }
+  return activityTextClass(state, className);
+}
+
 function WorkflowAgentLine({
   agent,
   onActivate,
@@ -297,7 +310,7 @@ function WorkflowAgentLine({
       <span
         className={
           promptStack
-            ? activityTextClass(
+            ? promptStackActivityTextClass(
                 activityState,
                 "min-w-0 truncate text-xs no-underline",
               )
@@ -578,7 +591,7 @@ function CollapsiblePhaseSection({
       >
         <span className="size-3 shrink-0" aria-hidden="true" />
         <span
-          className={activityTextClass(
+          className={promptStackActivityTextClass(
             activityState,
             "text-xs font-medium no-underline",
           )}
@@ -619,7 +632,7 @@ function CollapsiblePhaseSection({
           aria-hidden="true"
         />
         <span
-          className={activityTextClass(
+          className={promptStackActivityTextClass(
             activityState,
             "text-xs font-medium no-underline",
           )}
@@ -660,15 +673,20 @@ function CollapsiblePhaseGroups({
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(
     () => new Map(),
   );
-  // While running, follow the active phase. Once the workflow settles,
-  // cleanly-finished phases collapse; phases holding failed, cancelled, or
-  // stopped-mid-flight agents stay open so the reason is visible.
+  // While running, phases auto-collapse as they complete: any phase with
+  // in-flight or failed agents stays open (pipelines can run several phases at
+  // once), a cleanly-finished phase folds away. Once the workflow settles,
+  // phases holding failed, cancelled, or stopped-mid-flight agents stay open
+  // so the reason is visible.
   const defaultExpanded = (key: string, group: WorkflowPhaseGroup): boolean =>
     workflowSettled
       ? group.agents.some(
           (agent) => agent.state !== "done" && agent.state !== "skipped",
         )
-      : key === activeKey;
+      : group.agents.some(
+          (agent) =>
+            !isSettledAgentState(agent.state) || agent.state === "failed",
+        );
   const isExpanded = (key: string, group: WorkflowPhaseGroup): boolean =>
     overrides.get(key) ?? defaultExpanded(key, group);
   const toggle = (key: string, group: WorkflowPhaseGroup) =>
@@ -748,14 +766,12 @@ export function WorkflowProgress({
 
 export type WorkflowStatusPillState =
   | "queued"
-  | "running"
   | "completed"
   | "failed"
   | "cancelled";
 
 const STATUS_PILL_LABEL: Record<WorkflowStatusPillState, string> = {
   queued: "Queued",
-  running: "Running",
   completed: "Complete",
   failed: "Failed",
   cancelled: "Cancelled",
@@ -764,7 +780,8 @@ const STATUS_PILL_LABEL: Record<WorkflowStatusPillState, string> = {
 /**
  * Compact status chip shown in the same top-right slot of every workflow
  * surface (inline card header and right panel header), so status always reads
- * from the same place.
+ * from the same place. There is deliberately no "running" pill: a live run
+ * already reads as active from the header shimmer, phase strip, and spinners.
  */
 export function WorkflowStatusPill({
   state,
@@ -776,18 +793,6 @@ export function WorkflowStatusPill({
   const base =
     "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-2xs font-medium";
   switch (state) {
-    case "running":
-      return (
-        <span
-          className={cn(base, "bg-surface-recessed text-foreground", className)}
-        >
-          <span
-            className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
-            aria-hidden="true"
-          />
-          {STATUS_PILL_LABEL[state]}
-        </span>
-      );
     case "queued":
       return (
         <span

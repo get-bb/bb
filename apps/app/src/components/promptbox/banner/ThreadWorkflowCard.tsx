@@ -12,10 +12,7 @@ import {
 } from "@/components/ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  WorkflowPhaseStrip,
-  WorkflowStatusPill,
-} from "@bb/shared-ui/workflow-progress";
+import { WorkflowPhaseStrip } from "@bb/shared-ui/workflow-progress";
 
 const WORKFLOW_CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-workflow-card-body";
@@ -130,7 +127,6 @@ export function ThreadWorkflowCard({
               <WorkflowDuration startedAt={workflow.startedAt} />
             </span>
           </span>
-          <WorkflowStatusPill state="running" />
           <Icon
             name="ChevronDown"
             className={cn(

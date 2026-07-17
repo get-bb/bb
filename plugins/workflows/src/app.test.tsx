@@ -139,6 +139,20 @@ describe("workflow-preview directive", () => {
     expect(slot.getAllByText("Review")).toHaveLength(1);
     expect(slot.getByText("Adversarial review")).toBeTruthy();
     expect(slot.getByText("claude · opus-4-6 · high")).toBeTruthy();
+    // A live run has no "Running" pill, and only the top-level header
+    // shimmers — phase and agent rows stay static (agents have spinners).
+    expect(slot.queryByText("Running")).toBeNull();
+    expect(
+      slot.getByText("Review the release").className.includes("animate-shine"),
+    ).toBe(true);
+    expect(
+      slot.getByText("Adversarial review").className.includes("animate-shine"),
+    ).toBe(false);
+    expect(
+      slot
+        .getAllByText("Review")[0]!
+        .className.includes("animate-shine"),
+    ).toBe(false);
 
     const workflowToggle = slot.getByRole("button", {
       name: "Workflow: Review the release",
@@ -246,13 +260,14 @@ describe("workflow-preview directive", () => {
     expect(slot.getByRole("alert").textContent).toMatch(/initial outage/i);
 
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
-    expect(slot.getByText("Running")).toBeTruthy();
+    expect(slot.getByText("Review the release")).toBeTruthy();
+    expect(slot.queryByText("Complete")).toBeNull();
 
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     expect(slot.getByRole("status").textContent).toMatch(
       /poll outage.*retrying/i,
     );
-    expect(slot.getByText("Running")).toBeTruthy();
+    expect(slot.getByText("Review the release")).toBeTruthy();
 
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     expect(slot.getByText("Complete")).toBeTruthy();
@@ -308,7 +323,8 @@ describe("workflow-preview directive", () => {
     );
 
     await act(async () => Promise.resolve());
-    expect(slot.getByText("Running")).toBeTruthy();
+    expect(slot.getByText("Review the release")).toBeTruthy();
+    expect(slot.queryByText("Complete")).toBeNull();
 
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     expect(attempt).toBe(2);
