@@ -138,6 +138,8 @@ export const projectListQuerySchema = z.object({
       { message: "Invalid include" },
     )
     .optional(),
+  /** Include the singleton personal project; omitted preserves ordinary-only listing. */
+  includePersonal: z.enum(["true", "false"]).optional(),
 });
 export type ProjectListQuery = z.infer<typeof projectListQuerySchema>;
 

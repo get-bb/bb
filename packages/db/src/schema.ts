@@ -14,6 +14,7 @@ import {
   threadChildOriginValues,
   threadOriginKindValues,
 } from "@bb/domain/thread-child-origin";
+import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
   EnvironmentStatus,
   FaviconColorPreference,
@@ -497,6 +498,9 @@ export const threads = sqliteTable(
     // Id of the plugin that spawned this thread (create origin "plugin").
     // NULL for every other origin.
     originPluginId: text("origin_plugin_id"),
+    visibility: text("visibility", { enum: threadVisibilityValues })
+      .notNull()
+      .default("visible"),
     archivedAt: integer("archived_at"),
     pinnedAt: integer("pinned_at"),
     pinSortKey: text("pin_sort_key"),

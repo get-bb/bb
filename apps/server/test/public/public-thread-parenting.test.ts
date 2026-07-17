@@ -64,7 +64,8 @@ describe("public thread parenting routes", () => {
         waitForQueuedCommand(
           harness,
           ({ command }) =>
-            command.type === "turn.submit" && command.threadId === parentThread.id,
+            command.type === "turn.submit" &&
+            command.threadId === parentThread.id,
           100,
         ),
       ).rejects.toThrow("Timed out waiting for queued command");
@@ -192,6 +193,71 @@ describe("public thread parenting routes", () => {
       expect(error).toMatchObject({
         code: "child_threads_confirmation_required",
       });
+    });
+  });
+
+  it("keeps hidden children in ordinary confirmation and archive cascades", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const deleteParent = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+      const hiddenDeleteChild = seedThread(harness.deps, {
+        parentThreadId: deleteParent.id,
+        projectId: project.id,
+        visibility: "hidden",
+      });
+
+      const deleteResponse = await harness.app.request(
+        `/api/v1/threads/${deleteParent.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
+
+      expect(deleteResponse.status).toBe(409);
+      expect(getThread(harness.db, deleteParent.id)?.deletedAt).toBeNull();
+      expect(getThread(harness.db, hiddenDeleteChild.id)?.deletedAt).toBeNull();
+
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const archiveParent = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const hiddenArchiveChild = seedThread(harness.deps, {
+        environmentId: environment.id,
+        parentThreadId: archiveParent.id,
+        projectId: project.id,
+        visibility: "hidden",
+      });
+
+      const archiveResponse = await harness.app.request(
+        `/api/v1/threads/${archiveParent.id}/archive-all`,
+        { method: "POST" },
+      );
+
+      expect(archiveResponse.status).toBe(200);
+      const archiveResult = threadArchiveAllResponseSchema.parse(
+        await readJson(archiveResponse),
+      );
+      expect(archiveResult.archivedThreadIds).toEqual([
+        hiddenArchiveChild.id,
+        archiveParent.id,
+      ]);
+      expect(
+        getThread(harness.db, archiveParent.id)?.archivedAt,
+      ).not.toBeNull();
+      expect(
+        getThread(harness.db, hiddenArchiveChild.id)?.archivedAt,
+      ).not.toBeNull();
     });
   });
 

@@ -443,6 +443,21 @@ describe("background", () => {
 });
 
 describe("thread events", () => {
+  it("emits a typed thread.active payload", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const seen: string[] = [];
+    bb.events.on("thread.active", ({ thread }) => {
+      seen.push(`${thread.id}:${thread.status}`);
+    });
+
+    const { errors } = await harness.emitThreadEvent("thread.active", {
+      thread: makeThreadResponse({ id: "th_active", status: "active" }),
+    });
+
+    expect(seen).toEqual(["th_active:active"]);
+    expect(errors).toEqual([]);
+  });
+
   it("emitThreadEvent delivers typed payloads and captures handler errors", async () => {
     const { bb, harness } = createFakePluginHost();
     const seen: Array<string | null> = [];

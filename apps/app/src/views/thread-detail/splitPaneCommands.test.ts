@@ -13,13 +13,15 @@ function pane(paneId: string): PaneNode {
   };
 }
 
-const PANES = [pane("pane-1"), pane("pane-2"), pane("pane-3")];
+const PANES = Array.from({ length: 8 }, (_, index) =>
+  pane(`pane-${index + 1}`),
+);
 
 describe("split pane shortcut selection", () => {
   it("cycles in reading order and wraps in both directions", () => {
     expect(getAdjacentPaneId(PANES, "pane-1", 1)).toBe("pane-2");
-    expect(getAdjacentPaneId(PANES, "pane-3", 1)).toBe("pane-1");
-    expect(getAdjacentPaneId(PANES, "pane-1", -1)).toBe("pane-3");
+    expect(getAdjacentPaneId(PANES, "pane-8", 1)).toBe("pane-1");
+    expect(getAdjacentPaneId(PANES, "pane-1", -1)).toBe("pane-8");
   });
 
   it("does not select an adjacent pane when unsplit", () => {
@@ -28,7 +30,7 @@ describe("split pane shortcut selection", () => {
 
   it("focuses only pane numbers that exist", () => {
     expect(getPaneIdAtReadingIndex(PANES, 0)).toBe("pane-1");
-    expect(getPaneIdAtReadingIndex(PANES, 2)).toBe("pane-3");
-    expect(getPaneIdAtReadingIndex(PANES, 3)).toBeNull();
+    expect(getPaneIdAtReadingIndex(PANES, 7)).toBe("pane-8");
+    expect(getPaneIdAtReadingIndex(PANES, 8)).toBeNull();
   });
 });

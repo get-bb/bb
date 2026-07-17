@@ -8,11 +8,15 @@ import type {
   SplitSide,
 } from "./types";
 
-export const MAX_PANES = 4;
+export const MAX_PANES = 8;
 
 const MIN_SIZE = 0.15;
 const MAX_SIZE = 0.85;
 const SIZE_EPSILON = 1e-12;
+
+export function clampSplitPairFraction(fraction: number): number {
+  return Math.min(MAX_SIZE, Math.max(MIN_SIZE, fraction));
+}
 
 export function listPanes(root: LayoutNode): PaneNode[] {
   if (root.type === "pane") {
@@ -120,18 +124,47 @@ function insertPane(
   side: SplitSide,
   pane: PaneNode,
 ): LayoutNode {
-  const target = findPane(root, targetPaneId);
-  if (target === null) {
+  if (root.type === "pane") {
+    if (root.paneId !== targetPaneId) {
+      return root;
+    }
+    const paneComesFirst = side === "left" || side === "top";
+    return {
+      type: "split",
+      dir: splitDirection(side),
+      sizes: [0.5, 0.5],
+      children: paneComesFirst ? [pane, root] : [root, pane],
+    };
+  }
+
+  const directTargetIndex = root.children.findIndex(
+    (child) => child.type === "pane" && child.paneId === targetPaneId,
+  );
+  const direction = splitDirection(side);
+  if (root.dir === direction && directTargetIndex !== -1) {
+    const insertionIndex =
+      side === "left" || side === "top"
+        ? directTargetIndex
+        : directTargetIndex + 1;
+    const children = [...root.children];
+    children.splice(insertionIndex, 0, pane);
+    return { ...root, children, sizes: equalSizes(children.length) };
+  }
+
+  const targetChildIndex = root.children.findIndex(
+    (child) => findPane(child, targetPaneId) !== null,
+  );
+  if (targetChildIndex === -1) {
     return root;
   }
-  const paneComesFirst = side === "left" || side === "top";
-  const children = paneComesFirst ? [pane, target] : [target, pane];
-  return replacePaneNode(root, targetPaneId, {
-    type: "split",
-    dir: splitDirection(side),
-    sizes: [0.5, 0.5],
-    children,
-  });
+  return {
+    ...root,
+    children: root.children.map((child, index) =>
+      index === targetChildIndex
+        ? insertPane(child, targetPaneId, side, pane)
+        : child,
+    ),
+  };
 }
 
 export function splitPane(
@@ -415,7 +448,7 @@ export function resizeSplit(
       return null;
     }
     const pairTotal = first + second;
-    const pairFraction = Math.min(MAX_SIZE, Math.max(MIN_SIZE, fraction));
+    const pairFraction = clampSplitPairFraction(fraction);
     const nextSizes = [...sizes];
     nextSizes[childIndex] = pairTotal * pairFraction;
     nextSizes[childIndex + 1] = pairTotal * (1 - pairFraction);

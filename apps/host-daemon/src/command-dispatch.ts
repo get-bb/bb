@@ -531,12 +531,23 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
-    // Every failure mode collapses to "no PR": an unresolvable workspace, like
-    // a missing `gh` or absent PR, just means there is nothing to show.
+    // A non-git workspace genuinely has no PR; every other resolution failure
+    // means the lookup cannot run, which must stay distinguishable from
+    // "checked and found nothing".
     if (!resolution.ok) {
-      return { pullRequest: null };
+      return resolution.failure.code === "not_git_repo"
+        ? { outcome: "absent" }
+        : { outcome: "unavailable", message: resolution.failure.message };
     }
-    return { pullRequest: await resolution.entry.workspace.getPullRequest() };
+    const lookup = await resolution.entry.workspace.getPullRequest();
+    switch (lookup.outcome) {
+      case "found":
+        return { outcome: "available", pullRequest: lookup.pullRequest };
+      case "none":
+        return { outcome: "absent" };
+      case "unavailable":
+        return { outcome: "unavailable", message: lookup.message };
+    }
   },
 };
 

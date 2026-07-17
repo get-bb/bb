@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { constants, readFileSync } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type {
   BbPluginApi,
@@ -8,13 +9,14 @@ import type {
 import { z } from "zod";
 
 import {
-  publishCommentsChanged,
+  createComment,
   publishProjectsChanged,
   registerHandlers,
   type TasksApiStore,
 } from "../api";
 import {
   buildAttachmentUrl,
+  MAX_ATTACHMENT_SIZE_BYTES,
   publishAttachmentChanged,
   readAttachmentToPath,
   saveAttachmentFromPath,
@@ -33,6 +35,7 @@ import {
   type Task,
   type TaskMutationResult,
 } from "../shared/contract";
+import { sortTasks, TASK_SORTS } from "../shared/sort";
 import {
   assertAllowed,
   CliError,
@@ -64,7 +67,7 @@ Commands:
   update                         Update a task
   comment                        Add a task comment
   label create|list|delete
-  attachment add|get|list
+  attachment add|get|list|remove
   preset list|show|create|update|delete
   dispatch                       Dispatch a task to a new agent thread
   attach                         Attach an agent thread to a task
@@ -85,9 +88,9 @@ const FOLDER_HELP = `Usage:
   bb tasks folder update <id-or-name> [--name <name>] [--parent <id-or-name> | --no-parent] [--json]`;
 
 const CREATE_HELP =
-  "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--json]";
+  "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--json]";
 const LIST_HELP =
-  "Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--json]";
+  "Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--json]";
 const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
 const UPDATE_HELP =
   "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--add-label <name>]... [--remove-label <name>]... [--json]";
@@ -100,7 +103,8 @@ const LABEL_HELP = `Usage:
 const ATTACHMENT_HELP = `Usage:
   bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--json]
   bb tasks attachment get <attachment-id> --out <path> [--json]
-  bb tasks attachment list <key> [--json]`;
+  bb tasks attachment list <key> [--json]
+  bb tasks attachment remove <attachment-id> [--remove-references] [--json]`;
 const PRESET_HELP = `Usage:
   bb tasks preset list [--json]
   bb tasks preset show <name-or-id> [--json]
@@ -683,10 +687,12 @@ async function runFolder(
 }
 
 async function runCreate(
+  bb: BbPluginApi,
+  store: TasksApiStore,
   domain: TasksDomain,
   ctx: PluginCliContext,
   argv: string[],
-): Promise<string> {
+): Promise<string | PluginCliResult> {
   const args = parseArgs(argv);
   if (args.flags.has("help")) return CREATE_HELP;
   assertAllowed(args, [
@@ -698,8 +704,28 @@ async function runCreate(
     "label",
     "due",
     "parent",
+    "attach",
   ]);
   requirePositionals(args, 0, CREATE_HELP);
+  // Validate attachment sources against every upload constraint before
+  // creating anything, so a bad path cannot leave behind a half-built task.
+  const attachPaths = options(args, "attach").map((path) =>
+    resolve(ctx.cwd ?? process.cwd(), path),
+  );
+  await Promise.all(
+    attachPaths.map(async (path) => {
+      const source = await stat(path).catch(() => null);
+      if (!source?.isFile()) {
+        throw new CliError(`attachment source is not a file: ${path}`);
+      }
+      if (source.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        throw new CliError(`attachment exceeds the 25 MB limit: ${path}`);
+      }
+      await access(path, constants.R_OK).catch(() => {
+        throw new CliError(`attachment source is not readable: ${path}`);
+      });
+    }),
+  );
   const project = await selectedProject(
     domain,
     ctx,
@@ -728,9 +754,47 @@ async function runCreate(
   const task = unwrapTask(
     tasksRpcContract.createTask.output.parse(await domain.createTask(input)),
   );
-  return args.flags.has("json")
-    ? json({ task })
-    : `Created ${task.key}  ${task.title}`;
+  // The task exists now, so every file gets attempted and truthfully
+  // reported; stopping at the first failure would hide the rest.
+  const attachments: Attachment[] = [];
+  const failedAttachments: Array<{ path: string; error: string }> = [];
+  for (const sourcePath of attachPaths) {
+    try {
+      const attachment = await saveAttachmentFromPath(store.tasks, sourcePath, {
+        taskId: task.id,
+      });
+      publishAttachmentChanged(bb, store.tasks, attachment);
+      attachments.push(attachment);
+    } catch (error) {
+      failedAttachments.push({
+        path: sourcePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  const stdout = args.flags.has("json")
+    ? json({ task, attachments, failedAttachments })
+    : [
+        `Created ${task.key}  ${task.title}`,
+        ...attachments.map(
+          (attachment) => `Attached ${attachment.fileName}  ${attachment.id}`,
+        ),
+        ...failedAttachments.map(
+          (failure) => `Failed to attach ${failure.path}: ${failure.error}`,
+        ),
+        ...(failedAttachments.length > 0
+          ? failedAttachments.map(
+              (failure) =>
+                `Retry with: bb tasks attachment add ${task.key} --file ${failure.path}`,
+            )
+          : []),
+      ].join("\n");
+  if (failedAttachments.length === 0) return stdout;
+  return {
+    exitCode: 1,
+    stdout,
+    stderr: `created ${task.key}, but ${failedAttachments.length} of ${attachPaths.length} attachments failed; see stdout for per-file recovery commands`,
+  };
 }
 
 async function labelsForTaskList(
@@ -755,10 +819,17 @@ async function runList(
   if (args.flags.has("help")) return LIST_HELP;
   assertAllowed(
     args,
-    ["project", "status", "priority", "label", "search"],
+    ["project", "status", "priority", "label", "search", "sort"],
     ["active"],
   );
   requirePositionals(args, 0, LIST_HELP);
+  const sortOption = option(args, "sort") ?? "manual";
+  const sort = TASK_SORTS.find((candidate) => candidate === sortOption);
+  if (sort === undefined) {
+    throw new CliError(
+      `invalid sort: ${sortOption} (${TASK_SORTS.join(", ")})`,
+    );
+  }
   const project = await selectedProject(
     domain,
     ctx,
@@ -799,7 +870,7 @@ async function runList(
     ),
   );
   const tasks = [];
-  for (const task of result.tasks) {
+  for (const task of sortTasks(result.tasks, sort)) {
     const threadResult = tasksRpcContract.listTaskThreads.output.parse(
       await domain.listTaskThreads(
         tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
@@ -816,11 +887,12 @@ async function runList(
   return args.flags.has("json")
     ? json({ tasks })
     : table(
-        ["KEY", "STATUS", "PRIORITY", "TITLE", "LABELS", "AGENTS"],
+        ["KEY", "STATUS", "PRIORITY", "DUE", "TITLE", "LABELS", "AGENTS"],
         tasks.map((task) => [
           task.key,
           task.status,
           task.priority,
+          task.dueDate ?? "-",
           task.title,
           task.labels.join(", ") || "-",
           task.agentsWorking,
@@ -872,6 +944,12 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
       tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
     ),
   ).taskThreads;
+  const { pullRequests, unavailableThreadIds } =
+    tasksRpcContract.listTaskPullRequests.output.parse(
+      await domain.listTaskPullRequests(
+        tasksRpcContract.listTaskPullRequests.input.parse({ taskId: task.id }),
+      ),
+    );
   const payload = {
     task,
     project,
@@ -879,6 +957,8 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
     subtasks,
     attachments,
     taskThreads,
+    pullRequests,
+    pullRequestUnavailableThreadIds: unavailableThreadIds,
     comments,
   };
   if (args.flags.has("json")) return json(payload);
@@ -926,12 +1006,30 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
       ]),
       "(none)",
     )}`,
+    `Pull requests\n${table(
+      ["PR", "STATE", "TITLE", "URL"],
+      pullRequests.map((pullRequest) => [
+        `#${pullRequest.number}`,
+        pullRequest.state,
+        pullRequest.title,
+        pullRequest.url,
+      ]),
+      "(none)",
+    )}${
+      unavailableThreadIds.length > 0
+        ? `\nPR lookup unavailable for: ${unavailableThreadIds.join(", ")}`
+        : ""
+    }`,
     `Comments\n${table(
-      ["TIME", "KIND", "AUTHOR", "BODY"],
+      ["TIME", "KIND", "AUTHOR", "PROVIDER", "BODY"],
       comments.map((comment) => [
         comment.createdAt,
         comment.kind,
-        comment.authorName,
+        // Agent comments show the authoring thread's human title when it
+        // resolves; otherwise the stored author name (which carries the id).
+        comment.threadTitle ?? comment.authorName,
+        // The responding agent's provider, when the authoring thread resolves.
+        comment.provider?.name ?? "-",
         comment.body,
       ]),
       "(none)",
@@ -1029,25 +1127,15 @@ async function runComment(
   if (body === undefined)
     throw new CliError("missing required --body or --body-file");
   if (!body.trim()) throw new CliError("comment body must not be blank");
-  const comment = args.flags.has("notify")
-    ? tasksRpcContract.createComment.output.parse(
-        await domain.createComment(
-          tasksRpcContract.createComment.input.parse({
-            taskId: task.id,
-            body,
-            notify: true,
-          }),
-        ),
-      ).comment
-    : store.tasks.createComment({
-        taskId: task.id,
-        kind: ctx.threadId ? "agent" : "user",
-        authorName: option(args, "author") ?? taskAuthor(ctx),
-        threadId: ctx.threadId ?? null,
-        body,
-        notifiedCount: 0,
-      });
-  if (!args.flags.has("notify")) publishCommentsChanged(bb, task.id);
+  const comment = await createComment(bb, store, {
+    taskId: task.id,
+    kind: ctx.threadId ? "agent" : "user",
+    authorName: option(args, "author") ?? taskAuthor(ctx),
+    presetName: null,
+    threadId: ctx.threadId ?? null,
+    body,
+    notify: args.flags.has("notify"),
+  });
   return args.flags.has("json")
     ? json({ comment })
     : `Commented on ${task.key}  ${comment.id}`;
@@ -1236,6 +1324,30 @@ async function runAttachment(
           ]),
           "No attachments.",
         );
+  }
+
+  if (action === "remove") {
+    assertAllowed(args, [], ["remove-references"]);
+    const [attachmentId] = requirePositionals(
+      args,
+      1,
+      "bb tasks attachment remove <attachment-id> [--remove-references] [--json]",
+    );
+    const result = tasksRpcContract.deleteAttachment.output.parse(
+      await domain.deleteAttachment(
+        tasksRpcContract.deleteAttachment.input.parse({
+          attachmentId: attachmentId!.trim(),
+          removeDescriptionReferences: args.flags.has("remove-references"),
+        }),
+      ),
+    );
+    if (!result.ok) throw new CliError(result.error.message);
+    if (!result.deleted) {
+      throw new CliError(`attachment not found: ${attachmentId}`);
+    }
+    return args.flags.has("json")
+      ? json({ deleted: true, attachment: result.attachment })
+      : `Removed attachment ${result.attachment.fileName}  ${result.attachment.id}`;
   }
 
   throw new CliError(`unknown attachment subcommand: ${action}`);
@@ -1607,7 +1719,7 @@ export function registerTasksCli(
       },
       {
         name: "attachment",
-        summary: "Add, download, or list task attachments",
+        summary: "Add, download, list, or remove task attachments",
         usage: ATTACHMENT_HELP,
       },
       {
@@ -1659,9 +1771,14 @@ export function registerTasksCli(
           case "folder":
             stdout = await runFolder(bb, store, domain, rest);
             break;
-          case "create":
-            stdout = await runCreate(domain, ctx, rest);
+          case "create": {
+            const result = await runCreate(bb, store, domain, ctx, rest);
+            // Partial attachment failure returns a full result: truthful
+            // stdout (task + per-file outcomes) with a non-zero exit.
+            if (typeof result !== "string") return result;
+            stdout = result;
             break;
+          }
           case "list":
             stdout = await runList(domain, ctx, rest);
             break;

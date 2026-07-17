@@ -37,6 +37,7 @@ export interface WorkflowRunRow {
   error: string | null;
   phase: string | null;
   replaySafetyVersion: number;
+  /** Legacy durable field retained for stored-row compatibility; always null. */
   replayBarrierIndex: number | null;
   notificationSent: boolean;
   notificationOutcome: "pending" | "delivered" | "abandoned";
@@ -62,6 +63,7 @@ export interface WorkflowCallRow {
   status: WorkflowCallStatus;
   childThreadId: string | null;
   repairAttempts: number;
+  providerRetryAttempts: number;
   resultJson: string | null;
   error: string | null;
   replayedFromCallId: string | null;
@@ -133,6 +135,7 @@ const CALL_SELECT = `
     resolved_reasoning_level AS resolvedReasoningLevel,
     resolved_permission_mode AS resolvedPermissionMode, status,
     child_thread_id AS childThreadId, repair_attempts AS repairAttempts,
+    provider_retry_attempts AS providerRetryAttempts,
     result_json AS resultJson, error,
     replayed_from_call_id AS replayedFromCallId, replay_source AS replaySource,
     created_at AS createdAt, last_activity_at AS lastActivityAt,
@@ -215,6 +218,9 @@ export const migrations = [
    ALTER TABLE workflow_runs ADD COLUMN replay_barrier_index INTEGER;`,
   `CREATE INDEX IF NOT EXISTS workflow_runs_origin_created_idx
      ON workflow_runs(origin_thread_id, created_at DESC);`,
+  `UPDATE workflow_runs SET replay_barrier_index = NULL
+     WHERE replay_safety_version = 1;`,
+  `ALTER TABLE workflow_calls ADD COLUMN provider_retry_attempts INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export function createRun(
@@ -366,22 +372,6 @@ export function updateRunPhase(db: Db, id: string, phase: string): void {
   db.prepare(
     `UPDATE workflow_runs SET phase = ? WHERE id = ? AND status = 'running'`,
   ).run(phase, id);
-}
-
-export function lowerReplayBarrier(
-  db: Db,
-  runId: string,
-  callIndex: number,
-): void {
-  db.prepare(
-    `UPDATE workflow_runs SET replay_barrier_index =
-       CASE
-         WHEN replay_barrier_index IS NULL OR replay_barrier_index > @callIndex
-           THEN @callIndex
-         ELSE replay_barrier_index
-       END
-     WHERE id = @runId AND replay_safety_version = 1`,
-  ).run({ runId, callIndex });
 }
 
 export function markNotificationSent(db: Db, id: string): void {
@@ -656,7 +646,7 @@ export function attachCallThread(
     db
       .prepare(
         `UPDATE workflow_calls SET status = 'running', child_thread_id = ?,
-         started_at = ?, last_activity_at = ?
+         error = NULL, started_at = ?, last_activity_at = ?
        WHERE id = ? AND status = 'queued'
          AND EXISTS (
            SELECT 1 FROM workflow_runs
@@ -666,6 +656,24 @@ export function attachCallThread(
       )
       .run(threadId, Date.now(), Date.now(), callId).changes === 1
   );
+}
+
+export function queueCallProviderRetry(
+  db: Db,
+  callId: string,
+  error: string,
+): WorkflowCallRow | null {
+  const changed = db
+    .prepare(
+      `UPDATE workflow_calls SET status = 'queued', child_thread_id = NULL,
+       provider_retry_attempts = provider_retry_attempts + 1,
+       error = ?, started_at = NULL, last_activity_at = ?, finished_at = NULL
+       WHERE id = ? AND status IN ('queued', 'failed') AND result_json IS NULL`,
+    )
+    .run(error, Date.now(), callId).changes;
+  return changed === 0
+    ? null
+    : optionalCall(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId));
 }
 
 export function storeStructuredResult(

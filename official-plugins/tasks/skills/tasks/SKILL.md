@@ -21,7 +21,9 @@ not already exist. Dispatch requires an existing preset.
    ```
 
    The detail includes the description, status, priority, labels, subtasks,
-   comments, attachments, and attached worker threads. Use
+   comments, attachments, attached worker threads, and the GitHub pull
+   requests those threads produced (from environment metadata, with state
+   open/draft/merged/closed). Use
    `bb tasks show ABC-12 --json` when the result will drive commands or code.
 
 2. Fetch every relevant attachment before making assumptions about it:
@@ -38,14 +40,51 @@ not already exist. Dispatch requires an existing preset.
    bb tasks comment ABC-12 --body "Implemented the change; focused validation now passes."
    ```
 
+   Add `--notify` only when the new comment should be delivered to the thread
+   that authored the task's most recent agent reply. This resumes an idle
+   recipient; with no prior agent reply, the comment is recorded without
+   targeting an unrelated thread. In agent context, the new comment keeps the
+   current thread identity and an explicit `--author`, while delivery still
+   targets the prior latest responder rather than the new comment itself.
+
 4. Attach result artifacts that belong with the task, such as reports,
-   screenshots, patches, or generated files:
+   screenshots, patches, or generated files. `--file` accepts images and
+   other files (for example `.png`, `.jpg`, `.svg`, `.pdf`, `.md`, `.patch`,
+   or logs).
+
+   **Task-level attachment** — pass the task key so the file sits on the
+   task itself:
 
    ```sh
-   bb tasks attachment add ABC-12 --file <path>
+   bb tasks attachment add ABC-12 --file ./report.md
+   bb tasks attachment add ABC-12 --file ./screenshot.png
    ```
 
-   Use `--json` when capturing the returned attachment metadata.
+   **Comment-level attachment** — pass a comment ID so the file sits on that
+   comment (for example a screenshot that belongs with a specific milestone
+   note). Create the comment with `--json`, capture `.comment.id`, then add
+   the attachment:
+
+   ```sh
+   comment_id=$(
+     bb tasks comment ABC-12 \
+       --body "Screenshot of the failing step." \
+       --json | jq -r '.comment.id'
+   )
+   bb tasks attachment add "$comment_id" --file ./screenshot.png
+   bb tasks attachment add "$comment_id" --file ./trace.log
+   ```
+
+   A task key attaches at task level; a comment ID attaches to that comment.
+   Do not pass a task key when the file should hang off a comment. Use
+   `--json` when capturing the returned attachment metadata. When creating a
+   task that should start with files, pass repeatable `--attach <path>` to
+   `bb tasks create` instead of attaching afterwards. Remove an attachment by
+   id with `bb tasks attachment remove <attachment-id>` (row and blob are
+   deleted together); reuse the ids from `bb tasks attachment list <key>`.
+   Referenced attachments are rejected unless the caller explicitly confirms
+   content cleanup with `--remove-references`; that flag removes the saved
+   description image reference together with the row and blob.
 
 5. When the work is ready for review, update the task:
 
@@ -63,6 +102,22 @@ not already exist. Dispatch requires an existing preset.
    ```sh
    bb tasks attach ABC-12
    ```
+
+## Link tasks in responses
+
+When your answer refers the user to a task — including a task you just
+created — emit this leaf directive on its own line instead of writing the
+key as plain text:
+
+```md
+::task{key="ABC-12"}
+```
+
+`key` is required. Optionally add `title="…"` as a display fallback shown
+while the card loads and when the key no longer resolves. The rendered card
+shows the live status, title, and priority, opens the task in the thread
+side panel, and links to the full Tasks app. Emit one directive per line;
+each renders its own card.
 
 ## Invariants
 

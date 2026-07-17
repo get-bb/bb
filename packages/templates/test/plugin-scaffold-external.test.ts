@@ -349,7 +349,7 @@ describe("external plugin scaffold types", () => {
       peerDependencies?: Record<string, string>;
       exports: Record<string, { import: string; types: string }>;
     };
-    expect(installedManifest.version).toBe("0.3.0");
+    expect(installedManifest.version).toBe("0.3.1");
     expect(installedManifest.private).not.toBe(true);
     expect(JSON.stringify(installedManifest.dependencies ?? {})).not.toContain(
       "workspace:",

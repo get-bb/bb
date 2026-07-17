@@ -28,6 +28,7 @@ Spawning:
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
     --folder <id>                  Create the thread in a folder
+    --visibility <visibility>      visible (default) or hidden
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork or side-chat thread
@@ -37,6 +38,10 @@ Spawning:
   Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
   When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
+  Hidden threads are for plugin/background workers. They remain addressable by
+  ID while staying out of sidebar organization, unread/pending favicon
+  attention, and native parent notifications. Ordinary list, search, history,
+  folder, lifecycle, parent-operation, and direct-open behavior is unchanged.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
@@ -101,10 +106,10 @@ Opening threads and files in the app:
   the thread ID argument is omitted for file-only opens. Pass an explicit thread
   ID with --split to open another thread. Outside a BB thread, pass the thread ID
   as the first argument. A thread already open in a pane is focused instead of
-  duplicated. At four panes, edge placement replaces the focused pane.
+  duplicated. Edge placement creates panes through the eighth pane; at eight
+  panes, it replaces the focused pane.
   Enable the "Thread splits" experiment in Settings → Experiments before using
   --split; ordinary thread/file opens without --split remain available while off.
-
   Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
   thread-storage files for the current thread. Use this for Markdown or HTML

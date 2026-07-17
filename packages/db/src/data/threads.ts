@@ -23,6 +23,7 @@ import type {
   ThreadOriginKind,
   ThreadSearchSourceKind,
   ThreadStatus,
+  ThreadVisibility,
   WorkspaceProvisionType,
 } from "@bb/domain";
 import {
@@ -256,6 +257,7 @@ export interface CreateThreadInput {
   childOrigin?: ThreadChildOrigin | null;
   /** Plugin attribution for create origin "plugin". */
   originPluginId?: string | null;
+  visibility?: ThreadVisibility;
 }
 
 export function createThread(
@@ -263,6 +265,7 @@ export function createThread(
   notifier: DbNotifier,
   input: CreateThreadInput,
 ) {
+  const visibility = input.visibility ?? "visible";
   const now = Date.now();
   const id = createThreadId();
   const originKind = input.originKind ?? input.childOrigin ?? null;
@@ -287,6 +290,7 @@ export function createThread(
           originKind,
           childOrigin: null,
           originPluginId: input.originPluginId ?? null,
+          visibility,
           lastReadAt: now,
           latestAttentionAt: now,
           createdAt: now,
@@ -421,6 +425,7 @@ export type ReorderPinnedThreadResult =
 function pinnedThreadWhere() {
   return and(
     isNull(threads.deletedAt),
+    eq(threads.visibility, "visible"),
     isNotNull(threads.pinnedAt),
     isNotNull(threads.pinSortKey),
   );
@@ -665,6 +670,7 @@ function buildListThreadsForProjectsFilters(
 ) {
   return [
     inArray(threads.projectId, [...options.projectIds]),
+    eq(threads.visibility, "visible"),
     isNull(threads.deletedAt),
     options.excludeOriginKind
       ? and(
@@ -1157,6 +1163,7 @@ export function hasActiveThreadAttention(db: DbConnection): boolean {
       and(
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
+        eq(threads.visibility, "visible"),
         visibleThread,
         or(unreadThread, isNotNull(pendingInteractions.id)),
       ),
@@ -1597,7 +1604,6 @@ export function updateThread(
   if (!existing) {
     return null;
   }
-
   const changes: ThreadChangeKind[] = [];
   if ("title" in input || "folderId" in input) changes.push("title-changed");
   if ("lastReadAt" in input) changes.push("read-state-changed");

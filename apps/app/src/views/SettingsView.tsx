@@ -911,7 +911,7 @@ export function ExperimentsSettingsSection({
 
         <SettingsWithControl
           label={THREAD_SPLITS_EXPERIMENT_LABEL}
-          description="Split the thread view into up to 4 panes; drag threads from the sidebar to split."
+          description="Split the thread view into up to 8 panes; drag threads from the sidebar to split."
         >
           <Switch
             checked={threadSplitsEnabled}

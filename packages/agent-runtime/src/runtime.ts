@@ -182,6 +182,7 @@ interface RequireProviderRequestPlanArgs {
 
 const CODEX_PROVIDER_ID = "codex";
 const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
+const THREAD_CREATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
   new Set<ProviderErrorCategory>(["rate-limit", "unauthorized"]);
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
@@ -328,6 +329,7 @@ function createAgentRuntimeInternal(
     proc: ProviderProcess;
     message: SendJsonRpcRequestArgs<TResult>["message"];
     resultSchema: SendJsonRpcRequestArgs<TResult>["resultSchema"];
+    timeoutMs?: number;
   }): Promise<TResult> {
     return sendJsonRpcRequest({
       child: args.proc.child,
@@ -335,6 +337,7 @@ function createAgentRuntimeInternal(
       message: args.message,
       pending: args.proc.pending,
       resultSchema: args.resultSchema,
+      ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
     });
   }
 
@@ -1088,6 +1091,7 @@ function createAgentRuntimeInternal(
             proc,
             message: cmd,
             resultSchema: threadIdentityResultSchema,
+            timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
           });
           const providerThreadId = resolveThreadIdentityResult({
             result,

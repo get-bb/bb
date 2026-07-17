@@ -13,6 +13,10 @@ import {
   type TasksRoute,
 } from "./routes.js";
 import { TasksSidebar } from "./sidebar.js";
+import {
+  loadSidebarCollapsed,
+  storeSidebarCollapsed,
+} from "./sidebar-preference.js";
 import { TasksTopbar } from "./topbar.js";
 import { ListView } from "../views/list/index.js";
 import { BoardView } from "../views/board/index.js";
@@ -24,6 +28,7 @@ import {
 } from "../views/manage/index.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { TasksRefreshProvider } from "./refresh.js";
 
 /** Below this container width (panel splits, not the window) the sidebar
     auto-collapses. */
@@ -90,17 +95,19 @@ function RouteOutlet({ route }: { route: TasksRoute }) {
   }
 }
 
-export function TasksAppShell({ subPath }: PluginNavPanelProps) {
+function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   const route = parseTasksRoute(subPath);
   const navigation = useTasksNavigation();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] =
+    useState(loadSidebarCollapsed);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
 
   // Auto-collapse in narrow containers (the plugin can live in a split pane,
   // so the panel's own width is what matters — never the window's). A manual
-  // toggle while narrow sticks until the next threshold crossing; growing
-  // wide again restores the user's pre-collapse choice.
+  // toggle while narrow sticks until the next threshold crossing. Automatic
+  // narrow collapse is transient; an explicit toggle updates the user's
+  // client-local preference.
   const rootRef = useRef<HTMLDivElement>(null);
   const [narrow, setNarrow] = useState(false);
   const [narrowOverride, setNarrowOverride] = useState<boolean | null>(null);
@@ -124,8 +131,10 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
     ? (narrowOverride ?? true)
     : sidebarCollapsed;
   const toggleSidebar = () => {
-    if (narrow) setNarrowOverride(!effectiveSidebarCollapsed);
-    else setSidebarCollapsed((value) => !value);
+    const next = !effectiveSidebarCollapsed;
+    if (narrow) setNarrowOverride(next);
+    setSidebarCollapsed(next);
+    storeSidebarCollapsed(next);
   };
 
   const folders = useFolders();
@@ -234,5 +243,13 @@ export function TasksAppShell({ subPath }: PluginNavPanelProps) {
         onOpenChange={setNewProjectOpen}
       />
     </div>
+  );
+}
+
+export function TasksAppShell(props: PluginNavPanelProps) {
+  return (
+    <TasksRefreshProvider>
+      <TasksAppShellContent {...props} />
+    </TasksRefreshProvider>
   );
 }

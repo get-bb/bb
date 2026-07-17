@@ -138,6 +138,30 @@ describe("@bb/sdk", () => {
     expect(receivedSignal).toBe(controller.signal);
   });
 
+  it("maps personal-project list options while forwarding the abort signal", async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | null | undefined;
+    const queue = createFetchQueue([{ body: [] }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: async (input, init) => {
+          receivedSignal = init?.signal;
+          return queue.fetch(input, init);
+        },
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.projects.list({ includePersonal: true, signal: controller.signal }),
+    ).resolves.toEqual([]);
+    expect(receivedSignal).toBe(controller.signal);
+    expect(queue.requests[0]?.url).toBe(
+      "http://bb.test/api/v1/projects?includePersonal=true",
+    );
+  });
+
   it("sends a complete appearance selection through the theme transport", async () => {
     const appearance = {
       themeId: "nord",
@@ -788,7 +812,7 @@ describe("@bb/sdk", () => {
   });
 
   it("routes environment pull request calls through the HTTP transport", async () => {
-    const response = { pullRequest: null };
+    const response = { outcome: "absent" };
     const queue = createFetchQueue([{ body: response }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -919,9 +943,13 @@ describe("@bb/sdk", () => {
         workspace: { type: "unmanaged", path: null },
       },
       input: [{ type: "text", text: "From CLI", mentions: [] }],
+      visibility: "hidden",
     });
 
-    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}").origin).toBe("cli");
+    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}")).toMatchObject({
+      origin: "cli",
+      visibility: "hidden",
+    });
   });
 
   it("preserves folder assignment in thread updates", async () => {

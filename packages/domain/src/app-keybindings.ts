@@ -29,6 +29,10 @@ export const PANE_FOCUS_APP_COMMAND_IDS = [
   "pane.focus.2",
   "pane.focus.3",
   "pane.focus.4",
+  "pane.focus.5",
+  "pane.focus.6",
+  "pane.focus.7",
+  "pane.focus.8",
 ] as const;
 
 export const APP_COMMAND_IDS = [
@@ -75,9 +79,7 @@ export const APP_COMMAND_CONTEXT_KEYS = [
 ] as const;
 
 export const appCommandContextKeySchema = z.enum(APP_COMMAND_CONTEXT_KEYS);
-export type AppCommandContextKey = z.infer<
-  typeof appCommandContextKeySchema
->;
+export type AppCommandContextKey = z.infer<typeof appCommandContextKeySchema>;
 export type AppCommandContext = Record<AppCommandContextKey, boolean>;
 
 export const appShortcutSchema = z

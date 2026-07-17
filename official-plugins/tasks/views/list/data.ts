@@ -10,7 +10,12 @@ import type {
 export interface ListTaskFilters {
   statuses: readonly TaskStatus[];
   priorities: readonly TaskPriority[];
-  labelIds: readonly string[];
+  /**
+   * `null` means no label filter. An array (including empty) is an active
+   * label filter: empty matches nothing once the catalog is known, which is
+   * how stale/deleted label names recover without silently showing all tasks.
+   */
+  labelIds: readonly string[] | null;
 }
 
 /**
@@ -33,7 +38,7 @@ export function useListTasks(
           ...(filters.priorities.length > 0
             ? { priorities: [...filters.priorities] }
             : {}),
-          ...(filters.labelIds.length > 0
+          ...(filters.labelIds !== null
             ? { labelIds: [...filters.labelIds] }
             : {}),
           activeOnly,
@@ -46,7 +51,7 @@ export function useListTasks(
       activeOnly,
       filters.statuses.join(),
       filters.priorities.join(),
-      filters.labelIds.join(),
+      filters.labelIds === null ? "" : `active:${filters.labelIds.join()}`,
     ],
   );
 }
@@ -70,15 +75,16 @@ export function useLabels(projectIds: readonly string[]) {
 }
 
 export interface TaskRowMeta {
+  /** Threads currently starting or working. Historical attachments (idle,
+   * completed, failed) are excluded — list rows only surface live activity. */
   activeThreads: TaskThread[];
-  commentCount: number;
-  attachmentCount: number;
 }
 
 /**
- * Row metadata (working agents, comment/attachment counts). The contract has
- * no bulk endpoint for these, so this fans out per task — fine at current
- * scale; a batched RPC is the follow-up if lists grow large.
+ * Live-activity metadata for list rows. Comments and attachments are detail-
+ * view concerns and are deliberately not fetched here. The contract has no
+ * bulk endpoint, so this fans out per task — fine at current scale; a batched
+ * RPC is the follow-up if lists grow large.
  */
 export function useTaskListMeta(tasks: readonly Task[] | undefined) {
   const taskIds = (tasks ?? []).map((task) => task.id);
@@ -86,28 +92,20 @@ export function useTaskListMeta(tasks: readonly Task[] | undefined) {
     async (rpc) => {
       const entries = await Promise.all(
         taskIds.map(async (taskId) => {
-          const [threads, comments, attachments] = await Promise.all([
-            rpc.call("listTaskThreads", { taskId }),
-            rpc.call("listComments", { taskId }),
-            rpc.call("listAttachments", { taskId }),
-          ]);
+          const threads = await rpc.call("listTaskThreads", { taskId });
           const meta: TaskRowMeta = {
             activeThreads: threads.taskThreads.filter(
               (thread) =>
                 thread.liveStatus === "starting" ||
                 thread.liveStatus === "working",
             ),
-            commentCount: comments.comments.filter(
-              (comment) => comment.kind !== "system",
-            ).length,
-            attachmentCount: attachments.attachments.length,
           };
           return [taskId, meta] as const;
         }),
       );
       return new Map(entries);
     },
-    ["threads:changed", "comments:changed", "tasks:changed"],
+    ["threads:changed", "tasks:changed"],
     [taskIds.join()],
   );
 }

@@ -83,6 +83,11 @@ message agents, or inspect projects, providers, and environments.
   flags pass host-readable absolute paths (or relative server-upload tokens)
   through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
+- Pass `--visibility hidden` for background/plugin workers that should remain
+  out of sidebar organization without contributing unread/pending favicon
+  attention or native parent notifications. Hidden threads otherwise retain
+  ordinary list, search, prompt-history, folder, lifecycle, parent-operation,
+  and direct-open behavior. Visible is the default.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the
@@ -127,6 +132,8 @@ message agents, or inspect projects, providers, and environments.
   to bind a new project's local path to a connected enrolled machine. Use
   `--host` as an alias. Omitting both selectors preserves the existing local
   CLI machine fallback (normally the primary machine).
+- `bb project list` preserves the ordinary-project-only default. Pass
+  `--include-personal` when the singleton personal project must be discoverable.
 - Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
   to register a path on another connected machine. It uses the same selector
   resolution and fallback as project create. Use `--clone` instead of `--path`
@@ -229,8 +236,9 @@ For review or fix pipelines, get the environment ID from
   other workspace file for the user in the BB IDE's thread panel.
 - Use `bb thread open <thread-id> --split right|down|left|top|replace` to open
   or focus a thread in the current app split layout. `replace` is the default;
-  an already-open thread is focused, and an edge split at the four-pane cap
-  replaces the focused pane. Explicit `--split` placement requires the
+  an already-open thread is focused. Edge splits create panes through the
+  eighth pane; at eight panes, they replace the focused pane. Explicit
+  `--split` placement requires the
   **"Thread splits"** experiment in Settings → Experiments; ordinary opens
   without `--split` continue to work while it is off.
 - A file path is optional when a thread ID is explicit:
@@ -300,7 +308,9 @@ For review or fix pipelines, get the environment ID from
 - Start tracked work with `bb tasks show <key-or-id> --json`. Fetch relevant
   files with `bb tasks attachment get <attachment-id> --out <path>`.
 - Leave substantive milestone updates with `bb tasks comment <key-or-id>
-  --body <markdown>` and attach result artifacts. Avoid progress spam.
+  --body <markdown>` and attach result artifacts with `bb tasks attachment
+  add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
+  = that comment). Avoid progress spam.
 - Delegated threads are attached automatically. For work started independently,
   run `bb tasks attach <key-or-id>` from the working thread.
 - When implementation is ready for review, run `bb tasks update <key-or-id>
@@ -508,7 +518,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend
     entry plus a typecheck-only `tsconfig.json`; scaffold sets
-    `engines.bbPluginSdk` to `^0.3.0`); `bb plugin build [path]` —
+    `engines.bbPluginSdk` to `^0.3.1`); `bb plugin build [path]` —
     compile the plugin into `dist/`: the backend bundle (`server.js` +
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
@@ -520,7 +530,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - Frontend entries default-export `definePluginApp` from
     `@bb/plugin-sdk/app` and register UI slots (homepageSection,
     settingsSection, navPanel, threadPanelAction, composerAccessory,
-    fileOpener) with hooks (useRpc, useRealtime, useSettings, useBbContext,
+    fileOpener) with hooks (useRpc, useRealtime, useRealtimeConnectionState,
+    useSettings, useBbContext,
     useBbNavigate, useComposer for scoped text editing / quote / mention /
     focus access); components are vendored shadcn source the
     plugin owns. Installed

@@ -29,6 +29,7 @@ export const workflowCallViewSchema = z
     reasoningLevel: z.string(),
     cached: z.boolean(),
     childThreadId: z.string().nullable(),
+    providerRetryAttempts: z.number().int().nonnegative(),
     repairAttempts: z.number().int().nonnegative(),
     error: z.string().nullable(),
     createdAt: z.number(),

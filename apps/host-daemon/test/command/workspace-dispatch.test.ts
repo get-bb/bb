@@ -131,7 +131,7 @@ describe("workspace command dispatch", () => {
       },
       harness.dispatchOptions(),
     );
-    expect(presentResult).toEqual({ pullRequest });
+    expect(presentResult).toEqual({ outcome: "available", pullRequest });
 
     harness.workspaceState.pullRequest = null;
     const absentResult = await dispatchOnlineRpcCommand(
@@ -145,7 +145,27 @@ describe("workspace command dispatch", () => {
       },
       harness.dispatchOptions(),
     );
-    expect(absentResult).toEqual({ pullRequest: null });
+    expect(absentResult).toEqual({ outcome: "absent" });
+
+    // A failed gh lookup (missing binary, auth failure, timeout) must stay
+    // distinguishable from "checked and found no PR".
+    harness.workspaceState.pullRequestLookupError =
+      "gh pr view failed: authentication required";
+    const unavailableResult = await dispatchOnlineRpcCommand(
+      {
+        type: "workspace.pull_request",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      harness.dispatchOptions(),
+    );
+    expect(unavailableResult).toEqual({
+      outcome: "unavailable",
+      message: "gh pr view failed: authentication required",
+    });
   });
 
   it("returns no pull request when the workspace is not a git repo", async () => {
@@ -183,7 +203,7 @@ describe("workspace command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({ pullRequest: null });
+    expect(result).toEqual({ outcome: "absent" });
   });
 
   it("covers workspace.pull_request_action", async () => {

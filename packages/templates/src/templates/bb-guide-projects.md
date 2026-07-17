@@ -9,7 +9,8 @@ Project commands
 
 A project maps to a code repository. All threads belong to a project.
 
-  bb project list                         List all projects
+  bb project list                         List ordinary projects
+    --include-personal                    Also include the personal project
   bb project history <id>                 List prompt history
   bb project reorder <id>                 Reorder in the sidebar
     --after <id>                          Previous project, or omit for start

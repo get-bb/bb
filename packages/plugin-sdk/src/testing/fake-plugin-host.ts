@@ -1542,6 +1542,7 @@ function createFakePluginHostInternal(
     [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
   } = {
     "thread.created": [],
+    "thread.active": [],
     "thread.idle": [],
     "thread.failed": [],
     "thread.deleted": [],
@@ -1794,6 +1795,7 @@ function createFakePluginHostInternal(
       get threadEventHandlers() {
         return {
           "thread.created": threadEventHandlers["thread.created"].length,
+          "thread.active": threadEventHandlers["thread.active"].length,
           "thread.idle": threadEventHandlers["thread.idle"].length,
           "thread.failed": threadEventHandlers["thread.failed"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,

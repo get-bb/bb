@@ -2,6 +2,7 @@ import type {
   PromptInput,
   ThreadChildOrigin,
   ThreadOriginKind,
+  ThreadVisibility,
 } from "@bb/domain";
 import type {
   CreateThreadEnvironmentArgs,
@@ -37,6 +38,7 @@ export interface ThreadCreateServiceRequestInput {
   sourceThreadId?: string;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   title?: string;
+  visibility?: ThreadVisibility;
 }
 
 export interface ThreadCreateServiceRequest extends Omit<

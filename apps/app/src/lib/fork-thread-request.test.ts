@@ -17,6 +17,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     latestAttentionAt: 1,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     parentThreadId: null,
     pinnedAt: null,
     projectId: "proj_test",

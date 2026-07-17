@@ -3,13 +3,17 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowUp02Icon,
   AttachmentIcon,
-  BotIcon,
-  Cancel01Icon,
   File01Icon,
   Notification02Icon,
+  NotificationOff02Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@bb/shared-ui/button";
-import { Switch } from "@bb/shared-ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import { useBbNavigate } from "@bb/plugin-sdk/app";
@@ -18,81 +22,32 @@ import {
   useTasksQuery,
   useTasksRpc,
 } from "../../shell/data.js";
-import { Lightbox } from "../detail/attachments.js";
-import type { Attachment, Comment, TaskThread } from "../../shared/contract.js";
+import {
+  attachmentDownloadUrl,
+  Lightbox,
+  uploadAttachment,
+} from "../detail/attachments.js";
+import {
+  AttachmentChip,
+  stageFiles,
+  type StagedAttachment,
+} from "../../components/staged-attachments.js";
+import type {
+  Attachment,
+  Comment,
+  DisplayComment,
+} from "../../shared/contract.js";
 import {
   formatFileSize,
   formatRelativeTime,
   splitSystemBody,
   useNowTick,
 } from "./time.js";
-
-const PLUGIN_HTTP_BASE = "/api/v1/plugins/tasks/http";
-const TOKEN_URL = "/api/v1/plugins/tasks/token";
-
-// The plugin HTTP token is stable across requests (rotation is an explicit
-// admin action), so one fetch per page load is enough.
-let tokenPromise: Promise<string> | null = null;
-
-async function fetchPluginToken(): Promise<string> {
-  const response = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  if (!response.ok) {
-    throw new Error(`token request failed with status ${response.status}`);
-  }
-  const payload: unknown = await response.json();
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("token" in payload) ||
-    typeof payload.token !== "string"
-  ) {
-    throw new Error("token request returned an unexpected payload");
-  }
-  return payload.token;
-}
-
-function pluginToken(): Promise<string> {
-  tokenPromise ??= fetchPluginToken().catch((error: unknown) => {
-    tokenPromise = null;
-    throw error;
-  });
-  return tokenPromise;
-}
-
-async function uploadCommentAttachment(
-  commentId: string,
-  file: File,
-): Promise<void> {
-  const token = await pluginToken();
-  const mime = file.type || "application/octet-stream";
-  const query = new URLSearchParams({
-    commentId,
-    fileName: file.name,
-    mime,
-  });
-  const response = await fetch(
-    `${PLUGIN_HTTP_BASE}/attachments/upload?${query.toString()}`,
-    {
-      method: "POST",
-      headers: { "x-bb-plugin-token": token, "Content-Type": mime },
-      body: file,
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`upload of ${file.name} failed (${response.status})`);
-  }
-}
-
-function attachmentDownloadUrl(attachmentId: string): string {
-  return `${PLUGIN_HTTP_BASE}/attachments/download?attachmentId=${encodeURIComponent(attachmentId)}`;
-}
+import { CommentAuthor } from "./comment-author.js";
+import { CommentProviderAvatar } from "./provider-logo.js";
 
 interface FeedEntry {
-  comment: Comment;
+  comment: DisplayComment;
   attachments: Attachment[];
 }
 
@@ -120,8 +75,27 @@ function useActivityFeed(taskId: string) {
   );
 }
 
-function isRunning(thread: TaskThread): boolean {
-  return thread.liveStatus === "starting" || thread.liveStatus === "working";
+export type AgentNotificationTarget =
+  | { kind: "ready"; title: string }
+  | { kind: "none" }
+  | { kind: "unavailable" };
+
+export function agentNotificationTarget(
+  comments: readonly DisplayComment[],
+): AgentNotificationTarget {
+  let latest: DisplayComment | undefined;
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const comment = comments[index];
+    if (comment?.kind === "agent") {
+      latest = comment;
+      break;
+    }
+  }
+  if (!latest) return { kind: "none" };
+  if (latest.threadId === null || latest.threadTitle === null) {
+    return { kind: "unavailable" };
+  }
+  return { kind: "ready", title: latest.threadTitle };
 }
 
 function UserAvatar({ name }: { name: string }) {
@@ -132,17 +106,6 @@ function UserAvatar({ name }: { name: string }) {
       className="z-[1] mt-px flex size-[22px] shrink-0 items-center justify-center rounded-full bg-attention text-2xs font-bold text-background outline outline-2 outline-background"
     >
       {initial}
-    </span>
-  );
-}
-
-function AgentAvatar() {
-  return (
-    <span
-      aria-hidden
-      className="z-[1] mt-px flex size-[22px] shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground outline outline-2 outline-background"
-    >
-      <HugeiconsIcon icon={BotIcon} className="size-3.5" />
     </span>
   );
 }
@@ -221,23 +184,21 @@ function SystemEvent({ comment, nowMs }: { comment: Comment; nowMs: number }) {
   );
 }
 
-function CommentCard({
-  entry,
-  nowMs,
-}: {
-  entry: FeedEntry;
-  nowMs: number;
-}) {
+function CommentCard({ entry, nowMs }: { entry: FeedEntry; nowMs: number }) {
   const { comment, attachments } = entry;
   const agent = comment.kind === "agent";
   const navigate = useBbNavigate();
   const [lightbox, setLightbox] = useState<Attachment | null>(null);
   return (
     <div className="relative mb-3.5 flex gap-2.5">
-      {agent ? <AgentAvatar /> : <UserAvatar name={comment.authorName} />}
+      {agent ? (
+        <CommentProviderAvatar provider={comment.provider} />
+      ) : (
+        <UserAvatar name={comment.authorName} />
+      )}
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-baseline gap-1.5 text-xs">
-          <span className="font-semibold">{comment.authorName}</span>
+          <CommentAuthor comment={comment} onOpenThread={navigate.toThread} />
           {agent && comment.presetName ? (
             <span className="rounded-sm bg-secondary px-1 py-px text-2xs font-semibold text-muted-foreground">
               {comment.presetName}
@@ -271,8 +232,7 @@ function CommentCard({
         {comment.kind === "user" && comment.notifiedCount > 0 ? (
           <div className="mt-1 flex items-center gap-1 text-2xs font-medium text-success">
             <HugeiconsIcon icon={Notification02Icon} className="size-2.5" />
-            notified {comment.notifiedCount} working agent
-            {comment.notifiedCount > 1 ? "s" : ""}
+            notified the last responding agent
           </div>
         ) : null}
       </div>
@@ -282,97 +242,10 @@ function CommentCard({
 
 interface ComposerProps {
   taskId: string;
-  runningCount: number;
+  notificationTarget: AgentNotificationTarget;
 }
 
-export const MAX_COMMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-
-interface StagedAttachment {
-  id: number;
-  file: File;
-  /**
-   * staged: waiting for send · oversized: rejected at pick time, never sent ·
-   * failed: the comment posted but this upload failed; retry targets commentId.
-   */
-  status: "staged" | "oversized" | "failed";
-  commentId?: string;
-  error?: string;
-}
-
-let nextStagedId = 0;
-
-/** Size-validates picked files: oversized ones become rejected chips. */
-export function stageFiles(files: readonly File[]): StagedAttachment[] {
-  return files.map((file) =>
-    file.size > MAX_COMMENT_ATTACHMENT_BYTES
-      ? {
-          id: nextStagedId++,
-          file,
-          status: "oversized" as const,
-          error: `Over the 25 MB attachment limit (${formatFileSize(file.size)})`,
-        }
-      : { id: nextStagedId++, file, status: "staged" as const },
-  );
-}
-
-function AttachmentChip({
-  entry,
-  onRemove,
-  onRetry,
-}: {
-  entry: StagedAttachment;
-  onRemove: () => void;
-  onRetry?: () => void;
-}) {
-  const broken = entry.status !== "staged";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
-        broken
-          ? "border-destructive/50 bg-destructive/10 text-destructive"
-          : "border-border bg-background",
-      )}
-      title={entry.error}
-    >
-      <HugeiconsIcon
-        icon={File01Icon}
-        className={cn("size-3", broken ? undefined : "text-muted-foreground")}
-      />
-      <span className="max-w-40 truncate">{entry.file.name}</span>
-      <span
-        className={cn(
-          "text-2xs",
-          broken ? "text-destructive/80" : "text-muted-foreground",
-        )}
-      >
-        {formatFileSize(entry.file.size)}
-      </span>
-      {entry.status === "failed" && onRetry ? (
-        <button
-          type="button"
-          aria-label={`Retry upload of ${entry.file.name}`}
-          className="font-medium underline underline-offset-2"
-          onClick={onRetry}
-        >
-          Retry
-        </button>
-      ) : null}
-      <button
-        type="button"
-        aria-label={`Remove ${entry.file.name}`}
-        className={cn(
-          !broken && "text-muted-foreground hover:text-foreground",
-        )}
-        onClick={onRemove}
-      >
-        <HugeiconsIcon icon={Cancel01Icon} className="size-3" />
-      </button>
-    </span>
-  );
-}
-
-function CommentComposer({ taskId, runningCount }: ComposerProps) {
+export function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
   const rpc = useTasksRpc();
   const navigate = useBbNavigate();
   const mentionItems = useMentionItems();
@@ -382,6 +255,7 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sendingRef = useRef(false);
 
   const staged = pendingFiles.filter((entry) => entry.status === "staged");
   const canSend = !sending && (body.trim().length > 0 || staged.length > 0);
@@ -389,10 +263,19 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
   const removeFile = (id: number) =>
     setPendingFiles((files) => files.filter((entry) => entry.id !== id));
 
+  // Synchronous single-flight guard: double-activating Retry before React
+  // re-renders must not upload (and attach) the same file twice.
+  const retryingRef = useRef(new Set<number>());
   const retryUpload = async (entry: StagedAttachment) => {
-    if (entry.commentId === undefined) return;
+    if (entry.owner === undefined || retryingRef.current.has(entry.id)) return;
+    retryingRef.current.add(entry.id);
+    setPendingFiles((files) =>
+      files.map((candidate) =>
+        candidate.id === entry.id ? { ...candidate, busy: true } : candidate,
+      ),
+    );
     try {
-      await uploadCommentAttachment(entry.commentId, entry.file);
+      await uploadAttachment(entry.file, entry.owner);
       removeFile(entry.id);
       setError(null);
     } catch (cause) {
@@ -400,67 +283,69 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
       setPendingFiles((files) =>
         files.map((candidate) =>
           candidate.id === entry.id
-            ? { ...candidate, error: message }
+            ? { ...candidate, busy: false, error: message }
             : candidate,
         ),
       );
+    } finally {
+      retryingRef.current.delete(entry.id);
     }
   };
 
   const send = async () => {
-    if (!canSend) return;
+    if (!canSend || sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
     setError(null);
     const text = body.trim();
-    let comment: Comment;
     try {
-      comment = (
+      const comment: Comment = (
         await rpc.call("createComment", {
           taskId,
           body: text,
-          notify: notify && runningCount > 0,
+          notify: notify && notificationTarget.kind === "ready",
           allowEmptyBody: text.length === 0,
         })
       ).comment;
+      // The comment is now posted — clear the text so a later upload failure
+      // can't double-post it. Failed uploads stay behind as retryable chips.
+      setBody("");
+      const failed: StagedAttachment[] = [];
+      for (const entry of staged) {
+        try {
+          await uploadAttachment(entry.file, { commentId: comment.id });
+        } catch (cause) {
+          failed.push({
+            ...entry,
+            status: "failed",
+            owner: { commentId: comment.id },
+            error: cause instanceof Error ? cause.message : String(cause),
+          });
+        }
+      }
+      // Sent entries leave the tray (failures come back as retryable chips);
+      // anything staged after send started is untouched.
+      setPendingFiles((files) =>
+        files.flatMap((entry) => {
+          const failure = failed.find((candidate) => candidate.id === entry.id);
+          if (failure) return [failure];
+          return staged.some((candidate) => candidate.id === entry.id)
+            ? []
+            : [entry];
+        }),
+      );
+      if (failed.length > 0) {
+        setError(
+          `The comment posted, but ${failed.length} attachment${failed.length > 1 ? "s" : ""} failed to upload — retry below.`,
+        );
+      }
     } catch (cause) {
       // Nothing posted: keep the draft and chips for another attempt.
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      sendingRef.current = false;
       setSending(false);
-      return;
     }
-    // The comment is now posted — clear the text so a later upload failure
-    // can't double-post it. Failed uploads stay behind as retryable chips.
-    setBody("");
-    const failed: StagedAttachment[] = [];
-    for (const entry of staged) {
-      try {
-        await uploadCommentAttachment(comment.id, entry.file);
-      } catch (cause) {
-        failed.push({
-          ...entry,
-          status: "failed",
-          commentId: comment.id,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      }
-    }
-    // Sent entries leave the tray (failures come back as retryable chips);
-    // anything staged after send started is untouched.
-    setPendingFiles((files) =>
-      files.flatMap((entry) => {
-        const failure = failed.find((candidate) => candidate.id === entry.id);
-        if (failure) return [failure];
-        return staged.some((candidate) => candidate.id === entry.id)
-          ? []
-          : [entry];
-      }),
-    );
-    if (failed.length > 0) {
-      setError(
-        `The comment posted, but ${failed.length} attachment${failed.length > 1 ? "s" : ""} failed to upload — retry below.`,
-      );
-    }
-    setSending(false);
   };
 
   return (
@@ -494,19 +379,11 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
         <div className="mt-2 text-xs text-destructive">{error}</div>
       ) : null}
       <div className="mt-2 flex items-center gap-1.5">
-        {runningCount > 0 ? (
-          <label className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-            <HugeiconsIcon icon={Notification02Icon} className="size-3" />
-            <Switch
-              checked={notify}
-              onCheckedChange={setNotify}
-              aria-label="Notify working agents"
-            />
-            Notify {runningCount} working agent{runningCount > 1 ? "s" : ""}
-          </label>
-        ) : (
-          <span className="mr-auto" />
-        )}
+        <AgentNotificationControl
+          target={notificationTarget}
+          checked={notify}
+          onCheckedChange={setNotify}
+        />
         <input
           ref={fileInputRef}
           type="file"
@@ -524,7 +401,7 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
           size="icon"
           variant="ghost"
           aria-label="Attach file"
-          className="size-6.5 text-muted-foreground"
+          className="size-6.5 shrink-0 text-muted-foreground"
           onClick={() => fileInputRef.current?.click()}
         >
           <HugeiconsIcon icon={AttachmentIcon} className="size-3.5" />
@@ -534,13 +411,70 @@ function CommentComposer({ taskId, runningCount }: ComposerProps) {
           size="icon"
           aria-label="Comment"
           disabled={!canSend}
-          className="size-6.5 rounded-md bg-foreground text-background hover:bg-foreground/90"
+          className="size-6.5 shrink-0 rounded-md bg-foreground text-background hover:bg-foreground/90"
           onClick={() => void send()}
         >
           <HugeiconsIcon icon={ArrowUp02Icon} className="size-3.5" />
         </Button>
       </div>
     </div>
+  );
+}
+
+export function AgentNotificationControl({
+  target,
+  checked,
+  onCheckedChange,
+}: {
+  target: AgentNotificationTarget;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  const enabled = target.kind === "ready";
+  const on = enabled && checked;
+  const label =
+    target.kind === "ready"
+      ? `Notify ${target.title}`
+      : target.kind === "none"
+        ? "No prior agent reply to notify"
+        : "Latest responding agent can’t be notified";
+  // Subtle icon-only toggle that sits with the composer's other action buttons.
+  // The bell/bell-off glyph plus the ghost-button color carry the on/off state;
+  // the tooltip (and accessible name) name the destination so a long thread
+  // title never has to render inline. `aria-disabled` rather than `disabled`
+  // keeps the trigger hoverable so the tooltip can still explain why an
+  // unavailable target can't be notified.
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            role="switch"
+            aria-checked={on}
+            aria-disabled={!enabled}
+            aria-label={label}
+            onClick={() => {
+              if (enabled) onCheckedChange(!checked);
+            }}
+            className={cn(
+              "mr-auto size-6.5 shrink-0",
+              on ? "text-foreground" : "text-muted-foreground",
+              !enabled &&
+                "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-muted-foreground",
+            )}
+          >
+            <HugeiconsIcon
+              icon={on ? Notification02Icon : NotificationOff02Icon}
+              className="size-3.5"
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -553,17 +487,12 @@ export interface TaskActivityProps {
 /** Activity feed + comment composer for the task detail page. */
 export function TaskActivity({ taskId }: TaskActivityProps) {
   const feed = useActivityFeed(taskId);
-  const threads = useTasksQuery(
-    async (rpc) => (await rpc.call("listTaskThreads", { taskId })).taskThreads,
-    ["threads:changed"],
-    [taskId],
-  );
   const nowMs = useNowTick();
-  const runningCount = useMemo(
-    () => (threads.data ?? []).filter(isRunning).length,
-    [threads.data],
-  );
   const entries = feed.data ?? [];
+  const notificationTarget = useMemo(
+    () => agentNotificationTarget(entries.map((entry) => entry.comment)),
+    [entries],
+  );
 
   return (
     <section aria-label="Activity">
@@ -594,7 +523,10 @@ export function TaskActivity({ taskId }: TaskActivityProps) {
           ),
         )}
       </div>
-      <CommentComposer taskId={taskId} runningCount={runningCount} />
+      <CommentComposer
+        taskId={taskId}
+        notificationTarget={notificationTarget}
+      />
     </section>
   );
 }

@@ -213,6 +213,7 @@ export type PluginMentionResolveResult =
  */
 export interface PluginThreadEventEmitter {
   emitThreadCreated(thread: Thread): void;
+  emitThreadActive(thread: Thread): void;
   emitThreadIdle(thread: Thread): void;
   emitThreadFailed(thread: Thread): void;
   emitThreadDeleted(thread: Thread): void;

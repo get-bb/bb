@@ -17,6 +17,11 @@
       "source": "./src/thread-child-origin.ts",
       "types": "./src/thread-child-origin.ts",
       "default": "./src/thread-child-origin.ts"
+    },
+    "./thread-visibility": {
+      "source": "./src/thread-visibility.ts",
+      "types": "./src/thread-visibility.ts",
+      "default": "./src/thread-visibility.ts"
     }
   },
   "types": "./src/index.ts",

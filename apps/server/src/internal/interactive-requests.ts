@@ -85,7 +85,11 @@ function requestChildThreadNeedsAttentionNotification(
   const childThread = getThread(deps.db, args.childThreadId);
   // Forks / side chats are user-initiated branches the user interacts with
   // directly, so a needs-attention prompt must not notify their parent.
-  if (!childThread || !isAgentDelegatedChildThread(childThread)) {
+  if (
+    !childThread ||
+    !isAgentDelegatedChildThread(childThread) ||
+    childThread.visibility === "hidden"
+  ) {
     return;
   }
   const parentThreadId = childThread.parentThreadId;

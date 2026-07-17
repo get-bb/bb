@@ -77,15 +77,30 @@ Durability lives in the plugin-owned SQLite database. Runs and ordered agent
 calls are persisted independently. On restart the source is evaluated from the
 beginning and successful calls are replayed by a SHA-256 key until the first
 divergence. Explicit resume uses the same longest-unchanged-prefix rule against
-the selected prior run. Replay is limited to the causally safe prefix before
-the first observed overlap between host-visible agent promises. The concurrent
-frontier and its entire suffix always run live, while normal pipeline streaming
-and agent concurrency remain unchanged. Runs created before replay-safety
-metadata existed replay nothing.
+the selected prior run. Parallel calls receive identities in deterministic
+invocation order, so concurrency does not stop replay. The first edited, new,
+failed, cancelled, incomplete, or null-result call and the entire suffix run
+live. Successful calls are reusable regardless of which tools they used,
+including file edits and other writes, because resume is restricted to the same
+environment workspace where those effects remain. Runs created before
+replay-safety metadata existed replay nothing.
+
+Agent calls retry transient provider failures twice with bounded backoff before
+the failure reaches the workflow script. Retryability comes from an explicit
+SDK `retryable` marker when available or conservative overload, rate-limit,
+provider 5xx, and network-error signatures. Authentication, configuration,
+schema, and other deterministic failures are not retried. Retry attempts are
+persisted on the call so a plugin restart cannot reset the retry budget.
 
 Worker output is either the final assistant text or an Ajv-validated value
 submitted through `bb_workflow_result`. Structured workers receive two
 corrective retries after their initial invalid attempt.
+
+Workflow workers use BB's generic hidden-thread visibility. They remain
+out of sidebar organization without contributing unread/pending favicon
+attention or native parent notifications. Ordinary search, prompt history,
+lifecycle, and direct operations remain available. Workflows does not create a
+temporary Workflow folder.
 
 Workflows may invoke one child workflow level with
 `workflow(nameOrRef, args)`. A string and `{ name }` resolve under
@@ -209,4 +224,5 @@ it.
 
 Resume requires a terminal prior run from the same project and environment
 workspace. Another origin thread may resume it only when that thread uses the
-same environment.
+same environment. Successful writer calls are cached just like read-only calls;
+their effects are not copied into another workspace.

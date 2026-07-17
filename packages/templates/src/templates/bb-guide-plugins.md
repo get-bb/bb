@@ -81,8 +81,9 @@ The Tasks plugin is an opt-in official plugin bundled with the app:
 and the `bb tasks` command. Common agent operations are:
 
   bb tasks show <key-or-id> [--json]
-  bb tasks list [--project <prefix-or-id>] [filters...] [--json]
+  bb tasks list [--project <prefix-or-id>] [filters...] [--sort manual|priority|due] [--json]
   bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--json]
+  bb tasks attachment add <key-or-comment-id> --file <path> [--json]
   bb tasks attachment get <attachment-id> --out <path> [--json]
   bb tasks attach <key-or-id> [--json]
   bb tasks update <key-or-id> --status in_review [--json]
@@ -229,7 +230,10 @@ openWorkspaceFile(path) callback for opening a worktree-relative file in the
 host workspace viewer and a nullable
 openThreadPanel({ actionId, title?, params? }) callback for opening one of the
 same plugin's thread-panel actions). Hooks:
-useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
+useRpc, useRealtime, useRealtimeConnectionState (the shared realtime socket's
+connecting/connected/reconnecting lifecycle; reconcile on later connected
+transitions, not the initial connection), useSettings (secrets excluded),
+useBbContext,
 useBbNavigate, and useComposer (read/replace/update/clear scoped composer
 text, quote selections, insert mention pills, and focus the composer;
 plain-text edits preserve attachments and reconcile only inline mentions
@@ -274,7 +278,7 @@ least `icon` or `logo.light`, `bb.server`
 into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^0.3.0"` for SDK 0.3.0). The plugin id is the package name minus
+writes `"^0.3.1"` for SDK 0.3.1). The plugin id is the package name minus
 `bb-plugin-`.
 
 Plugins can contribute palettes with `bb.themes`: an array of
@@ -309,7 +313,10 @@ bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and
 bb.storage.database()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
-attributed to the plugin); bb.events.on (observe thread.created/idle/failed/deleted);
+attributed to the plugin; `visibility: "hidden"` creates directly addressable
+background workers omitted from sidebar organization, unread/pending favicon
+attention, and native parent notifications, with other behavior unchanged);
+bb.events.on (observe thread.created/idle/failed/deleted);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); defineRpcContract + bb.rpc.register (Standard
 Schema-validated frontend data plane with inferred backend handlers and

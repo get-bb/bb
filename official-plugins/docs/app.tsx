@@ -693,7 +693,7 @@ function DocsDirectiveCard({
   }
   const openInDocs = () =>
     navigate.toPluginPanel("docs", {
-      subPath: `${encodeURIComponent(document.vaultId)}/${encodePath(document.path)}`,
+      subPath: `${document.vaultId}/${document.path}`,
     });
   const openPreview = () => {
     const opened =
@@ -800,7 +800,7 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
           aria-label="Open in Docs"
           onClick={() =>
             navigate.toPluginPanel("docs", {
-              subPath: `${encodeURIComponent(document.vaultId)}/${encodePath(document.path)}`,
+              subPath: `${document.vaultId}/${document.path}`,
             })
           }
         >
@@ -1939,7 +1939,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
     (path: string, replace = false) => {
       if (!activeVaultId) return;
       navigate.toPluginPanel("docs", {
-        subPath: `${encodeURIComponent(activeVaultId)}/${encodePath(path)}`,
+        subPath: `${activeVaultId}/${path}`,
         replace,
       });
     },
@@ -1999,7 +1999,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
       setVaultDialogOpen(false);
       setVaultId(value.id);
       navigate.toPluginPanel("docs", {
-        subPath: encodeURIComponent(value.id),
+        subPath: value.id,
       });
     } catch (error) {
       setVaultError(error instanceof Error ? error.message : String(error));
@@ -2015,7 +2015,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
       refresh();
       if (filePath === path) {
         navigate.toPluginPanel("docs", {
-          subPath: encodeURIComponent(activeVaultId),
+          subPath: activeVaultId,
           replace: true,
         });
       }
@@ -2107,7 +2107,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
           onVaultChange={(value) => {
             setVaultId(value);
             navigate.toPluginPanel("docs", {
-              subPath: encodeURIComponent(value),
+              subPath: value,
             });
           }}
           onAddVault={() => setVaultDialogOpen(true)}

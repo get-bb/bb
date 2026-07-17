@@ -153,7 +153,7 @@ describe("bb thread show command output", () => {
       reason: "non_git_environment",
       message: "Workspace is not a Git repository.",
     }));
-    const pullRequestGet = vi.fn(async () => ({ pullRequest: null }));
+    const pullRequestGet = vi.fn(async () => ({ outcome: "absent" }));
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
@@ -224,7 +224,7 @@ describe("bb thread show command output", () => {
       diff: gitDiff,
     };
     const diffGet = vi.fn(async () => diffResponse);
-    const pullRequestGet = vi.fn(async () => ({ pullRequest: null }));
+    const pullRequestGet = vi.fn(async () => ({ outcome: "absent" }));
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
@@ -278,7 +278,7 @@ describe("bb thread show command output", () => {
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
     const diffGet = vi.fn(async () => diffResponse);
-    const pullRequestGet = vi.fn(async () => ({ pullRequest: null }));
+    const pullRequestGet = vi.fn(async () => ({ outcome: "absent" }));
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
@@ -337,7 +337,7 @@ describe("bb thread show command output", () => {
     });
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
-    const pullRequestGet = vi.fn(async () => ({ pullRequest }));
+    const pullRequestGet = vi.fn(async () => ({ outcome: "available", pullRequest }));
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
@@ -368,6 +368,45 @@ describe("bb thread show command output", () => {
     expect(output).toContain("Merge:        mergeable");
   });
 
+  it("bb thread show reports a failed pull request lookup distinctly from none", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-show-pr-down",
+      projectId: "proj-1",
+      providerId: "codex",
+      environmentId: "env-show-pr-down",
+      status: "idle",
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const environment = fixtures.makeEnvironment({
+      id: "env-show-pr-down",
+      projectId: "proj-1",
+      hostId: "host-1",
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const get = vi.fn(async () => thread);
+    const environmentGet = vi.fn(async () => environment);
+    const pullRequestGet = vi.fn(async () => ({
+      outcome: "unavailable",
+      message: "gh pr view failed: authentication required",
+    }));
+    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    stubServerApi({
+      "v1.environments.:id.$get": environmentGet,
+      "v1.environments.:id.pull-request.$get": pullRequestGet,
+      "v1.threads.:id.$get": get,
+      "v1.threads.:id.timeline.$get": timelineGet,
+    });
+
+    await runCommand(["thread", "show", "thread-show-pr-down"], register);
+
+    const output = collectLogLines(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Pull request: unavailable");
+    expect(output).toContain("gh pr view failed: authentication required");
+    expect(output).not.toContain("Pull request: none");
+  });
+
   it("bb thread show --json includes pull request details", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-json-show-pr",
@@ -388,7 +427,7 @@ describe("bb thread show command output", () => {
     const pullRequest = makePullRequest();
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
-    const pullRequestGet = vi.fn(async () => ({ pullRequest }));
+    const pullRequestGet = vi.fn(async () => ({ outcome: "available", pullRequest }));
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,

@@ -48,6 +48,7 @@ import {
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import {
   useEnvironment,
+  getEnvironmentPullRequestFromResponse,
   useEnvironmentPullRequest,
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
@@ -1567,7 +1568,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
     enabled: canUseGitUi && environment !== undefined,
   });
-  const pullRequest = pullRequestQuery.data?.pullRequest ?? null;
+  const pullRequest = getEnvironmentPullRequestFromResponse(
+    pullRequestQuery.data,
+  );
   const handlePullRequestReady = useCallback(async () => {
     const environmentId = thread?.environmentId;
     if (!environmentId) {

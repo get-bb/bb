@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `visibility` text DEFAULT 'visible' NOT NULL;

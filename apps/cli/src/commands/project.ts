@@ -19,6 +19,7 @@ import {
 } from "./machine.js";
 
 interface ProjectListCommandOptions {
+  includePersonal?: boolean;
   json?: boolean;
 }
 
@@ -329,11 +330,14 @@ export function registerProjectCommands(
   project
     .command("list")
     .description("List projects")
+    .option("--include-personal", "Include the personal project")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProjectListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const projects = await sdk.projects.list();
+        const projects = await sdk.projects.list({
+          includePersonal: opts.includePersonal,
+        });
         if (outputJson(opts, projects)) return;
         if (projects.length === 0) {
           console.log("No projects found");

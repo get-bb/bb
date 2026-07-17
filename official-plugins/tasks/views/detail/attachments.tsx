@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Attachment } from "../../shared/contract.js";
 import { formatBytes } from "./meta.js";
+import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import { Icon } from "@bb/shared-ui/icon";
 
 /** Frontend twin of attachments/index.ts `buildAttachmentUrl`. */
@@ -38,13 +39,16 @@ function pluginToken(): Promise<string> {
   return tokenPromise;
 }
 
+/** Client-side twin of attachments/index.ts `AttachmentOwner`. */
+export type AttachmentOwnerRef = { taskId: string } | { commentId: string };
+
 export async function uploadAttachment(
   file: File,
-  taskId: string,
+  owner: AttachmentOwnerRef,
 ): Promise<{ attachmentId: string; url: string }> {
   const token = await pluginToken();
   const query = new URLSearchParams({
-    taskId,
+    ...owner,
     fileName: file.name || "attachment",
     mime: file.type || "application/octet-stream",
   });
@@ -121,63 +125,158 @@ export function Lightbox({
   );
 }
 
+/** Small circular spinner used while a removal request is in flight. */
+function RemovalSpinner() {
+  return (
+    <span
+      role="status"
+      aria-label="Removing"
+      className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+    />
+  );
+}
+
 export function AttachmentsGrid({
   attachments,
+  onRemove,
+  onError,
 }: {
   attachments: Attachment[];
+  /** When provided, each attachment gains a remove affordance. */
+  onRemove?: (attachment: Attachment) => Promise<void>;
+  onError?: (message: string) => void;
 }) {
   const [lightbox, setLightbox] = useState<Attachment | null>(null);
+  // Snapshot of the attachment awaiting confirmation, kept independent of the
+  // live `attachments` prop so a concurrent realtime refresh can't drop it.
+  const [confirm, setConfirm] = useState<Attachment | null>(null);
+  // Ids with a delete request in flight, keyed so refreshes don't reset them.
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const removable = onRemove !== undefined;
+
+  const requestRemove = (attachment: Attachment) => setConfirm(attachment);
+
+  const performRemove = async (attachment: Attachment) => {
+    setConfirm(null);
+    setLightbox((current) => (current?.id === attachment.id ? null : current));
+    setPending((current) => new Set(current).add(attachment.id));
+    try {
+      await onRemove?.(attachment);
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(attachment.id);
+        return next;
+      });
+    }
+  };
+
   if (attachments.length === 0) return null;
+
+  const removeButton = (attachment: Attachment, variant: "image" | "file") => {
+    if (!removable) return null;
+    const busy = pending.has(attachment.id);
+    const base =
+      variant === "image"
+        ? "absolute right-1 top-1 z-10 rounded-full bg-black/55 p-0.5 text-white transition-colors hover:bg-black/70 disabled:opacity-70"
+        : "shrink-0 rounded p-0.5 text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-70";
+    return (
+      <button
+        type="button"
+        aria-label={`Remove ${attachment.fileName}`}
+        disabled={busy}
+        className={base}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!busy) requestRemove(attachment);
+        }}
+      >
+        {busy ? <RemovalSpinner /> : <Icon name="X" className="size-3" />}
+      </button>
+    );
+  };
+
   return (
     <div className="flex flex-wrap gap-2">
       {attachments.map((attachment) =>
         attachment.isImage ? (
-          <button
+          <div
             key={attachment.id}
-            type="button"
             className="group relative overflow-hidden rounded-md border border-border shadow-2xs"
-            title={`${attachment.fileName} · ${formatBytes(attachment.sizeBytes)}`}
-            onClick={() => setLightbox(attachment)}
           >
-            <img
-              src={attachmentDownloadUrl(attachment.id)}
-              alt={attachment.fileName}
-              className="block h-24 w-36 object-cover transition-opacity group-hover:opacity-90"
-            />
-            <span
-              className="absolute inset-x-0 bottom-0 truncate px-1.5 py-0.5 text-left text-2xs opacity-0 transition-opacity group-hover:opacity-100"
-              style={{
-                background: "color-mix(in oklab, var(--ink) 55%, transparent)",
-                color: "var(--canvas)",
-              }}
+            <button
+              type="button"
+              className="block"
+              title={`${attachment.fileName} · ${formatBytes(attachment.sizeBytes)}`}
+              onClick={() => setLightbox(attachment)}
             >
-              {attachment.fileName}
-            </span>
-          </button>
-        ) : (
-          <a
-            key={attachment.id}
-            href={attachmentDownloadUrl(attachment.id)}
-            download={attachment.fileName}
-            className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm shadow-2xs hover:bg-state-hover"
-          >
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
-              <Icon name="File" className="size-3.5" />
-            </span>
-            <span className="min-w-0">
-              <span className="block max-w-48 truncate">
+              <img
+                src={attachmentDownloadUrl(attachment.id)}
+                alt={attachment.fileName}
+                className="block h-24 w-36 object-cover transition-opacity group-hover:opacity-90"
+              />
+              <span
+                className="absolute inset-x-0 bottom-0 truncate px-1.5 py-0.5 text-left text-2xs opacity-0 transition-opacity group-hover:opacity-100"
+                style={{
+                  background:
+                    "color-mix(in oklab, var(--ink) 55%, transparent)",
+                  color: "var(--canvas)",
+                }}
+              >
                 {attachment.fileName}
               </span>
-              <span className="block text-2xs text-muted-foreground">
-                {formatBytes(attachment.sizeBytes)}
+            </button>
+            {removeButton(attachment, "image")}
+          </div>
+        ) : (
+          <div
+            key={attachment.id}
+            className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm shadow-2xs"
+          >
+            <a
+              href={attachmentDownloadUrl(attachment.id)}
+              download={attachment.fileName}
+              className="flex min-w-0 items-center gap-2 rounded-sm hover:bg-state-hover"
+            >
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
+                <Icon name="File" className="size-3.5" />
               </span>
-            </span>
-          </a>
+              <span className="min-w-0">
+                <span className="block max-w-48 truncate">
+                  {attachment.fileName}
+                </span>
+                <span className="block text-2xs text-muted-foreground">
+                  {formatBytes(attachment.sizeBytes)}
+                </span>
+              </span>
+            </a>
+            {removeButton(attachment, "file")}
+          </div>
         ),
       )}
       {lightbox ? (
         <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />
       ) : null}
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirm(null);
+        }}
+        title="Remove attachment?"
+        description={
+          confirm
+            ? `"${confirm.fileName}" will be permanently removed. Any references in the task description will be removed too. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Remove"
+        destructive
+        onConfirm={() => {
+          if (confirm) void performRemove(confirm);
+        }}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
+import { TASK_SORTS, type TaskSort } from "../../shared/sort.js";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -16,6 +17,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import {
   PRIORITY_LABELS,
+  SORT_LABELS,
   STATUS_LABELS,
   type LabelFilterOption,
 } from "./lib.js";
@@ -65,6 +67,56 @@ function FilterChip({
   );
 }
 
+function SortChip({
+  sort,
+  onChange,
+}: {
+  sort: TaskSort;
+  onChange: (sort: TaskSort) => void;
+}) {
+  const active = sort !== "manual";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs",
+            active
+              ? "border-border bg-secondary text-foreground"
+              : "border-dashed border-border text-muted-foreground hover:border-input hover:text-foreground",
+          )}
+        >
+          <Icon name="Sort" className="size-3" />
+          Sort
+          {active ? (
+            <span className="font-medium">{SORT_LABELS[sort]}</span>
+          ) : null}
+        </button>
+      </DropdownMenuTrigger>
+      {/* Checkbox items with exactly-one-checked semantics: the shared radio
+          primitives render nothing on compact viewports. */}
+      <DropdownMenuContent
+        align="end"
+        className="min-w-44"
+        mobileTitle="Sort tasks"
+      >
+        {TASK_SORTS.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option}
+            checked={sort === option}
+            onCheckedChange={(checked) => {
+              if (checked === true) onChange(option);
+            }}
+          >
+            {SORT_LABELS[option]}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export interface ListFilterState {
   statuses: TaskStatus[];
   priorities: TaskPriority[];
@@ -88,17 +140,25 @@ export function hasActiveFilters(filters: ListFilterState): boolean {
 export function ListFilterBar({
   filters,
   onChange,
+  sort,
+  onSortChange,
   labelOptions,
   taskCount,
 }: {
   filters: ListFilterState;
   onChange: (filters: ListFilterState) => void;
+  sort: TaskSort;
+  onSortChange: (sort: TaskSort) => void;
   labelOptions: readonly LabelFilterOption[];
   taskCount: number | undefined;
 }) {
   const keepOpen = (event: Event) => event.preventDefault();
+  // Show the Label chip whenever there are options or a remembered selection
+  // (including stale names that no longer exist in the catalog).
+  const showLabelChip =
+    labelOptions.length > 0 || filters.labelNames.length > 0;
   return (
-    <div className="flex shrink-0 items-center gap-1.5 border-b border-border-hairline px-3.5 py-1.5">
+    <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border-hairline px-3.5 py-1.5">
       <FilterChip
         icon="Circle"
         label="Status"
@@ -153,7 +213,7 @@ export function ListFilterBar({
           </DropdownMenuCheckboxItem>
         ))}
       </FilterChip>
-      {labelOptions.length > 0 ? (
+      {showLabelChip ? (
         <FilterChip
           icon="ListTodo"
           label="Label"
@@ -185,6 +245,36 @@ export function ListFilterBar({
               </span>
             </DropdownMenuCheckboxItem>
           ))}
+          {filters.labelNames
+            .filter(
+              (name) => !labelOptions.some((option) => option.name === name),
+            )
+            .map((name) => (
+              <DropdownMenuCheckboxItem
+                key={`stale:${name}`}
+                checked
+                onSelect={keepOpen}
+                onCheckedChange={(checked) =>
+                  onChange({
+                    ...filters,
+                    labelNames: toggled(
+                      filters.labelNames,
+                      name,
+                      checked === true,
+                    ),
+                  })
+                }
+              >
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <span
+                    aria-hidden
+                    className="size-2 rounded-full bg-muted-foreground/40"
+                  />
+                  {name}
+                  <span className="text-xs">(unavailable)</span>
+                </span>
+              </DropdownMenuCheckboxItem>
+            ))}
         </FilterChip>
       ) : null}
       {hasActiveFilters(filters) ? (
@@ -197,10 +287,13 @@ export function ListFilterBar({
           Clear
         </button>
       ) : null}
-      <span className="ml-auto text-xs tabular-nums text-subtle-foreground">
-        {taskCount === undefined
-          ? ""
-          : `${taskCount} ${taskCount === 1 ? "task" : "tasks"}`}
+      <span className="ml-auto flex items-center gap-2">
+        <SortChip sort={sort} onChange={onSortChange} />
+        <span className="text-xs tabular-nums text-subtle-foreground">
+          {taskCount === undefined
+            ? ""
+            : `${taskCount} ${taskCount === 1 ? "task" : "tasks"}`}
+        </span>
       </span>
     </div>
   );

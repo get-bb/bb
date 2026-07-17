@@ -266,6 +266,37 @@ describe("Docs nav panel", () => {
     }
   });
 
+  it("passes note paths with spaces to host navigation without pre-encoding", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "Tasks follow up apis.md",
+                title: "Tasks follow up apis",
+                preview: "",
+                modifiedAtMs: 1,
+              },
+            ]),
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByText("Tasks follow up apis"));
+
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "docs",
+      options: {
+        subPath: "personal/Tasks follow up apis.md",
+        replace: false,
+      },
+    });
+  });
+
   it("only shows host status when the selected vault is unavailable", async () => {
     const available = listNotesResult([]);
     const unavailable = {

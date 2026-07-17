@@ -16,7 +16,10 @@ import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout";
+import {
+  serializeSplitLayout,
+  SPLIT_LAYOUT_STORAGE_KEY,
+} from "@/lib/split-layout";
 import type { PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
@@ -26,6 +29,7 @@ import {
 } from "@/lib/plugin-slots";
 import { PaneContext, usePaneSecondaryPanelRegistration } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
+import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 
 // Per-thread archived/deleted state consulted by the mocked useThread, driving
 // PaneStaleWatcher. Unknown threads read as "still loading" (never pruned).
@@ -183,6 +187,24 @@ function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
     },
     focusedPaneId,
   };
+}
+
+function eightPaneThreadLayout(): SplitLayout {
+  let layout: SplitLayout | null = null;
+  for (let index = 0; index < 8; index += 1) {
+    layout = applyThreadOpenToLayout(
+      layout,
+      {
+        projectId: PERSONAL_PROJECT_ID,
+        threadId: `thr-${String.fromCharCode(97 + index)}`,
+      },
+      index === 0 ? "replace" : "right",
+    );
+  }
+  if (layout === null) {
+    throw new Error("Expected eight-pane layout");
+  }
+  return layout;
 }
 
 const docsContent: PaneContent = {
@@ -344,6 +366,103 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea", () => {
+  it("keeps drag updates local and persists the resized pair once on release", () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const separator = screen.getByRole("separator");
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (!(previous instanceof HTMLElement) || !(next instanceof HTMLElement)) {
+      throw new Error("Expected adjacent split flex items");
+    }
+
+    Object.defineProperty(separator, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 406,
+      right: 806,
+      top: 0,
+      width: 400,
+      x: 406,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const scrollViewport = document.createElement("div");
+    scrollViewport.style.overflowY = "auto";
+    Object.defineProperties(scrollViewport, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 1_000 },
+    });
+    vi.spyOn(scrollViewport, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const offscreenRow = document.createElement("div");
+    offscreenRow.dataset.timelineRowId = "offscreen-row";
+    vi.spyOn(offscreenRow, "getBoundingClientRect").mockReturnValue({
+      bottom: -450,
+      height: 50,
+      left: 0,
+      right: 400,
+      top: -500,
+      width: 400,
+      x: 0,
+      y: -500,
+      toJSON: () => ({}),
+    });
+    scrollViewport.appendChild(offscreenRow);
+    previous.appendChild(scrollViewport);
+
+    const splitSizes = () => {
+      const root = store.get(splitLayoutAtom)?.root;
+      if (root?.type !== "split") {
+        throw new Error("Expected split layout");
+      }
+      return root.sizes;
+    };
+
+    fireEvent.pointerDown(separator, { clientX: 403, pointerId: 1 });
+    fireEvent.pointerMove(separator, { clientX: 564.2, pointerId: 1 });
+
+    expect(splitSizes()).toEqual([0.5, 0.5]);
+    expect(offscreenRow.style.contentVisibility).toBe("hidden");
+    expect(offscreenRow.style.containIntrinsicBlockSize).toBe("50px");
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.7, 5);
+    expect(Number.parseFloat(next.style.flexGrow)).toBeCloseTo(0.3, 5);
+
+    fireEvent.pointerUp(separator, { clientX: 564.2, pointerId: 1 });
+
+    expect(splitSizes()[0]).toBeCloseTo(0.7, 5);
+    expect(splitSizes()[1]).toBeCloseTo(0.3, 5);
+    expect(offscreenRow.style.contentVisibility).toBe("");
+    expect(offscreenRow.style.containIntrinsicBlockSize).toBe("");
+  });
+
   it("keeps the merged toggle absolute and places a visible shortcut hint below pane actions", async () => {
     commandPresentationState.isModifierHeld = true;
     commandPresentationState.shortcut = {
@@ -530,6 +649,45 @@ describe("SplitThreadArea", () => {
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
+  });
+
+  it("restores eight successive default-right opens, then focuses and closes with valid URL state", async () => {
+    const layout = eightPaneThreadLayout();
+    expect(layout.root).toMatchObject({
+      type: "split",
+      dir: "row",
+      sizes: Array.from({ length: 8 }, () => 1 / 8),
+    });
+    window.localStorage.setItem(
+      SPLIT_LAYOUT_STORAGE_KEY,
+      serializeSplitLayout(layout),
+    );
+
+    const store = renderSplitArea({ path: threadPath("thr-h") });
+
+    for (const suffix of ["a", "b", "c", "d", "e", "f", "g", "h"]) {
+      expect(await screen.findByTestId(`pane-thr-${suffix}`)).toBeTruthy();
+    }
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(8);
+    expect(screen.getByTestId("pane-thr-h").dataset.focused).toBe("true");
+
+    fireEvent.pointerDown(screen.getByTestId("pane-thr-f"));
+    await waitFor(() => {
+      expect(screen.getByTestId("pane-thr-f").dataset.focused).toBe("true");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-f"),
+      );
+    });
+
+    fireEvent.click(screen.getByTestId("close-thr-f"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("pane-thr-f")).toBeNull();
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-g"),
+      );
+    });
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-7");
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(7);
   });
 
   it("carves a plugin pane drag handle out of the macOS window-drag region", async () => {

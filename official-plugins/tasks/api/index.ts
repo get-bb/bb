@@ -6,18 +6,24 @@ import {
   type Task as StoredTask,
   type TasksStore,
 } from "../db";
-import { removeAttachmentBlobs } from "../attachments";
-import { deliverCommentToAgents } from "../steer";
+import {
+  AttachmentReferencedError,
+  deleteAttachmentById,
+  removeAttachmentBlobs,
+} from "../attachments";
+import { deliverCommentToLatestAgent } from "../steer";
 import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
   type ProjectsChangedEvent,
   type SidebarProjectSummary,
   type Task,
+  type TaskPullRequest,
   type TasksChangedEvent,
   type TasksDomainError,
   type TaskStatus,
   type CommentsChangedEvent,
+  type CommentProvider,
 } from "../shared/contract";
 
 type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
@@ -349,10 +355,107 @@ function attachmentsForTasks(
   ]);
 }
 
+/**
+ * Live display facts about an agent thread that authored a comment.
+ *   - `title`: the current human title for the byline link, or null when it
+ *     must be suppressed — a side chat (an internal conversation that must not
+ *     surface a title/link) or a thread with only a blank/whitespace title.
+ *   - `providerId`: the thread's live provider id, always present when the
+ *     thread resolves (including side chats — a brand logo exposes no link).
+ * A thread contributes no entry at all when it is deleted, hidden, or otherwise
+ * inaccessible (the SDK read rejects), so callers fall back to `authorName`
+ * with no link and no provider logo.
+ */
+interface AgentThreadInfo {
+  title: string | null;
+  providerId: string;
+}
+
+/**
+ * Resolve {@link AgentThreadInfo} for each distinct agent thread that authored
+ * one of `comments`, keyed by thread id, reading each thread once from the live
+ * SDK so renames are reflected.
+ */
+async function resolveAgentThreadInfo(
+  bb: BbPluginApi,
+  comments: readonly StoredComment[],
+): Promise<Map<string, AgentThreadInfo>> {
+  const threadIds = new Set<string>();
+  for (const comment of comments) {
+    if (comment.kind === "agent" && comment.threadId !== null) {
+      threadIds.add(comment.threadId);
+    }
+  }
+  const infos = new Map<string, AgentThreadInfo>();
+  await Promise.all(
+    [...threadIds].map(async (threadId) => {
+      try {
+        const thread = await bb.sdk.threads.get({ threadId });
+        const isSideChat =
+          thread.originKind === "side-chat" ||
+          thread.childOrigin === "side-chat";
+        // Prefer the first non-blank candidate: a whitespace-only primary
+        // title must not suppress a useful fallback. Side chats never surface
+        // a title/link, but still expose their provider.
+        const title = isSideChat
+          ? undefined
+          : [thread.title, thread.titleFallback].find(
+              (candidate) => candidate !== null && candidate.trim() !== "",
+            );
+        infos.set(threadId, {
+          title: title ?? null,
+          providerId: thread.providerId,
+        });
+      } catch {
+        // Deleted, hidden, or inaccessible threads leave no entry.
+      }
+    }),
+  );
+  return infos;
+}
+
+/**
+ * Resolve a display badge ({@link CommentProvider}) for each provider id that
+ * appears in `threadInfo`, keyed by provider id. `name`/`logoUrl` come from the
+ * live host provider list (one call, only when at least one provider is
+ * needed). A provider that is no longer installed — or a provider list that
+ * fails to load — leaves no entry, and callers fall back to a badge carrying
+ * the raw provider id so the UI can still render a brand glyph by id.
+ */
+async function resolveProviderBadges(
+  bb: BbPluginApi,
+  threadInfo: ReadonlyMap<string, AgentThreadInfo>,
+): Promise<Map<string, CommentProvider>> {
+  const providerIds = new Set(
+    [...threadInfo.values()].map((info) => info.providerId),
+  );
+  const badges = new Map<string, CommentProvider>();
+  if (providerIds.size === 0) return badges;
+  let providers: Awaited<ReturnType<typeof bb.sdk.providers.list>>;
+  try {
+    providers = await bb.sdk.providers.list();
+  } catch {
+    // Host provider list unavailable: callers fall back to raw-id badges.
+    return badges;
+  }
+  for (const provider of providers) {
+    if (providerIds.has(provider.id)) {
+      badges.set(provider.id, {
+        id: provider.id,
+        name: provider.displayName,
+        logoUrl: provider.logoUrl,
+      });
+    }
+  }
+  return badges;
+}
+
 interface CreateCommentInput {
   taskId: string;
   kind: StoredComment["kind"];
   authorName: string;
+  presetName: string | null;
+  threadId: string | null;
   body: string;
   notify: boolean;
 }
@@ -367,13 +470,15 @@ export async function createComment(
       taskId: input.taskId,
       kind: input.kind,
       authorName: input.authorName,
+      presetName: input.presetName,
+      threadId: input.threadId,
       body: input.body,
       notifiedCount: 0,
     }),
   );
 
-  if (input.notify && comment.kind === "user") {
-    const delivery = await deliverCommentToAgents(bb, store.tasks, {
+  if (input.notify) {
+    const delivery = await deliverCommentToLatestAgent(bb, store.tasks, {
       taskId: comment.taskId,
       commentId: comment.id,
       body: comment.body,
@@ -388,6 +493,152 @@ export async function createComment(
 
   publishCommentsChanged(bb, input.taskId, comment.notifiedCount);
   return comment;
+}
+
+interface TaskPullRequestsResult {
+  pullRequests: TaskPullRequest[];
+  unavailableThreadIds: string[];
+}
+
+/** Cap on simultaneous environment PR lookups — each one may shell out to
+ *  `gh` on the host, so a task with many worktrees must not stampede it. */
+const PULL_REQUEST_LOOKUP_CONCURRENCY = 4;
+
+/**
+ * Run `work` over every item with at most `limit` invocations in flight.
+ * Results keep item order. Rejections propagate to the caller.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await work(items[index]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Resolve the pull requests reachable from a task's attached threads: each
+ * thread's environment PR (the branch its agent pushed), deduplicated by URL.
+ * Thread metadata resolves concurrently, then threads are grouped by
+ * environment so each distinct environment costs exactly one lookup, and
+ * those lookups run with bounded concurrency. A thread lands in
+ * `unavailableThreadIds` when its metadata cannot be read (deleted thread) or
+ * its environment lookup reports/throws "unavailable" (gh missing, not
+ * authenticated, unreachable workspace); threads with no environment or a
+ * genuinely absent PR simply produce nothing.
+ */
+async function listTaskPullRequests(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  taskId: string,
+): Promise<TaskPullRequestsResult> {
+  const taskThreads = store.tasks.listTaskThreads(taskId);
+
+  const unavailable = new Set<string>();
+  const threadIdsByEnvironment = new Map<string, string[]>();
+  await Promise.all(
+    taskThreads.map(async (taskThread) => {
+      try {
+        const thread = await bb.sdk.threads.get({
+          threadId: taskThread.threadId,
+        });
+        if (!thread.environmentId) return;
+        const group = threadIdsByEnvironment.get(thread.environmentId) ?? [];
+        group.push(taskThread.threadId);
+        threadIdsByEnvironment.set(thread.environmentId, group);
+      } catch {
+        unavailable.add(taskThread.threadId);
+      }
+    }),
+  );
+
+  const byUrl = new Map<string, TaskPullRequest>();
+  await mapWithConcurrency(
+    [...threadIdsByEnvironment.entries()],
+    PULL_REQUEST_LOOKUP_CONCURRENCY,
+    async ([environmentId, threadIds]) => {
+      let result: Awaited<
+        ReturnType<BbPluginApi["sdk"]["environments"]["pullRequest"]>
+      >;
+      try {
+        result = await bb.sdk.environments.pullRequest({ environmentId });
+      } catch {
+        for (const threadId of threadIds) unavailable.add(threadId);
+        return;
+      }
+      if (result.outcome === "unavailable") {
+        for (const threadId of threadIds) unavailable.add(threadId);
+        return;
+      }
+      if (result.outcome === "absent") return;
+      const { pullRequest } = result;
+      const existing = byUrl.get(pullRequest.url);
+      if (!existing) {
+        byUrl.set(pullRequest.url, {
+          url: pullRequest.url,
+          number: pullRequest.number,
+          title: pullRequest.title,
+          state: pullRequest.state,
+          updatedAt: pullRequest.updatedAt,
+          threadIds: [...threadIds],
+        });
+        return;
+      }
+      // Two environments can surface the same PR (e.g. two worktrees on the
+      // same branch). Union the threads and keep the freshest payload so a
+      // stale duplicate never masks a newer state.
+      const threadIdUnion = [...existing.threadIds, ...threadIds];
+      if (pullRequest.updatedAt.localeCompare(existing.updatedAt) > 0) {
+        byUrl.set(pullRequest.url, {
+          url: pullRequest.url,
+          number: pullRequest.number,
+          title: pullRequest.title,
+          state: pullRequest.state,
+          updatedAt: pullRequest.updatedAt,
+          threadIds: threadIdUnion,
+        });
+      } else {
+        existing.threadIds = threadIdUnion;
+      }
+    },
+  );
+
+  // Keep both lists in stable task-thread order regardless of lookup timing.
+  const threadOrder = new Map(
+    taskThreads.map((taskThread, index) => [taskThread.threadId, index]),
+  );
+  const orderByThread = (threadId: string) =>
+    threadOrder.get(threadId) ?? Number.MAX_SAFE_INTEGER;
+  const pullRequests = [...byUrl.values()].map((pullRequest) => ({
+    ...pullRequest,
+    threadIds: [...pullRequest.threadIds].sort(
+      (left, right) => orderByThread(left) - orderByThread(right),
+    ),
+  }));
+
+  return {
+    // Most recently updated first, matching how the threads list surfaces
+    // the freshest work.
+    pullRequests: pullRequests.sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    ),
+    unavailableThreadIds: [...unavailable].sort(
+      (left, right) => orderByThread(left) - orderByThread(right),
+    ),
+  };
 }
 
 export function registerHandlers(
@@ -503,6 +754,10 @@ export function registerHandlers(
     },
     getTask(input) {
       const task = store.tasks.getTask(input.taskId);
+      return { task: task ? apiTask(store, task) : null };
+    },
+    getTaskByKey(input) {
+      const task = store.tasks.getTaskByKey(input.taskKey);
       return { task: task ? apiTask(store, task) : null };
     },
     updateTask(input) {
@@ -646,13 +901,37 @@ export function registerHandlers(
         taskId: input.taskId,
         kind: "user",
         authorName: "You",
+        presetName: null,
+        threadId: null,
         body: input.body,
         notify: input.notify,
       });
       return { comment };
     },
-    listComments(input) {
-      return { comments: store.tasks.listComments(input.taskId) };
+    async listComments(input) {
+      const comments = store.tasks.listComments(input.taskId);
+      const threadInfo = await resolveAgentThreadInfo(bb, comments);
+      const providerBadges = await resolveProviderBadges(bb, threadInfo);
+      return {
+        comments: comments.map((comment) => {
+          const info =
+            comment.kind === "agent" && comment.threadId !== null
+              ? threadInfo.get(comment.threadId)
+              : undefined;
+          return {
+            ...comment,
+            threadTitle: info?.title ?? null,
+            provider:
+              info === undefined
+                ? null
+                : (providerBadges.get(info.providerId) ?? {
+                    id: info.providerId,
+                    name: info.providerId,
+                    logoUrl: null,
+                  }),
+          };
+        }),
+      };
     },
     listAttachments(input) {
       const attachments =
@@ -663,8 +942,41 @@ export function registerHandlers(
         attachments: attachments.map(attachmentMetadata),
       };
     },
+    async deleteAttachment(input) {
+      try {
+        const attachment = await deleteAttachmentById(
+          bb,
+          store.tasks,
+          input.attachmentId,
+          {
+            removeDescriptionReferences: input.removeDescriptionReferences,
+          },
+        );
+        return attachment
+          ? {
+              ok: true,
+              deleted: true,
+              attachment: attachmentMetadata(attachment),
+            }
+          : { ok: true, deleted: false, attachment: null };
+      } catch (error) {
+        if (error instanceof AttachmentReferencedError) {
+          return {
+            ok: false,
+            error: {
+              code: "attachment_referenced",
+              message: error.message,
+            },
+          };
+        }
+        throw error;
+      }
+    },
     listTaskThreads(input) {
       return { taskThreads: store.tasks.listTaskThreads(input.taskId) };
+    },
+    async listTaskPullRequests(input) {
+      return listTaskPullRequests(bb, store, input.taskId);
     },
     createPreset(input) {
       const preset = store.tasks.createPreset({ ...input, builtin: false });
@@ -773,7 +1085,7 @@ export function registerHandlers(
       };
     },
     async listBbProjects() {
-      const projects = await bb.sdk.projects.list();
+      const projects = await bb.sdk.projects.list({ includePersonal: true });
       return {
         bbProjects: projects.map((project) => ({
           id: project.id,

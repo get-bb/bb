@@ -141,6 +141,41 @@ export const commentSchema = z
   })
   .strict();
 
+/**
+ * Identity of the provider (agent) that authored an agent comment, resolved at
+ * read time from the authoring thread's live `providerId`. `name` and
+ * `logoUrl` come from the host provider list; `logoUrl` is populated only for
+ * providers that serve a logo asset (custom ACP agents) — built-in providers
+ * carry a null `logoUrl` and the UI renders a bundled brand glyph keyed by
+ * `id`. `name` falls back to the raw provider id when the provider is no longer
+ * installed. See `commentProviderSchema` usages in `displayCommentSchema`.
+ */
+export const commentProviderSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    logoUrl: z.string().nullable(),
+  })
+  .strict();
+
+/**
+ * A comment enriched for display with (a) the current human title of the agent
+ * thread that authored it and (b) the authoring provider. Both are resolved at
+ * read time against the live thread. `threadTitle` is null for user/system
+ * comments, legacy agent comments that carry no `threadId`, and threads that
+ * are deleted, hidden, side chats, or otherwise inaccessible — callers fall
+ * back to `authorName` and render no link. `provider` is null for user/system
+ * comments, legacy agent comments with no `threadId`, and threads that are
+ * deleted/hidden/inaccessible; it is present (and drives the comment's logo)
+ * whenever the authoring thread resolves, including side chats.
+ */
+export const displayCommentSchema = commentSchema
+  .extend({
+    threadTitle: z.string().nullable(),
+    provider: commentProviderSchema.nullable(),
+  })
+  .strict();
+
 export const attachmentSchema = z
   .object({
     id: idSchema,
@@ -164,6 +199,25 @@ export const taskThreadSchema = z
     liveStatus: z.enum(TASK_THREAD_LIVE_STATUSES),
     attachedAt: z.string(),
     updatedAt: z.string(),
+  })
+  .strict();
+
+/**
+ * A GitHub pull request associated with a task through an attached thread's
+ * environment (the branch the delegated agent pushed). Assembled server-side
+ * from environment pull-request metadata — never scraped from comments.
+ * `state` matches the server's product-facing PR state, which already folds
+ * GitHub's isDraft flag into a single enum.
+ */
+export const taskPullRequestSchema = z
+  .object({
+    url: z.string().url(),
+    number: z.number().int().positive(),
+    title: z.string(),
+    state: z.enum(["open", "draft", "merged", "closed"]),
+    updatedAt: z.string(),
+    /** Task threads whose environment resolved to this pull request. */
+    threadIds: z.array(z.string().startsWith("thr_")).min(1),
   })
   .strict();
 
@@ -193,6 +247,7 @@ export const tasksDomainErrorSchema = z
       "label_project_mismatch",
       "project_not_empty",
       "project_prefix_conflict",
+      "attachment_referenced",
     ]),
     message: z.string(),
   })
@@ -210,6 +265,24 @@ const projectMutationResultSchema = z.discriminatedUnion("ok", [
 
 const projectDeleteResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), deleted: z.boolean() }).strict(),
+  z.object({ ok: z.literal(false), error: tasksDomainErrorSchema }).strict(),
+]);
+
+const attachmentDeleteResultSchema = z.union([
+  z
+    .object({
+      ok: z.literal(true),
+      deleted: z.literal(true),
+      attachment: attachmentSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ok: z.literal(true),
+      deleted: z.literal(false),
+      attachment: z.null(),
+    })
+    .strict(),
   z.object({ ok: z.literal(false), error: tasksDomainErrorSchema }).strict(),
 ]);
 
@@ -412,6 +485,15 @@ export const tasksRpcContract = defineRpcContract({
     input: z.object({ taskId: idSchema }).strict(),
     output: z.object({ task: taskSchema.nullable() }).strict(),
   },
+  /**
+   * Resolve a task key like "TSK-4" with one targeted query. The prefix is
+   * matched case-insensitively; a malformed key resolves to null rather than
+   * erroring so stale chat references degrade to the card's not-found state.
+   */
+  getTaskByKey: {
+    input: z.object({ taskKey: nonBlankStringSchema }).strict(),
+    output: z.object({ task: taskSchema.nullable() }).strict(),
+  },
   updateTask: {
     input: updateTaskInputSchema,
     output: taskMutationResultSchema,
@@ -487,7 +569,7 @@ export const tasksRpcContract = defineRpcContract({
   },
   listComments: {
     input: z.object({ taskId: idSchema }).strict(),
-    output: z.object({ comments: z.array(commentSchema) }).strict(),
+    output: z.object({ comments: z.array(displayCommentSchema) }).strict(),
   },
   listAttachments: {
     input: z.union([
@@ -496,9 +578,33 @@ export const tasksRpcContract = defineRpcContract({
     ]),
     output: z.object({ attachments: z.array(attachmentSchema) }).strict(),
   },
+  deleteAttachment: {
+    input: z
+      .object({
+        attachmentId: idSchema,
+        removeDescriptionReferences: z.boolean().default(false),
+      })
+      .strict(),
+    output: attachmentDeleteResultSchema,
+  },
   listTaskThreads: {
     input: z.object({ taskId: idSchema }).strict(),
     output: z.object({ taskThreads: z.array(taskThreadSchema) }).strict(),
+  },
+  // Pull requests reached through the task's attached threads, deduplicated
+  // by URL. Threads whose PR lookup failed (deleted thread, gh missing or
+  // unauthenticated, unreachable workspace) are reported in
+  // `unavailableThreadIds` rather than failing the whole call — distinct from
+  // threads with no environment or a genuinely absent PR, which produce
+  // nothing.
+  listTaskPullRequests: {
+    input: z.object({ taskId: idSchema }).strict(),
+    output: z
+      .object({
+        pullRequests: z.array(taskPullRequestSchema),
+        unavailableThreadIds: z.array(z.string().startsWith("thr_")),
+      })
+      .strict(),
   },
   createPreset: {
     input: z
@@ -648,8 +754,11 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 export type Label = z.infer<typeof labelSchema>;
 export type Comment = z.infer<typeof commentSchema>;
+export type CommentProvider = z.infer<typeof commentProviderSchema>;
+export type DisplayComment = z.infer<typeof displayCommentSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
 export type TaskThread = z.infer<typeof taskThreadSchema>;
+export type TaskPullRequest = z.infer<typeof taskPullRequestSchema>;
 export type Preset = z.infer<typeof presetSchema>;
 export type TasksDomainError = z.infer<typeof tasksDomainErrorSchema>;
 export type TaskMutationResult = z.infer<typeof taskMutationResultSchema>;

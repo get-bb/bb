@@ -404,6 +404,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffPatch": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.pull_request": {
+    outcome: "available",
     pullRequest: {
       number: 42,
       title: "Add host RPC guard",
@@ -537,7 +538,15 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
     {
       name: "workspace.pull_request no-PR result",
       commandType: "workspace.pull_request",
-      result: { pullRequest: null },
+      result: { outcome: "absent" },
+    },
+    {
+      name: "workspace.pull_request unavailable result",
+      commandType: "workspace.pull_request",
+      result: {
+        outcome: "unavailable",
+        message: "GitHub CLI is not available",
+      },
     },
   ];
 

@@ -218,6 +218,7 @@ function ThreadDetailTestPaneProvider({
   const value: PaneContextValue = {
     paneId: "pane-test",
     isFocused: isFocusedHosted,
+    isSplitPane: true,
     secondaryPanelHost: hostedPaneRegistration,
     reservesWindowPanelToggle: false,
     onRequestClose: noop,
@@ -288,6 +289,7 @@ function makeThread(
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     childOrigin: null,
     status: "idle",
     stopRequestedAt: null,

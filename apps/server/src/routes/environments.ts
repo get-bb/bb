@@ -154,6 +154,11 @@ function isWorktreeEnvironment(environment: Environment): boolean {
   return resolveEnvironmentWorkspaceDisplayKind({ environment }) !== "other";
 }
 
+/**
+ * PR lookup for action preconditions (ready/draft/merge). Both "absent" and
+ * "unavailable" resolve to `null` here: either way there is no PR the action
+ * can operate on, and the action's own 409 carries the user-facing message.
+ */
 async function getPullRequestForWorkspaceTarget(
   deps: AppDeps,
   target: ReturnType<typeof requireWorkspaceCommandTarget>,
@@ -167,7 +172,9 @@ async function getPullRequestForWorkspaceTarget(
       workspaceContext: target.workspaceContext,
     },
   });
-  return assembleThreadPullRequest(result.pullRequest);
+  return result.outcome === "available"
+    ? assembleThreadPullRequest(result.pullRequest)
+    : null;
 }
 
 function assertCanMarkPullRequestReady(
@@ -351,7 +358,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     );
     // A non-git environment has no branch and therefore no PR; skip the daemon.
     if (!environment.isGitRepo) {
-      return context.json({ pullRequest: null });
+      return context.json({ outcome: "absent" });
     }
     const target = requireWorkspaceCommandTarget(environment);
     const result = await callHostRetryableOnlineRpc(deps, {
@@ -363,9 +370,16 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         workspaceContext: target.workspaceContext,
       },
     });
-    return context.json({
-      pullRequest: assembleThreadPullRequest(result.pullRequest),
-    });
+    if (result.outcome === "available") {
+      return context.json({
+        outcome: "available",
+        pullRequest: assembleThreadPullRequest(result.pullRequest),
+      });
+    }
+    if (result.outcome === "unavailable") {
+      return context.json({ outcome: "unavailable", message: result.message });
+    }
+    return context.json({ outcome: "absent" });
   });
 
   get(routes.diff, async (context, query) => {

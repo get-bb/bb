@@ -123,16 +123,6 @@ describe("workflows plugin", () => {
             ],
           }),
         },
-        threadFolders: {
-          list: async () => [
-            {
-              id: "workflow-folder",
-              name: "Workflow",
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          ],
-        },
       },
     });
     hosts.push(harness);
@@ -187,7 +177,11 @@ describe("workflows plugin", () => {
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).not.toHaveProperty(
       "parentThreadId",
     );
+    expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).not.toHaveProperty(
+      "folderId",
+    );
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+      visibility: "hidden",
       prompt: expect.stringContaining(
         "Use bb_workflow_result to return your final response in the requested structured format. You MUST call this tool exactly once at the end of your response",
       ),
@@ -807,16 +801,6 @@ describe("workflow resume cache integration", () => {
             modelLoadError: null,
           }),
         },
-        threadFolders: {
-          list: async () => [
-            {
-              id: "workflow-folder",
-              name: "Workflow",
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          ],
-        },
       },
     });
     hosts.push(harness);
@@ -854,6 +838,44 @@ describe("workflow resume cache integration", () => {
       },
     };
   }
+
+  it("retries a transient provider failure before settling the call", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    const run = await test.start(
+      workflowSource(`return await agent("retry-me");`),
+      null,
+    );
+
+    await eventually(() => expect(test.childCount()).toBe(1));
+    test.service.onThreadFailed(
+      "cache-child-1",
+      "Provider command failed: Provider overload",
+    );
+    await eventually(() => expect(test.childCount()).toBe(2));
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "running",
+      childThreadId: "cache-child-2",
+      providerRetryAttempts: 1,
+      error: null,
+    });
+
+    await test.finish("cache-child-2", "recovered");
+    await eventually(() => {
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "succeeded",
+        resultJson: '"recovered"',
+      });
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "succeeded",
+        providerRetryAttempts: 1,
+      });
+    });
+
+    controller.abort();
+    await worker;
+  });
 
   it("replays exactly the longest unchanged prefix across display edits and insertion", async () => {
     const test = setup();
@@ -937,7 +959,7 @@ describe("workflow resume cache integration", () => {
     await worker;
   });
 
-  it("replays a sequential prefix and reruns a reverse-completed parallel suffix", async () => {
+  it("replays a reverse-completed parallel suffix in deterministic invocation order", async () => {
     const test = setup();
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
@@ -961,29 +983,25 @@ describe("workflow resume cache integration", () => {
       expect(getRunRequired(test.db, original.id)).toMatchObject({
         status: "succeeded",
         replaySafetyVersion: 1,
-        replayBarrierIndex: 1,
+        replayBarrierIndex: null,
       }),
     );
 
     const resumed = await test.start(source, original.id);
-    await eventually(() => expect(test.childCount()).toBe(6));
-    expect(getCall(test.db, resumed.id, 0)?.replaySource).toBe("resumed-run");
-    expect(getCall(test.db, resumed.id, 1)?.replaySource).toBeNull();
-    expect(getCall(test.db, resumed.id, 2)?.replaySource).toBeNull();
-    await test.finish("cache-child-6", "right-live");
-    await test.finish("cache-child-5", "left-live");
-    await eventually(() => expect(test.childCount()).toBe(7));
-    expect(getCall(test.db, resumed.id, 3)).toMatchObject({
-      prompt: "after:left-live,right-live",
-      replaySource: null,
-    });
-    await test.finish("cache-child-7", "after-live");
     await eventually(() =>
       expect(getRunRequired(test.db, resumed.id)).toMatchObject({
         status: "succeeded",
-        replayBarrierIndex: 1,
+        replayBarrierIndex: null,
+        resultJson:
+          '["prefix-value",["left-value","right-value"],"after-value"]',
       }),
     );
+    expect(test.childCount()).toBe(4);
+    for (let index = 0; index < 4; index += 1) {
+      expect(getCall(test.db, resumed.id, index)?.replaySource).toBe(
+        "resumed-run",
+      );
+    }
 
     const inserted = await test.start(
       workflowSource(`
@@ -996,17 +1014,17 @@ describe("workflow resume cache integration", () => {
         return [inserted, prefix, pair];`),
       original.id,
     );
-    await eventually(() => expect(test.childCount()).toBe(8));
+    await eventually(() => expect(test.childCount()).toBe(5));
     expect(getCall(test.db, inserted.id, 0)?.replaySource).toBeNull();
-    await test.finish("cache-child-8", "inserted-live");
-    await eventually(() => expect(test.childCount()).toBe(9));
+    await test.finish("cache-child-5", "inserted-live");
+    await eventually(() => expect(test.childCount()).toBe(6));
     expect(getCall(test.db, inserted.id, 1)?.replaySource).toBeNull();
-    await test.finish("cache-child-9", "prefix-live");
-    await eventually(() => expect(test.childCount()).toBe(11));
+    await test.finish("cache-child-6", "prefix-live");
+    await eventually(() => expect(test.childCount()).toBe(8));
     expect(getCall(test.db, inserted.id, 2)?.replaySource).toBeNull();
     expect(getCall(test.db, inserted.id, 3)?.replaySource).toBeNull();
-    await test.finish("cache-child-10", "left-inserted");
-    await test.finish("cache-child-11", "right-inserted");
+    await test.finish("cache-child-7", "left-inserted");
+    await test.finish("cache-child-8", "right-inserted");
     await eventually(() =>
       expect(getRunRequired(test.db, inserted.id).status).toBe("succeeded"),
     );
@@ -1015,7 +1033,7 @@ describe("workflow resume cache integration", () => {
     await worker;
   });
 
-  it("does not replay a sequential ancestor suffix edited into parallel execution", async () => {
+  it("replays an unchanged call sequence edited from sequential to parallel", async () => {
     const test = setup();
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
@@ -1050,25 +1068,25 @@ describe("workflow resume cache integration", () => {
         return [prefix, suffix];`),
       original.id,
     );
-    await eventually(() => expect(test.childCount()).toBe(5));
-    expect(getRunRequired(test.db, resumed.id).replayBarrierIndex).toBe(1);
-    expect(getCall(test.db, resumed.id, 0)?.replaySource).toBe("resumed-run");
-    expect(getCall(test.db, resumed.id, 1)?.replaySource).toBeNull();
-    expect(getCall(test.db, resumed.id, 2)?.replaySource).toBeNull();
-    await test.finish("cache-child-5", "right-live");
-    await test.finish("cache-child-4", "left-live");
     await eventually(() =>
       expect(getRunRequired(test.db, resumed.id)).toMatchObject({
         status: "succeeded",
-        resultJson: '["prefix-old",["left-live","right-live"]]',
+        replayBarrierIndex: null,
+        resultJson: '["prefix-old",["left-old","right-old"]]',
       }),
     );
+    expect(test.childCount()).toBe(3);
+    for (let index = 0; index < 3; index += 1) {
+      expect(getCall(test.db, resumed.id, index)?.replaySource).toBe(
+        "resumed-run",
+      );
+    }
 
     controller.abort();
     await worker;
   });
 
-  it("preserves streaming pipeline order while rerunning its concurrent frontier", async () => {
+  it("replays a streaming pipeline until downstream invocation order diverges", async () => {
     const test = setup();
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
@@ -1098,7 +1116,7 @@ describe("workflow resume cache integration", () => {
     await eventually(() =>
       expect(getRunRequired(test.db, original.id)).toMatchObject({
         status: "succeeded",
-        replayBarrierIndex: 1,
+        replayBarrierIndex: null,
         resultJson: '["prefix",["zero-final","one-final"]]',
       }),
     );
@@ -1106,14 +1124,24 @@ describe("workflow resume cache integration", () => {
     const resumed = await test.start(source, original.id);
     await eventually(() => expect(test.childCount()).toBe(7));
     expect(getCall(test.db, resumed.id, 0)?.replaySource).toBe("resumed-run");
-    expect(getCall(test.db, resumed.id, 1)?.prompt).toBe("stage1:0:zero");
-    expect(getCall(test.db, resumed.id, 2)?.prompt).toBe("stage1:1:one");
-    await test.finish("cache-child-7", "one-stage1-live");
-    await eventually(() => expect(test.childCount()).toBe(8));
-    await test.finish("cache-child-8", "one-final-live");
-    await test.finish("cache-child-6", "zero-stage1-live");
-    await eventually(() => expect(test.childCount()).toBe(9));
-    await test.finish("cache-child-9", "zero-final-live");
+    expect(getCall(test.db, resumed.id, 1)).toMatchObject({
+      prompt: "stage1:0:zero",
+      replaySource: "resumed-run",
+    });
+    expect(getCall(test.db, resumed.id, 2)).toMatchObject({
+      prompt: "stage1:1:one",
+      replaySource: "resumed-run",
+    });
+    expect(getCall(test.db, resumed.id, 3)).toMatchObject({
+      prompt: "stage2:0:zero-stage1:zero",
+      replaySource: null,
+    });
+    expect(getCall(test.db, resumed.id, 4)).toMatchObject({
+      prompt: "stage2:1:one-stage1:one",
+      replaySource: null,
+    });
+    await test.finish("cache-child-6", "zero-final-live");
+    await test.finish("cache-child-7", "one-final-live");
     await eventually(() =>
       expect(getRunRequired(test.db, resumed.id).resultJson).toBe(
         '["prefix",["zero-final-live","one-final-live"]]',
@@ -1326,7 +1354,7 @@ describe("workflow resume cache integration", () => {
     await secondWorker;
   });
 
-  it("replays only the safe same-run prefix after interrupting a concurrent suffix", async () => {
+  it("replays only completed same-run calls after interrupting a concurrent suffix", async () => {
     const test = setup();
     const source = workflowSource(`
       const prefix = await agent("restart-prefix");
@@ -1341,7 +1369,7 @@ describe("workflow resume cache integration", () => {
     await eventually(() => expect(test.childCount()).toBe(1));
     await test.finish("cache-child-1", "prefix");
     await eventually(() => expect(test.childCount()).toBe(3));
-    expect(getRunRequired(test.db, run.id).replayBarrierIndex).toBe(1);
+    expect(getRunRequired(test.db, run.id).replayBarrierIndex).toBeNull();
     firstController.abort();
     await firstWorker;
 

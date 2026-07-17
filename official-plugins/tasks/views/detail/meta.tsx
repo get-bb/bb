@@ -1,8 +1,10 @@
 import type {
   TaskPriority,
+  TaskPullRequest,
   TaskStatus,
   TaskThread,
 } from "../../shared/contract.js";
+import type { IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -188,6 +190,33 @@ export const THREAD_STATUS_META: Record<
   failed: {
     label: "Failed",
     dotClassName: "bg-destructive",
+    textClassName: "text-destructive",
+  },
+};
+
+/** Mirrors the app's PR pill styling (see apps/app pull-request-display). */
+export const PR_STATE_META: Record<
+  TaskPullRequest["state"],
+  { label: string; icon: IconName; textClassName: string }
+> = {
+  open: {
+    label: "Open",
+    icon: "GitPullRequestArrow",
+    textClassName: "text-success",
+  },
+  draft: {
+    label: "Draft",
+    icon: "GitPullRequestDraft",
+    textClassName: "text-muted-foreground",
+  },
+  merged: {
+    label: "Merged",
+    icon: "GitMerge",
+    textClassName: "text-pr-merged",
+  },
+  closed: {
+    label: "Closed",
+    icon: "GitPullRequestClosed",
     textClassName: "text-destructive",
   },
 };

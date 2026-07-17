@@ -6,7 +6,7 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
-import { PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { Suggestion, type SuggestionProps } from "@tiptap/suggestion";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -232,6 +232,35 @@ export const ThreadMention = Node.create({
   },
 });
 
+// Keeps a trailing empty paragraph after a terminal leaf block (a block image
+// or horizontal rule). Such a leaf offers no place for a text caret after it,
+// so a description whose only content is an image would otherwise be
+// impossible to focus or extend. The empty paragraph adds no characters when
+// the document is serialized back to markdown for an image-terminal document.
+// Runs only on transactions (not initial construction) and only while the
+// editor is editable; the host seeds the initial document separately.
+export const TrailingParagraph = Extension.create({
+  name: "trailingParagraph",
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+    return [
+      new Plugin({
+        key: new PluginKey("trailingParagraph"),
+        appendTransaction: (_transactions, _oldState, newState) => {
+          if (!editor.isEditable) return null;
+          const last = newState.doc.lastChild;
+          const paragraph = newState.schema.nodes.paragraph;
+          if (!paragraph || !last || !last.type.isLeaf) return null;
+          return newState.tr.insert(
+            newState.doc.content.size,
+            paragraph.create(),
+          );
+        },
+      }),
+    ];
+  },
+});
+
 export interface MentionSuggestionHandle {
   getItems(query: string): Promise<MentionItem[]>;
   onChange(props: SuggestionProps<MentionItem, MentionItem>): void;
@@ -299,6 +328,7 @@ export function createEditorExtensions(options?: {
     MarkdownTaskInput,
     TaskMention,
     ThreadMention,
+    TrailingParagraph,
     MentionSuggestion.configure({
       handle: options?.mentionHandle ?? null,
     }),

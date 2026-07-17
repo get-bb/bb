@@ -1,10 +1,32 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
+import { describe, expect, it, vi } from "vitest";
 
+import { createStore } from "../api";
 import plugin from "../server";
+
+// Passthrough mock with one injectable failure: files named boom.bin fail at
+// blob-write time, simulating a post-preflight persistence error so the
+// create --attach partial-failure path is deterministic.
+vi.mock("../attachments", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../attachments")>();
+  const saveAttachmentFromPath: typeof actual.saveAttachmentFromPath = async (
+    store,
+    sourcePath,
+    options,
+  ) => {
+    if (sourcePath.endsWith("boom.bin")) {
+      throw new Error("simulated blob write failure");
+    }
+    return actual.saveAttachmentFromPath(store, sourcePath, options);
+  };
+  return { ...actual, saveAttachmentFromPath };
+});
 
 function stdout(result: {
   exitCode: number;
@@ -32,7 +54,24 @@ describe("bb tasks CLI", () => {
   });
 
   it("runs create, list, show, update, and comment through case-insensitive key addressing", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }) =>
+            makeThreadResponse({
+              id: threadId,
+              title: "CLI provider worker",
+              providerId: "codex",
+            }),
+        },
+        providers: {
+          list: async () => [
+            { id: "codex", displayName: "Codex", logoUrl: null },
+          ],
+        },
+      },
+    });
     await plugin(bb);
 
     const projectResult = await harness.runCli([
@@ -87,10 +126,10 @@ describe("bb tasks CLI", () => {
 
     const listResult = await harness.runCli(["list", "--project", "CLI"]);
     expect(stdout(listResult)).toContain(
-      "KEY    STATUS   PRIORITY  TITLE                   LABELS   AGENTS",
+      "KEY    STATUS   PRIORITY  DUE  TITLE                   LABELS   AGENTS",
     );
     expect(listResult.stdout).toContain(
-      "CLI-1  backlog  medium    Ship the canonical CLI  Backend  0",
+      "CLI-1  backlog  medium    -    Ship the canonical CLI  Backend  0",
     );
 
     const showResult = await harness.runCli(["show", "cli-1", "--json"]);
@@ -153,9 +192,110 @@ describe("bb tasks CLI", () => {
           kind: "system",
           body: "Priority changed to High by cli",
         }),
-        expect.objectContaining({ kind: "agent", body: "Ready for review." }),
+        expect.objectContaining({
+          kind: "agent",
+          body: "Ready for review.",
+          threadTitle: "CLI provider worker",
+          provider: { id: "codex", name: "Codex", logoUrl: null },
+        }),
       ]),
     );
+
+    const updatedShowTable = stdout(
+      await harness.runCli(["show", createPayload.task.id]),
+    );
+    expect(updatedShowTable).toContain(
+      "TIME                      KIND    AUTHOR               PROVIDER  BODY",
+    );
+    const agentRow = updatedShowTable
+      .split("\n")
+      .find((line) => line.includes("Ready for review."));
+    expect(agentRow).toContain("agent");
+    expect(agentRow).toContain("CLI provider worker");
+    expect(agentRow).toContain("Codex");
+
+    await harness.dispose();
+  });
+
+  it("sorts list output by priority or due date and rejects unknown sorts", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Sorted",
+        "--prefix",
+        "SRT",
+        "--json",
+      ]),
+    );
+    const seed = [
+      { title: "No priority", args: [] },
+      {
+        title: "High later",
+        args: ["--priority", "high", "--due", "2026-08-01"],
+      },
+      {
+        title: "High soon",
+        args: ["--priority", "high", "--due", "2026-07-20"],
+      },
+      { title: "Urgent undated", args: ["--priority", "urgent"] },
+    ];
+    for (const task of seed) {
+      stdout(
+        await harness.runCli([
+          "create",
+          "--project",
+          "SRT",
+          "--title",
+          task.title,
+          ...task.args,
+          "--json",
+        ]),
+      );
+    }
+
+    const byPriority = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "list",
+          "--project",
+          "SRT",
+          "--sort",
+          "priority",
+          "--json",
+        ]),
+      ),
+    );
+    expect(
+      byPriority.tasks.map((task: { title: string }) => task.title),
+    ).toEqual(["Urgent undated", "High soon", "High later", "No priority"]);
+
+    const byDue = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "list",
+          "--project",
+          "SRT",
+          "--sort",
+          "due",
+          "--json",
+        ]),
+      ),
+    );
+    expect(byDue.tasks.map((task: { title: string }) => task.title)).toEqual([
+      "High soon",
+      "High later",
+      "Urgent undated",
+      "No priority",
+    ]);
+
+    const invalid = await harness.runCli(["list", "--sort", "sideways"]);
+    expect(invalid.exitCode).not.toBe(0);
+    expect(invalid.stderr).toContain("invalid sort");
 
     await harness.dispose();
   });
@@ -516,31 +656,405 @@ describe("bb tasks CLI", () => {
         presetName: "Attached",
       }),
     ]);
+    const taskStore = createStore(bb).tasks;
+    taskStore.createComment({
+      taskId: threads.task.id,
+      kind: "agent",
+      authorName: "Prior worker",
+      threadId: "thr_prior_worker",
+      body: "Prior reply from another agent.",
+    });
 
     const notified = JSON.parse(
       stdout(
-        await harness.runCli([
-          "comment",
-          "ATT-1",
-          "--body",
-          "Include the new edge case.",
-          "--notify",
-          "--json",
-        ]),
+        await harness.runCli(
+          [
+            "comment",
+            "ATT-1",
+            "--body",
+            "Include the new edge case.",
+            "--author",
+            "Custom CLI agent",
+            "--notify",
+            "--json",
+          ],
+          { threadId: "thr_cli_sender", projectId: "proj_bb" },
+        ),
       ),
     ).comment;
     expect(notified).toMatchObject({
       taskId: threads.task.id,
+      kind: "agent",
+      authorName: "Custom CLI agent",
+      threadId: "thr_cli_sender",
+      body: "Include the new edge case.",
+      notifiedCount: 1,
+    });
+    expect(taskStore.getComment(notified.id)).toMatchObject({
+      kind: "agent",
+      authorName: "Custom CLI agent",
+      threadId: "thr_cli_sender",
       notifiedCount: 1,
     });
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [
         expect.objectContaining({
-          threadId: "thr_cli_self",
-          mode: "steer",
+          threadId: "thr_prior_worker",
+          mode: "steer-if-active",
         }),
       ],
     ]);
+
+    await harness.dispose();
+  });
+
+  it("creates a task with --attach files after validating every source path", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-tasks-cli-"));
+    const notesPath = join(directory, "notes.txt");
+    const pngPath = join(directory, "pixel.png");
+    await writeFile(notesPath, "attach me at create\n", "utf8");
+    await writeFile(
+      pngPath,
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    try {
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          "Attach",
+          "--prefix",
+          "ATT",
+        ]),
+      );
+
+      // A bad path fails before anything is created — no half-built task.
+      const missing = await harness.runCli([
+        "create",
+        "--project",
+        "att",
+        "--title",
+        "Broken attach",
+        "--attach",
+        join(directory, "missing.bin"),
+      ]);
+      expect(missing.exitCode).toBe(1);
+      expect(missing.stderr).toContain("attachment source is not a file");
+
+      // Preflight also enforces the shared 25 MB upload limit.
+      const hugePath = join(directory, "huge.bin");
+      await writeFile(hugePath, "");
+      await truncate(hugePath, 25 * 1024 * 1024 + 1);
+      const oversized = await harness.runCli([
+        "create",
+        "--project",
+        "att",
+        "--title",
+        "Oversized attach",
+        "--attach",
+        hugePath,
+      ]);
+      expect(oversized.exitCode).toBe(1);
+      expect(oversized.stderr).toContain("exceeds the 25 MB limit");
+
+      expect(
+        JSON.parse(
+          stdout(await harness.runCli(["list", "--project", "att", "--json"])),
+        ).tasks,
+      ).toEqual([]);
+
+      const created = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "create",
+            "--project",
+            "att",
+            "--title",
+            "Starts with files",
+            "--attach",
+            notesPath,
+            "--attach",
+            pngPath,
+            "--json",
+          ]),
+        ),
+      );
+      expect(created.task).toMatchObject({ key: "ATT-1" });
+      expect(created.failedAttachments).toEqual([]);
+      expect(created.attachments).toEqual([
+        expect.objectContaining({
+          taskId: created.task.id,
+          commentId: null,
+          fileName: "notes.txt",
+          isImage: false,
+        }),
+        expect.objectContaining({
+          taskId: created.task.id,
+          commentId: null,
+          fileName: "pixel.png",
+          mime: "image/png",
+          isImage: true,
+        }),
+      ]);
+
+      const outputPath = join(directory, "roundtrip.txt");
+      stdout(
+        await harness.runCli([
+          "attachment",
+          "get",
+          created.attachments[0].id,
+          "--out",
+          outputPath,
+        ]),
+      );
+      expect(await readFile(outputPath, "utf8")).toBe("attach me at create\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+      await harness.dispose();
+    }
+  });
+
+  it("attempts every --attach file after create and reports failures truthfully", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-tasks-cli-"));
+    const firstPath = join(directory, "first.txt");
+    const boomPath = join(directory, "boom.bin");
+    const lastPath = join(directory, "last.txt");
+    await writeFile(firstPath, "first", "utf8");
+    await writeFile(boomPath, "will fail at blob write", "utf8");
+    await writeFile(lastPath, "last", "utf8");
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    try {
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          "Mixed",
+          "--prefix",
+          "MIX",
+        ]),
+      );
+
+      // JSON mode: middle file fails, both neighbors are still attempted.
+      const mixed = await harness.runCli([
+        "create",
+        "--project",
+        "mix",
+        "--title",
+        "Mixed outcome",
+        "--attach",
+        firstPath,
+        "--attach",
+        boomPath,
+        "--attach",
+        lastPath,
+        "--json",
+      ]);
+      expect(mixed.exitCode).toBe(1);
+      expect(mixed.stderr).toContain("1 of 3 attachments failed");
+      const payload = JSON.parse(mixed.stdout);
+      expect(payload.task).toMatchObject({ key: "MIX-1" });
+      expect(
+        payload.attachments.map(
+          (attachment: { fileName: string }) => attachment.fileName,
+        ),
+      ).toEqual(["first.txt", "last.txt"]);
+      expect(payload.failedAttachments).toEqual([
+        { path: boomPath, error: "simulated blob write failure" },
+      ]);
+      // Both successes really persisted on the created task.
+      const listed = JSON.parse(
+        stdout(await harness.runCli(["attachment", "list", "MIX-1", "--json"])),
+      );
+      expect(listed.attachments).toHaveLength(2);
+
+      // Human mode reports the same outcome with a per-file recovery command.
+      const human = await harness.runCli([
+        "create",
+        "--project",
+        "mix",
+        "--title",
+        "Mixed outcome again",
+        "--attach",
+        firstPath,
+        "--attach",
+        boomPath,
+      ]);
+      expect(human.exitCode).toBe(1);
+      expect(human.stdout).toContain("Created MIX-2");
+      expect(human.stdout).toContain("Attached first.txt");
+      expect(human.stdout).toContain(
+        `Failed to attach ${boomPath}: simulated blob write failure`,
+      );
+      expect(human.stdout).toContain(
+        `Retry with: bb tasks attachment add MIX-2 --file ${boomPath}`,
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+      await harness.dispose();
+    }
+  });
+
+  it("shows attached-thread pull requests in show output and JSON", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) => ({
+            id: threadId,
+            title: `Worker ${threadId}`,
+            titleFallback: null,
+            status: "active",
+            environmentId:
+              threadId === "thr_pr_worker"
+                ? "env_pr"
+                : threadId === "thr_absent_pr"
+                  ? "env_absent"
+                  : null,
+          }),
+        },
+        environments: {
+          pullRequest: async ({ environmentId }: { environmentId: string }) =>
+            environmentId === "env_absent"
+              ? { outcome: "absent" }
+              : {
+                  outcome: "available",
+                  pullRequest: {
+                    number: 12,
+                    title: "BB-15 Show PRs in tasks",
+                    state: "draft",
+                    url: "https://github.com/acme/bb/pull/12",
+                    baseRefName: "main",
+                    headRefName: "bb/bb-15",
+                    updatedAt: "2026-07-16T10:00:00.000Z",
+                    checks: {
+                      state: "pending",
+                      totalCount: 1,
+                      passedCount: 0,
+                      failedCount: 0,
+                      pendingCount: 1,
+                    },
+                    review: { state: "none", reviewRequestCount: 0 },
+                    mergeability: {
+                      state: "draft",
+                      mergeStateStatus: null,
+                      mergeable: null,
+                    },
+                    attention: "draft",
+                  },
+                },
+        },
+      },
+    });
+    await plugin(bb);
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "PRs",
+        "--prefix",
+        "PRS",
+      ]),
+    );
+    stdout(
+      await harness.runCli([
+        "create",
+        "--project",
+        "PRS",
+        "--title",
+        "Ship the pill",
+      ]),
+    );
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_pr_worker"]),
+    );
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_no_env_00"]),
+    );
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_absent_pr"]),
+    );
+
+    const shown = stdout(await harness.runCli(["show", "PRS-1"]));
+    expect(shown).toContain("Pull requests");
+    expect(shown).toContain("#12  draft  BB-15 Show PRs in tasks");
+    expect(shown).toContain("https://github.com/acme/bb/pull/12");
+    // Genuine absence (no environment, or gh reported no PR) stays quiet —
+    // it must not read as a failed lookup.
+    expect(shown).not.toContain("PR lookup unavailable");
+
+    const payload = JSON.parse(
+      stdout(await harness.runCli(["show", "PRS-1", "--json"])),
+    );
+    expect(payload.pullRequests).toEqual([
+      {
+        url: "https://github.com/acme/bb/pull/12",
+        number: 12,
+        title: "BB-15 Show PRs in tasks",
+        state: "draft",
+        updatedAt: "2026-07-16T10:00:00.000Z",
+        threadIds: ["thr_pr_worker"],
+      },
+    ]);
+    expect(payload.pullRequestUnavailableThreadIds).toEqual([]);
+
+    await harness.dispose();
+  });
+
+  it("flags threads whose PR lookup failed in show output", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) => ({
+            id: threadId,
+            title: `Worker ${threadId}`,
+            titleFallback: null,
+            status: "active",
+            environmentId: "env_down",
+          }),
+        },
+        environments: {
+          pullRequest: async () => ({
+            outcome: "unavailable",
+            message: "gh pr view failed: authentication required",
+          }),
+        },
+      },
+    });
+    await plugin(bb);
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "PRs",
+        "--prefix",
+        "PRS",
+      ]),
+    );
+    stdout(
+      await harness.runCli([
+        "create",
+        "--project",
+        "PRS",
+        "--title",
+        "Ship the pill",
+      ]),
+    );
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_down_0000"]),
+    );
+
+    const shown = stdout(await harness.runCli(["show", "PRS-1"]));
+    expect(shown).toContain("PR lookup unavailable for: thr_down_0000");
 
     await harness.dispose();
   });
@@ -629,6 +1143,28 @@ describe("bb tasks CLI", () => {
         },
       ]);
 
+      stdout(
+        await harness.runCli([
+          "update",
+          "FILE-1",
+          "--description",
+          `![pixel](/api/v1/plugins/tasks/http/attachments/download?attachmentId=${pngAttachment.id})`,
+        ]),
+      );
+      const signalsBeforeReferencedRemove = harness.realtimeSignals.length;
+      const referencedRemove = await harness.runCli([
+        "attachment",
+        "remove",
+        pngAttachment.id,
+      ]);
+      expect(referencedRemove.exitCode).toBe(1);
+      expect(referencedRemove.stderr).toContain(
+        "is used in the task description",
+      );
+      expect(harness.realtimeSignals).toHaveLength(
+        signalsBeforeReferencedRemove,
+      );
+
       const listed = JSON.parse(
         stdout(
           await harness.runCli(["attachment", "list", "FILE-1", "--json"]),
@@ -691,6 +1227,60 @@ describe("bb tasks CLI", () => {
       );
       expect(await readFile(outputPath, "utf8")).toBe(
         "attachment bytes from CLI\n",
+      );
+
+      const removed = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "attachment",
+            "remove",
+            attachment.id,
+            "--json",
+          ]),
+        ),
+      );
+      expect(removed).toMatchObject({
+        deleted: true,
+        attachment: { id: attachment.id },
+      });
+      const afterRemove = JSON.parse(
+        stdout(
+          await harness.runCli(["attachment", "list", "FILE-1", "--json"]),
+        ),
+      );
+      expect(
+        afterRemove.attachments.map((entry: { id: string }) => entry.id),
+      ).not.toContain(attachment.id);
+
+      // Removing an already-gone id is an explicit CLI error, not a silent 0.
+      const removeMissing = await harness.runCli([
+        "attachment",
+        "remove",
+        attachment.id,
+      ]);
+      expect(removeMissing.exitCode).toBe(1);
+      expect(removeMissing.stderr).toContain("attachment not found");
+
+      const removedReferenced = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "attachment",
+            "remove",
+            pngAttachment.id,
+            "--remove-references",
+            "--json",
+          ]),
+        ),
+      );
+      expect(removedReferenced).toMatchObject({
+        deleted: true,
+        attachment: { id: pngAttachment.id },
+      });
+      const shownAfterReferencedRemove = JSON.parse(
+        stdout(await harness.runCli(["show", "FILE-1", "--json"])),
+      );
+      expect(shownAfterReferencedRemove.task.description).not.toContain(
+        pngAttachment.id,
       );
     } finally {
       await harness.dispose();

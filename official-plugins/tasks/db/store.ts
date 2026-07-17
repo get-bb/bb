@@ -140,9 +140,22 @@ interface PresetRow {
   created_at: string;
 }
 
+// Monotonic ULIDs (per the ULID spec): rows created in the same millisecond
+// still sort in creation order, which `ORDER BY created_at/attached_at, id`
+// queries rely on for stable list ordering.
+let lastUlidMs = -1;
+let lastUlidRandom = 0n;
+
 function createUlid(now = Date.now()): string {
-  let random = 0n;
-  for (const byte of randomBytes(10)) random = (random << 8n) | BigInt(byte);
+  let random: bigint;
+  if (now === lastUlidMs) {
+    random = lastUlidRandom + 1n;
+  } else {
+    random = 0n;
+    for (const byte of randomBytes(10)) random = (random << 8n) | BigInt(byte);
+  }
+  lastUlidMs = now;
+  lastUlidRandom = random;
   let value = (BigInt(now) << 80n) | random;
 
   let id = "";
@@ -588,6 +601,20 @@ export function createTasksStore(db: PluginDatabase) {
 
   function getTask(id: string): Task | undefined {
     const row = getTaskRow.get(id);
+    return row ? taskFromRow(row) : undefined;
+  }
+
+  const getTaskByKeyRow = db.prepare<[string, number], TaskRow>(
+    `${taskSelect} WHERE p.prefix = ? COLLATE NOCASE AND t.number = ?`,
+  );
+
+  /** Resolve a task key like "TSK-4" (prefix matched case-insensitively). */
+  function getTaskByKey(key: string): Task | undefined {
+    const match = /^([A-Za-z][A-Za-z0-9]{0,9})-(\d+)$/.exec(key.trim());
+    if (!match) return undefined;
+    const [, prefix, number] = match;
+    if (prefix === undefined || number === undefined) return undefined;
+    const row = getTaskByKeyRow.get(prefix, Number(number));
     return row ? taskFromRow(row) : undefined;
   }
 
@@ -1135,11 +1162,30 @@ export function createTasksStore(db: PluginDatabase) {
     return db
       .prepare<[string], CommentRow>(
         `
-        SELECT * FROM comments WHERE task_id = ? ORDER BY created_at, id
+        SELECT * FROM comments WHERE task_id = ? ORDER BY created_at, rowid
       `,
       )
       .all(taskId)
       .map(commentFromRow);
+  }
+
+  function getLatestAgentComment(
+    taskId: string,
+    excludeCommentId: string | null,
+  ): Comment | undefined {
+    const row = db
+      .prepare<[string, string | null, string | null], CommentRow>(
+        `
+        SELECT * FROM comments
+        WHERE task_id = ?
+          AND kind = 'agent'
+          AND (? IS NULL OR id <> ?)
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 1
+      `,
+      )
+      .get(taskId, excludeCommentId, excludeCommentId);
+    return row ? commentFromRow(row) : undefined;
   }
 
   function updateComment(id: string, input: UpdateCommentInput): Comment {
@@ -1532,6 +1578,7 @@ export function createTasksStore(db: PluginDatabase) {
     deleteProject,
     createTask,
     getTask,
+    getTaskByKey,
     listTasks,
     listSubtasks,
     getSubtaskDoneCounts,
@@ -1550,6 +1597,7 @@ export function createTasksStore(db: PluginDatabase) {
     createComment,
     getComment,
     listComments,
+    getLatestAgentComment,
     updateComment,
     deleteComment,
     createAttachment,

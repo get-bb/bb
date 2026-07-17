@@ -136,6 +136,8 @@ export interface PluginStorage {
 export interface PluginThreadEventPayloads {
   /** Fired after a thread row is created. */
   "thread.created": { thread: ThreadResponse };
+  /** Fired when a thread transitions into `active`. */
+  "thread.active": { thread: ThreadResponse };
   /** Fired when a thread transitions into `idle`. `lastAssistantText` is
    * assembled the same way GET /threads/:id/output is. */
   "thread.idle": { thread: ThreadResponse; lastAssistantText: string | null };
@@ -564,8 +566,8 @@ export interface PluginUi {
 
 export interface PluginEvents {
   /**
-   * Add a thread lifecycle listener. Multiple listeners for the same event
-   * are additive and run independently in registration order.
+   * Add a thread lifecycle listener. Multiple listeners for the same event are
+   * additive and run independently in registration order.
    */
   on<E extends PluginThreadEventName>(
     event: E,

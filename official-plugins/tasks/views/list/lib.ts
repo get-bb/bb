@@ -5,6 +5,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
+import type { TaskSort } from "../../shared/sort.js";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
@@ -23,6 +24,12 @@ export const PRIORITY_LABELS: Record<TaskPriority, string> = {
   none: "No priority",
 };
 
+export const SORT_LABELS: Record<TaskSort, string> = {
+  manual: "Manual",
+  priority: "Priority",
+  due: "Due date",
+};
+
 export interface StatusGroup {
   status: TaskStatus;
   tasks: Task[];
@@ -30,7 +37,8 @@ export interface StatusGroup {
 
 /**
  * Buckets tasks into canonical status order, dropping empty groups. Within a
- * group the server's ordering (board position) is preserved.
+ * group the incoming order is preserved, so callers control ordering by
+ * pre-sorting (the server default is board position).
  */
 export function groupTasksByStatus(tasks: readonly Task[]): StatusGroup[] {
   const byStatus = new Map<TaskStatus, Task[]>();
@@ -95,8 +103,39 @@ export function formatDueDate(dueDate: string, today = new Date()): string {
   });
 }
 
-/** "Sonnet · high" → "Sonnet"; presets without a "·" keep their full name. */
-export function presetShortName(presetName: string): string {
-  const head = presetName.split("·")[0]?.trim();
-  return head !== undefined && head.length > 0 ? head : presetName;
+/**
+ * Accessible name for the list-row activity dot. Callers only render the dot
+ * when at least one thread is live, so the input is never empty.
+ */
+export function activeWorkLabel(
+  threads: readonly { liveStatus: string }[],
+): string {
+  if (threads.length === 1) {
+    return threads[0]?.liveStatus === "starting"
+      ? "Agent starting"
+      : "Agent working";
+  }
+  return `${threads.length} agents working`;
+}
+
+export interface LabelOverflow {
+  visible: Label[];
+  hidden: Label[];
+}
+
+/**
+ * Splits row labels into visible chips and a "+N" overflow so rows stay a
+ * bounded width no matter how many labels a task carries.
+ */
+export function partitionLabels(
+  labels: readonly Label[],
+  maxVisible: number,
+): LabelOverflow {
+  if (labels.length <= maxVisible) {
+    return { visible: [...labels], hidden: [] };
+  }
+  return {
+    visible: labels.slice(0, maxVisible),
+    hidden: labels.slice(maxVisible),
+  };
 }

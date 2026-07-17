@@ -100,8 +100,12 @@ bb thread tell <id> <message> --file <path> --image <path>
 
 Both attachment flags are repeatable. `thread spawn` additionally supports
 `--folder <id>`, `--origin-kind fork|side-chat`, `--source-thread <id>`, and
-`--source-seq-end <seq>`. The SDK accepts the equivalent `input`, `folderId`,
-`originKind`, `sourceThreadId`, and `sourceSeqEnd` fields.
+`--source-seq-end <seq>`. It also accepts `--visibility visible|hidden`; hidden
+threads stay out of sidebar organization and do not contribute unread/pending
+attention to the favicon or native parent notifications. They otherwise retain
+ordinary list, search, history, folder, lifecycle, and direct-open behavior.
+The SDK accepts the equivalent `input`, `folderId`, `originKind`,
+`sourceThreadId`, `sourceSeqEnd`, and `visibility` fields.
 
 `--file` and `--image` do not read paths on the CLI machine. Absolute paths are
 passed through for the thread execution host to read; relative values are

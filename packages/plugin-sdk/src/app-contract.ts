@@ -370,6 +370,12 @@ export interface PluginSettingsState {
   isLoading: boolean;
 }
 
+/** State of the app's shared realtime connection to the bb server. */
+export type PluginRealtimeConnectionState =
+  | "connecting"
+  | "connected"
+  | "reconnecting";
+
 /** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
 export type PluginComposerScope =
   | { kind: "thread"; threadId: string }
@@ -476,6 +482,13 @@ export interface PluginSdkApp {
     Contract extends PluginRpcContract = PluginRpcContract,
   >(): PluginRpcClient<Contract>;
   useRealtime(channel: string, handler: (payload: unknown) => void): void;
+  /**
+   * Observe the same shared connection that delivers `useRealtime` signals.
+   * Use a subsequent transition to `connected` to reconcile server state that
+   * may have changed while ephemeral signals could not be delivered. The first
+   * connection can transition from `connecting` and is not a reconnection.
+   */
+  useRealtimeConnectionState(): PluginRealtimeConnectionState;
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;

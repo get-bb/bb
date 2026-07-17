@@ -122,10 +122,10 @@ and per-agent result schemas; rejection errors identify the unsafe schema path.
   value. A stage that throws drops that item to `null` and skips its remaining
   stages.
 - `parallel(thunks: Array<() => Promise<any>>)`: run tasks concurrently. This is
-  a BARRIER: awaits all thunks before returning. A thunk that throws (or whose
-  agent errors) resolves to `null` in the result array — the call itself never
-  rejects, so `.filter(Boolean)` before using the results. Use ONLY when you
-  genuinely need all results together.
+  a BARRIER: it awaits all thunks before returning. A thunk that throws (or
+  whose agent errors after provider retries are exhausted) resolves to `null`.
+  Use ONLY when you genuinely need all results together, and use
+  `.filter(Boolean)` before consuming successful results.
 - `log(message: string)`: emit a plugin-scoped progress message.
 - `phase(title: string)`: start a new phase; subsequent `agent()` calls are
   grouped under this title. An agent-level `phase` overrides only that call and
@@ -449,10 +449,19 @@ includes call order, prompt, resolved provider/model/reasoning/permission,
 output schema, and worker protocol semantics. Display-only phase, label, and
 title changes do not invalidate it.
 
-For causally safe replay, caching also stops at the first persisted overlap
-between agent promises; concurrent `pipeline()`/`parallel()` work and the
+Parallel calls receive cache identities in deterministic invocation order, so
+concurrency alone does not stop replay. Successful calls that edited files or
+performed other writes are cached too: resume is restricted to the same
+environment workspace, where their side effects remain. Failed, cancelled,
+incomplete, and null-result calls are not reusable; the first such call and the
 entire suffix run live. Legacy runs without replay-safety metadata replay
-nothing. A plugin restart applies the same safe-prefix rule.
+nothing. A plugin restart applies the same longest-prefix rule.
+
+Each `agent()` call retries transient provider failures twice with bounded
+backoff before surfacing the error to `parallel()`/`pipeline()` or the script.
+Overload, rate-limit, provider 5xx, and recognized network failures retry;
+authentication, configuration, and schema failures do not. The retry count is
+persisted and visible in workflow history.
 
 The CLI equivalents are:
 
@@ -477,8 +486,11 @@ the resolved file must remain inside the origin workspace. `--source` remains
 an inline alias for `--script`. Run and validate require exactly one of
 `--script`, `--file`, or `--name` (counting `--source` as `--script`).
 
-Workflow worker threads are visible in the `Workflow` sidebar folder and are
-plugin-attributed.
+Workflow worker threads use hidden visibility and are plugin-attributed. They
+stay out of sidebar organization without contributing unread/pending favicon
+attention or native parent notifications. Ordinary search, prompt history,
+lifecycle, and direct operations remain available. Workflows does not create a
+temporary Workflow folder.
 
 `maxActiveRuns` is live plugin-global dispatch policy. Shared parent/child agent
 concurrency and call count, worker stall timeout, total run timeout, retention,

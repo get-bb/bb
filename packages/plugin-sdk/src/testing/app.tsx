@@ -23,6 +23,7 @@ import {
   type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
   type PluginPendingInteractionRegistration,
+  type PluginRealtimeConnectionState,
   type PluginRpcClient,
   type PluginSdkApp,
   type PluginSettingsSectionRegistration,
@@ -100,12 +101,19 @@ interface SlotEnv {
   rpcClient: PluginRpcClient;
   rpcCalls: RpcCall[];
   realtimeHandlers: Map<string, Set<(payload: unknown) => void>>;
+  realtimeConnection: TestRealtimeConnectionStore;
   settingsState: PluginSettingsState;
   bbContext: BbContext;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
   composer: TestComposerStore;
   composerLog: ComposerLog;
+}
+
+interface TestRealtimeConnectionStore {
+  getSnapshot(): PluginRealtimeConnectionState;
+  subscribe(listener: () => void): () => void;
+  setState(state: PluginRealtimeConnectionState): void;
 }
 
 const SlotEnvContext = createContext<SlotEnv | null>(null);
@@ -170,6 +178,16 @@ const testPluginSdkApp = {
         listeners.delete(listener);
       };
     }, [env, channel]);
+  },
+  useRealtimeConnectionState(): PluginRealtimeConnectionState {
+    const connection = useSlotEnv(
+      "useRealtimeConnectionState",
+    ).realtimeConnection;
+    return useSyncExternalStore(
+      connection.subscribe,
+      connection.getSnapshot,
+      connection.getSnapshot,
+    );
   },
   useSettings(): PluginSettingsState {
     return useSlotEnv("useSettings").settingsState;
@@ -517,6 +535,8 @@ export interface RenderSlotOptions<
   settings?: Record<string, string | boolean>;
   /** `useBbContext()` selection; both default to null. */
   context?: { projectId?: string | null; threadId?: string | null };
+  /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
+  realtimeConnectionState?: PluginRealtimeConnectionState;
   /** Initial plain text for this render's isolated `useComposer()` scope. */
   composer?: { text?: string };
 }
@@ -528,6 +548,10 @@ export interface RenderedSlotBehaviorDrivers {
    * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
    */
   emitRealtime(channel: string, payload: unknown): Promise<void>;
+  /** Drive the lifecycle of the same connection used by realtime events. */
+  setRealtimeConnectionState(
+    state: PluginRealtimeConnectionState,
+  ): Promise<void>;
 }
 
 /** Read-only call/write logs produced while the slot is mounted. */
@@ -638,6 +662,21 @@ export function renderSlot<
   };
 
   const realtimeHandlers = new Map<string, Set<(payload: unknown) => void>>();
+  let realtimeConnectionState =
+    options.realtimeConnectionState ?? ("connected" as const);
+  const realtimeConnectionListeners = new Set<() => void>();
+  const realtimeConnection: TestRealtimeConnectionStore = {
+    getSnapshot: () => realtimeConnectionState,
+    subscribe(listener) {
+      realtimeConnectionListeners.add(listener);
+      return () => realtimeConnectionListeners.delete(listener);
+    },
+    setState(state) {
+      if (state === realtimeConnectionState) return;
+      realtimeConnectionState = state;
+      for (const listener of realtimeConnectionListeners) listener();
+    },
+  };
 
   const navigateCalls: NavigateCall[] = [];
   const navigate: BbNavigate = {
@@ -732,6 +771,7 @@ export function renderSlot<
     rpcClient,
     rpcCalls,
     realtimeHandlers,
+    realtimeConnection,
     settingsState: { values: options.settings, isLoading: false },
     bbContext: { projectId, threadId },
     navigate,
@@ -768,15 +808,21 @@ export function renderSlot<
       }
     });
   };
+  const setRealtimeConnectionState = async (
+    state: PluginRealtimeConnectionState,
+  ): Promise<void> => {
+    await act(async () => realtimeConnection.setState(state));
+  };
 
   return {
     ...result,
     rerender: rerenderSlot,
     rpcCalls,
     emitRealtime,
+    setRealtimeConnectionState,
     navigateCalls,
     composer: composerLog,
-    behavior: { emitRealtime },
+    behavior: { emitRealtime, setRealtimeConnectionState },
     inspection: { rpcCalls, navigateCalls, composer: composerLog },
     lifecycle: { rerender: rerenderSlot, unmount: result.unmount },
   };

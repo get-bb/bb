@@ -64,6 +64,37 @@ class AttachmentRequestError extends Error {
   }
 }
 
+export class AttachmentReferencedError extends Error {
+  constructor(readonly attachment: Attachment) {
+    super(
+      `Attachment "${attachment.fileName}" is used in the task description. Remove it from the description before deleting the attachment.`,
+    );
+    this.name = "AttachmentReferencedError";
+  }
+}
+
+export class AttachmentCleanupError extends Error {
+  constructor(
+    readonly attachment: Attachment,
+    readonly cleanupCause: unknown,
+  ) {
+    super(`Failed to remove attachment blob: ${attachment.fileName}`);
+    this.name = "AttachmentCleanupError";
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function removeAttachmentDescriptionReferences(
+  markdown: string,
+  attachmentId: string,
+): string {
+  const url = escapeRegExp(buildAttachmentUrl(attachmentId));
+  return markdown.replace(new RegExp(`!\\[[^\\]]*\\]\\(${url}\\)`, "g"), "");
+}
+
 function pluginDataDirectory(bb: BbPluginApi): string {
   const main = bb.storage
     .database()
@@ -104,27 +135,28 @@ export async function removeAttachmentBlobs(
   attachments: readonly Pick<Attachment, "id" | "blobPath">[],
 ): Promise<void> {
   if (attachments.length === 0) return;
-  let root: string;
-  try {
-    root = requireStoreRoot(store);
-  } catch (error) {
-    bb.log.warn(
-      `failed to resolve attachment blob storage: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return;
-  }
-  await Promise.all(
+  const root = requireStoreRoot(store);
+  const removals = await Promise.allSettled(
     attachments.map(async (attachment) => {
-      try {
-        const absolutePath = pathInside(root, attachment.blobPath);
-        await rm(dirname(absolutePath), { recursive: true, force: true });
-      } catch (error) {
-        bb.log.warn(
-          `failed to remove attachment blob ${attachment.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+      const absolutePath = pathInside(root, attachment.blobPath);
+      await rm(dirname(absolutePath), { recursive: true, force: true });
     }),
   );
+  const failures = removals.flatMap((result, index) => {
+    if (result.status === "fulfilled") return [];
+    const attachment = attachments[index];
+    const message =
+      result.reason instanceof Error
+        ? result.reason.message
+        : String(result.reason);
+    bb.log.warn(
+      `failed to remove attachment blob ${attachment?.id ?? "unknown"}: ${message}`,
+    );
+    return [result.reason];
+  });
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Failed to remove attachment blobs");
+  }
 }
 
 function sanitizeFileName(fileName: string): string {
@@ -380,7 +412,68 @@ function errorResponse(context: PluginHttpContext, error: unknown): Response {
   if (error instanceof AttachmentRequestError) {
     return context.json({ error: error.message }, error.status);
   }
+  if (error instanceof AttachmentReferencedError) {
+    return context.json({ error: error.message }, 409);
+  }
+  if (error instanceof AttachmentCleanupError) {
+    return context.json({ error: error.message }, 500);
+  }
   throw error;
+}
+
+/**
+ * Removes an attachment end to end using one shared policy for HTTP, RPC, and
+ * CLI callers. Saved-description references are rejected unless the caller
+ * explicitly opts into removing them, blob cleanup must succeed before the
+ * row is removed, and realtime is published only after every mutation
+ * succeeds. A cleanup failure therefore leaves the row and blob reachable for
+ * a later retry instead of reporting a false success.
+ */
+export async function deleteAttachmentById(
+  bb: BbPluginApi,
+  store: TasksStore,
+  attachmentId: string,
+  options: {
+    removeBlobs?: typeof removeAttachmentBlobs;
+    removeDescriptionReferences?: boolean;
+  } = {},
+): Promise<Attachment | null> {
+  const attachment = store.getAttachment(attachmentId);
+  if (!attachment) return null;
+
+  const taskId =
+    attachment.taskId ??
+    (attachment.commentId
+      ? store.getComment(attachment.commentId)?.taskId
+      : undefined);
+  const ownerTask = taskId ? store.getTask(taskId) : undefined;
+  let nextDescription: string | undefined;
+  if (ownerTask?.description.includes(buildAttachmentUrl(attachment.id))) {
+    if (!options.removeDescriptionReferences) {
+      throw new AttachmentReferencedError(attachment);
+    }
+    nextDescription = removeAttachmentDescriptionReferences(
+      ownerTask.description,
+      attachment.id,
+    );
+    if (nextDescription === ownerTask.description) {
+      throw new AttachmentReferencedError(attachment);
+    }
+  }
+
+  try {
+    await (options.removeBlobs ?? removeAttachmentBlobs)(bb, store, [
+      attachment,
+    ]);
+  } catch (error) {
+    throw new AttachmentCleanupError(attachment, error);
+  }
+  if (ownerTask && nextDescription !== undefined) {
+    store.updateTask(ownerTask.id, { description: nextDescription });
+  }
+  if (!store.deleteAttachment(attachment.id)) return null;
+  publishAttachmentChanged(bb, store, attachment);
+  return attachment;
 }
 
 export function publishAttachmentChanged(
@@ -409,7 +502,13 @@ export function publishAttachmentChanged(
  * and therefore uses token auth; metadata may be supplied through query
  * parameters or x-task-id/x-comment-id/x-file-name/x-mime-type headers.
  */
-export function registerAttachments(bb: BbPluginApi, store: TasksStore): void {
+export function registerAttachments(
+  bb: BbPluginApi,
+  store: TasksStore,
+  options: {
+    removeBlobs?: typeof removeAttachmentBlobs;
+  } = {},
+): void {
   const root = pluginDataDirectory(bb);
   storeRoots.set(store, root);
 
@@ -476,15 +575,24 @@ export function registerAttachments(bb: BbPluginApi, store: TasksStore): void {
 
   bb.http.route("DELETE", DELETE_PATH, async (context) => {
     const attachmentId = context.req.query("attachmentId")?.trim();
-    const attachment = attachmentId
-      ? store.getAttachment(attachmentId)
-      : undefined;
-    if (!attachment)
-      return context.json({ error: "attachment not found" }, 404);
-
-    store.deleteAttachment(attachment.id);
-    await removeAttachmentBlobs(bb, store, [attachment]);
-    publishAttachmentChanged(bb, store, attachment);
-    return context.json({ deleted: true });
+    try {
+      const attachment = attachmentId
+        ? await deleteAttachmentById(
+            bb,
+            store,
+            attachmentId,
+            {
+              removeBlobs: options.removeBlobs,
+              removeDescriptionReferences:
+                context.req.query("removeDescriptionReferences") === "true",
+            },
+          )
+        : null;
+      if (!attachment)
+        return context.json({ error: "attachment not found" }, 404);
+      return context.json({ deleted: true });
+    } catch (error) {
+      return errorResponse(context, error);
+    }
   });
 }

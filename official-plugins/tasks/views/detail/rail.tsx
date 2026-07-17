@@ -25,7 +25,6 @@ import { DispatchControl } from "./threads.js";
 import { DEFAULT_COLOR } from "../manage/shared.js";
 import {
   BbProjectLinkPicker,
-  bbProjectLinkError,
   bbProjectLinkStateFor,
   emptyBbProjectLinkState,
   resolveBbProjectLink,
@@ -282,7 +281,9 @@ function LabelsMenu({
             onValueChange={setQuery}
           />
           <CommandList>
-            <CommandEmpty>
+            <CommandEmpty
+              className={query.trim() !== "" ? "p-1 text-left" : undefined}
+            >
               {query.trim() !== "" ? (
                 <button
                   type="button"
@@ -368,8 +369,7 @@ function DispatchTargetMenu({
   const linkedName = bbProjects.find(
     (candidate) => candidate.id === linkedBbProjectId,
   )?.name;
-  const error = bbProjectLinkError(state, bbProjects);
-  const resolved = resolveBbProjectLink(state, bbProjects);
+  const resolved = resolveBbProjectLink(state);
 
   const save = async (linkedId: string | null) => {
     if (saving) return;
@@ -393,7 +393,7 @@ function DispatchTargetMenu({
     <Popover
       open={open}
       onOpenChange={(next) => {
-        if (next) setState(bbProjectLinkStateFor(linkedBbProjectId, bbProjects));
+        if (next) setState(bbProjectLinkStateFor(linkedBbProjectId));
         setOpen(next);
       }}
     >
@@ -421,17 +421,7 @@ function DispatchTargetMenu({
           onStateChange={setState}
           bbProjects={bbProjects}
           noneLabel={linkedBbProjectId !== null ? "Unlink" : "Not linked"}
-          onCustomSubmit={() => {
-            if (error === null) {
-              void save(resolved === "" ? null : resolved);
-            }
-          }}
         />
-        {error !== null ? (
-          <p role="alert" className="mt-1.5 text-xs text-destructive">
-            {error}
-          </p>
-        ) : null}
         <div className="mt-2.5 flex items-center justify-between gap-2">
           {linkedBbProjectId !== null ? (
             <Button
@@ -450,7 +440,7 @@ function DispatchTargetMenu({
           <Button
             size="sm"
             className="h-7"
-            disabled={saving || error !== null}
+            disabled={saving}
             onClick={() => void save(resolved === "" ? null : resolved)}
           >
             Save

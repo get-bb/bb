@@ -35,6 +35,13 @@ const EDITOR_CSS = `
   overflow-wrap: break-word; -webkit-font-smoothing: antialiased;
 }
 .bb-tasks-editor[data-variant="comment"] .tiptap { font-size: 13px; line-height: 1.55; }
+/* Doc variant: let the ProseMirror surface fill the wrapper's min-height so
+   the whole area is editable. Otherwise a short document (e.g. a single block
+   image) leaves a non-editable dead zone below it that swallows clicks, and a
+   lone image atom offers no text caret — the description looks unfocusable. */
+.bb-tasks-editor[data-variant="doc"] { display: flex; flex-direction: column; }
+.bb-tasks-editor[data-variant="doc"] .bb-tasks-editor-surface { display: flex; flex: 1 1 auto; flex-direction: column; }
+.bb-tasks-editor[data-variant="doc"] .bb-tasks-editor-surface .tiptap { flex: 1 1 auto; }
 .bb-tasks-editor .tiptap > :first-child,
 .bb-tasks-editor .tiptap li > :first-child,
 .bb-tasks-editor .tiptap blockquote > :first-child { margin-top: 0; }
@@ -188,6 +195,12 @@ export interface TasksEditorProps {
   onUploadImage?: (
     file: File,
   ) => Promise<{ url: string; attachmentId: string }>;
+  /**
+   * Stages pasted/dropped files instead of uploading them inline; takes
+   * precedence over onUploadImage and accepts any file type. Used where the
+   * attachment owner does not exist yet (e.g. the new-task dialog).
+   */
+  onAttachFiles?: (files: File[]) => void;
   mentionItems?: (query: string) => Promise<MentionItem[]>;
   /** Invoked when a thread-mention pill is clicked (edit and read-only). */
   onOpenThread?: (threadId: string) => void;
@@ -203,12 +216,14 @@ export function TasksEditor({
   autofocus = false,
   variant = "doc",
   onUploadImage,
+  onAttachFiles,
   mentionItems,
   onOpenThread,
   onEditorReady,
   className,
 }: TasksEditorProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const lastMarkdownRef = useRef(value);
@@ -218,6 +233,8 @@ export function TasksEditor({
   placeholderRef.current = placeholder;
   const uploadRef = useRef(onUploadImage);
   uploadRef.current = onUploadImage;
+  const attachFilesRef = useRef(onAttachFiles);
+  attachFilesRef.current = onAttachFiles;
   const mentionItemsRef = useRef(mentionItems);
   mentionItemsRef.current = mentionItems;
   const openThreadRef = useRef(onOpenThread);
@@ -312,18 +329,31 @@ export function TasksEditor({
       autofocus: autofocusRef.current && !readOnly ? "end" : false,
       editorProps: {
         handlePaste(_view, event) {
+          const files = [...(event.clipboardData?.files ?? [])];
+          if (attachFilesRef.current) {
+            if (files.length === 0) return false;
+            attachFilesRef.current(files);
+            return true;
+          }
           if (!uploadRef.current) return false;
-          const file = [...(event.clipboardData?.files ?? [])].find(
-            (candidate) => candidate.type.startsWith("image/"),
+          const file = files.find((candidate) =>
+            candidate.type.startsWith("image/"),
           );
           if (!file) return false;
           void upload(file);
           return true;
         },
         handleDrop(_view, event) {
+          const files = [...(event.dataTransfer?.files ?? [])];
+          if (attachFilesRef.current) {
+            if (files.length === 0) return false;
+            event.preventDefault();
+            attachFilesRef.current(files);
+            return true;
+          }
           if (!uploadRef.current) return false;
-          const file = [...(event.dataTransfer?.files ?? [])].find(
-            (candidate) => candidate.type.startsWith("image/"),
+          const file = files.find((candidate) =>
+            candidate.type.startsWith("image/"),
           );
           if (!file) return false;
           event.preventDefault();
@@ -333,6 +363,22 @@ export function TasksEditor({
       },
     });
     editorRef.current = editor;
+    // The trailing-paragraph plugin only fires on transactions, so the initial
+    // constructor document is not covered. Seed it once here — before the
+    // update listener is attached — so a description that loads as a single
+    // image starts with a caret target without registering as a user edit.
+    if (!readOnly) {
+      const last = editor.state.doc.lastChild;
+      const paragraph = editor.state.schema.nodes.paragraph;
+      if (paragraph && last && last.type.isLeaf) {
+        editor.view.dispatch(
+          editor.state.tr.insert(
+            editor.state.doc.content.size,
+            paragraph.create(),
+          ),
+        );
+      }
+    }
     if (variant === "doc" && !readOnly && bubbleRef.current) {
       editor.registerPlugin(
         BubbleMenuPlugin({
@@ -436,10 +482,27 @@ export function TasksEditor({
     </button>
   );
 
+  // Clicks that land on the wrapper padding or the empty surface container
+  // (rather than on real content) place the caret at the end of the document.
+  // With StarterKit's gapcursor this yields a usable caret even when the only
+  // node is a block image, so the description stays editable.
+  const focusOnEmptyMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (readOnly) return;
+    if (
+      event.target === wrapperRef.current ||
+      event.target === rootRef.current
+    ) {
+      event.preventDefault();
+      editorRef.current?.commands.focus("end");
+    }
+  };
+
   return (
     <div
+      ref={wrapperRef}
       className={cn("bb-tasks-editor relative min-w-0", className)}
       data-variant={variant}
+      onMouseDown={variant === "doc" ? focusOnEmptyMouseDown : undefined}
     >
       {/* Floating selection menu (doc variant only); BubbleMenuPlugin moves
           this element into a tippy popper positioned above the selection. */}
@@ -477,7 +540,7 @@ export function TasksEditor({
           ))}
         </div>
       ) : null}
-      <div ref={rootRef} className="min-w-0" />
+      <div ref={rootRef} className="bb-tasks-editor-surface min-w-0" />
       {mention && mention.items.length > 0 ? (
         <div
           role="listbox"

@@ -25,7 +25,10 @@ import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import type { ProjectExecutionDefaults, ProjectSource } from "@bb/domain";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
-export interface ProjectListArgs extends ProjectListQuery {
+export interface ProjectListArgs {
+  include?: ProjectListQuery["include"];
+  /** Include the singleton personal project. Defaults to false for compatibility. */
+  includePersonal?: boolean;
   signal?: AbortSignal;
 }
 
@@ -256,6 +259,15 @@ function embeddedAttachmentFilename(
     return clientFile.name;
   }
   return undefined;
+}
+
+function projectListQuery(input: ProjectListArgs): ProjectListQuery {
+  return {
+    ...(input.include === undefined ? {} : { include: input.include }),
+    ...(input.includePersonal === undefined
+      ? {}
+      : { includePersonal: input.includePersonal ? "true" : "false" }),
+  };
 }
 
 function embeddedAttachmentMimeType(
@@ -501,7 +513,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       return transport.readJson(
         transport.api.v1.projects.$get(
           {
-            query,
+            query: projectListQuery(query),
           },
           ...signalRequestArgs(signal),
         ),

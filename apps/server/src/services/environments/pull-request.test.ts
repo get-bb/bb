@@ -24,10 +24,6 @@ function rawPullRequest(
 }
 
 describe("assembleThreadPullRequest", () => {
-  it("returns null when there is no PR", () => {
-    expect(assembleThreadPullRequest(null)).toBeNull();
-  });
-
   it("maps an open non-draft PR to 'open' and carries number/title/url", () => {
     expect(assembleThreadPullRequest(rawPullRequest())).toEqual({
       number: 42,

@@ -9,9 +9,9 @@ import {
   getCall,
   getRunRequired,
   incrementRepairAttempts,
-  lowerReplayBarrier,
   listCallsForRunPage,
   migrations,
+  queueCallProviderRetry,
   recoverInterruptedRuns,
   settleCall,
   settleRun,
@@ -62,23 +62,19 @@ describe("workflow durable data", () => {
     permissionMode: "full",
   } as const;
 
-  it("records replay safety and only lowers the persisted overlap barrier", () => {
+  it("records replay safety without a concurrency barrier", () => {
     const run = newRun();
     expect(getRunRequired(db, run.id)).toMatchObject({
       replaySafetyVersion: 1,
       replayBarrierIndex: null,
     });
-    lowerReplayBarrier(db, run.id, 5);
-    lowerReplayBarrier(db, run.id, 8);
-    lowerReplayBarrier(db, run.id, 3);
-    expect(getRunRequired(db, run.id).replayBarrierIndex).toBe(3);
 
     markRunning(run.id);
     expect(recoverInterruptedRuns(db)).toEqual([]);
     expect(getRunRequired(db, run.id)).toMatchObject({
       status: "queued",
       replaySafetyVersion: 1,
-      replayBarrierIndex: 3,
+      replayBarrierIndex: null,
     });
 
     db.prepare(
@@ -126,6 +122,48 @@ describe("workflow durable data", () => {
       status: "succeeded",
       resultJson: '{"answer":42}',
       replaySource: null,
+    });
+  });
+
+  it("persists provider retry attempts across worker replacements", () => {
+    const run = newRun();
+    markRunning(run.id);
+    const call = startCall(db, {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "retry",
+      prompt: "inspect",
+      options: {
+        selection: null,
+        outputSchema: null,
+        title: null,
+        phase: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    expect(attachCallThread(db, call.id, "child-1")).toBe(true);
+    settleCall(db, {
+      id: call.id,
+      status: "failed",
+      result: null,
+      error: "provider overloaded",
+    });
+
+    expect(
+      queueCallProviderRetry(db, call.id, "provider overloaded"),
+    ).toMatchObject({
+      status: "queued",
+      childThreadId: null,
+      providerRetryAttempts: 1,
+      error: "provider overloaded",
+    });
+    expect(attachCallThread(db, call.id, "child-2")).toBe(true);
+    expect(getCall(db, run.id, 0)).toMatchObject({
+      status: "running",
+      childThreadId: "child-2",
+      providerRetryAttempts: 1,
+      error: null,
     });
   });
 
@@ -489,7 +527,6 @@ describe("workflow durable data", () => {
 
   it("retains active resume ancestry while deleting unrelated expired runs", () => {
     const parent = newRun();
-    lowerReplayBarrier(db, parent.id, 2);
     db.prepare(
       `UPDATE workflow_runs SET status = 'succeeded', notification_sent = 1,
        finished_at = ?, settings_json = json_set(settings_json, '$.retentionDays', 1)
@@ -520,7 +557,7 @@ describe("workflow durable data", () => {
 
     expect(deleteExpiredTerminalRuns(db, Date.now(), 100)).toBe(1);
     expect(getRunRequired(db, parent.id).id).toBe(parent.id);
-    expect(getRunRequired(db, parent.id).replayBarrierIndex).toBe(2);
+    expect(getRunRequired(db, parent.id).replayBarrierIndex).toBeNull();
     expect(getRunRequired(db, retainedChild.id).status).toBe("queued");
     expect(() => getRunRequired(db, expired.id)).toThrow(
       "Unknown workflow run",

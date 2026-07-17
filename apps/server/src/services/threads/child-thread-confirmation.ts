@@ -29,12 +29,9 @@ export function requireChildThreadsConfirmation({
     return;
   }
 
-  const nonDeletedChildCount = countNonDeletedAssignedChildThreads(
-    deps.db,
-    {
-      parentThreadId: thread.id,
-    },
-  );
+  const nonDeletedChildCount = countNonDeletedAssignedChildThreads(deps.db, {
+    parentThreadId: thread.id,
+  });
   if (nonDeletedChildCount === 0) {
     return;
   }

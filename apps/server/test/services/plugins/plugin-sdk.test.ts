@@ -9,7 +9,7 @@ import {
   setExperiments,
   type DbConnection,
 } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
+import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -18,8 +18,11 @@ import {
 import type { BbPluginApi } from "../../../src/services/plugins/plugin-api.js";
 import {
   seedHostSession,
+  seedEnvironment,
   seedPrimaryHost,
   seedProjectWithSource,
+  seedThread,
+  seedThreadRuntimeState,
 } from "../../helpers/seed.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
 
@@ -196,7 +199,7 @@ describe("plugin bb.sdk bind gate", () => {
 });
 
 describe("plugin bb.sdk against a running server", () => {
-  it("serves SDK calls and attributes plugin-spawned threads", async () => {
+  it("keeps hidden plugin threads attributed and directly operable by id", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));
     try {
@@ -205,6 +208,11 @@ describe("plugin bb.sdk against a running server", () => {
       seedPrimaryHost(server.deps, host.id);
       const { project } = seedProjectWithSource(server.deps, {
         hostId: host.id,
+        path: "/tmp/plugin-sdk-live-source",
+      });
+      const environment = seedEnvironment(server.deps, {
+        hostId: host.id,
+        projectId: project.id,
         path: "/tmp/plugin-sdk-live-source",
       });
 
@@ -220,6 +228,33 @@ describe("plugin bb.sdk against a running server", () => {
       // A plain read proves the loopback SDK reaches this server instance.
       const projects = await api.sdk.projects.list();
       expect(projects.map((p) => p.id)).toContain(project.id);
+      expect(projects.map((p) => p.id)).not.toContain(PERSONAL_PROJECT_ID);
+      const projectsWithoutPersonal = await api.sdk.projects.list({
+        includePersonal: false,
+      });
+      expect(projectsWithoutPersonal.map((p) => p.id)).toEqual([project.id]);
+
+      const projectsWithPersonal = await api.sdk.projects.list({
+        includePersonal: true,
+      });
+      expect(projectsWithPersonal.map((p) => p.id)).toEqual([
+        PERSONAL_PROJECT_ID,
+        project.id,
+      ]);
+      const projectsWithThreadsAndPersonal = await api.sdk.projects.list({
+        include: "threads",
+        includePersonal: true,
+      });
+      expect(projectsWithThreadsAndPersonal.map((p) => p.id)).toEqual([
+        PERSONAL_PROJECT_ID,
+        project.id,
+      ]);
+      expect(projectsWithThreadsAndPersonal).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: PERSONAL_PROJECT_ID, threads: [] }),
+          expect.objectContaining({ id: project.id, threads: [] }),
+        ]),
+      );
 
       // Spawn with the server-resolved default environment. The plugin api
       // must fill in origin "plugin" + its own id without being asked.
@@ -227,9 +262,58 @@ describe("plugin bb.sdk against a running server", () => {
         projectId: project.id,
         prompt: "spawned from a plugin",
         environment: { type: "project-default" },
+        visibility: "hidden",
       });
       expect(thread.originPluginId).toBe("spawner");
-      expect(getThread(server.db, thread.id)?.originPluginId).toBe("spawner");
+      expect(thread.visibility).toBe("hidden");
+      expect(getThread(server.db, thread.id)).toMatchObject({
+        originPluginId: "spawner",
+        visibility: "hidden",
+      });
+      await expect(
+        api.sdk.threads.get({ threadId: thread.id }),
+      ).resolves.toMatchObject({ id: thread.id, visibility: "hidden" });
+      await expect(
+        api.sdk.threads.wait({
+          threadId: thread.id,
+          status: "starting",
+          timeoutMs: 100,
+        }),
+      ).resolves.toMatchObject({ matched: true, threadId: thread.id });
+      await expect(
+        api.sdk.threads.list({ projectId: project.id }),
+      ).resolves.toContainEqual(expect.objectContaining({ id: thread.id }));
+
+      const operable = seedThread(server.deps, {
+        environmentId: environment.id,
+        originPluginId: "spawner",
+        projectId: project.id,
+        status: "idle",
+        visibility: "hidden",
+      });
+      seedThreadRuntimeState(server.deps, {
+        environmentId: environment.id,
+        inputText: "Initial turn",
+        providerThreadId: "provider-hidden-plugin-thread",
+        threadId: operable.id,
+      });
+      await expect(
+        api.sdk.threads.wait({
+          threadId: operable.id,
+          status: "idle",
+          timeoutMs: 100,
+        }),
+      ).resolves.toMatchObject({ matched: true });
+      await expect(
+        api.sdk.threads.send({
+          threadId: operable.id,
+          mode: "auto",
+          input: [{ type: "text", text: "Continue", mentions: [] }],
+        }),
+      ).resolves.toEqual({ ok: true });
+      await expect(
+        api.sdk.threads.stop({ threadId: operable.id }),
+      ).resolves.toEqual({ ok: true });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });

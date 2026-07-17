@@ -19,6 +19,7 @@ const VALUELESS_FLAGS = new Set([
   "no-folder",
   "no-parent",
   "notify",
+  "remove-references",
   "unlink-bb-project",
   "yes",
 ]);

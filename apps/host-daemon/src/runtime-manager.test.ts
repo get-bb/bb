@@ -199,7 +199,7 @@ function createFakeWorkspace(path: string) {
       mergeBaseRef: null,
     })),
     diffPatch: vi.fn(async () => []),
-    getPullRequest: vi.fn(async () => null),
+    getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     runPullRequestAction: vi.fn(async () => undefined),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
