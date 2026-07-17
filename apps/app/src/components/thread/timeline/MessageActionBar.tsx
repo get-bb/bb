@@ -21,6 +21,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 
 interface MessageActionBarProps {
   messageText: string;
@@ -67,6 +68,7 @@ function MobileMessageOverflowPopover({
 }: MobileMessageOverflowPopoverProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const portalScopeProps = usePortalScopeProps();
   useEffect(() => {
     if (!copied) return;
     const timeoutId = window.setTimeout(() => setCopied(false), 2000);
@@ -99,6 +101,7 @@ function MobileMessageOverflowPopover({
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content
+          {...portalScopeProps}
           side="top"
           align={alignment === "end" ? "end" : "start"}
           sideOffset={6}

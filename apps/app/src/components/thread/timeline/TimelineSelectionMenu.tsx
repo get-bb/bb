@@ -9,6 +9,7 @@ import { flushSync } from "react-dom";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 
 // Labeled horizontal action button for the floating selection menu. Unlike the
@@ -109,6 +110,7 @@ export function TimelineSelectionMenu({
   onDismiss,
 }: TimelineSelectionMenuProps) {
   const open = selection !== null;
+  const portalScopeProps = usePortalScopeProps();
 
   // Dismiss on scroll/resize rather than re-anchoring: the captured rect goes
   // stale the moment the viewport moves, so closing is the honest behavior.
@@ -185,6 +187,7 @@ export function TimelineSelectionMenu({
       <PopoverPrimitive.Anchor virtualRef={virtualAnchorRef} />
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content
+          {...portalScopeProps}
           side={anchorSide}
           align="center"
           sideOffset={6}

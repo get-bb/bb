@@ -210,6 +210,7 @@ describe("MessageActionBar", () => {
       '[data-side="top"]',
     );
     expect(content).not.toBeNull();
+    expect(content!.getAttribute("data-bb-portaled-overlay")).toBe("");
     expect(document.body.querySelector("[data-vaul-drawer]")).toBeNull();
 
     fireEvent.click(

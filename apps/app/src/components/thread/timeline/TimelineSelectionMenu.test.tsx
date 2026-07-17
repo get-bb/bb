@@ -69,6 +69,11 @@ describe("TimelineSelectionMenu", () => {
     expect(
       screen.queryByRole("button", { name: "Reply in side chat" }),
     ).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Add to chat" })
+        .closest("[data-bb-portaled-overlay]"),
+    ).not.toBeNull();
   });
 
   it("does not mount when no action handlers are supplied", () => {
