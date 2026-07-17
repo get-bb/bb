@@ -39,6 +39,13 @@ export interface SplitDragConfig {
    * reorder or a plain click still works.
    */
   shouldEngage: (clientX: number, clientY: number) => boolean;
+  /** Runs once when the pending gesture becomes an owned split drag. */
+  onEngage?: () => void;
+  /**
+   * Runs after teardown on every engaged exit path. `dropped` is true only
+   * when a valid target was handed to {@link onDrop}.
+   */
+  onEnd?: (result: { dropped: boolean }) => void;
   /**
    * Hit-test fallback for when no {@link SPLIT_PANE_DATA_ATTR} element is under
    * the pointer (the wrapper-less single-pane surface).
@@ -106,9 +113,13 @@ export function beginSplitDrag(
     if (config.sourceEl) {
       config.sourceEl.style.opacity = "0.45";
     }
+    config.onEngage?.();
   };
 
-  const resolveTarget = (clientX: number, clientY: number): ResolvedTarget | null => {
+  const resolveTarget = (
+    clientX: number,
+    clientY: number,
+  ): ResolvedTarget | null => {
     const paneEl = paneElementAt(clientX, clientY);
     const paneId = paneEl?.getAttribute(SPLIT_PANE_DATA_ATTR) ?? null;
     if (paneEl && paneId !== null) {
@@ -151,7 +162,11 @@ export function beginSplitDrag(
       const decision = config.decide(resolved.paneId, zone);
       if (decision) {
         target = { paneId: resolved.paneId, zone: decision.zone };
-        positionOverlay(overlayEl, zoneBox(resolved.rect, decision.zone), decision.label);
+        positionOverlay(
+          overlayEl,
+          zoneBox(resolved.rect, decision.zone),
+          decision.label,
+        );
       } else {
         overlayEl.style.display = "none";
       }
@@ -186,6 +201,9 @@ export function beginSplitDrag(
     if (dropTarget) {
       config.onDrop(dropTarget);
     }
+    if (wasEngaged) {
+      config.onEnd?.({ dropped: dropTarget !== null });
+    }
   }
 
   function handleCancel(): void {
@@ -193,6 +211,7 @@ export function beginSplitDrag(
     teardown();
     if (wasEngaged) {
       swallowNextClick();
+      config.onEnd?.({ dropped: false });
     }
   }
 
@@ -210,7 +229,10 @@ function swallowNextClick(): void {
   window.addEventListener("click", swallow, true);
   // If no click follows (some pointer paths don't synthesize one), drop the
   // listener shortly so it can't swallow a later, unrelated click.
-  window.setTimeout(() => window.removeEventListener("click", swallow, true), 300);
+  window.setTimeout(
+    () => window.removeEventListener("click", swallow, true),
+    300,
+  );
 }
 
 function paneElementAt(clientX: number, clientY: number): HTMLElement | null {
@@ -273,7 +295,8 @@ function createOverlay(): HTMLElement {
     borderRadius: "12px",
     background: "color-mix(in oklab, var(--primary) 12%, transparent)",
     border: "2px solid color-mix(in oklab, var(--primary) 55%, transparent)",
-    transition: "left 0.09s ease-out, top 0.09s ease-out, width 0.09s ease-out, height 0.09s ease-out",
+    transition:
+      "left 0.09s ease-out, top 0.09s ease-out, width 0.09s ease-out, height 0.09s ease-out",
   } satisfies Partial<CSSStyleDeclaration>);
   return overlay;
 }

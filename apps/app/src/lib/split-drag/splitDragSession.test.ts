@@ -80,7 +80,9 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     document.elementsFromPoint = originalElementsFromPoint;
   });
 
-  function baseConfig(overrides: Partial<SplitDragConfig> = {}): SplitDragConfig {
+  function baseConfig(
+    overrides: Partial<SplitDragConfig> = {},
+  ): SplitDragConfig {
     return {
       ghostLabel: "Thread",
       cancelSidebarReorderOnEngage: true,
@@ -104,7 +106,9 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
   }
 
   it("horizontal tear-out engages, cancels the reorder, and drops a split", () => {
-    const config = baseConfig();
+    const onEngage = vi.fn();
+    const onEnd = vi.fn();
+    const config = baseConfig({ onEngage, onEnd });
     beginSplitDrag(20, 300, config);
 
     fireWindowPointer("pointermove", 30, 302); // still inside the sidebar
@@ -113,12 +117,17 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
 
     fireWindowPointer("pointermove", 900, 400); // crossed the edge -> engage
     expect(escapeKeydowns).toBe(1); // reorder cancelled exactly once
+    expect(onEngage).toHaveBeenCalledTimes(1);
 
     fireWindowPointer("pointermove", 1150, 400); // right zone of the pane
     fireWindowPointer("pointerup", 1150, 400);
 
     expect(config.onDrop).toHaveBeenCalledTimes(1);
-    expect(config.onDrop).toHaveBeenCalledWith({ paneId: "pane-1", zone: "right" });
+    expect(config.onDrop).toHaveBeenCalledWith({
+      paneId: "pane-1",
+      zone: "right",
+    });
+    expect(onEnd).toHaveBeenCalledWith({ dropped: true });
   });
 
   it("a vertical in-sidebar drag never engages: reorder is untouched, no drop", () => {
@@ -134,11 +143,29 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
   });
 
   it("a plain click (press and release, no movement) does not drop", () => {
-    const config = baseConfig();
+    const onEngage = vi.fn();
+    const onEnd = vi.fn();
+    const config = baseConfig({ onEngage, onEnd });
     beginSplitDrag(20, 300, config);
     fireWindowPointer("pointerup", 20, 300);
     expect(config.onDrop).not.toHaveBeenCalled();
     expect(escapeKeydowns).toBe(0);
+    expect(onEngage).not.toHaveBeenCalled();
+    expect(onEnd).not.toHaveBeenCalled();
+  });
+
+  it("reports an engaged cancellation without a drop", () => {
+    const onEngage = vi.fn();
+    const onEnd = vi.fn();
+    const config = baseConfig({ onEngage, onEnd });
+    beginSplitDrag(20, 300, config);
+
+    fireWindowPointer("pointermove", 900, 400);
+    fireWindowPointer("pointercancel", 900, 400);
+
+    expect(onEngage).toHaveBeenCalledTimes(1);
+    expect(config.onDrop).not.toHaveBeenCalled();
+    expect(onEnd).toHaveBeenCalledWith({ dropped: false });
   });
 
   it("falls back to the container when no marked pane is under the pointer", () => {
@@ -161,7 +188,10 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     fireWindowPointer("pointermove", 1150, 400); // right zone via the fallback rect
     fireWindowPointer("pointerup", 1150, 400);
 
-    expect(config.onDrop).toHaveBeenCalledWith({ paneId: "pane-1", zone: "right" });
+    expect(config.onDrop).toHaveBeenCalledWith({
+      paneId: "pane-1",
+      zone: "right",
+    });
     container.remove();
   });
 });

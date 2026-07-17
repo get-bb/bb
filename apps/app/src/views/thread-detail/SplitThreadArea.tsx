@@ -7,10 +7,12 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type SetStateAction,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -119,6 +121,84 @@ interface SplitThreadAreaProps {
   routeContent?: PaneContent;
 }
 
+interface PreservedScrollPosition {
+  left: number;
+  top: number;
+}
+
+/**
+ * Browsers and virtualized timelines can normalize an invisible scroller back
+ * to zero during the maximize layout transition. Record user-visible pane
+ * scrollers as they move, ignore normalization events from hidden panes, and
+ * restore the same mounted elements after each maximize/restore transition.
+ */
+function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const positionsRef = useRef(new Map<HTMLElement, PreservedScrollPosition>());
+  const previousMaximizedPaneIdRef = useRef(maximizedPaneId);
+
+  const captureVisibleScrollPositions = useCallback(() => {
+    const workspace = workspaceRef.current;
+    if (workspace === null) {
+      return;
+    }
+    for (const pane of workspace.querySelectorAll<HTMLElement>(
+      `[${SPLIT_PANE_DATA_ATTR}]:not([aria-hidden="true"])`,
+    )) {
+      for (const element of pane.querySelectorAll<HTMLElement>("*")) {
+        if (element.scrollLeft === 0 && element.scrollTop === 0) {
+          continue;
+        }
+        positionsRef.current.set(element, {
+          left: element.scrollLeft,
+          top: element.scrollTop,
+        });
+      }
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (previousMaximizedPaneIdRef.current === maximizedPaneId) {
+      return;
+    }
+    previousMaximizedPaneIdRef.current = maximizedPaneId;
+
+    const restore = () => {
+      const workspace = workspaceRef.current;
+      for (const [element, position] of positionsRef.current) {
+        if (workspace === null || !workspace.contains(element)) {
+          positionsRef.current.delete(element);
+          continue;
+        }
+        element.scrollLeft = position.left;
+        element.scrollTop = position.top;
+      }
+    };
+
+    // Restore before paint, then briefly across animation frames so passive
+    // timeline effects, virtualization, and browser scroll anchoring cannot
+    // overwrite the saved position while pane visibility settles.
+    restore();
+    let frame: number | null = null;
+    let framesRemaining = 30;
+    const restoreUntilSettled = () => {
+      restore();
+      framesRemaining -= 1;
+      if (framesRemaining > 0) {
+        frame = window.requestAnimationFrame(restoreUntilSettled);
+      }
+    };
+    frame = window.requestAnimationFrame(restoreUntilSettled);
+    return () => {
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [maximizedPaneId]);
+
+  return { captureVisibleScrollPositions, workspaceRef };
+}
+
 export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
   return (
     <ThreadDetailWorkerPoolProvider>
@@ -134,7 +214,8 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
-  const [maximizedPaneId, setMaximizedPaneId] = useAtom(maximizedPaneIdAtom);
+  const [maximizedPaneId, setMaximizedPaneIdAtom] =
+    useAtom(maximizedPaneIdAtom);
   const secondaryPanelRegistry = useMemo(
     () => createPaneSecondaryPanelRegistry(),
     [],
@@ -178,6 +259,17 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     findPane(layout.root, maximizedPaneId) !== null
       ? maximizedPaneId
       : null;
+  const {
+    captureVisibleScrollPositions,
+    workspaceRef: preservedScrollWorkspaceRef,
+  } = usePreservedSplitScrollPositions(effectiveMaximizedPaneId);
+  const setMaximizedPaneId = useCallback(
+    (next: SetStateAction<string | null>) => {
+      captureVisibleScrollPositions();
+      setMaximizedPaneIdAtom(next);
+    },
+    [captureVisibleScrollPositions, setMaximizedPaneIdAtom],
+  );
 
   // A maximized pane is always the focused/address-bar owner. External opens
   // and keyboard focus commands can change focus without going through the
@@ -304,7 +396,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       }
       store.set(splitLayoutAtom, next);
       if (maximizedPaneId === paneId) {
-        store.set(maximizedPaneIdAtom, null);
+        setMaximizedPaneId(null);
       }
       if (next.focusedPaneId !== current.focusedPaneId) {
         const route = focusedPaneRoute(next);
@@ -313,7 +405,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         }
       }
     },
-    [maximizedPaneId, navigate, store],
+    [maximizedPaneId, navigate, setMaximizedPaneId, store],
   );
 
   // Pane reorder: dragging a pane header through the shared split-drag layer.
@@ -327,6 +419,8 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       if (startLayout === null || countPanes(startLayout.root) < 2) {
         return;
       }
+      const restoreMaximizeAfterDrag =
+        store.get(maximizedPaneIdAtom) === paneId;
       const sourceEl =
         event.currentTarget instanceof Element
           ? event.currentTarget.closest<HTMLElement>(
@@ -340,6 +434,28 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         sourceEl,
         shouldEngage: (x, y) =>
           Math.hypot(x - startX, y - startY) > PANE_DRAG_ENGAGE_DISTANCE_PX,
+        // A maximized pane is the only hit-testable pane. Reveal the preserved
+        // tree once the drag owns the gesture so move/swap targets are usable,
+        // then restore the dragged pane's maximized presentation on every end
+        // path. The layout tree and pane instances remain untouched here.
+        onEngage: restoreMaximizeAfterDrag
+          ? () => setMaximizedPaneId(null)
+          : undefined,
+        onEnd: restoreMaximizeAfterDrag
+          ? () => {
+              const current = store.get(splitLayoutAtom);
+              if (
+                current !== null &&
+                findPane(current.root, current.focusedPaneId) !== null
+              ) {
+                // Edge moves preserve the pane id; center swaps move its
+                // content into the target pane id. Both operations focus the
+                // dragged content's destination, which is what must remain
+                // maximized.
+                setMaximizedPaneId(current.focusedPaneId);
+              }
+            }
+          : undefined,
         decide: (targetPaneId, zone) =>
           decidePaneDrop({ zone, isSelf: targetPaneId === paneId }),
         onDrop: (target) => {
@@ -362,7 +478,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         },
       });
     },
-    [navigate, store],
+    [navigate, setMaximizedPaneId, store],
   );
 
   // A disabled experiment and compact viewports both render the route thread as
@@ -426,7 +542,10 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           trigger exactly like the unsplit page. overflow-hidden keeps short
           windows from scrolling the whole split when stacked panes hit their
           min content height. */}
-      <div className="relative -m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
+      <div
+        ref={preservedScrollWorkspaceRef}
+        className="relative -m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5"
+      >
         <SplitWorkspaceSecondaryPanelHost
           focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
           registry={secondaryPanelRegistry}
