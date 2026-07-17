@@ -105,6 +105,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         ),
       ),
       command(
+        "pane.maximize.toggle",
+        "Toggle focused chat pane size",
+        "Maximize the focused chat pane or restore its split layout.",
+      ),
+      command(
         "pane.close",
         "Close focused chat pane",
         "Close the focused chat pane when more than one is open.",

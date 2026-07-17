@@ -222,6 +222,8 @@ function ThreadDetailTestPaneProvider({
     secondaryPanelHost: hostedPaneRegistration,
     reservesWindowPanelToggle: false,
     onRequestClose: noop,
+    isMaximized: false,
+    onToggleMaximize: noop,
     isBoundedPane: true,
     isTopRow: true,
     navigateInPane: noop,

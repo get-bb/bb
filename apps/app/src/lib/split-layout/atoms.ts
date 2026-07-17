@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import {
+  createNullableLocalStorageEnumStorage,
   createLocalStorageSyncStorage,
   type SyncStorage,
 } from "@/lib/browser-storage";
@@ -33,6 +34,25 @@ export const splitLayoutAtom = atomWithStorage<SplitLayout | null>(
   SPLIT_LAYOUT_STORAGE_KEY,
   null,
   createSplitLayoutStorage(),
+  { getOnInit: true },
+);
+
+export const MAXIMIZED_PANE_STORAGE_KEY = "bb.splitLayout.maximizedPaneId";
+
+function isPersistedPaneId(value: string): value is string {
+  return value.length > 0;
+}
+
+/**
+ * The pane temporarily filling the split workspace. This is persisted beside,
+ * rather than inside, the versioned split tree so maximizing never rewrites or
+ * migrates the exact arrangement and sizes it will restore. SplitThreadArea
+ * validates the id against the hydrated layout and clears stale values.
+ */
+export const maximizedPaneIdAtom = atomWithStorage<string | null>(
+  MAXIMIZED_PANE_STORAGE_KEY,
+  null,
+  createNullableLocalStorageEnumStorage(isPersistedPaneId),
   { getOnInit: true },
 );
 
@@ -90,6 +110,14 @@ export const closePanesForThreadsAtom = atom(
     if (!removedAny) {
       return { removedAny: false, focusedRoute: null };
     }
+    const maximizedPaneId = get(maximizedPaneIdAtom);
+    if (
+      maximizedPaneId !== null &&
+      (listPanes(layout.root).length < 2 ||
+        findPane(layout.root, maximizedPaneId) === null)
+    ) {
+      set(maximizedPaneIdAtom, null);
+    }
     // The surviving focused pane may still be a targeted thread (recursive
     // archive covering every pane). Treat that as "no valid survivor": clear the
     // layout so a stale pane isn't left behind, and signal the caller to fall
@@ -106,6 +134,7 @@ export const closePanesForThreadsAtom = atom(
         : null;
     if (survivorRoute === null) {
       set(splitLayoutAtom, null);
+      set(maximizedPaneIdAtom, null);
       return { removedAny: true, focusedRoute: null };
     }
     set(splitLayoutAtom, layout);

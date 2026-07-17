@@ -22,7 +22,7 @@ import { useIsMutating } from "@tanstack/react-query";
 import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   clampSplitPairFraction,
   countPanes,
@@ -93,6 +93,7 @@ import {
 } from "@/lib/bb-desktop";
 import { SplitWorkspaceSecondaryPanelHost } from "./SplitWorkspaceSecondaryPanelHost";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
+import { PaneMaximizeButton } from "./PaneMaximizeButton";
 
 // A `pointerdown`-relative move threshold before a pane-header drag engages.
 const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
@@ -133,6 +134,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
+  const [maximizedPaneId, setMaximizedPaneId] = useAtom(maximizedPaneIdAtom);
   const secondaryPanelRegistry = useMemo(
     () => createPaneSecondaryPanelRegistry(),
     [],
@@ -169,6 +171,32 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         : null);
   const panes = layout === null ? [] : listPanes(layout.root);
   const isSplitActive = threadSplitsEnabled && !isCompact && panes.length > 1;
+  const effectiveMaximizedPaneId =
+    layout !== null &&
+    countPanes(layout.root) > 1 &&
+    maximizedPaneId !== null &&
+    findPane(layout.root, maximizedPaneId) !== null
+      ? maximizedPaneId
+      : null;
+
+  // A maximized pane is always the focused/address-bar owner. External opens
+  // and keyboard focus commands can change focus without going through the
+  // local callbacks below, so carry maximization to that newly focused pane.
+  // Stale persisted ids fail safe by restoring the whole split.
+  useEffect(() => {
+    if (maximizedPaneId === null) return;
+    if (
+      layout === null ||
+      countPanes(layout.root) < 2 ||
+      findPane(layout.root, maximizedPaneId) === null
+    ) {
+      setMaximizedPaneId(null);
+      return;
+    }
+    if (layout.focusedPaneId !== maximizedPaneId) {
+      setMaximizedPaneId(layout.focusedPaneId);
+    }
+  }, [layout, maximizedPaneId, setMaximizedPaneId]);
 
   // Content navigation inside a pane pushes history like the page surface does
   // today. replacePaneContent focuses the pane, so the pushed URL matches it.
@@ -193,11 +221,14 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       }
       const pane = findPane(layout.root, paneId);
       setLayout(setFocus(layout, paneId));
+      if (maximizedPaneId !== null) {
+        setMaximizedPaneId(paneId);
+      }
       if (pane !== null) {
         navigate(paneContentRoute(pane.content), { replace: true });
       }
     },
-    [layout, navigate, setLayout],
+    [layout, maximizedPaneId, navigate, setLayout, setMaximizedPaneId],
   );
 
   const closePane = useCallback(
@@ -210,6 +241,9 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         return;
       }
       setLayout(next);
+      if (maximizedPaneId === paneId) {
+        setMaximizedPaneId(null);
+      }
       if (next.focusedPaneId !== layout.focusedPaneId) {
         const route = focusedPaneRoute(next);
         if (route !== null) {
@@ -217,7 +251,28 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         }
       }
     },
-    [layout, navigate, setLayout],
+    [layout, maximizedPaneId, navigate, setLayout, setMaximizedPaneId],
+  );
+
+  const toggleMaximizePane = useCallback(
+    (paneId: string) => {
+      const current = store.get(splitLayoutAtom);
+      if (
+        current === null ||
+        countPanes(current.root) < 2 ||
+        findPane(current.root, paneId) === null
+      ) {
+        return;
+      }
+      if (current.focusedPaneId !== paneId) {
+        const next = setFocus(current, paneId);
+        store.set(splitLayoutAtom, next);
+        const route = focusedPaneRoute(next);
+        if (route !== null) navigate(route, { replace: true });
+      }
+      setMaximizedPaneId((previous) => (previous === paneId ? null : paneId));
+    },
+    [navigate, setMaximizedPaneId, store],
   );
 
   const resize = useCallback(
@@ -248,6 +303,9 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         return;
       }
       store.set(splitLayoutAtom, next);
+      if (maximizedPaneId === paneId) {
+        store.set(maximizedPaneIdAtom, null);
+      }
       if (next.focusedPaneId !== current.focusedPaneId) {
         const route = focusedPaneRoute(next);
         if (route !== null) {
@@ -255,7 +313,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         }
       }
     },
-    [navigate, store],
+    [maximizedPaneId, navigate, store],
   );
 
   // Pane reorder: dragging a pane header through the shared split-drag layer.
@@ -327,7 +385,9 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       focusPane={focusPane}
       isSplitActive={isSplitActive}
       layout={layout}
+      maximizedPaneId={effectiveMaximizedPaneId}
       panes={panes}
+      toggleMaximizePane={toggleMaximizePane}
     />
   );
 
@@ -348,6 +408,8 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           secondaryPanelRegistry={null}
           reservesWindowPanelToggle={false}
           onRequestClose={null}
+          isMaximized={false}
+          onToggleMaximize={null}
           isBoundedPane={false}
           isTopRow
           onNavigateInPane={navigateInPane}
@@ -364,9 +426,9 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           trigger exactly like the unsplit page. overflow-hidden keeps short
           windows from scrolling the whole split when stacked panes hit their
           min content height. */}
-      <div className="-m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
+      <div className="relative -m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
         <SplitWorkspaceSecondaryPanelHost
-          focusedPaneId={layout.focusedPaneId}
+          focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
           registry={secondaryPanelRegistry}
         >
           <SplitTree
@@ -374,10 +436,12 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
             path={EMPTY_PATH}
             isTopRow
             isRightEdge
-            focusedPaneId={layout.focusedPaneId}
+            focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
+            maximizedPaneId={effectiveMaximizedPaneId}
             secondaryPanelRegistry={secondaryPanelRegistry}
             onFocusPane={focusPane}
             onClosePane={closePane}
+            onToggleMaximizePane={toggleMaximizePane}
             onResize={resize}
             onNavigateInPane={navigateInPane}
             onBeginPaneDrag={beginPaneDrag}
@@ -394,7 +458,9 @@ interface SplitPaneCommandHandlersProps {
   focusPane: (paneId: string) => void;
   isSplitActive: boolean;
   layout: SplitLayout;
+  maximizedPaneId: string | null;
   panes: readonly PaneNode[];
+  toggleMaximizePane: (paneId: string) => void;
 }
 
 /** Mounted only while the experiment is enabled, so OFF unregisters commands. */
@@ -403,7 +469,9 @@ function SplitPaneCommandHandlers({
   focusPane,
   isSplitActive,
   layout,
+  maximizedPaneId,
   panes,
+  toggleMaximizePane,
 }: SplitPaneCommandHandlersProps) {
   useAppCommandContext("splitActive", isSplitActive);
   useAppCommandHandler("pane.focus.previous", () => {
@@ -429,6 +497,11 @@ function SplitPaneCommandHandlers({
     closePane(layout.focusedPaneId);
     return true;
   });
+  useAppCommandHandler("pane.maximize.toggle", () => {
+    if (!isSplitActive) return false;
+    toggleMaximizePane(maximizedPaneId ?? layout.focusedPaneId);
+    return true;
+  });
   return null;
 }
 
@@ -440,9 +513,11 @@ interface SplitTreeProps {
   /** Whether this subtree touches the workspace's right edge. */
   isRightEdge: boolean;
   focusedPaneId: string;
+  maximizedPaneId: string | null;
   secondaryPanelRegistry: PaneSecondaryPanelRegistry;
   onFocusPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
+  onToggleMaximizePane: (paneId: string) => void;
   onResize: (
     splitPath: SplitPath,
     childIndex: number,
@@ -458,6 +533,8 @@ function SplitTree(props: SplitTreeProps) {
 
   if (node.type === "pane") {
     const isFocused = node.paneId === focusedPaneId;
+    const isMaximized = node.paneId === props.maximizedPaneId;
+    const isHiddenByMaximize = props.maximizedPaneId !== null && !isMaximized;
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
@@ -465,8 +542,14 @@ function SplitTree(props: SplitTreeProps) {
         // gutter separates panes (see SplitDivider). Bounded panes suppress
         // the content's page-bleed negative margins (see
         // PaneContextValue.isBoundedPane) so content fills the tile exactly.
-        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+        aria-hidden={isHiddenByMaximize || undefined}
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
+          isHiddenByMaximize && "invisible pointer-events-none",
+          isMaximized && "absolute inset-0 z-30",
+        )}
         data-split-pane-id={node.paneId}
+        data-maximized={isMaximized ? "true" : undefined}
       >
         {/* Only mounted in split mode, so single panes never pay for the extra
             thread subscription (and never prune the last pane). */}
@@ -482,10 +565,12 @@ function SplitTree(props: SplitTreeProps) {
           isFocused={isFocused}
           isSplitPane
           secondaryPanelRegistry={props.secondaryPanelRegistry}
-          reservesWindowPanelToggle={isTopRow && isRightEdge}
+          reservesWindowPanelToggle={isMaximized || (isTopRow && isRightEdge)}
           onRequestClose={() => props.onClosePane(node.paneId)}
+          isMaximized={isMaximized}
+          onToggleMaximize={() => props.onToggleMaximizePane(node.paneId)}
           isBoundedPane
-          isTopRow={isTopRow}
+          isTopRow={isMaximized || isTopRow}
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
@@ -515,6 +600,7 @@ function SplitTree(props: SplitTreeProps) {
           {index > 0 ? (
             <SplitDivider
               dir={node.dir}
+              hidden={props.maximizedPaneId !== null}
               onResize={(fraction) => props.onResize(path, index - 1, fraction)}
             />
           ) : null}
@@ -550,6 +636,8 @@ interface WorkspacePaneContentProps {
   secondaryPanelRegistry: PaneSecondaryPanelRegistry | null;
   reservesWindowPanelToggle: boolean;
   onRequestClose: (() => void) | null;
+  isMaximized: boolean;
+  onToggleMaximize: (() => void) | null;
   // True inside multi-pane split cards; suppresses the page-bleed margins so
   // content fills the card exactly (see PaneContextValue.isBoundedPane).
   isBoundedPane: boolean;
@@ -567,6 +655,8 @@ function WorkspacePaneContent({
   secondaryPanelRegistry,
   reservesWindowPanelToggle,
   onRequestClose,
+  isMaximized,
+  onToggleMaximize,
   isBoundedPane,
   isTopRow,
   onNavigateInPane,
@@ -602,6 +692,8 @@ function WorkspacePaneContent({
       secondaryPanelHost,
       reservesWindowPanelToggle,
       onRequestClose,
+      isMaximized,
+      onToggleMaximize,
       isBoundedPane,
       isTopRow,
       navigateInPane,
@@ -615,6 +707,8 @@ function WorkspacePaneContent({
       isTopRow,
       navigateInPane,
       onRequestClose,
+      isMaximized,
+      onToggleMaximize,
       paneId,
       reservesWindowPanelToggle,
       secondaryPanelHost,
@@ -703,6 +797,7 @@ function NonThreadPaneContent({
           subPath={content.kind === "plugin-panel" ? content.subPath : ""}
         />
       ) : null}
+      <PaneMaximizeButton />
       {onRequestClose ? (
         <Button
           type="button"
@@ -780,6 +875,7 @@ function NonThreadPaneContent({
 
 interface SplitDividerProps {
   dir: "row" | "col";
+  hidden: boolean;
   onResize: (fraction: number) => void;
 }
 
@@ -858,7 +954,7 @@ function freezeOffscreenTimelineRows(
   };
 }
 
-function SplitDivider({ dir, onResize }: SplitDividerProps) {
+function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
   const horizontal = dir === "row";
 
   const handlePointerDown = useCallback(
@@ -956,6 +1052,7 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
         // consuming layout space.
         "group relative z-[5] flex-shrink-0 bg-muted/60 transition-colors",
         "hover:bg-ring/40 data-[dragging]:bg-ring/40",
+        hidden && "invisible pointer-events-none",
         horizontal ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize",
       )}
     >

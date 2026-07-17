@@ -109,6 +109,13 @@ describe("app keybindings", () => {
           when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
         })),
         {
+          command: "pane.maximize.toggle",
+          key: "e",
+          mod: true,
+          shift: true,
+          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
+        },
+        {
           command: "pane.close",
           key: "x",
           mod: true,

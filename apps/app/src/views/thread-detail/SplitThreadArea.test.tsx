@@ -12,11 +12,13 @@ import { useContext, useMemo, useState, type ReactNode } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
+  movePane,
   serializeSplitLayout,
   SPLIT_LAYOUT_STORAGE_KEY,
 } from "@/lib/split-layout";
@@ -38,6 +40,8 @@ const threadStore = vi.hoisted(
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
 const experimentState = vi.hoisted(() => ({ enabled: true }));
+const viewportState = vi.hoisted(() => ({ compact: false }));
+const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 interface ShortcutPresentationFixture {
   ariaKeyshortcuts: string;
   label: string;
@@ -51,6 +55,10 @@ const commandPresentationState = vi.hoisted(
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => experimentState.enabled,
+}));
+
+vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
+  useIsCompactViewport: () => viewportState.compact,
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
@@ -70,7 +78,9 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandContext: () => undefined,
-  useAppCommandHandler: () => undefined,
+  useAppCommandHandler: (command: string, handler: () => boolean) => {
+    commandHandlers.set(command, handler);
+  },
   useAppCommandShortcut: () => commandPresentationState.shortcut,
   useIsAppCommandModifierHeld: () => commandPresentationState.isModifierHeld,
   useIndexedAppCommandHandlers: () => undefined,
@@ -111,8 +121,8 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 // test exercises SplitThreadArea's wiring without its dependency tree.
 vi.mock("./ThreadDetailView", () => ({
   ThreadDetailView: ({
-    projectId,
-    threadId,
+    projectId = "proj_personal",
+    threadId = "thr-a",
   }: {
     projectId: string;
     threadId: string;
@@ -156,6 +166,15 @@ vi.mock("./ThreadDetailView", () => ({
             onClick={pane.onRequestClose}
           >
             close
+          </button>
+        ) : null}
+        {pane?.onToggleMaximize ? (
+          <button
+            type="button"
+            data-testid={`maximize-${threadId}`}
+            onClick={pane.onToggleMaximize}
+          >
+            {pane.isMaximized ? "restore" : "maximize"}
           </button>
         ) : null}
       </div>
@@ -324,33 +343,41 @@ function renderSplitArea(options: {
   externalTo?: string;
   routeContent?: PaneContent;
   routeAwareContent?: boolean;
+  maximizedPaneId?: string;
 }) {
   const store = createStore();
   if (options.layout !== undefined) {
     store.set(splitLayoutAtom, options.layout);
   }
+  if (options.maximizedPaneId !== undefined) {
+    store.set(maximizedPaneIdAtom, options.maximizedPaneId);
+  }
   render(
-    <JotaiProvider store={store}>
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[options.path]}>
-          {options.routeAwareContent ? (
-            <RouteAwareSplitArea />
-          ) : (
-            <SplitThreadArea routeContent={options.routeContent} />
-          )}
-          <LocationProbe />
-          {options.externalTo !== undefined ? (
-            <ExternalNav to={options.externalTo} />
-          ) : null}
-        </MemoryRouter>
-      </QueryClientProvider>
-    </JotaiProvider>,
+    <TooltipProvider>
+      <JotaiProvider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[options.path]}>
+            {options.routeAwareContent ? (
+              <RouteAwareSplitArea />
+            ) : (
+              <SplitThreadArea routeContent={options.routeContent} />
+            )}
+            <LocationProbe />
+            {options.externalTo !== undefined ? (
+              <ExternalNav to={options.externalTo} />
+            ) : null}
+          </MemoryRouter>
+        </QueryClientProvider>
+      </JotaiProvider>
+    </TooltipProvider>,
   );
   return store;
 }
 
 beforeEach(() => {
   experimentState.enabled = true;
+  viewportState.compact = false;
+  commandHandlers.clear();
   commandPresentationState.isModifierHeld = false;
   commandPresentationState.shortcut = null;
   threadStore.set("thr-a", { archivedAt: null, deletedAt: null });
@@ -366,6 +393,107 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea", () => {
+  it("maximizes without changing the split tree and restores mounted pane state", async () => {
+    const initialLayout = twoPaneLayout("pane-1");
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: initialLayout,
+    });
+    fireEvent.change(await screen.findByTestId("draft-thr-b"), {
+      target: { value: "preserve this hidden draft" },
+    });
+
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+
+    const paneA = document.querySelector('[data-split-pane-id="pane-1"]');
+    const paneB = document.querySelector('[data-split-pane-id="pane-2"]');
+    expect(paneA?.getAttribute("data-maximized")).toBe("true");
+    expect(paneA?.className).toContain("absolute");
+    expect(paneB?.className).toContain("invisible");
+    expect(paneB?.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByTestId("draft-thr-b")).toBeTruthy();
+    expect(store.get(splitLayoutAtom)?.root).toEqual(initialLayout.root);
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+
+    expect(paneA?.getAttribute("data-maximized")).toBeNull();
+    expect(paneB?.className).not.toContain("invisible");
+    expect(
+      (screen.getByTestId("draft-thr-b") as HTMLTextAreaElement).value,
+    ).toBe("preserve this hidden draft");
+    expect(store.get(splitLayoutAtom)?.root).toEqual(initialLayout.root);
+    expect(store.get(maximizedPaneIdAtom)).toBeNull();
+  });
+
+  it("toggles the focused pane through the discoverable app command", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-b"),
+      layout: twoPaneLayout("pane-2"),
+    });
+    await screen.findByTestId("pane-thr-b");
+
+    expect(commandHandlers.get("pane.maximize.toggle")?.()).toBe(true);
+    await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-2"));
+    expect(commandHandlers.get("pane.maximize.toggle")?.()).toBe(true);
+    await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBeNull());
+  });
+
+  it("carries maximization through focus, CLI-style open, and pane move", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+      maximizedPaneId: "pane-1",
+    });
+    await screen.findByTestId("pane-thr-a");
+
+    expect(commandHandlers.get("pane.focus.next")?.()).toBe(true);
+    await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-2"));
+
+    const opened = applyThreadOpenToLayout(
+      store.get(splitLayoutAtom),
+      { projectId: PERSONAL_PROJECT_ID, threadId: "thr-c" },
+      "right",
+    );
+    store.set(splitLayoutAtom, opened);
+    await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-3"));
+
+    store.set(splitLayoutAtom, movePane(opened, "pane-3", "pane-1", "left"));
+    await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-3"));
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(3);
+  });
+
+  it("restores survivors when the maximized pane closes", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-b"),
+      layout: twoPaneLayout("pane-2"),
+      maximizedPaneId: "pane-2",
+    });
+    await screen.findByTestId("pane-thr-b");
+
+    fireEvent.click(screen.getByTestId("close-thr-b"));
+
+    await waitFor(() => expect(screen.queryByTestId("pane-thr-b")).toBeNull());
+    expect(store.get(maximizedPaneIdAtom)).toBeNull();
+    expect(document.querySelector('[data-split-pane-id="pane-1"]')).toBeNull();
+    expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
+  });
+
+  it("suppresses split maximization on compact viewports without discarding it", async () => {
+    viewportState.compact = true;
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+      maximizedPaneId: "pane-1",
+    });
+
+    expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
+    expect(screen.queryByTestId("pane-thr-b")).toBeNull();
+    expect(screen.queryByTestId("maximize-thr-a")).toBeNull();
+    expect(store.get(splitLayoutAtom)?.root.type).toBe("split");
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+  });
+
   it("keeps drag updates local and persists the resized pair once on release", () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),

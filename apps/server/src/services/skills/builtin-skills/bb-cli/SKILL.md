@@ -249,6 +249,10 @@ For review or fix pipelines, get the environment ID from
   target thread workspace.
 - Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the
   current thread.
+- Split-pane maximize/restore is client-local presentation state rather than a
+  thread-open API operation. Users can toggle the focused pane from its header
+  or with the configurable `pane.maximize.toggle` app command (default
+  `Mod+Shift+E`); `bb settings keyboard` exposes the generic shortcut settings.
 
 ## Files And Voice
 

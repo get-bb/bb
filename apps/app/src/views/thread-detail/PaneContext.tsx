@@ -37,6 +37,10 @@ export interface PaneContextValue {
    * page). Bridges the pane close affordance and archive/delete-when-split.
    */
   onRequestClose: (() => void) | null;
+  /** True while this pane temporarily fills the split workspace. */
+  isMaximized: boolean;
+  /** Toggles this pane between its split position and full-workspace display. */
+  onToggleMaximize: (() => void) | null;
   /**
    * True when this pane renders inside a bounded split card (multi-pane
    * layouts). Bounded panes suppress the page-bleed negative margins in
@@ -189,6 +193,8 @@ export function DefaultPaneContextProvider({
       secondaryPanelHost: null,
       reservesWindowPanelToggle: false,
       onRequestClose: null,
+      isMaximized: false,
+      onToggleMaximize: null,
       isBoundedPane: false,
       isTopRow: true,
       navigateInPane,

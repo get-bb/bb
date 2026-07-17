@@ -26,6 +26,7 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { usePaneContext } from "./PaneContext";
+import { PaneMaximizeButton } from "./PaneMaximizeButton";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
@@ -196,6 +197,7 @@ export function ThreadDetailHeader({
           </Button>
         </span>
       ) : null}
+      <PaneMaximizeButton />
       {onClosePane ? (
         <Button
           type="button"

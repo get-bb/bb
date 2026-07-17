@@ -2,7 +2,12 @@
 
 import { createStore } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
-import { closePanesForThreadsAtom, splitLayoutAtom } from "./atoms";
+import {
+  closePanesForThreadsAtom,
+  maximizedPaneIdAtom,
+  MAXIMIZED_PANE_STORAGE_KEY,
+  splitLayoutAtom,
+} from "./atoms";
 import { countPanes, findPaneByThread, splitPane } from "./ops";
 import type { SplitLayout } from "./types";
 
@@ -31,6 +36,19 @@ afterEach(() => {
 });
 
 describe("closePanesForThreadsAtom", () => {
+  it("persists a maximized pane id and rejects an empty stored id", () => {
+    const store = createStore();
+    store.set(maximizedPaneIdAtom, "pane-2");
+
+    expect(window.localStorage.getItem(MAXIMIZED_PANE_STORAGE_KEY)).toBe(
+      "pane-2",
+    );
+
+    window.localStorage.setItem(MAXIMIZED_PANE_STORAGE_KEY, "");
+    const rehydrated = createStore();
+    expect(rehydrated.get(maximizedPaneIdAtom)).toBeNull();
+  });
+
   it("closes an unfocused pane and reports the unchanged focused survivor", () => {
     const store = createStore();
     store.set(splitLayoutAtom, twoPanes());
@@ -52,6 +70,7 @@ describe("closePanesForThreadsAtom", () => {
   it("closes the focused pane and reports the survivor the URL should follow", () => {
     const store = createStore();
     store.set(splitLayoutAtom, twoPanes());
+    store.set(maximizedPaneIdAtom, "pane-2");
 
     // thread-2 is focused; closing it must surface thread-1 as the new focus.
     const result = store.set(closePanesForThreadsAtom, ["thread-2"]);
@@ -63,6 +82,7 @@ describe("closePanesForThreadsAtom", () => {
     });
     const layout = store.get(splitLayoutAtom);
     expect(layout!.focusedPaneId).toBe("pane-1");
+    expect(store.get(maximizedPaneIdAtom)).toBeNull();
   });
 
   it("clears the layout when every open pane is archived (no valid survivor)", () => {

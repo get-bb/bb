@@ -44,6 +44,7 @@ export const APP_COMMAND_IDS = [
   "pane.focus.previous",
   "pane.focus.next",
   ...PANE_FOCUS_APP_COMMAND_IDS,
+  "pane.maximize.toggle",
   "pane.close",
   "window.new",
   "settings.open",

@@ -103,6 +103,12 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     binding(command, String(index + 1), { mod: true }, splitWithoutModal),
   ),
   binding(
+    "pane.maximize.toggle",
+    "e",
+    { mod: true, shift: true },
+    splitWithoutModal,
+  ),
+  binding(
     "pane.close",
     "x",
     { mod: true, shift: true },
