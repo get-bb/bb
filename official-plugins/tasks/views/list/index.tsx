@@ -265,7 +265,19 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   } else {
     body = groups.map((group) => (
       <section key={group.status}>
-        <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold">
+        {/*
+          Opaque canvas fill + stacking above row chrome: task rows keep
+          relative z-10 property editors so they stay clickable above the
+          stretched open overlay. The stuck status header must sit higher
+          (z-20) with an opaque theme canvas token or those controls and
+          titles paint on top while scrolling and read as a transparent bar.
+          bg-background maps to --canvas via the host theme (same family as
+          card); do not use surface-scrim or hardcoded colors here.
+        */}
+        <div
+          data-status-group-header={group.status}
+          className="sticky top-0 z-20 isolate flex items-center gap-2 bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
+        >
           <StatusIcon status={group.status} />
           {STATUS_LABELS[group.status]}
           <span className="text-xs font-normal tabular-nums text-subtle-foreground">
