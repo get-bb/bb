@@ -484,7 +484,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="inactive working + draft"
-        hint="the draft pencil remains visible in the trailing slot but stops shimmering when the thread is not selected"
+        hint="the draft pencil keeps the same working shimmer even when the thread is not selected"
       >
         <SidebarStage>
           <StoryThreadRow

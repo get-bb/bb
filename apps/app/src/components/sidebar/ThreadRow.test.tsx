@@ -197,8 +197,8 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("keeps a static draft icon when a working thread is not selected", () => {
-    const { container } = renderThreadRow({
+  it("keeps the draft icon shimmering when a working thread is not selected", () => {
+    renderThreadRow({
       hasComposerDraft: true,
       isActive: false,
       thread: createThread({
@@ -210,12 +210,39 @@ describe("ThreadRow", () => {
       }),
     });
 
-    const draftIcon = container.querySelector('[data-icon="Edit"]');
-    expect(draftIcon).not.toBeNull();
-    expect(Array.from(draftIcon?.classList ?? [])).not.toContain(
-      "animate-shine-icon",
+    const draftIcon = screen.getByLabelText(
+      "Thread working with unsubmitted draft",
+    );
+    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(draftIcon.classList)).toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
     );
     expect(screen.queryByLabelText("Agent working")).toBeNull();
+  });
+
+  it("replaces a running workflow with the same shimmering draft icon", () => {
+    renderThreadRow({
+      hasComposerDraft: true,
+      isActive: false,
+      thread: createThread({
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    });
+
+    const draftIcon = screen.getByLabelText(
+      "Thread working with unsubmitted draft",
+    );
+    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(draftIcon.classList)).toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
   });
 
   it("renders serialized title mentions as non-interactive pills", () => {

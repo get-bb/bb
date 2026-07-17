@@ -379,10 +379,9 @@ function getThreadUnreadBadgeLabel({
 
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
   hasComposerDraft: boolean;
-  isActive: boolean;
 };
 
-function isThreadLoadingGlyphVisible({
+function isThreadWorkingGlyphVisible({
   hasPendingInteraction,
   isBackgroundAgentActive,
   isBackgroundCommandActive,
@@ -408,9 +407,11 @@ function isThreadLoadingGlyphVisible({
     isBackgroundAgentActive ||
     isBackgroundCommandActive ||
     isPlanModeActive ||
-    isGoalActive ||
-    showUnreadBadge
+    isGoalActive
   ) {
+    return true;
+  }
+  if (showUnreadBadge) {
     return false;
   }
   return isBusy;
@@ -419,7 +420,6 @@ function isThreadLoadingGlyphVisible({
 function ThreadTrailingIndicator({
   hasComposerDraft,
   hasPendingInteraction,
-  isActive,
   isBackgroundAgentActive,
   isBackgroundCommandActive,
   isForegroundAgentWorking,
@@ -453,7 +453,7 @@ function ThreadTrailingIndicator({
     isWorkflowActive ||
     showUnreadBadge;
   const draftIsWorking =
-    hasComposerDraft && isActive && isThreadLoadingGlyphVisible(statusProps);
+    hasComposerDraft && isThreadWorkingGlyphVisible(statusProps);
   const hasCriticalStatus =
     (showUnreadBadge && unreadBadgeTone === "error") || hasPendingInteraction;
   const showDraftIndicator = hasComposerDraft && !hasCriticalStatus;
@@ -686,7 +686,6 @@ function ThreadRowComponent({
                 <ThreadTrailingIndicator
                   hasComposerDraft={hasComposerDraft}
                   hasPendingInteraction={trailingHasPendingInteraction}
-                  isActive={isActive}
                   isBackgroundAgentActive={trailingBackgroundAgentActive}
                   isBackgroundCommandActive={trailingBackgroundCommandActive}
                   isForegroundAgentWorking={trailingRuntimeBusy}
