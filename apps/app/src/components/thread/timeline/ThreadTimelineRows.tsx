@@ -1482,7 +1482,7 @@ function leadingIconForWorkRow(
     case "approval":
       return "Lock";
     case "question":
-      return "BubbleChatQuestion";
+      return "CircleQuestion";
     default:
       return undefined;
   }

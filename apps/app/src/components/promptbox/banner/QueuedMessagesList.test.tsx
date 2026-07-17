@@ -60,14 +60,7 @@ function makeGroupedQueuedMessages(): ThreadQueuedMessage[] {
 }
 
 function rect({ top, bottom }: { top: number; bottom: number }) {
-  return {
-    top,
-    bottom,
-    height: bottom - top,
-    left: 0,
-    right: 100,
-    width: 100,
-  };
+  return new DOMRect(0, top, 100, bottom - top);
 }
 
 function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
@@ -216,7 +209,7 @@ describe("QueuedMessagesList", () => {
       makeQueuedMessage("q_two", "Second queued message"),
     ];
 
-    const { container, getByRole } = render(
+    const { container, getByRole, getByText } = render(
       <QueuedMessagesList
         queuedMessages={queuedMessages}
         inlineEditor={{
@@ -248,8 +241,22 @@ describe("QueuedMessagesList", () => {
     const queueItems = container.querySelectorAll("ul > li");
     expect(queueItems[0]?.textContent).toContain("First queued message");
     expect(
-      queueItems[1]?.hasAttribute("data-queued-message-inline-editor"),
+      Array.from(queueItems).some((item) =>
+        item.hasAttribute("data-queued-message-inline-editor"),
+      ),
     ).toBe(true);
+    const editingLabel = getByText(/Editing queued message/u);
+    const dismissButton = getByRole("button", {
+      name: "Move editor back to the prompt box",
+    });
+    expect(editingLabel.parentElement?.className).toContain(
+      "text-subtle-foreground",
+    );
+    expect(dismissButton.className).toContain("ml-auto");
+    expect(dismissButton.className).toContain("size-6");
+    expect(
+      dismissButton.querySelector('[data-icon="X"]')?.getAttribute("class"),
+    ).toContain("size-3");
     expect(onComposerTargetChange).toHaveBeenCalledWith(
       container.querySelector("[data-queued-message-composer-target]"),
     );
@@ -592,8 +599,9 @@ describe("QueuedMessagesList", () => {
     const divider = container.querySelector(
       "[data-queued-message-group-divider]",
     );
-    expect(divider?.tagName).toBe("DIV");
+    expect(divider?.tagName).toBe("LI");
     expect(divider?.className).toContain("h-0");
+    expect(divider?.parentElement?.tagName).toBe("UL");
   });
 
   it("keeps the final row stroke when every queued message is grouped", () => {
@@ -611,17 +619,18 @@ describe("QueuedMessagesList", () => {
     const { container, getByLabelText } = renderQueuedMessages(queuedMessages);
     const rows = container.querySelectorAll("[data-queued-message-row]");
     const finalRow = rows[2];
-    const divider = finalRow?.querySelector(
-      "[data-queued-message-group-divider]",
-    );
+    const divider = finalRow?.nextElementSibling;
 
     expect(finalRow?.className).toContain("border-b");
     expect(finalRow?.className).not.toContain("last:border-b-0");
-    expect(divider?.className).toContain("bottom-[-0.5px]");
+    expect(divider?.hasAttribute("data-queued-message-group-divider")).toBe(
+      true,
+    );
+    expect(divider?.firstElementChild?.className).toContain("top-[-0.5px]");
     expect(getByLabelText("Messages above send together")).not.toBeNull();
   });
 
-  it("uses the existing row border for grouping instead of a sortable divider row", () => {
+  it("anchors a zero-height sortable handle sibling to the existing row border", () => {
     const { container } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
       makeQueuedMessage("q_two", "Second queued message"),
@@ -631,15 +640,18 @@ describe("QueuedMessagesList", () => {
 
     expect(rows[0]?.className).toContain("border-b");
     expect(rows[1]?.className).toContain("border-b");
-    expect(
-      rows[0]?.querySelector("[data-queued-message-group-divider]"),
-    ).not.toBeNull();
+    const divider = container.querySelector(
+      "ul > [data-queued-message-group-divider]",
+    );
+    expect(divider).not.toBeNull();
+    expect(divider?.previousElementSibling).toBe(rows[0]);
+    expect(divider?.className).toContain("h-0");
+    expect(rows[0]?.querySelector("[data-queued-message-group-divider]")).toBe(
+      null,
+    );
     expect(rows[1]?.querySelector("[data-queued-message-group-divider]")).toBe(
       null,
     );
-    expect(
-      container.querySelector("ul > [data-queued-message-group-divider]"),
-    ).toBeNull();
     expect(container.querySelector("[data-queued-message-group-line]")).toBe(
       null,
     );
@@ -654,11 +666,15 @@ describe("QueuedMessagesList", () => {
 
     expect(control.className).toContain("border-transparent");
     expect(control.className).toContain("bg-transparent");
-    expect(control.className).toContain("group-hover/row:border-border");
-    expect(control.className).toContain("group-focus-within/row:bg-background");
+    expect(control.className).toContain(
+      "group-has-[[data-queued-message-group-boundary-row]:hover]/queue:border-border",
+    );
+    expect(control.className).toContain(
+      "group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:bg-background",
+    );
     expect(grip?.getAttribute("class")).toContain("opacity-55");
     expect(grip?.getAttribute("class")).toContain(
-      "group-hover/row:opacity-100",
+      "group-has-[[data-queued-message-group-boundary-row]:hover]/queue:opacity-100",
     );
   });
 
@@ -731,6 +747,88 @@ describe("QueuedMessagesList", () => {
         { id: "q_three", groupWithNext: false },
       ],
     });
+  });
+
+  it("drags the zero-height group handle to a measured row stroke", async () => {
+    const onSetGroupBoundary = vi.fn();
+    const queuedMessages = [
+      makeQueuedMessage("q_one", "First queued message"),
+      makeQueuedMessage("q_two", "Second queued message"),
+      makeQueuedMessage("q_three", "Third queued message"),
+    ];
+    const { container, getByLabelText } = render(
+      <QueuedMessagesList
+        queuedMessages={queuedMessages}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSendImmediately={noop}
+        onReorder={noop}
+        onSetGroupBoundary={onSetGroupBoundary}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+    const rows = container.querySelectorAll<HTMLElement>(
+      "[data-queued-message-row]",
+    );
+    const divider = container.querySelector<HTMLElement>(
+      "[data-queued-message-group-divider]",
+    );
+    const list = container.querySelector<HTMLElement>("ul");
+    const scroll = container.querySelector<HTMLElement>(
+      "[data-queued-messages-scroll]",
+    );
+    expect(divider).not.toBeNull();
+    expect(list).not.toBeNull();
+    expect(scroll).not.toBeNull();
+
+    const measuredRects = [
+      rect({ top: 0, bottom: 40 }),
+      rect({ top: 40, bottom: 72 }),
+      rect({ top: 72, bottom: 112 }),
+    ];
+    rows.forEach((row, index) => {
+      row.getBoundingClientRect = () => measuredRects[index]!;
+    });
+    divider!.getBoundingClientRect = () => rect({ top: 40, bottom: 40 });
+    list!.getBoundingClientRect = () => rect({ top: 0, bottom: 116 });
+    scroll!.getBoundingClientRect = () => rect({ top: 0, bottom: 160 });
+
+    const handle = getByLabelText("Messages above send together");
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 50,
+      clientY: 40,
+      isPrimary: true,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(document, {
+      clientX: 50,
+      clientY: 46,
+      isPrimary: true,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(document, {
+      clientX: 50,
+      clientY: 108,
+      isPrimary: true,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(document, {
+      clientX: 50,
+      clientY: 108,
+      isPrimary: true,
+      pointerId: 1,
+    });
+
+    await waitFor(() =>
+      expect(onSetGroupBoundary).toHaveBeenCalledWith({
+        expectedGroupedPrefixQueuedMessageIds: ["q_one", "q_two", "q_three"],
+        groupBoundaryQueuedMessageId: "q_three",
+      }),
+    );
   });
 
   it("clamps queued-message drags to the rendered list bottom", () => {

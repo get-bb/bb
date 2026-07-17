@@ -128,8 +128,7 @@ interface QueuedMessageRowProps {
   onEdit: (request: QueuedMessageEditRequest) => void;
   onDelete: (id: string) => void;
   compact: boolean;
-  hasGroupDividerAfter: boolean;
-  groupBoundaryDisabled: boolean;
+  isGroupBoundary: boolean;
 }
 
 const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
@@ -449,10 +448,7 @@ function collisionDistance(collision: Collision): number {
 }
 
 export const queuedMessageCollisionDetection: CollisionDetection = (args) => {
-  if (
-    String(args.active.id) !== GROUP_DIVIDER_ID ||
-    !args.pointerCoordinates
-  ) {
+  if (String(args.active.id) !== GROUP_DIVIDER_ID || !args.pointerCoordinates) {
     return closestCenter(args);
   }
 
@@ -615,8 +611,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   onEdit,
   onDelete,
   compact,
-  hasGroupDividerAfter,
-  groupBoundaryDisabled,
+  isGroupBoundary,
 }: QueuedMessageRowProps) {
   const attachmentCount = useMemo(
     () => countQueuedMessageAttachments(queuedMessage.content),
@@ -647,9 +642,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       ref={setNodeRef}
       style={rowStyle}
       data-queued-message-row=""
+      data-queued-message-group-boundary-row={isGroupBoundary ? "" : undefined}
       className={cn(
         "group/row relative border-b border-border/35 px-2.5 py-0.5",
-        !hasGroupDividerAfter && "last:border-b-0",
+        !isGroupBoundary && "last:border-b-0",
         isDragging &&
           "z-20 rounded-lg border border-border bg-background opacity-90 shadow-lift",
       )}
@@ -764,9 +760,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           </DropdownMenu>
         )}
       </div>
-      {hasGroupDividerAfter ? (
-        <SortableGroupBoundaryHandle disabled={groupBoundaryDisabled} />
-      ) : null}
     </li>
   );
 });
@@ -782,37 +775,29 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
     transform,
     transition,
   } = useSortable({ id: GROUP_DIVIDER_ID, disabled });
-  const setHandleNodeRef = useCallback(
-    (node: HTMLButtonElement | null) => {
-      setNodeRef(node);
-      setActivatorNodeRef(node);
-    },
-    [setActivatorNodeRef, setNodeRef],
-  );
   const anotherItemIsDragging =
     active !== null && active.id !== GROUP_DIVIDER_ID;
 
   return (
-    <div
+    <li
+      ref={setNodeRef}
       data-queued-message-group-divider=""
-      className="pointer-events-none absolute inset-x-0 bottom-[-0.5px] z-10 h-0"
+      style={{
+        transform: isDragging ? CSS.Translate.toString(transform) : undefined,
+        transition: isDragging ? transition : undefined,
+      }}
+      className="pointer-events-none relative z-10 h-0 list-none"
     >
-      <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2">
+      <div className="absolute left-1/2 top-[-0.5px] -translate-x-1/2 -translate-y-1/2">
         <div className="pointer-events-none">
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  ref={setHandleNodeRef}
+                  ref={setActivatorNodeRef}
                   type="button"
-                  style={{
-                    transform: isDragging
-                      ? CSS.Translate.toString(transform)
-                      : undefined,
-                    transition: isDragging ? transition : undefined,
-                  }}
                   className={cn(
-                    "pointer-events-auto flex size-6 shrink-0 touch-none select-none items-center justify-center rounded-full border border-transparent bg-transparent text-muted-foreground transition-[background-color,border-color,box-shadow,color] focus-visible:border-border focus-visible:bg-background focus-visible:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover/row:border-border group-hover/row:bg-background group-hover/row:shadow-sm group-focus-within/row:border-border group-focus-within/row:bg-background group-focus-within/row:shadow-sm hover:border-border hover:bg-background hover:shadow-sm [@media(hover:none)]:border-border [@media(hover:none)]:bg-background [@media(hover:none)]:shadow-sm",
+                    "pointer-events-auto flex size-6 shrink-0 touch-none select-none items-center justify-center rounded-full border border-transparent bg-transparent text-muted-foreground transition-[background-color,border-color,box-shadow,color] focus-visible:border-border focus-visible:bg-background focus-visible:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-has-[[data-queued-message-group-boundary-row]:hover]/queue:border-border group-has-[[data-queued-message-group-boundary-row]:hover]/queue:bg-background group-has-[[data-queued-message-group-boundary-row]:hover]/queue:shadow-sm group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:border-border group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:bg-background group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:shadow-sm hover:border-border hover:bg-background hover:shadow-sm [@media(hover:none)]:border-border [@media(hover:none)]:bg-background [@media(hover:none)]:shadow-sm",
                     anotherItemIsDragging
                       ? "pointer-events-none opacity-0"
                       : "opacity-100",
@@ -827,7 +812,7 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
                 >
                   <Icon
                     name="DragDropHorizontal"
-                    className="size-3.5 opacity-55 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-focus/row:opacity-100 [@media(hover:none)]:opacity-100"
+                    className="size-3.5 opacity-55 transition-opacity group-has-[[data-queued-message-group-boundary-row]:hover]/queue:opacity-100 group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:opacity-100 [@media(hover:none)]:opacity-100"
                     aria-hidden="true"
                   />
                 </button>
@@ -837,7 +822,7 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
           </TooltipProvider>
         </div>
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -855,18 +840,18 @@ function QueuedMessageInlineEditorSlot({
       data-queued-message-inline-editor=""
       className="border-b border-border/35 px-2.5 py-1 last:border-b-0"
     >
-      <div className="mb-1.5 flex min-h-7 items-center gap-1.5 px-1 text-xs text-muted-foreground">
+      <div className="mb-1.5 flex min-h-7 items-center gap-1.5 pl-1 text-xs text-subtle-foreground">
         <Icon name="Edit" className="size-3.5" aria-hidden />
         <span>Editing queued message {editor.queuedMessageIndex + 1}</span>
         <Button
           type="button"
           size="icon"
           variant="ghost"
-          className="ml-auto size-7"
+          className="ml-auto size-6 text-subtle-foreground"
           onClick={editor.onDismiss}
           aria-label="Move editor back to the prompt box"
         >
-          <Icon name="X" className="size-3.5" aria-hidden />
+          <Icon name="X" className="size-3" aria-hidden />
         </Button>
       </div>
       {editor.ready ? (
@@ -1169,6 +1154,12 @@ export function QueuedMessagesList({
   let inlineEditorInserted = false;
   for (const id of combinedIds) {
     if (id === GROUP_DIVIDER_ID) {
+      queueItems.push(
+        <SortableGroupBoundaryHandle
+          key={GROUP_DIVIDER_ID}
+          disabled={sortingDisabled || inlineEditor !== undefined}
+        />,
+      );
       continue;
     }
     const queuedMessage = orderedMessages.find((message) => message.id === id);
@@ -1199,8 +1190,7 @@ export function QueuedMessagesList({
           sendDisabled={sendDisabled}
           actionDisabled={actionDisabled}
           compact={mode !== "workspace"}
-          hasGroupDividerAfter={messageIndex === groupBoundaryIndex}
-          groupBoundaryDisabled={sortingDisabled || inlineEditor !== undefined}
+          isGroupBoundary={messageIndex === groupBoundaryIndex}
           onSendImmediately={onSendImmediately}
           onEdit={handleEdit}
           onDelete={onDelete}
@@ -1315,7 +1305,7 @@ export function QueuedMessagesList({
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={sortableIds} strategy={sortingStrategy}>
-              <ul ref={listRef} className="py-1">
+              <ul ref={listRef} className="group/queue py-1">
                 {queueItems}
               </ul>
             </SortableContext>

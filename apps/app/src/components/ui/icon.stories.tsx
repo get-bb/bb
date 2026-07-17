@@ -32,6 +32,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Circle: "Radio item indicator in menus",
   CircleCheck: "Auth callback success state",
   CircleDashed: "Child-thread busy section indicator",
+  CircleQuestion: "Thread needs user input and timeline question rows",
   CircleX: "Auth callback failure state",
   Clock: "Thread duration and timestamp affordances",
   Code: "Right-panel source file visual, Mermaid source toggle",

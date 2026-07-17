@@ -1008,7 +1008,7 @@ export function ThreadPromptContextBanner({
     visibleSegmentCount > 0 ? (
       <PromptStackCard
         ariaLabel="Thread context before sending"
-        className="overflow-hidden bg-surface-recessed"
+        className="overflow-hidden"
         style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
       >
         <div

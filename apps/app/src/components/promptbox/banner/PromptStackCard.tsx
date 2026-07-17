@@ -21,7 +21,7 @@ export const PROMPT_STACK_COMPACT_INLAY_SEGMENT_CLASS = cn(
 
 const BASE_CHROME = cn(
   PROMPT_STACK_CARD_RADIUS_CLASS,
-  "border border-border bg-surface-recessed",
+  "border border-border bg-surface-raised-solid",
 );
 
 export interface PromptStackCardProps {
@@ -43,7 +43,7 @@ export interface PromptStackCardProps {
 /**
  * Shared chrome for the stack of context cards rendered above the FollowUp
  * prompt box (today: ContextBanner + QueuedMessagesList). Owns the
- * bordered/rounded/muted surface only — each consumer owns its internal
+ * bordered/rounded/raised surface only — each consumer owns its internal
  * padding and layout. The point of the primitive is so the whole stack stays
  * visually unified and a future "compact" stack treatment can plug in here.
  */
