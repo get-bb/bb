@@ -38,6 +38,8 @@ export function createBrowserBbSdk(args: CreateBrowserBbSdkArgs = {}): BbSdk {
 
 export const bb = createBrowserBbSdk();
 
+export { BbHttpError, BbRequestTimeoutError } from "./response.js";
+export type { BbHttpErrorArgs } from "./response.js";
 export { createBbSdk, createHttpTransport };
 export type { BbSdk, BbSdkContext, BbSdkTransport };
 export type * from "./public-types.js";

@@ -117,6 +117,51 @@ describe("@bb/sdk", () => {
     expect("on" in sdk).toBe(false);
   });
 
+  it("forwards read abort signals to fetch", async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | null | undefined;
+    const fetch: FetchImplementation = async (_input, init) => {
+      receivedSignal = init?.signal;
+      return jsonResponse({ body: [] });
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.list({ signal: controller.signal }),
+    ).resolves.toEqual([]);
+    expect(receivedSignal).toBe(controller.signal);
+  });
+
+  it("maps personal-project list options while forwarding the abort signal", async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | null | undefined;
+    const queue = createFetchQueue([{ body: [] }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: async (input, init) => {
+          receivedSignal = init?.signal;
+          return queue.fetch(input, init);
+        },
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.projects.list({ includePersonal: true, signal: controller.signal }),
+    ).resolves.toEqual([]);
+    expect(receivedSignal).toBe(controller.signal);
+    expect(queue.requests[0]?.url).toBe(
+      "http://bb.test/api/v1/projects?includePersonal=true",
+    );
+  });
+
   it("sends a complete appearance selection through the theme transport", async () => {
     const appearance = {
       themeId: "nord",

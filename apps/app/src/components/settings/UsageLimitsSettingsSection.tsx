@@ -221,11 +221,19 @@ function ProviderUsageBlock({
   isError,
 }: ProviderUsageBlockProps) {
   const planLabel = usage?.status === "ok" ? usage.planLabel : null;
+  const accountEmail = usage?.status === "ok" ? usage.accountEmail : null;
 
   return (
     <div className="space-y-3.5">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-normal text-foreground">{config.name}</h3>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-normal text-foreground">{config.name}</h3>
+          {accountEmail ? (
+            <p className="truncate text-xs text-muted-foreground">
+              {accountEmail}
+            </p>
+          ) : null}
+        </div>
         {planLabel ? (
           <span className="text-xs text-muted-foreground">{planLabel}</span>
         ) : null}

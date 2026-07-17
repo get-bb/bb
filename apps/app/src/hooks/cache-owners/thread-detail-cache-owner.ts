@@ -4,7 +4,7 @@ import type {
   ThreadResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   environmentQueryKey,
   hostQueryKey,
@@ -80,10 +80,7 @@ export function ingestThreadDetailBootstrap({
     void queryClient.prefetchQuery({
       queryKey: threadTimelineQueryKey(thread.id),
       queryFn: ({ signal }) =>
-        api.getThreadTimeline({
-          id: thread.id,
-          signal,
-        }),
+        sdk.threads.timeline({ signal, threadId: thread.id }),
     });
   }
 }

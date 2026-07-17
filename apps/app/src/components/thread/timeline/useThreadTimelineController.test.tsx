@@ -3,16 +3,16 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useThreadTimelineController } from "./useThreadTimelineController";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/lib/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/sdk")>();
   return {
     ...actual,
-    getThreadTimeline: vi.fn(),
+    sdk: { threads: { timeline: vi.fn() } },
   };
 });
 
@@ -54,9 +54,11 @@ describe("useThreadTimelineController", () => {
   it("keeps an initial timeline refetch in loading state instead of showing the previous error", async () => {
     const response = makeTimelineResponse();
     let resolveRefetch: (value: ThreadTimelineResponse) => void = () => {};
-    vi.mocked(api.getThreadTimeline)
+    vi.mocked(sdk.threads.timeline)
       .mockRejectedValueOnce(
-        new api.HttpError({
+        new BbHttpError({
+          body: null,
+          code: null,
           status: 500,
           message: "Server error",
         }),
@@ -75,7 +77,7 @@ describe("useThreadTimelineController", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.timelineError).toBeInstanceOf(api.HttpError);
+      expect(result.current.timelineError).toBeInstanceOf(BbHttpError);
     });
 
     act(() => {
@@ -94,7 +96,7 @@ describe("useThreadTimelineController", () => {
     await waitFor(() => {
       expect(result.current.timelineLoading).toBe(false);
       expect(result.current.timelineError).toBeNull();
-      expect(api.getThreadTimeline).toHaveBeenCalledTimes(2);
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
     });
   });
 });

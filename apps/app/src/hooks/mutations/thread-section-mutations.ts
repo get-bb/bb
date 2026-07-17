@@ -4,7 +4,7 @@ import type {
   DeleteThreadSectionRequest,
   UpdateThreadSectionRequest,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   invalidateProjectListQueries,
   invalidateThreadListQueries,
@@ -26,7 +26,7 @@ export function useCreateThreadSection() {
       showErrorToast: false,
     },
     mutationFn: (request: CreateThreadSectionRequest) =>
-      api.createThreadSection(request),
+      sdk.threadSections.create(request),
     onSuccess: () => {
       invalidateThreadSectionQueries(queryClient);
     },
@@ -42,7 +42,7 @@ export function useUpdateThreadSection() {
       showErrorToast: false,
     },
     mutationFn: (request: UpdateThreadSectionRequest) =>
-      api.updateThreadSection(request),
+      sdk.threadSections.update(request),
     onSuccess: () => {
       invalidateThreadSectionQueries(queryClient);
     },
@@ -57,7 +57,7 @@ export function useDeleteThreadSection() {
       errorMessage: "Failed to remove section.",
     },
     mutationFn: (request: DeleteThreadSectionRequest) =>
-      api.deleteThreadSection(request),
+      sdk.threadSections.delete(request),
     onSuccess: () => {
       invalidateThreadSectionQueries(queryClient);
     },

@@ -8,7 +8,7 @@ import {
   defaultExperiments,
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   runPluginThreadAction,
@@ -16,13 +16,9 @@ import {
   usePluginMentionSearch,
 } from "./plugin-contribution-queries";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getSystemConfig: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: { system: { config: vi.fn() } },
+}));
 
 function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
@@ -63,7 +59,7 @@ afterEach(() => {
 
 describe("usePluginContributions", () => {
   it("fetches contributions and drops malformed entries once the plugins experiment is on", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(true));
     const fetchMock = mockFetchJsonOnce({
       cliCommands: [],
       threadActions: [
@@ -157,7 +153,7 @@ describe("usePluginContributions", () => {
   });
 
   it("does not fetch while the plugins experiment is off", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(false));
     const fetchMock = mockFetchJsonOnce({ cliCommands: [], threadActions: [] });
 
     const { wrapper } = createQueryClientTestHarness();
@@ -166,7 +162,7 @@ describe("usePluginContributions", () => {
     // Give the system-config query time to settle; the contributions query
     // must stay disabled the whole way.
     await waitFor(() => {
-      expect(api.getSystemConfig).toHaveBeenCalled();
+      expect(sdk.system.config).toHaveBeenCalled();
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(result.current.data).toBeUndefined();
@@ -174,7 +170,7 @@ describe("usePluginContributions", () => {
   });
 
   it("shapes a failed contributions request as empty rather than an error", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(true));
     mockFetchJsonOnce({ ok: false }, { status: 503 });
 
     const { wrapper } = createQueryClientTestHarness();

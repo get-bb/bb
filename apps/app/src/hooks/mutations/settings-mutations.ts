@@ -5,7 +5,7 @@ import {
   type AppThemeSelection,
   type Experiments,
 } from "@bb/domain";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   invalidateGeneralSettingsDependencies,
   invalidateSystemConfig,
@@ -28,7 +28,7 @@ export function useUpdateExperiments() {
       errorMessage: "Failed to update experiments.",
     },
     mutationFn: (experiments: Experiments) =>
-      api.updateExperiments(experiments),
+      sdk.system.updateExperiments(experiments),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },
@@ -47,7 +47,8 @@ export function useUpdateGeneralSettings() {
     meta: {
       errorMessage: "Failed to update general settings.",
     },
-    mutationFn: (settings: AppSettings) => api.updateGeneralSettings(settings),
+    mutationFn: (settings: AppSettings) =>
+      sdk.system.updateGeneralSettings(settings),
     onSuccess: () => {
       invalidateGeneralSettingsDependencies({ queryClient });
     },
@@ -63,7 +64,7 @@ export function useUpdateKeyboardSettings() {
       errorMessage: "Failed to update keyboard shortcuts.",
     },
     mutationFn: (overrides: AppKeybindingOverrides) =>
-      api.updateKeyboardSettings(overrides),
+      sdk.system.updateKeyboardSettings(overrides),
     onMutate: (overrides) =>
       beginKeyboardSettingsCacheTransaction({ overrides, queryClient }),
     onError: (_error, _overrides, context) => {
@@ -91,7 +92,7 @@ export function useUpdateAppearance() {
       errorMessage: "Failed to update appearance.",
     },
     mutationFn: (selection: AppThemeSelection) =>
-      api.updateAppearance(selection),
+      sdk.theme.set(selection),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

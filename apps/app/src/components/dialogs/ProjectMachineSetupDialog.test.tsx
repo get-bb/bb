@@ -9,25 +9,24 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ProjectSource } from "@bb/domain";
+import { BbHttpError } from "@bb/sdk/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HttpError } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   ProjectMachineSetupDialog,
   type ProjectMachineSetupDialogTarget,
 } from "./ProjectMachineSetupDialog";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getHostCloneDefaultPath: vi.fn(),
-    addProjectSource: vi.fn(),
-    browseHostDirectory: vi.fn(),
-    checkHostPathsExist: vi.fn(),
-  };
-});
-
-const api = vi.mocked(await import("@/lib/api"));
+vi.mock("@/lib/sdk", () => ({
+  sdk: {
+    hosts: {
+      cloneDefaultPath: vi.fn(),
+      directory: vi.fn(),
+      pathsExist: vi.fn(),
+    },
+    projects: { sources: { add: vi.fn() } },
+  },
+}));
 
 const DEFAULT_CLONE_PATH = "/Users/me/bb/checkouts/bb";
 
@@ -74,8 +73,10 @@ afterEach(() => {
 
 describe("ProjectMachineSetupDialog", () => {
   it("defaults to cloning from the remote into the host's default path", async () => {
-    api.getHostCloneDefaultPath.mockResolvedValue(DEFAULT_CLONE_PATH);
-    api.addProjectSource.mockResolvedValue(createdSource);
+    vi.mocked(sdk.hosts.cloneDefaultPath).mockResolvedValue({
+      path: DEFAULT_CLONE_PATH,
+    });
+    vi.mocked(sdk.projects.sources.add).mockResolvedValue(createdSource);
     const { onComplete } = renderDialog(gitTarget);
 
     expect(screen.getByText("Set up bb on Mac Studio")).toBeTruthy();
@@ -92,7 +93,8 @@ describe("ProjectMachineSetupDialog", () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     // No targetPath when the default destination is untouched — the daemon
     // derives the same path itself.
-    expect(api.addProjectSource).toHaveBeenCalledWith("proj_test", {
+    expect(sdk.projects.sources.add).toHaveBeenCalledWith({
+      projectId: "proj_test",
       type: "clone",
       hostId: "host_studio",
     });
@@ -103,8 +105,10 @@ describe("ProjectMachineSetupDialog", () => {
   });
 
   it("sends the edited destination as targetPath", async () => {
-    api.getHostCloneDefaultPath.mockResolvedValue(DEFAULT_CLONE_PATH);
-    api.addProjectSource.mockResolvedValue(createdSource);
+    vi.mocked(sdk.hosts.cloneDefaultPath).mockResolvedValue({
+      path: DEFAULT_CLONE_PATH,
+    });
+    vi.mocked(sdk.projects.sources.add).mockResolvedValue(createdSource);
     renderDialog(gitTarget);
     await screen.findByText(DEFAULT_CLONE_PATH);
 
@@ -117,8 +121,11 @@ describe("ProjectMachineSetupDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Clone & continue" }));
 
-    await waitFor(() => expect(api.addProjectSource).toHaveBeenCalled());
-    expect(api.addProjectSource).toHaveBeenCalledWith("proj_test", {
+    await waitFor(() =>
+      expect(sdk.projects.sources.add).toHaveBeenCalled(),
+    );
+    expect(sdk.projects.sources.add).toHaveBeenCalledWith({
+      projectId: "proj_test",
       type: "clone",
       hostId: "host_studio",
       targetPath: "/Users/me/elsewhere/bb",
@@ -126,11 +133,18 @@ describe("ProjectMachineSetupDialog", () => {
   });
 
   it("shows the clone error verbatim and allows retrying", async () => {
-    api.getHostCloneDefaultPath.mockResolvedValue(DEFAULT_CLONE_PATH);
+    vi.mocked(sdk.hosts.cloneDefaultPath).mockResolvedValue({
+      path: DEFAULT_CLONE_PATH,
+    });
     const gitStderr =
       "git clone failed: fatal: could not read Username for 'https://github.com'";
-    api.addProjectSource.mockRejectedValue(
-      new HttpError({ status: 502, code: "git_command_failed", message: gitStderr }),
+    vi.mocked(sdk.projects.sources.add).mockRejectedValue(
+      new BbHttpError({
+        status: 502,
+        code: "git_command_failed",
+        message: gitStderr,
+        body: { code: "git_command_failed", message: gitStderr },
+      }),
     );
     renderDialog(gitTarget);
     await screen.findByText(DEFAULT_CLONE_PATH);
@@ -143,12 +157,18 @@ describe("ProjectMachineSetupDialog", () => {
   });
 
   it("suggests another path or the folder option when the target is not empty", async () => {
-    api.getHostCloneDefaultPath.mockResolvedValue(DEFAULT_CLONE_PATH);
-    api.addProjectSource.mockRejectedValue(
-      new HttpError({
+    vi.mocked(sdk.hosts.cloneDefaultPath).mockResolvedValue({
+      path: DEFAULT_CLONE_PATH,
+    });
+    vi.mocked(sdk.projects.sources.add).mockRejectedValue(
+      new BbHttpError({
         status: 409,
         code: "target_not_empty",
         message: "Target directory is not empty",
+        body: {
+          code: "target_not_empty",
+          message: "Target directory is not empty",
+        },
       }),
     );
     renderDialog(gitTarget);
@@ -165,14 +185,18 @@ describe("ProjectMachineSetupDialog", () => {
   });
 
   it("submits an existing browsed folder as a local_path source", async () => {
-    api.getHostCloneDefaultPath.mockResolvedValue(DEFAULT_CLONE_PATH);
-    api.browseHostDirectory.mockResolvedValue({
+    vi.mocked(sdk.hosts.cloneDefaultPath).mockResolvedValue({
+      path: DEFAULT_CLONE_PATH,
+    });
+    vi.mocked(sdk.hosts.directory).mockResolvedValue({
       directory: "/Users/me/code/bb",
       parent: "/Users/me/code",
       entries: [],
     });
-    api.checkHostPathsExist.mockResolvedValue({ "/Users/me/code/bb": true });
-    api.addProjectSource.mockResolvedValue({
+    vi.mocked(sdk.hosts.pathsExist).mockResolvedValue({
+      existence: { "/Users/me/code/bb": true },
+    });
+    vi.mocked(sdk.projects.sources.add).mockResolvedValue({
       ...createdSource,
       path: "/Users/me/code/bb",
     });
@@ -191,7 +215,8 @@ describe("ProjectMachineSetupDialog", () => {
     fireEvent.click(submit);
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
-    expect(api.addProjectSource).toHaveBeenCalledWith("proj_test", {
+    expect(sdk.projects.sources.add).toHaveBeenCalledWith({
+      projectId: "proj_test",
       type: "local_path",
       hostId: "host_studio",
       path: "/Users/me/code/bb",
@@ -199,7 +224,7 @@ describe("ProjectMachineSetupDialog", () => {
   });
 
   it("offers only the folder option for a project without a git remote", () => {
-    api.browseHostDirectory.mockResolvedValue({
+    vi.mocked(sdk.hosts.directory).mockResolvedValue({
       directory: "/Users/me",
       parent: null,
       entries: [],

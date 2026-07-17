@@ -86,6 +86,12 @@ not already exist. Dispatch requires an existing preset.
    content cleanup with `--remove-references`; that flag removes the saved
    description image reference together with the row and blob.
 
+   File paths (`--file`, `--attach`, `--out`, `--description-file`,
+   `--body-file`) are read from and written to the invoking machine: inside
+   an agent thread that is the thread's machine, so local paths just work.
+   Outside a thread they target the server's machine; pass
+   `--machine <id-or-name>` to address files on another enrolled machine.
+
 5. When the work is ready for review, update the task:
 
    ```sh

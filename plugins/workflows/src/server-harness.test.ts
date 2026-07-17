@@ -234,6 +234,18 @@ describe("workflows plugin", () => {
     expect(workerConfig.tools.map((tool) => tool.name)).toEqual([
       "bb_workflow_result",
     ]);
+    expect(workerConfig.tools[0]?.inputSchema).toEqual({
+      type: "object",
+      properties: {
+        value: {
+          type: "object",
+          required: ["answer"],
+          properties: { answer: { type: "number" } },
+        },
+      },
+      required: ["value"],
+      additionalProperties: false,
+    });
 
     const authorConfig = await harness.resolveAgentConfiguration({
       thread: {
@@ -870,6 +882,59 @@ describe("workflow resume cache integration", () => {
       expect(getCall(test.db, run.id, 0)).toMatchObject({
         status: "succeeded",
         providerRetryAttempts: 1,
+      });
+    });
+
+    controller.abort();
+    await worker;
+  });
+
+  it("accepts double-encoded structured results and reports decode-aware errors", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    const schema = `{ type: "object", required: ["answer"], properties: { answer: { type: "number" } } }`;
+    const run = await test.start(
+      workflowSource(
+        `const a = await agent("structured", { outputSchema: ${schema} });
+         const b = await agent("fallback", { outputSchema: ${schema} });
+         return [a, b];`,
+      ),
+      null,
+    );
+    await eventually(() => expect(test.childCount()).toBe(1));
+
+    const invalid = await test.service.submitStructuredResult(
+      "cache-child-1",
+      JSON.stringify({ answer: "not-a-number" }),
+    );
+    expect(invalid).toMatchObject({ ok: false, terminal: false });
+    expect((invalid as { error: string }).error).toContain(
+      "JSON-encoded string",
+    );
+
+    await expect(
+      test.service.submitStructuredResult(
+        "cache-child-1",
+        JSON.stringify({ answer: 42 }),
+      ),
+    ).resolves.toEqual({ ok: true });
+    await eventually(() => {
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "succeeded",
+        resultJson: '{"answer":42}',
+      });
+    });
+
+    await eventually(() => expect(test.childCount()).toBe(2));
+    await test.finish(
+      "cache-child-2",
+      JSON.stringify(JSON.stringify({ answer: 7 })),
+    );
+    await eventually(() => {
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "succeeded",
+        resultJson: '[{"answer":42},{"answer":7}]',
       });
     });
 

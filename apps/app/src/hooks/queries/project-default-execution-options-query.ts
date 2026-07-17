@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ProjectExecutionDefaults } from "@bb/domain";
-import { apiClient } from "@/lib/api-server";
-import { request, requestOptions } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { requireEnabledQueryArg } from "./query-helpers";
 import { projectDefaultExecutionOptionsQueryKey } from "./query-keys";
@@ -34,15 +33,7 @@ function fetchProjectDefaultExecutionOptions({
   projectId,
   signal,
 }: FetchProjectDefaultExecutionOptionsArgs): Promise<ProjectExecutionDefaults | null> {
-  return request<ProjectExecutionDefaults | null>(
-    apiClient.projects[":id"]["default-execution-options"].$get(
-      {
-        param: { id: projectId },
-        query: {},
-      },
-      requestOptions(signal),
-    ),
-  );
+  return sdk.projects.defaultExecutionOptions({ projectId, signal });
 }
 
 export function useProjectDefaultExecutionOptions(

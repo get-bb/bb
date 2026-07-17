@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { appToast } from "@/components/ui/app-toast.js";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { UpdatesSettingsSection } from "./UpdatesSettingsSection";
 
 vi.mock("@/components/ui/app-toast.js", () => ({
@@ -26,8 +26,8 @@ vi.mock("@/components/ui/app-toast.js", () => ({
   },
 }));
 
-vi.mock("@/lib/api", () => ({
-  getSystemVersion: vi.fn(),
+vi.mock("@/lib/sdk", () => ({
+  sdk: { system: { version: vi.fn() } },
 }));
 
 const desktopInfo: BbDesktopInfo = {
@@ -69,7 +69,7 @@ afterEach(() => {
 
 describe("UpdatesSettingsSection", () => {
   it("forces the web update check and reports an available update", async () => {
-    vi.mocked(api.getSystemVersion).mockResolvedValue({
+    vi.mocked(sdk.system.version).mockResolvedValue({
       currentVersion: "0.0.5",
       latestVersion: "0.0.6",
       source: "npm",
@@ -82,7 +82,7 @@ describe("UpdatesSettingsSection", () => {
     clickCheckForUpdates();
 
     await waitFor(() => {
-      expect(api.getSystemVersion).toHaveBeenCalledWith({ force: true });
+      expect(sdk.system.version).toHaveBeenCalledWith({ force: true });
     });
     expect(appToast.message).toHaveBeenCalledWith(
       "bb-app update available",
@@ -112,7 +112,7 @@ describe("UpdatesSettingsSection", () => {
     await waitFor(() => {
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
     });
-    expect(api.getSystemVersion).not.toHaveBeenCalled();
+    expect(sdk.system.version).not.toHaveBeenCalled();
     expect(appToast.message).toHaveBeenCalledWith(
       "Desktop update ready",
       expect.objectContaining({

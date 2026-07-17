@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import type { HostDirectoryListing } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { useHostListRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
@@ -26,7 +26,7 @@ export function useHosts(options?: QueryOptions) {
 
   return useQuery<Host[]>({
     queryKey: hostsQueryKey(),
-    queryFn: ({ signal }) => api.listHosts(signal),
+    queryFn: ({ signal }) => sdk.hosts.list({ signal }),
     enabled,
     staleTime: 60_000,
   });
@@ -83,7 +83,9 @@ export function useHostCloneDefaultPath(
     queryKey: hostCloneDefaultPathQueryKey(hostId, projectId),
     queryFn:
       enabled && hostId !== null && projectId !== null
-        ? ({ signal }) => api.getHostCloneDefaultPath(hostId, projectId, signal)
+        ? async ({ signal }) =>
+            (await sdk.hosts.cloneDefaultPath({ hostId, projectId, signal }))
+              .path
         : skipToken,
     staleTime: 60_000,
   });
@@ -93,7 +95,7 @@ export function useHostDirectory(hostId: string | null, path: string | null) {
   return useQuery<HostDirectoryListing>({
     queryKey: hostDirectoryQueryKey(hostId, path),
     queryFn: ({ signal }) =>
-      api.browseHostDirectory({
+      sdk.hosts.directory({
         hostId: hostId as string,
         ...(path ? { path } : {}),
         signal,

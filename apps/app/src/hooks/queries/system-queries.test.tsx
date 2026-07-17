@@ -7,7 +7,7 @@ import type {
   ProviderUsageResponse,
 } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   hostProviderCliStatusQueryKey,
@@ -21,15 +21,16 @@ import {
   useSystemUsageLimits,
 } from "./system-queries";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    fetchHostProviderCliStatus: vi.fn(),
-    getSystemExecutionOptions: vi.fn(),
-    getSystemUsageLimits: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  BbHttpError: class BbHttpError extends Error {},
+  sdk: {
+    hosts: { providerCliStatus: vi.fn() },
+    system: {
+      executionOptions: vi.fn(),
+      usageLimits: vi.fn(),
+    },
+  },
+}));
 
 const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
   providers: [],
@@ -53,8 +54,8 @@ afterEach(() => {
 
 describe("useSystemExecutionOptions", () => {
   it("separates requests and cache entries for different hosts", async () => {
-    vi.mocked(api.getSystemExecutionOptions).mockImplementation(async (args) =>
-      args.hostId === "host-a"
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      args?.hostId === "host-a"
         ? { ...EXECUTION_OPTIONS_RESPONSE, models: [] }
         : { ...EXECUTION_OPTIONS_RESPONSE, selectedOnlyModels: [] },
     );
@@ -69,10 +70,10 @@ describe("useSystemExecutionOptions", () => {
     );
 
     await waitFor(() => {
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
         expect.objectContaining({ hostId: "host-a", providerId: "codex" }),
       );
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
         expect.objectContaining({ hostId: "host-b", providerId: "codex" }),
       );
     });
@@ -96,7 +97,7 @@ describe("useSystemExecutionOptions", () => {
   });
 
   it("retries one transient failure before surfacing model selector errors", async () => {
-    vi.mocked(api.getSystemExecutionOptions)
+    vi.mocked(sdk.system.executionOptions)
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
       .mockResolvedValueOnce(EXECUTION_OPTIONS_RESPONSE);
 
@@ -109,12 +110,12 @@ describe("useSystemExecutionOptions", () => {
 
     await waitFor(() => {
       expect(result.current.data).toBe(EXECUTION_OPTIONS_RESPONSE);
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledTimes(2);
+      expect(sdk.system.executionOptions).toHaveBeenCalledTimes(2);
     });
   });
 
   it("does not retry intentionally aborted model selector requests", async () => {
-    vi.mocked(api.getSystemExecutionOptions).mockRejectedValue(
+    vi.mocked(sdk.system.executionOptions).mockRejectedValue(
       new DOMException("Aborted", "AbortError"),
     );
 
@@ -127,14 +128,14 @@ describe("useSystemExecutionOptions", () => {
 
     await waitFor(() => {
       expect(result.current.isError).toBe(true);
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledTimes(1);
+      expect(sdk.system.executionOptions).toHaveBeenCalledTimes(1);
     });
   });
 });
 
 describe("useHostProviderCliStatus", () => {
   it("keeps host CLI status session-static", async () => {
-    vi.mocked(api.fetchHostProviderCliStatus).mockResolvedValue(
+    vi.mocked(sdk.hosts.providerCliStatus).mockResolvedValue(
       PROVIDER_CLI_STATUS_RESPONSE,
     );
     const { queryClient, wrapper } = createQueryClientTestHarness();
@@ -145,7 +146,7 @@ describe("useHostProviderCliStatus", () => {
     );
 
     await waitFor(() => {
-      expect(api.fetchHostProviderCliStatus).toHaveBeenCalledTimes(1);
+      expect(sdk.hosts.providerCliStatus).toHaveBeenCalledTimes(1);
     });
 
     const query = queryClient.getQueryCache().find({
@@ -165,7 +166,7 @@ describe("useHostProviderCliStatus", () => {
 
 describe("useSystemUsageLimits", () => {
   it("refreshes stale usage data on focus and reconnect", async () => {
-    vi.mocked(api.getSystemUsageLimits).mockResolvedValue(
+    vi.mocked(sdk.system.usageLimits).mockResolvedValue(
       PROVIDER_USAGE_RESPONSE,
     );
     const { queryClient, wrapper } = createQueryClientTestHarness();
@@ -173,13 +174,13 @@ describe("useSystemUsageLimits", () => {
     renderHook(() => useSystemUsageLimits({ hostId: "host-1" }), { wrapper });
 
     await waitFor(() => {
-      expect(api.getSystemUsageLimits).toHaveBeenCalledTimes(1);
+      expect(sdk.system.usageLimits).toHaveBeenCalledTimes(1);
     });
 
-    expect(api.getSystemUsageLimits).toHaveBeenCalledWith(
-      "host-1",
-      expect.any(AbortSignal),
-    );
+    expect(sdk.system.usageLimits).toHaveBeenCalledWith({
+      hostId: "host-1",
+      signal: expect.any(AbortSignal),
+    });
 
     const query = queryClient.getQueryCache().find({
       queryKey: systemUsageLimitsQueryKey("host-1"),

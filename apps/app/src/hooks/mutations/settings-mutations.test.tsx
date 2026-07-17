@@ -10,7 +10,7 @@ import {
   type AppKeybindings,
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   systemConfigQueryKey,
@@ -22,12 +22,14 @@ import {
   useUpdateKeyboardSettings,
 } from "./settings-mutations";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/lib/sdk", () => {
   return {
-    ...actual,
-    updateGeneralSettings: vi.fn(),
-    updateKeyboardSettings: vi.fn(),
+    sdk: {
+      system: {
+        updateGeneralSettings: vi.fn(),
+        updateKeyboardSettings: vi.fn(),
+      },
+    },
   };
 });
 
@@ -89,7 +91,7 @@ describe("general settings mutation", () => {
       ...defaultAppSettings,
       showUnhandledProviderEvents: true,
     };
-    vi.mocked(api.updateGeneralSettings).mockResolvedValue(nextSettings);
+    vi.mocked(sdk.system.updateGeneralSettings).mockResolvedValue(nextSettings);
     const { result } = renderHook(() => useUpdateGeneralSettings(), {
       wrapper,
     });
@@ -108,7 +110,7 @@ describe("keyboard settings mutation", () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     queryClient.setQueryData(systemConfigQueryKey(), systemConfig());
     let resolveRequest: (overrides: AppKeybindingOverrides) => void = () => {};
-    vi.mocked(api.updateKeyboardSettings).mockImplementation(
+    vi.mocked(sdk.system.updateKeyboardSettings).mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveRequest = resolve;
@@ -146,7 +148,7 @@ describe("keyboard settings mutation", () => {
   it("restores resolved system config when the request fails", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     queryClient.setQueryData(systemConfigQueryKey(), systemConfig());
-    vi.mocked(api.updateKeyboardSettings).mockRejectedValue(
+    vi.mocked(sdk.system.updateKeyboardSettings).mockRejectedValue(
       new Error("write failed"),
     );
     const { result } = renderHook(() => useUpdateKeyboardSettings(), {

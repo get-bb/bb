@@ -6,8 +6,13 @@ import type {
   PromptHistoryResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
-import type { FilePreview } from "@/lib/api";
+import {
+  buildFilePreview,
+  normalizeFilePreviewMimeType,
+  type FilePreview,
+} from "@/lib/file-preview";
+import { buildProjectFileContentUrl } from "@/lib/file-content-urls";
+import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   projectCommandsQueryKey,
@@ -55,6 +60,15 @@ interface UseProjectCommandsArgs {
 }
 
 const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
+
+function decodeBase64Bytes(content: string): Uint8Array {
+  const binaryContent = atob(content);
+  const bytes = new Uint8Array(binaryContent.length);
+  for (let index = 0; index < binaryContent.length; index += 1) {
+    bytes[index] = binaryContent.charCodeAt(index);
+  }
+  return bytes;
+}
 
 function requireProjectId(
   projectId: string | undefined,
@@ -107,16 +121,14 @@ export function useProjectSourceBranches(
       selectedBranch,
     ),
     queryFn: ({ signal }) =>
-      api.getProjectSourceBranches(
-        requireProjectId(projectId, "useProjectSourceBranches"),
-        hostId ?? "",
-        {
-          ...(query ? { query } : {}),
-          ...(selectedBranch ? { selectedBranch } : {}),
-          limit,
-        },
+      sdk.projects.branches({
+        projectId: requireProjectId(projectId, "useProjectSourceBranches"),
+        hostId: hostId ?? "",
+        ...(query ? { query } : {}),
+        ...(selectedBranch ? { selectedBranch } : {}),
+        limit: String(limit),
         signal,
-      ),
+      }),
     enabled,
     ...FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
     placeholderData: (previousData, previousQuery) =>
@@ -143,10 +155,10 @@ export function useProjectPromptHistory(
   return useQuery<PromptHistoryResponse>({
     queryKey: projectPromptHistoryQueryKey(projectId),
     queryFn: ({ signal }) =>
-      api.listProjectPromptHistory(
-        requireProjectId(projectId, "useProjectPromptHistory"),
+      sdk.projects.promptHistory({
+        projectId: requireProjectId(projectId, "useProjectPromptHistory"),
         signal,
-      ),
+      }),
     enabled,
     staleTime: PROMPT_HISTORY_STALE_TIME_MS,
   });
@@ -175,18 +187,18 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
       includeDirectories,
     ),
     queryFn: ({ signal }) =>
-      api.searchProjectPaths({
+      sdk.projects.paths({
         projectId: projectId ?? "",
         query: trimmedQuery,
-        limit,
-        includeFiles,
-        includeDirectories,
+        limit: String(limit),
+        includeFiles: includeFiles ? "true" : "false",
+        includeDirectories: includeDirectories ? "true" : "false",
+        signal,
         ...(args.environmentId !== null
           ? { environmentId: args.environmentId }
           : args.hostId !== null
             ? { hostId: args.hostId }
             : {}),
-        signal,
       }),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
@@ -211,21 +223,44 @@ export function useProjectFilePreview(
       routing.hostId,
       path,
     ),
-    queryFn: ({ signal }) =>
-      api.getProjectFilePreview({
-        projectId: requireProjectId(projectId, "useProjectFilePreview"),
-        path: requireEnabledQueryArg({
-          value: path,
-          hookName: "useProjectFilePreview",
-          argName: "path",
-        }),
+    queryFn: async ({ signal }) => {
+      const requiredProjectId = requireProjectId(
+        projectId,
+        "useProjectFilePreview",
+      );
+      const requiredPath = requireEnabledQueryArg({
+        value: path,
+        hookName: "useProjectFilePreview",
+        argName: "path",
+      });
+      const content = await sdk.projects.fileContent({
+        projectId: requiredProjectId,
+        path: requiredPath,
+        signal,
         ...(routing.environmentId !== null
           ? { environmentId: routing.environmentId }
           : routing.hostId !== null
             ? { hostId: routing.hostId }
             : {}),
-        signal,
-      }),
+      });
+      const contentBytes =
+        content.contentEncoding === "base64"
+          ? decodeBase64Bytes(content.content)
+          : new TextEncoder().encode(content.content);
+      return buildFilePreview({
+        contentBytes,
+        mimeType: normalizeFilePreviewMimeType(content.mimeType),
+        name: requiredPath.split("/").at(-1),
+        path: requiredPath,
+        url: buildProjectFileContentUrl(requiredProjectId, requiredPath, {
+          ...(routing.environmentId !== null
+            ? { environmentId: routing.environmentId }
+            : routing.hostId !== null
+              ? { hostId: routing.hostId }
+              : {}),
+        }),
+      });
+    },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
   });
@@ -257,15 +292,15 @@ export function useProjectCommands(
       args.hostId,
     ),
     queryFn: ({ signal }) =>
-      api.listProjectCommands({
+      sdk.projects.commands({
         projectId: requireProjectId(args.projectId, "useProjectCommands"),
-        providerId: requireProviderId(args.providerId, "useProjectCommands"),
+        provider: requireProviderId(args.providerId, "useProjectCommands"),
+        signal,
         ...(args.environmentId !== null
           ? { environmentId: args.environmentId }
           : args.hostId !== null
             ? { hostId: args.hostId }
             : {}),
-        signal,
       }),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,

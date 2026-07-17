@@ -1,13 +1,16 @@
 import { useEffect, useRef } from "react";
 import { atom, getDefaultStore, useSetAtom } from "jotai";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   defaultFaviconColor,
   faviconColorPreferenceSchema,
+  type AppThemeSelection,
   type FaviconColor,
   type FaviconColorPreference,
 } from "@bb/domain";
-import { useUpdateAppearance } from "@/hooks/mutations/settings-mutations";
+import { invalidateSystemConfig } from "@/hooks/cache-owners/system-cache-effects";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { sdk } from "@/lib/sdk";
 
 // Reused as both the boot cache (apply the last-known tint before /system/config
 // loads, so the tab icon doesn't flash) and the legacy source for the one-time
@@ -91,7 +94,16 @@ function setActiveFaviconColor(color: FaviconColorPreference): void {
 export function useFaviconColorSync(): void {
   const { data } = useSystemConfig();
   const appearance = data?.appearance;
-  const { mutate: updateAppearance } = useUpdateAppearance();
+  const queryClient = useQueryClient();
+  const { mutate: updateAppearance } = useMutation({
+    meta: {
+      errorMessage: "Failed to update appearance.",
+    },
+    mutationFn: (selection: AppThemeSelection) => sdk.theme.set(selection),
+    onSuccess: () => {
+      invalidateSystemConfig({ queryClient });
+    },
+  });
   const legacyMigrationRequestedRef = useRef(false);
 
   useEffect(() => {

@@ -50,7 +50,35 @@ async function buildRuntimeArtifacts() {
   throw new Error(`Runtime build failed with exit code ${result.code ?? 1}`);
 }
 
+async function buildBundledPlugins() {
+  const child = spawn(
+    process.execPath,
+    [
+      "--conditions=source",
+      "--import",
+      "tsx",
+      resolve(repoRoot, "apps/server/scripts/copy-builtin-plugins.ts"),
+    ],
+    {
+      cwd: repoRoot,
+      env: process.env,
+      stdio: "inherit",
+    },
+  );
+  const result = await waitForProcess(child);
+  if (result.code === 0) {
+    return;
+  }
+  if (result.signal !== null) {
+    throw new Error(`Bundled plugin build stopped by ${result.signal}`);
+  }
+  throw new Error(
+    `Bundled plugin build failed with exit code ${result.code ?? 1}`,
+  );
+}
+
 await buildRuntimeArtifacts();
+await buildBundledPlugins();
 ensureNativeModules({ repoRoot });
 
 const { runBbApp } = await import("../packages/bb-app/src/index.ts");

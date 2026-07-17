@@ -1,6 +1,15 @@
-import { mkdtemp, readFile, rm, truncate, writeFile } from "node:fs/promises";
+import { isUtf8 } from "node:buffer";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  truncate,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   createFakePluginHost,
   makeThreadResponse,
@@ -15,18 +24,57 @@ import plugin from "../server";
 // create --attach partial-failure path is deterministic.
 vi.mock("../attachments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../attachments")>();
-  const saveAttachmentFromPath: typeof actual.saveAttachmentFromPath = async (
-    store,
-    sourcePath,
-    options,
-  ) => {
-    if (sourcePath.endsWith("boom.bin")) {
-      throw new Error("simulated blob write failure");
-    }
-    return actual.saveAttachmentFromPath(store, sourcePath, options);
-  };
-  return { ...actual, saveAttachmentFromPath };
+  const saveAttachmentFromBytes: typeof actual.saveAttachmentFromBytes =
+    async (store, bytes, options) => {
+      if (options.fileName === "boom.bin") {
+        throw new Error("simulated blob write failure");
+      }
+      return actual.saveAttachmentFromBytes(store, bytes, options);
+    };
+  return { ...actual, saveAttachmentFromBytes };
 });
+
+// Fake bb.sdk.files backed by the local filesystem, mimicking the host
+// daemon's transport contract (missing-path errors, the 25 MB read cap, and
+// utf8-vs-base64 content encoding). The CLI reaches invoking-machine files
+// only through bb.sdk.files, so these tests stub it instead of relying on
+// the plugin touching the server's disk.
+function localFilesSdk() {
+  return {
+    read: async ({ path }: { path: string }) => {
+      const stats = await stat(path).catch(() => null);
+      if (!stats?.isFile()) throw new Error(`Path does not exist: ${path}`);
+      if (stats.size > 25 * 1024 * 1024) {
+        throw new Error(
+          `File size ${stats.size} bytes exceeds the 25 MB limit`,
+        );
+      }
+      const contents = await readFile(path);
+      const contentEncoding = isUtf8(contents) ? "utf8" : "base64";
+      return {
+        path,
+        content: contents.toString(contentEncoding),
+        contentEncoding,
+        sizeBytes: stats.size,
+      };
+    },
+    write: async ({
+      path,
+      content,
+      contentEncoding,
+      createParents,
+    }: {
+      path: string;
+      content: string;
+      contentEncoding?: "utf8" | "base64";
+      createParents?: boolean;
+    }) => {
+      if (createParents) await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, Buffer.from(content, contentEncoding ?? "utf8"));
+      return { outcome: "written", path };
+    },
+  };
+}
 
 function stdout(result: {
   exitCode: number;
@@ -717,7 +765,10 @@ describe("bb tasks CLI", () => {
       pngPath,
       new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     );
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: { files: localFilesSdk() },
+    });
     await plugin(bb);
 
     try {
@@ -826,7 +877,10 @@ describe("bb tasks CLI", () => {
     await writeFile(firstPath, "first", "utf8");
     await writeFile(boomPath, "will fail at blob write", "utf8");
     await writeFile(lastPath, "last", "utf8");
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: { files: localFilesSdk() },
+    });
     await plugin(bb);
 
     try {
@@ -1069,7 +1123,10 @@ describe("bb tasks CLI", () => {
       pngPath,
       new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     );
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: { files: localFilesSdk() },
+    });
     await plugin(bb);
 
     try {
@@ -1286,6 +1343,148 @@ describe("bb tasks CLI", () => {
       await harness.dispose();
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it("routes file flags to the invoking thread's machine and honors --machine", async () => {
+    // Files that exist only on the remote enrolled machine, never on the
+    // server's filesystem — the CLI must reach them via bb.sdk.files with
+    // the resolved hostId.
+    const remoteFiles = new Map<string, Buffer>([
+      ["/remote/notes.md", Buffer.from("remote description\n", "utf8")],
+      [
+        "/remote/shot.png",
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      ],
+    ]);
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) =>
+            makeThreadResponse({ id: threadId, environmentId: "env-remote" }),
+        },
+        environments: {
+          get: async () => ({ hostId: "machine-remote" }),
+        },
+        hosts: {
+          list: async () => [{ id: "machine-remote", name: "Remote Laptop" }],
+        },
+        files: {
+          read: async ({ path }: { path: string }) => {
+            const contents = remoteFiles.get(path);
+            if (!contents) throw new Error(`Path does not exist: ${path}`);
+            const contentEncoding = isUtf8(contents) ? "utf8" : "base64";
+            return {
+              path,
+              content: contents.toString(contentEncoding),
+              contentEncoding,
+              sizeBytes: contents.byteLength,
+            };
+          },
+          write: async ({
+            path,
+            content,
+            contentEncoding,
+          }: {
+            path: string;
+            content: string;
+            contentEncoding?: "utf8" | "base64";
+          }) => {
+            remoteFiles.set(path, Buffer.from(content, contentEncoding));
+            return { outcome: "written", path };
+          },
+        },
+      },
+    });
+    await plugin(bb);
+    const threadCtx = { threadId: "thr_remote_worker", cwd: "/remote" };
+
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Remote",
+        "--prefix",
+        "REM",
+      ]),
+    );
+    const created = JSON.parse(
+      stdout(
+        await harness.runCli(
+          [
+            "create",
+            "--project",
+            "REM",
+            "--title",
+            "Remote files",
+            "--description-file",
+            "notes.md",
+            "--attach",
+            "shot.png",
+            "--json",
+          ],
+          threadCtx,
+        ),
+      ),
+    );
+    expect(created.task).toMatchObject({
+      key: "REM-1",
+      description: "remote description\n",
+    });
+    expect(created.attachments).toEqual([
+      expect.objectContaining({ fileName: "shot.png", mime: "image/png" }),
+    ]);
+    // Every client file read resolved the thread's machine.
+    for (const [args] of harness.sdk.callsTo("files.read")) {
+      expect(args).toMatchObject({ hostId: "machine-remote" });
+    }
+
+    stdout(
+      await harness.runCli(
+        [
+          "attachment",
+          "get",
+          created.attachments[0].id,
+          "--out",
+          "fetched/shot.png",
+        ],
+        threadCtx,
+      ),
+    );
+    expect(harness.sdk.callsTo("files.write")).toEqual([
+      [
+        expect.objectContaining({
+          hostId: "machine-remote",
+          path: "/remote/fetched/shot.png",
+          contentEncoding: "base64",
+          createParents: true,
+        }),
+      ],
+    ]);
+    expect(remoteFiles.get("/remote/fetched/shot.png")).toEqual(
+      remoteFiles.get("/remote/shot.png"),
+    );
+
+    // --machine overrides by name without any thread context.
+    stdout(
+      await harness.runCli([
+        "attachment",
+        "add",
+        "REM-1",
+        "--file",
+        "/remote/notes.md",
+        "--machine",
+        "Remote Laptop",
+      ]),
+    );
+    const lastRead = harness.sdk.callsTo("files.read").at(-1)!;
+    expect(lastRead[0]).toMatchObject({
+      hostId: "machine-remote",
+      path: "/remote/notes.md",
+    });
+
+    await harness.dispose();
   });
 
   it("returns a friendly dispatch error when the task project is not linked", async () => {

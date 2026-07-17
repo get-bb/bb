@@ -9,7 +9,7 @@ import type {
   ServiceTier,
   Thread,
 } from "@bb/domain";
-import type { AppCreateThreadRequest } from "@/lib/api";
+import type { AppCreateThreadRequest } from "@/lib/api-types";
 
 export const FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY =
   "forkThreadCreateSeed";

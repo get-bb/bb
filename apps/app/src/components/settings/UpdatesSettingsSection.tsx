@@ -12,7 +12,7 @@ import {
 import { appToast } from "@/components/ui/app-toast.js";
 import { hydrateSystemVersionCache } from "@/hooks/cache-owners/system-version-cache-owner";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 
 function updateCheckErrorDescription(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
@@ -121,7 +121,7 @@ export function UpdatesSettingsSection() {
         return;
       }
 
-      const version = await api.getSystemVersion({ force: true });
+      const version = await sdk.system.version({ force: true });
       hydrateSystemVersionCache({ queryClient, version });
       showWebUpdateCheckResult(version);
     } catch (error: unknown) {

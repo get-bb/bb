@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ResolvedThreadExecutionOptions } from "@bb/domain";
-import { apiClient } from "@/lib/api-server";
-import { request, requestOptions } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { useThreadDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { requireEnabledQueryArg } from "./query-helpers";
 import { threadDefaultExecutionOptionsQueryKey } from "./query-keys";
@@ -30,14 +29,7 @@ export function fetchThreadDefaultExecutionOptions(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<ResolvedThreadExecutionOptions | null> {
-  return request<ResolvedThreadExecutionOptions | null>(
-    apiClient.threads[":id"]["default-execution-options"].$get(
-      {
-        param: { id: threadId },
-      },
-      requestOptions(signal),
-    ),
-  );
+  return sdk.threads.defaultExecutionOptions({ threadId, signal });
 }
 
 export function useThreadDefaultExecutionOptions(

@@ -1141,7 +1141,9 @@ export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
  * UI can render the windows, prompt the user to sign in, or surface an error
  * without inventing placeholder numbers.
  *
- * - `ok` — usage was read; `windows` may be empty if the plan exposes none.
+ * - `ok` — usage was read; `accountEmail` is null when the provider's local
+ *   auth state does not expose it, and `windows` may be empty if the plan
+ *   exposes none.
  * - `not_installed` — the provider CLI is not installed on this host.
  * - `unauthenticated` — no local credentials (the CLI is not logged in).
  * - `expired` — credentials exist but the token expired; the CLI must refresh
@@ -1151,6 +1153,7 @@ export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
 export const providerUsageSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("ok"),
+    accountEmail: z.string().email().nullable(),
     planLabel: z.string().min(1).nullable(),
     windows: z.array(providerUsageWindowSchema),
   }),

@@ -1,5 +1,6 @@
 import { toRecord } from "@bb/core-ui";
 import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 
 /**
  * Staleness window for prompt-history queries. Shared by the thread- and
@@ -29,7 +30,9 @@ export function requireEnabledQueryArg<T>({
   argName,
 }: RequireEnabledQueryArgArgs<T>): T {
   if (value == null || value === "") {
-    throw new Error(`${hookName}: ${argName} is required when query is enabled`);
+    throw new Error(
+      `${hookName}: ${argName} is required when query is enabled`,
+    );
   }
   return value;
 }
@@ -46,7 +49,7 @@ export function isTransientReadError(error: unknown): boolean {
   if (toRecord(error)?.name === "AbortError") {
     return true;
   }
-  if (error instanceof HttpError) {
+  if (error instanceof HttpError || error instanceof BbHttpError) {
     return false;
   }
 

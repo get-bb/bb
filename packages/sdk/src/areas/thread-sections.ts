@@ -10,17 +10,21 @@ import {
   threadSectionMutationResponseSchema,
   threadSectionSchema,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export type ThreadSectionCreateResult = ThreadSectionResponse;
 export type ThreadSectionUpdateResult = ThreadSectionMutationResponse;
 export type ThreadSectionDeleteResult = ThreadSectionMutationResponse;
 export type ThreadSectionListResult = ThreadSectionResponse[];
 
+export interface ThreadSectionListArgs {
+  signal?: AbortSignal;
+}
+
 export interface ThreadSectionsArea {
   create(args: CreateThreadSectionRequest): Promise<ThreadSectionCreateResult>;
   delete(args: DeleteThreadSectionRequest): Promise<ThreadSectionDeleteResult>;
-  list(): Promise<ThreadSectionListResult>;
+  list(args?: ThreadSectionListArgs): Promise<ThreadSectionListResult>;
   update(args: UpdateThreadSectionRequest): Promise<ThreadSectionUpdateResult>;
 }
 
@@ -41,9 +45,12 @@ export function createThreadSectionsArea(
       );
       return threadSectionMutationResponseSchema.parse(body);
     },
-    async list() {
+    async list(input) {
       const body = await transport.readJson(
-        transport.api.v1["sidebar-bootstrap"].$get(),
+        transport.api.v1["sidebar-bootstrap"].$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
       );
       return sidebarBootstrapResponseSchema.parse(body).sections;
     },

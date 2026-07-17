@@ -1,12 +1,4 @@
-import {
-  copyFile,
-  mkdir,
-  open,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { Attachment, TasksStore } from "../db";
@@ -41,8 +33,8 @@ export type AttachmentOwner =
   | { taskId: string; commentId?: never }
   | { taskId?: never; commentId: string };
 
-export type SaveAttachmentFromPathOptions = AttachmentOwner & {
-  fileName?: string;
+export type SaveAttachmentFromBytesOptions = AttachmentOwner & {
+  fileName: string;
   mime?: string;
 };
 
@@ -228,19 +220,8 @@ function sniffRasterMime(bytes: Uint8Array): string | undefined {
   return undefined;
 }
 
-async function inferMimeFromPath(
-  sourcePath: string,
-  fileName: string,
-): Promise<string> {
-  const handle = await open(sourcePath, "r");
-  const header = new Uint8Array(12);
-  let bytesRead = 0;
-  try {
-    ({ bytesRead } = await handle.read(header, 0, header.byteLength, 0));
-  } finally {
-    await handle.close();
-  }
-  const sniffed = sniffRasterMime(header.subarray(0, bytesRead));
+function inferMimeFromBytes(bytes: Uint8Array, fileName: string): string {
+  const sniffed = sniffRasterMime(bytes.subarray(0, 12));
   if (sniffed) return sniffed;
   const extension = fileName.toLowerCase().match(/\.[^.]+$/u)?.[0];
   return (
@@ -374,38 +355,29 @@ export function buildAttachmentUrl(attachmentId: string): string {
   return `/api/v1/plugins/tasks/http${DOWNLOAD_PATH}?attachmentId=${encodeURIComponent(attachmentId)}`;
 }
 
-export async function saveAttachmentFromPath(
+export async function saveAttachmentFromBytes(
   store: TasksStore,
-  sourcePath: string,
-  options: SaveAttachmentFromPathOptions,
+  bytes: Uint8Array,
+  options: SaveAttachmentFromBytesOptions,
 ): Promise<Attachment> {
-  const source = await stat(sourcePath);
-  if (!source.isFile()) {
-    throw new Error(`Attachment source is not a file: ${sourcePath}`);
-  }
-  const fileName =
-    options.fileName ?? sourcePath.split(/[\\/]/).at(-1) ?? "attachment";
   return persistAttachment(
     store,
     normalizeOwner(options.taskId, options.commentId),
-    fileName,
-    options.mime ?? (await inferMimeFromPath(sourcePath, fileName)),
-    source.size,
-    (destinationPath) => copyFile(sourcePath, destinationPath),
+    options.fileName,
+    options.mime ?? inferMimeFromBytes(bytes, options.fileName),
+    bytes.byteLength,
+    (destinationPath) => writeFile(destinationPath, bytes),
   );
 }
 
-export async function readAttachmentToPath(
+export async function readAttachmentContent(
   store: TasksStore,
   attachmentId: string,
-  destinationPath: string,
-): Promise<Attachment> {
+): Promise<{ attachment: Attachment; content: Buffer }> {
   const attachment = store.getAttachment(attachmentId);
   if (!attachment) throw new Error(`Attachment not found: ${attachmentId}`);
   const sourcePath = pathInside(requireStoreRoot(store), attachment.blobPath);
-  await mkdir(dirname(destinationPath), { recursive: true });
-  await copyFile(sourcePath, destinationPath);
-  return attachment;
+  return { attachment, content: await readFile(sourcePath) };
 }
 
 function errorResponse(context: PluginHttpContext, error: unknown): Response {

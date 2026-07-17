@@ -2,8 +2,9 @@ import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { EnvironmentDiffFileResponse } from "@bb/server-contract";
+import type { EnvironmentDiffFileArgs } from "@bb/sdk/browser";
 import { environmentDiffFileQueryKey } from "@/hooks/queries/query-keys";
-import { getEnvironmentDiffFile, type DiffFileTarget } from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import type {
   DiffFileContentsResult,
   RequestDiffFileContents,
@@ -20,6 +21,12 @@ export interface UseDiffFileContentsRequesterArgs {
    */
   mergeBaseRef: string | null;
 }
+
+type DiffFileTarget =
+  | { type: "uncommitted" }
+  | { type: "branch_committed"; mergeBaseRef: string }
+  | { type: "all"; mergeBaseRef: string }
+  | { type: "commit"; sha: string };
 
 /**
  * Builds the `onRequestFileContents` callback the diff cards use to lazily fetch
@@ -56,12 +63,52 @@ export function useDiffFileContentsRequester({
           side,
         ),
         queryFn: ({ signal }) =>
-          getEnvironmentDiffFile(envId, resolvedTarget, path, side, signal),
+          sdk.environments.diffFile(
+            buildEnvironmentDiffFileArgs(
+              envId,
+              resolvedTarget,
+              path,
+              side,
+              signal,
+            ),
+          ),
         staleTime: 5_000,
       });
       return toDiffFileContentsResult(path, result);
     };
   }, [environmentId, fileTarget, queryClient]);
+}
+
+function buildEnvironmentDiffFileArgs(
+  environmentId: string,
+  target: DiffFileTarget,
+  path: string,
+  side: "old" | "new",
+  signal: AbortSignal,
+): EnvironmentDiffFileArgs {
+  switch (target.type) {
+    case "uncommitted":
+      return { environmentId, path, side, signal, target: target.type };
+    case "branch_committed":
+    case "all":
+      return {
+        environmentId,
+        mergeBaseRef: target.mergeBaseRef,
+        path,
+        side,
+        signal,
+        target: target.type,
+      };
+    case "commit":
+      return {
+        environmentId,
+        path,
+        sha: target.sha,
+        side,
+        signal,
+        target: target.type,
+      };
+  }
 }
 
 function fileTargetKey(target: DiffFileTarget): string | null {

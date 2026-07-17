@@ -533,6 +533,18 @@ thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
 
+**Multi-machine rule: `run` executes on the server, so a path argument names
+a file on the INVOKING machine, not on `run`'s filesystem.** Never open a
+`ctx.cwd`-relative or user-supplied path with `node:fs` — on an enrolled
+remote machine that silently reads or writes the wrong host's disk. Instead
+resolve the invoking host (`ctx.threadId` → `bb.sdk.threads.get` →
+`environmentId` → `bb.sdk.environments.get(...).hostId`, with an explicit
+`--machine`-style flag as the no-thread escape hatch; `undefined` targets the
+server's own host) and do all such file I/O through `bb.sdk.files` with that
+`hostId`. Reference implementations: the docs plugin's pull/push sync and the
+tasks plugin's attachment commands. `node:fs` remains correct for genuinely
+server-local data such as files under the plugin's own data directory.
+
 ### bb.ui.requestInput — replace the composer with a blocking plugin form
 
 Use `bb.ui.requestInput({ threadId, rendererId, title, payload, timeoutMs? },
@@ -604,9 +616,15 @@ execution. Its context has required, plain-data `thread`, `project`,
 `environment`, `host`, and `provider: { id, model }` objects, plus `sideChat`
 and `origin: { kind, pluginId }`; genuinely absent values are `null`, not
 omitted. `tools` names and `skills` frontmatter names may select only this
-plugin's static registrations. Unknown or duplicate ids, malformed output,
-more than 256 ids in either array, or a throwing callback fail closed for that
-plugin only. Dynamic `instructions` are truncated to 4096 characters.
+plugin's static registrations. A `tools` entry may instead be
+`{ name, parameters }` to override the parameter schema advertised to the
+provider for that resolution only — `parameters` must be a JSON-serializable
+JSON-schema object with root `type: "object"`, at most 128 KiB serialized, and
+should only narrow what the registered schema accepts, since execution-side
+validation still runs the registered parameters. Unknown or duplicate ids,
+malformed output, an invalid override, more than 256 ids in either array, or a
+throwing callback fail closed for that plugin only. Dynamic `instructions` are
+truncated to 4096 characters.
 
 Resolution happens for `thread.start` and `turn.submit`. A selected tool set
 takes effect only when the provider session is next started/resumed; BB never

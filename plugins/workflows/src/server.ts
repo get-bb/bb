@@ -175,7 +175,14 @@ export default async function plugin(bb: BbPluginApi) {
     if (worker !== null) {
       return {
         tools:
-          worker.terminal || !worker.structured ? [] : ["bb_workflow_result"],
+          worker.terminal || worker.resultParameters === null
+            ? []
+            : [
+                {
+                  name: "bb_workflow_result",
+                  parameters: worker.resultParameters,
+                },
+              ],
         skills: [],
         ...(worker.instructions === null
           ? {}

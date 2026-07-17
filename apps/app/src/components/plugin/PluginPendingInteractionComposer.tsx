@@ -3,10 +3,7 @@ import { Button } from "@bb/shared-ui/button";
 import type { JsonValue, PluginPendingInteraction } from "@bb/domain";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import {
-  cancelThreadPluginInteraction,
-  respondToThreadPluginInteraction,
-} from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 
 interface PluginPendingInteractionComposerProps {
   interaction: PluginPendingInteraction;
@@ -34,11 +31,11 @@ export function PluginPendingInteractionComposer({
       setSubmitting(true);
       setError(null);
       try {
-        await respondToThreadPluginInteraction(
-          interaction.threadId,
-          interaction.id,
+        await sdk.threads.interactions.respond({
+          interactionId: interaction.id,
+          threadId: interaction.threadId,
           value,
-        );
+        });
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
         throw cause;
@@ -53,7 +50,10 @@ export function PluginPendingInteractionComposer({
     setSubmitting(true);
     setError(null);
     try {
-      await cancelThreadPluginInteraction(interaction.threadId, interaction.id);
+      await sdk.threads.interactions.cancel({
+        interactionId: interaction.id,
+        threadId: interaction.threadId,
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
       throw cause;

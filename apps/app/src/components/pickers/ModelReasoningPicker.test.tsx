@@ -16,13 +16,9 @@ import {
 } from "./ModelReasoningPicker";
 import type { PickerOption } from "./OptionPicker";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getSystemExecutionOptions: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: { system: { executionOptions: vi.fn() } },
+}));
 
 const providerOptions: readonly PickerOption<string>[] = [
   { value: "codex", label: "Codex" },

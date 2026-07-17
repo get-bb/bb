@@ -68,6 +68,7 @@ export class BbRequestTimeoutError extends Error {
 }
 
 export interface BbHttpErrorArgs {
+  body: unknown;
   code: string | null;
   message: string;
   status: number;
@@ -77,15 +78,19 @@ export interface BbHttpErrorArgs {
  * Non-2xx HTTP response surfaced by the transport. `status` is the HTTP
  * status code; `code` carries the server's machine-readable error code when
  * the error body provides one, so callers can branch on the failure kind
- * instead of parsing the message.
+ * instead of parsing the message. `body` is the parsed JSON error payload
+ * (null when the body was empty or not JSON) for callers that need
+ * structured error details beyond `code`.
  */
 export class BbHttpError extends Error {
+  readonly body: unknown;
   readonly code: string | null;
   readonly status: number;
 
   constructor(args: BbHttpErrorArgs) {
     super(`HTTP ${args.status}: ${args.message}`);
     this.name = "BbHttpError";
+    this.body = args.body;
     this.code = args.code;
     this.status = args.status;
   }
@@ -147,8 +152,8 @@ export async function resolveResponse<TResponse extends Response>(
     throw error;
   }
   if (!response.ok) {
-    const { code, message } = await readHttpErrorInfo(response);
-    throw new BbHttpError({ code, message, status: response.status });
+    const { body, code, message } = await readHttpErrorInfo(response);
+    throw new BbHttpError({ body, code, message, status: response.status });
   }
   return response;
 }
@@ -284,6 +289,7 @@ function isTypeErrorWithCauseCode(
 }
 
 interface HttpErrorInfo {
+  body: unknown;
   code: string | null;
   message: string;
 }
@@ -311,7 +317,7 @@ async function readHttpErrorInfo(response: Response): Promise<HttpErrorInfo> {
   }
   const normalized = rawBody.replace(/\s+/g, " ").trim();
   if (normalized.length === 0) {
-    return { code: null, message: response.statusText };
+    return { body: null, code: null, message: response.statusText };
   }
 
   const contentType = response.headers.get("content-type");
@@ -320,16 +326,22 @@ async function readHttpErrorInfo(response: Response): Promise<HttpErrorInfo> {
     normalized.startsWith("{") ||
     normalized.startsWith("[");
   if (!shouldParseJson) {
-    return { code: null, message: normalized };
+    // An HTML body (proxy error page, auth redirect target) is useless as a
+    // user-facing message; fall back to the status line instead.
+    const message = normalized.startsWith("<")
+      ? response.statusText || `Request failed with status ${response.status}`
+      : normalized;
+    return { body: null, code: null, message };
   }
 
   try {
     const parsed: unknown = JSON.parse(normalized);
     return {
+      body: parsed,
       code: readHttpErrorCode(parsed),
       message: extractErrorMessage(parsed, ERROR_EXTRACT_OPTS) ?? normalized,
     };
   } catch {
-    return { code: null, message: normalized };
+    return { body: null, code: null, message: normalized };
   }
 }

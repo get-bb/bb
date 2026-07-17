@@ -5,7 +5,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { useThread } from "@/hooks/queries/thread-queries";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
 import {
   ThreadTimelineSurface,
@@ -105,7 +105,8 @@ export function ThreadTimelinePanelContent({
           backgroundOnlyIndicatorLabel !== undefined)));
   const timelineRows = resolvedTimeline.timelineRows;
   const isChildThreadMissing =
-    threadQuery.error instanceof HttpError && threadQuery.error.status === 404;
+    threadQuery.error instanceof BbHttpError &&
+    threadQuery.error.status === 404;
 
   if (isChildThreadMissing) {
     return (

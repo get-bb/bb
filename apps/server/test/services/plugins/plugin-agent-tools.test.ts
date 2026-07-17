@@ -621,7 +621,19 @@ describe("plugin tools reach thread runtime config", () => {
             }
             const alpha = context.host.id === "host-conditional-alpha";
             return {
-              tools: [alpha ? "alpha_tool" : "beta_tool"],
+              tools: [
+                alpha
+                  ? {
+                      name: "alpha_tool",
+                      parameters: {
+                        type: "object",
+                        properties: { answer: { type: "number" } },
+                        required: ["answer"],
+                        additionalProperties: false,
+                      },
+                    }
+                  : "beta_tool",
+              ],
               skills: [alpha ? "alpha-skill" : "beta-skill"],
               instructions:
                 "context=" + JSON.stringify(context) +
@@ -737,6 +749,19 @@ describe("plugin tools reach thread runtime config", () => {
       UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
       "beta_tool",
     ]);
+    expect(
+      alphaCommand.dynamicTools.find((tool) => tool.name === "alpha_tool")
+        ?.inputSchema,
+    ).toEqual({
+      type: "object",
+      properties: { answer: { type: "number" } },
+      required: ["answer"],
+      additionalProperties: false,
+    });
+    expect(
+      betaCommand.dynamicTools.find((tool) => tool.name === "beta_tool")
+        ?.inputSchema,
+    ).toEqual({ type: "object" });
     expect(
       alphaCommand.injectedSkillSources.map((skill) => skill.name),
     ).toContain("alpha-skill");

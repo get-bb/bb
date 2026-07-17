@@ -9,7 +9,7 @@ import type {
   TerminalSession,
   UpdateTerminalRequest,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface TerminalThreadScope {
   cwd?: never;
@@ -56,6 +56,7 @@ export type TerminalCreateScope =
   | TerminalHostPathCreateScope;
 
 export interface TerminalListArgs {
+  signal?: AbortSignal;
   scope: TerminalListScope;
 }
 
@@ -71,7 +72,9 @@ export interface TerminalTargetArgs {
   terminalId: string;
 }
 
-export type TerminalGetArgs = TerminalTargetArgs;
+export interface TerminalGetArgs extends TerminalTargetArgs {
+  signal?: AbortSignal;
+}
 
 export interface TerminalRenameArgs extends TerminalTargetArgs {
   title: UpdateTerminalRequest["title"];
@@ -92,6 +95,7 @@ export interface TerminalResizeArgs extends TerminalTargetArgs {
 
 export interface TerminalOutputArgs extends TerminalTargetArgs {
   limitChunks?: TerminalOutputQuery["limitChunks"];
+  signal?: AbortSignal;
   sinceSeq?: TerminalOutputQuery["sinceSeq"];
   tailBytes?: TerminalOutputQuery["tailBytes"];
 }
@@ -217,9 +221,12 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
 
   const get = (input: TerminalGetArgs): Promise<TerminalGetResult> =>
     transport.readJson(
-      transport.api.v1.terminals[":terminalId"].$get({
-        param: { terminalId: input.terminalId },
-      }),
+      transport.api.v1.terminals[":terminalId"].$get(
+        {
+          param: { terminalId: input.terminalId },
+        },
+        ...signalRequestArgs(input.signal),
+      ),
     );
 
   const create = (input: TerminalCreateArgs): Promise<TerminalCreateResult> =>
@@ -256,17 +263,23 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
     },
     async list(input) {
       return transport.readJson(
-        transport.api.v1.terminals.$get({
-          query: terminalListQuery(input.scope),
-        }),
+        transport.api.v1.terminals.$get(
+          {
+            query: terminalListQuery(input.scope),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async output(input) {
       return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].output.$get({
-          param: { terminalId: input.terminalId },
-          query: terminalOutputQuery(input),
-        }),
+        transport.api.v1.terminals[":terminalId"].output.$get(
+          {
+            param: { terminalId: input.terminalId },
+            query: terminalOutputQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async rename(input) {

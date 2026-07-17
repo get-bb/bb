@@ -3,20 +3,21 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { Host } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { hostsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { AddMachineDialog } from "./AddMachineDialog";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    createConnectMachineCode: vi.fn(),
-    createHostJoinCode: vi.fn(),
-    listHosts: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  BbHttpError: class BbHttpError extends Error {},
+  sdk: {
+    hosts: {
+      createJoinCode: vi.fn(),
+      list: vi.fn(),
+    },
+    plugins: { callRpc: vi.fn() },
+  },
+}));
 
 vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
@@ -43,19 +44,19 @@ afterEach(() => {
 
 describe("AddMachineDialog", () => {
   it("mints a join code, shows the pairing command, and detects the new machine connecting", async () => {
-    vi.mocked(api.createHostJoinCode).mockResolvedValue({
+    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
       joinCode: "jc_test123",
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
     // The connect serverUrl differs from the browser origin (bb viewed on
     // localhost while paired through a tunnel) — the command must use it.
-    vi.mocked(api.createConnectMachineCode).mockResolvedValue({
+    vi.mocked(sdk.plugins.callRpc).mockResolvedValue({
       code: "mc_test456",
       expiresAt: Date.now() + 10 * 60 * 1000,
       serverUrl: "https://example.getbb.app",
     });
-    vi.mocked(api.listHosts).mockResolvedValue([existingHost]);
+    vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
     render(<AddMachineDialog open onOpenChange={vi.fn()} />, { wrapper });
@@ -97,13 +98,13 @@ describe("AddMachineDialog", () => {
   });
 
   it("ignores hosts that were already known at open time", async () => {
-    vi.mocked(api.createHostJoinCode).mockResolvedValue({
+    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
       joinCode: "jc_test123",
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
-    vi.mocked(api.createConnectMachineCode).mockResolvedValue(null);
-    vi.mocked(api.listHosts).mockResolvedValue([
+    vi.mocked(sdk.plugins.callRpc).mockResolvedValue(null);
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
       existingHost,
       host({ id: "host_offline", name: "dev-vm", status: "disconnected" }),
     ]);
