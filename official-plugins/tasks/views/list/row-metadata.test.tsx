@@ -126,8 +126,8 @@ function renderList(fixture: ListFixture) {
   return { slot, calls };
 }
 
-describe("list-row activity dot", () => {
-  it("shows an accessible dot only for actively starting/working agents", async () => {
+describe("list-row Active chip", () => {
+  it("shows the chip only for actively starting/working agents", async () => {
     const working = task(1);
     const starting = task(2);
     const historical = task(3);
@@ -146,16 +146,20 @@ describe("list-row activity dot", () => {
       },
     });
     await slot.findByText("TSK-1");
+    // Tooltips carry the specific state; the visible pill text is "Active".
     await waitFor(() => {
-      expect(slot.getByRole("status", { name: "Agent working" })).toBeTruthy();
+      expect(slot.getByTitle("Agent working")).toBeTruthy();
     });
-    expect(slot.getByRole("status", { name: "Agent starting" })).toBeTruthy();
-    // Exactly the two live rows carry a status; historical/bare rows do not.
-    expect(slot.getAllByRole("status")).toHaveLength(2);
+    expect(slot.getByTitle("Agent working").textContent).toBe("Active");
+    expect(slot.getByTitle("Agent starting").textContent).toBe("Active");
+    // Exactly the two live rows carry a chip; historical/bare rows do not.
+    expect(
+      slot.getAllByText("Active", { selector: "span[title]" }),
+    ).toHaveLength(2);
     expect(slot.queryByText(/Attached/)).toBeNull();
   });
 
-  it("aggregates multiple live agents into one dot", async () => {
+  it("aggregates multiple live agents into one chip with a count", async () => {
     const busy = task(1);
     const { slot } = renderList({
       tasks: [busy],
@@ -169,10 +173,9 @@ describe("list-row activity dot", () => {
     });
     await slot.findByText("TSK-1");
     await waitFor(() => {
-      expect(
-        slot.getByRole("status", { name: "2 agents working" }),
-      ).toBeTruthy();
+      expect(slot.getByTitle("2 agents working")).toBeTruthy();
     });
+    expect(slot.getByTitle("2 agents working").textContent).toBe("2 active");
   });
 });
 

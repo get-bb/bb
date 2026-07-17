@@ -43,33 +43,34 @@ export interface ListViewProps {
 }
 
 /**
- * Live-activity dot, anchored to the end of the row title so it always sits
- * next to the content it describes instead of floating in the metadata rail.
- * Renders only while an agent is actively starting/working; historical
- * attachments show nothing. The name is accessible-only (status role + title
- * tooltip) — no visible text.
+ * Every trailing-rail element shares this pill treatment (Linear-style), so
+ * the rail reads as one aligned system rather than mixed chips and bare text.
  */
-function ActiveAgentDot({ threads }: { threads: readonly TaskThread[] }) {
+const RAIL_CHIP_CLASS =
+  "flex items-center gap-1 rounded-md border border-border px-1.5 py-px text-xs text-muted-foreground";
+
+/**
+ * Live-activity chip: a green dot plus an "Active" pill, styled like the
+ * label chips so the rail stays uniform. Renders only while an agent is
+ * actively starting/working; historical attachments show nothing. The
+ * tooltip carries the specific state (starting vs working, agent count).
+ */
+function ActiveChip({ threads }: { threads: readonly TaskThread[] }) {
   if (threads.length === 0) return null;
-  const label = activeWorkLabel(threads);
   return (
-    <span
-      role="status"
-      aria-label={label}
-      title={label}
-      className="flex size-4 shrink-0 items-center justify-center"
-    >
+    <span title={activeWorkLabel(threads)} className={RAIL_CHIP_CLASS}>
       <span
         aria-hidden
-        className="size-2 animate-pulse rounded-full bg-success"
+        className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
       />
+      {threads.length === 1 ? "Active" : `${threads.length} active`}
     </span>
   );
 }
 
 function LabelChip({ label }: { label: Label }) {
   return (
-    <span className="flex max-w-32 items-center gap-1 rounded-md border border-border px-1.5 py-px text-xs text-muted-foreground">
+    <span className={`${RAIL_CHIP_CLASS} max-w-32`}>
       <span
         aria-hidden
         className="size-1.5 shrink-0 rounded-full"
@@ -96,7 +97,7 @@ function LabelChipRow({
       {hidden.length > 0 ? (
         <span
           title={hidden.map((label) => label.name).join(", ")}
-          className="flex items-center rounded-md border border-border px-1.5 py-px text-xs tabular-nums text-muted-foreground"
+          className={`${RAIL_CHIP_CLASS} tabular-nums`}
         >
           +{hidden.length}
         </span>
@@ -348,16 +349,17 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
                 {task.key}
               </span>
               <StatusIcon status={task.status} />
-              <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <span className="min-w-0 truncate text-sm">{task.title}</span>
-                {taskMeta ? (
-                  <ActiveAgentDot threads={taskMeta.activeThreads} />
-                ) : null}
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {task.title}
               </span>
-              <span className="flex shrink-0 items-center gap-2 text-xs text-subtle-foreground">
+              <span className="flex shrink-0 items-center gap-1.5 text-xs text-subtle-foreground">
+                {taskMeta ? (
+                  <ActiveChip threads={taskMeta.activeThreads} />
+                ) : null}
                 <LabelChips task={task} labelsById={labelsById} />
                 {task.dueDate !== null ? (
-                  <span className="shrink-0 tabular-nums">
+                  <span className={`${RAIL_CHIP_CLASS} shrink-0 tabular-nums`}>
+                    <Icon name="Clock" className="size-3 shrink-0" />
                     {formatDueDate(task.dueDate)}
                   </span>
                 ) : null}
