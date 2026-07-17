@@ -2,13 +2,14 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import { pluginPackageJsonSchema } from "@bb/domain";
 import { z } from "zod";
 import {
   BUILTIN_PLUGINS_DIRECTORY_NAME,
-  BUILTIN_PLUGIN_NAMES,
+  BUNDLED_PLUGINS,
   resolveBuiltinPluginRootPathForModuleDir,
+  type BundledPluginDefinition,
 } from "../src/services/plugins/builtin-registry.js";
-import { LOGO_CONVENTION_EXTENSIONS } from "../src/services/plugins/app-bundle.js";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(scriptDir, "..");
@@ -28,21 +29,6 @@ const bbAppPackageJsonPath = path.resolve(
 );
 
 const RUNTIME_DIRS = ["dist", "skills"] as const;
-const LOGO_FILES = LOGO_CONVENTION_EXTENSIONS.flatMap((extension) => [
-  `logo.${extension}`,
-  `logo-dark.${extension}`,
-]);
-
-const pluginPackageJsonSchema = z
-  .object({
-    bb: z
-      .object({
-        server: z.string().min(1),
-        app: z.string().min(1).optional(),
-      })
-      .passthrough(),
-  })
-  .passthrough();
 
 async function exists(filePath: string): Promise<boolean> {
   try {
@@ -134,38 +120,57 @@ async function copyBuiltinPlugin(args: {
       path.join(targetDir, dirName),
     );
   }
-  for (const logoFile of LOGO_FILES) {
-    await copyIfExists(
-      path.join(args.sourceRoot, logoFile),
-      path.join(targetDir, logoFile),
-    );
+  const packageJson = pluginPackageJsonSchema.parse(
+    JSON.parse(
+      await readFile(path.join(args.sourceRoot, "package.json"), "utf8"),
+    ),
+  );
+  const logo = packageJson.bb.branding.logo;
+  for (const asset of [logo?.light, logo?.dark]) {
+    if (asset === undefined) continue;
+    const sourcePath = path.resolve(args.sourceRoot, asset);
+    const targetPath = path.resolve(targetDir, asset);
+    if (
+      (sourcePath !== args.sourceRoot &&
+        !sourcePath.startsWith(args.sourceRoot + path.sep)) ||
+      (targetPath !== targetDir && !targetPath.startsWith(targetDir + path.sep))
+    ) {
+      throw new Error(
+        `manifest branding asset escapes plugin directory: ${asset}`,
+      );
+    }
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await cp(sourcePath, targetPath);
   }
 }
 
 export async function copyBuiltinPlugins(args: {
   bbVersion: string;
   build?: boolean;
+  plugins?: readonly Pick<BundledPluginDefinition, "name" | "repoDirectory">[];
   sourceModuleDir?: string;
   targetRoot?: string;
 }): Promise<void> {
   const resolvedSourceModuleDir = args.sourceModuleDir ?? sourceModuleDir;
   const resolvedTargetRoot = args.targetRoot ?? targetRoot;
+  const plugins = args.plugins ?? BUNDLED_PLUGINS;
   const build = args.build ?? true;
 
   await rm(resolvedTargetRoot, { recursive: true, force: true });
 
-  if (BUILTIN_PLUGIN_NAMES.length > 0) {
+  if (plugins.length > 0) {
     await mkdir(resolvedTargetRoot, { recursive: true });
   }
 
-  for (const name of BUILTIN_PLUGIN_NAMES) {
+  for (const plugin of plugins) {
     await copyBuiltinPlugin({
       bbVersion: args.bbVersion,
       build,
-      name,
+      name: plugin.name,
       sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
         moduleDir: resolvedSourceModuleDir,
-        name,
+        name: plugin.name,
+        repoDirectory: plugin.repoDirectory,
       }),
       targetRoot: resolvedTargetRoot,
     });

@@ -10,11 +10,17 @@ import type {
   PluginService,
   PluginWireLookup,
 } from "../services/plugins/plugin-service.js";
+import { findBundledPlugin } from "../services/plugins/builtin-registry.js";
 import { parsePluginSource } from "../services/plugins/install-sources.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
-import { z } from "zod";
-import type { MarketplaceService } from "../services/marketplaces/marketplace-service.js";
+import {
+  pluginApplyUpdateRequestSchema,
+  pluginInstallRequestSchema,
+  pluginSettingsUpdateRequestSchema,
+  pluginTokenRequestSchema,
+  pluginUpdateCheckRequestSchema,
+} from "@bb/server-contract";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
 export interface PluginRoutesDeps {
@@ -188,7 +194,6 @@ export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
-  marketplaces?: MarketplaceService,
 ): void {
   const DISABLED = {
     ok: false as const,
@@ -197,9 +202,16 @@ export function registerPluginRoutes(
   };
   const gateAllowsPlugin = (id: string): boolean =>
     plugins.isEnabled() || plugins.isBuiltin(id);
+  // Only auto-install builtins are exempt from the "Plugins" experiment at
+  // runtime; store-only officials share the builtin: source shape but load
+  // behind the gate, so installing them while it is off must refuse too.
   const sourceBypassesGate = (source: string): boolean => {
     try {
-      return parsePluginSource(source).kind === "builtin";
+      const parsed = parsePluginSource(source);
+      return (
+        parsed.kind === "builtin" &&
+        findBundledPlugin(parsed.name)?.autoInstall === true
+      );
     } catch {
       return false;
     }
@@ -377,8 +389,7 @@ export function registerPluginRoutes(
       return context.json(DISABLED, 422);
     }
     const file = context.req.param("file");
-    // The plugin's logo (logo.(svg|png|webp) / manifest bb.logo) and its
-    // optional dark-theme variant (logo-dark.* / bb.logoDark): same
+    // The plugin's explicit bb.branding.logo light/dark assets: same
     // hash-busting cache policy and live-runtime gating as the bundle assets.
     if (file === "logo" || file === "logo-dark") {
       const logo = plugins.getLogoAsset(context.req.param("id"), file);
@@ -445,17 +456,12 @@ export function registerPluginRoutes(
     return context.json({ ok: true, lines });
   });
 
-  const updateCheckBodySchema = z
-    .object({ id: z.string().min(1).optional() })
-    .strict();
-  const applyUpdateBodySchema = z.object({}).strict();
-
   app.post("/plugins/updates/check", async (context) => {
     if (!plugins.isEnabled()) {
       return context.json({ error: DISABLED.error }, 422);
     }
     const json: unknown = await context.req.json().catch(() => null);
-    const body = updateCheckBodySchema.safeParse(json);
+    const body = pluginUpdateCheckRequestSchema.safeParse(json);
     if (!body.success) {
       return context.json({ error: 'expected { "id"?: string }' }, 400);
     }
@@ -489,7 +495,7 @@ export function registerPluginRoutes(
       return context.json({ error: DISABLED.error }, 422);
     }
     const json: unknown = await context.req.json().catch(() => null);
-    const body = applyUpdateBodySchema.safeParse(json);
+    const body = pluginApplyUpdateRequestSchema.safeParse(json);
     if (!body.success) {
       return context.json({ error: "expected an empty JSON object" }, 400);
     }
@@ -505,29 +511,14 @@ export function registerPluginRoutes(
     }
   });
 
-  const installBodySchema = z.union([
-    z.object({ source: z.string().min(1) }).strict(),
-    z
-      .object({
-        marketplace: z
-          .object({
-            marketplaceId: z.string().min(1),
-            entryId: z.string().min(1),
-          })
-          .strict(),
-        version: z.string().min(1).optional(),
-      })
-      .strict(),
-  ]);
-
   app.post("/plugins/install", async (context) => {
     const json: unknown = await context.req.json().catch(() => null);
-    const parsed = installBodySchema.safeParse(json);
+    const parsed = pluginInstallRequestSchema.safeParse(json);
     if (!parsed.success) {
       return context.json(
         {
           ok: false,
-          error: "exactly one of source or marketplace is required",
+          error: 'expected { "source": string }',
         },
         422,
       );
@@ -539,18 +530,7 @@ export function registerPluginRoutes(
       return context.json(DISABLED, 422);
     }
     try {
-      const plugin =
-        "source" in parsed.data
-          ? await plugins.install(parsed.data.source)
-          : marketplaces === undefined
-            ? (() => {
-                throw new Error("marketplace service is unavailable");
-              })()
-            : await marketplaces.install(
-                parsed.data.marketplace.marketplaceId,
-                parsed.data.marketplace.entryId,
-                parsed.data.version,
-              );
+      const plugin = await plugins.install(parsed.data.source);
       return context.json({ ok: true, plugin });
     } catch (error) {
       return context.json(
@@ -619,16 +599,9 @@ export function registerPluginRoutes(
     if (!gateAllowsPlugin(context.req.param("id"))) {
       return context.json(DISABLED, 422);
     }
-    const body = (await context.req.json().catch(() => null)) as {
-      values?: unknown;
-    } | null;
-    const values = body?.values;
-    if (
-      values === undefined ||
-      values === null ||
-      typeof values !== "object" ||
-      Array.isArray(values)
-    ) {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginSettingsUpdateRequestSchema.safeParse(json);
+    if (!body.success) {
       return context.json(
         { ok: false, error: "expected { values: Record<string, unknown> }" },
         400,
@@ -637,7 +610,7 @@ export function registerPluginRoutes(
     try {
       const view = await plugins.updateSettings(
         context.req.param("id"),
-        values as Record<string, unknown>,
+        body.data.values,
       );
       if (!view) return context.json(NOT_RUNNING, 404);
       return context.json({ ok: true, ...view });
@@ -663,11 +636,24 @@ export function registerPluginRoutes(
     if (!gateAllowsPlugin(context.req.param("id"))) {
       return context.json(DISABLED, 422);
     }
-    const body = (await context.req.json().catch(() => null)) as {
-      rotate?: unknown;
-    } | null;
+    const rawBody = await context.req.text();
+    let json: unknown = {};
+    if (rawBody.trim() !== "") {
+      try {
+        json = JSON.parse(rawBody);
+      } catch {
+        json = null;
+      }
+    }
+    const body = pluginTokenRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        { ok: false, error: "expected { rotate?: boolean }" },
+        400,
+      );
+    }
     const token = await plugins.httpToken(context.req.param("id"), {
-      rotate: body?.rotate === true,
+      rotate: body.data.rotate,
     });
     if (token === undefined) {
       return context.json({ ok: false, error: "unknown plugin" }, 404);
@@ -755,7 +741,13 @@ export function registerPluginRoutes(
         input = JSON.parse(rawBody);
       } catch {
         return context.json(
-          { ok: false, error: "request body must be JSON (the rpc input)" },
+          {
+            ok: false,
+            error: {
+              code: "invalid_json",
+              message: "request body must be JSON (the rpc input)",
+            },
+          },
           400,
         );
       }
@@ -772,7 +764,13 @@ export function registerPluginRoutes(
     }
     if (lookup.outcome === "not-found") {
       return context.json(
-        { ok: false, error: `plugin "${id}" has no rpc method "${method}"` },
+        {
+          ok: false,
+          error: {
+            code: "unknown_method",
+            message: `plugin "${id}" has no rpc method "${method}"`,
+          },
+        },
         404,
       );
     }
@@ -783,7 +781,10 @@ export function registerPluginRoutes(
       input,
     );
     if (!outcome.ok) {
-      return context.json({ ok: false, error: outcome.error }, 500);
+      return context.json(
+        { ok: false, error: outcome.error },
+        outcome.error.code === "invalid_input" ? 400 : 500,
+      );
     }
     return context.json({ ok: true, result: outcome.result });
   });

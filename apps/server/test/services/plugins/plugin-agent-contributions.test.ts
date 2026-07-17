@@ -76,6 +76,9 @@ async function writePlugin(
       name: options.name,
       version: "0.1.0",
       bb: {
+        name: "Agent contributions fixture",
+        description: "Agent contributions plugin fixture.",
+        branding: { icon: "Zap" },
         server: "./server.ts",
         ...(options.bbSkills ? { skills: options.bbSkills } : {}),
       },
@@ -116,7 +119,6 @@ describe("plugin skills tier", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => experimentOn,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });

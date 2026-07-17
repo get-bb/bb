@@ -60,7 +60,9 @@ const pullRequestFixture: ThreadPullRequest = {
 function pullRequestResponse(
   pullRequest: ThreadPullRequest | null,
 ): EnvironmentPullRequestResponse {
-  return { pullRequest };
+  return pullRequest
+    ? { outcome: "available", pullRequest }
+    : { outcome: "absent" };
 }
 
 afterEach(() => {

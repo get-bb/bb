@@ -11,6 +11,8 @@ import * as api from "@/lib/api";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   hostProviderCliStatusQueryKey,
+  systemExecutionOptionsQueryKey,
+  systemProvidersQueryKey,
   systemUsageLimitsQueryKey,
 } from "./query-keys";
 import {
@@ -41,6 +43,7 @@ const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
 const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
   codex: { status: "unauthenticated" },
   claudeCode: { status: "unauthenticated" },
+  cursor: { status: "unauthenticated" },
 };
 
 afterEach(() => {
@@ -49,6 +52,49 @@ afterEach(() => {
 });
 
 describe("useSystemExecutionOptions", () => {
+  it("separates requests and cache entries for different hosts", async () => {
+    vi.mocked(api.getSystemExecutionOptions).mockImplementation(async (args) =>
+      args.hostId === "host-a"
+        ? { ...EXECUTION_OPTIONS_RESPONSE, models: [] }
+        : { ...EXECUTION_OPTIONS_RESPONSE, selectedOnlyModels: [] },
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+
+    renderHook(
+      () => [
+        useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
+        useSystemExecutionOptions({ hostId: "host-b", providerId: "codex" }),
+      ],
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ hostId: "host-a", providerId: "codex" }),
+      );
+      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ hostId: "host-b", providerId: "codex" }),
+      );
+    });
+
+    const hostAKey = systemExecutionOptionsQueryKey({
+      environmentId: null,
+      hostId: "host-a",
+      providerId: "codex",
+    });
+    const hostBKey = systemExecutionOptionsQueryKey({
+      environmentId: null,
+      hostId: "host-b",
+      providerId: "codex",
+    });
+    expect(hostAKey).not.toEqual(hostBKey);
+    expect(queryClient.getQueryState(hostAKey)).toBeDefined();
+    expect(queryClient.getQueryState(hostBKey)).toBeDefined();
+    expect(systemProvidersQueryKey({ hostId: "host-a" })).not.toEqual(
+      systemProvidersQueryKey({ hostId: "host-b" }),
+    );
+  });
+
   it("retries one transient failure before surfacing model selector errors", async () => {
     vi.mocked(api.getSystemExecutionOptions)
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))

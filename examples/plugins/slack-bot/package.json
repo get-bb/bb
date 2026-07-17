@@ -5,9 +5,14 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": "^0.2.0"
+    "bbPluginSdk": "^0.3.0"
   },
   "bb": {
+    "name": "Slack bot",
+    "description": "Demonstrate a signed webhook bot backed by BB agent threads.",
+    "branding": {
+      "icon": "Zap"
+    },
     "server": "./server.ts"
   },
   "keywords": [

@@ -34,6 +34,7 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     sourceThreadId: null,
     originKind: options.originKind ?? null,
     originPluginId: null,
+    visibility: "visible",
     childOrigin: options.childOrigin ?? null,
     archivedAt: null,
     pinnedAt: null,

@@ -5,6 +5,7 @@ import {
   getKnownAcpAgentsStatus,
   getProviderCliStatus,
   inspectProviderCli,
+  isProviderCliInstalled,
   ProviderCliInstallInProgressError,
   streamProviderCliInstall,
   type ProviderCliCommandResult,
@@ -604,6 +605,16 @@ describe("provider CLI health", () => {
       "which opencode",
       "which missing-acp",
     ]);
+  });
+
+  it("checks Cursor installation using its agent executable", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    runner.setExit("which", ["agent"], 1, "agent not found");
+
+    await expect(
+      isProviderCliInstalled("cursor", { runner }),
+    ).resolves.toBe(false);
+    expect(runner.commandLines()).toEqual(["which agent"]);
   });
 
   it("streams failed npm installs without hiding the exit status", async () => {

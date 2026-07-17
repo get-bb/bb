@@ -15,10 +15,12 @@ export interface UseCommandSuggestionsArgs {
   promptActions?: readonly CommandSuggestionPromptAction[];
   /**
    * Environment whose workspace scopes discovery (e.g. a thread's worktree, or
-   * a reused environment in the new-thread composer), or `null` to fall back to
-   * the project's default source.
+   * a reused environment in the new-thread composer), or `null` to use the
+   * selected project-source host (then the primary fallback).
    */
   environmentId: string | null;
+  /** Project-source host used before an environment exists. */
+  hostId?: string | null;
   /** Text typed after the trigger char, or `null` when no command trigger is active. */
   query: string | null;
 }
@@ -191,6 +193,7 @@ export function useCommandSuggestions(
       projectId: args.projectId,
       providerId: args.providerId,
       environmentId: args.environmentId,
+      hostId: args.hostId ?? null,
     },
     { enabled: isActive },
   );

@@ -48,7 +48,7 @@ describe("runPeriodicSweeps", () => {
         },
         pluginSchedules: harness.pluginService,
         pluginService: harness.pluginService,
-        marketplaceService: harness.marketplaceService,
+        pluginCatalogService: harness.pluginCatalogService,
       };
 
       await runPeriodicSweeps(deps);
@@ -80,7 +80,7 @@ describe("runPeriodicSweeps", () => {
         logger,
         pluginSchedules: harness.pluginService,
         pluginService: harness.pluginService,
-        marketplaceService: harness.marketplaceService,
+        pluginCatalogService: harness.pluginCatalogService,
       };
       let laterJobRuns = 0;
       const jobs: PeriodicSweepJob[] = [
@@ -144,7 +144,7 @@ describe("runPeriodicSweeps", () => {
         ...harness.deps,
         pluginSchedules: harness.pluginService,
         pluginService: harness.pluginService,
-        marketplaceService: harness.marketplaceService,
+        pluginCatalogService: harness.pluginCatalogService,
       };
       const firstSweep = runPeriodicSweepJobs(deps, jobs, 10_000);
       await jobStarted;
@@ -173,7 +173,7 @@ describe("runPeriodicSweeps", () => {
         ...harness.deps,
         pluginSchedules: harness.pluginService,
         pluginService: harness.pluginService,
-        marketplaceService: harness.marketplaceService,
+        pluginCatalogService: harness.pluginCatalogService,
       };
       await runPeriodicSweepJobs(deps, jobs, 20_000);
       await runPeriodicSweepJobs(deps, jobs, 20_999);

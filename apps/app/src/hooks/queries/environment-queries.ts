@@ -130,6 +130,17 @@ export function useEnvironmentWorkStatus(
   });
 }
 
+/**
+ * The PR carried by a lookup response, or `null` when the lookup answered
+ * "absent" or could not run ("unavailable" — treated like the active/absent
+ * case for freshness so a transient gh failure retries on the short cycle).
+ */
+export function getEnvironmentPullRequestFromResponse(
+  response: EnvironmentPullRequestResponse | undefined,
+): ThreadPullRequest | null {
+  return response?.outcome === "available" ? response.pullRequest : null;
+}
+
 export function getEnvironmentPullRequestStaleTime(
   pullRequest: ThreadPullRequest | null | undefined,
 ): number {
@@ -171,9 +182,13 @@ export function useEnvironmentPullRequest(
     refetchOnMount: true,
     refetchOnWindowFocus: "always",
     refetchInterval: (query) =>
-      getEnvironmentPullRequestRefetchInterval(query.state.data?.pullRequest),
+      getEnvironmentPullRequestRefetchInterval(
+        getEnvironmentPullRequestFromResponse(query.state.data),
+      ),
     staleTime: (query) =>
-      getEnvironmentPullRequestStaleTime(query.state.data?.pullRequest),
+      getEnvironmentPullRequestStaleTime(
+        getEnvironmentPullRequestFromResponse(query.state.data),
+      ),
   });
 }
 

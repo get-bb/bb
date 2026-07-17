@@ -8,7 +8,7 @@ import {
   type CreateNodeBbSdkArgs,
 } from "@bb/sdk/node";
 import type {
-  BbRealtimeOnArgs,
+  BbRealtimeSubscribeArgs,
   BbRealtimeSocket,
   BbRealtimeSocketFactory,
   BbRealtimeSocketMessageEvent,
@@ -43,11 +43,12 @@ export type {
 export type { CallerExecutionInputSource as ExecutionInputSource } from "@bb/sdk/node";
 
 export type BBSdkOptions = CreateNodeBbSdkArgs;
-export type BBSdkRealtimeOnArgs = BbRealtimeOnArgs;
+export type BBSdkRealtimeSubscribeArgs = BbRealtimeSubscribeArgs;
 export type BBSdkRealtimeSocket = BbRealtimeSocket;
 export type BBSdkRealtimeSocketFactory = BbRealtimeSocketFactory;
 export type BBSdkRealtimeSocketMessageEvent = BbRealtimeSocketMessageEvent;
 export type BBSdkStatusArea = BbSdk["status"];
+export type BBSdkTerminalsArea = BbSdk["terminals"];
 export type BBSdkThread = ThreadGetResult;
 export type BBSdkThreadsArea = BbSdk["threads"];
 export type ThreadIdArgs = ThreadStatusArgs;
@@ -71,10 +72,11 @@ export class BBSdk implements BbSdk {
   readonly providers: BbSdk["providers"];
   readonly status: BbSdk["status"];
   readonly system: BbSdk["system"];
+  readonly terminals: BbSdk["terminals"];
   readonly theme: BbSdk["theme"];
   readonly threadFolders: BbSdk["threadFolders"];
   readonly threads: BbSdk["threads"];
-  readonly on: BbSdk["on"];
+  readonly subscribe: BbSdk["subscribe"];
 
   constructor(options: BBSdkOptions = {}) {
     const sdk = createNodeBbSdk(options);
@@ -87,10 +89,11 @@ export class BBSdk implements BbSdk {
     this.providers = sdk.providers;
     this.status = sdk.status;
     this.system = sdk.system;
+    this.terminals = sdk.terminals;
     this.theme = sdk.theme;
     this.threadFolders = sdk.threadFolders;
     this.threads = sdk.threads;
-    this.on = sdk.on;
+    this.subscribe = sdk.subscribe;
   }
 }
 

@@ -18,24 +18,24 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     status: "running",
     statusDetail: null,
     description: null,
-    displayName: "Linear",
+    source: "npm:@example/linear@^1.6.0",
+    name: "Linear",
     icon: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
-    provenance: "marketplace",
-    marketplaceName: "bb-official",
+    provenance: "catalog",
+    isOrphanedBuiltin: false,
     sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
   };
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 afterEach(() => {
@@ -85,9 +85,7 @@ describe("UpdatePluginDialog", () => {
     expect(
       screen.getByText("1.9.0 isn’t compatible with this bb"),
     ).toBeTruthy();
-    expect(
-      screen.getByText("needs bb >= 0.15 — you have 0.14.1"),
-    ).toBeTruthy();
+    expect(screen.getByText("needs bb >= 0.15 — you have 0.14.1")).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "Update" }) as HTMLButtonElement)
         .disabled,
@@ -120,12 +118,8 @@ describe("UpdatePluginDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
-    expect(
-      await screen.findByText("Update failed — rolled back"),
-    ).toBeTruthy();
-    expect(
-      screen.getByText("factory threw during activation"),
-    ).toBeTruthy();
+    expect(await screen.findByText("Update failed — rolled back")).toBeTruthy();
+    expect(screen.getByText("factory threw during activation")).toBeTruthy();
     expect(screen.getByText(/Needs attention/)).toBeTruthy();
   });
 

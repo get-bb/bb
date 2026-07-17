@@ -199,7 +199,7 @@ function createFakeWorkspace(path: string) {
       mergeBaseRef: null,
     })),
     diffPatch: vi.fn(async () => []),
-    getPullRequest: vi.fn(async () => null),
+    getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     runPullRequestAction: vi.fn(async () => undefined),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
@@ -1073,6 +1073,34 @@ describe("RuntimeManager", () => {
           PATH: "/tmp/bb-bin:/usr/bin",
           BB_SERVER_URL: "http://127.0.0.1:3334",
         },
+      }),
+    );
+  });
+
+  it("passes the resolved shell PATH to managed worktree setup", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      shellEnv: {
+        PATH: "/resolved/user/bin:/usr/bin:/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      provision: {
+        workspaceProvisionType: "managed-worktree",
+        sourcePath: "/tmp/source",
+        targetPath: "/tmp/env-1",
+        branchName: "bb/env-1",
+        baseBranch: "main",
+        timeoutMs: 900000,
+      },
+    });
+
+    expect(provisionWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        setupPath: "/resolved/user/bin:/usr/bin:/bin",
       }),
     );
   });

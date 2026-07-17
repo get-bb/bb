@@ -105,7 +105,12 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Mention provider fixture",
+        description: "Mention provider plugin fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -649,7 +654,6 @@ describe("mention search time box", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       mentionSearchTimeoutMs: 100,
     });
@@ -729,7 +733,6 @@ describe("mention resolve time box", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       mentionResolveTimeoutMs: 100,
     });

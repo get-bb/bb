@@ -191,8 +191,6 @@ export {
   type PluginSourceIntent,
   type PluginUpdateState,
   type UpsertInstalledPluginInput,
-  listInstalledPluginsFromMarketplace,
-  setInstalledPluginDirectProvenance,
 } from "./plugins.js";
 export {
   createPluginArtifact,
@@ -205,16 +203,6 @@ export {
   type CreatePluginArtifactInput,
   type PluginArtifactRow,
 } from "./plugin-artifacts.js";
-export {
-  deleteMarketplace,
-  getMarketplace,
-  getMarketplaceIncludingRemoved,
-  listMarketplaces,
-  updateMarketplaceRefreshFailure,
-  upsertMarketplace,
-  type MarketplaceRow,
-  type UpsertMarketplaceInput,
-} from "./marketplaces.js";
 export {
   deleteAllPluginSettings,
   deletePluginKvValue,

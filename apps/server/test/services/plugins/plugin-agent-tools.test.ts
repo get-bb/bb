@@ -9,14 +9,20 @@ import {
   setExperiments,
   type DbConnection,
 } from "@bb/db";
-import { defaultExperiments, encodeClientTurnRequestIdNumber } from "@bb/domain";
+import {
+  defaultExperiments,
+  encodeClientTurnRequestIdNumber,
+} from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { RESERVED_AGENT_TOOL_NAMES } from "../../../src/services/plugins/plugin-api.js";
 import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
-import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
+import {
+  buildThreadStartCommand,
+  prepareTurnSubmitCommandPayload,
+} from "../../../src/services/threads/thread-commands.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME } from "../../../src/services/threads/thread-environment-directory.js";
 import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
 import { internalAuthHeaders } from "../../helpers/commands.js";
@@ -48,7 +54,12 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Agent tools fixture",
+        description: "Agent tools plugin fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -77,7 +88,6 @@ describe("bb.agents.registerTool", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => experimentOn,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });
@@ -87,7 +97,7 @@ describe("bb.agents.registerTool", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("registers tools; a second same-name registration within one plugin wins", async () => {
+  it("rejects duplicate tool names within one factory execution", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-replacer",
       serverSource: `
@@ -109,38 +119,28 @@ describe("bb.agents.registerTool", () => {
       `,
     });
     const entry = await service.installPath(rootDir);
-    expect(entry.status).toBe("running");
-    expect(entry.statusDetail).toBeNull();
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(
+      'tool "echo_tool" is already registered',
+    );
+    expect(service.listAgentTools()).toEqual([]);
+  });
 
-    const tools = service.listAgentTools();
-    expect(tools).toEqual([
-      {
-        pluginId: "replacer",
-        tool: {
-          name: "echo_tool",
-          description: "second version",
-          inputSchema: { type: "object" },
-        },
-        instructions: "Prefer echo_tool for echoing.",
-      },
-    ]);
-
-    const found = service.findAgentTool("echo_tool");
-    expect(found?.pluginId).toBe("replacer");
-    const response = await service.invokeAgentTool({
-      pluginId: found!.pluginId,
-      record: found!.record,
-      input: { text: "hi" },
-      ctx: {
-        threadId: "thr_1",
-        projectId: "proj_1",
-        signal: new AbortController().signal,
-      },
+  it("rejects duplicate configure registrations within one factory execution", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-double-configure",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.configure(() => ({ tools: [], skills: [] }));
+          bb.agents.configure(() => ({ tools: [], skills: [] }));
+        }
+      `,
     });
-    expect(response).toEqual({
-      success: true,
-      contentItems: [{ type: "inputText", text: 'echo:{"text":"hi"}' }],
-    });
+    const entry = await service.installPath(rootDir);
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(
+      "agent configuration is already registered",
+    );
   });
 
   it("two tools from different plugins dispatch by name (design §9 regression)", async () => {
@@ -399,7 +399,6 @@ describe("bb.agents.contributeInstructions", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => experimentOn,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });
@@ -409,7 +408,7 @@ describe("bb.agents.contributeInstructions", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("registers a provider; re-register replaces; listed by plugin id", async () => {
+  it("rejects duplicate instruction providers within one factory execution", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-advisor",
       serverSource: `
@@ -420,14 +419,11 @@ describe("bb.agents.contributeInstructions", () => {
       `,
     });
     const entry = await service.installPath(rootDir);
-    expect(entry.status).toBe("running");
-
-    const listed = service.listInstructionContributions();
-    expect(listed).toHaveLength(1);
-    expect(listed[0]?.pluginId).toBe("advisor");
-    expect(
-      listed[0]?.provider({ threadId: "thr_1", projectId: "proj_1" }),
-    ).toBe("second");
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(
+      "agent instructions are already registered",
+    );
+    expect(service.listInstructionContributions()).toEqual([]);
   });
 
   it("two plugins each contribute one provider, ordered by plugin id", async () => {
@@ -453,9 +449,7 @@ describe("bb.agents.contributeInstructions", () => {
     const listed = service.listInstructionContributions();
     expect(listed.map((c) => c.pluginId)).toEqual(["alpha", "zebra"]);
     expect(
-      listed.map((c) =>
-        c.provider({ threadId: "thr_1", projectId: "proj_1" }),
-      ),
+      listed.map((c) => c.provider({ threadId: "thr_1", projectId: "proj_1" })),
     ).toEqual(["from alpha", "from zebra"]);
   });
 
@@ -600,6 +594,255 @@ describe("plugin tools reach thread runtime config", () => {
     ]);
     expect(gated.instructions).toContain("update_environment_directory");
     expect(gated.instructions).not.toContain("demo_lookup");
+  });
+
+  it("resolves different conditional tools, skills, instructions, and context without rebuilding static registrations", async () => {
+    const rootDir = await writePlugin(pluginsDir, {
+      name: "bb-plugin-conditional",
+      serverSource: `
+        globalThis.__bbConditionalFactoryCount =
+          (globalThis.__bbConditionalFactoryCount ?? 0) + 1;
+        const factoryCount = globalThis.__bbConditionalFactoryCount;
+        let configureCount = 0;
+        export default function plugin(bb: any) {
+          for (const name of ["alpha_tool", "beta_tool"]) {
+            bb.agents.registerTool({
+              name,
+              description: name,
+              instructions: "Static instructions for " + name,
+              parameters: { type: "object" },
+              execute: () => name,
+            });
+          }
+          bb.agents.configure((context: any) => {
+            configureCount += 1;
+            if (context.origin.kind === "side-chat" && context.sideChat !== true) {
+              throw new Error("side-chat context mismatch");
+            }
+            const alpha = context.host.id === "host-conditional-alpha";
+            return {
+              tools: [alpha ? "alpha_tool" : "beta_tool"],
+              skills: [alpha ? "alpha-skill" : "beta-skill"],
+              instructions:
+                "context=" + JSON.stringify(context) +
+                ";factory=" + factoryCount +
+                ";configure=" + configureCount,
+            };
+          });
+        }
+      `,
+    });
+    for (const skill of ["alpha-skill", "beta-skill"]) {
+      const skillDir = join(rootDir, "skills", skill);
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        `---\nname: ${skill}\ndescription: Use ${skill} in conditional tests.\n---\n\n# ${skill}\n`,
+      );
+    }
+    const brokenRoot = await writePlugin(pluginsDir, {
+      name: "bb-plugin-broken-conditional",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.registerTool({
+            name: "broken_tool",
+            description: "Must never leak from an invalid selection",
+            parameters: { type: "object" },
+            execute: () => "broken",
+          });
+          bb.agents.configure((context: any) => {
+            if (context.provider.id === "claude-code") {
+              throw new Error("conditional failure");
+            }
+            return { tools: ["unknown_tool"], skills: [] };
+          });
+        }
+      `,
+    });
+    await harness.pluginService.installPath(rootDir);
+    await harness.pluginService.installPath(brokenRoot);
+
+    const alphaHost = seedHostSession(harness.deps, {
+      id: "host-conditional-alpha",
+      name: "Alpha Host",
+    }).host;
+    const betaHost = seedHostSession(harness.deps, {
+      id: "host-conditional-beta",
+      name: "Beta Host",
+    }).host;
+    const makeTarget = (args: {
+      hostId: string;
+      projectName: string;
+      providerId: string;
+      model: string;
+    }) => {
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: args.hostId,
+        name: args.projectName,
+        path: join(harness.config.dataDir, args.projectName),
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: args.hostId,
+        projectId: project.id,
+        path: join(harness.config.dataDir, args.projectName),
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: args.providerId,
+      });
+      return { ...args, project, environment, thread };
+    };
+    const alpha = makeTarget({
+      hostId: alphaHost.id,
+      projectName: "Alpha Project",
+      providerId: "codex",
+      model: "gpt-5.6",
+    });
+    const beta = makeTarget({
+      hostId: betaHost.id,
+      projectName: "Beta Project",
+      providerId: "claude-code",
+      model: "claude-opus-4-6",
+    });
+    const build = async (target: typeof alpha, requestValue: number) => {
+      const execution = await resolveExecutionOptions(harness.deps, {
+        threadId: target.thread.id,
+        requestedExecution: {
+          model: target.model,
+          source: "client/turn/requested",
+        },
+      });
+      return buildThreadStartCommand(harness.deps, {
+        environment: target.environment,
+        execution,
+        fork: null,
+        permissionEscalation: "ask",
+        input: textInput("hello"),
+        projectId: target.project.id,
+        providerId: target.providerId,
+        requestId: encodeClientTurnRequestIdNumber({ value: requestValue }),
+        syncGeneratedTitle: false,
+        thread: target.thread,
+      });
+    };
+
+    const alphaCommand = await build(alpha, 10);
+    const betaCommand = await build(beta, 11);
+    expect(alphaCommand.dynamicTools.map((tool) => tool.name)).toEqual([
+      UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
+      "alpha_tool",
+    ]);
+    expect(betaCommand.dynamicTools.map((tool) => tool.name)).toEqual([
+      UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
+      "beta_tool",
+    ]);
+    expect(
+      alphaCommand.injectedSkillSources.map((skill) => skill.name),
+    ).toContain("alpha-skill");
+    expect(
+      alphaCommand.injectedSkillSources.map((skill) => skill.name),
+    ).not.toContain("beta-skill");
+    expect(
+      betaCommand.injectedSkillSources.map((skill) => skill.name),
+    ).toContain("beta-skill");
+    expect(
+      betaCommand.injectedSkillSources.map((skill) => skill.name),
+    ).not.toContain("alpha-skill");
+    expect(alphaCommand.instructions).toContain('"name":"Alpha Host"');
+    expect(alphaCommand.instructions).toContain(
+      '"id":"codex","model":"gpt-5.6"',
+    );
+    expect(alphaCommand.instructions).toContain('"sideChat":false');
+    expect(alphaCommand.instructions).toContain('"kind":null,"pluginId":null');
+    expect(alphaCommand.instructions).toContain("factory=1;configure=1");
+    expect(betaCommand.instructions).toContain('"name":"Beta Host"');
+    expect(betaCommand.instructions).toContain(
+      '"id":"claude-code","model":"claude-opus-4-6"',
+    );
+    expect(betaCommand.instructions).toContain("factory=1;configure=2");
+    expect(alphaCommand.instructions).toContain(
+      "Static instructions for alpha_tool",
+    );
+    expect(alphaCommand.instructions).not.toContain(
+      "Static instructions for beta_tool",
+    );
+    expect(alphaCommand.dynamicTools.map((tool) => tool.name)).not.toContain(
+      "broken_tool",
+    );
+    expect(
+      harness.pluginService
+        .list()
+        .find((plugin) => plugin.id === "broken-conditional")?.handlerStats
+        .errorCount,
+    ).toBe(2);
+    expect(
+      harness.pluginService.listAgentTools().map((tool) => tool.tool.name),
+    ).toEqual(["broken_tool", "alpha_tool", "beta_tool"]);
+
+    const sideThread = seedThread(harness.deps, {
+      projectId: alpha.project.id,
+      environmentId: alpha.environment.id,
+      providerId: alpha.providerId,
+      originKind: "side-chat",
+      sourceThreadId: alpha.thread.id,
+    });
+    const sideCommand = await build({ ...alpha, thread: sideThread }, 12);
+    // The independent side-chat policy still excludes the built-in mutable
+    // environment tool, while configure() selections apply consistently.
+    expect(sideCommand.dynamicTools.map((tool) => tool.name)).toEqual([
+      "alpha_tool",
+    ]);
+    expect(sideCommand.instructions).toContain('"sideChat":true');
+    expect(sideCommand.instructions).toContain(
+      "Static instructions for alpha_tool",
+    );
+    expect(sideCommand.instructions).not.toContain(
+      "Static instructions for beta_tool",
+    );
+    expect(
+      sideCommand.injectedSkillSources.map((skill) => skill.name),
+    ).toContain("alpha-skill");
+    expect(
+      sideCommand.injectedSkillSources.map((skill) => skill.name),
+    ).not.toContain("beta-skill");
+    expect(sideCommand.instructions).toContain(
+      'The following dynamic instructions come from the BB plugin "conditional":',
+    );
+    expect(
+      harness.pluginService.list().find((plugin) => plugin.id === "conditional")
+        ?.handlerStats.errorCount,
+    ).toBe(0);
+    const betaAgain = await build(beta, 13);
+    // The side-chat resolution applied configure with sideChat=true, so this
+    // remains the fourth callback invocation without rebuilding the factory.
+    expect(betaAgain.instructions).toContain("factory=1;configure=4");
+
+    const betaExecution = await resolveExecutionOptions(harness.deps, {
+      threadId: beta.thread.id,
+      requestedExecution: {
+        model: beta.model,
+        source: "client/turn/requested",
+      },
+    });
+    const turnSubmit = await prepareTurnSubmitCommandPayload(harness.deps, {
+      environment: beta.environment,
+      execution: betaExecution,
+      permissionEscalation: "ask",
+      input: textInput("next turn"),
+      providerThreadId: "provider-thread-conditional-beta",
+      target: { mode: "start" },
+      thread: beta.thread,
+    });
+    expect(
+      turnSubmit.resumeContext.dynamicTools.map((tool) => tool.name),
+    ).toEqual([UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME, "beta_tool"]);
+    expect(
+      turnSubmit.resumeContext.injectedSkillSources.map((skill) => skill.name),
+    ).toContain("beta-skill");
+    expect(turnSubmit.resumeContext.instructions).toContain(
+      "factory=1;configure=5",
+    );
   });
 });
 

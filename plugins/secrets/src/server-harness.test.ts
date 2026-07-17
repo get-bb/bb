@@ -11,7 +11,6 @@ describe("secrets plugin server", () => {
         threads: {
           async get() {
             return {
-              environment: { path: "/workspace" },
               host: { id: "host-test" },
             };
           },
@@ -46,7 +45,7 @@ describe("secrets plugin server", () => {
         "API_KEY",
         "Primary API key",
       ],
-      { threadId: "thr-test", cwd: "/workspace" },
+      { threadId: "thr-test", cwd: "/outside/workspace/plugin" },
     );
     await vi.waitFor(() =>
       expect(host.harness.pendingInteractions).toHaveLength(1),
@@ -54,6 +53,10 @@ describe("secrets plugin server", () => {
     const pending = host.harness.pendingInteractions[0]!;
     expect(pending.payload).toMatchObject({
       purpose: "Configure the app",
+      destination: {
+        kind: "dotenv",
+        path: "/outside/workspace/plugin/.env.local",
+      },
       fields: [{ name: "API_KEY" }, { name: "TOKEN" }],
     });
     host.harness.submitInteraction(pending.id, {
@@ -66,10 +69,58 @@ describe("secrets plugin server", () => {
     expect(result.stdout).not.toContain("secret-two");
     expect(writtenContent).toContain("API_KEY='secret-one'");
     expect(writtenContent).toContain("TOKEN='secret-two'");
-    expect(host.harness.sdk.callsTo("files.write")[0]?.[0]).toMatchObject({
+    const writeArgs = host.harness.sdk.callsTo("files.write")[0]?.[0];
+    expect(writeArgs).toMatchObject({
+      hostId: "host-test",
+      path: "/outside/workspace/plugin/.env.local",
       expectedSha256: "before",
       mode: 0o600,
     });
+    expect(writeArgs).not.toHaveProperty("rootPath");
+    expect(JSON.parse(result.stdout ?? "")).toMatchObject({
+      path: "/outside/workspace/plugin/.env.local",
+    });
+  });
+
+  it("preserves an absolute dotenv destination outside the CLI working directory", async () => {
+    const host = createFakePluginHost({
+      pluginId: "secrets",
+      sdk: {
+        threads: {
+          async get() {
+            return { host: { id: "host-test" } };
+          },
+        },
+        files: {
+          async read() {
+            return {
+              content: "",
+              contentEncoding: "utf8",
+              sha256: "before",
+            };
+          },
+        },
+      },
+    });
+    plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+
+    const command = host.harness.runCli(
+      ["request", "API_KEY", "--write-env", "/var/plugin/.env"],
+      { threadId: "thr-test", cwd: "/workspace" },
+    );
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+
+    expect(host.harness.pendingInteractions[0]?.payload).toMatchObject({
+      destination: { kind: "dotenv", path: "/var/plugin/.env" },
+    });
+    expect(host.harness.sdk.callsTo("files.read")[0]?.[0]).toEqual({
+      hostId: "host-test",
+      path: "/var/plugin/.env",
+    });
+    host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+    await command;
   });
 
   it.each([

@@ -1,8 +1,8 @@
 /**
  * `@bb/plugin-sdk/testing` — the backend plugin test harness: a fake BB
  * plugin host (`createFakePluginHost`) whose `bb` satisfies `BbPluginApi`,
- * plus fixtures. Workspace/in-repo consumers only for V1: this subpath is
- * not part of the bundled `.d.ts` scaffolded plugins receive.
+ * plus fixtures. The package ships executable JavaScript and portable
+ * declarations for use from external plugin repositories.
  *
  * The frontend harness (loadPluginApp/renderSlot) lives at
  * `@bb/plugin-sdk/testing/app` so backend-only tests never load React.
@@ -19,6 +19,9 @@ export {
   type FakeMentionProviderRecord,
   type FakePluginHarness,
   type FakePluginHost,
+  type FakePluginBehaviorDrivers,
+  type FakePluginInspectionState,
+  type FakePluginLifecycleControls,
   type FakePluginRegistrations,
   type FakeRealtimeSignal,
   type FakeScheduleRecord,

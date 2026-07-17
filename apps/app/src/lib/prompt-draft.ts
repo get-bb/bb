@@ -13,18 +13,7 @@ import {
   SUBMITTED_AUTOMATION_PROMPT_PREFIX,
 } from "./automation-prompt";
 
-/**
- * `sourceProjectId` records where a project-scoped upload currently lives.
- * Drafts may outlive a project picker change, so the composer uses this while
- * it copies the upload into the newly selected project.
- */
-export type PromptDraftAttachment = UploadedPromptAttachment & {
-  sourceProjectId?: string;
-};
-
-const promptDraftAttachmentSchema = uploadedPromptAttachmentSchema.extend({
-  sourceProjectId: z.string().min(1).optional(),
-});
+export type PromptDraftAttachment = UploadedPromptAttachment;
 
 export interface PromptDraftState {
   text: string;
@@ -48,7 +37,7 @@ const promptDraftStorageSchema = z.object({
     .default([])
     .transform((items) =>
       items.flatMap((item) => {
-        const result = promptDraftAttachmentSchema.safeParse(item);
+        const result = uploadedPromptAttachmentSchema.safeParse(item);
         return result.success ? [result.data] : [];
       }),
     ),

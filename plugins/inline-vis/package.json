@@ -8,8 +8,11 @@
     "bb": ">=0.0"
   },
   "bb": {
-    "displayName": "Inline visualizations",
-    "icon": "AppWindow",
+    "name": "Inline visualizations",
+    "description": "Render workspace HTML visualizations inline in assistant messages.",
+    "branding": {
+      "icon": "AppWindow"
+    },
     "server": "./server.ts",
     "app": "./app.tsx",
     "skills": [
@@ -24,7 +27,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bb/shared-ui": "workspace:*"
+    "@bb/shared-ui": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/plugin-sdk": "workspace:*",

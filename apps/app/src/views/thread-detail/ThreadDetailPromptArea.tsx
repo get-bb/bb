@@ -15,6 +15,7 @@ import type {
   ThreadPullRequest,
   ThreadTimelineActivePromptMode,
   ThreadTimelineGoal,
+  ThreadTimelineModelFallback,
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
 } from "@bb/domain";
@@ -38,6 +39,7 @@ import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPromptModeCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
+import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -157,6 +159,8 @@ interface ThreadDetailPromptAreaProps {
   activePromptMode: ThreadTimelineActivePromptMode | null;
   /** Current provider goal from the timeline projection. Null when no goal is active. */
   goal: ThreadTimelineGoal | null;
+  /** Active provider fallback; controls the next model selection until another turn is requested. */
+  modelFallback: ThreadTimelineModelFallback | null;
   /** Running workflow row from the timeline. Null when no workflow is active. */
   activeWorkflow: TimelineWorkflowWorkRow | null;
   /** Running backgrounded shell command rows, most recent first. Empty when none. */
@@ -211,6 +215,7 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   activePromptMode,
   goal,
+  modelFallback,
   activeWorkflow,
   activeBackgroundCommands,
   parentThreadSection,
@@ -360,6 +365,7 @@ export function ThreadDetailPromptArea({
     [promptHistoryEntries],
   );
   const {
+    executionOptionsRouting,
     selectedProviderId,
     providerOptions,
     hasMultipleProviders,
@@ -391,12 +397,33 @@ export function ThreadDetailPromptArea({
     scope: "component-local",
     resetKey: thread.id,
     initialProviderId: thread.providerId,
-    initialModel: defaultExecutionOptions?.model,
+    initialModel:
+      modelFallback?.fallbackModel ?? defaultExecutionOptions?.model,
     initialServiceTier: defaultExecutionOptions?.serviceTier,
     initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
     initialPermissionMode: defaultExecutionOptions?.permissionMode,
     initialEnvironmentSelectionValue: thread.environmentId ?? undefined,
   });
+  const fallbackIdentity = modelFallback
+    ? `${thread.id}:${modelFallback.sourceSeq}`
+    : null;
+  const [overriddenFallbackIdentity, setOverriddenFallbackIdentity] = useState<
+    string | null
+  >(null);
+  const isFallbackModelActive =
+    modelFallback !== null && overriddenFallbackIdentity !== fallbackIdentity;
+  const effectiveSelectedModel = isFallbackModelActive
+    ? modelFallback.fallbackModel
+    : (activeModel?.model ?? selectedModel);
+  const handleModelChange = useCallback(
+    (model: string) => {
+      if (fallbackIdentity !== null) {
+        setOverriddenFallbackIdentity(fallbackIdentity);
+      }
+      setSelectedModel(model);
+    },
+    [fallbackIdentity, setSelectedModel],
+  );
   const providerPromptActions = useMemo(
     () => buildProviderPromptActionProps(selectedProviderComposerActions),
     [selectedProviderComposerActions],
@@ -501,7 +528,7 @@ export function ThreadDetailPromptArea({
       return null;
     }
     return {
-      model: activeModel?.model ?? selectedModel,
+      model: effectiveSelectedModel,
       supportsServiceTier,
       serviceTier,
       reasoningLevel,
@@ -509,12 +536,11 @@ export function ThreadDetailPromptArea({
       executionInputSources,
     };
   }, [
-    activeModel?.model,
+    effectiveSelectedModel,
     executionInputSources,
     hasConcreteDefaultExecutionOptions,
     permissionMode,
     reasoningLevel,
-    selectedModel,
     serviceTier,
     supportsServiceTier,
   ]);
@@ -928,6 +954,7 @@ export function ThreadDetailPromptArea({
 
   const executionConfig = useMemo(
     () => ({
+      providerRouting: executionOptionsRouting,
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
@@ -935,14 +962,16 @@ export function ThreadDetailPromptArea({
         displayName: selectedProviderDisplayName,
       },
       model: {
-        active: activeModel,
+        active: effectiveSelectedModel
+          ? { model: effectiveSelectedModel }
+          : null,
         selected: selectedModel,
         options: modelOptions,
         moreOptions: moreModelOptions,
         isLoading: isLoadingModels,
         loadFailed: modelLoadFailed,
         loadError: modelLoadError,
-        onChange: setSelectedModel,
+        onChange: handleModelChange,
       },
       serviceTier: {
         value: serviceTier,
@@ -961,9 +990,11 @@ export function ThreadDetailPromptArea({
       },
     }),
     [
-      activeModel,
+      effectiveSelectedModel,
+      executionOptionsRouting,
       hasMultipleProviders,
       handleHandoffToNewThread,
+      handleModelChange,
       isLoadingModels,
       modelLoadFailed,
       modelLoadError,
@@ -978,7 +1009,6 @@ export function ThreadDetailPromptArea({
       serviceTier,
       serviceTierSupportByProvider,
       setReasoningLevel,
-      setSelectedModel,
       setServiceTier,
       supportsServiceTier,
     ],
@@ -1154,6 +1184,13 @@ export function ThreadDetailPromptArea({
             onDelete={handleDeleteQueuedMessage}
           />
         )}
+        {modelFallback ? (
+          <ThreadModelFallbackCard
+            key={`${thread.id}:${modelFallback.sourceSeq}`}
+            fallback={modelFallback}
+            threadId={thread.id}
+          />
+        ) : null}
       </>
     ),
     [
@@ -1180,6 +1217,7 @@ export function ThreadDetailPromptArea({
       isWorkflowExpanded,
       activeBackgroundCommands,
       isBackgroundCommandsExpanded,
+      modelFallback,
       parentThreadSection,
       childThreadsSection,
       pullRequestSection,
@@ -1191,6 +1229,7 @@ export function ThreadDetailPromptArea({
       shouldHideComposer,
       submitMode.kind,
       thread.archivedAt,
+      thread.id,
       workspaceChangedFilesSection,
       workspaceStatusPending,
     ],

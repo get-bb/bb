@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { DEFAULTS } from "@bb/config/defaults";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import type { AppSurface } from "@bb/config/app-surface";
 import type { ServerLogger } from "../../types.js";
@@ -15,11 +16,12 @@ import type { ServerLogger } from "../../types.js";
  * workflow state, so lost sends (offline, PostHog outage, process exit
  * mid-flight) are dropped without retry or persistence.
  *
- * A default public write-only PostHog key ships in @bb/config, but the caller
- * only enables telemetry for production server runs (the bb-app launcher and
- * desktop app set NODE_ENV=production; dev/source runs never send). Disabled
- * telemetry creates nothing, not even the install-id file. Opt out any run
- * with BB_TELEMETRY=false; override the key with BB_POSTHOG_API_KEY.
+ * A default public write-only PostHog key ships in @bb/config. Telemetry only
+ * activates for production server runs with a resolved release version (the
+ * bb-app launcher and desktop app set NODE_ENV=production). Dev/source runs
+ * never send, even if a test starts them in production mode.
+ * Disabled telemetry creates nothing, not even the install-id file. Opt out
+ * any run with BB_TELEMETRY=false; override the key with BB_POSTHOG_API_KEY.
  */
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
@@ -77,7 +79,11 @@ export function runWithTelemetryAppSurface<T>(
 export async function createTelemetryService(
   args: CreateTelemetryServiceArgs,
 ): Promise<TelemetryService> {
-  if (!args.enabled || args.apiKey.length === 0) {
+  if (
+    !args.enabled ||
+    args.apiKey.length === 0 ||
+    args.appVersion === DEFAULTS.appVersion
+  ) {
     return noopTelemetryService;
   }
   const distinctId = await readOrCreateSecretFile({
@@ -93,7 +99,8 @@ export async function createTelemetryService(
   };
   return {
     capture(event: TelemetryEvent): void {
-      const appSurface = telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
+      const appSurface =
+        telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
       const eventProperties = "properties" in event ? event.properties : {};
       const body = JSON.stringify({
         api_key: args.apiKey,

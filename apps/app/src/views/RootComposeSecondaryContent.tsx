@@ -31,6 +31,11 @@ import {
 } from "@/lib/bb-desktop";
 import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  useOptionalPaneContext,
+  usePaneSecondaryPanelRegistration,
+  type PaneSecondaryPanelViewModel,
+} from "./thread-detail/PaneContext";
 
 const CLOSED_MAIN_PANEL_SIZE_PERCENT = 100;
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
@@ -47,8 +52,6 @@ const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 // from drifting apart.
 export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-4 top-2.5";
-export const ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS =
-  "right-12 top-2.5";
 
 type RootSecondaryPanelProps = Omit<
   ComponentProps<typeof ThreadSecondaryPanel>,
@@ -66,6 +69,7 @@ interface RootComposeSecondaryContentProps {
   children: ReactNode;
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
+  onToggleSecondaryPanel: () => void;
   panelTogglePositionClassName: string;
   secondaryPanel: RootSecondaryPanelProps;
 }
@@ -76,9 +80,12 @@ export function RootComposeSecondaryContent({
   children,
   contentClassName,
   isSecondaryPanelOpen,
+  onToggleSecondaryPanel,
   panelTogglePositionClassName,
   secondaryPanel,
 }: RootComposeSecondaryContentProps) {
+  const paneContext = useOptionalPaneContext();
+  const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
@@ -179,7 +186,8 @@ export function RootComposeSecondaryContent({
 
   const canShowNativeBrowserView = renderAsDrawer
     ? isSecondaryPanelOpen && isCompactDrawerContentSettled
-    : isSecondaryPanelOpen;
+    : isSecondaryPanelOpen &&
+      (secondaryPanelHost === null || paneContext?.isFocused === true);
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
   const browserDeck = useMemo(
     () => renderBrowserDeck?.({ canShowNativeBrowserView }),
@@ -202,15 +210,33 @@ export function RootComposeSecondaryContent({
       secondaryWidth,
     ]);
   }, [isSecondaryPanelOpen, renderAsDrawer]);
-  const inlineSecondaryPanelContent = !renderAsDrawer ? (
-    <ThreadSecondaryPanel
-      {...threadSecondaryPanelProps}
-      browserDeck={browserDeck}
-      renderAsDrawer={false}
-      isConversationCollapsed={false}
-      onToggleConversationCollapse={noopToggleConversationCollapse}
-    />
-  ) : null;
+  const inlineSecondaryPanelContent = useMemo(
+    () =>
+      !renderAsDrawer ? (
+        <ThreadSecondaryPanel
+          {...threadSecondaryPanelProps}
+          browserDeck={browserDeck}
+          renderAsDrawer={false}
+          isConversationCollapsed={false}
+          onToggleConversationCollapse={noopToggleConversationCollapse}
+          // In the split-workspace host, panes' panels share one PanelGroup,
+          // so each pane's Panel needs its own layout identity (see the prop
+          // doc).
+          resizablePanelId={
+            secondaryPanelHost === null || paneContext === null
+              ? undefined
+              : `thread-detail-secondary-panel-${paneContext.paneId}`
+          }
+        />
+      ) : null,
+    [
+      browserDeck,
+      paneContext,
+      renderAsDrawer,
+      secondaryPanelHost,
+      threadSecondaryPanelProps,
+    ],
+  );
   const drawerSecondaryPanelContent = renderAsDrawer ? (
     <ThreadSecondaryPanel
       {...threadSecondaryPanelProps}
@@ -220,6 +246,67 @@ export function RootComposeSecondaryContent({
       onToggleConversationCollapse={noopToggleConversationCollapse}
     />
   ) : null;
+  const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
+    () => ({
+      collapsedRail: null,
+      contentKey: "new-thread",
+      isMainCollapsed: false,
+      isOpen: isSecondaryPanelOpen,
+      panel: inlineSecondaryPanelContent,
+      onToggle: onToggleSecondaryPanel,
+    }),
+    [inlineSecondaryPanelContent, isSecondaryPanelOpen, onToggleSecondaryPanel],
+  );
+  usePaneSecondaryPanelRegistration(secondaryPanelHost, hostedPanelModel);
+
+  const mainContent = (
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      {usesDesktopChrome ? (
+        <div
+          data-testid="root-compose-main-window-drag-strip"
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-x-0 top-0 z-10 shrink-0",
+            CHROME_ROW_HEIGHT_CLASS,
+            MACOS_WINDOW_DRAG_CLASS,
+          )}
+        >
+          {!isSecondaryPanelOpen && secondaryPanelHost === null ? (
+            <div
+              data-testid="root-compose-drag-strip-toggle-cutout"
+              className={cn(
+                "absolute",
+                panelTogglePositionClassName,
+                COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+                MACOS_APP_REGION_NO_DRAG_CLASS,
+              )}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      <div className="@container/page min-h-0 flex-1 overflow-y-auto">
+        <div
+          className={cn(
+            "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
+            ROOT_COMPOSE_MAX_WIDTH_CLASS,
+            contentClassName,
+          )}
+          style={PAGE_SHELL_CONTENT_STYLE}
+        >
+          {children}
+          <PluginHomepageSections />
+        </div>
+      </div>
+    </div>
+  );
+
+  if (secondaryPanelHost !== null) {
+    return (
+      <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
+        {mainContent}
+      </div>
+    );
+  }
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
@@ -251,51 +338,7 @@ export function RootComposeSecondaryContent({
               PANEL_COLLAPSE_TRANSITION_CLASS,
             )}
           >
-            <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-              {usesDesktopChrome ? (
-                <div
-                  data-testid="root-compose-main-window-drag-strip"
-                  aria-hidden="true"
-                  className={cn(
-                    "absolute inset-x-0 top-0 z-10 shrink-0",
-                    CHROME_ROW_HEIGHT_CLASS,
-                    MACOS_WINDOW_DRAG_CLASS,
-                  )}
-                >
-                  {/* While the panel is closed the main panel spans the full
-                      width and the pinned right-panel toggle overlays this
-                      strip, so carve its footprint out of the drag region — as
-                      a child of the strip it resolves after the strip's own
-                      drag rect and wins. Open, the toggle sits over the panel
-                      chrome instead (whose reserved slot does the carving), so
-                      the strip stays fully draggable. */}
-                  {!isSecondaryPanelOpen ? (
-                    <div
-                      data-testid="root-compose-drag-strip-toggle-cutout"
-                      className={cn(
-                        "absolute",
-                        panelTogglePositionClassName,
-                        COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
-                        MACOS_APP_REGION_NO_DRAG_CLASS,
-                      )}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-              <div className="@container/page min-h-0 flex-1 overflow-y-auto">
-                <div
-                  className={cn(
-                    "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
-                    ROOT_COMPOSE_MAX_WIDTH_CLASS,
-                    contentClassName,
-                  )}
-                  style={PAGE_SHELL_CONTENT_STYLE}
-                >
-                  {children}
-                  <PluginHomepageSections />
-                </div>
-              </div>
-            </div>
+            {mainContent}
           </Panel>
           {inlineSecondaryPanelContent}
         </PanelGroup>

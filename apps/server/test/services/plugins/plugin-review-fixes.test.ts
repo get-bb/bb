@@ -15,6 +15,14 @@ const EVIL_ORIGIN = "https://evil.example";
 const PLUGIN_ID = "review-fixes";
 
 const FIXTURE_SOURCE = `
+  import { defineRpcContract } from "@bb/plugin-sdk";
+  import { z } from "zod";
+  const rpcContract = defineRpcContract({
+    slowKv: {
+      input: z.record(z.string(), z.unknown()),
+      output: z.literal("done"),
+    },
+  });
   export default function plugin(bb: any) {
     const g = globalThis as any;
     g.__rfLoads = (g.__rfLoads ?? 0) + 1;
@@ -25,7 +33,7 @@ const FIXTURE_SOURCE = `
       commands: [],
       run: async () => ({ exitCode: 0, stdout: "rf ok" }),
     });
-    bb.rpc.register({
+    bb.rpc.register(rpcContract, {
       slowKv: async (input: any) => {
         await new Promise((resolve) => setTimeout(resolve, 150));
         await bb.storage.kv.set("drained", input);
@@ -53,7 +61,12 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
       JSON.stringify({
         name: "bb-plugin-review-fixes",
         version: "0.1.0",
-        bb: { server: "./server.ts" },
+        bb: {
+          name: "Review fixes fixture",
+          description: "Plugin review regression fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
       }),
     );
     await writeFile(join(rootDir, "server.ts"), FIXTURE_SOURCE);

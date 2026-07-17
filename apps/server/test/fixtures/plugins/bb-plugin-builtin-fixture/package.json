@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "type": "module",
   "bb": {
-    "icon": "EditFile",
+    "name": "Builtin fixture",
+    "description": "Test fixture for builtin plugin packaging.",
+    "branding": {
+      "icon": "EditFile"
+    },
     "server": "./server.ts"
   }
 }

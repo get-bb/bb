@@ -85,6 +85,18 @@ export class HostSharedPortCoordinator {
     }
   }
 
+  validateSharedPortDeclaration(
+    hostId: string,
+    ports: readonly number[],
+  ): number[] {
+    if (hostId.trim().length === 0) {
+      throw new Error("shared-port declaration hostId must be non-empty");
+    }
+    const normalized = normalizePorts(ports);
+    if (normalized.length > 0) this.requireEnrolledHost(hostId);
+    return normalized;
+  }
+
   declareSharedPorts(args: {
     ownerId: string;
     hostId: string;
@@ -93,23 +105,62 @@ export class HostSharedPortCoordinator {
     if (args.ownerId.trim().length === 0) {
       throw new Error("shared-port declaration ownerId must be non-empty");
     }
-    if (args.hostId.trim().length === 0) {
-      throw new Error("shared-port declaration hostId must be non-empty");
-    }
-    const ports = normalizePorts(args.ports);
+    const ports = this.validateSharedPortDeclaration(args.hostId, args.ports);
     // Clearing server-owned desired state is always safe. In particular, it
     // must remain possible after a host goes offline, loses enrollment, or is
     // removed. Only an active request to share ports requires a live enrolled
     // daemon with its own machine credential.
-    if (ports.length > 0) {
-      this.requireEnrolledHost(args.hostId);
-    }
-
     const current = this.declarationsByHost.get(args.hostId);
     const candidate = new Map(current ?? []);
     candidate.set(args.ownerId, { ports });
     this.declarationsByHost.set(args.hostId, candidate);
     return this.publishIfChanged(args.hostId);
+  }
+
+  replaceDeclarationsForOwner(
+    ownerId: string,
+    declarations: readonly {
+      hostId: string;
+      ports: readonly number[];
+    }[],
+  ): void {
+    if (ownerId.trim().length === 0) {
+      throw new Error("shared-port declaration ownerId must be non-empty");
+    }
+
+    const normalizedByHost = new Map<string, number[]>();
+    for (const declaration of declarations) {
+      const ports = this.validateSharedPortDeclaration(
+        declaration.hostId,
+        declaration.ports,
+      );
+      normalizedByHost.set(declaration.hostId, ports);
+    }
+
+    const affectedHostIds = new Set(normalizedByHost.keys());
+    for (const [hostId, current] of this.declarationsByHost) {
+      if (current.has(ownerId)) affectedHostIds.add(hostId);
+    }
+
+    const replacements = new Map<
+      string,
+      Map<string, SharedPortDeclaration>
+    >();
+    for (const hostId of affectedHostIds) {
+      const replacement = new Map(this.declarationsByHost.get(hostId) ?? []);
+      const ports = normalizedByHost.get(hostId);
+      if (ports === undefined) replacement.delete(ownerId);
+      else replacement.set(ownerId, { ports });
+      replacements.set(hostId, replacement);
+    }
+
+    // Validate and assemble every host first, then publish the owner-scoped
+    // replacement as one complete registration set.
+    for (const [hostId, replacement] of replacements) {
+      if (replacement.size === 0) this.declarationsByHost.delete(hostId);
+      else this.declarationsByHost.set(hostId, replacement);
+    }
+    for (const hostId of affectedHostIds) this.publishIfChanged(hostId);
   }
 
   clearDeclarationsForOwner(ownerId: string): void {

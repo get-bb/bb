@@ -26,9 +26,10 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Laptop", id: "machines", label: "Machines" },
-  { icon: "Zap", id: "experiments", label: "Experiments" },
+  { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "Layers", id: "plugins", label: "Plugins" },
   { icon: "MessageSquare", id: "community", label: "Community" },
+  { icon: "Archive", id: "archived", label: "Archived threads" },
 ] as const satisfies readonly {
   icon: IconName;
   id: string;
@@ -120,10 +121,6 @@ export function useSettingsNavState(): SettingsNavState {
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
-    }
-    if (section.id === "machines") {
-      // Multi-machine experiment surface (Settings → Machines).
-      return systemConfig.data?.experiments.multiMachine === true;
     }
     if (section.id === "plugins") {
       return pluginsEnabled;

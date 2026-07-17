@@ -14,6 +14,7 @@ import {
   threadChildOriginValues,
   threadOriginKindValues,
 } from "@bb/domain/thread-child-origin";
+import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
   EnvironmentStatus,
   FaviconColorPreference,
@@ -147,17 +148,9 @@ export const systemExperiments = sqliteTable("system_experiments", {
   claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {
     mode: "boolean",
   }).notNull(),
-  bbConnect: integer("bb_connect", { mode: "boolean" })
-    .notNull()
-    .default(false),
-  multiMachine: integer("multi_machine", { mode: "boolean" })
-    .notNull()
-    .default(false),
   threadSplits: integer("thread_splits", { mode: "boolean" })
     .notNull()
     .default(false),
-  popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),
-  popoutChatHotkey: text("popout_chat_hotkey").notNull(),
   plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -170,6 +163,11 @@ export const appSettings = sqliteTable("app_settings", {
   showKeyboardHints: integer("show_keyboard_hints", { mode: "boolean" })
     .notNull()
     .default(true),
+  showUnhandledProviderEvents: integer("show_unhandled_provider_events", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   codexMemoryEnabled: integer("codex_memory_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
@@ -205,12 +203,11 @@ export const installedPlugins = sqliteTable("plugins", {
   /** Legacy display/diagnostic spec. Normalized columns below are authoritative. */
   source: text("source").notNull(),
   provenance: text("provenance", {
-    enum: ["builtin", "direct", "marketplace"],
+    enum: ["builtin", "direct", "catalog"],
   })
     .notNull()
     .default("direct"),
-  marketplaceId: text("marketplace_id"),
-  marketplaceEntryId: text("marketplace_entry_id"),
+  catalogEntryId: text("catalog_entry_id"),
   sourceKind: text("source_kind", {
     enum: ["path", "builtin", "npm", "git"],
   })
@@ -319,28 +316,6 @@ export const pluginStateSnapshots = sqliteTable(
     index("plugin_state_snapshots_retention_idx").on(table.retainedUntil),
   ],
 );
-
-export const marketplaces = sqliteTable("marketplaces", {
-  id: text("id").primaryKey(),
-  displayName: text("display_name").notNull(),
-  sourceKind: text("source_kind", {
-    enum: ["builtin", "path", "git"],
-  }).notNull(),
-  location: text("location").notNull(),
-  requestedGitRef: text("requested_git_ref"),
-  resolvedGitCommit: text("resolved_git_commit"),
-  cachePath: text("cache_path"),
-  // The validated last-known-good catalog. Keeping this beside refresh state
-  // makes searches network-free and lets a failed refresh retain old data.
-  catalogJson: text("catalog_json"),
-  lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
-  lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
-  lastError: text("last_error"),
-  /** Removal tombstone so default catalogs are not restored after restart. */
-  removedAt: integer("removed_at"),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});
 
 // Namespaced plugin key/value storage (`bb.storage.kv`). Values are JSON text;
 // the plugin API caps them at 256KB before they reach this table.
@@ -523,6 +498,9 @@ export const threads = sqliteTable(
     // Id of the plugin that spawned this thread (create origin "plugin").
     // NULL for every other origin.
     originPluginId: text("origin_plugin_id"),
+    visibility: text("visibility", { enum: threadVisibilityValues })
+      .notNull()
+      .default("visible"),
     archivedAt: integer("archived_at"),
     pinnedAt: integer("pinned_at"),
     pinSortKey: text("pin_sort_key"),

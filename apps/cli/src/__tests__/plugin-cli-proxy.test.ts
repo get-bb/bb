@@ -198,7 +198,7 @@ describe("findDisabledPluginForCommand", () => {
     ).resolves.toBeNull();
   });
 
-  it("matches an experiment-disabled plugin by runtime status", async () => {
+  it("matches a disabled plugin by runtime status", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -207,10 +207,10 @@ describe("findDisabledPluginForCommand", () => {
             JSON.stringify({
               plugins: [
                 {
-                  id: "connect",
+                  id: "automations",
                   enabled: true,
                   status: "disabled",
-                  statusDetail: 'disabled by the "bb connect" experiment',
+                  statusDetail: 'disabled by the "Plugins" experiment',
                 },
               ],
             }),
@@ -219,12 +219,12 @@ describe("findDisabledPluginForCommand", () => {
       ),
     );
     await expect(
-      findDisabledPluginForCommand("http://localhost", "connect"),
+      findDisabledPluginForCommand("http://localhost", "automations"),
     ).resolves.toEqual({
-      id: "connect",
+      id: "automations",
       enabled: true,
       status: "disabled",
-      statusDetail: 'disabled by the "bb connect" experiment',
+      statusDetail: 'disabled by the "Plugins" experiment',
     });
   });
 

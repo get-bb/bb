@@ -28,6 +28,19 @@ function singlePaneLayout(): SplitLayout {
   return { root: pane("pane-1"), focusedPaneId: "pane-1" };
 }
 
+function layoutAtPaneCount(count: number): SplitLayout {
+  let layout = singlePaneLayout();
+  for (let index = 2; index <= count; index += 1) {
+    layout = splitPane(
+      layout,
+      layout.focusedPaneId,
+      "right",
+      threadContent(`thread-${index}`),
+    );
+  }
+  return layout;
+}
+
 function expectValidFocus(layout: SplitLayout): void {
   expect(findPane(layout.root, layout.focusedPaneId)).not.toBeNull();
 }
@@ -39,8 +52,9 @@ function expectNormalizedSizes(layout: SplitLayout): void {
     }
     expect(node.sizes).toHaveLength(node.children.length);
     expect(node.sizes.reduce((sum, size) => sum + size, 0)).toBeCloseTo(1, 12);
+    const feasibleMinimum = Math.min(0.15, 1 / node.children.length);
     for (const size of node.sizes) {
-      expect(size).toBeGreaterThanOrEqual(0.15);
+      expect(size).toBeGreaterThanOrEqual(feasibleMinimum);
       expect(size).toBeLessThanOrEqual(0.85);
     }
     node.children.forEach(visit);
@@ -49,6 +63,26 @@ function expectNormalizedSizes(layout: SplitLayout): void {
 }
 
 describe("split layout operations", () => {
+  it("rebalances seven successive default-right opens into eight equal usable panes", () => {
+    const eight = layoutAtPaneCount(MAX_PANES);
+
+    expect(eight.root).toMatchObject({
+      type: "split",
+      dir: "row",
+      children: Array.from({ length: MAX_PANES }, () => ({ type: "pane" })),
+    });
+    if (eight.root.type !== "split") {
+      throw new Error("Expected a flat row split");
+    }
+    expect(eight.root.sizes).toHaveLength(MAX_PANES);
+    for (const size of eight.root.sizes) {
+      expect(size).toBeCloseTo(1 / MAX_PANES, 12);
+    }
+    expect(
+      splitPane(eight, eight.focusedPaneId, "right", threadContent("thread-9")),
+    ).toBe(eight);
+  });
+
   it("inserts in reading order, focuses the new pane, and enforces the cap", () => {
     const two = splitPane(
       singlePaneLayout(),
@@ -56,23 +90,22 @@ describe("split layout operations", () => {
       "left",
       threadContent("thread-2", "project-2"),
     );
-    const three = splitPane(
-      two,
-      "pane-1",
-      "bottom",
-      threadContent("thread-3"),
-    );
-    const four = splitPane(
-      three,
-      "pane-3",
-      "right",
-      threadContent("thread-4"),
-    );
+    const three = splitPane(two, "pane-1", "bottom", threadContent("thread-3"));
+    const four = splitPane(three, "pane-3", "right", threadContent("thread-4"));
+    let eight = four;
+    for (let index = 5; index <= MAX_PANES; index += 1) {
+      eight = splitPane(
+        eight,
+        eight.focusedPaneId,
+        index % 2 === 0 ? "right" : "bottom",
+        threadContent(`thread-${index}`),
+      );
+    }
     const rejected = splitPane(
-      four,
+      eight,
       "pane-1",
       "top",
-      threadContent("thread-5"),
+      threadContent("thread-9"),
     );
 
     expect(listPanes(two.root).map((item) => item.paneId)).toEqual([
@@ -80,11 +113,22 @@ describe("split layout operations", () => {
       "pane-1",
     ]);
     expect(two.focusedPaneId).toBe("pane-2");
-    expect(countPanes(four.root)).toBe(MAX_PANES);
-    expect(rejected).toBe(four);
-    expect(
-      findPaneByThread(two.root, "project-2", "thread-2")?.paneId,
-    ).toBe("pane-2");
+    expect(listPanes(eight.root).map((item) => item.paneId)).toEqual([
+      "pane-2",
+      "pane-1",
+      "pane-3",
+      "pane-4",
+      "pane-5",
+      "pane-6",
+      "pane-7",
+      "pane-8",
+    ]);
+    expect(countPanes(eight.root)).toBe(MAX_PANES);
+    expect(eight.focusedPaneId).toBe("pane-8");
+    expect(rejected).toBe(eight);
+    expect(findPaneByThread(two.root, "project-2", "thread-2")?.paneId).toBe(
+      "pane-2",
+    );
   });
 
   it("replaces and swaps content while applying the reference focus semantics", () => {
@@ -113,17 +157,9 @@ describe("split layout operations", () => {
       "right",
       threadContent("thread-2"),
     );
-    const three = splitPane(
-      two,
-      "pane-2",
-      "bottom",
-      threadContent("thread-3"),
-    );
+    const three = splitPane(two, "pane-2", "bottom", threadContent("thread-3"));
     const removedMiddle = removePane(three, "pane-2");
-    const removedEnd = removePane(
-      setFocus(removedMiddle, "pane-3"),
-      "pane-3",
-    );
+    const removedEnd = removePane(setFocus(removedMiddle, "pane-3"), "pane-3");
 
     expect(listPanes(removedMiddle.root).map((item) => item.paneId)).toEqual([
       "pane-1",
@@ -143,34 +179,33 @@ describe("split layout operations", () => {
   });
 
   it("moves a pane at the cap without changing its ID or content identity", () => {
-    const two = splitPane(
-      singlePaneLayout(),
-      "pane-1",
-      "right",
-      threadContent("thread-2"),
-    );
-    const three = splitPane(
-      two,
-      "pane-2",
-      "bottom",
-      threadContent("thread-3"),
-    );
-    const four = splitPane(
-      three,
-      "pane-1",
-      "bottom",
-      threadContent("thread-4"),
-    );
-    const before = findPane(four.root, "pane-4");
-    const moved = movePane(four, "pane-4", "pane-3", "left");
-    const after = findPane(moved.root, "pane-4");
+    const eight = layoutAtPaneCount(MAX_PANES);
+    const before = findPane(eight.root, "pane-8");
+    const moved = movePane(eight, "pane-8", "pane-7", "left");
+    const after = findPane(moved.root, "pane-8");
 
     expect(countPanes(moved.root)).toBe(MAX_PANES);
     expect(after).toBe(before);
     expect(after?.content).toBe(before?.content);
-    expect(moved.focusedPaneId).toBe("pane-4");
+    expect(moved.focusedPaneId).toBe("pane-8");
     expectValidFocus(moved);
-    expect(movePane(moved, "pane-4", "pane-4", "right")).toBe(moved);
+    expect(movePane(moved, "pane-8", "pane-8", "right")).toBe(moved);
+  });
+
+  it("keeps focus, resizing, rearrangement, and closing usable at eight panes", () => {
+    const eight = layoutAtPaneCount(MAX_PANES);
+    const focused = setFocus(eight, "pane-5");
+    const resized = resizeSplit(focused, [], 0, 0.7);
+    const swapped = swapPanes(resized, "pane-5", "pane-6");
+    const closed = removePane(swapped, "pane-6");
+
+    expect(focused.focusedPaneId).toBe("pane-5");
+    expect(resized).not.toBe(focused);
+    expect(swapped.focusedPaneId).toBe("pane-6");
+    expect(countPanes(closed.root)).toBe(MAX_PANES - 1);
+    expect(findPane(closed.root, "pane-6")).toBeNull();
+    expectValidFocus(closed);
+    expectNormalizedSizes(closed);
   });
 
   it("resizes adjacent pairs with clamped fractions and unit split totals", () => {
@@ -218,6 +253,10 @@ describe("split layout operations", () => {
               pane("pane-3"),
               pane("pane-4"),
               pane("pane-5"),
+              pane("pane-6"),
+              pane("pane-7"),
+              pane("pane-8"),
+              pane("pane-9"),
             ],
           },
         ],
@@ -233,6 +272,10 @@ describe("split layout operations", () => {
       "pane-2",
       "pane-3",
       "pane-4",
+      "pane-5",
+      "pane-6",
+      "pane-7",
+      "pane-8",
     ]);
     expect(normalized.focusedPaneId).toBe("pane-1");
     expectNormalizedSizes(normalized);

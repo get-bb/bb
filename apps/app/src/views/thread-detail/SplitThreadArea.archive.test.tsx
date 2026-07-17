@@ -69,7 +69,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandContext: () => undefined,
   useAppCommandHandler: () => undefined,
+  useAppCommandShortcut: () => null,
   useIndexedAppCommandHandlers: () => undefined,
+  useIsAppCommandModifierHeld: () => false,
 }));
 
 vi.mock("./ThreadDetailView", () => ({

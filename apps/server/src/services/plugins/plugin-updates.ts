@@ -134,6 +134,20 @@ export function createPluginUpdates(
     if (args.row.sourceKind === "path" || args.row.sourceKind === "builtin") {
       return { outcome: "pinned", current: installed };
     }
+    // Rows installed through the retired GitHub-Release marketplace carry a
+    // synthetic api.github.com registry URL no npm resolver can serve. The
+    // plugin keeps running from its cached artifact; updates now ride app
+    // releases, so point the user at a store reinstall instead of erroring.
+    if (
+      args.row.sourceKind === "npm" &&
+      args.row.sourceNpmRegistry?.includes("bb-source=github-release")
+    ) {
+      return {
+        outcome: "unavailable",
+        detail:
+          "installed from the retired remote marketplace — remove it and reinstall from Settings → Plugins → Browse to switch to the bundled copy",
+      };
+    }
     if (args.row.sourceKind === "npm") {
       return resolveNpmUpdate({
         intent: args.npmIntentOverride ?? npmIntentForRow(args.row),

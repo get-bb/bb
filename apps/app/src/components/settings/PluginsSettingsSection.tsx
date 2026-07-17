@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
@@ -38,7 +39,6 @@ import {
   type PluginListItem,
   type PluginSettingFieldDescriptor,
 } from "@/hooks/queries/plugin-settings-queries";
-import { useMarketplaces } from "@/hooks/queries/plugin-marketplace-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -52,7 +52,6 @@ import {
 } from "./plugins/AddPluginDialog";
 import { BrowsePluginsTab } from "./plugins/BrowsePluginsTab";
 import { InstalledPluginsTab } from "./plugins/InstalledPluginsTab";
-import { MarketplacesTab } from "./plugins/MarketplacesTab";
 import {
   PluginUpdateBanner,
   PluginUpdatesSourceCard,
@@ -61,9 +60,9 @@ import {
 
 /**
  * The Settings "Plugins" surfaces (plugin design §5.2 settingsSection; the
- * marketplace design's locked three-layer disclosure model):
+ * plugin management's three-layer disclosure model):
  *
- * - PluginsSettingsSection: management — Installed / Browse / Marketplaces
+ * - PluginsSettingsSection: management — Installed / Browse
  *   tabs plus the Add-plugin dialog. The installed list is Layer 1: quiet
  *   rows that answer "is anything asking for my attention?".
  * - PluginSettingsDetailSection: one plugin's page (Layer 2) — update
@@ -265,7 +264,7 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
     },
     onError: (error) => {
       appToast.error("Saving plugin settings failed", {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
@@ -348,7 +347,7 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "degraded",
 ];
 
-type PluginsTab = "installed" | "browse" | "marketplaces";
+type PluginsTab = "installed" | "browse";
 
 function PluginsTabButton({
   label,
@@ -381,20 +380,18 @@ function PluginsTabButton({
   );
 }
 
-/** The "Plugins" bucket: Installed / Browse / Marketplaces (Layer 1). */
+/** The "Plugins" bucket: Installed / Browse (Layer 1). */
 export function PluginsSettingsSection() {
   const navigate = useNavigate();
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
   const listQuery = usePluginList({ enabled: pluginsEnabled });
-  const marketplacesQuery = useMarketplaces({ enabled: pluginsEnabled });
   const plugins = listQuery.data?.plugins ?? [];
   const [tab, setTab] = useState<PluginsTab>("installed");
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
-  const [marketplaceAddOpen, setMarketplaceAddOpen] = useState(false);
 
   if (systemConfig.data === undefined) return null;
 
@@ -430,12 +427,6 @@ export function PluginsSettingsSection() {
                 active={tab === "browse"}
                 onClick={() => setTab("browse")}
               />
-              <PluginsTabButton
-                label="Marketplaces"
-                count={marketplacesQuery.data?.length}
-                active={tab === "marketplaces"}
-                onClick={() => setTab("marketplaces")}
-              />
             </div>
             <div className="flex items-center gap-1.5">
               <Button
@@ -448,39 +439,22 @@ export function PluginsSettingsSection() {
                 <Icon name="Code" className="size-3.5" />
                 Create a plugin
               </Button>
-              {tab === "marketplaces" ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => setMarketplaceAddOpen(true)}
-                >
-                  <Icon name="Plus" className="size-3.5" />
-                  Add marketplace
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => setAddDialog({ open: true, initial: null })}
-                >
-                  <Icon name="Plus" className="size-3.5" />
-                  Add plugin
-                </Button>
-              )}
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2.5 text-xs"
+                onClick={() => setAddDialog({ open: true, initial: null })}
+              >
+                <Icon name="Plus" className="size-3.5" />
+                Add plugin
+              </Button>
             </div>
           </div>
           {tab === "installed" ? (
             <InstalledPluginsTab plugins={plugins} />
-          ) : tab === "browse" ? (
+          ) : (
             <BrowsePluginsTab
               onInstall={(initial) => setAddDialog({ open: true, initial })}
-            />
-          ) : (
-            <MarketplacesTab
-              addOpen={marketplaceAddOpen}
-              onAddOpenChange={setMarketplaceAddOpen}
             />
           )}
           <AddPluginDialog
@@ -497,17 +471,18 @@ export function PluginsSettingsSection() {
 }
 
 /**
- * Uninstall control on a plugin's detail page. Builtins can't be uninstalled
- * (they're managed by bb — disable them instead), so this only renders for
- * direct/marketplace installs. A path source keeps its local files; managed
- * (git/npm) sources have their downloaded files deleted.
+ * Uninstall control on a plugin's detail page. Orphaned builtins can be
+ * cleaned up by recording a tombstone while leaving any bundled files alone.
+ * A path source likewise keeps its local files; managed (git/npm) sources
+ * have their downloaded files deleted.
  */
 function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const isBuiltin = plugin.provenance === "builtin";
   const isPathSource = plugin.sourceDisplay.toLowerCase().startsWith("path");
-  const name = plugin.displayName ?? plugin.id;
+  const name = plugin.name ?? plugin.id;
   const remove = useMutation({
     mutationFn: () => removePlugin(fetch, plugin.id),
     onSuccess: () => {
@@ -517,7 +492,7 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
     },
     onError: (error) => {
       appToast.error(`Removing ${name} failed`, {
-        description: error instanceof Error ? error.message : String(error),
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
@@ -527,9 +502,11 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">Remove plugin</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {isPathSource
-            ? "Uninstalls the plugin. Its local source files are left in place."
-            : "Uninstalls the plugin and deletes its downloaded files."}
+          {isBuiltin
+            ? "Removes the plugin from BB. Its bundled files are left in place."
+            : isPathSource
+              ? "Uninstalls the plugin. Its local source files are left in place."
+              : "Uninstalls the plugin and deletes its downloaded files."}
         </p>
       </div>
       <Button
@@ -546,9 +523,11 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
           <DialogHeader>
             <DialogTitle>Remove {name}?</DialogTitle>
             <DialogDescription>
-              {isPathSource
-                ? "This uninstalls the plugin and removes its stored settings. Its local source files stay on disk, so you can reinstall it."
-                : "This uninstalls the plugin, deletes its downloaded files, and removes its stored settings."}
+              {isBuiltin
+                ? "This removes the plugin and its stored settings. BB remembers the removal so the plugin stays hidden after restart; its bundled files remain in place."
+                : isPathSource
+                  ? "This uninstalls the plugin and removes its stored settings. Its local source files stay on disk, so you can reinstall it."
+                  : "This uninstalls the plugin, deletes its downloaded files, and removes its stored settings."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -589,19 +568,22 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
   const showDeclarativeSettingsCard =
     plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
-  const displayName = plugin.displayName ?? plugin.id;
+  const name = plugin.name ?? plugin.id;
   const isRunning = plugin.status === "running";
   const hasUpdateSurfaces = pluginHasUpdateSurfaces(plugin);
   // A running plugin whose only surface is a settingsSection lets that
   // section own the chrome (its own SettingsSection title + description), so
   // the diagnostic header (version + status pill + manifest description)
-  // doesn't stack a second heading above it — unless the marketplace update
+  // doesn't stack a second heading above it — unless the plugin update
   // surfaces render here too, which need the header for context.
   const sectionOwnsHeader =
-    isRunning && hasSettingsSections && !plugin.hasSettings && !hasUpdateSurfaces;
+    isRunning &&
+    hasSettingsSections &&
+    !plugin.hasSettings &&
+    !hasUpdateSurfaces;
   const provenanceLine =
-    plugin.marketplaceName !== null
-      ? `v${plugin.version} · from ${plugin.marketplaceName} marketplace`
+    plugin.provenance === "catalog"
+      ? `v${plugin.version} · official catalog`
       : plugin.provenance === "direct"
         ? `v${plugin.version} · direct install`
         : null;
@@ -612,9 +594,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
           <div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
-              <h2 className="text-sm font-semibold text-foreground">
-                {displayName}
-              </h2>
+              <h2 className="text-sm font-semibold text-foreground">{name}</h2>
               {/* The version + status pills read as diagnostics; a running,
                   configurable plugin doesn't need them on its settings page. */}
               {!isRunning ? (
@@ -677,7 +657,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
       {settingsAvailable ? (
         <PluginSettingsSections pluginId={plugin.id} />
       ) : null}
-      {plugin.provenance !== "builtin" ? (
+      {plugin.provenance !== "builtin" || plugin.isOrphanedBuiltin ? (
         <RemovePluginSection plugin={plugin} />
       ) : null}
     </div>

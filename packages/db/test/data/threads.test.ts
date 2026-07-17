@@ -16,6 +16,7 @@ import {
   listActiveVisiblePinnedThreadRoots,
   listThreadEnvironmentAssignmentsOnHost,
   listThreads,
+  listThreadsWithPendingInteractionStateForProjects,
   listThreadsWithPendingInteractionState,
   updateThread,
   deleteThread,
@@ -126,9 +127,84 @@ describe("threads", () => {
     expect(thread.projectId).toBe(project.id);
     expect(thread.deletedAt).toBeNull();
     expect(thread.lastReadAt).toBe(thread.latestAttentionAt);
+    expect(thread.visibility).toBe("visible");
 
     const fetched = getThread(db, thread.id);
+    expect(fetched?.visibility).toBe("visible");
     expect(fetched).toMatchObject({ id: thread.id });
+  });
+
+  it("keeps hidden threads out of sidebar and attention queries only", () => {
+    const { db, project } = setup();
+    const parent = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const visible = createThread(db, noopNotifier, {
+      parentThreadId: parent.id,
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const hidden = createThread(db, noopNotifier, {
+      parentThreadId: parent.id,
+      projectId: project.id,
+      providerId: "codex",
+      visibility: "hidden",
+    });
+
+    pinThread(db, noopNotifier, { threadId: hidden.id });
+    markThreadAttentionRequested(db, noopNotifier, { threadId: hidden.id });
+    createPendingInteraction(db, {
+      payload: "{}",
+      providerId: "codex",
+      providerRequestId: "hidden-request",
+      providerThreadId: "hidden-provider-thread",
+      threadId: hidden.id,
+      turnId: "hidden-turn",
+    });
+
+    expect(getThread(db, hidden.id)?.visibility).toBe("hidden");
+    expect(
+      listThreads(db, { projectId: project.id })
+        .map((thread) => thread.id)
+        .sort(),
+    ).toEqual([hidden.id, visible.id, parent.id].sort());
+    expect(
+      listThreadsWithPendingInteractionStateForProjects(db, {
+        projectIds: [project.id],
+      }).map((thread) => thread.id),
+    ).not.toContain(hidden.id);
+    expect(
+      listActiveVisiblePinnedThreadRoots(db).map((thread) => thread.id),
+    ).not.toContain(hidden.id);
+    expect(hasActiveThreadAttention(db)).toBe(false);
+    expect(
+      countNonDeletedAssignedChildThreads(db, {
+        parentThreadId: parent.id,
+      }),
+    ).toBe(2);
+  });
+
+  it("allows hidden threads to belong to folders", () => {
+    const { db, project } = setup();
+    const folder = mustCreateThreadFolder(db, "Work");
+    const createdInFolder = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+      visibility: "hidden",
+    });
+    expect(createdInFolder.folderId).toBe(folder.id);
+
+    const movedIntoFolder = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      visibility: "hidden",
+    });
+    updateThread(db, noopNotifier, movedIntoFolder.id, {
+      folderId: folder.id,
+    });
+    expect(getThread(db, movedIntoFolder.id)?.folderId).toBe(folder.id);
   });
 
   it("persists, reads, and clears the thread execution override", () => {
@@ -871,6 +947,36 @@ describe("threads", () => {
     expect(listThreadFolders(db).map((entry) => entry.name)).toEqual([
       "Work / Q3",
     ]);
+  });
+
+  it("includes hidden members in folder lists and deletion counts", () => {
+    const { db, project } = setup();
+    const folder = mustCreateThreadFolder(db, "Work");
+    const visible = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+    });
+    const hidden = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+      visibility: "hidden",
+    });
+
+    expect(
+      listThreads(db, { projectId: project.id, folderId: folder.id })
+        .map((thread) => thread.id)
+        .sort(),
+    ).toEqual([visible.id, hidden.id].sort());
+
+    expect(deleteThreadFolder(db, noopNotifier, { id: folder.id })).toEqual({
+      id: folder.id,
+      name: "Work",
+      updatedThreadCount: 2,
+    });
+    expect(getThread(db, visible.id)?.folderId).toBeNull();
+    expect(getThread(db, hidden.id)?.folderId).toBeNull();
   });
 
   it("removes a folder for threads across every project", () => {

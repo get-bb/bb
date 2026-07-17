@@ -12,12 +12,14 @@ import {
 } from "../shared/provider-visibility-helpers.js";
 
 const CLAUDE_NORMALIZED_ASSISTANT_CONTENT_TYPES = new Set([
+  "fallback",
   "text",
   "thinking",
   "tool_use",
 ]);
 
 type ClaudeMessageContentType =
+  | "fallback"
   | "text"
   | "thinking"
   | "tool_result"
@@ -36,6 +38,9 @@ type ClaudeSystemSubtype =
   | "local_command_output"
   | "memory_recall"
   | "mirror_error"
+  | "model_fallback"
+  | "model_refusal_fallback"
+  | "model_refusal_no_fallback"
   | "notification"
   | "permission_denied"
   | "plugin_install"
@@ -169,6 +174,7 @@ function toClaudeMessageContentType(
   contentType: string,
 ): ClaudeMessageContentType {
   switch (contentType) {
+    case "fallback":
     case "text":
     case "thinking":
     case "tool_result":
@@ -194,6 +200,9 @@ function toClaudeSystemSubtype(
     case "local_command_output":
     case "memory_recall":
     case "mirror_error":
+    case "model_fallback":
+    case "model_refusal_fallback":
+    case "model_refusal_no_fallback":
     case "notification":
     case "permission_denied":
     case "plugin_install":
@@ -434,13 +443,23 @@ function describeParsedClaudeRawEvent(
           };
         case "status":
           return { kind: "sdk/system:status", coverage: "normalized" };
+        case "model_fallback":
+        case "model_refusal_fallback":
+        case "model_refusal_no_fallback":
+          return {
+            kind: `sdk/system:${event.subtype}`,
+            coverage: "normalized",
+          };
         // Supported task types translate into backgroundTask item events.
         // Unsupported task types remain normalized noise.
         case "task_notification":
         case "task_progress":
         case "task_started":
         case "task_updated":
-          return { kind: `sdk/system:${event.subtype}`, coverage: "normalized" };
+          return {
+            kind: `sdk/system:${event.subtype}`,
+            coverage: "normalized",
+          };
         case "init":
         // Known SDK system signals bb intentionally does not render — async
         // hook lifecycle (hook_started/progress/response), slash-command list

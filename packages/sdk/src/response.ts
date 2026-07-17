@@ -46,8 +46,8 @@ const RESPONSE_BODY_READER_METHODS = new Set<PropertyKey>([
   "text",
 ]);
 
-const ERROR_EXTRACT_OPTS: { legacyKeys: readonly ["detail"] } = {
-  legacyKeys: ["detail"],
+const ERROR_EXTRACT_OPTS: { legacyKeys: readonly ["detail", "error"] } = {
+  legacyKeys: ["detail", "error"],
 };
 
 function formatRequestTimeoutDuration(timeoutMs: number): string {
@@ -269,7 +269,10 @@ function validateRequestTimeoutMs(timeoutMs: number): void {
   }
 }
 
-function isTypeErrorWithCauseCode(error: unknown, expectedCode: string): boolean {
+function isTypeErrorWithCauseCode(
+  error: unknown,
+  expectedCode: string,
+): boolean {
   if (!(error instanceof TypeError)) {
     return false;
   }

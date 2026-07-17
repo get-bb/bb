@@ -1,7 +1,8 @@
 # Releasing bb-app
 
 This runbook is for agents preparing and publishing the `bb-app` npm package.
-Official marketplace plugins have an independent release process documented in
+Official plugins bundle into the app during packaging and ship with this same
+release; see
 [official-plugin-release-process.md](official-plugin-release-process.md).
 It assumes the manual GitHub Actions publish workflow and npm Trusted
 Publishing are configured. Until then, local `npm publish` is an emergency
@@ -78,9 +79,16 @@ If any input is unclear, ask before bumping the version.
    `apps/desktop/package.json`. Do not run `npm version` directly in
    `packages/bb-app`; CI enforces these versions in lockstep.
 
-4. Make any release documentation updates requested by the user.
+4. Update the release notes. Add the new version's section to the repo-root
+   `CHANGELOG.md`, and add its entry (ship date and headline) to
+   `RELEASE_META` in `apps/web/src/landing/changelog.ts`. The marketing site's
+   `/changelog` page renders `CHANGELOG.md` at build time, so both must land
+   before the release is published — redeploy `@bb/web` after the release
+   commit lands so the site shows the new version.
 
-5. Run validation.
+5. Make any release documentation updates requested by the user.
+
+6. Run validation.
 
    ```bash
    node .github/workflows/check-version-lockstep.mjs
@@ -89,7 +97,7 @@ If any input is unclear, ask before bumping the version.
    git diff --check
    ```
 
-6. Commit the release change.
+7. Commit the release change.
 
    ```bash
    git add README.md docs packages/bb-app/package.json packages/bb-app/README.md apps/desktop/package.json

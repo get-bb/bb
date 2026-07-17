@@ -30,6 +30,7 @@ interface UseSidebarSortableArgs {
 
 interface UseSidebarSortableResult {
   dragBindings: SidebarSortableDragBindings;
+  isOver: boolean;
   setNodeRef: (element: HTMLElement | null) => void;
   style: CSSProperties;
 }
@@ -46,6 +47,7 @@ export function useSidebarSortable({
   const {
     attributes,
     isDragging,
+    isOver,
     listeners,
     setActivatorNodeRef,
     setNodeRef,
@@ -59,11 +61,11 @@ export function useSidebarSortable({
       // visibly squishing the dragged row.
       transform: CSS.Translate.toString(transform),
       transition,
-      // Each sticky row/header isolates its own stacking context
-      // (`isolation: isolate`), so a dragged row paints behind its siblings
-      // unless we lift it above them while dragging.
+      // Sticky sidebar tiers paint as high as z-index 60 and include opaque
+      // shields around their sticky gaps. Lift the entire dragged group above
+      // that stack so its label never disappears underneath a peer header.
       position: isDragging ? "relative" : undefined,
-      zIndex: isDragging ? 20 : undefined,
+      zIndex: isDragging ? 100 : undefined,
       opacity: isDragging ? 0.8 : undefined,
     }),
     [isDragging, transform, transition],
@@ -73,5 +75,5 @@ export function useSidebarSortable({
     [attributes, disabled, listeners, setActivatorNodeRef],
   );
 
-  return { dragBindings, setNodeRef, style };
+  return { dragBindings, isOver, setNodeRef, style };
 }

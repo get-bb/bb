@@ -476,6 +476,28 @@ describe("workspace provisioning", () => {
     expect(result.output).toBe("missing|missing|missing|external-value\n");
   });
 
+  it("uses the resolved user-shell PATH for setup scripts", async () => {
+    const workspacePath = await makeTempDir("bb-setup-shell-path-");
+    const binPath = await makeTempDir("bb-setup-shell-bin-");
+    const executablePath = path.join(binPath, "shell-path-tool");
+    await fs.writeFile(executablePath, "#!/bin/sh\necho resolved-shell-path\n");
+    await fs.chmod(executablePath, 0o755);
+    await fs.writeFile(
+      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+      "shell-path-tool\n",
+      "utf8",
+    );
+
+    const result = await runSetupScript({
+      workspacePath,
+      timeoutMs: 900000,
+      setupPath: `${binPath}${path.delimiter}/usr/bin:/bin`,
+    });
+
+    expect(result.ran).toBe(true);
+    expect(result.output).toBe("resolved-shell-path\n");
+  });
+
   it("builds a bash command for the supported setup script", () => {
     expect(
       buildSetupScriptCommand({

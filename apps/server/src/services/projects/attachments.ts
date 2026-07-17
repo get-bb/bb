@@ -4,6 +4,7 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import {
   basename,
+  dirname,
   extname,
   isAbsolute,
   join,
@@ -187,19 +188,32 @@ export async function readAttachment(
   };
 }
 
-/** Delete one project-scoped upload without touching other draft attachments. */
-export async function deleteAttachment(
+export async function copyProjectAttachments(
   dataDir: string,
-  projectId: string,
-  relativePath: string,
+  sourceProjectId: string,
+  targetProjectId: string,
+  attachmentPaths: readonly string[],
 ): Promise<void> {
-  const dir = projectAttachmentDir(dataDir, projectId);
-  const resolved = resolveAttachmentPath(dir, relativePath);
-  const fileStat = await stat(resolved).catch(() => null);
-  if (!fileStat || !fileStat.isFile()) {
-    throw new ApiError(404, "invalid_request", "Attachment not found");
+  if (sourceProjectId === targetProjectId || attachmentPaths.length === 0) {
+    return;
   }
-  await rm(resolved);
+
+  const uniquePaths = [...new Set(attachmentPaths)];
+  const targetDir = projectAttachmentDir(dataDir, targetProjectId);
+  const attachments = await Promise.all(
+    uniquePaths.map(async (attachmentPath) => ({
+      content: (await readAttachment(dataDir, sourceProjectId, attachmentPath))
+        .content,
+      targetPath: resolveAttachmentPath(targetDir, attachmentPath),
+    })),
+  );
+
+  await Promise.all(
+    attachments.map(async ({ content, targetPath }) => {
+      await mkdir(dirname(targetPath), { recursive: true });
+      await writeFile(targetPath, content);
+    }),
+  );
 }
 
 export async function deleteProjectAttachments(

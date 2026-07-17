@@ -180,6 +180,7 @@ export function createThreadRecord(
       sourceThreadId: args.request.sourceThreadId ?? null,
       originKind: args.request.originKind ?? args.request.childOrigin,
       originPluginId: args.request.originPluginId ?? null,
+      visibility: args.request.visibility ?? "visible",
       status: args.status ?? "starting",
     });
     emitPluginThreadCreated(thread);

@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.0.30
+
+This release introduces multi-machine workflows and bb Connect, adds more ways to customize how bb works, and gives you clearer visibility into what agents are doing.
+
+### Work across threads and machines
+
+- Multi-machine support lets you add computers to bb and choose which machine runs each task.
+- bb Connect lets you securely access bb from other devices and share previews or local servers from any enrolled machine.
+
+### New features
+
+- Custom instructions now have a dedicated Settings editor and are automatically included in future agent turns.
+- Agents can securely request API keys and other credentials without exposing their values in the conversation or transcript.
+
+### Faster navigation and more control
+
+- Customize, disable, or reset keyboard shortcuts from Settings → Keyboard.
+- Shortcut hints appear contextually and can be delayed or hidden entirely.
+- Sidebar organization and sorting now live in one streamlined display menu, including a new By machine view when multi-machine mode is enabled.
+- Provider settings can disable native Codex or Claude Code subagents, along with Claude Code's Workflow tool.
+
+### Clearer agent activity
+
+- Codex subagents now appear as nested delegations, and Claude Code child threads remain visibly active while their subagents run.
+- Background command activity is shown directly in the sidebar.
+- Skills and slash-command autocomplete are more consistent across local and remote sessions.
+
+### Experiments
+
+- Split views let you arrange up to four chats in one workspace. Drag threads from the sidebar, resize and rearrange panes, or use keyboard shortcuts to move between them.
+- The new plugin ecosystem includes the BB Official catalog, compatibility-aware updates, richer chat and panel experiences, plugin themes, and consistent icons throughout bb.
+- Install Docs for filesystem-backed documents with folders, images, Markdown editing, and HTML previews in an editable side panel.
+- Install Memory to carry durable global or project-specific context across Codex and Claude Code.
+
+### Fixes and polish
+
+- Fixed microphone input in signed macOS desktop builds.
+- Fixed app and Settings navigation resetting as you move between pages and threads.
+- Fixed subagent token usage inflating the parent thread's context report.
+- Local images now render in assistant Markdown, queued prompts preserve formatting, and file previews refresh reliably.
+- Improved narrow and short thread layouts, including the composer, Docs sidebar, split indicators, and inactive-pane contrast.
+- Sped up production startup when running bb from source.
+- Refined plugin icons, theme behavior, menu alignment, and sidebar drag interactions throughout the app.
+
 ## 0.0.29
 
 This release expands agent and model support, introduces a redesigned Settings experience, and includes workflow improvements and reliability fixes across bb.

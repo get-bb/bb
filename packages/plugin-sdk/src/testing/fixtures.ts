@@ -1,4 +1,6 @@
-import type { ThreadResponse } from "@bb/server-contract";
+import type { PluginThreadEventPayloads } from "@bb/plugin-sdk";
+
+type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
 
 /**
  * A complete, deterministic `ThreadResponse` for thread lifecycle event
@@ -23,6 +25,7 @@ export function makeThreadResponse(
     originKind: null,
     childOrigin: null,
     originPluginId: null,
+    visibility: "visible",
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,

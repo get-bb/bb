@@ -1,19 +1,8 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import {
-  POPOUT_ROUTE_PATH,
-  getDesktopPopoutThreadRoutePath,
-  type BbDesktopPopoutThreadRef,
-} from "@bb/desktop-contract";
 import { matchPath } from "react-router-dom";
-
-export { POPOUT_ROUTE_PATH };
 
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
-export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
-  "/popout/threads/:threadId";
-export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
-  "/popout/projects/:projectId/threads/:threadId";
 export const SETTINGS_ROUTE_PATH = "/settings";
 // Settings buckets (general, files, …) and per-plugin settings pages. The
 // static "plugins" segment wins over :section, so /settings/plugins is the
@@ -37,12 +26,6 @@ export interface ThreadRoutePathArgs {
   threadId: string;
 }
 
-export type ThreadRouteSurface = "page" | "popout";
-
-export interface SurfaceAwareThreadRoutePathArgs extends ThreadRoutePathArgs {
-  surface: ThreadRouteSurface;
-}
-
 export interface IsRoutePathArgs {
   path: string;
 }
@@ -64,18 +47,6 @@ export function isProjectlessProjectId(
 
 export function getRootComposeRoutePath(): string {
   return ROOT_COMPOSE_ROUTE_PATH;
-}
-
-export function getPopoutRoutePath(): string {
-  return POPOUT_ROUTE_PATH;
-}
-
-export function getPopoutThreadRoutePath(args: ThreadRoutePathArgs): string {
-  const thread: BbDesktopPopoutThreadRef = {
-    projectId: args.projectId,
-    threadId: args.threadId,
-  };
-  return getDesktopPopoutThreadRoutePath(thread);
 }
 
 export function getLegacyProjectComposeRoutePath(projectId: string): string {
@@ -106,25 +77,6 @@ export function getSettingsProviderRoutePath(providerId: string): string {
 
 export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
-}
-
-export function getProjectlessArchivedRoutePath(): string {
-  return PROJECTLESS_ARCHIVED_ROUTE_PATH;
-}
-
-export function getProjectArchivedRoutePath(projectId: string): string {
-  if (isProjectlessProjectId(projectId)) {
-    return getProjectlessArchivedRoutePath();
-  }
-  return `/projects/${projectId}/archived`;
-}
-
-// Folders live in the personal/projectless section, so a folder's archived
-// list reuses the projectless archived route, scoped by a `folderId` query param.
-export function getFolderArchivedRoutePath(folderId: string): string {
-  return `${PROJECTLESS_ARCHIVED_ROUTE_PATH}?folderId=${encodeURIComponent(
-    folderId,
-  )}`;
 }
 
 export interface PluginPanelRoutePathArgs {
@@ -158,20 +110,9 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
     : `/projects/${args.projectId}/threads/${args.threadId}`;
 }
 
-export function getSurfaceAwareThreadRoutePath(
-  args: SurfaceAwareThreadRoutePathArgs,
-): string {
-  return args.surface === "popout"
-    ? getPopoutThreadRoutePath(args)
-    : getThreadRoutePath(args);
-}
-
 const baseRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
-  POPOUT_ROUTE_PATH,
-  POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
-  POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,

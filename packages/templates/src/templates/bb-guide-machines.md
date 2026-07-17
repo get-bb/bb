@@ -7,9 +7,8 @@ editingNotes: Keep the user-facing noun machine; internal APIs and types use Hos
 ---
 Machine commands
 
-A machine is a host daemon that can run thread environments. Enable the
-Multi-machine experiment and add remote machines under Settings → Machines.
-`bb machine` commands error until that experiment is enabled.
+A machine is a host daemon that can run thread environments. Add remote
+machines under Settings → Machines.
 
 The Settings installer first uses the exact `bb-app` tarball served by that bb
 server at `/install/bb-app.tgz`; only servers that do not implement the route
@@ -38,12 +37,15 @@ Machine selectors accept either an exact machine ID or an unambiguous machine
 name. `--host` is an alias for `--machine`.
 
   bb thread spawn --project <id> --machine <id-or-name> --prompt "..."
+  bb project create --name "..." --root <path> --machine <id-or-name>
   bb project source add <projectId> --machine <id-or-name> --path <path>
 
 For thread spawning, machine targeting works with an unmanaged workspace path,
 a new managed worktree, or the personal workspace. Do not combine it with an
 existing environment ID: the reused environment already selects its machine.
 
-For project sources, `--path` refers to a path on the selected machine. Pass
-`--clone` instead to clone the project's Git remote there; `--remote-url` and
+For project creation and sources, `--root`/`--path` refers to a path on the
+selected connected machine. Omit the selector to keep the existing local CLI
+machine fallback (normally the primary machine). Pass `--clone` to source add
+instead of `--path` to clone the project's Git remote there; `--remote-url` and
 `--target-path` optionally override the clone inputs.

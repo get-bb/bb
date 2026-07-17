@@ -43,7 +43,7 @@ export function promptMentionIconLabel(
 
 /**
  * Named-icon fallback for a mention. React render paths use
- * `PromptMentionIcon` so plugin mentions can prefer their plugin logo.
+ * `PromptMentionIcon` so plugin mentions can prefer `bb.branding.icon`.
  */
 export function promptMentionIconName(
   resource: PromptMentionResource,

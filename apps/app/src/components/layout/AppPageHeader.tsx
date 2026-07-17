@@ -29,6 +29,11 @@ interface AppPageHeaderProps {
   actions?: ReactNode;
   bordered?: boolean;
   className?: string;
+  /**
+   * Whether this header occupies the native title-bar row and may drag the
+   * desktop window. Split panes below the workspace's top edge disable this.
+   */
+  isWindowDragRegion?: boolean;
 }
 
 export function AppPageHeader({
@@ -36,6 +41,7 @@ export function AppPageHeader({
   actions,
   bordered = true,
   className,
+  isWindowDragRegion = true,
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
   const isCompactViewport = useIsCompactViewport();
@@ -52,7 +58,7 @@ export function AppPageHeader({
       className={cn(
         CHROME_ROW_HEIGHT_CLASS,
         "relative shrink-0 bg-surface-scrim px-4 backdrop-blur-sm",
-        usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+        usesDesktopChrome && isWindowDragRegion && MACOS_WINDOW_DRAG_CLASS,
         bordered && "border-b border-border-seam",
         className,
       )}

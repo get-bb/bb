@@ -94,9 +94,7 @@ interface NotifyInsertedEventThreadsArgs {
   insertedInputIndexes: number[];
 }
 
-function parseStoredBackgroundTaskItemStatus(
-  data: string,
-): string | undefined {
+function parseStoredBackgroundTaskItemStatus(data: string): string | undefined {
   const parsed: unknown = JSON.parse(data);
   if (parsed === null || typeof parsed !== "object" || !("item" in parsed)) {
     return undefined;
@@ -224,6 +222,7 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "thread/identity":
     case "thread/name/updated":
     case "provider/warning":
+    case "provider/modelFallback":
       return { providerThreadId: event.providerThreadId };
     case "thread/compacted":
       return { providerThreadId: event.providerThreadId };
@@ -308,7 +307,7 @@ function notifyInsertedEventThreads(
 function addParentTurnNotificationFollowUp(
   args: AddParentTurnNotificationFollowUpArgs,
 ): void {
-  if (!args.thread.parentThreadId) {
+  if (!args.thread.parentThreadId || args.thread.visibility === "hidden") {
     return;
   }
   if (args.turnStatus === "failed") {

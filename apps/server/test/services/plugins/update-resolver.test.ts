@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
-import { githubReleaseRegistryUrl } from "../../../src/services/plugins/github-release-source.js";
 import {
   createNpmResolverRun,
   resolveGitRef,
@@ -63,71 +62,6 @@ function npmIntent(
 }
 
 describe("npm update candidate selection", () => {
-  it("selects semver-compatible mutable GitHub Release assets with verified digests", async () => {
-    const digestHex = "ab".repeat(32);
-    const registry = githubReleaseRegistryUrl({
-      repository: "ymichael/bb",
-      tagTemplate: "plugin-matrix-v{version}",
-      assetTemplate: "bb-plugin-matrix-{version}.tgz",
-      bbEngineRange: ">=1",
-      pluginSdkEngineRange: `^${PLUGIN_SDK_VERSION}`,
-    });
-    const resolution = await resolveNpmUpdate({
-      intent: {
-        packageName: "bb-plugin-matrix",
-        registry,
-        requestedSpec: "^1.0.0",
-        specKind: "range",
-      },
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
-      appVersion: "1.5.0",
-      run: createNpmResolverRun({
-        fetch: async () =>
-          new Response(
-            JSON.stringify([
-              {
-                tag_name: "plugin-matrix-v1.2.0",
-                draft: false,
-                immutable: false,
-                assets: [
-                  {
-                    name: "bb-plugin-matrix-1.2.0.tgz",
-                    browser_download_url:
-                      "https://github.com/ymichael/bb/releases/download/plugin-matrix-v1.2.0/bb-plugin-matrix-1.2.0.tgz",
-                    digest: `sha256:${digestHex}`,
-                  },
-                ],
-              },
-              {
-                tag_name: "plugin-matrix-v1.1.0",
-                draft: false,
-                immutable: true,
-                assets: [
-                  {
-                    name: "bb-plugin-matrix-1.1.0.tgz",
-                    browser_download_url:
-                      "https://github.com/ymichael/bb/releases/download/plugin-matrix-v1.1.0/bb-plugin-matrix-1.1.0.tgz",
-                    digest: `sha256:${digestHex}`,
-                  },
-                ],
-              },
-            ]),
-            { status: 200 },
-          ),
-      }),
-    });
-
-    expect(resolution).toMatchObject({
-      outcome: "update-available",
-      candidate: {
-        version: "1.2.0",
-        integrity: `sha256-${Buffer.from(digestHex, "hex").toString("base64")}`,
-        tarball:
-          "https://github.com/ymichael/bb/releases/download/plugin-matrix-v1.2.0/bb-plugin-matrix-1.2.0.tgz",
-      },
-    });
-  });
-
   it("selects an older compatible range candidate and reports the newer block", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("^1.0.0", "range"),

@@ -75,7 +75,7 @@ import {
   hostsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
-  systemProvidersQueryKey,
+  allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
   threadTabsQueryKey,
@@ -92,10 +92,9 @@ import {
   allPluginSettingsViewQueryKeyPrefix,
 } from "../queries/plugin-settings-queries";
 import {
-  allMarketplaceSearchQueryKeyPrefix,
+  allPluginCatalogSearchQueryKeyPrefix,
   allPluginSourceQueryKeyPrefix,
-  marketplacesQueryKey,
-} from "../queries/plugin-marketplace-queries";
+} from "../queries/plugin-catalog-queries";
 import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend";
 import {
@@ -107,6 +106,7 @@ import {
   getThreadPendingInteractionInvalidationQueryKeys,
   getThreadPromptHistoryInvalidationQueryKeys,
   getThreadQueueContentInvalidationQueryKeys,
+  getThreadTimelineInvalidationQueryKeys,
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
 
@@ -415,6 +415,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "config-changed": {
     dirty: [
       dirtySystemConfigQueries, // Experiments gate UI surfaces; other windows re-read after a settings write.
+      dirtyAllThreadTimelineQueries, // General settings can change whether diagnostic provider rows are projected.
       dirtySystemProviderQueries,
       dirtySystemExecutionOptionQueries,
     ],
@@ -866,8 +867,12 @@ function dirtySystemConfigQueries(): QueryKey[] {
   return [systemConfigQueryKey()];
 }
 
+function dirtyAllThreadTimelineQueries(): QueryKey[] {
+  return getThreadTimelineInvalidationQueryKeys({ threadId: undefined });
+}
+
 function dirtySystemProviderQueries(): QueryKey[] {
-  return [systemProvidersQueryKey()];
+  return [allSystemProvidersQueryKeyPrefix()];
 }
 
 function dirtySystemExecutionOptionQueries(): QueryKey[] {
@@ -887,11 +892,10 @@ function dirtyPluginManagementQueries(): QueryKey[] {
     allPluginListQueryKeyPrefix(),
     allPluginSettingsViewQueryKeyPrefix(),
     allPluginSettingsQueryKeyPrefix(),
-    // Update/install/marketplace operations change source detail, catalogs,
-    // and search results (installed/compatible flags) alongside the list.
+    // Update/install operations change source detail and catalog search rows
+    // (installed/compatible flags) alongside the list.
     allPluginSourceQueryKeyPrefix(),
-    marketplacesQueryKey(),
-    allMarketplaceSearchQueryKeyPrefix(),
+    allPluginCatalogSearchQueryKeyPrefix(),
   ];
 }
 

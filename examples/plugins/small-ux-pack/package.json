@@ -5,9 +5,14 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": "^0.2.0"
+    "bbPluginSdk": "^0.3.0"
   },
   "bb": {
+    "name": "Small UX pack",
+    "description": "Demonstrate dependency-free host-rendered plugin actions.",
+    "branding": {
+      "icon": "Zap"
+    },
     "server": "./server.ts"
   },
   "keywords": [

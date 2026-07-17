@@ -28,6 +28,7 @@ export interface NewTabPageProps extends NewTabPageFileSearchProps {
 export function NewTabPage({
   currentThreadId,
   environmentId,
+  hostId,
   focusRequest,
   initialQuery,
   onOpenBrowser,
@@ -44,6 +45,7 @@ export function NewTabPage({
       <NewTabFileSearch
         projectId={projectId}
         environmentId={environmentId}
+        hostId={hostId}
         currentThreadId={currentThreadId}
         focusRequest={focusRequest}
         idleActions={

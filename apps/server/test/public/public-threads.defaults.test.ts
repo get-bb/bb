@@ -115,7 +115,6 @@ describe("public thread default routes", () => {
       });
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: localHost.id,
@@ -540,6 +539,41 @@ describe("public thread default routes", () => {
       );
       expect(sidebarProject?.threads.map((thread) => thread.id)).not.toContain(
         sideChatThread.id,
+      );
+    });
+  });
+
+  it("excludes hidden threads from sidebar bootstrap", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-defaults-sidebar-hidden",
+      });
+      const visibleThread = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Visible thread",
+      });
+      const hiddenThread = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Hidden worker",
+        visibility: "hidden",
+      });
+
+      const response = await harness.app.request("/api/v1/sidebar-bootstrap");
+
+      expect(response.status).toBe(200);
+      const bootstrap = sidebarBootstrapResponseSchema.parse(
+        await readJson(response),
+      );
+      const sidebarProject = bootstrap.projects.find(
+        (candidate) => candidate.id === project.id,
+      );
+      expect(sidebarProject?.threads.map((thread) => thread.id)).toContain(
+        visibleThread.id,
+      );
+      expect(sidebarProject?.threads.map((thread) => thread.id)).not.toContain(
+        hiddenThread.id,
       );
     });
   });

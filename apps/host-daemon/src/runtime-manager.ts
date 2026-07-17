@@ -1038,8 +1038,12 @@ export class RuntimeManager {
       );
     }
 
+    const setupPath = this.getShellEnv().PATH;
     const workspace = await this.provisionWorkspace({
       ...provision,
+      ...(provision.workspaceProvisionType === "managed-worktree" && setupPath
+        ? { setupPath }
+        : {}),
       signal: args.provisionSignal,
     });
     const workspaceWriteRoots =

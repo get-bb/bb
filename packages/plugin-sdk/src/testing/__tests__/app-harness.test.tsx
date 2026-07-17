@@ -1,17 +1,44 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
-import { cleanup } from "@testing-library/react";
+import { cleanup, fireEvent, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import type {
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
 import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
+import { defineRpcContract } from "../../rpc-contract.js";
 
 // Install before touching @bb/plugin-sdk/app — it binds the runtime global
 // at import time (same constraint real plugin app.tsx files have).
 installTestPluginRuntime();
-const { definePluginApp, useRealtime, useRpc } = await import("../../app.js");
+const {
+  definePluginApp,
+  useComposer,
+  useRealtime,
+  useRealtimeConnectionState,
+  useRpc,
+} = await import("../../app.js");
+
+const typedRpcContract = defineRpcContract({
+  getItem: {
+    input: z.object({ id: z.string() }),
+    output: z.object({ title: z.string() }),
+  },
+});
+
+function TypedRpcPanel() {
+  const rpc = useRpc<typeof typedRpcContract>();
+  const [title, setTitle] = useState("Loading typed RPC…");
+  useEffect(() => {
+    void rpc.call("getItem", { id: "item-1" }).then((result) => {
+      const exactTitle: string = result.title;
+      setTitle(exactTitle);
+    });
+  }, [rpc]);
+  return <div>{title}</div>;
+}
 
 afterEach(cleanup);
 
@@ -40,6 +67,11 @@ function Panel({ subPath }: PluginNavPanelProps) {
   );
 }
 
+function RealtimeConnectionProbe() {
+  const state = useRealtimeConnectionState();
+  return <div>Realtime: {state}</div>;
+}
+
 function InlineVis({
   attributes,
   source,
@@ -58,6 +90,46 @@ function InlineVis({
   );
 }
 
+function ComposerProbe() {
+  const composer = useComposer();
+  return (
+    <div>
+      <span data-testid="composer-scope">{composer.scope.kind}</span>
+      <span data-testid="composer-text">{composer.text}</span>
+      <button type="button" onClick={() => composer.setText("replacement")}>
+        replace
+      </button>
+      <button
+        type="button"
+        onClick={() => composer.updateText((current) => `${current}!`)}
+      >
+        update
+      </button>
+      <button type="button" onClick={() => composer.clear()}>
+        clear
+      </button>
+      <button type="button" onClick={() => composer.addQuote("picked text")}>
+        quote
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          composer.insertMention({
+            provider: "notes",
+            id: "ideas",
+            label: "Ideas",
+          })
+        }
+      >
+        mention
+      </button>
+      <button type="button" onClick={() => composer.focus()}>
+        focus
+      </button>
+    </div>
+  );
+}
+
 const app = await loadPluginApp(
   definePluginApp((builder) => {
     builder.slots.navPanel({
@@ -70,6 +142,15 @@ const app = await loadPluginApp(
     builder.slots.messageDirective({
       id: "inline-vis",
       component: InlineVis,
+    });
+    builder.slots.composerAccessory({
+      id: "composer",
+      component: ComposerProbe,
+    });
+    builder.slots.homepageSection({
+      id: "realtime-connection",
+      title: "Realtime connection",
+      component: RealtimeConnectionProbe,
     });
   }),
 );
@@ -128,7 +209,42 @@ describe("loadPluginApp", () => {
   });
 });
 
+describe("typed rpc test runtime", () => {
+  it("preserves contract method, input, and result types while recording calls", async () => {
+    const slot = renderSlot<PluginNavPanelProps, typeof typedRpcContract>(
+      { component: TypedRpcPanel },
+      { subPath: "" },
+      {
+        rpc: {
+          getItem(input) {
+            return { title: `Item ${input.id}` };
+          },
+        },
+      },
+    );
+    await slot.findByText("Item item-1");
+    expect(slot.rpcCalls).toEqual([
+      { method: "getItem", input: { id: "item-1" } },
+    ]);
+  });
+});
+
 describe("renderSlot", () => {
+  it("drives the shared realtime connection lifecycle", async () => {
+    const slot = renderSlot(
+      app.homepageSections[0]!,
+      { projectId: null },
+      { realtimeConnectionState: "connecting" },
+    );
+    await slot.findByText("Realtime: connecting");
+
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Realtime: connected");
+
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    await slot.findByText("Realtime: reconnecting");
+  });
+
   it("refreshes rendered RPC data after a realtime event", async () => {
     let listing = ["a.md"];
     const slot = renderSlot(
@@ -140,11 +256,15 @@ describe("renderSlot", () => {
     expect(slot.rpcCalls).toEqual([
       { method: "listItems", input: { subPath: "" } },
     ]);
+    expect(slot.inspection.rpcCalls).toBe(slot.rpcCalls);
+    expect(slot.behavior.emitRealtime).toBe(slot.emitRealtime);
 
     // A realtime push re-fetches and renders the new listing.
     listing = ["a.md", "b.md"];
-    await slot.emitRealtime("items-changed", null);
+    await slot.behavior.emitRealtime("items-changed", null);
     await slot.findByText("b.md");
+    slot.lifecycle.unmount();
+    expect(slot.queryByText("b.md")).toBeNull();
   });
 
   it("reports RPC methods without handlers", async () => {
@@ -176,5 +296,63 @@ describe("renderSlot", () => {
     );
     expect(slot.getByTestId("thread").textContent).toBe("thr_1");
     expect(slot.getByTestId("thread-panel").textContent).toBe("unavailable");
+  });
+
+  it("reads, replaces, functionally updates, and clears isolated composer text", () => {
+    const threadSlot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: "thr_1" },
+      {
+        context: { projectId: "proj_1", threadId: "thr_1" },
+        composer: { text: "seed" },
+      },
+    );
+    const newThreadSlot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: null },
+      {
+        context: { projectId: "proj_1", threadId: null },
+        composer: { text: "new-thread seed" },
+      },
+    );
+    const thread = within(threadSlot.container);
+    const newThread = within(newThreadSlot.container);
+
+    expect(thread.getByTestId("composer-scope").textContent).toBe("thread");
+    expect(thread.getByTestId("composer-text").textContent).toBe("seed");
+    fireEvent.click(thread.getByText("replace"));
+    fireEvent.click(thread.getByText("update"));
+    fireEvent.click(thread.getByText("update"));
+    expect(threadSlot.composer.text).toBe("replacement!!");
+    expect(thread.getByTestId("composer-text").textContent).toBe(
+      "replacement!!",
+    );
+    expect(newThreadSlot.composer.text).toBe("new-thread seed");
+
+    fireEvent.click(thread.getByText("clear"));
+    expect(threadSlot.composer.text).toBe("");
+    expect(newThreadSlot.composer.text).toBe("new-thread seed");
+    expect(newThread.getByTestId("composer-scope").textContent).toBe(
+      "new-thread",
+    );
+  });
+
+  it("keeps quote, mention, and focus behavior while updating harness text", () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: null, threadId: null },
+      { composer: { text: "draft" } },
+    );
+
+    fireEvent.click(slot.getByText("quote"));
+    fireEvent.click(slot.getByText("mention"));
+    fireEvent.click(slot.getByText("focus"));
+
+    expect(slot.composer.text).toBe("draft\n> picked text\nIdeas ");
+    expect(slot.composer.quotes).toEqual(["picked text"]);
+    expect(slot.composer.mentions).toEqual([
+      { provider: "notes", id: "ideas", label: "Ideas" },
+    ]);
+    expect(slot.composer.focusCount).toBe(3);
   });
 });

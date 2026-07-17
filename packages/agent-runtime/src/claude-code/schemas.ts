@@ -187,6 +187,23 @@ export const claudeCompactBoundarySystemMessageSchema =
     })
     .passthrough();
 
+export const claudeModelFallbackSystemMessageSchema = claudeSystemMessageSchema
+  .extend({
+    subtype: z.enum(["model_fallback", "model_refusal_fallback"]),
+    original_model: z.string().min(1),
+    fallback_model: z.string().min(1),
+    content: z.string().optional(),
+  })
+  .passthrough();
+
+export const claudeModelRefusalNoFallbackSystemMessageSchema =
+  claudeSystemMessageSchema
+    .extend({
+      subtype: z.literal("model_refusal_no_fallback"),
+      content: z.string().optional(),
+    })
+    .passthrough();
+
 // -- Background task / workflow messages -------------------------------------
 // Shapes mirror @anthropic-ai/claude-agent-sdk sdk.d.ts (SDKTaskStartedMessage
 // et al). workflow_progress is intentionally untyped in the SDK; records are

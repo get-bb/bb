@@ -23,6 +23,13 @@ export function registerTerminalRoutes(app: Hono, deps: AppDeps): void {
     return context.json(session, 201);
   });
 
+  get(routes.get, (context) => {
+    const session = deps.terminalSessions.getTerminal({
+      terminalId: context.req.param("terminalId"),
+    });
+    return context.json(session);
+  });
+
   patch(routes.update, (context, payload) => {
     const session = deps.terminalSessions.renameTerminal({
       payload,

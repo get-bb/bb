@@ -2,15 +2,21 @@
 <html lang="en" class="bb-app-shell-root">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#ffffff" id="theme-color" />
     <!-- iOS ignores the manifest's display mode, so these opt the home-screen
-         app into standalone (chrome-less) launch. Status-bar style is left at
-         the default (opaque, non-overlapping) on purpose: black-translucent
-         renders content under the status bar, which needs viewport-fit=cover
-         plus top safe-area-inset padding the app does not yet have. -->
+         app into standalone (chrome-less) launch. The translucent status bar
+         and viewport-fit=cover let app surfaces paint edge-to-edge; layout
+         chrome and overlays apply safe-area padding to their content. -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="apple-mobile-web-app-title" content="bb" />
     <title>bb</title>
     <link

@@ -69,6 +69,65 @@ describe("startMachineAuthProxy", () => {
     await expect(response.text()).resolves.toBe("created");
   });
 
+  it("streams multipart attachment bytes while adding the machine credential", async () => {
+    const binary = new Uint8Array([0, 255, 1, 128, 42]);
+    let resolveReceived: (() => void) | undefined;
+    let rejectReceived: ((error: unknown) => void) | undefined;
+    const received = new Promise<void>((resolve, reject) => {
+      resolveReceived = resolve;
+      rejectReceived = reject;
+    });
+    const upstream = http.createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        void (async () => {
+          expect(request.headers["x-bb-connect-machine"]).toBe(
+            "bbcm_attachment_machine",
+          );
+          const contentType = request.headers["content-type"];
+          expect(contentType).toMatch(/^multipart\/form-data; boundary=/u);
+          const form = await new Response(Buffer.concat(chunks), {
+            headers: { "content-type": contentType ?? "" },
+          }).formData();
+          const file = form.get("file");
+          expect(file).toBeInstanceOf(File);
+          if (!(file instanceof File)) {
+            throw new Error("Expected proxied multipart file");
+          }
+          expect(file.name).toBe("payload.bin");
+          expect(file.type).toBe("application/x-bb-test");
+          expect(new Uint8Array(await file.arrayBuffer())).toEqual(binary);
+          response.writeHead(201).end();
+          resolveReceived?.();
+        })().catch((error: unknown) => {
+          response.writeHead(500).end();
+          rejectReceived?.(error);
+        });
+      });
+    });
+    const upstreamPort = await listen(upstream);
+    const proxy = await startMachineAuthProxy({
+      machineCredential: "bbcm_attachment_machine",
+      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxies.push(proxy);
+    const form = new FormData();
+    form.set(
+      "file",
+      new Blob([binary], { type: "application/x-bb-test" }),
+      "payload.bin",
+    );
+
+    const response = await fetch(
+      `${proxy.serverUrl}/api/v1/projects/proj_remote/attachments`,
+      { body: form, method: "POST" },
+    );
+
+    await received;
+    expect(response.status).toBe(201);
+  });
+
   it("passes WebSocket upgrades through with machine authentication", async () => {
     const upstream = http.createServer();
     const websocketServer = new WebSocketServer({ noServer: true });

@@ -552,7 +552,7 @@ function FollowUpPromptBoxWithComposer({
           {!isMobilePromptBoxCompact ? (
             <div
               data-follow-up-composer-footer=""
-              className="mt-1 flex min-h-6 items-center justify-between gap-2 pl-[15px] pr-3.5"
+              className="mt-1 flex min-h-6 max-h-6 items-center justify-between gap-2 overflow-hidden pl-[15px] pr-3.5 opacity-100 transition-[max-height,min-height,margin-top,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             >
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
                 {environmentSummary}

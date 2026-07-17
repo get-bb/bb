@@ -4,10 +4,7 @@ import {
   pluginSettingsViewQueryKey,
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
-import {
-  allMarketplaceSearchQueryKeyPrefix,
-  marketplacesQueryKey,
-} from "../queries/plugin-marketplace-queries";
+import { allPluginCatalogSearchQueryKeyPrefix } from "../queries/plugin-catalog-queries";
 
 /**
  * Cache owner for plugin management data. The PUT /plugins/:id/settings
@@ -31,27 +28,21 @@ export function applyPluginSettingsView(args: {
  * realtime `plugins-changed` broadcast covers other windows; this gives the
  * acting window an immediate refresh.
  */
-export function invalidatePluginList(args: {
-  queryClient: QueryClient;
-}): void {
+export function invalidatePluginList(args: { queryClient: QueryClient }): void {
   void args.queryClient.invalidateQueries({
     queryKey: allPluginListQueryKeyPrefix(),
   });
 }
 
 /**
- * Refetch marketplace catalogs and search results after add/refresh/remove
- * or an install (search rows carry installed/compatible flags). The
- * realtime `plugins-changed` broadcast covers other windows; this gives the
- * acting window an immediate refresh.
+ * Refetch catalog results after an install. Search rows carry installed and
+ * compatibility state, so plugin lifecycle changes also invalidate this
+ * prefix.
  */
-export function invalidateMarketplaces(args: {
+export function invalidatePluginCatalogSearch(args: {
   queryClient: QueryClient;
 }): void {
   void args.queryClient.invalidateQueries({
-    queryKey: marketplacesQueryKey(),
-  });
-  void args.queryClient.invalidateQueries({
-    queryKey: allMarketplaceSearchQueryKeyPrefix(),
+    queryKey: allPluginCatalogSearchQueryKeyPrefix(),
   });
 }

@@ -3,7 +3,9 @@ import {
   type FocusEvent,
   type ReactNode,
   useCallback,
+  useContext,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useAtomValue } from "jotai";
@@ -24,6 +26,7 @@ import {
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
+import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import type {
   SecondaryPanelFileTab,
@@ -64,9 +67,7 @@ import {
 } from "@/lib/bb-desktop";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
-import {
-  useAppCommandShortcut,
-} from "@/components/commands/AppCommandProvider";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 export type {
@@ -75,8 +76,10 @@ export type {
 } from "./GitDiffToolbar";
 export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 
-const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
-const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
+// Shared with the split-workspace host's empty-state panel, which must resize
+// within the same bounds as the real panel it stands in for.
+export const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
+export const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
 // While the conversation is collapsed the panel fills the content area, so its
 // size/max are lifted to the full width of the horizontal group.
 const CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT = 100;
@@ -164,6 +167,15 @@ export interface ThreadSecondaryPanelProps {
    * The drawer layout always renders the button (it carries its own close).
    */
   inlinePanelToggle?: "button" | "reserved" | "hidden";
+  /**
+   * Unique id for this panel's resizable Panel within its PanelGroup. The
+   * split-workspace host swaps different panes' panels through one group, and
+   * react-resizable-panels keys layout state by panel id — a shared id would
+   * make a newly focused pane's panel adopt the previous pane's layout entry
+   * and then "collapse" to its own defaultSize, misreporting a user close.
+   * Defaults to the standalone surface's stable id.
+   */
+  resizablePanelId?: string;
   onPanelFocus: () => void;
   onPanelChange: (panel: ThreadSecondaryPanelTab) => void;
   onCollapse: () => void;
@@ -239,6 +251,7 @@ export function ThreadSecondaryPanel({
   showInfoTab = true,
   showNewTabButton = true,
   inlinePanelToggle = "button",
+  resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
   onPanelChange,
   onCollapse,
@@ -265,11 +278,11 @@ export function ThreadSecondaryPanel({
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
     renderAsDrawer || !showConversationCollapseControl
-    ? null
-    : resolveConversationCollapseControl({
-        isConversationCollapsed,
-        onToggleConversationCollapse,
-      });
+      ? null
+      : resolveConversationCollapseControl({
+          isConversationCollapsed,
+          onToggleConversationCollapse,
+        });
   const {
     gitDiffDisplayMode,
     handleGitDiffDisplayModeChange,
@@ -296,6 +309,34 @@ export function ThreadSecondaryPanel({
       },
       [handleResizeDragging, handleSecondaryPanelResizeStart],
     );
+  // A Panel that registers with its group already collapsed (a closed panel
+  // mounting, or the split-workspace host swapping panes' panels) reports a
+  // collapse no user performed — and it can land after a programmatic open,
+  // silently closing it again. Only a collapse from a layout this Panel
+  // instance actually held expanded may close the persisted panel.
+  const hasPanelExpandedRef = useRef(false);
+  const handlePanelResize = useCallback(
+    (size: number) => {
+      if (size > 0) {
+        hasPanelExpandedRef.current = true;
+      }
+      handleSecondaryPanelResize(size);
+    },
+    [handleSecondaryPanelResize],
+  );
+  const handlePanelCollapse = useCallback(() => {
+    if (!hasPanelExpandedRef.current) {
+      return;
+    }
+    hasPanelExpandedRef.current = false;
+    onCollapse();
+  }, [onCollapse]);
+  // Inside a window-level host, the Panel's mount size must follow the
+  // window's panel visibility: this pane's own persisted state can lag one
+  // commit behind the host's alignment, and the group re-applies defaultSize
+  // after mount — a stale-closed value would collapse the just-opened panel.
+  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
+  const isLayoutOpen = hostLayout?.isOpen ?? isOpen;
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
   const isDiffPanelActive = activeFixedPanel === "git-diff";
@@ -415,7 +456,9 @@ export function ThreadSecondaryPanel({
       // below) so the content is always exactly the panel's current width.
       style={
         !renderAsDrawer && !isSecondaryPanelResizing
-          ? { width: `var(--secondary-swipe-width, ${persistedWidthPercent}cqw)` }
+          ? {
+              width: `var(--secondary-swipe-width, ${persistedWidthPercent}cqw)`,
+            }
           : undefined
       }
       className={cn(
@@ -424,7 +467,11 @@ export function ThreadSecondaryPanel({
         // content the panel clips into view (or fills the panel while resizing).
         renderAsDrawer && "min-w-0 flex-1",
         !renderAsDrawer && [
-          "absolute inset-y-0 left-0 border-l border-border-seam-vertical",
+          "absolute inset-y-0 left-0",
+          // Inside the split-workspace host, the 6px gutter handle is the
+          // visible seam; elsewhere the panel carries its own hairline border
+          // (it slides with the panel through the open/close animation).
+          hostLayout === null && "border-l border-border-seam-vertical",
           isSecondaryPanelResizing && "right-0",
           !isOpen && "pointer-events-none",
         ],
@@ -572,7 +619,9 @@ export function ThreadSecondaryPanel({
             selectionValue={gitDiffSelectValue}
             selectionOptions={gitDiffSelectOptions}
             onSelectionChange={onGitDiffSelectionChange}
-            isSelectorDisabled={isDiffFilesLoading || gitDiffTarget === undefined}
+            isSelectorDisabled={
+              isDiffFilesLoading || gitDiffTarget === undefined
+            }
             stats={gitDiffStats}
             areAllFilesCollapsed={areAllCollapsed}
             isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
@@ -638,15 +687,16 @@ export function ThreadSecondaryPanel({
       <SecondaryPanelResizeHandle
         isOpen={isOpen}
         isConversationCollapsed={isConversationCollapsed}
+        matchesSplitDividers={hostLayout !== null}
         onDragging={handleSecondaryPanelDragging}
       />
       <Panel
         ref={resizablePanelRef}
-        id="thread-detail-secondary-panel"
+        id={resizablePanelId}
         collapsible
         collapsedSize={0}
         defaultSize={
-          isOpen
+          isLayoutOpen
             ? isConversationCollapsed
               ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
               : persistedWidthPercent
@@ -658,8 +708,8 @@ export function ThreadSecondaryPanel({
             ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
             : THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT
         }
-        onCollapse={onCollapse}
-        onResize={handleSecondaryPanelResize}
+        onCollapse={handlePanelCollapse}
+        onResize={handlePanelResize}
         order={2}
         style={SECONDARY_RESIZABLE_PANEL_STYLE}
         className={cn(
@@ -719,12 +769,19 @@ function NewTabButton({
 interface SecondaryPanelResizeHandleProps {
   isOpen: boolean;
   isConversationCollapsed: boolean;
+  /**
+   * True inside the split-workspace host, where the panel sits beside split
+   * dividers: the handle renders as the same visible 6px gutter so the grab
+   * target reads (and grabs) like its neighbors instead of an invisible seam.
+   */
+  matchesSplitDividers: boolean;
   onDragging: SecondaryPanelDraggingHandler;
 }
 
 function SecondaryPanelResizeHandle({
   isOpen,
   isConversationCollapsed,
+  matchesSplitDividers,
   onDragging,
 }: SecondaryPanelResizeHandleProps) {
   const isResizing = useAtomValue(threadSecondaryPanelResizingAtom);
@@ -738,42 +795,60 @@ function SecondaryPanelResizeHandle({
       onDragging={onDragging}
       hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
       className={cn(
-        "group relative shrink-0 overflow-visible bg-transparent transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']",
+        "group relative shrink-0 overflow-visible transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']",
         PANEL_COLLAPSE_TRANSITION_CLASS,
         isConversationCollapsed ? "cursor-default" : "cursor-col-resize",
-        // Zero-width: the visible panel border lives on the content (aside
-        // border-l), so this handle is purely the drag hit area + hover seam and
-        // sits exactly on that border instead of in a 1px slot to its left (which
-        // left the hit area and hover highlight a pixel off the border). Hidden +
-        // non-interactive when closed or while the conversation is collapsed.
-        isOpen && !isConversationCollapsed
-          ? "w-0 opacity-100"
-          : "pointer-events-none w-0 opacity-0",
-        isResizing && "bg-accent/20",
+        matchesSplitDividers
+          ? [
+              // Match SplitDivider: a recessed 6px gutter that warms on
+              // hover/drag, so the panel seam looks and grabs exactly like the
+              // split gutters beside it. Collapses away with the panel.
+              "z-[5] bg-muted/60 hover:bg-ring/40",
+              isOpen && !isConversationCollapsed
+                ? "w-1.5 opacity-100"
+                : "pointer-events-none w-0 opacity-0",
+              isResizing && "bg-ring/40",
+            ]
+          : [
+              // Zero-width: the visible panel border lives on the content
+              // (aside border-l), so this handle is purely the drag hit area +
+              // hover seam and sits exactly on that border instead of in a 1px
+              // slot to its left (which left the hit area and hover highlight
+              // a pixel off the border). Hidden + non-interactive when closed
+              // or while the conversation is collapsed.
+              "bg-transparent",
+              isOpen && !isConversationCollapsed
+                ? "w-0 opacity-100"
+                : "pointer-events-none w-0 opacity-0",
+              isResizing && "bg-accent/20",
+            ],
       )}
       aria-label="Resize thread and right panel"
     >
-      {/*
-        The panel's persistent left border lives on the content (aside
-        `border-l`) so it slides with the panel on open/close. This seam is only
-        the resize affordance — transparent at rest (so it doesn't double the
-        content border), brightening on hover/drag.
-      */}
-      <span
-        // Sit on the handle's right edge (`left-full`), which is the panel's left
-        // edge where the content border-l lives, so the hover/drag highlight lands
-        // exactly on the border instead of a pixel to its left at the handle's
-        // center.
-        className={cn(
-          // z-10 so the highlight paints over the adjacent content's border-l
-          // (the content renders after the handle) instead of being hidden behind
-          // it — otherwise the hover/drag highlight is invisible.
-          "pointer-events-none absolute inset-y-0 left-full z-10 w-px transition-colors",
-          isResizing
-            ? "bg-accent-foreground/50"
-            : "bg-transparent group-hover:bg-accent-foreground/35",
-        )}
-      />
+      {matchesSplitDividers ? null : (
+        /*
+          The panel's persistent left border lives on the content (aside
+          `border-l`) so it slides with the panel on open/close. This seam is
+          only the resize affordance — transparent at rest (so it doesn't
+          double the content border), brightening on hover/drag.
+        */
+        <span
+          // Sit on the handle's right edge (`left-full`), which is the panel's
+          // left edge where the content border-l lives, so the hover/drag
+          // highlight lands exactly on the border instead of a pixel to its
+          // left at the handle's center.
+          className={cn(
+            // z-10 so the highlight paints over the adjacent content's
+            // border-l (the content renders after the handle) instead of being
+            // hidden behind it — otherwise the hover/drag highlight is
+            // invisible.
+            "pointer-events-none absolute inset-y-0 left-full z-10 w-px transition-colors",
+            isResizing
+              ? "bg-accent-foreground/50"
+              : "bg-transparent group-hover:bg-accent-foreground/35",
+          )}
+        />
+      )}
     </PanelResizeHandle>
   );
 }

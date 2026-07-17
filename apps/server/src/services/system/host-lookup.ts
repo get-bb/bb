@@ -1,4 +1,4 @@
-import type { SystemExecutionOptionsQuery } from "@bb/server-contract";
+import type { SystemProvidersQuery } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import {
@@ -6,10 +6,7 @@ import {
   requireConnectedPrimaryHostId,
 } from "../hosts/primary-host.js";
 
-export type SystemHostLookupQuery = Pick<
-  SystemExecutionOptionsQuery,
-  "environmentId" | "hostId"
->;
+export type SystemHostLookupQuery = SystemProvidersQuery;
 
 export function resolveSystemLookupHostId(
   deps: AppDeps,

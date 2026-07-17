@@ -23,7 +23,7 @@ import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
-  key: "codex" | "claudeCode";
+  key: "codex" | "claudeCode" | "cursor";
   name: string;
   signInHint: string;
   expiredHint: string;
@@ -42,6 +42,13 @@ const PROVIDERS: ProviderConfig[] = [
     signInHint: "Run `claude` to sign in and see your usage.",
     expiredHint:
       "Your Claude session expired. Run `claude`, then reload usage.",
+  },
+  {
+    key: "cursor",
+    name: "Cursor",
+    signInHint: "Run `cursor-agent login` to sign in and see your usage.",
+    expiredHint:
+      "Your Cursor session expired. Run `cursor-agent login`, then reload usage.",
   },
 ];
 
@@ -92,6 +99,23 @@ function formatReset(resetsAt: string | null): string | null {
   return `Resets ${formatted}`;
 }
 
+function formatUsdCents(cents: number, alwaysShowCents: boolean): string {
+  const hasFractionalDollar = cents % 100 !== 0;
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: alwaysShowCents || hasFractionalDollar ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+function usageWindowValue(window: ProviderUsageWindow): string {
+  if (!window.cost) {
+    return `${window.usedPercent}% used`;
+  }
+  return `${formatUsdCents(window.cost.usedUsdCents, true)} / ${formatUsdCents(window.cost.limitUsdCents, false)}`;
+}
+
 function UsageWindowRow({ window }: { window: ProviderUsageWindow }) {
   const reset = formatReset(window.resetsAt);
   return (
@@ -99,7 +123,7 @@ function UsageWindowRow({ window }: { window: ProviderUsageWindow }) {
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs text-foreground">{window.label}</span>
         <span className="text-xs tabular-nums text-muted-foreground">
-          {window.usedPercent}% used
+          {usageWindowValue(window)}
         </span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -127,6 +151,7 @@ export interface UsageLimitsSettingsSectionContentProps {
   usage: {
     codex?: ProviderUsage;
     claudeCode?: ProviderUsage;
+    cursor?: ProviderUsage;
   };
   isLoading: boolean;
   isError: boolean;
@@ -252,6 +277,8 @@ function ProviderUsageBody({
           ))}
         </div>
       );
+    case "not_installed":
+      return null;
     case "unauthenticated":
       return (
         <p className="text-xs text-muted-foreground">{config.signInHint}</p>
@@ -278,10 +305,13 @@ export function UsageLimitsSettingsSectionContent({
   onSelectHost,
 }: UsageLimitsSettingsSectionContentProps) {
   const showMachinePicker = hosts.length > 1 && onSelectHost !== undefined;
+  const visibleProviders = PROVIDERS.filter(
+    (config) => usage[config.key]?.status !== "not_installed",
+  );
   return (
     <SettingsSection
       title="Usage limits"
-      description="Your Codex and Claude Code subscription usage."
+      description="Your provider subscription usage."
       action={
         <div className="flex items-center gap-1">
           {showMachinePicker ? (
@@ -315,7 +345,7 @@ export function UsageLimitsSettingsSectionContent({
       }
     >
       <div className="divide-y divide-border">
-        {PROVIDERS.map((config) => (
+        {visibleProviders.map((config) => (
           <div key={config.key} className="py-3.5 first:pt-0 last:pb-0">
             <ProviderUsageBlock
               config={config}
@@ -332,9 +362,7 @@ export function UsageLimitsSettingsSectionContent({
 
 export function UsageLimitsSettingsSection() {
   const systemConfigQuery = useSystemConfig();
-  const multiMachineEnabled =
-    systemConfigQuery.data?.experiments.multiMachine === true;
-  const hostsQuery = useHosts({ enabled: multiMachineEnabled });
+  const hostsQuery = useHosts();
   const hosts = hostsQuery.data ?? [];
   const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
   const primaryHost = selectPrimaryHost(
@@ -359,7 +387,7 @@ export function UsageLimitsSettingsSection() {
       onRefresh={() => {
         void usageQuery.refetch();
       }}
-      hosts={multiMachineEnabled ? hosts : []}
+      hosts={hosts}
       selectedHostId={selectedHost?.id ?? null}
       onSelectHost={setSelectedHostId}
     />

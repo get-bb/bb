@@ -17,22 +17,23 @@ import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
+  getProjectStoredPromptAttachmentPaths,
   hasPromptBranchSelectionChanged,
   hasPromptOptionValueChanged,
   hasSingleUseRootComposeTargetState,
   isProjectSourceWorktreeUnavailable,
   mergeMissingPromptDraftAttachments,
-  preparePromptAttachmentProjectMigration,
   readFolderIdFromLocationState,
   readRootComposeFolderTargetFromLocationState,
   readInitialPromptFromLocationState,
   restorePromptDraftAfterOptionChange,
   resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
+  resolveRootComposeProviderRouting,
+  resolveRootComposeProjectRouting,
   resolveRootComposePanelThreadId,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
-  withPromptAttachmentSourceProject,
 } from "./RootComposeView";
 
 interface MakeThreadArgs {
@@ -83,6 +84,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
@@ -345,83 +347,43 @@ describe("mergeMissingPromptDraftAttachments", () => {
   });
 });
 
-describe("withPromptAttachmentSourceProject", () => {
-  it("keeps uploaded attachments tied to their source project during a project change", () => {
+describe("getProjectStoredPromptAttachmentPaths", () => {
+  it("selects only server-managed relative attachment paths", () => {
     expect(
-      withPromptAttachmentSourceProject(
-        [
-          {
-            type: "localImage",
-            path: "screenshot.png",
-            name: "screenshot.png",
-            mimeType: "image/png",
-            sizeBytes: 64,
-          },
-        ],
-        "proj_source",
-      ),
-    ).toEqual([
-      {
-        type: "localImage",
-        path: "screenshot.png",
-        name: "screenshot.png",
-        mimeType: "image/png",
-        sizeBytes: 64,
-        sourceProjectId: "proj_source",
-      },
-    ]);
-  });
-
-  it("does not overwrite an attachment's original source during a later switch", () => {
-    expect(
-      withPromptAttachmentSourceProject(
-        [
-          {
-            type: "localImage",
-            path: "screenshot.png",
-            name: "screenshot.png",
-            mimeType: "image/png",
-            sizeBytes: 64,
-            sourceProjectId: "proj_original",
-          },
-        ],
-        "proj_intermediate",
-      ),
-    ).toEqual([
-      {
-        type: "localImage",
-        path: "screenshot.png",
-        name: "screenshot.png",
-        mimeType: "image/png",
-        sizeBytes: 64,
-        sourceProjectId: "proj_original",
-      },
-    ]);
-  });
-});
-
-describe("preparePromptAttachmentProjectMigration", () => {
-  it("transfers a source-tagged global draft on its initial project observation", () => {
-    const attachment = {
-      type: "localImage" as const,
-      path: "screenshot.png",
-      name: "screenshot.png",
-      mimeType: "image/png",
-      sizeBytes: 64,
-      sourceProjectId: "proj_source",
-    };
-
-    expect(
-      preparePromptAttachmentProjectMigration({
-        attachments: [attachment],
-        currentProjectId: "proj_destination",
-        previousProjectId: "proj_destination",
-      }),
-    ).toEqual({
-      attachments: [attachment],
-      shouldPersistAnnotations: false,
-      shouldTransfer: true,
-    });
+      getProjectStoredPromptAttachmentPaths([
+        {
+          type: "localImage",
+          path: "image-uploaded.png",
+          name: "image.png",
+          mimeType: "image/png",
+          sizeBytes: 64,
+        },
+        {
+          type: "localFile",
+          path: "image-uploaded.png",
+          name: "duplicate.png",
+          sizeBytes: 64,
+        },
+        {
+          type: "localFile",
+          path: "/tmp/report.pdf",
+          name: "report.pdf",
+          sizeBytes: 32,
+        },
+        {
+          type: "localImage",
+          path: "C:\\Users\\sawyer\\screenshot.png",
+          name: "screenshot.png",
+          sizeBytes: 32,
+        },
+        {
+          type: "localFile",
+          path: "https://example.test/report.pdf",
+          name: "remote.pdf",
+          sizeBytes: 32,
+        },
+      ]),
+    ).toEqual(["image-uploaded.png"]);
   });
 });
 
@@ -677,12 +639,28 @@ describe("resolveComposeHostId", () => {
   });
 });
 
+describe("resolveRootComposeProjectRouting", () => {
+  it("propagates the selected host or environment to project workspace calls", () => {
+    expect(
+      resolveRootComposeProjectRouting(
+        parseEnvironmentValue("host:host_remote:worktree"),
+        "host_primary",
+      ),
+    ).toEqual({ hostId: "host_remote" });
+    expect(
+      resolveRootComposeProjectRouting(
+        parseEnvironmentValue("reuse:env_remote"),
+        "host_primary",
+      ),
+    ).toEqual({ environmentId: "env_remote" });
+  });
+});
+
 describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   it("keeps host mode but rewrites the host id to the active project source host", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:worktree",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -697,7 +675,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:local",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -712,7 +689,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_current",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -725,7 +701,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_stale",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -740,7 +715,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_pending",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -755,7 +729,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:worktree",
         isProjectless: true,
         primaryHostId: "host_1",
@@ -766,11 +739,10 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_1:local");
   });
 
-  it("keeps a non-primary host selection with multiMachine on when that host has a source", () => {
+  it("keeps a non-primary host selection when that host has a source", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1", "host_2"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_2:worktree",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -784,29 +756,10 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_2:worktree");
   });
 
-  it("rewrites a non-primary host selection to the primary host with multiMachine off", () => {
-    expect(
-      resolveRootComposeEffectiveEnvironmentValue({
-        knownHostIds: new Set(["host_1", "host_2"]),
-        multiMachineEnabled: false,
-        environmentSelectionValue: "host:host_2:worktree",
-        isProjectless: false,
-        primaryHostId: "host_1",
-        projectSources: [
-          makeProjectSource("host_1"),
-          makeProjectSource("host_2"),
-        ],
-        reuseThreadOptions: [],
-        reuseThreadOptionsLoading: false,
-      }),
-    ).toBe("host:host_1:worktree");
-  });
-
-  it("falls back to the primary host with multiMachine on when the selected host is gone", () => {
+  it("falls back to the primary host when the selected host is gone", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_gone:worktree",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -817,11 +770,10 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_1:worktree");
   });
 
-  it("keeps a projectless machine selection with multiMachine on, normalized to local mode", () => {
+  it("keeps a projectless machine selection normalized to local mode", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1", "host_2"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_2:worktree",
         isProjectless: true,
         primaryHostId: "host_1",
@@ -836,7 +788,6 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_gone:local",
         isProjectless: true,
         primaryHostId: "host_1",
@@ -847,11 +798,10 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("host:host_1:local");
   });
 
-  it("falls back to the primary host with multiMachine on when the selected host lacks a source", () => {
+  it("falls back to the primary host when the selected host lacks a source", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1", "host_2"]),
-        multiMachineEnabled: true,
         environmentSelectionValue: "host:host_2:local",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -860,6 +810,53 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         reuseThreadOptionsLoading: false,
       }),
     ).toBe("host:host_1:local");
+  });
+});
+
+describe("resolveRootComposeProviderRouting", () => {
+  it("routes discovery through the effective selected host", () => {
+    expect(
+      resolveRootComposeProviderRouting({
+        knownHostIds: new Set(["host_1", "host_2"]),
+        environmentSelectionValue: "host:host_2:worktree",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [
+          makeProjectSource("host_1"),
+          makeProjectSource("host_2"),
+        ],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toEqual({ hostId: "host_2" });
+  });
+
+  it("routes stale selections through the effective primary fallback", () => {
+    expect(
+      resolveRootComposeProviderRouting({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "host:host_gone:local",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toEqual({ hostId: "host_1" });
+  });
+
+  it("routes reusable worktrees by environment", () => {
+    expect(
+      resolveRootComposeProviderRouting({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "reuse:env_remote",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [makeReuseThreadOption("env_remote")],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toEqual({ environmentId: "env_remote" });
   });
 });
 

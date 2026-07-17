@@ -137,10 +137,17 @@ async function fetchPullRequest(args: {
     const response = await args.sdk.environments.pullRequest({
       environmentId: args.environmentId,
     });
-    if (response.pullRequest) {
+    if (response.outcome === "available") {
       return {
         status: "available",
         pullRequest: response.pullRequest,
+      };
+    }
+    if (response.outcome === "unavailable") {
+      return {
+        status: "unavailable",
+        pullRequest: null,
+        message: response.message,
       };
     }
     return {

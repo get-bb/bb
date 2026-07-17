@@ -6,7 +6,7 @@ import { PluginContext } from "./plugin-context";
 /**
  * The plugin navPanel slices of the shared app header (AppPageHeader via
  * AppLayout's AppHeader): plugin panels get the SAME chrome as
- * Settings — logo + panel title in the header center, the
+ * Settings — compact plugin icon + panel title in the header center, the
  * registration's optional `headerContent` component in the header actions.
  * PluginPanelView renders only the panel body.
  */
@@ -37,7 +37,7 @@ class HeaderContentBoundary extends Component<
   }
 }
 
-/** Header center for a plugin panel route: plugin logo + panel title. */
+/** Header center for a plugin panel route: compact plugin icon + panel title. */
 export function PluginPanelHeaderCenter({
   panel,
 }: {
@@ -57,9 +57,8 @@ export function PluginPanelHeaderCenter({
 
 /**
  * Header actions for a plugin panel route: the registration's
- * `headerContent`, in its own boundary. Null when the panel registers none
- * or uses `chrome: "none"` (the plugin owns the body wholesale there; the
- * shared header stays logo + title only).
+ * `headerContent`, in its own boundary. Every panel uses this shared title bar
+ * while its component owns the full-bleed body below.
  */
 export function PluginPanelHeaderActions({
   panel,
@@ -69,7 +68,7 @@ export function PluginPanelHeaderActions({
   subPath: string;
 }) {
   const HeaderContent = panel.headerContent;
-  if (HeaderContent === undefined || panel.chrome === "none") return null;
+  if (HeaderContent === undefined) return null;
   return (
     <HeaderContentBoundary
       // Generation in the key: a P3.4 reload remounts the accessory with

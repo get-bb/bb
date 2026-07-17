@@ -47,13 +47,13 @@ afterEach(() => {
 });
 
 describe("PluginSidebarFooterActions", () => {
-  it("prefers the plugin's canonical logo over the contribution icon", () => {
+  it("prefers branding.icon over the logo and contribution icon", () => {
     setPluginLogoUrls(
       new Map([
         [
           "remote",
           {
-            icon: "Plug",
+            icon: "FileText",
             logoUrl: "/api/v1/plugins/remote/assets/logo?h=abc",
             logoDarkUrl: null,
           },
@@ -76,8 +76,9 @@ describe("PluginSidebarFooterActions", () => {
 
     renderWithProviders(<PluginSidebarFooterActions />);
 
-    expect(screen.getByTestId("plugin-logo-remote")).toBeTruthy();
+    expect(document.querySelector('[data-icon="FileText"]')).not.toBeNull();
     expect(document.querySelector('[data-icon="Smartphone"]')).toBeNull();
+    expect(document.querySelector("img")).toBeNull();
   });
 
   it("contains a throwing run without breaking the sidebar", () => {

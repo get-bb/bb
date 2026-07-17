@@ -122,13 +122,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     config: runtimeConfig,
     logger,
   });
-  const {
-    app,
-    closeWebSockets,
-    injectWebSocket,
-    marketplaceService,
-    pluginService,
-  } = createApp(
+  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     {
       appVersion,
       bbAppManagedConfig,
@@ -160,7 +154,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     skillTreeRegistry,
     pluginSchedules: pluginService,
     pluginService,
-    marketplaceService,
     telemetry,
     terminalSessions,
   };

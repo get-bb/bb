@@ -55,7 +55,12 @@ async function commitPlugin(
       name: "bb-plugin-updater",
       version,
       ...(engines ? { engines } : {}),
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Updater fixture",
+        description: "Plugin update fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(
@@ -104,7 +109,6 @@ describe("plugin update service and routes", () => {
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       stabilizationWindowMs: 0,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
@@ -214,6 +218,57 @@ describe("plugin update service and routes", () => {
     );
   });
 
+  it("reports legacy retired-marketplace installs as unavailable without fetching", async () => {
+    // Rows installed through the pre-bundling marketplace persist a synthetic
+    // GitHub-Release registry URL; the check must degrade per-row instead of
+    // rejecting the whole multi-plugin update sweep.
+    upsertInstalledPlugin(db, {
+      id: "legacy-marketplace",
+      source: "npm:bb-plugin-legacy-marketplace@^0.2.0",
+      provenance: { kind: "catalog", entryId: "legacy-marketplace" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-legacy-marketplace",
+        registry:
+          "https://api.github.com/repos/ymichael/bb/releases?bb-source=github-release&tag-template=plugin-legacy-v%7Bversion%7D&asset-template=bb-plugin-legacy-%7Bversion%7D.tgz",
+        requestedSpec: "^0.2.0",
+        specKind: "range",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "0.2.0",
+        integrity: "sha256-legacy",
+      },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: join(workDir, "legacy-marketplace"),
+      version: "0.2.0",
+      enabled: false,
+    });
+    const fetched: string[] = [];
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      fetched.push(String(input));
+      throw new Error(`unexpected fetch ${String(input)}`);
+    });
+
+    const results = await service.checkForUpdates("legacy-marketplace");
+    expect(results).toEqual([
+      expect.objectContaining({
+        id: "legacy-marketplace",
+        outcome: "unavailable",
+        detail: expect.stringContaining("retired remote marketplace"),
+      }),
+    ]);
+    expect(
+      fetched.filter((url) => url.includes("api.github.com")),
+    ).toEqual([]);
+  });
+
   it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
     // Simulate a Phase 1 normalized row migrated before ref classification
     // existed. The first network resolution classifies and persists it.
@@ -256,6 +311,17 @@ describe("plugin update service and routes", () => {
       applied: true,
       to: { version: nextCommit },
       outcome: "updated",
+    });
+
+    const sourceResponse = await app.request("/plugins/updater/source");
+    expect(sourceResponse.status).toBe(200);
+    expect(await sourceResponse.json()).toMatchObject({
+      requested: expect.any(String),
+      resolved: expect.any(String),
+      installedAt: expect.any(Number),
+      history: expect.arrayContaining([
+        { version: nextCommit, activatedAt: expect.any(Number) },
+      ]),
     });
   });
 
@@ -375,7 +441,6 @@ describe("plugin update service and routes", () => {
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       stabilizationWindowMs: 1,
       serviceRestartBaseMs: 1000,
@@ -440,7 +505,7 @@ describe("plugin update service and routes", () => {
     if (oldArtifact === undefined) throw new Error("missing old artifact");
     const api = service.getApi("updater");
     if (api === undefined) throw new Error("updater did not load");
-    const pluginDb = api.storage.sqlite();
+    const pluginDb = api.storage.database();
     pluginDb.exec("CREATE TABLE restart_state (value TEXT NOT NULL)");
     pluginDb.prepare("INSERT INTO restart_state VALUES (?)").run("old-db");
     await api.storage.kv.set("restart-cursor", "old-kv");
@@ -457,7 +522,7 @@ describe("plugin update service and routes", () => {
       `
         import { writeFileSync } from "node:fs";
         export default async function plugin(bb: any) {
-          const database = bb.storage.sqlite();
+          const database = bb.storage.database();
           database.prepare("UPDATE restart_state SET value = ?").run("new-db");
           await bb.storage.kv.set("restart-cursor", "new-kv");
           writeFileSync(${JSON.stringify(secretPath)}, "changed-secret");
@@ -477,7 +542,6 @@ describe("plugin update service and routes", () => {
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       stabilizationWindowMs: 0,
       afterPluginRollbackStateRestored: async () => {
         throw new Error("simulated process exit during rollback");
@@ -515,7 +579,6 @@ describe("plugin update service and routes", () => {
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       stabilizationWindowMs: 0,
     });
     await service.start();
@@ -564,7 +627,6 @@ describe("plugin update service and routes", () => {
         dataDir: join(workDir, "data"),
         appVersion: "1.0.0",
         isEnabled: () => true,
-        isConnectEnabled: () => false,
         stabilizationWindowMs: 0,
         artifactRetentionMs: 50,
         now: () => clock,

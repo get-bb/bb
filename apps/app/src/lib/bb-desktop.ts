@@ -2,7 +2,6 @@ import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopWindowState,
-  BbDesktopPopoutApi,
 } from "@bb/desktop-contract";
 
 // The macOS traffic-light cluster sits in a fixed strip on the left of the
@@ -114,12 +113,4 @@ export function getDesktopBrowserApi(): BbDesktopBrowserApi | null {
 
 export function isDesktopBrowserAvailable(): boolean {
   return getDesktopBrowserApi() !== null;
-}
-
-export function getDesktopPopoutApi(): BbDesktopPopoutApi | null {
-  return getBbDesktopInfo()?.popout ?? null;
-}
-
-export function isDesktopPopoutAvailable(): boolean {
-  return getDesktopPopoutApi() !== null;
 }

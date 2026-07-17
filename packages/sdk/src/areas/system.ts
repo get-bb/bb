@@ -3,13 +3,20 @@ import type {
   AppSettings,
   Experiments,
 } from "@bb/domain";
+import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import type {
+  SystemAttentionResponse,
+  SystemConfigReloadResponse,
+  SystemConfigResponse,
   SystemExecutionOptionsQuery,
+  SystemExecutionOptionsResponse,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
+  SystemVersionResponse,
+  SystemVoiceTranscriptionResponse,
 } from "@bb/server-contract";
 import { systemVoiceTranscriptionResponseSchema } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface SystemVersionArgs {
   force?: boolean;
@@ -20,31 +27,36 @@ export interface SystemVoiceTranscriptionArgs {
   prompt?: string;
 }
 
+export type SystemAttentionResult = SystemAttentionResponse;
+export type SystemConfigResult = SystemConfigResponse;
+export type SystemExecutionOptionsResult = SystemExecutionOptionsResponse;
+export type SystemReloadConfigResult = SystemConfigReloadResponse;
+export type SystemVoiceTranscriptionResult = SystemVoiceTranscriptionResponse;
+export type SystemUpdateExperimentsResult = Experiments;
+export type SystemUpdateGeneralSettingsResult = AppSettings;
+export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
+export type SystemUsageLimitsResult = ProviderUsageResponse;
+export type SystemVersionResult = SystemVersionResponse;
+
 export interface SystemArea {
-  attention(): Promise<PublicApiOutput<"/system/attention", "$get">>;
-  config(): Promise<PublicApiOutput<"/system/config", "$get">>;
+  attention(): Promise<SystemAttentionResult>;
+  config(): Promise<SystemConfigResult>;
   executionOptions(
     args?: SystemExecutionOptionsQuery,
-  ): Promise<PublicApiOutput<"/system/execution-options", "$get">>;
-  reloadConfig(): Promise<PublicApiOutput<"/system/config/reload", "$post">>;
+  ): Promise<SystemExecutionOptionsResult>;
+  reloadConfig(): Promise<SystemReloadConfigResult>;
   transcribeVoice(
     args: SystemVoiceTranscriptionArgs,
-  ): Promise<PublicApiOutput<"/system/voice-transcription", "$post">>;
-  updateExperiments(
-    args: Experiments,
-  ): Promise<PublicApiOutput<"/settings/experiments", "$put">>;
+  ): Promise<SystemVoiceTranscriptionResult>;
+  updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
   updateGeneralSettings(
     args: AppSettings,
-  ): Promise<PublicApiOutput<"/settings/general", "$put">>;
+  ): Promise<SystemUpdateGeneralSettingsResult>;
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
-  ): Promise<PublicApiOutput<"/settings/keyboard", "$put">>;
-  usageLimits(
-    args?: SystemUsageLimitsQuery,
-  ): Promise<PublicApiOutput<"/system/usage-limits", "$get">>;
-  version(
-    args?: SystemVersionArgs,
-  ): Promise<PublicApiOutput<"/system/version", "$get">>;
+  ): Promise<SystemUpdateKeyboardSettingsResult>;
+  usageLimits(args?: SystemUsageLimitsQuery): Promise<SystemUsageLimitsResult>;
+  version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
 }
 
 function versionQuery(args: SystemVersionArgs | undefined): SystemVersionQuery {
@@ -71,6 +83,9 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       return transport.readJson(transport.api.v1.system.config.reload.$post());
     },
     async transcribeVoice(input) {
+      if (input.file.size === 0) {
+        throw new Error("Audio file must not be empty");
+      }
       const form = new FormData();
       form.set("file", input.file);
       if (input.prompt !== undefined) form.set("prompt", input.prompt);

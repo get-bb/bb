@@ -1,21 +1,31 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { Command } from "commander";
 import type {
   CreateProjectSourceRequest,
   ProjectResponse,
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
+import mimeTypes from "mime-types";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveLocalHostId } from "../daemon.js";
 import { renderBorderlessTable } from "../table.js";
 import { confirmDestructiveAction, outputJson } from "./helpers.js";
-import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
+import {
+  resolveMachineEnvironmentRouting,
+  resolveMachineHostId,
+  resolveMachineTargetOption,
+} from "./machine.js";
 
 interface ProjectListCommandOptions {
+  includePersonal?: boolean;
   json?: boolean;
 }
 
 interface ProjectCreateCommandOptions {
+  host?: string;
+  machine?: string;
   name: string;
   root?: string;
   json?: boolean;
@@ -39,10 +49,21 @@ interface ProjectReorderCommandOptions {
 interface ProjectDiscoveryCommandOptions {
   environment?: string;
   host?: string;
+  machine?: string;
   json?: boolean;
   limit?: string;
   provider?: string;
   query?: string;
+}
+
+function addProjectWorkspaceRoutingOptions(command: Command): Command {
+  return command
+    .option("--machine <id-or-name>", "Project source machine")
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option(
+      "--environment <id>",
+      "Environment workspace (mutually exclusive with machine)",
+    );
 }
 
 interface ProjectUpdateCommandOptions {
@@ -52,6 +73,18 @@ interface ProjectUpdateCommandOptions {
 
 interface ProjectDeleteCommandOptions {
   yes?: boolean;
+  json?: boolean;
+}
+
+interface ProjectAttachmentUploadCommandOptions {
+  clientFile: string;
+  filename?: string;
+  json?: boolean;
+  mimeType?: string;
+}
+
+interface ProjectAttachmentDownloadCommandOptions {
+  clientFile: string;
   json?: boolean;
 }
 
@@ -118,17 +151,31 @@ function buildProjectSourceAddRequest(
   };
 }
 
-async function buildProjectSourceFromOptions(
-  args: ProjectSourceInputOptions,
-): Promise<Extract<CreateProjectSourceRequest, { type: "local_path" }>> {
+function buildProjectSourceFromOptions(
+  args: ProjectSourceInputOptions & { hostId: string },
+): Extract<CreateProjectSourceRequest, { type: "local_path" }> {
   if (args.path) {
     return {
-      hostId: await resolveLocalHostId(),
+      hostId: args.hostId,
       path: args.path,
       type: "local_path",
     };
   }
   throw new Error("Provide --path.");
+}
+
+async function resolveProjectSourceHostId(
+  args: { host?: string; machine?: string },
+  serverUrl: string,
+): Promise<string> {
+  const machineTarget = resolveMachineTargetOption(args);
+  return machineTarget
+    ? resolveMachineHostId({
+        requireConnected: true,
+        serverUrl,
+        target: machineTarget,
+      })
+    : resolveLocalHostId();
 }
 
 function requireProjectSource(
@@ -177,6 +224,22 @@ function printProjectSource(source: ProjectSource): void {
   console.log(`${source.id}  ${source.type}  ${source.path}${defaultMarker}`);
 }
 
+function attachmentMimeType(
+  clientPath: string,
+  filename: string,
+  explicitMimeType: string | undefined,
+): string {
+  if (explicitMimeType !== undefined) {
+    const normalized = explicitMimeType.trim();
+    if (normalized.length === 0) {
+      throw new Error("--mime-type must not be empty.");
+    }
+    return normalized;
+  }
+  const inferred = mimeTypes.lookup(filename) || mimeTypes.lookup(clientPath);
+  return typeof inferred === "string" ? inferred : "application/octet-stream";
+}
+
 export function registerProjectCommands(
   program: Command,
   getUrl: () => string,
@@ -187,15 +250,94 @@ export function registerProjectCommands(
   const source = project
     .command("source")
     .description("Manage project sources");
+  const attachment = project
+    .command("attachment")
+    .description("Upload and download server-managed project attachments");
+
+  attachment
+    .command("upload <id>")
+    .description("Upload a file read from this CLI machine")
+    .requiredOption(
+      "--client-file <path>",
+      "File path on this CLI machine (not the thread execution host)",
+    )
+    .option("--filename <name>", "Filename stored in attachment metadata")
+    .option(
+      "--mime-type <type>",
+      "MIME type (inferred from filename by default)",
+    )
+    .option("--json", "Print the uploaded attachment DTO")
+    .action(
+      action(
+        async (id: string, opts: ProjectAttachmentUploadCommandOptions) => {
+          const filename = opts.filename ?? basename(opts.clientFile);
+          if (filename.trim().length === 0) {
+            throw new Error("Attachment filename must not be empty.");
+          }
+          const bytes = await readFile(opts.clientFile);
+          const uploaded = await createCliBbSdk(
+            getUrl(),
+          ).projects.attachments.upload({
+            clientFile: bytes,
+            filename,
+            mimeType: attachmentMimeType(
+              opts.clientFile,
+              filename,
+              opts.mimeType,
+            ),
+            projectId: id,
+          });
+          if (outputJson(opts, uploaded)) return;
+          console.log(`Attachment uploaded: ${uploaded.path}`);
+        },
+      ),
+    );
+
+  attachment
+    .command("download <id> <attachmentPath>")
+    .description("Download an attachment to this CLI machine")
+    .requiredOption(
+      "--client-file <path>",
+      "Destination path on this CLI machine",
+    )
+    .option("--json", "Print machine-readable download metadata")
+    .action(
+      action(
+        async (
+          id: string,
+          attachmentPath: string,
+          opts: ProjectAttachmentDownloadCommandOptions,
+        ) => {
+          const downloaded = await createCliBbSdk(
+            getUrl(),
+          ).projects.attachments.read({
+            path: attachmentPath,
+            projectId: id,
+          });
+          await writeFile(opts.clientFile, downloaded.bytes);
+          const result = {
+            attachmentPath,
+            clientFile: opts.clientFile,
+            mimeType: downloaded.mimeType,
+            sizeBytes: downloaded.sizeBytes,
+          };
+          if (outputJson(opts, result)) return;
+          console.log(`Attachment downloaded: ${opts.clientFile}`);
+        },
+      ),
+    );
 
   project
     .command("list")
     .description("List projects")
+    .option("--include-personal", "Include the personal project")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProjectListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const projects = await sdk.projects.list();
+        const projects = await sdk.projects.list({
+          includePersonal: opts.includePersonal,
+        });
         if (outputJson(opts, projects)) return;
         if (projects.length === 0) {
           console.log("No projects found");
@@ -262,21 +404,17 @@ export function registerProjectCommands(
       }),
     );
 
-  project
-    .command("paths <id>")
+  addProjectWorkspaceRoutingOptions(project.command("paths <id>"))
     .description("Search project workspace files and directories")
-    .option(
-      "--environment <id>",
-      "Environment workspace; omit for default source",
-    )
     .option("--query <query>", "Fuzzy path query")
     .option("--limit <count>", "Maximum paths")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const serverUrl = getUrl();
         const result = await createCliBbSdk(getUrl()).projects.paths({
           projectId: id,
-          environmentId: opts.environment ?? null,
+          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
           includeFiles: "true",
           includeDirectories: "true",
           ...(opts.query ? { query: opts.query } : {}),
@@ -287,25 +425,62 @@ export function registerProjectCommands(
       }),
     );
 
-  project
-    .command("commands <id>")
+  addProjectWorkspaceRoutingOptions(project.command("commands <id>"))
     .description("List provider commands and skills available to a project")
     .requiredOption("--provider <id>", "Provider ID")
-    .option(
-      "--environment <id>",
-      "Environment workspace; omit for default source",
-    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const serverUrl = getUrl();
         const result = await createCliBbSdk(getUrl()).projects.commands({
           projectId: id,
           provider: opts.provider ?? "",
-          environmentId: opts.environment ?? null,
+          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
         });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
       }),
+    );
+
+  addProjectWorkspaceRoutingOptions(project.command("files <id>"))
+    .description("List files in a project workspace")
+    .option("--query <query>", "Fuzzy file query")
+    .option("--limit <count>", "Maximum files")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const serverUrl = getUrl();
+        const result = await createCliBbSdk(serverUrl).projects.files({
+          projectId: id,
+          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
+          ...(opts.query ? { query: opts.query } : {}),
+          ...(opts.limit ? { limit: opts.limit } : {}),
+        });
+        if (outputJson(opts, result)) return;
+        console.log(JSON.stringify(result, null, 2));
+      }),
+    );
+
+  addProjectWorkspaceRoutingOptions(project.command("content <id> <path>"))
+    .description("Read project workspace file content")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string,
+          path: string,
+          opts: ProjectDiscoveryCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const result = await createCliBbSdk(serverUrl).projects.fileContent({
+            projectId: id,
+            path,
+            ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
+          });
+          if (outputJson(opts, result)) return;
+          console.log(result.content);
+        },
+      ),
     );
 
   project
@@ -313,11 +488,19 @@ export function registerProjectCommands(
     .description("Create a project")
     .requiredOption("--name <name>", "Project name")
     .option("--root <path>", "Project source path")
+    .option(
+      "--machine <id-or-name>",
+      "Execution machine ID or unambiguous name",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProjectCreateCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const source = await buildProjectSourceFromOptions({
+        const serverUrl = getUrl();
+        const sdk = createCliBbSdk(serverUrl);
+        const hostId = await resolveProjectSourceHostId(opts, serverUrl);
+        const source = buildProjectSourceFromOptions({
+          hostId,
           path: opts.root,
         });
         const created = await sdk.projects.create({
@@ -404,15 +587,10 @@ export function registerProjectCommands(
     .action(
       action(
         async (projectId: string, opts: ProjectSourceAddCommandOptions) => {
-          const sdk = createCliBbSdk(getUrl());
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
           validateProjectSourceAddOptions(opts);
-          const machineTarget = resolveMachineTargetOption(opts);
-          const hostId = machineTarget
-            ? await resolveMachineHostId({
-                serverUrl: getUrl(),
-                target: machineTarget,
-              })
-            : await resolveLocalHostId();
+          const hostId = await resolveProjectSourceHostId(opts, serverUrl);
           const createPayload = buildProjectSourceAddRequest({
             ...opts,
             hostId,

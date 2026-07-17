@@ -1,5 +1,4 @@
 import type {
-  GitHostPullRequest,
   RawDiffFileStat,
   ThreadGitDiffResponse,
   WorkspaceCommitSummary,
@@ -13,6 +12,7 @@ import {
   getPullRequestForBranch,
   runPullRequestActionForBranch,
   type GitHostPullRequestAction,
+  type GitHostPullRequestLookup,
 } from "./git-host.js";
 import {
   createTempDir,
@@ -629,14 +629,24 @@ export class Workspace {
   }
 
   /**
-   * Raw `gh` pull request data for the workspace's current branch, or `null`
-   * when there is no branch or no detectable PR. Never throws — see
+   * Raw `gh` pull request lookup for the workspace's current branch. A
+   * detached HEAD has no branch and therefore no PR ("none"); lookup failures
+   * surface as "unavailable". Never throws — see
    * {@link getPullRequestForBranch}.
    */
-  async getPullRequest(): Promise<GitHostPullRequest | null> {
+  async getPullRequest(): Promise<GitHostPullRequestLookup> {
+    // A vanished workspace (deleted worktree dir) means the lookup cannot
+    // run; without this check getCurrentBranch folds it into "no branch" and
+    // the missing workspace would masquerade as "no PR exists".
+    if (!(await this.exists)) {
+      return {
+        outcome: "unavailable",
+        message: `Workspace path no longer exists: ${this.path}`,
+      };
+    }
     const branch = await getCurrentBranch(this.path);
     if (!branch) {
-      return null;
+      return { outcome: "none" };
     }
     return getPullRequestForBranch({ cwd: this.path, branch });
   }

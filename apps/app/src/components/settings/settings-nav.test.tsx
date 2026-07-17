@@ -30,10 +30,7 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
 }));
 
-function systemConfig(
-  pluginsEnabled: boolean,
-  multiMachineEnabled = false,
-): SystemConfigResponse {
+function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
@@ -42,7 +39,6 @@ function systemConfig(
     experiments: {
       ...defaultExperiments,
       plugins: pluginsEnabled,
-      multiMachine: multiMachineEnabled,
     },
     appearance: defaultAppTheme,
     customThemes: [],
@@ -95,30 +91,32 @@ describe("useSettingsNavState", () => {
     ).toEqual(["codex", "claude-code"]);
   });
 
-  it("shows the Machines section only while the multiMachine experiment is on", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false, true));
+  it("shows the Machines section", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
 
-    const enabled = renderHook(() => useSettingsNavState(), {
+    const result = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/machines"),
     });
     await waitFor(() => {
       expect(
-        enabled.result.current.sections.map((section) => section.id),
+        result.result.current.sections.map((section) => section.id),
       ).toContain("machines");
     });
+  });
 
-    vi.mocked(api.getSystemConfig).mockResolvedValue(
-      systemConfig(false, false),
-    );
-    const disabled = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings/general"),
+  it("resolves archived threads as a settings section", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/archived"),
     });
+
     await waitFor(() => {
-      expect(disabled.result.current.activeSection).toBe("general");
+      expect(result.current.activeSection).toBe("archived");
     });
-    expect(
-      disabled.result.current.sections.map((section) => section.id),
-    ).not.toContain("machines");
+    expect(result.current.sections.map((section) => section.id)).toContain(
+      "archived",
+    );
   });
 
   it("shows slot-backed plugin settings entries while the plugins experiment is off", async () => {
@@ -140,18 +138,32 @@ describe("useSettingsNavState", () => {
           plugins: [
             {
               id: "connect",
+              source: "builtin:connect",
+              rootDir: "/tmp/bb-test/plugins/connect",
               version: "0.1.0",
-              enabled: true,
-              status: "running",
-              statusDetail: null,
-              description: null,
-              icon: "EditFile",
-              logoUrl: null,
-              logoDarkUrl: null,
-              hasSettings: false,
               provenance: "builtin",
+              isOrphanedBuiltin: false,
               sourceDisplay: "builtin",
               updateState: {},
+              enabled: true,
+              description: null,
+              name: "Connect",
+              icon: "EditFile",
+              status: "running",
+              statusDetail: null,
+              handlerStats: {
+                count: 0,
+                totalMs: 0,
+                maxMs: 0,
+                errorCount: 0,
+              },
+              services: [],
+              schedules: [],
+              cliCommand: null,
+              hasSettings: false,
+              app: { hasApp: true, bundle: null },
+              logoUrl: null,
+              logoDarkUrl: null,
             },
           ],
         }),
@@ -172,7 +184,7 @@ describe("useSettingsNavState", () => {
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins");
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins", undefined);
 
     const icon = render(
       <PluginNavIcon plugin={result.current.pluginEntries[0]!} />,

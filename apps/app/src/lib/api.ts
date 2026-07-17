@@ -52,6 +52,7 @@ import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProvidersQuery,
   SystemVersionResponse,
   TimelinePaginationCursor,
   SystemVoiceTranscriptionResponse,
@@ -79,6 +80,7 @@ import type {
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
   CloseTerminalRequest,
+  CopyProjectAttachmentsRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
   UpdateThreadFolderRequest,
@@ -139,11 +141,16 @@ interface GetEnvironmentFilePreviewArgs {
   signal?: AbortSignal;
 }
 
-interface GetProjectFilePreviewArgs {
+export type ProjectWorkspaceRouting =
+  | { environmentId: string; hostId?: never }
+  | { environmentId?: never; hostId: string }
+  | { environmentId?: never; hostId?: never };
+
+type GetProjectFilePreviewArgs = ProjectWorkspaceRouting & {
   projectId: string;
   path: string;
   signal?: AbortSignal;
-}
+};
 
 export interface BranchListRequest {
   query?: string;
@@ -481,6 +488,8 @@ export async function getEnvironmentFilePreview({
 }
 
 export async function getProjectFilePreview({
+  environmentId,
+  hostId,
   projectId,
   path,
   signal,
@@ -489,7 +498,10 @@ export async function getProjectFilePreview({
     {
       name: path.split("/").at(-1),
       path,
-      url: buildProjectFileContentUrl(projectId, path),
+      url: buildProjectFileContentUrl(projectId, path, {
+        ...(environmentId !== undefined ? { environmentId } : {}),
+        ...(hostId !== undefined ? { hostId } : {}),
+      }),
     },
     signal,
   );
@@ -624,14 +636,14 @@ export async function removeProjectSource(
   );
 }
 
-interface SearchProjectPathsArgs {
+type SearchProjectPathsArgs = ProjectWorkspaceRouting & {
   projectId: string;
   query: string;
   limit: number;
   includeFiles: boolean;
   includeDirectories: boolean;
   signal?: AbortSignal;
-}
+};
 
 interface SearchEnvironmentPathsArgs {
   environmentId: string;
@@ -649,9 +661,9 @@ function toPathListIncludeQueryValue(
 }
 
 /**
- * Search the project's default source path. Used by the new-thread compose box
- * before any environment exists; once a thread has an environment, workspace
- * path search goes through {@link searchEnvironmentPaths}.
+ * Search a selected project source path. Used by the new-thread compose box
+ * before any environment exists; existing-thread workspace search goes through
+ * {@link searchEnvironmentPaths}.
  */
 export async function searchProjectPaths(
   args: SearchProjectPathsArgs,
@@ -663,10 +675,10 @@ export async function searchProjectPaths(
         query: {
           query: args.query,
           limit: String(args.limit),
-          // The project-source listing has no environment to scope to; the shared
-          // query schema still carries the field, so send the empty string (=
-          // null) to select the default source.
-          environmentId: "",
+          ...(args.environmentId !== undefined
+            ? { environmentId: args.environmentId }
+            : {}),
+          ...(args.hostId !== undefined ? { hostId: args.hostId } : {}),
           includeFiles: toPathListIncludeQueryValue(args.includeFiles),
           includeDirectories: toPathListIncludeQueryValue(
             args.includeDirectories,
@@ -700,12 +712,11 @@ export async function searchEnvironmentPaths(
   );
 }
 
-interface ListProjectCommandsArgs {
+type ListProjectCommandsArgs = ProjectWorkspaceRouting & {
   projectId: string;
   providerId: string;
-  environmentId: string | null;
   signal?: AbortSignal;
-}
+};
 
 /**
  * List the provider skills/slash-commands discoverable for a project, scoped by
@@ -714,7 +725,7 @@ interface ListProjectCommandsArgs {
  * Mirrors {@link searchProjectPaths}: the typed Hono
  * client resolves the route from `@bb/server-contract`'s public-api schema, so
  * this types against the committed `CommandListResponse` contract with no cast,
- * and encodes a null `environmentId` as the empty string on the wire.
+ * and carries the selected environment or project-source host on the wire.
  */
 export async function listProjectCommands(
   args: ListProjectCommandsArgs,
@@ -725,7 +736,10 @@ export async function listProjectCommands(
         param: { id: args.projectId },
         query: {
           provider: args.providerId,
-          environmentId: args.environmentId ?? "",
+          ...(args.environmentId !== undefined
+            ? { environmentId: args.environmentId }
+            : {}),
+          ...(args.hostId !== undefined ? { hostId: args.hostId } : {}),
         },
       },
       requestOptions(args.signal),
@@ -760,14 +774,14 @@ export async function uploadPromptAttachment(
   );
 }
 
-export async function deletePromptAttachment(
-  projectId: string,
-  path: string,
+export async function copyPromptAttachments(
+  targetProjectId: string,
+  requestBody: CopyProjectAttachmentsRequest,
 ): Promise<void> {
-  await requestVoid(
-    apiClient.projects[":id"].attachments.$delete({
-      param: { id: projectId },
-      query: { path },
+  await request(
+    apiClient.projects[":id"].attachments.copy.$post({
+      param: { id: targetProjectId },
+      json: requestBody,
     }),
   );
 }
@@ -1799,6 +1813,7 @@ export async function getEnvironmentDiffPatches(
 
 export async function getSystemExecutionOptions(args: {
   environmentId?: string;
+  hostId?: string;
   providerId?: string;
   signal?: AbortSignal;
 }): Promise<SystemExecutionOptionsResponse> {
@@ -1807,6 +1822,7 @@ export async function getSystemExecutionOptions(args: {
       {
         query: {
           ...(args.environmentId ? { environmentId: args.environmentId } : {}),
+          ...(args.hostId ? { hostId: args.hostId } : {}),
           ...(args.providerId ? { providerId: args.providerId } : {}),
         },
       },
@@ -1815,9 +1831,11 @@ export async function getSystemExecutionOptions(args: {
   );
 }
 
-export async function listSystemProviders(): Promise<SystemProviderInfo[]> {
+export async function listSystemProviders(
+  args: SystemProvidersQuery = {},
+): Promise<SystemProviderInfo[]> {
   return request<SystemProviderInfo[]>(
-    apiClient.system.providers.$get({ query: {} }),
+    apiClient.system.providers.$get({ query: args }),
   );
 }
 
@@ -1894,7 +1912,7 @@ export async function listHosts(signal?: AbortSignal): Promise<Host[]> {
 
 /**
  * Mints a short-lived join code (and its pre-created host row) for pairing a
- * new machine to this server. Multi-machine experiment only.
+ * new machine to this server.
  */
 export async function createHostJoinCode(
   signal?: AbortSignal,

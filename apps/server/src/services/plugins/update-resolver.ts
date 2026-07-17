@@ -1,12 +1,6 @@
 import semver from "semver";
 import { z } from "zod";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
-import {
-  applyVersionTemplate,
-  githubReleaseApiUrl,
-  parseGithubReleaseRegistryUrl,
-  templateVersion,
-} from "./github-release-source.js";
 import { isCommitSha, runInstallCommand } from "./install-sources.js";
 
 export type NpmSpecKind = "default" | "exact" | "tag" | "range";
@@ -67,12 +61,6 @@ export interface NpmSourceIntentForResolution {
 
 export interface NpmResolvedCandidate extends PluginResolvedUpdateVersion {
   integrity: string;
-  tarball: string | undefined;
-  plugin: {
-    id: string;
-    displayName: string | undefined;
-    description: string | undefined;
-  };
   engines: {
     bb: string | undefined;
     bbPluginSdk: string | undefined;
@@ -80,10 +68,7 @@ export interface NpmResolvedCandidate extends PluginResolvedUpdateVersion {
 }
 
 const packumentVersionSchema = z.object({
-  name: z.string().optional(),
   version: z.string(),
-  description: z.string().optional(),
-  bb: z.object({ displayName: z.string().optional() }).optional(),
   engines: z
     .object({
       bb: z.string().optional(),
@@ -105,88 +90,6 @@ const packumentSchema = z.object({
 
 type Packument = z.infer<typeof packumentSchema>;
 
-const githubReleaseSchema = z.array(
-  z.object({
-    tag_name: z.string(),
-    draft: z.boolean(),
-    assets: z.array(
-      z.object({
-        name: z.string(),
-        browser_download_url: z.string().url(),
-        digest: z.string().nullable().optional(),
-      }),
-    ),
-  }),
-);
-
-async function githubReleasePackument(args: {
-  intent: NpmSourceIntentForResolution;
-  fetchImpl: typeof fetch;
-}): Promise<Packument | null> {
-  const config = parseGithubReleaseRegistryUrl(args.intent.registry);
-  if (config === null) return null;
-  const versions: Record<string, z.infer<typeof packumentVersionSchema>> = {};
-  for (let page = 1; page <= 10; page += 1) {
-    let response: Response;
-    try {
-      response = await args.fetchImpl(
-        githubReleaseApiUrl(config.repository, page),
-        {
-          headers: {
-            accept: "application/vnd.github+json",
-            "x-github-api-version": "2026-03-10",
-          },
-        },
-      );
-    } catch (error) {
-      throw new NpmPackageUnavailableError(
-        `${args.intent.packageName} GitHub Releases request failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (!response.ok) {
-      throw new NpmPackageUnavailableError(
-        `${args.intent.packageName} GitHub Releases request failed: ${response.status} ${response.statusText}`,
-      );
-    }
-    const input: unknown = await response.json();
-    const parsed = githubReleaseSchema.safeParse(input);
-    if (!parsed.success) {
-      throw new Error(
-        `GitHub returned malformed release metadata for ${args.intent.packageName}: ${parsed.error.issues[0]?.message ?? "invalid releases"}`,
-      );
-    }
-    for (const release of parsed.data) {
-      if (release.draft) continue;
-      const version = templateVersion(config.tagTemplate, release.tag_name);
-      if (version === null || semver.valid(version) === null) continue;
-      const assetName = applyVersionTemplate(config.assetTemplate, version);
-      const asset = release.assets.find(
-        (candidate) => candidate.name === assetName,
-      );
-      const digest = asset?.digest?.match(/^sha256:([0-9a-f]{64})$/iu);
-      if (asset === undefined || digest?.[1] === undefined) continue;
-      versions[version] ??= {
-        name: args.intent.packageName,
-        version,
-        engines: {
-          ...(config.bbEngineRange === undefined
-            ? {}
-            : { bb: config.bbEngineRange }),
-          ...(config.pluginSdkEngineRange === undefined
-            ? {}
-            : { bbPluginSdk: config.pluginSdkEngineRange }),
-        },
-        dist: {
-          integrity: `sha256-${Buffer.from(digest[1], "hex").toString("base64")}`,
-          tarball: asset.browser_download_url,
-        },
-      };
-    }
-    if (parsed.data.length < 100) break;
-  }
-  return packumentSchema.parse({ versions, "dist-tags": {} });
-}
-
 export interface NpmResolverRun {
   getPackument(intent: NpmSourceIntentForResolution): Promise<Packument>;
 }
@@ -203,11 +106,6 @@ export function createNpmResolverRun(options?: {
       const existing = cache.get(key);
       if (existing) return existing;
       const pending = (async () => {
-        const releasePackument = await githubReleasePackument({
-          intent,
-          fetchImpl,
-        });
-        if (releasePackument !== null) return releasePackument;
         let response: Response;
         try {
           response = await fetchImpl(
@@ -414,12 +312,6 @@ export async function selectNpmCandidate(args: {
       version,
       display: npmDisplay(args.intent.packageName, version),
       integrity: metadata.dist?.integrity ?? "",
-      tarball: metadata.dist?.tarball,
-      plugin: {
-        id: metadata.name ?? args.intent.packageName,
-        displayName: metadata.bb?.displayName,
-        description: metadata.description,
-      },
       engines: {
         bb: metadata.engines?.bb,
         bbPluginSdk: metadata.engines?.bbPluginSdk,

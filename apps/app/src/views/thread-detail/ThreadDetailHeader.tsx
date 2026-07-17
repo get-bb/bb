@@ -1,4 +1,5 @@
 import {
+  useContext,
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -23,6 +24,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
+import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { usePaneContext } from "./PaneContext";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
@@ -67,8 +69,17 @@ export function ThreadDetailHeader({
   const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // The title doubles as the pane-reorder drag handle when the layout is split;
-  // beginPaneDrag is undefined on the single-pane, page, and popout surfaces.
-  const { beginPaneDrag } = usePaneContext();
+  // beginPaneDrag is undefined on the single-pane and page surfaces.
+  const {
+    beginPaneDrag,
+    isFocused,
+    isTopRow,
+    reservesWindowPanelToggle,
+    secondaryPanelHost,
+  } = usePaneContext();
+  const isWindowPanelOpen =
+    useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
+  const showFocusedPaneTitlePill = beginPaneDrag !== undefined && isFocused;
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (!beginPaneDrag || event.button !== 0) {
       return;
@@ -79,29 +90,38 @@ export function ThreadDetailHeader({
     ? "Hide right panel"
     : "Show right panel";
   const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
-  // The header is a full-width bar, so the toggle holds a stable position at the
-  // window edge — keep it mounted across open/close on wide layouts (the panel no
-  // longer renders its own inline hide control). The drawer still hides it while
-  // open, since the drawer carries its own close affordance.
-  const showRightPanelToggle = !renderAsDrawer || !isSecondaryPanelOpen;
+  // Standalone thread pages keep their header toggle mounted across open/close
+  // on wide layouts. Split panes publish to the one workspace-level toggle, so
+  // no pane header renders its own copy. The drawer still hides the standalone
+  // toggle while open because the drawer carries its own close affordance.
+  const showRightPanelToggle =
+    secondaryPanelHost === null && (!renderAsDrawer || !isSecondaryPanelOpen);
 
   const center = (
     <>
-      <p
-        className={cn(
-          "min-w-0 truncate text-sm font-medium",
-          beginPaneDrag &&
-            cn(
-              "cursor-grab touch-none select-none",
-              // Opt the drag handle out of the macOS title-bar drag region so a
-              // pane-reorder gesture isn't swallowed as a window drag.
-              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-            ),
-        )}
-        onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
-      >
-        <ThreadTitleMentions title={threadTitle} />
-      </p>
+      <div className="relative min-w-0">
+        {showFocusedPaneTitlePill ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -inset-x-2 -inset-y-1 rounded-md bg-state-active"
+          />
+        ) : null}
+        <p
+          className={cn(
+            "relative min-w-0 truncate text-sm font-medium",
+            beginPaneDrag &&
+              cn(
+                "cursor-grab touch-none select-none",
+                // Opt the drag handle out of the macOS title-bar drag region so a
+                // pane-reorder gesture isn't swallowed as a window drag.
+                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+              ),
+          )}
+          onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
+        >
+          <ThreadTitleMentions title={threadTitle} />
+        </p>
+      </div>
       {childPillLabel ? (
         <Pill variant="outline" size="sm">
           {childPillLabel}
@@ -188,6 +208,14 @@ export function ThreadDetailHeader({
           <Icon name="X" />
         </Button>
       ) : null}
+      {reservesWindowPanelToggle && !isWindowPanelOpen ? (
+        // Reserve only the fixed 28px corner button. Its modifier-held hint is
+        // positioned below the chrome row by the workspace host, so it never
+        // consumes or covers this pane-action row. With the window panel open,
+        // the toggle overlays the panel's own chrome instead, so the pane
+        // actions sit flush at the pane edge.
+        <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
+      ) : null}
     </>
   );
 
@@ -198,7 +226,11 @@ export function ThreadDetailHeader({
       center={center}
       actions={actions}
       bordered={false}
-      className="border-b border-border-seam-vertical/60"
+      isWindowDragRegion={isTopRow}
+      className={cn(
+        "border-b border-border-seam-vertical/60",
+        beginPaneDrag && isFocused && "bg-surface-raised",
+      )}
     />
   );
 }

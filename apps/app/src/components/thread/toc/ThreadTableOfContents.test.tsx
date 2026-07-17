@@ -191,6 +191,7 @@ function threadWithRuntime(
     originKind: null,
     originPluginId: null,
     childOrigin: null,
+    visibility: "visible",
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,

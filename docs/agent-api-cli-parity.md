@@ -91,7 +91,7 @@ storageFiles               storagePaths
 timelineTurnSummaryDetails
 ```
 
-Thread creation and messaging also support structured local attachments:
+Thread creation and messaging also support structured path attachments:
 
 ```text
 bb thread spawn ... --file <path> --image <path>
@@ -100,38 +100,94 @@ bb thread tell <id> <message> --file <path> --image <path>
 
 Both attachment flags are repeatable. `thread spawn` additionally supports
 `--folder <id>`, `--origin-kind fork|side-chat`, `--source-thread <id>`, and
-`--source-seq-end <seq>`. The SDK accepts the equivalent `input`, `folderId`,
-`originKind`, `sourceThreadId`, and `sourceSeqEnd` fields.
+`--source-seq-end <seq>`. It also accepts `--visibility visible|hidden`; hidden
+threads stay out of sidebar organization and do not contribute unread/pending
+attention to the favicon or native parent notifications. They otherwise retain
+ordinary list, search, history, folder, lifecycle, and direct-open behavior.
+The SDK accepts the equivalent `input`, `folderId`, `originKind`,
+`sourceThreadId`, `sourceSeqEnd`, and `visibility` fields.
+
+`--file` and `--image` do not read paths on the CLI machine. Absolute paths are
+passed through for the thread execution host to read; relative values are
+server-managed project attachment paths returned by the upload API.
 
 ## Projects
 
-| SDK                                               | CLI                                                                              |
-| ------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                      |
-| `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                         |
-| `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`       |
-| `bb.projects.paths(...)`                          | `bb project paths <id> [--environment <id>] [--query <query>] [--limit <count>]` |
-| `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--environment <id>]`                  |
-| `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.  |
+| SDK                                               | CLI                                                                                                              |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `bb.projects.create({ name, source })`            | `bb project create --name <name> --root <path> [--machine/--host <id-or-name>]`                                  |
+| `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                                                      |
+| `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                                                         |
+| `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`                                       |
+| `bb.projects.paths(...)`                          | `bb project paths <id> [--machine/--host <id-or-name> / --environment <id>] [--query <query>] [--limit <count>]` |
+| `bb.projects.files(...)`                          | `bb project files <id> [--machine/--host <id-or-name> / --environment <id>] [--query <query>] [--limit <count>]` |
+| `bb.projects.fileContent(...)`                    | `bb project content <id> <path> [--machine/--host <id-or-name> / --environment <id>]`                            |
+| `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--machine/--host <id-or-name> / --environment <id>]`                  |
+| `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.                                  |
+| `bb.projects.attachments.upload(...)`             | `bb project attachment upload <id> --client-file <path> [--filename <name>] [--mime-type <type>]`                |
+| `bb.projects.attachments.read(...)`               | `bb project attachment download <id> <attachment-path> --client-file <path>`                                     |
 
 Existing project source operations remain available under
 `bb.projects.sources` and `bb project source`.
 
+Project creation already has explicit host parity in the SDK contract: its
+local-path `source` requires `hostId`. The CLI resolves an explicit connected
+machine ID or unambiguous name into that field; without a selector it preserves
+the existing local CLI machine fallback (normally the primary machine).
+
+Project workspace host and environment selectors are mutually exclusive. An
+environment selects its owning host and workspace; otherwise an explicit host
+selects that host's project source. Omitting both intentionally falls back to
+the primary host's project source. File content uses UTF-8 for text and base64
+for binary data in the portable SDK/CLI JSON DTO.
+
+Project attachment upload is the client-local byte path: the SDK accepts
+`Uint8Array`, `ArrayBuffer`, `Blob`, and File-like input and sends multipart
+data to the selected server. The CLI reads `--client-file` on the CLI machine,
+so it works when that machine is different from both the server and thread
+execution host. The result is the existing uploaded-attachment DTO; image MIME
+types are limited to 10MB and other uploads to 25MB. The server currently has
+no attachment list or per-attachment remove operation, so neither surface
+invents one.
+
 ## Environments and pull requests
 
-| SDK                                                           | CLI                                                                       |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `bb.environments.archiveThreads({ environmentId })`           | `bb environment archive-threads <id>`                                     |
-| `bb.environments.markPullRequestReady({ environmentId })`     | `bb environment pull-request ready <id>`                                  |
-| `bb.environments.markPullRequestDraft({ environmentId })`     | `bb environment pull-request draft <id>`                                  |
-| `bb.environments.mergePullRequest({ environmentId, method })` | `bb environment pull-request merge <id> [--method <merge/squash/rebase>]` |
-| `bb.environments.diffFiles(...)`                              | SDK                                                                       |
-| `bb.environments.diffFile(...)`                               | SDK                                                                       |
-| `bb.environments.diffPatch(...)`                              | SDK                                                                       |
-| `bb.environments.paths(...)`                                  | SDK                                                                       |
+Every direct inspection command accepts an arbitrary environment ID; none
+requires a thread.
 
-The pre-existing environment show, update, status, commit, diff, pull-request
-inspection, and squash-merge operations remain unchanged.
+| SDK                                                           | CLI                                                                                                 |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `bb.environments.get({ environmentId })`                      | `bb environment show <id>`                                                                          |
+| `bb.environments.update(...)`                                 | `bb environment update <id> [metadata flags]`                                                       |
+| `bb.environments.status(...)`                                 | `bb environment status <id> [--merge-base-branch <branch>]`                                         |
+| `bb.environments.diffBranches(...)`                           | `bb environment branches <id> [--query <query>] [--limit <count>]`                                  |
+| `bb.environments.paths(...)`                                  | `bb environment paths <id> [--query <query>] [--limit <count>] [--files] [--directories]`           |
+| `bb.environments.diff(...)`                                   | `bb environment diff <id> --target <target> [--merge-base-branch <branch> / --sha <sha>]`           |
+| `bb.environments.diffFiles(...)`                              | `bb environment diff-files <id> --target <target> [--merge-base-branch <branch> / --sha <sha>]`     |
+| `bb.environments.diffFile(...)`                               | `bb environment diff-file <id> --target <target> --path <path> --side <old/new> [target ref flags]` |
+| `bb.environments.diffPatch(...)`                              | `bb environment diff-patch <id> --target <target> --path <path>... [--merge-base-branch / --sha]`   |
+| `bb.environments.pullRequest({ environmentId })`              | `bb environment pull-request show <id>`                                                             |
+| `bb.environments.commit({ environmentId })`                   | `bb environment commit <id>`                                                                        |
+| `bb.environments.squashMerge(...)`                            | `bb environment squash-merge <id> --merge-base-branch <branch>`                                     |
+| `bb.environments.archiveThreads({ environmentId })`           | `bb environment archive-threads <id>`                                                               |
+| `bb.environments.markPullRequestReady({ environmentId })`     | `bb environment pull-request ready <id>`                                                            |
+| `bb.environments.markPullRequestDraft({ environmentId })`     | `bb environment pull-request draft <id>`                                                            |
+| `bb.environments.mergePullRequest({ environmentId, method })` | `bb environment pull-request merge <id> [--method <merge/squash/rebase>]`                           |
+
+Diff targets are `uncommitted`, `branch_committed`, `all`, and `commit`.
+Branch targets require `--merge-base-branch`, commit targets require `--sha`,
+and `diff-file` uses the resolved `--merge-base-ref` for branch targets.
+
+## Providers
+
+| SDK                                                              | CLI                                                                                                   |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `bb.providers.list({ hostId? / environmentId? })`                | `bb provider list [--machine <id-or-name> / --host <id-or-name> / --environment <id>]`                |
+| `bb.providers.models({ providerId?, hostId? / environmentId? })` | `bb provider models [providerId] [--machine <id-or-name> / --host <id-or-name> / --environment <id>]` |
+
+Host and environment selectors are mutually exclusive. An environment resolves
+to its owning host; otherwise an explicit host is used. Omitting both selectors
+intentionally falls back to the primary machine.
 
 ## Machines
 
@@ -177,6 +233,25 @@ bb settings keyboard reset [command]
 
 Values passed to the settings CLI are parsed against the same schemas as the
 server contract; invalid keys or values fail before a request is sent.
+
+## Appearance
+
+The canonical appearance input is the complete `{ themeId, faviconColor }`
+selection. `bb.theme.set(selection)` sends it atomically. The compatible
+`bb.theme.set(themeId)` shorthand reads the active appearance first and carries
+its favicon color forward.
+
+| SDK                                       | CLI                                                              |
+| ----------------------------------------- | ---------------------------------------------------------------- |
+| `bb.theme.get()`                          | `bb theme show`                                                  |
+| `bb.theme.catalog()`                      | `bb theme list`                                                  |
+| `bb.theme.set({ themeId, faviconColor })` | `bb theme set <id> --favicon-color <color>`                      |
+| `bb.theme.set(themeId)`                   | `bb theme set <id>` or `bb theme reset`; preserves favicon color |
+| Read current, then `set({ ... })`         | `bb theme favicon set <color>` or `reset`; preserves theme       |
+
+Valid favicon colors are `default`, `red`, `orange`, `yellow`, `green`, `teal`,
+`blue`, `purple`, and `pink`. Invalid values are rejected before the CLI sends a
+write and by the shared server request schema.
 
 ## Files
 
@@ -224,6 +299,11 @@ Plugin administration is exposed through:
 ```text
 bb.plugins.list()
 bb.plugins.install({ source })
+bb.plugins.catalog.install({ entryId })
+bb.plugins.getSource({ pluginId })
+bb.plugins.checkUpdates({ pluginId })
+bb.plugins.listUpdateResults()
+bb.plugins.applyUpdate({ pluginId })
 bb.plugins.reload({ pluginId })
 bb.plugins.enable({ pluginId })
 bb.plugins.disable({ pluginId })
@@ -231,7 +311,17 @@ bb.plugins.remove({ pluginId })
 bb.plugins.getSettings({ pluginId })
 bb.plugins.updateSettings({ pluginId, values })
 bb.plugins.token({ pluginId, rotate })
+bb.plugins.catalog.status()
+bb.plugins.catalog.search({ query })
 ```
+
+Direct and catalog installs are separate methods so source strings and catalog
+entry ids cannot be confused. Catalog installs resolve to the official plugin
+bundled with the app; callers that need a different npm version use a direct
+`npm:` install.
+These administration methods are available to backend plugins via the complete
+`bb.sdk`; they are intentionally absent from the restricted
+`@bb/plugin-sdk/app` frontend contract.
 
 Plugin-specific UI features can be called through validated RPC. Callers must
 provide a Zod output schema so plugin data is narrowed at the SDK boundary:

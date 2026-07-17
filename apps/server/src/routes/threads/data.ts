@@ -4,7 +4,11 @@ import {
   isAgentProviderId,
 } from "@bb/agent-providers";
 import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
-import { getLatestThreadSequence, listQueuedThreadMessages } from "@bb/db";
+import {
+  getAppSettings,
+  getLatestThreadSequence,
+  listQueuedThreadMessages,
+} from "@bb/db";
 import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
@@ -370,6 +374,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       thread.providerId,
     );
+    const includeProviderUnhandledOperations =
+      deps.config.isDevelopment ||
+      getAppSettings(deps.db).showUnhandledProviderEvents;
     const keyArgs = {
       threadId: thread.id,
       status: thread.status,
@@ -378,14 +385,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       page,
       includeNestedRows,
       summaryOnly,
-      isDevelopment: deps.config.isDevelopment,
+      includeProviderUnhandledOperations,
     };
     const full = timelineCache.getOrBuild(
       buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
       () =>
         truncateTimelineResponseOutputs(
           buildThreadTimeline(deps.db, thread, {
-            isDevelopment: deps.config.isDevelopment,
+            includeProviderUnhandledOperations,
             includeNestedRows,
             maxSeq,
             page,
@@ -451,9 +458,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.timelineTurnSummaryDetails, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const includeProviderUnhandledOperations =
+      deps.config.isDevelopment ||
+      getAppSettings(deps.db).showUnhandledProviderEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
-        isDevelopment: deps.config.isDevelopment,
+        includeProviderUnhandledOperations,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,
           thread.providerId,

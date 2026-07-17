@@ -25,8 +25,7 @@ const fileReadResultSchema = z.object({
   contentEncoding: z.enum(["utf8", "base64"]),
   sha256: z.string(),
 });
-const threadWorkspaceSchema = z.object({
-  environment: z.object({ path: z.string().nullable() }).nullable().optional(),
+const threadHostSchema = z.object({
   host: z.object({ id: z.string() }).nullable().optional(),
 });
 const fileWriteResultSchema = z.discriminatedUnion("outcome", [
@@ -119,19 +118,12 @@ function parseRequest(argv: string[]): ParsedRequest {
   return { names, purpose, descriptions, writeEnv };
 }
 
-function requireContained(
-  root: string,
-  candidate: string,
-  label: string,
-): void {
-  const relative = path.relative(root, candidate);
-  if (
-    relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative)
-  ) {
-    throw new Error(`${label} must be inside the thread workspace.`);
-  }
+function resolveHostPath(cwd: string, candidate: string): string {
+  if (path.posix.isAbsolute(candidate)) return path.posix.normalize(candidate);
+  if (path.win32.isAbsolute(candidate)) return path.win32.normalize(candidate);
+  return path.posix.isAbsolute(cwd)
+    ? path.posix.resolve(cwd, candidate)
+    : path.win32.resolve(cwd, candidate);
 }
 
 function httpStatus(error: unknown): number | null {
@@ -143,7 +135,7 @@ function httpStatus(error: unknown): number | null {
 
 async function readSnapshot(
   bb: BbPluginApi,
-  args: { hostId: string; rootPath: string; path: string },
+  args: { hostId: string; path: string },
 ): Promise<FileSnapshot> {
   try {
     const result = fileReadResultSchema.parse(await bb.sdk.files.read(args));
@@ -166,37 +158,31 @@ async function runRequest(
     throw new Error("bb secret request must run from a bb thread.");
   if (!ctx.cwd)
     throw new Error(
-      "bb secret request requires the invoking workspace directory.",
+      "bb secret request requires the invoking working directory.",
     );
-  const thread = threadWorkspaceSchema.parse(
+  const thread = threadHostSchema.parse(
     await bb.sdk.threads.get({
       threadId: ctx.threadId,
-      include: "environment,host",
+      include: "host",
     }),
   );
-  const environment = thread.environment;
   const host = thread.host;
-  if (!environment?.path || !host?.id)
-    throw new Error("The thread needs a live workspace and host.");
-  const rootPath = path.resolve(environment.path);
-  const cwd = path.resolve(ctx.cwd);
-  requireContained(rootPath, cwd, "CLI working directory");
-  const destinationPath = path.resolve(cwd, parsed.writeEnv);
-  requireContained(rootPath, destinationPath, "Dotenv destination");
-  const fileArgs = { hostId: host.id, rootPath, path: destinationPath };
+  if (!host?.id) throw new Error("The thread needs a live host.");
+  const destinationPath = resolveHostPath(ctx.cwd, parsed.writeEnv);
+  const fileArgs = { hostId: host.id, path: destinationPath };
   let snapshot = await readSnapshot(bb, fileArgs);
   assertNoDuplicateAssignments(snapshot.content, parsed.names);
 
-  const result = await bb.interactions.request(
+  const result = await bb.ui.requestInput(
     {
       threadId: ctx.threadId,
       rendererId: "secret-request",
-      title: `Add secrets to ${path.relative(rootPath, destinationPath)}`,
+      title: `Add secrets to ${destinationPath}`,
       payload: {
         purpose: parsed.purpose,
         destination: {
           kind: "dotenv",
-          path: path.relative(rootPath, destinationPath),
+          path: destinationPath,
         },
         fields: parsed.names.map((name) => ({
           name,
@@ -235,7 +221,7 @@ async function runRequest(
     if (write.outcome === "written") {
       return {
         exitCode: 0,
-        stdout: `${JSON.stringify({ path: path.relative(rootPath, destinationPath), names: parsed.names, added: reconciled.added, updated: reconciled.updated, unchanged: reconciled.unchanged })}\n`,
+        stdout: `${JSON.stringify({ path: destinationPath, names: parsed.names, added: reconciled.added, updated: reconciled.updated, unchanged: reconciled.unchanged })}\n`,
       };
     }
     if (attempt === 1)
@@ -251,8 +237,7 @@ async function runRequest(
 export default function plugin(bb: BbPluginApi) {
   bb.cli.register({
     name: "secret",
-    summary:
-      "Securely request credentials and write them to a workspace dotenv file.",
+    summary: "Securely request credentials and write them to a dotenv file.",
     commands: [
       {
         name: "request",

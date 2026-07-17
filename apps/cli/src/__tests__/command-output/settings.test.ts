@@ -25,12 +25,12 @@ describe("bb settings commands", () => {
     });
 
     await runCommand(
-      ["settings", "general", "codexSubagentsDisabled", "true"],
+      ["settings", "general", "showUnhandledProviderEvents", "true"],
       register,
     );
 
     expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, codexSubagentsDisabled: true },
+      json: { ...defaultAppSettings, showUnhandledProviderEvents: true },
     });
   });
 
@@ -55,6 +55,7 @@ describe("bb settings commands", () => {
     const getUsage = vi.fn(async () => ({
       codex: { status: "unauthenticated" },
       claudeCode: { status: "unauthenticated" },
+      cursor: { status: "unauthenticated" },
     }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => [

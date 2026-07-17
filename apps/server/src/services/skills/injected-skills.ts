@@ -41,6 +41,9 @@ export interface ResolveInjectedSkillSourcesArgs {
    * plugin-vs-plugin name collisions.
    */
   pluginSkillRoots?: readonly PluginSkillRoot[];
+  /** Configured plugins only: restrict their otherwise static skill roots to
+   * these frontmatter names for this resolution. */
+  pluginSkillSelections?: ReadonlyMap<string, ReadonlySet<string>>;
   projectSkillSources?: readonly ProjectInjectedSkillSource[];
   projectSkillsRootPath?: string;
   skillTreeRegistry: SkillTreeRegistry;
@@ -49,6 +52,34 @@ export interface ResolveInjectedSkillSourcesArgs {
 export interface PluginSkillRoot {
   pluginId: string;
   rootPath: string;
+}
+
+export function discoverPluginSkillIds(
+  logger: ServerLogger,
+  args: {
+    pluginSkillRoots: readonly PluginSkillRoot[];
+    skillTreeRegistry: SkillTreeRegistry;
+  },
+): ReadonlyMap<string, readonly string[]> {
+  const idsByPlugin = new Map<string, Set<string>>();
+  for (const { pluginId, rootPath } of args.pluginSkillRoots) {
+    const ids = idsByPlugin.get(pluginId) ?? new Set<string>();
+    for (const source of readSkillsRoot({
+      logger,
+      skillTreeRegistry: args.skillTreeRegistry,
+      skillsRootPath: rootPath,
+      sourceType: "data-dir",
+    })) {
+      ids.add(source.name);
+    }
+    idsByPlugin.set(pluginId, ids);
+  }
+  return new Map(
+    [...idsByPlugin].map(([pluginId, ids]) => [
+      pluginId,
+      [...ids].sort(compareStringsByCodePoint),
+    ]),
+  );
 }
 
 export type SkillCatalogProvenance =
@@ -651,7 +682,11 @@ export function resolveSkillCatalogEntries(
         skillTreeRegistry,
         skillsRootPath: rootPath,
         sourceType: "data-dir",
-      }),
+      }).filter(
+        (source) =>
+          !args.pluginSkillSelections?.has(pluginId) ||
+          args.pluginSkillSelections.get(pluginId)?.has(source.name) === true,
+      ),
     }),
   );
   const pluginSources = pluginSourceGroups.reduce<

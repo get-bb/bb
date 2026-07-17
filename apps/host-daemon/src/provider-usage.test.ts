@@ -4,6 +4,7 @@ import { __testing } from "./provider-usage.js";
 const {
   normalizeCodexUsage,
   normalizeClaudeUsage,
+  normalizeCursorUsage,
   codexPlanLabel,
   claudePlanLabel,
 } = __testing;
@@ -133,6 +134,94 @@ describe("normalizeClaudeUsage", () => {
       planLabel: null,
       windows: [{ label: "Current session", usedPercent: 7, resetsAt: null }],
     });
+  });
+});
+
+describe("normalizeCursorUsage", () => {
+  it("uses Cursor's explicit plan percentage instead of its spend ratio", () => {
+    const billingCycleEnd = 1_784_391_684_000;
+    const result = normalizeCursorUsage(
+      {
+        billingCycleEnd: String(billingCycleEnd),
+        planUsage: {
+          totalSpend: 1_439,
+          includedSpend: 1_439,
+          remaining: 561,
+          limit: 2_000,
+          totalPercentUsed: 4.171014492753623,
+        },
+        spendLimitUsage: {
+          individualLimit: 5_000,
+          individualUsed: 1_250,
+          individualRemaining: 3_750,
+          limitType: "user",
+        },
+      },
+      {
+        planInfo: {
+          planName: "Pro",
+          includedAmountCents: 2_000,
+        },
+      },
+    );
+
+    expect(result).toEqual({
+      status: "ok",
+      planLabel: "Pro",
+      windows: [
+        {
+          label: "Plan usage",
+          usedPercent: 4,
+          resetsAt: new Date(billingCycleEnd).toISOString(),
+        },
+        {
+          label: "On-demand spend",
+          usedPercent: 25,
+          resetsAt: new Date(billingCycleEnd).toISOString(),
+          cost: {
+            usedUsdCents: 1_250,
+            limitUsdCents: 5_000,
+          },
+        },
+      ],
+    });
+  });
+
+  it("uses a zero spend when Cursor omits a zero-valued usage field", () => {
+    const result = normalizeCursorUsage(
+      {
+        planUsage: { limit: 2_000 },
+        spendLimitUsage: { individualLimit: 5_000 },
+      },
+      {},
+    );
+
+    expect(result).toEqual({
+      status: "ok",
+      planLabel: null,
+      windows: [
+        {
+          label: "Plan usage",
+          usedPercent: 0,
+          resetsAt: null,
+        },
+        {
+          label: "On-demand spend",
+          usedPercent: 0,
+          resetsAt: null,
+          cost: {
+            usedUsdCents: 0,
+            limitUsdCents: 5_000,
+          },
+        },
+      ],
+    });
+  });
+
+  it("flags malformed Cursor usage without requiring plan metadata", () => {
+    expect(normalizeCursorUsage({ planUsage: "a lot" }, {}).status).toBe(
+      "error",
+    );
   });
 });
 

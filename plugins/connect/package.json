@@ -8,8 +8,11 @@
     "bb": ">=0.0"
   },
   "bb": {
-    "displayName": "Remote access",
-    "icon": "Smartphone",
+    "name": "Remote access",
+    "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
+    "branding": {
+      "icon": "Smartphone"
+    },
     "server": "./src/server.ts",
     "app": "./app.tsx"
   },

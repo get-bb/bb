@@ -456,6 +456,23 @@ describe("bb-app launcher", () => {
     expect(context.appVersion).toBe("0.0.0-dev");
   });
 
+  it("uses workspace build outputs when run from a source checkout", () => {
+    const context = resolveBbAppStartContext({
+      entrypointUrl: pathToFileURL("/repo/packages/bb-app/src/launcher.ts")
+        .href,
+      env: {},
+      homeDir: "/home/tester",
+    });
+
+    expect(context.packageRoot).toBe("/repo/packages/bb-app");
+    expect(context.appDistDir).toBe("/repo/apps/app/dist");
+    expect(context.serverEntry).toBe("/repo/apps/server/dist/index.js");
+    expect(context.daemonBundleDir).toBe("/repo/apps/host-daemon/dist");
+    expect(context.daemonEntry).toBe(
+      "/repo/apps/host-daemon/dist/daemon-bundle.mjs",
+    );
+  });
+
   it("reads appVersion from the package.json next to the resolved package root", () => {
     const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const expectedVersion = z

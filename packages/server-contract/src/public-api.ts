@@ -46,6 +46,7 @@ import type {
 import type {
   CloseTerminalRequest,
   CommandListResponse,
+  CopyProjectAttachmentsRequest,
   CreateHostJoinCodeRequest,
   CreateHostJoinCodeResponse,
   CreateTerminalRequest,
@@ -101,7 +102,6 @@ import type {
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
   ProjectAttachmentContentQuery,
-  ProjectAttachmentDeleteQuery,
   ProjectAttachmentUploadForm,
   ProjectBranchesQuery,
   ProjectBranchesResponse,
@@ -131,6 +131,7 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProvidersQuery,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -192,6 +193,7 @@ import type {
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
 import {
   closeTerminalRequestSchema,
+  copyProjectAttachmentsRequestSchema,
   createFilePreviewRequestSchema,
   createThreadFolderRequestSchema,
   deleteThreadFolderRequestSchema,
@@ -222,7 +224,6 @@ import {
   hostPathsExistRequestSchema,
   hostProviderCliInstallRequestSchema,
   projectAttachmentContentQuerySchema,
-  projectAttachmentDeleteQuerySchema,
   projectBranchesQuerySchema,
   projectCommandsQuerySchema,
   projectDefaultExecutionOptionsQuerySchema,
@@ -240,6 +241,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
   threadEventWaitQuerySchema,
@@ -412,11 +414,11 @@ export const publicApiRoutes = {
       request: formRequest<PathProjectId, ProjectAttachmentUploadForm>(),
       response: jsonResponse<UploadedPromptAttachment>({ status: 201 }),
     }),
-    deleteAttachment: defineRoute({
-      path: "/projects/:id/attachments",
-      method: "delete",
-      request: queryRequest<PathProjectId, ProjectAttachmentDeleteQuery>(
-        projectAttachmentDeleteQuerySchema,
+    copyAttachments: defineRoute({
+      path: "/projects/:id/attachments/copy",
+      method: "post",
+      request: jsonRequest<PathProjectId, CopyProjectAttachmentsRequest>(
+        copyProjectAttachmentsRequestSchema,
       ),
       response: jsonResponse<{ ok: true }>(),
     }),
@@ -603,6 +605,12 @@ export const publicApiRoutes = {
         createTerminalRequestSchema,
       ),
       response: jsonResponse<TerminalSession>({ status: 201 }),
+    }),
+    get: defineRoute({
+      path: "/terminals/:terminalId",
+      method: "get",
+      request: noRequest<PathTerminal>(),
+      response: jsonResponse<TerminalSession>(),
     }),
     update: defineRoute({
       path: "/terminals/:terminalId",
@@ -1209,7 +1217,9 @@ export const publicApiRoutes = {
     providers: defineRoute({
       path: "/system/providers",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, SystemProvidersQuery>(
+        systemProvidersQuerySchema,
+      ),
       response: jsonResponse<SystemProviderInfo[]>(),
     }),
     providerLogo: defineRoute({

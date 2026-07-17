@@ -47,6 +47,7 @@ function scopedSystemExecutionOptionsKey({
 }: ScopedSystemExecutionOptionsKeyArgs) {
   return systemExecutionOptionsQueryKey({
     environmentId,
+    hostId: null,
     providerId: "codex",
   });
 }

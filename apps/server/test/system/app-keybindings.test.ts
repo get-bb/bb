@@ -101,7 +101,7 @@ describe("app keybindings", () => {
           shift: true,
           when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
         },
-        ...[1, 2, 3, 4].map((index) => ({
+        ...[1, 2, 3, 4, 5, 6, 7, 8].map((index) => ({
           command: `pane.focus.${index}`,
           key: String(index),
           mod: true,

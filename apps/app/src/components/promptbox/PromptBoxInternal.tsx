@@ -261,7 +261,6 @@ export interface AttachmentsConfig {
   error?: string | null;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
   onRemove?: (path: string) => void;
-  onRetryTransfer?: () => void;
   projectId?: string;
 }
 
@@ -1070,7 +1069,6 @@ export function PromptBoxInternal({
     error: attachmentError = null,
     onAttachFiles,
     onRemove: onRemoveAttachment,
-    onRetryTransfer,
     projectId: attachmentProjectId,
   } = attachmentConfig;
   const {
@@ -2797,19 +2795,8 @@ export function PromptBoxInternal({
                 />
 
                 {attachmentError ? (
-                  <div className="mx-3 mb-1 mt-1 flex items-center gap-2 text-xs text-destructive">
-                    <span>{attachmentError}</span>
-                    {onRetryTransfer ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto px-1 py-0 text-xs text-destructive"
-                        onClick={onRetryTransfer}
-                      >
-                        Retry attachment transfer
-                      </Button>
-                    ) : null}
+                  <div className="mx-3 mb-1 mt-1 text-xs text-destructive">
+                    {attachmentError}
                   </div>
                 ) : null}
               </div>
@@ -2901,6 +2888,11 @@ export function PromptBoxInternal({
                       showCompactLayout
                         ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
                         : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
+                      // Container-driven compact layouts change the button's
+                      // width, padding, and margin at the breakpoint. Keep
+                      // those geometry changes instantaneous so the action
+                      // stays pinned while the prompt height animates.
+                      "transition-colors",
                     )}
                   >
                     {isSubmitting ? (

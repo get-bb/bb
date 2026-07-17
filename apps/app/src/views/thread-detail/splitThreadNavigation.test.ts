@@ -3,6 +3,7 @@ import {
   findPaneByContent,
   findPaneByThread,
   listPanes,
+  MAX_PANES,
   splitPane,
 } from "@/lib/split-layout";
 import type { SplitLayout } from "@/lib/split-layout";
@@ -28,6 +29,18 @@ function twoPaneLayout(): SplitLayout {
       threadId: "thread-2",
     },
   );
+}
+
+function eightPaneLayout(): SplitLayout {
+  let layout = twoPaneLayout();
+  for (let index = 3; index <= MAX_PANES; index += 1) {
+    layout = applyThreadOpenToLayout(
+      layout,
+      { projectId: "p1", threadId: `thread-${index}` },
+      "right",
+    );
+  }
+  return layout;
 }
 
 describe("reconcileLayoutForRoute", () => {
@@ -179,31 +192,33 @@ describe("applyThreadOpenToLayout", () => {
     expect(after.focusedPaneId).toBe("pane-1");
   });
 
-  it("coerces an edge split to focused-pane replacement at the pane cap", () => {
-    const two = twoPaneLayout();
-    const three = splitPane(two, two.focusedPaneId, "right", {
-      kind: "thread",
-      projectId: "p1",
-      threadId: "thread-3",
+  it("creates panes five through eight, then replaces the focused pane for a ninth open", () => {
+    const eight = eightPaneLayout();
+    const focusedPaneId = eight.focusedPaneId;
+
+    expect(listPanes(eight.root)).toHaveLength(MAX_PANES);
+    expect(eight.root).toMatchObject({
+      type: "split",
+      dir: "row",
+      sizes: Array.from({ length: MAX_PANES }, () => 1 / MAX_PANES),
     });
-    const four = splitPane(three, three.focusedPaneId, "right", {
-      kind: "thread",
-      projectId: "p1",
-      threadId: "thread-4",
-    });
-    const focusedPaneId = four.focusedPaneId;
+    for (let index = 5; index <= MAX_PANES; index += 1) {
+      expect(
+        findPaneByThread(eight.root, "p1", `thread-${index}`),
+      ).not.toBeNull();
+    }
 
     const after = applyThreadOpenToLayout(
-      four,
-      { projectId: "p2", threadId: "thread-5" },
+      eight,
+      { projectId: "p2", threadId: "thread-9" },
       "left",
     );
 
-    expect(listPanes(after.root)).toHaveLength(4);
+    expect(listPanes(after.root)).toHaveLength(MAX_PANES);
     expect(after.focusedPaneId).toBe(focusedPaneId);
-    expect(findPaneByThread(after.root, "p2", "thread-5")?.paneId).toBe(
+    expect(findPaneByThread(after.root, "p2", "thread-9")?.paneId).toBe(
       focusedPaneId,
     );
-    expect(findPaneByThread(after.root, "p1", "thread-4")).toBeNull();
+    expect(findPaneByThread(after.root, "p1", "thread-8")).toBeNull();
   });
 });

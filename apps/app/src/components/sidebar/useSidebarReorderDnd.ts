@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, type MouseEventHandler } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type MouseEventHandler,
+} from "react";
 import {
   closestCenter,
   KeyboardSensor,
@@ -28,7 +34,7 @@ import {
  * droppable the pointer is actually over, falling back to center distance when
  * the pointer is outside every droppable (e.g. keyboard drag, which has none).
  */
-const sidebarReorderCollisionDetection: CollisionDetection = (args) => {
+export const sidebarReorderCollisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
   return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
 };
@@ -62,6 +68,11 @@ interface UseSidebarReorderDndArgs {
   onDragOver?: (event: DragOverEvent) => void;
   /** Runs alongside the internal suppression reset when a drag is cancelled. */
   onDragCancel?: () => void;
+  /**
+   * Overrides target selection for surfaces that combine nested draggable
+   * levels in one context. Ordinary one-level lists use the shared default.
+   */
+  collisionDetection?: CollisionDetection;
 }
 
 export type SidebarReorderDndContextProps = Pick<
@@ -98,12 +109,14 @@ export function useSidebarReorderDnd({
   onDragStart,
   onDragOver,
   onDragCancel,
+  collisionDetection = sidebarReorderCollisionDetection,
 }: UseSidebarReorderDndArgs): UseSidebarReorderDndResult {
   const {
     beginDragClickSuppression,
     clearDragClickSuppressionSoon,
     consumeDragClickSuppression,
   } = useDragClickSuppression();
+  const isDraggingRef = useRef(false);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, {
@@ -115,6 +128,7 @@ export function useSidebarReorderDnd({
   );
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
+      isDraggingRef.current = true;
       setSidebarDraggingCursor(true);
       beginDragClickSuppression();
       onDragStart?.(event);
@@ -122,24 +136,41 @@ export function useSidebarReorderDnd({
     [beginDragClickSuppression, onDragStart],
   );
   const handleDragCancel = useCallback(() => {
+    if (!isDraggingRef.current) {
+      return;
+    }
+    isDraggingRef.current = false;
     setSidebarDraggingCursor(false);
     clearDragClickSuppressionSoon();
     onDragCancel?.();
   }, [clearDragClickSuppressionSoon, onDragCancel]);
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      isDraggingRef.current = false;
       setSidebarDraggingCursor(false);
       clearDragClickSuppressionSoon();
       onDragEnd(event);
     },
     [clearDragClickSuppressionSoon, onDragEnd],
   );
-  useEffect(
-    () => () => {
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.code === "Escape") {
+        // Split tear-out hands the gesture off by dispatching Escape. dnd-kit
+        // can consume that while its drag is still initializing without
+        // invoking DndContext's public onDragCancel callback, so clear the
+        // sidebar-owned cursor and projected-drag state directly as well.
+        handleDragCancel();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      isDraggingRef.current = false;
       setSidebarDraggingCursor(false);
-    },
-    [],
-  );
+    };
+  }, [handleDragCancel]);
   const onClickCapture = useCallback<MouseEventHandler<HTMLElement>>(
     (event) => {
       if (!consumeDragClickSuppression()) {
@@ -153,14 +184,21 @@ export function useSidebarReorderDnd({
   const dndContextProps = useMemo<SidebarReorderDndContextProps>(
     () => ({
       sensors,
-      collisionDetection: sidebarReorderCollisionDetection,
+      collisionDetection,
       modifiers: SIDEBAR_REORDER_MODIFIERS,
       onDragStart: handleDragStart,
       onDragOver,
       onDragCancel: handleDragCancel,
       onDragEnd: handleDragEnd,
     }),
-    [handleDragCancel, handleDragEnd, handleDragStart, onDragOver, sensors],
+    [
+      collisionDetection,
+      handleDragCancel,
+      handleDragEnd,
+      handleDragStart,
+      onDragOver,
+      sensors,
+    ],
   );
 
   return {

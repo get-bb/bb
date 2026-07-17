@@ -19,6 +19,7 @@ import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
 import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
 import {
   AppearanceSettingsSection,
+  DebugSettingsSection,
   ExperimentsSettingsSection,
   GeneralSettingsSection,
   LocalOpenTargetSettingsSection,
@@ -90,6 +91,7 @@ function futureIso(minutesFromNow: number): string {
 const usageFixture: {
   codex: ProviderUsage;
   claudeCode: ProviderUsage;
+  cursor: ProviderUsage;
 } = {
   codex: {
     status: "ok",
@@ -120,6 +122,23 @@ const usageFixture: {
         label: "Weekly limit",
         resetsAt: futureIso(4 * 24 * 60),
         usedPercent: 26,
+      },
+    ],
+  },
+  cursor: {
+    status: "ok",
+    planLabel: "Pro",
+    windows: [
+      {
+        label: "Plan usage",
+        resetsAt: futureIso(14 * 24 * 60),
+        usedPercent: 72,
+      },
+      {
+        label: "On-demand spend",
+        resetsAt: futureIso(14 * 24 * 60),
+        usedPercent: 25,
+        cost: { usedUsdCents: 1_250, limitUsdCents: 5_000 },
       },
     ],
   },
@@ -161,16 +180,16 @@ function useSettingsStoryState() {
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
   const [richTextEditing, setRichTextEditing] = useState(false);
   const [caffeinate, setCaffeinate] = useState(false);
+  const [showUnhandledProviderEvents, setShowUnhandledProviderEvents] =
+    useState(false);
   const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
     useState<PreferredAudioInputDeviceId>("studio-mic");
   const [directoryTargetId, setDirectoryTargetId] =
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
     useState<StoredTargetId>("default-app");
-  const [experiments, setExperiments] = useState<Experiments>({
-    ...defaultExperiments,
-    popoutChat: true,
-  });
+  const [experiments, setExperiments] =
+    useState<Experiments>(defaultExperiments);
 
   return {
     appearance,
@@ -183,6 +202,7 @@ function useSettingsStoryState() {
     preferredAudioInputDeviceId,
     rewriteLocalhostLinks,
     richTextEditing,
+    showUnhandledProviderEvents,
     setAppearance,
     setCaffeinate,
     setDirectoryTargetId,
@@ -193,6 +213,7 @@ function useSettingsStoryState() {
     setPreferredAudioInputDeviceId,
     setRewriteLocalhostLinks,
     setRichTextEditing,
+    setShowUnhandledProviderEvents,
     setThemePreference,
     themePreference,
   };
@@ -224,21 +245,30 @@ function GeneralSettingsStory({
   const state = useSettingsStoryState();
 
   return (
-    <GeneralSettingsSection
-      caffeinateAvailable={caffeinateAvailable}
-      caffeinateDisabled={false}
-      caffeinateEnabled={state.caffeinate}
-      desktopBrowserAvailable={desktopBrowserAvailable}
-      navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
-      onCaffeinateChange={state.setCaffeinate}
-      onNavigateToThreadAfterCreateChange={state.setNavigateToThreadAfterCreate}
-      onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
-      onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
-      onRichTextEditingChange={state.setRichTextEditing}
-      openLinksInAppBrowser={state.openLinksInAppBrowser}
-      rewriteLocalhostLinks={state.rewriteLocalhostLinks}
-      richTextEditing={state.richTextEditing}
-    />
+    <>
+      <GeneralSettingsSection
+        caffeinateAvailable={caffeinateAvailable}
+        caffeinateDisabled={false}
+        caffeinateEnabled={state.caffeinate}
+        desktopBrowserAvailable={desktopBrowserAvailable}
+        navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
+        onCaffeinateChange={state.setCaffeinate}
+        onNavigateToThreadAfterCreateChange={
+          state.setNavigateToThreadAfterCreate
+        }
+        onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
+        onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
+        onRichTextEditingChange={state.setRichTextEditing}
+        openLinksInAppBrowser={state.openLinksInAppBrowser}
+        rewriteLocalhostLinks={state.rewriteLocalhostLinks}
+        richTextEditing={state.richTextEditing}
+      />
+      <DebugSettingsSection
+        disabled={false}
+        enabled={state.showUnhandledProviderEvents}
+        onEnabledChange={state.setShowUnhandledProviderEvents}
+      />
+    </>
   );
 }
 
@@ -288,11 +318,7 @@ function FilePreferencesStory() {
   );
 }
 
-function ExperimentsStory({
-  desktopShellAvailable = true,
-}: {
-  desktopShellAvailable?: boolean;
-}) {
+function ExperimentsStory() {
   const state = useSettingsStoryState();
 
   return (
@@ -300,36 +326,11 @@ function ExperimentsStory({
       claudeCodeMockCliTrafficEnabled={
         state.experiments.claudeCodeMockCliTraffic
       }
-      desktopShellAvailable={desktopShellAvailable}
       disabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
           claudeCodeMockCliTraffic: enabled,
-        }))
-      }
-      onPopoutChatEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          popoutChat: enabled,
-        }))
-      }
-      onPopoutChatHotkeyChange={(popoutChatHotkey) =>
-        state.setExperiments((current) => ({
-          ...current,
-          popoutChatHotkey,
-        }))
-      }
-      onBbConnectEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          bbConnect: enabled,
-        }))
-      }
-      onMultiMachineEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          multiMachine: enabled,
         }))
       }
       onThreadSplitsEnabledChange={(enabled) =>
@@ -344,12 +345,8 @@ function ExperimentsStory({
           plugins: enabled,
         }))
       }
-      bbConnectEnabled={state.experiments.bbConnect}
-      multiMachineEnabled={state.experiments.multiMachine}
       threadSplitsEnabled={state.experiments.threadSplits}
       pluginsEnabled={state.experiments.plugins}
-      popoutChatEnabled={state.experiments.popoutChat}
-      popoutChatHotkey={state.experiments.popoutChatHotkey}
     />
   );
 }

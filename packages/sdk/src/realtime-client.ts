@@ -15,8 +15,8 @@ import type {
   BbRealtimeConnectionEvent,
   BbRealtimeEventMap,
   BbRealtimeEventName,
-  BbRealtimeOnArgs,
-  BbRealtimeOnArgsUnion,
+  BbRealtimeSubscribeArgs,
+  BbRealtimeSubscribeArgsUnion,
   BbRealtimeUnsubscribe,
   SystemRealtimeEvent,
 } from "./realtime-types.js";
@@ -205,13 +205,15 @@ export class BbRealtimeClient implements BbRealtime {
     this.transport = args.transport;
   }
 
-  on<TEventName extends BbRealtimeEventName>(
-    args: BbRealtimeOnArgs<TEventName>,
+  subscribe<TEventName extends BbRealtimeEventName>(
+    args: BbRealtimeSubscribeArgs<TEventName>,
   ): BbRealtimeUnsubscribe {
     return this.addListener(args);
   }
 
-  private addListener(args: BbRealtimeOnArgsUnion): BbRealtimeUnsubscribe {
+  private addListener(
+    args: BbRealtimeSubscribeArgsUnion,
+  ): BbRealtimeUnsubscribe {
     switch (args.event) {
       case "thread:changed":
         return this.addChangedListener({

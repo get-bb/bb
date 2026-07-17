@@ -350,13 +350,13 @@ export function registerActionsCommands(
     .option("--mode <mode>", "Message mode: queue, steer, or auto")
     .option(
       "--file <path>",
-      "Attach a local file (repeatable)",
+      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
       collectOption,
       [],
     )
     .option(
       "--image <path>",
-      "Attach a local image (repeatable)",
+      "Pass a host-readable absolute or uploaded attachment image path (repeatable)",
       collectOption,
       [],
     )

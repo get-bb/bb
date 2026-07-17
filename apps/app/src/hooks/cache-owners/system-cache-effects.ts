@@ -10,6 +10,7 @@ import {
   allHostQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
+  allSystemProvidersQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
   allThreadConversationOutlineQueryKeyPrefix,
   allThreadDetailBootstrapQueryKeyPrefix,
@@ -28,7 +29,6 @@ import {
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
-  systemProvidersQueryKey,
   threadPromptHistoryQueryKeyPrefix,
   threadSearchQueryKeyPrefix,
   threadsQueryKey,
@@ -44,17 +44,19 @@ import {
 interface SystemExecutionOptionsCacheArgs extends QueryClientArg {
   environmentId: string | null;
   executionOptions: SystemExecutionOptionsResponse;
+  hostId: string | null;
   providerId: string | null;
 }
 
 export function seedSystemExecutionOptionsCache({
   environmentId,
   executionOptions,
+  hostId,
   providerId,
   queryClient,
 }: SystemExecutionOptionsCacheArgs): void {
   queryClient.setQueryData<SystemExecutionOptionsResponse>(
-    systemExecutionOptionsQueryKey({ environmentId, providerId }),
+    systemExecutionOptionsQueryKey({ environmentId, hostId, providerId }),
     executionOptions,
   );
 }
@@ -127,6 +129,20 @@ export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
+/** Refresh settings and timeline projections after a General settings write. */
+export function invalidateGeneralSettingsDependencies({
+  queryClient,
+}: QueryClientArg): void {
+  invalidateQueryKeys({
+    queryClient,
+    queryKeys: [
+      systemConfigQueryKey(),
+      allThreadTimelineQueryKeyPrefix(),
+      allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),
+    ],
+  });
+}
+
 function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
   return [
     hostsQueryKey(),
@@ -160,7 +176,7 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     allEnvironmentDiffFilesQueryKeyPrefix(),
     allEnvironmentFilePreviewQueryKeyPrefix(),
     hostPathExistenceQueryKeyPrefix(),
-    systemProvidersQueryKey(),
+    allSystemProvidersQueryKeyPrefix(),
     allSystemExecutionOptionsQueryKeyPrefix(),
   ];
 }

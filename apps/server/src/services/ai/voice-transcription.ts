@@ -274,6 +274,9 @@ export async function transcribeVoiceInput(
   deps: LoggedWorkSessionDeps,
   args: TranscribeVoiceInputArgs,
 ): Promise<string> {
+  if (args.file.size === 0) {
+    throw new ApiError(400, "invalid_request", "Audio file must not be empty");
+  }
   if (args.file.size > VOICE_TRANSCRIPTION_MAX_BYTES) {
     throw new ApiError(400, "invalid_request", "Audio file exceeds 25MB limit");
   }

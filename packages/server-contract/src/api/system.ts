@@ -51,13 +51,40 @@ export type SystemExecutionOptionsResponse = z.infer<
   typeof systemExecutionOptionsResponseSchema
 >;
 
+const systemProviderHostQueryFields = {
+  hostId: z.string().min(1),
+  environmentId: z.string().min(1),
+} as const;
+
+function rejectMultipleProviderHostSelectors(
+  query: { environmentId?: string; hostId?: string },
+  context: z.RefinementCtx,
+): void {
+  if (query.environmentId !== undefined && query.hostId !== undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "hostId and environmentId are mutually exclusive",
+    });
+  }
+}
+
+/**
+ * Routes provider discovery through an environment's host or an explicit
+ * host. Omitting both preserves the primary-host fallback.
+ */
+export const systemProvidersQuerySchema = z
+  .object(systemProviderHostQueryFields)
+  .partial()
+  .superRefine(rejectMultipleProviderHostSelectors);
+export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
+
 export const systemExecutionOptionsQuerySchema = z
   .object({
+    ...systemProviderHostQueryFields,
     providerId: z.string().min(1),
-    hostId: z.string().min(1),
-    environmentId: z.string().min(1),
   })
-  .partial();
+  .partial()
+  .superRefine(rejectMultipleProviderHostSelectors);
 export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;

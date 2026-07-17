@@ -1,7 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type {
-  GitHostPullRequest,
   ProvisioningTranscriptEntry,
   WorkspaceStatus,
 } from "@bb/domain";
@@ -21,6 +20,7 @@ import type {
   SquashMergeResult,
 } from "./workspace.js";
 import { Workspace } from "./workspace.js";
+import type { GitHostPullRequestLookup } from "./git-host.js";
 import {
   withCheckoutMutationAdmission,
   withCheckoutMutationLock,
@@ -91,6 +91,8 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   baseBranch: string | null;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
+  /** Resolved user-shell PATH for the setup script. */
+  setupPath?: string;
 }
 
 export interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
@@ -152,7 +154,7 @@ export interface HostWorkspace {
   getDiff(options?: DiffOptions): Promise<DiffResult>;
   diffFiles(args: DiffFilesArgs): Promise<DiffFilesResult>;
   diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]>;
-  getPullRequest(): Promise<GitHostPullRequest | null>;
+  getPullRequest(): Promise<GitHostPullRequestLookup>;
   runPullRequestAction(action: PullRequestActionOptions): Promise<void>;
   listBranches(): Promise<string[]>;
   listFiles(): Promise<string[]>;
@@ -262,7 +264,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.diffPatch(args);
   }
 
-  getPullRequest(): Promise<GitHostPullRequest | null> {
+  getPullRequest(): Promise<GitHostPullRequestLookup> {
     return this.ws.getPullRequest();
   }
 
@@ -684,6 +686,7 @@ async function provisionWorktree(
     branchName: opts.branchName,
     baseBranch: opts.baseBranch,
     timeoutMs: opts.timeoutMs,
+    setupPath: opts.setupPath,
     onProgress: opts.onProgress,
     pruneEmptyParent: true,
     signal: opts.signal,

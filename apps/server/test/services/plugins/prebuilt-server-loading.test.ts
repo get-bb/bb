@@ -41,9 +41,10 @@ function gitPersistence(url: string, requestedRef: string) {
 
 /**
  * Prebuilt backend distribution (design §3 loader amendment, §6): managed
- * (git:/npm:) installs prefer a fresh, SDK-major-compatible dist/server.js;
- * path installs always load from source. The fixture's source entry THROWS,
- * so whichever half runs is unambiguous.
+ * (git:/npm:) installs prefer a fresh, SDK-compatible dist/server.js;
+ * path installs always load from source. Pre-1.0, minor SDK bumps are
+ * breaking, so compatibility means the exact SDK version. The fixture's
+ * source entry THROWS, so whichever half runs is unambiguous.
  */
 
 const THROWING_SERVER_TS = `throw new Error("source must not load");\n`;
@@ -74,7 +75,6 @@ describe("prebuilt server bundle loading", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });
@@ -95,7 +95,12 @@ describe("prebuilt server bundle loading", () => {
       JSON.stringify({
         name,
         version: "0.1.0",
-        bb: { server: "./server.ts" },
+        bb: {
+          name: "Prebuilt server fixture",
+          description: "Prebuilt plugin server fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
       }),
     );
     await writeFile(join(rootDir, "server.ts"), THROWING_SERVER_TS);
@@ -141,6 +146,27 @@ describe("prebuilt server bundle loading", () => {
     const entry = await service.installPath(rootDir);
     expect(entry.status).toBe("error");
     expect(entry.statusDetail).toContain("source must not load");
+  });
+
+  it("pre-1.0: falls back to source when the dist SDK version differs within major 0", async () => {
+    const rootDir = await writePrebuiltPlugin("bb-plugin-minordist", {
+      sdkMajor: PLUGIN_SDK_MAJOR,
+      sdkVersion: `${PLUGIN_SDK_MAJOR}.999.0`,
+    });
+    upsertInstalledPlugin(db, {
+      ...gitPersistence("https://github.com/acme/bb-plugin-minordist", "v1"),
+      id: "minordist",
+      source: "git:github.com/acme/bb-plugin-minordist@v1",
+      rootDir,
+      version: "0.1.0",
+      enabled: true,
+    });
+    await service.reload("minordist");
+
+    const entry = service.list().find((plugin) => plugin.id === "minordist");
+    // The throwing source ran — proof the 0.x-stale dist was NOT imported.
+    expect(entry?.status).toBe("error");
+    expect(entry?.statusDetail).toContain("source must not load");
   });
 
   it("falls back to source when the dist meta's SDK major mismatches", async () => {

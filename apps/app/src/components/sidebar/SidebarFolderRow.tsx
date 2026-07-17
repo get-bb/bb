@@ -10,7 +10,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
@@ -58,7 +57,6 @@ interface SidebarFolderRowProps {
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
   onCreateThread?: () => void;
-  onViewArchivedThreads?: () => void;
   onRename?: () => void;
   onRemove?: () => void;
 }
@@ -77,13 +75,12 @@ function SidebarFolderRowComponent({
   isCollapsed,
   onToggleCollapsed,
   onCreateThread,
-  onViewArchivedThreads,
   onRename,
   onRemove,
   stickyLevel,
 }: SidebarFolderRowProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
-  const hasMenuActions = Boolean(onViewArchivedThreads || onRename || onRemove);
+  const hasMenuActions = Boolean(onRename || onRemove);
   const hasActions = Boolean(onCreateThread || hasMenuActions);
   // Collapsed: the header speaks for its hidden descendants through one glyph
   // (pending > working > unread). Expanded: descendants show their own glyphs.
@@ -139,7 +136,7 @@ function SidebarFolderRowComponent({
         aria-hidden="true"
       >
         <Icon
-          name={isCollapsed ? "Folder" : "FolderOpen"}
+          name="ListView"
           className={COARSE_POINTER_ICON_SIZE_CLASS}
           aria-hidden="true"
         />
@@ -148,8 +145,8 @@ function SidebarFolderRowComponent({
         <span className="min-w-0 truncate">{name}</span>
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
-          expandLabel={`Expand ${label} folder`}
-          collapseLabel={`Collapse ${label} folder`}
+          expandLabel={`Expand ${label} section`}
+          collapseLabel={`Collapse ${label} section`}
           onToggle={onToggleCollapsed}
         />
       </span>
@@ -204,7 +201,7 @@ function SidebarFolderRowComponent({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label={`${label} folder actions`}
+                    aria-label={`${label} section actions`}
                     className={cn(
                       "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                       SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
@@ -217,15 +214,6 @@ function SidebarFolderRowComponent({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {onViewArchivedThreads ? (
-                    <DropdownMenuItem onSelect={onViewArchivedThreads}>
-                      <Icon name="Archive" aria-hidden="true" />
-                      Archived threads
-                    </DropdownMenuItem>
-                  ) : null}
-                  {onViewArchivedThreads && (onRename || onRemove) ? (
-                    <DropdownMenuSeparator />
-                  ) : null}
                   {onRename ? (
                     <DropdownMenuItem onSelect={onRename}>
                       <Icon name="Edit" aria-hidden="true" />

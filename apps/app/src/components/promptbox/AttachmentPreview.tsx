@@ -1,8 +1,5 @@
 import { useEffect } from "react";
-import {
-  getWrappedImageIndex,
-  ImageLightbox,
-} from "@/components/ui/image-lightbox.js";
+import { getWrappedImageIndex, ImageLightbox } from "@/components/ui/image-lightbox.js";
 import { Icon } from "@bb/shared-ui/icon";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
@@ -12,13 +9,6 @@ function isImageAttachment(attachment: PromptDraftAttachment): boolean {
     attachment.type === "localImage" ||
     attachment.mimeType?.toLowerCase().startsWith("image/") === true
   );
-}
-
-export function getAttachmentPreviewProjectId(
-  attachment: PromptDraftAttachment,
-  fallbackProjectId: string | undefined,
-): string | undefined {
-  return attachment.sourceProjectId ?? fallbackProjectId;
 }
 
 interface AttachmentPreviewProps {
@@ -42,10 +32,7 @@ export function AttachmentPreview({
   );
   const attachmentImageItems = imageAttachments.map((attachment) => ({
     alt: attachment.name,
-    src: toUserAttachmentImageSrc(
-      attachment.path,
-      getAttachmentPreviewProjectId(attachment, attachmentProjectId),
-    ),
+    src: toUserAttachmentImageSrc(attachment.path, attachmentProjectId),
   }));
   const hasMultipleAttachmentImages = imageAttachments.length > 1;
   const currentAttachmentImage =
@@ -79,10 +66,7 @@ export function AttachmentPreview({
                   <img
                     src={toUserAttachmentImageSrc(
                       attachment.path,
-                      getAttachmentPreviewProjectId(
-                        attachment,
-                        attachmentProjectId,
-                      ),
+                      attachmentProjectId,
                     )}
                     alt={attachment.name}
                     className="h-16 w-24 object-cover"

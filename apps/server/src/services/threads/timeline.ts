@@ -98,7 +98,7 @@ interface ResolveTurnSummaryDetailsSourceRangeArgs {
 }
 
 interface BuildThreadTimelineOptions {
-  isDevelopment: boolean;
+  includeProviderUnhandledOperations: boolean;
   includeNestedRows?: boolean;
   /** Thread high-water event sequence this window reflects (echoed to clients). */
   maxSeq: number;
@@ -115,7 +115,7 @@ interface BuildThreadTimelineOptions {
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
-  isDevelopment: boolean;
+  includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
 }
 
@@ -940,7 +940,8 @@ function buildThreadTimelineInternal(
     ? createThreadTimelineBuildProfileAccumulator()
     : null;
   const includeNestedRows = options.includeNestedRows ?? false;
-  const includeProviderUnhandledOperations = options.isDevelopment;
+  const includeProviderUnhandledOperations =
+    options.includeProviderUnhandledOperations;
   const eventSelection = measureThreadTimelineStage(
     profile,
     "event-query",
@@ -1059,6 +1060,8 @@ function buildThreadTimelineInternal(
     // post-hoc null-out needed here.
     pendingTodos: timeline.pendingTodos,
     goal: timeline.goal,
+    modelFallback:
+      options.page.kind === "latest" ? timeline.modelFallback : null,
     contextWindowUsage:
       options.page.kind === "latest"
         ? (timeline.contextWindowUsage ?? undefined)
@@ -1197,7 +1200,8 @@ export function buildTimelineTurnSummaryDetails(
     );
   }
 
-  const includeProviderUnhandledOperations = options.isDevelopment;
+  const includeProviderUnhandledOperations =
+    options.includeProviderUnhandledOperations;
   const exactEventRows = listStoredEventRowsInRange(db, {
     threadId: thread.id,
     seqStart: options.sourceSeqStart,

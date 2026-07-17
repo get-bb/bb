@@ -1,8 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import type { SystemConfigResponse } from "@bb/server-contract";
+import type {
+  InstalledPlugin,
+  SystemConfigResponse,
+} from "@bb/server-contract";
 import {
   defaultAppSettings,
   defaultAppTheme,
@@ -18,9 +27,15 @@ import {
   PluginSettingsDetail,
   PluginSettingsDetailSection,
   PluginSettingsForm,
+  PluginsSettingsSection,
 } from "./PluginsSettingsSection";
 import { InstalledPluginRow } from "./plugins/InstalledPluginsTab";
-import { EMPTY_PLUGIN_UPDATE_STATE } from "@/hooks/queries/plugin-settings-queries";
+import {
+  EMPTY_PLUGIN_UPDATE_STATE,
+  pluginListQueryKey,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 
 interface RecordedRequest {
   url: string;
@@ -28,11 +43,10 @@ interface RecordedRequest {
 }
 
 function jsonOk(body: unknown): Response {
-  return {
-    ok: true,
+  return new Response(JSON.stringify(body), {
     status: 200,
-    json: () => Promise.resolve(body),
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function responseJson(body: unknown): Response {
@@ -162,7 +176,61 @@ describe("PluginSettingsForm", () => {
   });
 });
 
-function rowPlugin(status: string, logoUrl: string | null = null) {
+describe("PluginsSettingsSection", () => {
+  it("offers only Installed and Browse management tabs", async () => {
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(systemConfigQueryKey(), systemConfig(true));
+    queryClient.setQueryData(pluginListQueryKey(true), { plugins: [] });
+    render(
+      <MemoryRouter>
+        <PluginsSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    const tabs = within(await screen.findByRole("tablist")).getAllByRole(
+      "button",
+    );
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0]?.textContent).toContain("Installed");
+    expect(tabs[1]?.textContent).toBe("Browse");
+  });
+});
+
+function serverPlugin(
+  overrides: Partial<InstalledPlugin> = {},
+): InstalledPlugin {
+  return {
+    id: "linear",
+    source: "builtin:linear",
+    rootDir: "/plugins/linear",
+    version: "0.1.0",
+    provenance: "builtin",
+    isOrphanedBuiltin: false,
+    sourceDisplay: "builtin",
+    updateState: {},
+    enabled: true,
+    description: null,
+    name: null,
+    icon: null,
+    status: "running",
+    statusDetail: null,
+    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+    services: [],
+    schedules: [],
+    cliCommand: null,
+    hasSettings: true,
+    app: { hasApp: false, bundle: null },
+    logoUrl: null,
+    logoDarkUrl: null,
+    ...overrides,
+  };
+}
+
+function rowPlugin(
+  status: PluginListItem["status"],
+  logoUrl: string | null = null,
+): PluginListItem {
   return {
     id: "linear",
     version: "0.1.0",
@@ -170,13 +238,14 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     status,
     statusDetail: null,
     description: null,
-    displayName: null,
+    name: null,
     icon: null,
     logoUrl,
     logoDarkUrl: null,
     hasSettings: true,
     provenance: "builtin" as const,
-    marketplaceName: null,
+    source: "builtin:linear",
+    isOrphanedBuiltin: false,
     sourceDisplay: "builtin",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };
@@ -189,9 +258,12 @@ describe("PluginSettingsDetail settings gating", () => {
       vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
     );
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginSettingsDetail plugin={rowPlugin("needs-configuration")} />, {
-      wrapper,
-    });
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail plugin={rowPlugin("needs-configuration")} />
+      </MemoryRouter>,
+      { wrapper },
+    );
     expect(await screen.findByLabelText("Greeting")).toBeTruthy();
   });
 
@@ -199,9 +271,51 @@ describe("PluginSettingsDetail settings gating", () => {
     const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
     vi.stubGlobal("fetch", fetchSpy);
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginSettingsDetail plugin={rowPlugin("error")} />, { wrapper });
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail plugin={rowPlugin("error")} />
+      </MemoryRouter>,
+      { wrapper },
+    );
     expect(screen.queryByLabelText("Greeting")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("removes a stale builtin plugin from its detail page", async () => {
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return jsonOk({ ok: true });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("disabled"),
+            isOrphanedBuiltin: true,
+          }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(
+      screen.getByText(/BB remembers the removal so the plugin stays hidden/),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Remove plugin" }));
+
+    await vi.waitFor(() => {
+      expect(requests).toContainEqual({
+        url: "/api/v1/plugins/linear",
+        init: { method: "DELETE" },
+      });
+    });
   });
 
   it("renders a slot-only settings page while the plugins experiment is off", async () => {
@@ -236,22 +350,7 @@ describe("PluginSettingsDetail settings gating", () => {
         if (path === "/api/v1/plugins") {
           return responseJson({
             enabled: false,
-            plugins: [
-              {
-                id: "connect",
-                version: "0.1.0",
-                enabled: true,
-                status: "running",
-                statusDetail: null,
-                description: null,
-                logoUrl: null,
-                logoDarkUrl: null,
-                hasSettings: false,
-                provenance: "builtin",
-                sourceDisplay: "builtin",
-                updateState: {},
-              },
-            ],
+            plugins: [serverPlugin({ id: "connect", hasSettings: false })],
           });
         }
         return new Response("not found", { status: 404 });
@@ -259,7 +358,12 @@ describe("PluginSettingsDetail settings gating", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginSettingsDetailSection pluginId="connect" />, { wrapper });
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetailSection pluginId="connect" />
+      </MemoryRouter>,
+      { wrapper },
+    );
 
     expect(await screen.findByText("Remote access")).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();
@@ -268,6 +372,31 @@ describe("PluginSettingsDetail settings gating", () => {
 });
 
 describe("InstalledPluginRow", () => {
+  it("uses the rich logo in a roomy settings row when an icon also exists", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ ok: true })),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <InstalledPluginRow
+          plugin={{
+            ...rowPlugin("running", "/plugin-logo.svg"),
+            icon: "Smartphone",
+          }}
+          onUpdateClick={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(
+      screen.getByTestId("plugin-settings-logo-linear").getAttribute("src"),
+    ).toBe("/plugin-logo.svg");
+    expect(document.querySelector('[data-icon="Smartphone"]')).toBeNull();
+  });
+
   it("falls back to the manifest icon when a plugin logo fails to load", () => {
     vi.stubGlobal(
       "fetch",
@@ -299,7 +428,10 @@ describe("InstalledPluginRow", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         requests.push({ url, init });
-        return jsonOk({ ok: true });
+        return jsonOk({
+          ok: true,
+          plugin: serverPlugin({ enabled: false, status: "disabled" }),
+        });
       }),
     );
 

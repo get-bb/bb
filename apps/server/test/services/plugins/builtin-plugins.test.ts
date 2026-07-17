@@ -27,6 +27,7 @@ import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import {
   BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
+  OFFICIAL_PLUGINS,
   resolveBuiltinPluginRootPath,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
@@ -72,6 +73,9 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
           version: "0.1.0",
           type: "module",
           bb: {
+            name,
+            description: `${name} builtin plugin fixture.`,
+            branding: { icon: "Zap" },
             server: "./src/server.ts",
             app: "./app.tsx",
             skills: ["skills"],
@@ -126,9 +130,10 @@ function createService(args: {
   dataDir: string;
   db: DbConnection;
   builtinName?: string;
+  autoInstall?: boolean;
   defaultEnabled?: boolean;
   isEnabled?: () => boolean;
-  isConnectEnabled?: () => boolean;
+  includeBuiltin?: boolean;
   rootDir?: string;
   watchBuiltinPluginSources?: boolean;
 }): PluginService {
@@ -143,14 +148,21 @@ function createService(args: {
     dataDir: args.dataDir,
     appVersion: "0.9.0",
     isEnabled: args.isEnabled ?? (() => false),
-    isConnectEnabled: args.isConnectEnabled ?? (() => false),
-    builtinPlugins: [
-      {
-        name: args.builtinName ?? "fixture",
-        rootDir: args.rootDir ?? fixtureRoot,
-        defaultEnabled: args.defaultEnabled ?? true,
-      },
-    ],
+    bundledPlugins:
+      args.includeBuiltin === false
+        ? []
+        : [
+            {
+              name: args.builtinName ?? "fixture",
+              pluginId: args.builtinName ?? "fixture",
+              autoInstall: args.autoInstall ?? true,
+              repoDirectory: args.autoInstall === false
+                ? ("official-plugins" as const)
+                : ("plugins" as const),
+              rootDir: args.rootDir ?? fixtureRoot,
+              defaultEnabled: args.defaultEnabled ?? true,
+            },
+          ],
     watchBuiltinPluginSources: args.watchBuiltinPluginSources,
     loadTimeoutMs: 2000,
   });
@@ -169,10 +181,12 @@ describe("builtin plugin reconciliation", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
   });
 
-  it("does not reserve the marketplace Memory plugin as a builtin", () => {
+  it("keeps official plugins bundled but out of the auto-install builtins", () => {
     expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(
       "memory",
     );
+    expect(OFFICIAL_PLUGINS.map((plugin) => plugin.name)).toContain("memory");
+    expect(OFFICIAL_PLUGINS.every((plugin) => !plugin.autoInstall)).toBe(true);
   });
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
@@ -182,6 +196,7 @@ describe("builtin plugin reconciliation", () => {
       ["custom-instructions", "EditFile"],
       ["inline-vis", "AppWindow"],
       ["secrets", "Lock"],
+      ["workflows", "Workflow"],
     ]);
 
     expect(BUILTIN_PLUGINS).toHaveLength(expectedIcons.size);
@@ -189,7 +204,9 @@ describe("builtin plugin reconciliation", () => {
       const manifest = await readPluginManifest(
         resolveBuiltinPluginRootPath(builtin.name),
       );
-      expect(manifest.icon, builtin.name).toBe(expectedIcons.get(builtin.name));
+      expect(manifest.branding.icon, builtin.name).toBe(
+        expectedIcons.get(builtin.name),
+      );
     }
   });
 
@@ -210,6 +227,7 @@ describe("builtin plugin reconciliation", () => {
         source: "builtin:fixture",
         version: "0.1.0",
         provenance: "builtin",
+        isOrphanedBuiltin: false,
         sourceDisplay: "builtin · builtin-fixture",
         updateState: {},
         icon: "EditFile",
@@ -226,6 +244,24 @@ describe("builtin plugin reconciliation", () => {
         normalizationVersion: 1,
       },
     );
+  });
+
+  it("marks a persisted builtin as orphaned after it leaves the registry", async () => {
+    service = createService({ db, dataDir: join(workDir, "data") });
+    await service.start();
+    expect(service.list()[0]?.isOrphanedBuiltin).toBe(false);
+    await service.stop();
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      includeBuiltin: false,
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", isOrphanedBuiltin: true },
+    ]);
   });
 
   it("backfills every legacy source form once while preserving registration state", async () => {
@@ -329,13 +365,36 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("loads the builtin connect plugin only while the bb connect experiment is on", async () => {
-    let connectEnabled = false;
+  it("ships Workflows disabled on a fresh database", async () => {
+    const workflows = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "workflows",
+    );
+    expect(workflows?.defaultEnabled).toBe(false);
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "workflows",
+      defaultEnabled: workflows?.defaultEnabled,
+      rootDir: resolveBuiltinPluginRootPath("workflows"),
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "workflows",
+        source: "builtin:workflows",
+        enabled: false,
+        status: "disabled",
+      },
+    ]);
+  });
+
+  it("loads the builtin connect plugin like other builtins", async () => {
     service = createService({
       db,
       dataDir: join(workDir, "data"),
       builtinName: "connect",
-      isConnectEnabled: () => connectEnabled,
     });
 
     await service.start();
@@ -345,36 +404,10 @@ describe("builtin plugin reconciliation", () => {
         id: "builtin-fixture",
         source: "builtin:connect",
         enabled: true,
-        status: "disabled",
-        statusDetail: 'disabled by the "bb connect" experiment',
-      },
-    ]);
-    expect(loadCount()).toBe(0);
-
-    connectEnabled = true;
-    await service.onExperimentsChanged();
-
-    expect(service.list()).toMatchObject([
-      {
-        id: "builtin-fixture",
-        source: "builtin:connect",
         status: "running",
       },
     ]);
     expect(loadCount()).toBe(1);
-
-    connectEnabled = false;
-    await service.onExperimentsChanged();
-
-    expect(service.getApi("builtin-fixture")).toBeUndefined();
-    expect(service.list()).toMatchObject([
-      {
-        id: "builtin-fixture",
-        source: "builtin:connect",
-        status: "disabled",
-        statusDetail: 'disabled by the "bb connect" experiment',
-      },
-    ]);
   });
 
   it("keeps a builtin tombstoned after remove and restart", async () => {
@@ -409,7 +442,12 @@ describe("builtin plugin reconciliation", () => {
         name: "bb-plugin-builtin-fixture",
         version: "0.2.0",
         type: "module",
-        bb: { server: "./server.ts" },
+        bb: {
+          name: "Builtin fixture",
+          description: "Builtin plugin fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
       }),
     );
 
@@ -469,7 +507,13 @@ describe("builtin plugin reconciliation", () => {
         name: "bb-plugin-hot-builtin",
         version: "0.1.0",
         type: "module",
-        bb: { server: "./server.ts", app: "./app.tsx" },
+        bb: {
+          name: "Hot builtin",
+          description: "Hot builtin plugin fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+          app: "./app.tsx",
+        },
       }),
     );
     await writeFile(
@@ -522,6 +566,7 @@ describe("builtin plugin reconciliation", () => {
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
       build: false,
+      plugins: BUILTIN_PLUGINS,
       sourceModuleDir,
       targetRoot,
     });
@@ -560,6 +605,7 @@ describe("builtin plugin reconciliation", () => {
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
       build: false,
+      plugins: BUILTIN_PLUGINS,
       sourceModuleDir,
       targetRoot,
     });
@@ -600,6 +646,7 @@ describe("builtin plugin reconciliation", () => {
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
       build: false,
+      plugins: BUILTIN_PLUGINS,
       sourceModuleDir,
       targetRoot,
     });
@@ -643,6 +690,7 @@ describe("builtin plugin packaging", () => {
     await copyBuiltinPlugins({
       bbVersion: "0.9.0-test",
       build: false,
+      plugins: BUILTIN_PLUGINS,
       sourceModuleDir,
       targetRoot,
     });

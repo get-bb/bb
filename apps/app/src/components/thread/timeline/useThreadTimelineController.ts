@@ -25,6 +25,7 @@ export interface UseThreadTimelineControllerResult {
   activeBackgroundCommands: ThreadTimelineResponse["activeBackgroundCommands"];
   contextWindowUsage: ThreadTimelineResponse["contextWindowUsage"];
   goal: ThreadTimelineResponse["goal"];
+  modelFallback: ThreadTimelineResponse["modelFallback"];
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
   loadOlderTimelineRows: () => Promise<void>;
@@ -207,10 +208,7 @@ function preserveTimelineRowIdentity({
   const previousRowsById = buildTimelineRowIdentityMap(previousRows);
   return nextRows.map((row) => {
     const previous = previousRowsById.get(row.id);
-    if (
-      previous &&
-      previous.signature === timelineRowIdentitySignature(row)
-    ) {
+    if (previous && previous.signature === timelineRowIdentitySignature(row)) {
       return previous.row;
     }
     return row;
@@ -523,6 +521,7 @@ export function useThreadTimelineController({
     activeBackgroundCommands: latestTimeline?.activeBackgroundCommands ?? [],
     contextWindowUsage: latestTimeline?.contextWindowUsage,
     goal: latestTimeline?.goal ?? null,
+    modelFallback: latestTimeline?.modelFallback ?? null,
     hasOlderTimelineRows,
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,

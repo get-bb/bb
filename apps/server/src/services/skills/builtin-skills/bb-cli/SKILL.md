@@ -40,6 +40,10 @@ message agents, or inspect projects, providers, and environments.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).
+- The `showUnhandledProviderEvents` General preference defaults to false and
+  exposes raw provider events that bb does not yet understand in packaged
+  builds. Development builds always show those diagnostic rows. Update it with
+  `bb settings general showUnhandledProviderEvents <true|false>`.
 - Settings → Keyboard records server-backed per-command shortcut overrides.
   The `showKeyboardHints` preference controls the delayed badges shown while
   holding Command or Control and defaults to true; update it with
@@ -75,12 +79,18 @@ message agents, or inspect projects, providers, and environments.
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
-  attachments, and `--folder <id>` to file the new thread immediately.
+  attachments, and `--folder <id>` to file the new thread immediately. These
+  flags pass host-readable absolute paths (or relative server-upload tokens)
+  through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
+- Pass `--visibility hidden` for background/plugin workers that should remain
+  out of sidebar organization without contributing unread/pending favicon
+  attention or native parent notifications. Hidden threads otherwise retain
+  ordinary list, search, prompt-history, folder, lifecycle, parent-operation,
+  and direct-open behavior. Visible is the default.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
-  https://getbb.app). It requires the "bb connect" experiment; when off the
-  builtin connect plugin is not loaded. Pairing returns immediately — the
+  https://getbb.app). Pairing returns immediately — the
   server itself holds the tunnel and reconnects on restart, so there is no
   foreground process.
   `bb connect status` / `bb connect off` report and clear the pairing.
@@ -118,11 +128,38 @@ message agents, or inspect projects, providers, and environments.
 - `bb machine show`, `join-code`, `rename`, and `remove` cover the Settings →
   Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
   or install provider CLIs on a selected machine.
+- Use `bb project create --name <name> --root <path> --machine <id-or-name>`
+  to bind a new project's local path to a connected enrolled machine. Use
+  `--host` as an alias. Omitting both selectors preserves the existing local
+  CLI machine fallback (normally the primary machine).
+- `bb project list` preserves the ordinary-project-only default. Pass
+  `--include-personal` when the singleton personal project must be discoverable.
 - Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
-  to register a path on another machine. Use `--clone` instead of `--path` to
-  clone the project's remote there; `--remote-url` and `--target-path` are
+  to register a path on another connected machine. It uses the same selector
+  resolution and fallback as project create. Use `--clone` instead of `--path`
+  to clone the project's remote there; `--remote-url` and `--target-path` are
   optional clone overrides.
+- `bb project paths|files|content|commands` accept `--machine <id-or-name>`
+  (`--host` alias) or `--environment <id>`, but not both. An environment uses
+  its owning machine and workspace; an explicit machine uses that machine's
+  project source; omitting both intentionally uses the primary machine source.
+  `bb project content --json` returns UTF-8 text or base64 binary content with
+  an explicit `contentEncoding`.
+- Use `bb project attachment upload <project-id> --client-file <path>` when the
+  bytes live on the CLI machine, including when the CLI and bb server are on
+  different hosts. It reads locally and sends multipart bytes through the
+  configured `BB_SERVER_URL` (and its enrolled-machine authentication proxy),
+  returning the stable server attachment DTO. Optional `--filename` and
+  `--mime-type` override inferred metadata. Pass the returned relative `path`
+  to thread `--file` or `--image`; image MIME types are capped at 10MB and
+  other files at 25MB. `bb project attachment download <project-id>
+<attachment-path> --client-file <path>` writes existing attachment bytes on
+  the CLI machine. There is no project-attachment list or per-file remove API.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
+- Direct environment inspection accepts any environment ID: use `bb environment
+status|branches|paths|diff|diff-files|diff-file|diff-patch <id>` and `bb
+environment pull-request show <id>`. Diff commands require an explicit target
+  and the matching merge-base or commit flags; all support `--json`.
 - `bb environment pull-request ready|draft|merge` manages pull-request state;
   `bb environment archive-threads` bulk-archives an environment's threads.
 - Spawned child threads inherit permission from explicit flags, then the
@@ -133,7 +170,10 @@ message agents, or inspect projects, providers, and environments.
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
-  and `bb provider models <provider-id>`.
+  and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
+  (alias `--host`) or `--environment <id>` to inspect the machine where work
+  will run; the selectors cannot be combined. With neither selector they
+  intentionally inspect the primary machine.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
@@ -196,8 +236,9 @@ For review or fix pipelines, get the environment ID from
   other workspace file for the user in the BB IDE's thread panel.
 - Use `bb thread open <thread-id> --split right|down|left|top|replace` to open
   or focus a thread in the current app split layout. `replace` is the default;
-  an already-open thread is focused, and an edge split at the four-pane cap
-  replaces the focused pane. Explicit `--split` placement requires the
+  an already-open thread is focused. Edge splits create panes through the
+  eighth pane; at eight panes, they replace the focused pane. Explicit
+  `--split` placement requires the
   **"Thread splits"** experiment in Settings → Experiments; ordinary opens
   without `--split` continue to work while it is off.
 - A file path is optional when a thread ID is explicit:
@@ -216,22 +257,26 @@ For review or fix pipelines, get the environment ID from
 
 ## Long-Running Commands
 
-- Use `bb thread terminal ...` for long-running commands the user may need to
-  inspect or stop later: dev servers, watch tasks, REPLs, database consoles, and
-  similar processes.
-- Prefer a thread terminal over a one-off foreground command for dev servers.
-  The terminal is a real PTY scoped to the thread's environment and appears in
-  the bb UI as a terminal tab.
+- Use `bb terminal ...` for long-running commands the user may need to inspect
+  or stop later: dev servers, watch tasks, REPLs, database consoles, and similar
+  processes. The terminal is a real persistent PTY shown in the bb UI.
+- `list` and `create` require exactly one explicit scope: `--thread <id>`,
+  `--environment <id>`, or `--machine <id-or-name>` (`--host` is an alias).
+  Add `--cwd <path>` only to a machine scope. Machine targets resolve to an
+  explicit host ID; terminal commands never silently fall back to primary.
 - Start a server with
-  `bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"`.
-- Use `bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120`
-  to wait for readiness from new output. Pass `--from-start` only when matching
-  existing scrollback is intentional.
-- Use `bb thread terminal output <terminal-id> <thread-id> --json` to read
-  bounded output, then continue with `--since-seq <nextSeq>` when polling.
-- Use `bb thread terminal send <terminal-id> <thread-id> --text "..." --enter`
-  for interactive input, and `bb thread terminal stop <terminal-id> <thread-id>`
-  when the process is no longer needed.
+  `bb terminal create --thread <thread-id> --title "pnpm dev" --command "pnpm dev"`.
+- All existing-session operations need only the terminal ID. Use
+  `bb terminal wait <terminal-id> --contains "Local:" --timeout 120` to wait
+  for readiness from new output. Pass `--from-start` only when matching existing
+  scrollback is intentional.
+- Use `bb terminal output <terminal-id> --json` to read bounded output, then
+  continue with `--since-seq <nextSeq>` when polling. Use
+  `bb terminal send <terminal-id> --text "..." --enter` for interactive input,
+  `bb terminal rename <terminal-id> <title>` to rename, and
+  `bb terminal close <terminal-id>` when the process is no longer needed.
+- `bb terminal restart <terminal-id>` replaces the session with a shell in the
+  same scope, size, and title. It does not replay the original launch command.
 
 ## Failures And Interruptions
 
@@ -244,8 +289,8 @@ For review or fix pipelines, get the environment ID from
 
 ## Memory
 
-- Memory is an opt-in plugin in the default BB Official marketplace. Install it
-  with `bb plugin install memory@bb-official` before using `bb memory ...`.
+- Memory is an opt-in official plugin bundled with the app. Install it with
+  `bb plugin install memory` before using `bb memory ...`.
 - Use `bb memory catalog` to inspect the compact index, `bb memory search
 <query>` to find candidates, and `bb memory get <id>` to progressively
   disclose a full record.
@@ -255,6 +300,25 @@ For review or fix pipelines, get the environment ID from
 - Mutations use optimistic concurrency: pass the current record version to
   `bb memory update <id> --expected-version <n>` or `bb memory forget <id>
 --expected-version <n> --reason <text>`.
+
+## Tasks
+
+- Tasks is an opt-in official plugin bundled with the app. Install it with
+  `bb plugin install tasks` before using `bb tasks ...`.
+- Start tracked work with `bb tasks show <key-or-id> --json`. Fetch relevant
+  files with `bb tasks attachment get <attachment-id> --out <path>`.
+- Leave substantive milestone updates with `bb tasks comment <key-or-id>
+  --body <markdown>` and attach result artifacts with `bb tasks attachment
+  add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
+  = that comment). Avoid progress spam.
+- Delegated threads are attached automatically. For work started independently,
+  run `bb tasks attach <key-or-id>` from the working thread.
+- When implementation is ready for review, run `bb tasks update <key-or-id>
+  --status in_review`; if blocked, leave the status accurate and explain the
+  blocker in a comment.
+- Add `--json` when command output will drive follow-up work. Run `bb tasks
+  --help` for project, folder, task, label, attachment, preset, delegation,
+  attached-thread, and demo-data commands.
 
 ## Automations
 
@@ -310,9 +374,42 @@ For review or fix pipelines, get the environment ID from
   needed. Batch known names and add `--purpose <text>` plus one
   `--describe <NAME> <text>` per variable.
 - The user enters values in a secure plugin form; values are written directly
-  to the workspace dotenv file and never returned in CLI output or chat.
+  to the dotenv file and never returned in CLI output or chat. Relative paths
+  resolve from the CLI working directory; absolute paths may point anywhere on
+  the thread's host.
 - Treat the returned path and added/updated/unchanged counts as verification.
   Do not inspect the completed file with `cat`, `sed`, `env`, or similar tools.
+
+## Workflows
+
+- The builtin `workflows` plugin runs durable provider-independent JavaScript
+  orchestration and is disabled on fresh installations. Enable it under
+  Settings → Plugins or with `bb plugin enable workflows` before using its
+  command.
+- Author and check sources with `bb workflows validate (--script <javascript>|
+--source <javascript>|--file <path>|--name <name>)`; start a background run
+  with the same selector via `bb workflows run ... [--args <json>] [--resume
+<run-id>]`.
+- Poll compact progress with `bb workflows status <run-id>` and list compact
+  run summaries with `bb workflows list [--limit <1-50>]`. For details,
+  redirect one bounded
+  `bb workflows history <run-id> [--cursor <call-index>] [--limit <1-100>]`
+  JSONL page into `$BB_THREAD_STORAGE`, inspect it with file tools, and continue
+  from the final page record's `nextCursor`. This shell redirection writes on
+  the thread's execution host, including remote hosts; do not print the raw
+  history into the agent transcript. Cancel with `bb workflows stop <run-id>`.
+- Before choosing an explicit provider/model/reasoning tuple, run `bb provider
+list --environment "$BB_ENVIRONMENT_ID" --json`, then query only the chosen
+  provider with `bb provider models <provider-id> --environment
+"$BB_ENVIRONMENT_ID" --json`. Never guess ACP model IDs. Run every Workflows
+  command from a BB project thread.
+- Configure its seven settings with `bb plugin config workflows set <key>
+<value>`: `maxActiveRuns` (default 4, range 1–32), `maxConcurrentAgents` (8,
+  1–64), `maxAgentCalls` (100, 1–1000), `workerStallTimeoutMs` (1800000,
+  60000–86400000), `totalRunTimeoutMs` (86400000, 60000–604800000),
+  `retentionDays` (30, 1–3650), and `maxNotificationBytes` (16384,
+  1024–262144). `maxActiveRuns` applies live; the other six are snapshotted per
+  run. No plugin reload is needed after changing them.
 
 ## Theming
 
@@ -328,11 +425,18 @@ For review or fix pipelines, get the environment ID from
   - `bb theme list` — built-in and custom themes and which palette is active.
   - `bb theme dir` — print the absolute custom-theme directory (where to create
     `<name>/theme.css`). Use this instead of guessing the path.
-  - `bb theme set <id>` — activate a built-in (`default`, `nord`, `dracula`,
-    `solarized`, `gruvbox`, `catppuccin`) or a custom theme by its folder name.
+  - `bb theme set <id> [--favicon-color <color>]` — activate a built-in
+    (`default`, `nord`, `dracula`, `solarized`, `gruvbox`, `catppuccin`), custom,
+    or plugin-contributed theme. Without the flag it preserves the favicon
+    color; with the flag it updates the complete appearance selection.
   - `bb theme show [--css]` — print the active palette; `--css` dumps the active
     theme's CSS.
-  - `bb theme reset` — back to `default`.
+  - `bb theme reset` — back to `default` while preserving the favicon color.
+  - `bb theme favicon set <color>` — set the favicon color while preserving the
+    active theme. Colors: `default`, `red`, `orange`, `yellow`, `green`, `teal`,
+    `blue`, `purple`, `pink`.
+  - `bb theme favicon reset` — reset the favicon color to `default` while
+    preserving the active theme.
 
 ### Creating or editing a custom theme
 
@@ -362,48 +466,36 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   it with services, schedules, HTTP/RPC endpoints, settings — and `bb` CLI
   subcommands that agents run through bash like any other command.
 - **Enable user-installed plugins first.** Plugins are an experiment, off by
-  default: turn on **"Plugins"** under Settings → Experiments. Builtin plugins
-  (`builtin:<name>`) ship with bb and remain available even when the experiment
-  is off, except `connect`, which is gated by the **"bb connect"**
-  experiment.
-- **Plugin marketplaces** (catalogs under `/api/v1/marketplaces`):
-  - BB starts with the removable **BB Official** catalog configured. It lists
-    the opt-in GitHub, Docs, and Memory plugins; removing it is remembered across
-    restarts.
-  - `bb plugin marketplace add <source> [--name <n>] [--yes]` — register and
-    refresh a catalog only (installs nothing). Sources: local path / `path:`,
-    `owner/repo[@ref]`, or a git URL`[@ref]`. Every remote/git source requires
-    trust confirmation; `--yes` skips; non-TTY refuses without it. Unmistakable
-    local path forms (`path:`, `./…`, or absolute paths) skip the prompt;
-    ambiguous bare sources are conservatively prompted.
-  - `bb plugin marketplace list [--json]` / `bb plugin marketplace update
-[name]` — list catalogs or re-fetch one/all. Catalog refresh is not plugin
-    update; a failed refresh keeps the last-known-good catalog.
-  - `bb plugin marketplace remove <name>` — remove a catalog. Its installed
-    plugins remain installed and are converted to direct provenance while
-    preserving their source intent.
-  - `bb plugin search <query>` — search configured catalogs (id, name,
-    description, category); status shows installed / compatible / requires
-    newer bb.
+  default: turn on **"Plugins"** under Settings → Experiments. Auto-installed
+  builtin plugins ship with bb and remain available even when the experiment
+  is off (except `connect`, which is gated by the **"bb connect"**
+  experiment); store-installed official plugins are a user opt-in and stay
+  behind the Plugins experiment like other installs.
+- **BB Official plugins** (store under `/api/v1/plugin-catalog`):
+  - BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside
+    the app and install from the local copy — no network. Installed official
+    plugins are pinned to the bundled copy and update with BB app releases.
+  - `bb plugin search <query> [--json]` — search the official plugins by id,
+    name, description, or category; status shows installed / compatible /
+    requires newer bb.
 - Commands:
-  - `bb plugin install <src>` — marketplace entry (bare name when unique;
-    `<entry>@<marketplace>` when ambiguous), local path, `builtin:<name>`,
+  - `bb plugin install <src>` — official plugin name (github, docs, memory,
+    tasks), local path, `builtin:<name>`,
     `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
     required for `npm:`). Prefixes `path:` / `npm:` / `git:` / `builtin:` skip
-    marketplace resolution. To pin or range an npm package, install with
-    `npm:<package>@…` (marketplace installs use the catalog entry's source).
+    official-plugin resolution. To pin or range an npm package, install with
+    `npm:<package>@…`.
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
-    track, while exact versions are pinned. Marketplace GitHub Release semver
-    ranges track published, SHA-256-verified `.tgz` assets. Git branches track;
+    track, while exact versions are pinned. Git branches track;
     tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
     refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
     are built at install time for path sources and git sources without a
     prebuilt app when their imported dependencies are already available;
     git/npm packages can also ship a metadata-validated prebuilt `dist/`, and
-    npm/GitHub Release packages must. Managed git/npm installs refuse `engines.bb` /
+    npm packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
-    and ids reserved by builtins.
+    and ids reserved by bundled plugins.
   - `bb plugin outdated` — check installed plugins for compatible updates
     (table; `--json` for raw results). Shows latest compatible candidate and
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate
@@ -415,6 +507,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     it after removal.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
+  - `bb plugin source <id> [--json]` — requested and resolved source, engine
+    ranges, install time, integrity/registry details, and recent activation
+    history.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
     `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
@@ -423,7 +518,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend
     entry plus a typecheck-only `tsconfig.json`; scaffold sets
-    `engines.bbPluginSdk` to `^0.2.0`); `bb plugin build [path]` —
+    `engines.bbPluginSdk` to `^0.3.1`); `bb plugin build [path]` —
     compile the plugin into `dist/`: the backend bundle (`server.js` +
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
@@ -435,8 +530,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - Frontend entries default-export `definePluginApp` from
     `@bb/plugin-sdk/app` and register UI slots (homepageSection,
     settingsSection, navPanel, threadPanelAction, composerAccessory,
-    fileOpener) with hooks (useRpc, useRealtime, useSettings, useBbContext,
-    useBbNavigate, useComposer); components are vendored shadcn source the
+    fileOpener) with hooks (useRpc, useRealtime, useRealtimeConnectionState,
+    useSettings, useBbContext,
+    useBbNavigate, useComposer for scoped text editing / quote / mention /
+    focus access); components are vendored shadcn source the
     plugin owns. Installed
     plugins and their settings also appear under Settings → Plugins.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run

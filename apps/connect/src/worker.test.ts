@@ -1206,11 +1206,13 @@ function makeDoEnv() {
 
 function fakeTunnelSocket(
   send?: (data: ArrayBuffer | ArrayBufferView | string) => void,
+  readyState = 1, // READY_STATE_OPEN
 ) {
   return {
     send: send ?? vi.fn(),
     close: vi.fn(),
     deserializeAttachment: () => null,
+    readyState,
   } as unknown as WebSocket;
 }
 
@@ -1501,5 +1503,67 @@ describe("TunnelDO response relay", () => {
     );
     // The mid-body response's stream errors out instead of hanging forever.
     await expect(midBodyResponse.text()).rejects.toBeTruthy();
+  });
+});
+
+// ── TunnelDO dead tunnel sockets ────────────────────────────────────────────
+//
+// A tunnel socket can die without webSocketClose ever being delivered, leaving
+// it tagged in getWebSockets() while send() throws "Can't call WebSocket
+// send() after close()". This took getbb.app down: every authenticated request
+// crashed with an uncaught exception (Cloudflare 1101) while the reconnected
+// client — heartbeat-acked on its own live socket — never re-dialed.
+
+describe("TunnelDO dead tunnel sockets", () => {
+  const READY_STATE_CLOSED = 3;
+
+  function deadTunnelSocket() {
+    return fakeTunnelSocket(() => {
+      throw new TypeError("Can't call WebSocket send() after close().");
+    }, READY_STATE_CLOSED);
+  }
+
+  it("answers 503 offline when the only tunnel socket is dead", async () => {
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(deadTunnelSocket(), ["tunnel"]);
+
+    const res = await dob.fetch(new Request("https://do.internal/"));
+    expect(res.status).toBe(503);
+    expect(res.headers.get("x-bb-tunnel-offline")).toBe("1");
+  });
+
+  it("routes around a lingering dead socket to the live replacement", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    // The dead socket was accepted first, so it sits ahead of the live one in
+    // getWebSockets() — the ordering that made [0] the outage.
+    state.addSocket(deadTunnelSocket(), ["tunnel"]);
+    state.addSocket(fakeTunnelSocket(captureSent(sent)), ["tunnel"]);
+
+    void dob.fetch(new Request("https://do.internal/app.js"));
+    expect(sent.length).toBe(1);
+    expect(decodeFrame(sent[0]).type).toBe("open-http");
+  });
+
+  it("answers 503 offline when send() throws despite an open readyState", async () => {
+    // The socket can close between the liveness check and send() — the throw
+    // must degrade to the offline response, not crash the request.
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(
+      fakeTunnelSocket(() => {
+        throw new TypeError("Can't call WebSocket send() after close().");
+      }),
+      ["tunnel"],
+    );
+
+    const res = await dob.fetch(new Request("https://do.internal/"));
+    expect(res.status).toBe(503);
+    expect(res.headers.get("x-bb-tunnel-offline")).toBe("1");
   });
 });

@@ -37,7 +37,13 @@ const FIXTURE_PACKAGE_JSON = JSON.stringify(
     name: "bb-plugin-fixture",
     version: "0.1.0",
     type: "module",
-    bb: { server: "./server.ts", app: "./app.tsx" },
+    bb: {
+      name: "Build fixture",
+      description: "Plugin app build fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+      app: "./app.tsx",
+    },
   },
   null,
   2,
@@ -248,7 +254,12 @@ describe("buildPluginApp", () => {
       JSON.stringify({
         name: "bb-plugin-headless",
         version: "0.1.0",
-        bb: { server: "./server.ts" },
+        bb: {
+          name: "Headless fixture",
+          description: "Headless plugin build fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
       }),
     );
     await expect(buildPluginApp(root, TEST_BB_VERSION)).rejects.toThrow(

@@ -134,6 +134,11 @@ export async function removeHostPath(
       "Cannot remove the declared root",
     );
   }
-  await fs.rm(target, { recursive: command.recursive, force: false });
+  const targetInfo = await fs.lstat(target);
+  if (targetInfo.isDirectory() && !command.recursive) {
+    await fs.rmdir(target);
+  } else {
+    await fs.rm(target, { recursive: command.recursive, force: false });
+  }
   return { ok: true };
 }

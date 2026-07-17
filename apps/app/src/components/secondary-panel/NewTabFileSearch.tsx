@@ -55,6 +55,7 @@ import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 export interface NewTabFileSearchProps {
   projectId: string | undefined;
   environmentId: string | null;
+  hostId?: string | null;
   currentThreadId: string;
   focusRequest: number;
   idleActions: ReactNode;
@@ -494,6 +495,7 @@ function ShowMoreToggle({
 export function NewTabFileSearch({
   projectId,
   environmentId,
+  hostId,
   currentThreadId,
   focusRequest,
   idleActions,
@@ -527,6 +529,7 @@ export function NewTabFileSearch({
       query,
       limit: FILE_SEARCH_LIMIT,
       environmentId,
+      hostId,
       currentThreadId,
     });
   const searchSuggestions = useMemo(

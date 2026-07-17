@@ -35,7 +35,7 @@ export interface TestAppHarness {
   deps: ServerAppDeps;
   hub: NotificationHub;
   pluginService: ReturnType<typeof createApp>["pluginService"];
-  marketplaceService: ReturnType<typeof createApp>["marketplaceService"];
+  pluginCatalogService: ReturnType<typeof createApp>["pluginCatalogService"];
   cleanup(): Promise<void>;
 }
 
@@ -191,7 +191,7 @@ export async function createTestAppHarness(
     watchInterests,
     sharedPorts,
   };
-  const { app, marketplaceService, pluginService } = createApp(deps);
+  const { app, pluginCatalogService, pluginService } = createApp(deps);
 
   return {
     app,
@@ -200,7 +200,7 @@ export async function createTestAppHarness(
     deps,
     hub,
     pluginService,
-    marketplaceService,
+    pluginCatalogService,
     async cleanup(): Promise<void> {
       await rm(dataDir, { recursive: true, force: true });
     },

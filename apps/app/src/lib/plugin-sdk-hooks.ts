@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import type { PromptTextMention } from "@bb/domain";
 import type {
   BbContext,
   BbNavigate,
   PluginComposerApi,
   PluginComposerMention,
+  PluginRealtimeConnectionState,
+  PluginRpcContract,
   PluginRpcClient,
   PluginSettingsState,
 } from "@bb/plugin-sdk";
@@ -23,6 +31,7 @@ import {
   getThreadRoutePath,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
+import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 
 /**
@@ -38,6 +47,54 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
 
+function serializePluginRpcInput(value: unknown): string {
+  const ancestors = new Set<object>();
+  function assertJson(current: unknown, path: string): void {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        throw new Error(`rpc input at ${path} contains a non-finite number`);
+      }
+      return;
+    }
+    if (typeof current !== "object") {
+      throw new Error(`rpc input at ${path} is not a JSON value`);
+    }
+    if (ancestors.has(current)) {
+      throw new Error(`rpc input at ${path} is cyclic`);
+    }
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        current.forEach((item, index) => assertJson(item, `${path}[${index}]`));
+        return;
+      }
+      const prototype = Object.getPrototypeOf(current) as object | null;
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error(`rpc input at ${path} must be a plain JSON object`);
+      }
+      for (const key of Reflect.ownKeys(current)) {
+        if (typeof key === "symbol") {
+          throw new Error(`rpc input at ${path} contains a symbol key`);
+        }
+      }
+      for (const [key, child] of Object.entries(current)) {
+        assertJson(child, `${path}.${key}`);
+      }
+    } finally {
+      ancestors.delete(current);
+    }
+  }
+  assertJson(value, "$input");
+  return JSON.stringify(value);
+}
+
 /**
  * POST /api/v1/plugins/:id/rpc/:method. Resolves with the handler's result;
  * throws an Error carrying the server's message on `{ ok: false }` or
@@ -49,12 +106,13 @@ export async function callPluginRpc(
   method: string,
   input?: unknown,
 ): Promise<unknown> {
+  const serializedInput = serializePluginRpcInput(input ?? null);
   const response = await fetchImpl(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(input ?? null),
+      body: serializedInput,
     },
   );
   const body = (await response.json().catch(() => null)) as {
@@ -63,11 +121,25 @@ export async function callPluginRpc(
     error?: unknown;
   } | null;
   if (!response.ok || body?.ok !== true) {
-    throw new Error(
-      typeof body?.error === "string"
+    const structured =
+      typeof body?.error === "object" && body.error !== null
         ? body.error
-        : `rpc "${method}" failed (HTTP ${response.status})`,
-    );
+        : null;
+    const message =
+      structured !== null &&
+      typeof Reflect.get(structured, "message") === "string"
+        ? String(Reflect.get(structured, "message"))
+        : typeof body?.error === "string"
+          ? body.error
+          : `rpc "${method}" failed (HTTP ${response.status})`;
+    const error = new Error(message);
+    if (structured !== null) {
+      const code = Reflect.get(structured, "code");
+      const issues = Reflect.get(structured, "issues");
+      if (typeof code === "string") Reflect.set(error, "code", code);
+      if (Array.isArray(issues)) Reflect.set(error, "issues", issues);
+    }
+    throw error;
   }
   return body.result;
 }
@@ -90,7 +162,11 @@ export async function fetchPluginSdkSettings(
     ok?: unknown;
     values?: unknown;
   } | null;
-  if (body?.ok !== true || typeof body.values !== "object" || body.values === null) {
+  if (
+    body?.ok !== true ||
+    typeof body.values !== "object" ||
+    body.values === null
+  ) {
     return null;
   }
   const values: Record<string, string | boolean> = {};
@@ -111,15 +187,20 @@ export function allPluginSettingsQueryKeyPrefix(): QueryKey {
   return ["plugin-settings"];
 }
 
-export function useRpc(): PluginRpcClient {
+export function useRpc<
+  Contract extends PluginRpcContract = PluginRpcContract,
+>(): PluginRpcClient<Contract> {
   const pluginId = usePluginId();
-  return useMemo(
+  const client = useMemo(
     () => ({
       call: (method: string, input?: unknown) =>
         callPluginRpc(fetch, pluginId, method, input),
     }),
     [pluginId],
   );
+  // The runtime transport is contract-agnostic; the plugin supplies Contract
+  // from its type-only backend import and the server enforces its schemas.
+  return client as PluginRpcClient<Contract>;
 }
 
 export function useRealtime(
@@ -140,6 +221,11 @@ export function useRealtime(
       }),
     [pluginId, channel],
   );
+}
+
+/** Exposes the lifecycle of the same socket that backs `useRealtime`. */
+export function useRealtimeConnectionState(): PluginRealtimeConnectionState {
+  return useServerConnectionState();
 }
 
 export function useSettings(): PluginSettingsState {
@@ -173,7 +259,9 @@ export function useBbNavigate(): BbNavigate {
       // path when the lookup fails.
       void getThread(threadId)
         .then((thread) =>
-          navigate(getThreadRoutePath({ projectId: thread.projectId, threadId })),
+          navigate(
+            getThreadRoutePath({ projectId: thread.projectId, threadId }),
+          ),
         )
         .catch(() => navigate(`/threads/${threadId}`));
     },
@@ -219,6 +307,49 @@ export function useBbNavigate(): BbNavigate {
   );
 }
 
+function reconcileComposerMentions(
+  currentText: string,
+  nextText: string,
+  mentions: readonly PromptTextMention[],
+): PromptTextMention[] {
+  if (currentText === nextText) return [...mentions];
+
+  let unchangedPrefixLength = 0;
+  const maximumPrefixLength = Math.min(currentText.length, nextText.length);
+  while (
+    unchangedPrefixLength < maximumPrefixLength &&
+    currentText[unchangedPrefixLength] === nextText[unchangedPrefixLength]
+  ) {
+    unchangedPrefixLength += 1;
+  }
+
+  let unchangedSuffixLength = 0;
+  while (
+    unchangedSuffixLength < currentText.length - unchangedPrefixLength &&
+    unchangedSuffixLength < nextText.length - unchangedPrefixLength &&
+    currentText[currentText.length - unchangedSuffixLength - 1] ===
+      nextText[nextText.length - unchangedSuffixLength - 1]
+  ) {
+    unchangedSuffixLength += 1;
+  }
+
+  const replacedCurrentEnd = currentText.length - unchangedSuffixLength;
+  const replacementDelta = nextText.length - currentText.length;
+  return mentions.flatMap((mention) => {
+    if (mention.end <= unchangedPrefixLength) return [mention];
+    if (mention.start >= replacedCurrentEnd) {
+      return [
+        {
+          ...mention,
+          start: mention.start + replacementDelta,
+          end: mention.end + replacementDelta,
+        },
+      ];
+    }
+    return [];
+  });
+}
+
 /**
  * Programmatic composer-draft access (plugin design §5.2): the same shared
  * localStorage-backed draft store the built-in "Add to chat" affordances
@@ -239,6 +370,41 @@ export function useComposer(): PluginComposerApi {
   );
   const draft = usePromptDraftStorage(scope);
   const { addQuote: addDraftQuote, getCurrent, setDraft, storageKey } = draft;
+
+  const replaceText = useCallback(
+    (current: ReturnType<typeof getCurrent>, nextText: string) => {
+      if (nextText === current.text) return;
+      setDraft({
+        ...current,
+        text: nextText,
+        mentions: reconcileComposerMentions(
+          current.text,
+          nextText,
+          current.mentions,
+        ),
+      });
+    },
+    [setDraft],
+  );
+
+  const setText = useCallback(
+    (next: string) => {
+      replaceText(getCurrent(), next);
+    },
+    [getCurrent, replaceText],
+  );
+
+  const updateText = useCallback(
+    (updater: (current: string) => string) => {
+      const current = getCurrent();
+      replaceText(current, updater(current.text));
+    },
+    [getCurrent, replaceText],
+  );
+
+  const clear = useCallback(() => {
+    setText("");
+  }, [setText]);
 
   const addQuote = useCallback(
     (text: string) => {
@@ -300,10 +466,24 @@ export function useComposer(): PluginComposerApi {
         threadId !== undefined
           ? { kind: "thread", threadId }
           : { kind: "new-thread", projectId: projectId ?? null },
+      text: draft.text,
+      setText,
+      updateText,
+      clear,
       addQuote,
       insertMention,
       focus,
     }),
-    [addQuote, focus, insertMention, projectId, threadId],
+    [
+      addQuote,
+      clear,
+      draft.text,
+      focus,
+      insertMention,
+      projectId,
+      setText,
+      threadId,
+      updateText,
+    ],
   );
 }

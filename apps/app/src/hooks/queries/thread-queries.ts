@@ -6,10 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useDebounceValue } from "usehooks-ts";
-import type {
-  PendingInteraction,
-  ThreadWithRuntime,
-} from "@bb/domain";
+import type { PendingInteraction, ThreadWithRuntime } from "@bb/domain";
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
@@ -41,6 +38,7 @@ import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
 } from "../cache-owners/thread-list-cache-data";
+import type { ArchivedThreadsKindFilter } from "./query-keys";
 import {
   resolveThreadPlaceholder,
   resolveThreadTimelinePlaceholder,
@@ -287,20 +285,17 @@ export function hasThreadSearchableQuery(value: string): boolean {
 
 export interface UseArchivedThreadsFilters {
   projectId?: string;
-  /** Restrict to threads filed directly under this folder. */
-  folderId?: string;
-  /** Restrict to loose threads — those not filed under any folder. */
-  unfiled?: boolean;
+  /** Restrict to root or child threads. */
+  kind?: ArchivedThreadsKindFilter;
 }
 
 export function useArchivedThreads(
   filters: UseArchivedThreadsFilters,
   options?: QueryOptions,
 ) {
-  const { projectId, folderId, unfiled } = filters;
-  const enabled =
-    (options?.enabled ?? true) &&
-    (Boolean(projectId) || Boolean(folderId) || Boolean(unfiled));
+  const { projectId, kind = "all" } = filters;
+  const enabled = options?.enabled ?? true;
+  const hasParent = kind === "all" ? undefined : kind === "child";
   useThreadListRealtimeSubscription({ enabled });
 
   return useInfiniteQuery<
@@ -312,15 +307,13 @@ export function useArchivedThreads(
   >({
     queryKey: archivedThreadsListQueryKey({
       ...(projectId ? { projectId } : {}),
-      ...(folderId ? { folderId } : {}),
-      ...(unfiled ? { unfiled: true } : {}),
+      ...(kind !== "all" ? { kind } : {}),
     }),
     queryFn: ({ pageParam, signal }) =>
       api.listThreads(
         {
           ...(projectId ? { projectId } : {}),
-          ...(folderId ? { folderId } : {}),
-          ...(unfiled ? { unfiled: true } : {}),
+          ...(hasParent !== undefined ? { hasParent } : {}),
           archived: true,
           limit: ARCHIVED_THREADS_PAGE_SIZE,
           offset: pageParam,

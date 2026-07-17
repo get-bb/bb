@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
-import type { BbDesktopPopoutApi } from "./popout.js";
 import type { AppCommandId } from "@bb/domain";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
@@ -21,11 +20,9 @@ export const bbDesktopWindowStateSchema = z
     isFullScreen: z.boolean(),
   })
   .strict();
-export type BbDesktopWindowState = z.infer<
-  typeof bbDesktopWindowStateSchema
->;
+export type BbDesktopWindowState = z.infer<typeof bbDesktopWindowStateSchema>;
 
-export const bbDesktopThemeSchema = z.enum(["light", "dark"]);
+export const bbDesktopThemeSchema = z.enum(["system", "light", "dark"]);
 export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
@@ -45,12 +42,6 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * construction.
    */
   browser: BbDesktopBrowserApi;
-  /**
-   * Control surface for the desktop-only popout chat window. The Electron main
-   * process owns the native window and global hotkey; the renderer only sends
-   * typed commands over the preload bridge.
-   */
-  popout: BbDesktopPopoutApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   /**
@@ -72,13 +63,9 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * Subscribe to native desktop requests to open the current thread's secondary
    * panel new-tab page. Optional for desktop shells that predate this command.
    */
-  onOpenNewTab?(
-    listener: BbDesktopOpenNewTabHandler,
-  ): BbDesktopInfoUnsubscribe;
+  onOpenNewTab?(listener: BbDesktopOpenNewTabHandler): BbDesktopInfoUnsubscribe;
   /** Subscribe to native menu commands that are executed by the renderer. */
-  onAppCommand?(
-    listener: BbDesktopAppCommandHandler,
-  ): BbDesktopInfoUnsubscribe;
+  onAppCommand?(listener: BbDesktopAppCommandHandler): BbDesktopInfoUnsubscribe;
   /**
    * Subscribe to native desktop close-window requests. Return true when the
    * renderer handled the request, for example by closing an active secondary
@@ -96,10 +83,10 @@ export interface BbDesktopApi extends BbDesktopInfo {
    */
   openExternalUrl(url: string): void;
   /**
-   * Push the renderer-resolved theme to the Electron main process so the
+   * Push the renderer's theme preference to the Electron main process so the
    * NSWindow appearance — traffic lights and inactive title-bar chrome —
-   * follows bb's theme rather than the OS appearance. No-op on the web build
-   * where `window.bbDesktop` is undefined.
+   * follows bb's explicit theme or the OS when set to system. No-op on the web
+   * build where `window.bbDesktop` is undefined.
    */
   setTheme(theme: BbDesktopTheme): void;
 }

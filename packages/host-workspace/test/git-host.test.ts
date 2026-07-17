@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getPullRequestForBranch,
   parseGitHostPullRequest,
   runPullRequestActionForBranch,
   type GitHostPullRequestAction,
@@ -12,6 +13,23 @@ vi.mock("node:child_process", async () => {
     await vi.importActual<typeof import("node:child_process")>(
       "node:child_process",
     );
+  const { promisify } = await import("node:util");
+  // Real execFile carries a promisify custom that resolves { stdout, stderr };
+  // mirror it so `promisify(execFile)` behaves the same over the mock.
+  Object.defineProperty(execFileMock, promisify.custom, {
+    value: (file: string, args: readonly string[], options: object) =>
+      new Promise((resolve, reject) => {
+        execFileMock(
+          file,
+          args,
+          options,
+          (error: Error | null, stdout = "", stderr = "") => {
+            if (error) reject(error);
+            else resolve({ stdout, stderr });
+          },
+        );
+      }),
+  });
   return {
     ...actual,
     execFile: execFileMock,
@@ -251,6 +269,99 @@ describe("runPullRequestActionForBranch", () => {
     ).rejects.toMatchObject({
       code: "git_host_cli_unavailable",
       name: "WorkspaceError",
+    });
+  });
+});
+
+describe("getPullRequestForBranch", () => {
+  function mockGhStdout(stdout: string): void {
+    execFileMock.mockImplementation(
+      (
+        _file: string,
+        _args: readonly string[],
+        _options: object,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(null, stdout, "");
+      },
+    );
+  }
+
+  function mockGhFailure(error: Error): void {
+    execFileMock.mockImplementation(
+      (
+        _file: string,
+        _args: readonly string[],
+        _options: object,
+        callback: (error: Error) => void,
+      ) => {
+        callback(error);
+      },
+    );
+  }
+
+  const lookupArgs = { cwd: "/tmp/workspace", branch: "bb/pr-lookup" };
+
+  it("returns found for a well-formed PR", async () => {
+    mockGhStdout(ghJson());
+    await expect(getPullRequestForBranch(lookupArgs)).resolves.toMatchObject({
+      outcome: "found",
+      pullRequest: { number: 42, state: "OPEN" },
+    });
+  });
+
+  it("returns none when gh reports the branch has no PR", async () => {
+    mockGhFailure(
+      Object.assign(new Error("gh exited 1"), {
+        code: 1,
+        stderr: 'no pull requests found for branch "bb/pr-lookup"',
+      }),
+    );
+    await expect(getPullRequestForBranch(lookupArgs)).resolves.toEqual({
+      outcome: "none",
+    });
+  });
+
+  it("returns unavailable when gh is not installed", async () => {
+    mockGhFailure(
+      Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }),
+    );
+    await expect(getPullRequestForBranch(lookupArgs)).resolves.toEqual({
+      outcome: "unavailable",
+      message: "GitHub CLI is not available",
+    });
+  });
+
+  it("returns unavailable with the stderr detail for an auth failure", async () => {
+    mockGhFailure(
+      Object.assign(new Error("gh exited 4"), {
+        code: 4,
+        stderr:
+          "gh: To get started with GitHub CLI, please run: gh auth login",
+      }),
+    );
+    const result = await getPullRequestForBranch(lookupArgs);
+    expect(result.outcome).toBe("unavailable");
+    expect(result).toMatchObject({
+      message: expect.stringContaining("gh auth login"),
+    });
+  });
+
+  it("returns unavailable when gh times out", async () => {
+    mockGhFailure(
+      Object.assign(new Error("timed out"), { killed: true, code: null }),
+    );
+    await expect(getPullRequestForBranch(lookupArgs)).resolves.toMatchObject({
+      outcome: "unavailable",
+      message: expect.stringContaining("timed out"),
+    });
+  });
+
+  it("returns unavailable for unparseable gh output", async () => {
+    mockGhStdout("not json at all");
+    await expect(getPullRequestForBranch(lookupArgs)).resolves.toEqual({
+      outcome: "unavailable",
+      message: "gh pr view returned unparseable output",
     });
   });
 });

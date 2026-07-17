@@ -10,6 +10,7 @@ import { registerProjectCommands } from "./commands/project.js";
 import { registerPluginCommands } from "./commands/plugin.js";
 import { registerProviderCommands } from "./commands/provider.js";
 import { registerStatusCommand } from "./commands/status.js";
+import { registerTerminalCommands } from "./commands/terminal.js";
 import { registerSettingsCommands } from "./commands/settings.js";
 import { registerThemeCommands } from "./commands/theme.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
@@ -85,6 +86,7 @@ registerProjectCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerMachineCommands(program, getUrl);
+registerTerminalCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
 registerFileCommands(program, getUrl);
@@ -126,20 +128,7 @@ async function tryPluginCommandProxy(): Promise<void> {
     // when the name matches an installed-but-disabled plugin's id.
     const disabled = await findDisabledPluginForCommand(getUrl(), candidate);
     if (disabled !== null) {
-      if (disabled.enabled && disabled.statusDetail?.includes("bb connect")) {
-        console.error(
-          `bb ${candidate} is behind the "bb connect" experiment — ` +
-            "enable it in Settings → Experiments.",
-        );
-      } else if (
-        disabled.enabled &&
-        disabled.statusDetail?.includes("Multi-machine")
-      ) {
-        console.error(
-          `bb ${candidate} is behind the "Multi-machine" experiment — ` +
-            "enable it in Settings → Experiments.",
-        );
-      } else if (
+      if (
         disabled.enabled &&
         disabled.statusDetail?.includes("Plugins")
       ) {

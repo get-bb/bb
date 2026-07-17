@@ -3,11 +3,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  getPopoutThreadRoutePath,
-  getThreadRoutePath,
-  type ThreadRouteSurface,
-} from "@/lib/route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { DefaultPaneContextProvider, usePaneContext } from "./PaneContext";
 
 const mocks = vi.hoisted(() => ({
@@ -27,34 +23,26 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function renderDefaultPaneContext(surface: ThreadRouteSurface) {
+function renderDefaultPaneContext() {
   return renderHook(() => usePaneContext(), {
     wrapper: ({ children }: { children: ReactNode }) => (
-      <DefaultPaneContextProvider surface={surface}>
-        {children}
-      </DefaultPaneContextProvider>
+      <DefaultPaneContextProvider>{children}</DefaultPaneContextProvider>
     ),
   });
 }
 
 describe("DefaultPaneContextProvider", () => {
-  it.each([
-    ["page", getThreadRoutePath],
-    ["popout", getPopoutThreadRoutePath],
-  ] satisfies readonly [ThreadRouteSurface, typeof getThreadRoutePath][])(
-    "provides focused main-pane navigation for the %s surface",
-    (surface, getRoutePath) => {
-      const { result } = renderDefaultPaneContext(surface);
-      const thread = { projectId: "proj_1", threadId: "thr_1" };
+  it("provides focused main-pane navigation", () => {
+    const { result } = renderDefaultPaneContext();
+    const thread = { projectId: "proj_1", threadId: "thr_1" };
 
-      expect(result.current.paneId).toBe("main");
-      expect(result.current.isFocused).toBe(true);
+    expect(result.current.paneId).toBe("main");
+    expect(result.current.isFocused).toBe(true);
 
-      act(() => {
-        result.current.navigateInPane(thread);
-      });
+    act(() => {
+      result.current.navigateInPane(thread);
+    });
 
-      expect(mocks.navigate).toHaveBeenCalledWith(getRoutePath(thread));
-    },
-  );
+    expect(mocks.navigate).toHaveBeenCalledWith(getThreadRoutePath(thread));
+  });
 });

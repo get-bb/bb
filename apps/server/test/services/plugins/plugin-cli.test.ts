@@ -54,7 +54,12 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "CLI fixture",
+        description: "Plugin CLI fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -238,7 +243,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(badEntry.statusDetail).toContain("invalid cli command name");
   });
 
-  it("a second register replaces the first (one command per plugin)", async () => {
+  it("rejects a second CLI registration within one factory execution", async () => {
     const replacer = await writePlugin(
       join(harness.config.dataDir, "fixtures"),
       {
@@ -251,13 +256,14 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
       `,
       },
     );
-    await harness.pluginService.installPath(replacer);
-    const contributions = harness.pluginService.listCliContributions();
-    const entry = contributions.find((c) => c.pluginId === "replacer");
-    expect(entry?.name).toBe("second");
-    expect(contributions.filter((c) => c.pluginId === "replacer")).toHaveLength(
-      1,
-    );
+    const entry = await harness.pluginService.installPath(replacer);
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain("cli command is already registered");
+    expect(
+      harness.pluginService
+        .listCliContributions()
+        .filter((contribution) => contribution.pluginId === "replacer"),
+    ).toEqual([]);
   });
 
   it("generates the plugin-commands skill, regenerates on reload, removes on toggle-off", async () => {

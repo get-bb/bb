@@ -4,9 +4,11 @@
 // on disk.
 //
 // rollup-plugin-dts flattens @bb/plugin-sdk's own contracts plus every @bb/*
-// type it references (BbSdk, PromptInput, ThreadResponse, …) into one file,
-// keeping only genuine npm packages (react, better-sqlite3, hono, zod) as
-// external imports — those resolve from the scaffold's own devDependencies.
+// type it references (BbSdk, PromptInput, ThreadResponse, …) into the root
+// file. Testing subpaths reuse that already-portable root declaration through
+// the package's own public name instead of flattening the same contracts a
+// second time. Genuine npm packages remain external imports and resolve from
+// the consumer's own dependencies.
 //
 // The output is committed as bundled-types/*.d.ts (read at scaffold time by
 // @bb/templates via file path — no package edge, to avoid a dependency cycle).
@@ -20,20 +22,27 @@ import { dts } from "rollup-plugin-dts";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
 const pkgsDir = path.resolve(pkgRoot, "..");
-const publicApiModule = path.join(
-  pkgsDir,
-  "server-contract/src/public-api.ts",
-);
+const publicApiModule = path.join(pkgsDir, "server-contract/src/public-api.ts");
 const publicApiStub = path.join(here, "public-api-stub.d.ts");
 const outDir = path.join(pkgRoot, "bundled-types");
 const outputs = {
   "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
   "bb-plugin-sdk-app.d.ts": path.join(pkgRoot, "src/app.ts"),
+  "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
+  "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
 };
 
 // Real npm packages the bundle imports from — kept external so they resolve
 // from the scaffold's devDependencies rather than being inlined.
-const EXTERNAL = [/^better-sqlite3/, /^hono($|\/)/, /^zod($|\/)/, /^react($|\/|-)/];
+const EXTERNAL = [
+  /^@bb\/plugin-sdk$/,
+  /^@testing-library\/react($|\/)/,
+  /^better-sqlite3/,
+  /^hono($|\/)/,
+  /^react($|\/|-)/,
+  /^react-dom($|\/)/,
+  /^zod($|\/)/,
+];
 
 /** Resolve any `@bb/<pkg>[/<sub>]` to its `source` export target on disk. */
 function resolveBbSource(id) {
@@ -87,8 +96,9 @@ async function bundle(input) {
 }
 
 const HEADER = [
-  "// Bundled type declarations for `@bb/plugin-sdk`, shipped into scaffolded",
-  "// plugins so they typecheck without the @bb/* workspace on disk.",
+  "// Portable type declarations for `@bb/plugin-sdk`. Unpublished BB",
+  "// workspace contracts are flattened; public subpaths may reuse the",
+  "// package root without requiring any other @bb/* package.",
   "//",
   "// Confused by the API, or need a symbol that isn't here? Clone the BB repo",
   "// and read the real source: https://github.com/ymichael/bb",

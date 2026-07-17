@@ -1,26 +1,19 @@
 import {
   memo,
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type MouseEventHandler,
   type ReactNode,
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import {
-  DndContext,
-  useDroppable,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
+import { DndContext, DragOverlay, useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { createPortal } from "react-dom";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink, useNavigate } from "react-router-dom";
@@ -30,7 +23,6 @@ import {
   useArchiveEnvironmentThreads,
   useUpdateEnvironment,
 } from "@/hooks/mutations/environment-mutations";
-import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
 import { useDialogState } from "@/hooks/useDialogState";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -41,9 +33,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
-  SidebarMenuItem,
   SidebarMenuSkeleton,
   SidebarStickyGroup,
   SidebarStickyTier,
@@ -97,13 +87,16 @@ import {
   type ThreadComparator,
 } from "./projectThreadGroups";
 import { SidebarFolderRow } from "./SidebarFolderRow";
-import { sidebarCollapsedFoldersAtom } from "./sidebarCollapsedAtoms";
+import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
+import {
+  sidebarCollapsedFoldersAtom,
+  type CollapsibleSidebarSectionId,
+  type SidebarSectionId,
+} from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_SELECTED_STATE_CLASS,
-  SIDEBAR_ROW_STATIC_STATE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
@@ -112,9 +105,24 @@ import {
   type SidebarSortableDragBindings,
 } from "./sortableMotion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
+import type { NeighborReorderRequest } from "@/lib/neighbor-reorder";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
-import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
-import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
+import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
+import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
+import {
+  collectFolderThreadDndLookup,
+  PINNED_THREAD_PARENT_KEY,
+  useFolderThreadDnd,
+  type FolderThreadDndState,
+} from "./useFolderThreadDnd";
+import {
+  getBuiltInSidebarSectionNode,
+  renderBuiltInSidebarSection,
+  type BuiltInSidebarSectionNodes,
+  type BuiltInSidebarSectionOptions,
+  type BuiltInSidebarSectionOptionsById,
+} from "./BuiltInSidebarSection";
+import { FolderThreadDndProvider } from "./FolderThreadDndContext";
 
 // Pin the project row plus this many parent levels (parent threads,
 // worktree group headers); rows deeper than the cap render non-sticky so a deep
@@ -143,6 +151,8 @@ export interface ProjectRowProps {
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   isLocalPathInvalid: boolean;
+  headerActions?: ReactNode;
+  headerActionsOpen?: boolean;
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
@@ -150,7 +160,7 @@ export interface ProjectRowProps {
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeProjectClickSuppression?: ConsumeDragClickSuppression;
   projectDragBindings?: SidebarSortableDragBindings;
-  projectRowRef?: (element: HTMLLIElement | null) => void;
+  projectRowRef?: (element: HTMLDivElement | null) => void;
   projectRowStyle?: CSSProperties;
 }
 
@@ -178,28 +188,70 @@ interface FolderThreadTreeProps {
   collapsedEnvironmentIds: Set<string>;
   onProjectSelect?: () => void;
   onCreateThreadInFolder?: (folderId: string) => void;
-  onViewArchivedThreadsInFolder?: (folderId: string) => void;
   onRenameFolder?: (folder: SidebarFolderDefinition) => void;
   onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
+  renderTopLevelFolderHeaderActions?: (
+    folder: SidebarFolderDefinition,
+  ) => TopLevelFolderHeaderActions;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
+interface TopLevelFolderHeaderActions {
+  actions: ReactNode;
+  actionsOpen: boolean;
+}
+
+interface ChronologicalBuiltInSidebarSections {
+  collapsedSectionIds: ReadonlySet<CollapsibleSidebarSectionId>;
+  onToggleCollapsed: (id: CollapsibleSidebarSectionId) => void;
+  pinned: BuiltInSidebarSectionOptions;
+  threads: Omit<BuiltInSidebarSectionOptions, "content">;
+}
+
 interface ChronologicalFolderThreadSectionsProps extends FolderThreadTreeProps {
-  renderAllThreadsSection: (content: ReactNode) => ReactNode;
-  renderFoldersSection: (content: ReactNode) => ReactNode;
-  renderThreadsSection: (content: ReactNode) => ReactNode;
+  builtInSections?: ChronologicalBuiltInSidebarSections;
+  topLevelSectionOrder: readonly SidebarSectionId[];
+  onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
+  pinnedReorderPending: boolean;
+  pinnedThreads: readonly ThreadListEntry[];
+  onReorderPinnedThread: (
+    request: NeighborReorderRequest,
+    callbacks: { onSettled: () => void },
+  ) => void;
+  renderPinnedSection?: (
+    consumeClickSuppression?: ConsumeDragClickSuppression,
+  ) => ReactNode;
+  renderThreadsSection?: (
+    content: ReactNode,
+    consumeClickSuppression?: ConsumeDragClickSuppression,
+  ) => ReactNode;
 }
 
 type ProjectThreadTreeVariant = "project" | "section";
 
-type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
 const EMPTY_FOLDERS: readonly SidebarFolderDefinition[] = [];
-const PROJECT_ROW_LEADING_SLOT_CLASS =
-  "h-7 w-8 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
+
+interface ShouldSuppressPinnedThreadDropPreviewArgs {
+  activeThreadId: string | undefined;
+  dragOverParentKey: string | null;
+  pinnedThreads: readonly Pick<ThreadListEntry, "id">[];
+}
+
+export function shouldSuppressPinnedThreadDropPreview({
+  activeThreadId,
+  dragOverParentKey,
+  pinnedThreads,
+}: ShouldSuppressPinnedThreadDropPreviewArgs): boolean {
+  return (
+    activeThreadId !== undefined &&
+    dragOverParentKey === PINNED_THREAD_PARENT_KEY &&
+    pinnedThreads.some((thread) => thread.id === activeThreadId)
+  );
+}
 
 interface ProjectThreadTreeGroupProps {
   children: ReactNode;
@@ -235,9 +287,9 @@ interface ThreadTreeItemRowProps {
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
   onCreateThreadInFolder?: (folderId: string) => void;
-  onViewArchivedThreadsInFolder?: (folderId: string) => void;
   onRenameFolder?: (folder: SidebarFolderDefinition) => void;
   onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
+  renderTopLevelFolderHeaderActions?: FolderThreadTreeProps["renderTopLevelFolderHeaderActions"];
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
@@ -257,9 +309,9 @@ interface FolderTreeItemRowProps {
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
   onCreateThreadInFolder?: (folderId: string) => void;
-  onViewArchivedThreadsInFolder?: (folderId: string) => void;
   onRenameFolder?: (folder: SidebarFolderDefinition) => void;
   onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
+  renderTopLevelFolderHeaderActions?: FolderThreadTreeProps["renderTopLevelFolderHeaderActions"];
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
@@ -268,32 +320,6 @@ interface FolderTreeItemRowProps {
   folderDnd?: FolderThreadDndState;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
-}
-
-interface FolderThreadDndState {
-  consumeClickSuppression: ConsumeDragClickSuppression;
-  dndContextProps: SidebarReorderDndContextProps;
-  itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
-  onClickCapture: MouseEventHandler<HTMLElement>;
-  // The drop target showing an empty placeholder row while a thread is dragged
-  // over it (after a short hover): a folder key, or the loose root container id.
-  // The dragged row itself carries the title. One field drives both folder and
-  // loose-list previews so they stay visually identical.
-  dragOverParentKey: string | null;
-}
-
-interface UseFolderThreadDndArgs {
-  containerId: string;
-  enabled: boolean;
-  rootItems: readonly ProjectThreadItem[];
-}
-
-interface FolderThreadDndLookup {
-  folderIdByParentKey: Map<string, string | null>;
-  itemIdsByParentKey: Map<string, string[]>;
-  itemKindById: Map<string, ProjectThreadItem["kind"]>;
-  parentKeyByItemId: Map<string, string>;
-  threadByItemId: Map<string, ThreadListEntry>;
 }
 
 // Render key + routing projectId for any item kind. Folders derive from their
@@ -322,217 +348,6 @@ function getItemProjectId(item: ProjectThreadItem): string {
       }
       return getItemProjectId(item.group.items[0]);
   }
-}
-
-function collectFolderThreadDndLookup(
-  items: readonly ProjectThreadItem[],
-  containerId: string,
-): FolderThreadDndLookup {
-  const lookup: FolderThreadDndLookup = {
-    folderIdByParentKey: new Map([[containerId, null]]),
-    itemIdsByParentKey: new Map(),
-    itemKindById: new Map(),
-    parentKeyByItemId: new Map(),
-    threadByItemId: new Map(),
-  };
-
-  const walk = (
-    siblingItems: readonly ProjectThreadItem[],
-    parentKey: string,
-  ) => {
-    const itemIds = siblingItems.map(getSidebarDndItemId);
-    lookup.itemIdsByParentKey.set(parentKey, itemIds);
-
-    for (const item of siblingItems) {
-      const itemId = getSidebarDndItemId(item);
-      lookup.itemKindById.set(itemId, item.kind);
-      lookup.parentKeyByItemId.set(itemId, parentKey);
-
-      if (item.kind === "thread") {
-        lookup.threadByItemId.set(itemId, item.node.thread);
-      } else if (item.kind === "folder") {
-        lookup.folderIdByParentKey.set(item.group.key, item.group.id);
-        walk(item.group.items, item.group.key);
-      }
-    }
-  };
-
-  walk(items, containerId);
-  return lookup;
-}
-
-// Resolve where a dragged thread would land. Shared by drag-over (preview +
-// auto-expand) and drag-end (the move) so they never disagree. `toParentKey`
-// is the destination folder key, or the container id for the loose root.
-function resolveThreadDropTarget(
-  lookup: FolderThreadDndLookup,
-  active: DragEndEvent["active"],
-  over: DragEndEvent["over"],
-): { activeId: string; fromParentKey: string; toParentKey: string } | null {
-  if (!over || typeof active.id !== "string" || typeof over.id !== "string") {
-    return null;
-  }
-  const activeId = active.id;
-  const overId = over.id;
-  if (activeId === overId) return null;
-
-  const activeKind = lookup.itemKindById.get(activeId);
-  const overKind = lookup.itemKindById.get(overId);
-  const fromParentKey = lookup.parentKeyByItemId.get(activeId);
-  if (activeKind !== "thread" || !fromParentKey) return null;
-
-  let toParentKey = overKind ? lookup.parentKeyByItemId.get(overId) : undefined;
-  if (!overKind && lookup.folderIdByParentKey.has(overId)) {
-    // Dropping on a folder's child area (the droppable parent).
-    toParentKey = overId;
-  } else if (overKind === "folder") {
-    // Dropping on a folder header means "move into this folder".
-    toParentKey = overId;
-  }
-  if (!toParentKey || fromParentKey === toParentKey) return null;
-  return { activeId, fromParentKey, toParentKey };
-}
-
-// Spring-loaded delay before a hovered drop target shows its placeholder (and a
-// folder expands). The placeholder/expand shift layout, so deferring them until
-// the pointer settles keeps dragging *through* a folder (e.g. up out of one's
-// own folder) smooth instead of the inserted row shoving the dragged item down.
-const DRAG_DWELL_MS = 200;
-
-function useFolderThreadDnd({
-  containerId,
-  enabled,
-  rootItems,
-}: UseFolderThreadDndArgs): FolderThreadDndState | null {
-  const lookup = useMemo(
-    () => collectFolderThreadDndLookup(rootItems, containerId),
-    [containerId, rootItems],
-  );
-  const updateThread = useUpdateThread();
-  const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
-  // Whether a thread (vs. nothing droppable) is currently being dragged.
-  const draggingThreadRef = useRef(false);
-  const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The drop target the dwell timer is counting toward (folder key or the loose
-  // root container); null when the pointer isn't over a droppable target.
-  const dwellParentKeyRef = useRef<string | null>(null);
-  // The drop target currently showing an (empty) placeholder row, after dwell:
-  // a folder key, or the loose root container id.
-  const [dragOverParentKey, setDragOverParentKey] = useState<string | null>(
-    null,
-  );
-
-  const clearDropDwell = useCallback(() => {
-    if (dwellTimerRef.current !== null) {
-      clearTimeout(dwellTimerRef.current);
-      dwellTimerRef.current = null;
-    }
-    dwellParentKeyRef.current = null;
-  }, []);
-
-  useEffect(() => clearDropDwell, [clearDropDwell]);
-
-  const handleDragStart = useCallback(
-    (event: DragStartEvent) => {
-      const activeId = event.active.id;
-      draggingThreadRef.current =
-        typeof activeId === "string" && lookup.threadByItemId.has(activeId);
-      clearDropDwell();
-      setDragOverParentKey(null);
-    },
-    [clearDropDwell, lookup],
-  );
-
-  const handleDragOver = useCallback(
-    (event: DragOverEvent) => {
-      if (!enabled || !draggingThreadRef.current) return;
-      const drop = resolveThreadDropTarget(lookup, event.active, event.over);
-      // The drop target the placeholder will mark: a folder key, or the loose
-      // root container. Null when the pointer isn't over a valid target.
-      const targetParentKey = drop ? drop.toParentKey : null;
-
-      // Same target as the in-flight dwell: nothing to do (don't thrash timers
-      // on every pointer move).
-      if (targetParentKey === dwellParentKeyRef.current) return;
-
-      clearDropDwell();
-      dwellParentKeyRef.current = targetParentKey;
-      setDragOverParentKey(null);
-      if (targetParentKey === null) return;
-
-      // Spring-loaded: reveal the placeholder (and expand a collapsed target
-      // folder) only after the pointer settles, so passing through a folder
-      // mid-drag doesn't shift it under the cursor. The loose root is never
-      // collapsed, so it only gets the placeholder.
-      dwellTimerRef.current = setTimeout(() => {
-        dwellTimerRef.current = null;
-        if (
-          !draggingThreadRef.current ||
-          dwellParentKeyRef.current !== targetParentKey
-        ) {
-          return;
-        }
-        if (targetParentKey !== containerId) {
-          setCollapsedFolders((current) =>
-            current.includes(targetParentKey)
-              ? current.filter((key) => key !== targetParentKey)
-              : current,
-          );
-        }
-        setDragOverParentKey(targetParentKey);
-      }, DRAG_DWELL_MS);
-    },
-    [clearDropDwell, containerId, enabled, lookup, setCollapsedFolders],
-  );
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      draggingThreadRef.current = false;
-      clearDropDwell();
-      setDragOverParentKey(null);
-      if (!enabled) return;
-
-      const drop = resolveThreadDropTarget(lookup, event.active, event.over);
-      if (!drop) return;
-
-      const thread = lookup.threadByItemId.get(drop.activeId);
-      if (!thread) return;
-
-      const destinationFolderId =
-        lookup.folderIdByParentKey.get(drop.toParentKey) ?? null;
-      updateThread.mutate({
-        id: drop.activeId,
-        folderId: destinationFolderId,
-      });
-    },
-    [clearDropDwell, enabled, lookup, updateThread],
-  );
-
-  const handleDragCancel = useCallback(() => {
-    draggingThreadRef.current = false;
-    clearDropDwell();
-    setDragOverParentKey(null);
-  }, [clearDropDwell]);
-
-  const { consumeClickSuppression, dndContextProps, onClickCapture } =
-    useSidebarReorderDnd({
-      onDragEnd: handleDragEnd,
-      onDragStart: handleDragStart,
-      onDragOver: handleDragOver,
-      onDragCancel: handleDragCancel,
-    });
-
-  if (!enabled) {
-    return null;
-  }
-
-  return {
-    consumeClickSuppression,
-    dndContextProps,
-    itemIdsByParentKey: lookup.itemIdsByParentKey,
-    onClickCapture,
-    dragOverParentKey,
-  };
 }
 
 interface EnvironmentThreadGroupRowProps {
@@ -876,7 +691,11 @@ const DraggableFolderThreadItemRow = memo(
         dragBindings={dragBindings}
         folderDnd={folderDnd}
         sortableRef={setNodeRef}
-        sortableStyle={style}
+        sortableStyle={
+          folderDnd.activeThread?.id === itemId
+            ? { ...style, opacity: 0.25 }
+            : style
+        }
       />
     );
   },
@@ -887,15 +706,29 @@ const DroppableFolderItemRow = memo(function DroppableFolderItemRow({
   ...props
 }: ThreadTreeItemRowProps & { folderDnd: FolderThreadDndState }) {
   const itemId = getSidebarDndItemId(props.item);
-  const { isOver, setNodeRef } = useDroppable({ id: itemId });
+  const isTopLevelFolder =
+    props.variant === "section" && props.depthOffset === 0;
+  const topLevelSectionId =
+    props.item.kind === "folder"
+      ? buildSidebarEntitySectionId("folder", props.item.group.id)
+      : itemId;
+  const sortable = useSidebarSortable({
+    id: topLevelSectionId,
+    disabled: !isTopLevelFolder,
+  });
+  const droppable = useDroppable({ id: itemId, disabled: isTopLevelFolder });
 
   return (
     <ThreadTreeItemRow
       {...props}
       consumeClickSuppression={folderDnd.consumeClickSuppression}
-      isDropTargetActive={isOver}
+      dragBindings={isTopLevelFolder ? sortable.dragBindings : undefined}
+      isDropTargetActive={isTopLevelFolder ? sortable.isOver : droppable.isOver}
       folderDnd={folderDnd}
-      sortableRef={setNodeRef}
+      sortableRef={
+        isTopLevelFolder ? sortable.setNodeRef : droppable.setNodeRef
+      }
+      sortableStyle={isTopLevelFolder ? sortable.style : undefined}
     />
   );
 });
@@ -1320,9 +1153,9 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   variant,
   onProjectSelect,
   onCreateThreadInFolder,
-  onViewArchivedThreadsInFolder,
   onRenameFolder,
   onRemoveFolder,
+  renderTopLevelFolderHeaderActions,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   consumeClickSuppression,
@@ -1343,9 +1176,9 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         variant={variant}
         onProjectSelect={onProjectSelect}
         onCreateThreadInFolder={onCreateThreadInFolder}
-        onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
         onRenameFolder={onRenameFolder}
         onRemoveFolder={onRemoveFolder}
+        renderTopLevelFolderHeaderActions={renderTopLevelFolderHeaderActions}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
         consumeClickSuppression={consumeClickSuppression}
@@ -1404,18 +1237,54 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
 // Empty drop-slot rendered inside the (auto-expanded) hovered folder so the
 // landing spot is visible. The dragged row itself carries the title (like
 // dragging a queued message), so this placeholder stays intentionally blank.
-export function DropPreviewRow({ depth }: { depth: number }) {
+export function DropPreviewRow({
+  depth,
+  visible = true,
+}: {
+  depth: number;
+  visible?: boolean;
+}) {
   return (
     <div
       aria-hidden="true"
       data-sidebar-folder-drop-preview="true"
-      style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
+      data-visible={visible ? "true" : "false"}
+      style={{
+        paddingLeft: getSidebarThreadRowPaddingLeft(depth),
+        // `space-y-px` supplies the normal row gap once visible. Suppress it
+        // while collapsed so every target owns a truly zero-height slot.
+        marginTop: visible ? undefined : 0,
+      }}
+      className={cn(
+        SIDEBAR_ROW_BASE_CLASS,
+        "pointer-events-none overflow-hidden transition-[height,margin,opacity,border-width] duration-150 ease-out",
+        visible
+          ? cn(
+              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+              "border border-dashed border-sidebar-border bg-sidebar-accent/40 opacity-100",
+            )
+          : "h-0 border-0 opacity-0 max-md:pointer-coarse:h-0",
+      )}
+    />
+  );
+}
+
+function FolderThreadDragOverlay({ thread }: { thread: ThreadListEntry }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-sidebar-folder-drag-overlay="true"
+      style={{ paddingLeft: getSidebarThreadRowPaddingLeft(0) }}
       className={cn(
         SIDEBAR_ROW_BASE_CLASS,
         COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-        "pointer-events-none border border-dashed border-sidebar-border bg-sidebar-accent/40",
+        "pointer-events-none bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border",
       )}
-    />
+    >
+      <span className="min-w-0 flex-1 truncate">
+        {getThreadDisplayTitle(thread)}
+      </span>
+    </div>
   );
 }
 
@@ -1428,9 +1297,9 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   variant,
   onProjectSelect,
   onCreateThreadInFolder,
-  onViewArchivedThreadsInFolder,
   onRenameFolder,
   onRemoveFolder,
+  renderTopLevelFolderHeaderActions,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   consumeClickSuppression,
@@ -1440,6 +1309,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   sortableRef,
   sortableStyle,
 }: FolderTreeItemRowProps) {
+  const [isTopLevelActionsOpen, setIsTopLevelActionsOpen] = useState(false);
   const collapsedFolders = useAtomValue(sidebarCollapsedFoldersAtom);
   const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
   const folderKey = folder.key;
@@ -1457,9 +1327,146 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
   const showDropPreview = folderDnd?.dragOverParentKey === folderKey;
   const showChildren = !isCollapsed && folder.items.length > 0;
-  // Force the children area open while a thread is dragged over this folder so
-  // the empty drop-placeholder row is visible even when the folder is empty.
-  const showChildrenArea = showChildren || showDropPreview;
+  // Force the children area open while a thread drag is active so the empty
+  // drop-placeholder row is visible even when the folder is empty. During a
+  // drag the collapsed preview slot stays mounted in every expanded drop
+  // target so its height transition can run in both directions as the pointer
+  // crosses folders; outside a drag the area unmounts entirely, so an empty
+  // expanded folder adds no height (mounting it added the wrapper's margin).
+  const showChildrenArea =
+    showChildren || (folderDnd?.activeThread != null && !isCollapsed);
+
+  const childrenArea = showChildrenArea ? (
+    <div className="relative space-y-px">
+      {variant === "project" || depthOffset > 0 ? (
+        <ThreadTreeGroupLine parentRowDepth={headerDepth} />
+      ) : null}
+      {showChildren ? (
+        <FolderDndSortableList folderDnd={folderDnd} parentKey={folder.key}>
+          {folder.items.map((item) => (
+            <FolderDndItemRow
+              key={getItemKey(item)}
+              projectId={getItemProjectId(item)}
+              item={item}
+              depthOffset={
+                variant === "section" && depthOffset === 0 ? 0 : depthOffset + 1
+              }
+              selectedThreadId={selectedThreadId}
+              collapsedThreadIds={collapsedThreadIds}
+              collapsedEnvironmentIds={collapsedEnvironmentIds}
+              variant={variant}
+              onProjectSelect={onProjectSelect}
+              onCreateThreadInFolder={onCreateThreadInFolder}
+              onRenameFolder={onRenameFolder}
+              onRemoveFolder={onRemoveFolder}
+              onToggleThreadCollapsed={onToggleThreadCollapsed}
+              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+              folderDnd={folderDnd}
+            />
+          ))}
+        </FolderDndSortableList>
+      ) : null}
+      {folderDnd ? (
+        <DropPreviewRow
+          visible={showDropPreview}
+          depth={getThreadRowDepth({
+            depthOffset:
+              variant === "section" && depthOffset === 0 ? 0 : depthOffset + 1,
+            nodeDepth: 0,
+            variant,
+          })}
+        />
+      ) : null}
+    </div>
+  ) : null;
+
+  if (variant === "section" && depthOffset === 0) {
+    const externalHeaderActions = renderTopLevelFolderHeaderActions?.(folder);
+    const hasMenuActions = Boolean(onRenameFolder || onRemoveFolder);
+    const topLevelActions = (
+      <>
+        {externalHeaderActions?.actions}
+        {hasMenuActions ? (
+          <DropdownMenu onOpenChange={setIsTopLevelActionsOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`${folder.name} section actions`}
+                className={cn(
+                  "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                )}
+              >
+                <Icon
+                  name="MoreHorizontal"
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onRenameFolder ? (
+                <DropdownMenuItem onSelect={() => onRenameFolder(folder)}>
+                  <Icon name="Edit" aria-hidden="true" />
+                  Rename
+                </DropdownMenuItem>
+              ) : null}
+              {onRemoveFolder ? (
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => onRemoveFolder(folder)}
+                >
+                  <Icon name="Trash2" aria-hidden="true" />
+                  Remove
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+        {onCreateThreadInFolder ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`New thread in ${folder.name}`}
+            onClick={() => onCreateThreadInFolder(folder.id)}
+            className={cn(
+              "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+            )}
+          >
+            <Icon
+              name="MessageSquarePlus"
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+            />
+          </Button>
+        ) : null}
+      </>
+    );
+
+    return (
+      <TopLevelSidebarSection
+        label={folder.name}
+        actions={topLevelActions}
+        actionsOpen={
+          isTopLevelActionsOpen || externalHeaderActions?.actionsOpen === true
+        }
+        actionsMobileAlways
+        collapseControl={{
+          isCollapsed,
+          onToggleCollapsed: handleToggleCollapsed,
+        }}
+        consumeClickSuppression={consumeClickSuppression}
+        dragBindings={dragBindings}
+        isDropTargetActive={isDropTargetActive}
+        sectionRef={sortableRef}
+        sectionStyle={sortableStyle}
+      >
+        {childrenArea}
+      </TopLevelSidebarSection>
+    );
+  }
 
   return (
     <SidebarStickyGroup
@@ -1485,54 +1492,12 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
             ? () => onCreateThreadInFolder(folder.id)
             : undefined
         }
-        onViewArchivedThreads={
-          onViewArchivedThreadsInFolder
-            ? () => onViewArchivedThreadsInFolder(folder.id)
-            : undefined
-        }
         onRename={onRenameFolder ? () => onRenameFolder(folder) : undefined}
         onRemove={onRemoveFolder ? () => onRemoveFolder(folder) : undefined}
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
       />
-      {showChildrenArea ? (
-        <div className="relative space-y-px">
-          <ThreadTreeGroupLine parentRowDepth={headerDepth} />
-          {showChildren ? (
-            <FolderDndSortableList folderDnd={folderDnd} parentKey={folder.key}>
-              {folder.items.map((item) => (
-                <FolderDndItemRow
-                  key={getItemKey(item)}
-                  projectId={getItemProjectId(item)}
-                  item={item}
-                  depthOffset={depthOffset + 1}
-                  selectedThreadId={selectedThreadId}
-                  collapsedThreadIds={collapsedThreadIds}
-                  collapsedEnvironmentIds={collapsedEnvironmentIds}
-                  variant={variant}
-                  onProjectSelect={onProjectSelect}
-                  onCreateThreadInFolder={onCreateThreadInFolder}
-                  onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
-                  onRenameFolder={onRenameFolder}
-                  onRemoveFolder={onRemoveFolder}
-                  onToggleThreadCollapsed={onToggleThreadCollapsed}
-                  onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-                  folderDnd={folderDnd}
-                />
-              ))}
-            </FolderDndSortableList>
-          ) : null}
-          {showDropPreview ? (
-            <DropPreviewRow
-              depth={getThreadRowDepth({
-                depthOffset: depthOffset + 1,
-                nodeDepth: 0,
-                variant,
-              })}
-            />
-          ) : null}
-        </div>
-      ) : null}
+      {childrenArea}
     </SidebarStickyGroup>
   );
 });
@@ -1673,9 +1638,9 @@ interface FolderThreadTreeItemsProps {
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   onCreateThreadInFolder?: (folderId: string) => void;
-  onViewArchivedThreadsInFolder?: (folderId: string) => void;
   onRenameFolder?: (folder: SidebarFolderDefinition) => void;
   onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
+  renderTopLevelFolderHeaderActions?: FolderThreadTreeProps["renderTopLevelFolderHeaderActions"];
 }
 
 // The one place that maps thread-tree items to rows. Every sidebar view
@@ -1695,9 +1660,9 @@ function FolderThreadTreeItems({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   onCreateThreadInFolder,
-  onViewArchivedThreadsInFolder,
   onRenameFolder,
   onRemoveFolder,
+  renderTopLevelFolderHeaderActions,
 }: FolderThreadTreeItemsProps) {
   const rows = items.map((item) => (
     <FolderDndItemRow
@@ -1713,9 +1678,9 @@ function FolderThreadTreeItems({
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       onCreateThreadInFolder={onCreateThreadInFolder}
-      onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
       onRenameFolder={onRenameFolder}
       onRemoveFolder={onRemoveFolder}
+      renderTopLevelFolderHeaderActions={renderTopLevelFolderHeaderActions}
       folderDnd={folderDnd ?? undefined}
     />
   ));
@@ -1819,13 +1784,18 @@ export const ChronologicalFolderThreadSections = memo(
     collapsedEnvironmentIds,
     onProjectSelect,
     onCreateThreadInFolder,
-    onViewArchivedThreadsInFolder,
     onRenameFolder,
     onRemoveFolder,
+    renderTopLevelFolderHeaderActions,
     onToggleThreadCollapsed,
     onToggleEnvironmentCollapsed,
-    renderAllThreadsSection,
-    renderFoldersSection,
+    builtInSections,
+    topLevelSectionOrder,
+    onTopLevelSectionOrderChange,
+    pinnedReorderPending,
+    pinnedThreads,
+    onReorderPinnedThread,
+    renderPinnedSection,
     renderThreadsSection,
   }: ChronologicalFolderThreadSectionsProps) {
     const threads =
@@ -1836,21 +1806,94 @@ export const ChronologicalFolderThreadSections = memo(
       () => buildFolderThreadList(threads, compareThreads, folders),
       [threads, compareThreads, folders],
     );
-    const folderItems = rootItems.filter((item) => item.kind === "folder");
+    const persistedFolderItems = rootItems.filter(
+      (item) => item.kind === "folder",
+    );
     const folderDnd = useFolderThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
-      enabled: folderItems.length > 0,
+      enabled:
+        topLevelSectionOrder.length > 1 || persistedFolderItems.length > 0,
       rootItems,
+      topLevelSectionOrder,
+      onTopLevelSectionOrderChange,
+      pinnedReorderPending,
+      pinnedThreads,
+      onReorderPinnedThread,
     });
-    const hasFolders = folderItems.length > 0;
-    const looseItems = rootItems.filter((item) => item.kind !== "folder");
+    const renderedRootItems = useMemo(() => {
+      const activeThread = folderDnd?.activeThread;
+      const projectedFolderId = folderDnd?.projectedFolderId;
+      if (!activeThread || projectedFolderId === undefined) {
+        return rootItems;
+      }
+
+      const hasProjectedThread = threads.some(
+        (thread) => thread.id === activeThread.id,
+      );
+      return buildFolderThreadList(
+        hasProjectedThread
+          ? threads.map((thread) =>
+              thread.id === activeThread.id
+                ? { ...thread, folderId: projectedFolderId }
+                : thread,
+            )
+          : [...threads, { ...activeThread, folderId: projectedFolderId }],
+        compareThreads,
+        folders,
+      );
+    }, [compareThreads, folderDnd, folders, rootItems, threads]);
+    const renderedFolderDnd = useMemo<FolderThreadDndState | null>(() => {
+      if (!folderDnd) {
+        return null;
+      }
+      const suppressPinnedDropPreview = shouldSuppressPinnedThreadDropPreview({
+        activeThreadId: folderDnd.activeThread?.id,
+        dragOverParentKey: folderDnd.dragOverParentKey,
+        pinnedThreads,
+      });
+      if (renderedRootItems === rootItems) {
+        return suppressPinnedDropPreview
+          ? { ...folderDnd, dragOverParentKey: null }
+          : folderDnd;
+      }
+
+      if (suppressPinnedDropPreview) {
+        return { ...folderDnd, dragOverParentKey: null };
+      }
+
+      const activeThreadId = folderDnd.activeThread?.id;
+      const renderedPinnedThreads = activeThreadId
+        ? pinnedThreads.filter((thread) => thread.id !== activeThreadId)
+        : pinnedThreads;
+      const renderedLookup = collectFolderThreadDndLookup(
+        renderedRootItems,
+        CHRONOLOGICAL_CONTAINER_ID,
+        renderedPinnedThreads,
+      );
+      return {
+        ...folderDnd,
+        // The projected thread row is the landing slot now. Suppress the old
+        // blank preview and give every SortableContext the projected parent
+        // membership so dnd-kit can measure the real destination row.
+        dragOverParentKey: null,
+        itemIdsByParentKey: renderedLookup.itemIdsByParentKey,
+        pinnedItemIds:
+          renderedLookup.itemIdsByParentKey.get(PINNED_THREAD_PARENT_KEY) ?? [],
+      };
+    }, [folderDnd, pinnedThreads, renderedRootItems, rootItems]);
+    const folderItems = renderedRootItems.filter(
+      (item) => item.kind === "folder",
+    );
+    const looseItems = renderedRootItems.filter(
+      (item) => item.kind !== "folder",
+    );
 
     // No sortableParentKey: the outer FolderDndSortableList below provides the
     // SortableContext spanning both the folders and loose-threads sections.
     const renderItems = (items: readonly ProjectThreadItem[]) => (
       <FolderThreadTreeItems
         items={items}
-        folderDnd={folderDnd}
+        folderDnd={renderedFolderDnd}
         variant="section"
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
@@ -1859,55 +1902,66 @@ export const ChronologicalFolderThreadSections = memo(
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
         onCreateThreadInFolder={onCreateThreadInFolder}
-        onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
         onRenameFolder={onRenameFolder}
         onRemoveFolder={onRemoveFolder}
+        renderTopLevelFolderHeaderActions={renderTopLevelFolderHeaderActions}
       />
     );
 
-    const foldersContent =
-      threadListState.status === "loading" ? (
-        <ThreadTreeLoadingSkeleton />
-      ) : folderItems.length > 0 ? (
-        renderItems(folderItems)
-      ) : threadListState.status === "unavailable" ? (
-        <EmptyState
-          message="Folders unavailable"
-          className={getProjectThreadTreeEmptyStateClassName("section")}
-          messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
-        />
-      ) : null;
     // A thread dragged out of a folder previews its landing in the loose list
     // with the same inserted placeholder folders use (hiding the empty state so
     // the placeholder reads as the drop slot when the loose list is empty).
     const showLoosePreview =
-      folderDnd?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID;
+      renderedFolderDnd?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID;
+    const looseEmptyState = (
+      <EmptyState
+        message={
+          threadListState.status === "unavailable"
+            ? "Threads unavailable"
+            : "No threads"
+        }
+        icon={getProjectThreadTreeEmptyStateIcon("section")}
+        className={getProjectThreadTreeEmptyStateClassName("section")}
+        iconClassName="size-3.5 text-subtle-foreground/50"
+        messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
+      />
+    );
     const threadsListContent =
       threadListState.status === "loading" ? (
         <ThreadTreeLoadingSkeleton />
       ) : looseItems.length > 0 ? (
-        renderItems(looseItems)
-      ) : showLoosePreview ? null : (
-        <EmptyState
-          message={
-            threadListState.status === "unavailable"
-              ? "Threads unavailable"
-              : "No threads"
-          }
-          icon={getProjectThreadTreeEmptyStateIcon("section")}
-          className={getProjectThreadTreeEmptyStateClassName("section")}
-          iconClassName="size-3.5 text-subtle-foreground/50"
-          messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
-        />
+        <SortableContext
+          items={looseItems.map(getSidebarDndItemId)}
+          strategy={verticalListSortingStrategy}
+        >
+          {renderItems(looseItems)}
+        </SortableContext>
+      ) : renderedFolderDnd ? (
+        <div className="grid">
+          <div
+            className={cn(
+              "col-start-1 row-start-1 transition-opacity duration-150 ease-out",
+              showLoosePreview ? "opacity-0" : "opacity-100",
+            )}
+          >
+            {looseEmptyState}
+          </div>
+          <div className="col-start-1 row-start-1">
+            <DropPreviewRow depth={0} visible={showLoosePreview} />
+          </div>
+        </div>
+      ) : (
+        looseEmptyState
       );
-    const threadsContent = folderDnd ? (
+    const threadsContent = renderedFolderDnd ? (
       <FolderDndDroppableParent
-        folderDnd={folderDnd}
+        folderDnd={renderedFolderDnd}
         parentKey={CHRONOLOGICAL_CONTAINER_ID}
       >
         {threadsListContent}
-        {showLoosePreview ? (
+        {looseItems.length > 0 ? (
           <DropPreviewRow
+            visible={showLoosePreview}
             depth={getThreadRowDepth({
               depthOffset: 0,
               nodeDepth: 0,
@@ -1920,24 +1974,88 @@ export const ChronologicalFolderThreadSections = memo(
       threadsListContent
     );
 
+    const folderItemsBySectionId = new Map(
+      folderItems.map((item) => [
+        buildSidebarEntitySectionId("folder", item.group.id),
+        item,
+      ]),
+    );
+    const consumeClickSuppression = renderedFolderDnd?.consumeClickSuppression;
+    const configuredBuiltInSections:
+      | BuiltInSidebarSectionOptionsById
+      | undefined = builtInSections
+      ? {
+          pinned: {
+            ...builtInSections.pinned,
+            isDropTargetActive:
+              renderedFolderDnd?.dragOverParentKey === PINNED_THREAD_PARENT_KEY,
+          },
+          threads: {
+            ...builtInSections.threads,
+            content: threadsContent,
+          },
+        }
+      : undefined;
+    const legacyBuiltInSectionNodes: BuiltInSidebarSectionNodes = {
+      pinned: renderPinnedSection?.(consumeClickSuppression),
+      threads: renderThreadsSection?.(threadsContent, consumeClickSuppression),
+    };
     const sections = (
-      <FolderDndSortableList
-        folderDnd={folderDnd}
-        parentKey={CHRONOLOGICAL_CONTAINER_ID}
-      >
-        {hasFolders ? (
-          <>
-            {renderFoldersSection(foldersContent)}
-            {renderThreadsSection(threadsContent)}
-          </>
-        ) : (
-          renderAllThreadsSection(threadsContent)
-        )}
-      </FolderDndSortableList>
+      <SidebarSectionOrderList order={topLevelSectionOrder}>
+        {(sectionId) => {
+          const builtInSection =
+            builtInSections && configuredBuiltInSections
+              ? renderBuiltInSidebarSection({
+                  sectionId,
+                  sections: configuredBuiltInSections,
+                  disabled: topLevelSectionOrder.length < 2,
+                  collapsedSectionIds: builtInSections.collapsedSectionIds,
+                  onToggleCollapsed: builtInSections.onToggleCollapsed,
+                  consumeClickSuppression,
+                  showPinnedSection: topLevelSectionOrder.includes("pinned"),
+                })
+              : getBuiltInSidebarSectionNode(
+                  sectionId,
+                  legacyBuiltInSectionNodes,
+                );
+          if (builtInSection !== undefined) {
+            return <div key={sectionId}>{builtInSection}</div>;
+          }
+          const folderItem = folderItemsBySectionId.get(sectionId);
+          return folderItem ? (
+            <div key={sectionId}>{renderItems([folderItem])}</div>
+          ) : null;
+        }}
+      </SidebarSectionOrderList>
     );
 
     return folderDnd ? (
-      <DndContext {...folderDnd.dndContextProps}>{sections}</DndContext>
+      <DndContext {...folderDnd.dndContextProps}>
+        <FolderThreadDndProvider value={renderedFolderDnd}>
+          {sections}
+          {createPortal(
+            // The overlay only renders thread content. Its default drop side
+            // effect hides the active DOM node, so enabling it for a section
+            // drag would make that section flash invisible on mouse-up.
+            <DragOverlay
+              className="cursor-grabbing"
+              dropAnimation={
+                folderDnd.activeThread
+                  ? {
+                      duration: 180,
+                      easing: "cubic-bezier(0.2, 0, 0, 1)",
+                    }
+                  : null
+              }
+            >
+              {folderDnd.activeThread ? (
+                <FolderThreadDragOverlay thread={folderDnd.activeThread} />
+              ) : null}
+            </DragOverlay>,
+            document.body,
+          )}
+        </FolderThreadDndProvider>
+      </DndContext>
     ) : (
       sections
     );
@@ -1948,12 +2066,13 @@ function ProjectRowComponent({
   project,
   threadListState,
   selectedThreadId,
-  isActive,
   isCollapsed,
   compareThreads,
   collapsedThreadIds,
   collapsedEnvironmentIds,
   isLocalPathInvalid,
+  headerActions,
+  headerActionsOpen = false,
   onProjectSelect,
   onCreateProjectThread,
   onToggleProjectCollapsed,
@@ -1966,18 +2085,8 @@ function ProjectRowComponent({
 }: ProjectRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
-  const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
-  const handleProjectRowClickCapture =
-    useCallback<ProjectItemClickCaptureHandler>(
-      (event) => {
-        if (!consumeProjectClickSuppression?.()) {
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-      },
-      [consumeProjectClickSuppression],
-    );
+  const isActionsOpen =
+    isDropdownActionsOpen || isContextActionsOpen || headerActionsOpen;
   const handleProjectRowToggle = useCallback(() => {
     onToggleProjectCollapsed(project.id);
   }, [onToggleProjectCollapsed, project.id]);
@@ -1995,150 +2104,125 @@ function ProjectRowComponent({
     (projectActivity.pending ||
       projectActivity.working ||
       projectActivity.unread);
-  return (
-    <SidebarStickyGroup asChild data-sidebar-sticky-project-item="">
-      <SidebarMenuItem
-        ref={projectRowRef}
-        style={projectRowStyle}
-        onClickCapture={handleProjectRowClickCapture}
-      >
-        <ProjectActionsContextMenu
-          project={project}
-          onOpenChange={setIsContextActionsOpen}
+  const projectActions = (
+    <>
+      {headerActions ? (
+        <span
+          data-sidebar-hover-actions-open={
+            headerActionsOpen ? "true" : undefined
+          }
+          className={SIDEBAR_HOVER_ACTIONS_CLASS}
         >
-          <SidebarStickyTier
-            ref={projectDragBindings?.setActivatorNodeRef}
-            tier="project"
+          {headerActions}
+        </span>
+      ) : null}
+      {isLocalPathInvalid ? (
+        <NavLink
+          to={getProjectSettingsRoutePath(project.id)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onProjectSelect?.();
+          }}
+          aria-label="Project folder not found"
+          className={cn(
+            "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          )}
+        >
+          <Icon
+            name="AlertTriangle"
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
+        </NavLink>
+      ) : null}
+      <span className="relative z-10 inline-flex shrink-0 items-center">
+        {showProjectRollupGlyph ? (
+          <span
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
-              SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-              "group/project-row flex w-full items-center rounded-md text-sm",
-              LIST_HOVER_TRANSITION,
-              isActive
-                ? SIDEBAR_ROW_SELECTED_STATE_CLASS
-                : SIDEBAR_ROW_STATIC_STATE_CLASS,
-              projectDragBindings &&
-                !projectDragBindings.disabled &&
-                "select-none",
+              SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
             )}
-            {...projectDragBindings?.attributes}
-            {...(projectDragBindings?.listeners ?? {})}
           >
-            <span
-              className={cn(
-                "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground",
-                PROJECT_ROW_LEADING_SLOT_CLASS,
-                LIST_HOVER_TRANSITION,
-              )}
-              aria-hidden
-            >
-              <Icon
-                name={isCollapsed ? "Folder" : "FolderOpen"}
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
-              />
-            </span>
-            <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-              <span className="min-w-0 truncate" title={project.name}>
-                {project.name}
-              </span>
-              <SidebarChildToggleChevron
-                isCollapsed={isCollapsed}
-                expandLabel={`Expand ${project.name}`}
-                collapseLabel={`Collapse ${project.name}`}
-                onToggle={handleProjectRowToggle}
-                revealOnHover
-              />
-            </span>
-            {isLocalPathInvalid ? (
-              <NavLink
-                to={getProjectSettingsRoutePath(project.id)}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onProjectSelect?.();
-                }}
-                aria-label="Project folder not found"
-                className={cn(
-                  "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                )}
-              >
-                <Icon
-                  name="AlertTriangle"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </NavLink>
-            ) : null}
-            <span className="relative z-10 inline-flex shrink-0 items-center">
-              {showProjectRollupGlyph ? (
-                <span
-                  data-sidebar-hover-actions-open={
-                    isActionsOpen ? "true" : undefined
-                  }
-                  className={cn(
-                    SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-                    "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
-                  )}
-                >
-                  <CollapsedThreadStatusGlyph
-                    activity={projectActivity}
-                    isBusy={projectActivity.working}
-                  />
-                </span>
-              ) : null}
-              {showProjectRollupGlyph ? (
-                <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-                  <CollapsedThreadStatusGlyph
-                    activity={projectActivity}
-                    isBusy={projectActivity.working}
-                  />
-                </span>
-              ) : null}
-              <span
-                data-sidebar-hover-actions-open={
-                  isActionsOpen ? "true" : undefined
-                }
-                data-sidebar-hover-actions-mobile={
-                  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-                }
-                className={cn(
-                  SIDEBAR_HOVER_ACTIONS_CLASS,
-                  "relative z-10 inline-flex shrink-0 items-center",
-                  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-                )}
-              >
-                <ProjectActionsMenu
-                  project={project}
-                  onOpenChange={setIsDropdownActionsOpen}
-                  triggerClassName={cn(
-                    "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                  )}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`New thread in ${project.name}`}
-                  disabled={!onCreateProjectThread}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleCreateThread();
-                  }}
-                  className={cn(
-                    "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                  )}
-                >
-                  <Icon
-                    name="MessageSquarePlus"
-                    className={COARSE_POINTER_ICON_SIZE_CLASS}
-                  />
-                </Button>
-              </span>
-            </span>
-          </SidebarStickyTier>
-        </ProjectActionsContextMenu>
+            <CollapsedThreadStatusGlyph
+              activity={projectActivity}
+              isBusy={projectActivity.working}
+            />
+          </span>
+        ) : null}
+        {showProjectRollupGlyph ? (
+          <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
+            <CollapsedThreadStatusGlyph
+              activity={projectActivity}
+              isBusy={projectActivity.working}
+            />
+          </span>
+        ) : null}
+        <span
+          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          data-sidebar-hover-actions-mobile={
+            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+          }
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_CLASS,
+            "relative z-10 inline-flex shrink-0 items-center",
+            SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+          )}
+        >
+          <ProjectActionsMenu
+            project={project}
+            onOpenChange={setIsDropdownActionsOpen}
+            triggerClassName={cn(
+              "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+            )}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`New thread in ${project.name}`}
+            disabled={!onCreateProjectThread}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleCreateThread();
+            }}
+            className={cn(
+              "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+            )}
+          >
+            <Icon
+              name="MessageSquarePlus"
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+            />
+          </Button>
+        </span>
+      </span>
+    </>
+  );
 
-        {!isCollapsed ? (
+  return (
+    <ProjectActionsContextMenu
+      project={project}
+      onOpenChange={setIsContextActionsOpen}
+    >
+      <div data-sidebar-sticky-project-item="">
+        <TopLevelSidebarSection
+          label={project.name}
+          actions={projectActions}
+          actionsAlwaysVisible
+          actionsMobileAlways
+          actionsOpen={isActionsOpen}
+          collapseControl={{
+            isCollapsed,
+            onToggleCollapsed: handleProjectRowToggle,
+          }}
+          consumeClickSuppression={consumeProjectClickSuppression}
+          dragBindings={projectDragBindings}
+          sectionRef={projectRowRef}
+          sectionStyle={projectRowStyle}
+        >
           <ProjectThreadTree
             projectId={project.id}
             threadListState={threadListState}
@@ -2146,14 +2230,14 @@ function ProjectRowComponent({
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
             compareThreads={compareThreads}
-            variant="project"
+            variant="section"
             onProjectSelect={onProjectSelect}
             onToggleThreadCollapsed={onToggleThreadCollapsed}
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
           />
-        ) : null}
-      </SidebarMenuItem>
-    </SidebarStickyGroup>
+        </TopLevelSidebarSection>
+      </div>
+    </ProjectActionsContextMenu>
   );
 }
 
@@ -2239,6 +2323,8 @@ function areProjectRowPropsEqual(
     prev.isCollapsed !== next.isCollapsed ||
     prev.compareThreads !== next.compareThreads ||
     prev.isLocalPathInvalid !== next.isLocalPathInvalid ||
+    prev.headerActions !== next.headerActions ||
+    prev.headerActionsOpen !== next.headerActionsOpen ||
     prev.onProjectSelect !== next.onProjectSelect ||
     prev.onCreateProjectThread !== next.onCreateProjectThread ||
     prev.onToggleProjectCollapsed !== next.onToggleProjectCollapsed ||

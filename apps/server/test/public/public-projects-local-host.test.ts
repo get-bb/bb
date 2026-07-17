@@ -54,7 +54,6 @@ describe("public project local host routes", () => {
 
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const offlineSecondary = seedHost(harness.deps, {
         id: "host-offline-secondary",
@@ -94,7 +93,6 @@ describe("public project local host routes", () => {
       });
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
 
       const projectResponsePromise = harness.app.request("/api/v1/projects", {

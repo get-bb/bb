@@ -4,15 +4,12 @@ import {
   isAcpProviderId,
   isAgentProviderId,
 } from "@bb/agent-providers";
-import { getEnvironment, getProjectSourceByHost } from "@bb/db";
 import {
   providerCommandSectionRank,
   type CommandListResponse,
   type ProviderCommand,
 } from "@bb/server-contract";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
-import type { AppDeps } from "../../types.js";
-import { requirePrimaryHostId } from "../hosts/primary-host.js";
 import type { ResolvedSkillCatalogEntry } from "../skills/injected-skills.js";
 
 const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
@@ -52,62 +49,6 @@ export function providerHasCommandSurface(providerId: string): boolean {
     );
   }
   return false;
-}
-
-export interface CommandWorkspace {
-  hostId: string;
-  /**
-   * Absolute workspace path for project-origin discovery, or `null` when there
-   * is no resolvable workspace yet (new-thread composer, or an unprovisioned
-   * environment). `null` is passed through to the daemon, which then scans only
-   * the user-home roots.
-   */
-  cwd: string | null;
-}
-
-export interface ResolveCommandWorkspaceArgs {
-  environmentId: string | null;
-  projectId: string;
-}
-
-/**
- * Resolve the `(hostId, cwd)` pair the command-typeahead RPC runs against,
- * degrading gracefully so a pre-environment request still lists user-home
- * entries:
- *   1. the environment path when the environment is `ready`;
- *   2. else the project's local-path source on the primary host;
- *   3. else the primary host with `cwd: null`.
- * Unlike the path-search resolvers (which require a concrete path and throw),
- * command discovery is valid with `cwd: null`, so each step falls through to
- * the next instead of surfacing an error. In particular an environment that is
- * still provisioning or otherwise unavailable must NOT fail here — it
- * degrades to the project source / user-home roots — so this reads the
- * environment with the non-throwing `getEnvironment` rather than
- * `requireReadyEnvironment`.
- */
-export function resolveCommandWorkspace(
-  deps: Pick<AppDeps, "config" | "db" | "hub">,
-  args: ResolveCommandWorkspaceArgs,
-): CommandWorkspace {
-  if (args.environmentId !== null) {
-    const environment = getEnvironment(deps.db, args.environmentId);
-    if (
-      environment !== null &&
-      environment.status === "ready" &&
-      environment.path !== null &&
-      environment.projectId === args.projectId
-    ) {
-      return { hostId: environment.hostId, cwd: environment.path };
-    }
-  }
-
-  const primaryHostId = requirePrimaryHostId(deps);
-  const source = getProjectSourceByHost(deps.db, args.projectId, primaryHostId);
-  if (source && source.type === "local_path") {
-    return { hostId: source.hostId, cwd: source.path };
-  }
-
-  return { hostId: primaryHostId, cwd: null };
 }
 
 function toProviderCommand(command: HostProviderCommand): ProviderCommand {

@@ -47,6 +47,7 @@ export {
 } from "./build-thread-timeline.js";
 export { extractThreadTimelineActivePromptMode } from "./active-prompt-mode-extraction.js";
 export { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
+export { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 export type { AcceptedClientRequestContext } from "./accepted-client-request-context.js";
 export {
   buildTimelineViewRows,

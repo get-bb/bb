@@ -103,6 +103,13 @@ stops that process. It only blocks idle sleep: closing a laptop lid or choosing
 Sleep manually still sleeps the Mac. The toggle is hidden unless the connected
 primary host daemon reports macOS.
 
+The "Show unhandled provider events" toggle in Settings → General exposes raw
+provider events that bb does not yet understand. It defaults to off in packaged
+builds because these diagnostic payloads are noisy. Development builds continue
+to show them regardless of the toggle. Set the persisted preference from an
+agent or terminal with
+`bb settings general showUnhandledProviderEvents <true|false>`.
+
 ## Keyboard Shortcuts
 
 Settings → Keyboard edits app command shortcuts. Overrides are stored in the
@@ -128,7 +135,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
 | Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`                 | All clients              |
 | Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
-| Layout    | Focus chat pane 1–4           | `Mod+1` … `Mod+4`                 | While split              |
+| Layout    | Focus chat pane 1–8           | `Mod+1` … `Mod+8`                 | While split              |
 | Layout    | Close focused chat pane       | `Mod+Shift+X`                     | While split              |
 | Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
 | Window    | Settings                      | `Mod+,`                           | All clients              |
@@ -330,24 +337,18 @@ in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
 
-## bb connect Experiment
+## Multi-machine
 
-The **bb connect** experiment (Settings → Experiments, off by default) gates
-remote access for reaching this bb server through getbb.app. It does not enable
-running threads on non-primary hosts.
-
-## Multi-machine Experiment
-
-The **Multi-machine** experiment (Settings → Experiments, off by default)
-enables remote execution hosts. When enabled, Settings → Machines can enroll,
+Settings → Machines can enroll,
 rename, and remove machines; project settings can add a path or clone source on
 each machine; and thread creation can target any enrolled machine with a usable
-source. The CLI equivalents are `bb machine list`, `bb project source add
---machine <id-or-name> ...`, and `bb thread spawn --machine <id-or-name> ...`.
+source. The CLI equivalents are `bb machine list`, `bb project create
+--machine <id-or-name> ...`, `bb project source add --machine <id-or-name>
+...`, and `bb thread spawn --machine <id-or-name> ...`.
 
-The experiment is independent of browser access. Tailscale and bb connect let
-another browser reach the bb server; Multi-machine decides whether that server
-may dispatch work to non-primary host daemons. The Settings → Machines
+Multi-machine execution is independent of browser access. Tailscale and bb
+connect let another browser reach the bb server; multi-machine support lets
+that server dispatch work to non-primary host daemons. The Settings → Machines
 installer can use a paired bb connect account to route the daemon and its CLI
 back to the server. Machine credentials remain locally managed as described at
 the top of this document.
@@ -363,8 +364,10 @@ are limited to one attempt per 15 minutes, and never downgrade a daemon.
 ## Thread splits Experiment
 
 The **Thread splits** experiment (Settings → Experiments, off by default)
-enables the app's multi-pane thread view and its sidebar, menu, and keyboard
-split controls. It also enables explicit split placement through
+enables up to eight panes in the app's multi-pane thread view and its sidebar,
+menu, and keyboard split controls. Edge placement creates panes through the
+eighth pane; at the eight-pane limit, opening a new thread with an edge
+placement replaces the focused pane. It also enables explicit split placement through
 `bb thread open <thread-id> --split right|down|left|top|replace` and the matching
 SDK request. Ordinary thread and file opens without an explicit split placement
 continue to work while the experiment is off.
@@ -373,9 +376,7 @@ continue to work while the experiment is off.
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
 server for browser access at `<handle>.getbb.app` (claim a handle and copy the
-command at https://getbb.app). Enable the "bb connect" experiment first;
-while it is off, `bb connect` and Settings → Connect are unavailable because
-the plugin is not loaded. Remote access is owned by the builtin
+command at https://getbb.app). Remote access is owned by the builtin
 **connect plugin** (`plugins/connect/`): pairing redeems the code and stores
 the durable credential in the plugin's kv storage (in `bb.db`), and the
 plugin's background service holds the connect tunnel — dialing the gate,
@@ -423,40 +424,50 @@ Plugin state lives under the data dir:
 <dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
                                    at 5MB; read with `bb plugin logs <id>`)
 <dataDir>/plugins/git/, npm/       Managed installs for git:/npm: sources
-<dataDir>/marketplaces/cache/      Materialized git marketplace trees
-                                   (keyed by marketplace id + commit)
-<dataDir>/marketplaces/staging/    Transient git clones during refresh
 <dataDir>/skills-generated/        Server-generated skills (the
                                    plugin-commands skill listing plugin CLI
                                    commands, injected into agent threads)
 ```
 
-Marketplace configuration (rows in the server DB, API under
-`/api/v1/marketplaces`) stores each catalog's source, last-known-good
-`marketplace.json` payload, optional resolved git commit, refresh timestamps,
-and the last refresh error. Path marketplaces point at the directory on disk;
-git marketplaces materialize under
-`<dataDir>/marketplaces/cache/<id>/<commit>/`. `bb plugin marketplace update`
-re-fetches catalog metadata only — it does not upgrade installed plugins. On
-refresh failure the previous successful catalog is retained and `lastError`
-is set (list shows the failed state). Trust is enforced at the CLI for every
-remote/git `bb plugin marketplace add` (confirmation or `--yes`; non-TTY
-refuses without it); adding never installs plugins.
-Unmistakable local path forms (`path:`, `./…`, or absolute paths) skip the
-prompt; ambiguous bare sources are conservatively prompted. See
-`bb guide plugins` for search, install disambiguation, manual updates, and
-marketplace removal behavior.
+BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside the
+app and install from the local bundled copy — no network, no remote catalog.
+Discover them with `bb plugin search` or Settings → Plugins → Browse; users
+cannot add, remove, or configure the official plugin set. Installed official
+plugins are pinned to the bundled copy and update with BB app releases. Local
+path installs remain available directly through `bb plugin install ./path` or
+`path:...`, and direct `npm:`/`git:` installs stay supported.
 
 ### Plugin updates
 
-Plugin updates are manual. `bb plugin outdated` checks tracking sources and
-`bb plugin update <id>` / `bb plugin update --all` applies compatible
-candidates. There is no scheduled marketplace refresh, automatic application,
-or update audit feed. Reinstalling an already-installed managed plugin is
+Bundled builtin and official plugins update with BB app releases. For direct
+`git:`/`npm:` installs, updates are manual: `bb plugin outdated` checks
+tracking sources and `bb plugin update <id>` / `bb plugin update --all`
+applies compatible candidates; there is no automatic plugin update
+application or update audit feed. Reinstalling an already-installed managed plugin is
 refused — use `bb plugin update`. Before activation bb snapshots the plugin
 database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
+
+### Workflows plugin
+
+The builtin Workflows plugin is disabled on fresh installations. Enable it
+under Settings → Plugins or with `bb plugin enable workflows`. Its seven
+settings accept base-10 integer strings through Settings → Plugins or
+`bb plugin config workflows set <key> <value>`:
+
+| Key                    |    Default |       Allowed range | Behavior                                                       |
+| ---------------------- | ---------: | ------------------: | -------------------------------------------------------------- |
+| `maxActiveRuns`        |        `4` |            `1`–`32` | Concurrent runs across the plugin; changes apply live.         |
+| `maxConcurrentAgents`  |        `8` |            `1`–`64` | Concurrent agent calls within one run.                         |
+| `maxAgentCalls`        |      `100` |          `1`–`1000` | Total agent calls within one run.                              |
+| `workerStallTimeoutMs` |  `1800000` |  `60000`–`86400000` | Milliseconds without persisted worker activity before failure. |
+| `totalRunTimeoutMs`    | `86400000` | `60000`–`604800000` | Maximum total run duration in milliseconds.                    |
+| `retentionDays`        |       `30` |          `1`–`3650` | Days to retain completed workflow data.                        |
+| `maxNotificationBytes` |    `16384` |     `1024`–`262144` | Maximum UTF-8 size of a completion notification.               |
+
+The six settings other than `maxActiveRuns` are snapshotted into each new run.
+Settings changes do not require a plugin reload.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
 (packages are installed with `--ignore-scripts`). Git plugins without prebuilt
@@ -472,7 +483,7 @@ refuse plugins whose optional `engines.bb` or `engines.bbPluginSdk` ranges
 do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
 does not match the package manifest; installing a non-builtin source whose
 derived id collides with a builtin name (automations, connect,
-custom-instructions, inline-vis, secrets) is also refused.
+custom-instructions, inline-vis, secrets, workflows) is also refused.
 
 The same tracking intent drives updates: `bb plugin outdated` checks for
 compatible candidates (and reports blocked incompatible newer releases);
@@ -525,10 +536,11 @@ database path is always derived from `BB_DATA_DIR`.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 
-Production startup from source goes through the packaged launcher path:
-`pnpm start` runs `packages/bb-app/dist/bb-app.js`, and
-`pnpm start:host-daemon` runs `packages/bb-app/dist/bb-app.js host-daemon`.
-Source-only scripts do not own production ports or data-dir defaults.
+Production startup from source uses the same launcher policy as the packaged
+app while reading build outputs directly from `apps/app`, `apps/server`, and
+`apps/host-daemon`. `pnpm start:host-daemon` continues to run the packaged
+`packages/bb-app/dist/bb-app.js host-daemon` entrypoint. Source-only scripts do
+not own production ports or data-dir defaults.
 
 Source checkout commands such as `pnpm bb`, `pnpm bb:dev`, and `pnpm reset`
 are thin wrappers around `@bb/scripts`. Those wrappers force `NODE_ENV` to the

@@ -5,9 +5,11 @@ import { useAtom, useStore } from "jotai";
 import {
   Fragment,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
+  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -49,7 +51,14 @@ import {
   useAppCommandHandler,
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
-import { PaneContext, type PaneContextValue } from "./PaneContext";
+import {
+  PaneContext,
+  createPaneSecondaryPanelRegistry,
+  useOptionalPaneContext,
+  type PaneContextValue,
+  type PaneSecondaryPanelRegistration,
+  type PaneSecondaryPanelRegistry,
+} from "./PaneContext";
 import { ThreadDetailView } from "./ThreadDetailView";
 import { RootComposeView } from "@/views/RootComposeView";
 import { PluginPanelView } from "@/views/PluginPanelView";
@@ -76,6 +85,13 @@ import {
   threadPaneContent,
 } from "./splitThreadNavigation";
 import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
+import {
+  getBbDesktopInfo,
+  MACOS_WINDOW_NO_DRAG_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
+import { SplitWorkspaceSecondaryPanelHost } from "./SplitWorkspaceSecondaryPanelHost";
+import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 
 // A `pointerdown`-relative move threshold before a pane-header drag engages.
 const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
@@ -91,7 +107,7 @@ const EMPTY_PATH: SplitPath = [];
 type NavigateInPane = (paneId: string, thread: ThreadRoutePathArgs) => void;
 
 /**
- * Renders the 1–4 thread panes that live in the main content area. It bridges
+ * Renders the 1–8 thread panes that live in the main content area. It bridges
  * the URL-follows-focus and external-navigation policies between the global
  * split-layout atom and the route, then recursively draws the layout tree.
  * A single pane renders identically to the pre-split page surface (no wrapper,
@@ -116,6 +132,10 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
+  const secondaryPanelRegistry = useMemo(
+    () => createPaneSecondaryPanelRegistry(),
+    [],
+  );
 
   const routeThread = useMemo<ThreadRoutePathArgs | null>(
     () => (projectId && threadId ? { projectId, threadId } : null),
@@ -323,9 +343,11 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           content={firstPane.content}
           paneId={firstPane.paneId}
           isFocused
-          canShowSecondaryPanel
+          secondaryPanelRegistry={null}
+          reservesWindowPanelToggle={false}
           onRequestClose={null}
           isBoundedPane={false}
+          isTopRow
           onNavigateInPane={navigateInPane}
         />
       </>
@@ -341,18 +363,25 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           windows from scrolling the whole split when stacked panes hit their
           min content height. */}
       <div className="-m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5">
-        <SplitTree
-          node={layout.root}
-          path={EMPTY_PATH}
+        <SplitWorkspaceSecondaryPanelHost
           focusedPaneId={layout.focusedPaneId}
-          paneCount={panes.length}
-          onFocusPane={focusPane}
-          onClosePane={closePane}
-          onResize={resize}
-          onNavigateInPane={navigateInPane}
-          onBeginPaneDrag={beginPaneDrag}
-          onPruneStalePane={pruneStalePane}
-        />
+          registry={secondaryPanelRegistry}
+        >
+          <SplitTree
+            node={layout.root}
+            path={EMPTY_PATH}
+            isTopRow
+            isRightEdge
+            focusedPaneId={layout.focusedPaneId}
+            secondaryPanelRegistry={secondaryPanelRegistry}
+            onFocusPane={focusPane}
+            onClosePane={closePane}
+            onResize={resize}
+            onNavigateInPane={navigateInPane}
+            onBeginPaneDrag={beginPaneDrag}
+            onPruneStalePane={pruneStalePane}
+          />
+        </SplitWorkspaceSecondaryPanelHost>
       </div>
     </>
   );
@@ -404,8 +433,12 @@ function SplitPaneCommandHandlers({
 interface SplitTreeProps {
   node: LayoutNode;
   path: SplitPath;
+  /** Whether this subtree touches the workspace's top edge. */
+  isTopRow: boolean;
+  /** Whether this subtree touches the workspace's right edge. */
+  isRightEdge: boolean;
   focusedPaneId: string;
-  paneCount: number;
+  secondaryPanelRegistry: PaneSecondaryPanelRegistry;
   onFocusPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
   onResize: (
@@ -419,7 +452,7 @@ interface SplitTreeProps {
 }
 
 function SplitTree(props: SplitTreeProps) {
-  const { node, path, focusedPaneId, paneCount } = props;
+  const { node, path, isTopRow, isRightEdge, focusedPaneId } = props;
 
   if (node.type === "pane") {
     const isFocused = node.paneId === focusedPaneId;
@@ -445,25 +478,22 @@ function SplitTree(props: SplitTreeProps) {
           content={node.content}
           paneId={node.paneId}
           isFocused={isFocused}
-          // ≥3 panes have no room for two secondary panels: only the focused
-          // pane may show its own; ≤2 panes keep per-pane panels.
-          canShowSecondaryPanel={paneCount < 3 || isFocused}
+          secondaryPanelRegistry={props.secondaryPanelRegistry}
+          reservesWindowPanelToggle={isTopRow && isRightEdge}
           onRequestClose={() => props.onClosePane(node.paneId)}
           isBoundedPane
+          isTopRow={isTopRow}
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
-        {/* Focus chrome lives on an overlay ABOVE the pane's content — styles
-            painted on the pane element itself get covered by children with
-            opaque backgrounds (header scrim, composer). Focused pane: an
-            unbroken inset outline. Unfocused panes: a translucent canvas
-            scrim that fades the whole pane toward the background, the
-            "inactive editor" grey-out. */}
+        {/* The inactive-pane scrim lives on an overlay ABOVE the pane's content
+            because styles painted on the pane element itself get covered by
+            children with opaque backgrounds (header scrim, composer). */}
         <div
           aria-hidden
           className={cn(
             "pointer-events-none absolute inset-0 z-20 transition-colors",
-            isFocused ? "ring-1 ring-inset ring-ring" : "bg-background/40",
+            isFocused ? "bg-transparent" : "bg-background/40",
           )}
         />
       </div>
@@ -489,7 +519,19 @@ function SplitTree(props: SplitTreeProps) {
             className="flex min-h-0 min-w-0"
             style={{ flex: `${node.sizes[index] ?? 1} 1 0` }}
           >
-            <SplitTree {...props} node={child} path={[...path, index]} />
+            <SplitTree
+              {...props}
+              node={child}
+              path={[...path, index]}
+              // Horizontal siblings all remain on the same top row. In a
+              // vertical stack, only the first child can inherit the parent
+              // subtree's contact with the workspace top edge.
+              isTopRow={isTopRow && (node.dir === "row" || index === 0)}
+              isRightEdge={
+                isRightEdge &&
+                (node.dir === "col" || index === node.children.length - 1)
+              }
+            />
           </div>
         </Fragment>
       ))}
@@ -501,11 +543,13 @@ interface WorkspacePaneContentProps {
   content: PaneContent;
   paneId: string;
   isFocused: boolean;
-  canShowSecondaryPanel: boolean;
+  secondaryPanelRegistry: PaneSecondaryPanelRegistry | null;
+  reservesWindowPanelToggle: boolean;
   onRequestClose: (() => void) | null;
   // True inside multi-pane split cards; suppresses the page-bleed margins so
   // content fills the card exactly (see PaneContextValue.isBoundedPane).
   isBoundedPane: boolean;
+  isTopRow: boolean;
   onNavigateInPane: NavigateInPane;
   // Absent for the single-pane surface — a lone pane has nothing to reorder.
   onBeginPaneDrag?: BeginPaneDrag;
@@ -515,9 +559,11 @@ function WorkspacePaneContent({
   content,
   paneId,
   isFocused,
-  canShowSecondaryPanel,
+  secondaryPanelRegistry,
+  reservesWindowPanelToggle,
   onRequestClose,
   isBoundedPane,
+  isTopRow,
   onNavigateInPane,
   onBeginPaneDrag,
 }: WorkspacePaneContentProps) {
@@ -533,35 +579,52 @@ function WorkspacePaneContent({
         : undefined,
     [onBeginPaneDrag, paneId],
   );
+  const secondaryPanelHost = useMemo<PaneSecondaryPanelRegistration | null>(
+    () =>
+      secondaryPanelRegistry === null
+        ? null
+        : {
+            publish: (model) => secondaryPanelRegistry.publish(paneId, model),
+            clear: () => secondaryPanelRegistry.clear(paneId),
+          },
+    [paneId, secondaryPanelRegistry],
+  );
   const value = useMemo<PaneContextValue>(
     () => ({
       paneId,
       isFocused,
-      canShowSecondaryPanel,
+      secondaryPanelHost,
+      reservesWindowPanelToggle,
       onRequestClose,
       isBoundedPane,
+      isTopRow,
       navigateInPane,
       beginPaneDrag,
     }),
     [
       beginPaneDrag,
-      canShowSecondaryPanel,
       isBoundedPane,
       isFocused,
+      isTopRow,
       navigateInPane,
       onRequestClose,
       paneId,
+      reservesWindowPanelToggle,
+      secondaryPanelHost,
     ],
   );
 
   if (content.kind !== "thread") {
     return (
-      <NonThreadPaneContent
-        content={content}
-        onRequestClose={onRequestClose}
-        beginPaneDrag={beginPaneDrag}
-        isBoundedPane={isBoundedPane}
-      />
+      <PaneContext.Provider value={value}>
+        <NonThreadPaneContent
+          content={content}
+          onRequestClose={onRequestClose}
+          beginPaneDrag={beginPaneDrag}
+          isBoundedPane={isBoundedPane}
+          isTopRow={isTopRow}
+        />
+      </PaneContext.Provider>
     );
   }
 
@@ -581,7 +644,7 @@ function StandalonePaneContent({ content }: { content: PaneContent }) {
     return <ThreadDetailView surface="page" />;
   }
   if (content.kind === "new-thread") {
-    return <RootComposeView isBoundedPane={false} surface="page" />;
+    return <RootComposeView />;
   }
   return (
     <PluginPanelView
@@ -597,13 +660,22 @@ function NonThreadPaneContent({
   onRequestClose,
   beginPaneDrag,
   isBoundedPane,
+  isTopRow,
 }: {
   content: Exclude<PaneContent, { kind: "thread" }>;
   onRequestClose: (() => void) | null;
   beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
   isBoundedPane: boolean;
+  isTopRow: boolean;
 }) {
   const { navPanels } = usePluginSlots();
+  const { reservesWindowPanelToggle } = useOptionalPaneContext() ?? {
+    reservesWindowPanelToggle: false,
+  };
+  const isWindowPanelOpen =
+    useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const panel =
     content.kind === "plugin-panel"
       ? navPanels.find(
@@ -636,6 +708,13 @@ function NonThreadPaneContent({
           <Icon name="X" />
         </Button>
       ) : null}
+      {reservesWindowPanelToggle && !isWindowPanelOpen ? (
+        // The host's shortcut hint drops below the chrome row; reserve only
+        // its stable 28px corner button beside these pane actions. With the
+        // window panel open, the toggle overlays the panel's own chrome
+        // instead, so the pane actions sit flush at the pane edge.
+        <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
+      ) : null}
     </>
   );
 
@@ -649,12 +728,21 @@ function NonThreadPaneContent({
       {isBoundedPane || panel ? (
         <AppPageHeader
           bordered={false}
+          isWindowDragRegion={isTopRow}
           className="border-b border-border-seam-vertical/60"
           center={
             <div
               className={cn(
                 "flex min-w-0 flex-1 items-center",
-                beginPaneDrag && "cursor-grab touch-none select-none",
+                beginPaneDrag &&
+                  cn(
+                    "cursor-grab touch-none select-none",
+                    // AppPageHeader is an OS window-drag region on macOS.
+                    // Carve this pane-reorder handle out so Electron routes
+                    // the pointer gesture to the split drag layer, matching
+                    // the thread-title handle in ThreadDetailHeader.
+                    usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                  ),
               )}
               onPointerDown={beginPaneDrag ? handlePointerDown : undefined}
             >
@@ -670,7 +758,7 @@ function NonThreadPaneContent({
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 md:p-5">
         {content.kind === "new-thread" ? (
-          <RootComposeView isBoundedPane={isBoundedPane} surface="page" />
+          <RootComposeView />
         ) : (
           <PluginPanelView
             pluginId={content.pluginId}

@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  WorkflowPhaseStrip,
+  WorkflowStatusPill,
+} from "@bb/shared-ui/workflow-progress";
 
 const WORKFLOW_CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-workflow-card-body";
@@ -49,7 +53,7 @@ function agentProgressLabel(workflow: TimelineWorkflowWorkRow): string | null {
   const settled = agents.filter((agent) =>
     isSettledWorkflowAgentState(agent.state),
   ).length;
-  return `(${settled}/${agents.length} agents)`;
+  return `${settled}/${agents.length} agents`;
 }
 
 export interface ThreadWorkflowCardProps {
@@ -100,10 +104,7 @@ export function ThreadWorkflowCard({
             className={activityIconClass("active", "size-3.5 shrink-0")}
             aria-hidden="true"
           />
-          <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
-            <span className={activityMetaClass("active", "shrink-0")}>
-              Running workflow:
-            </span>
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
             <span
               className={activityTextClass("active", "min-w-0 truncate")}
               title={name}
@@ -111,14 +112,25 @@ export function ThreadWorkflowCard({
               {name}
             </span>
             {progress ? (
-              <span className={activityMetaClass("active", "shrink-0")}>
+              <span
+                className={activityMetaClass(
+                  "active",
+                  "shrink-0 text-2xs tabular-nums",
+                )}
+              >
                 {progress}
               </span>
             ) : null}
-            <span className={activityMetaClass("active", "shrink-0")}>
+            <span
+              className={activityMetaClass(
+                "active",
+                "shrink-0 text-2xs tabular-nums",
+              )}
+            >
               <WorkflowDuration startedAt={workflow.startedAt} />
             </span>
           </span>
+          <WorkflowStatusPill state="running" />
           <Icon
             name="ChevronDown"
             className={cn(
@@ -130,6 +142,13 @@ export function ThreadWorkflowCard({
           />
         </button>
       </div>
+      {workflow.workflow ? (
+        <WorkflowPhaseStrip
+          progress={workflow.workflow}
+          settled={false}
+          className="px-3 pb-2"
+        />
+      ) : null}
       <section
         id={BODY_ID}
         role="region"

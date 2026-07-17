@@ -1,5 +1,6 @@
 import type { ToolCallResponse } from "@bb/domain";
 import type {
+  PluginAgentConfigurationContext,
   PluginAgentToolContext,
   PluginAgentToolRecord,
 } from "./plugin-api.js";
@@ -26,7 +27,8 @@ type PluginAgentContributions = Pick<
   | "findAgentTool"
   | "invokeAgentTool"
   | "resolveMention"
->;
+> &
+  Partial<Pick<PluginService, "resolveAgentConfiguration">>;
 
 let contributions: PluginAgentContributions | undefined;
 
@@ -44,6 +46,21 @@ export function getPluginSkillRootContributions(): PluginSkillRootContribution[]
 /** Native tools from bb.agents.registerTool, resolved live per session start. */
 export function listPluginAgentTools(): PluginAgentToolContribution[] {
   return contributions?.listAgentTools() ?? [];
+}
+
+export async function resolvePluginAgentConfiguration(args: {
+  context: PluginAgentConfigurationContext;
+  skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
+}) {
+  const active = contributions;
+  if (!active?.resolveAgentConfiguration) {
+    return {
+      tools: active?.listAgentTools() ?? [],
+      selectedSkillIdsByPlugin: new Map<string, ReadonlySet<string>>(),
+      dynamicInstructions: [] as Array<{ pluginId: string; text: string }>,
+    };
+  }
+  return active.resolveAgentConfiguration(args);
 }
 
 /**

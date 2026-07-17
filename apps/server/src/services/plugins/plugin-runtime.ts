@@ -48,7 +48,6 @@ const DEFAULT_SERVICE_RESTART_BASE_MS = 1_000;
 const SERVICE_RESTART_MAX_MS = 60_000;
 /** A crash after this much healthy runtime resets the backoff sequence. */
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
-const CONNECT_BUILTIN_PLUGIN_NAME = "connect";
 
 export interface PluginRuntimeContext {
   deps: PluginServiceDeps;
@@ -373,7 +372,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     id: string,
     label: string,
     run: () => T | Promise<T>,
-  ): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+  ): Promise<
+    { ok: true; value: T } | { ok: false; error: string; cause: unknown }
+  > {
     const stats = statsFor(id);
     const startedAt = performance.now();
     let settle!: () => void;
@@ -395,7 +396,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       if (statuses.get(id)?.status === "running") {
         setStatus(id, "running", `${label} failed: ${message}`);
       }
-      return { ok: false, error: message };
+      return { ok: false, error: message, cause: error };
     } finally {
       const elapsedMs = performance.now() - startedAt;
       stats.count += 1;
@@ -408,7 +409,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   /**
    * Reload sequence step 3 (design §3): bounded wait for in-flight handler
-   * invocations so dispose does not close sqlite handles or invalidate the
+   * invocations so dispose does not close database handles or invalidate the
    * API under a still-running rpc/http/event handler.
    */
   async function drainInvocations(id: string): Promise<void> {
@@ -604,42 +605,33 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return null;
   }
 
-  function isBuiltinPluginId(id: string): boolean {
-    const row = getInstalledPlugin(deps.db, id);
-    return row?.sourceKind === "builtin";
+  // Auto-installed builtins load regardless of the "Plugins" experiment;
+  // store-installed officials share bundled (builtin) sources but were a
+  // user opt-in through the catalog, so they stay behind the experiment.
+  function experimentGateExempt(row: InstalledPluginRow): boolean {
+    return row.provenance === "builtin";
   }
 
-  function isBuiltinPluginLoadEnabled(name: string): boolean {
-    if (name === CONNECT_BUILTIN_PLUGIN_NAME) {
-      return deps.isConnectEnabled();
-    }
-    return true;
+  function isBuiltinPluginId(id: string): boolean {
+    const row = getInstalledPlugin(deps.db, id);
+    return row !== undefined && experimentGateExempt(row);
   }
 
   function experimentGateDisabledDetail(
     row: InstalledPluginRow,
   ): string | null {
-    const name = builtinName(row);
-    if (name === CONNECT_BUILTIN_PLUGIN_NAME) {
-      return 'disabled by the "bb connect" experiment';
-    }
-    if (name === null) {
+    if (!experimentGateExempt(row)) {
       return 'disabled by the "Plugins" experiment';
     }
     return null;
   }
 
   function shouldLoadRow(row: InstalledPluginRow): boolean {
-    const name = builtinName(row);
-    if (name !== null) return isBuiltinPluginLoadEnabled(name);
-    return deps.isEnabled();
+    return experimentGateExempt(row) || deps.isEnabled();
   }
 
   function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
-    if (plugin.builtinName !== null) {
-      return isBuiltinPluginLoadEnabled(plugin.builtinName);
-    }
-    return deps.isEnabled();
+    return plugin.experimentExempt || deps.isEnabled();
   }
 
   function shouldExposePluginId(id: string): boolean {
@@ -656,13 +648,24 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
+  function isPrebuiltServerSdkCompatible(
+    meta: { sdkMajor: number; sdkVersion: string } | null,
+  ): boolean {
+    if (meta === null) return false;
+    if (meta.sdkMajor !== PLUGIN_SDK_MAJOR) return false;
+    if (PLUGIN_SDK_MAJOR === 0) return meta.sdkVersion === PLUGIN_SDK_VERSION;
+    return true;
+  }
+
   /**
    * The backend entry to import for this load. Managed (git:/npm:) installs
-   * prefer a fresh, SDK-major-compatible prebuilt `dist/server.js` (design
+   * prefer a fresh, SDK-compatible prebuilt `dist/server.js` (design
    * §3 loader amendment, §6 prebuilt distribution) so consumers never need
    * npm or node_modules; path installs ALWAYS load from source, so author
    * iteration via `bb plugin reload` sees edited files. A present-but-stale
-   * or meta-less dist falls back to source with one warning.
+   * or meta-less dist falls back to source with one warning. While the SDK
+   * is pre-1.0, minor bumps are breaking (semver), so compatibility requires
+   * the exact SDK version, not just a matching major.
    */
   async function resolveServerEntry(
     row: InstalledPluginRow,
@@ -683,9 +686,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } catch {
       // missing sidecar → meta stays null
     }
-    if (meta?.sdkMajor !== PLUGIN_SDK_MAJOR) {
+    if (!isPrebuiltServerSdkCompatible(meta)) {
       logger.warn(
-        `plugin ${row.id}: ignoring prebuilt dist/server.js (built for SDK ${meta ? `major ${meta.sdkMajor}` : "unknown"}, running SDK major is ${PLUGIN_SDK_MAJOR}) — loading from source`,
+        `plugin ${row.id}: ignoring prebuilt dist/server.js (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}) — loading from source`,
       );
       return manifest.serverEntry;
     }
@@ -699,16 +702,18 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
    * immutable after promotion and are served exactly as validated;
    * incompatible metadata is surfaced without rewriting cached bytes.
    */
-  async function refreshAppBundle(
+  async function loadAppBundleCandidate(
     row: InstalledPluginRow,
     manifest: PluginManifest,
-  ): Promise<string | null> {
+  ): Promise<{
+    snapshot: PluginAppBundleSnapshot;
+    problem: string | null;
+  }> {
     if (manifest.appEntry === undefined) {
-      appBundles.set(row.id, {
-        state: { hasApp: false, bundle: null },
-        assets: null,
-      });
-      return null;
+      return {
+        snapshot: { state: { hasApp: false, bundle: null }, assets: null },
+        problem: null,
+      };
     }
     const kind = row.sourceKind;
     if (
@@ -728,16 +733,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           logger.warn(
             `plugin ${row.id}: frontend bundle rebuild failed: ${message}`,
           );
-          appBundles.set(row.id, {
-            state: { hasApp: true, bundle: null },
-            assets: null,
-          });
-          return `frontend bundle rebuild failed: ${message}`;
+          return {
+            snapshot: { state: { hasApp: true, bundle: null }, assets: null },
+            problem: `frontend bundle rebuild failed: ${message}`,
+          };
         }
       }
     }
-    appBundles.set(row.id, await loadPluginAppBundle(row.id, row.rootDir));
-    return null;
+    return {
+      snapshot: await loadPluginAppBundle(row.id, row.rootDir),
+      problem: null,
+    };
   }
 
   // Best-effort static identity for the inventory + logo asset route,
@@ -749,7 +755,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       const manifest = await readPluginManifest(row.rootDir);
       identities.set(row.id, {
         manifest,
-        logos: await loadPluginLogos(row.id, row.rootDir, manifest),
+        logos: await loadPluginLogos(row.id, manifest),
       });
     } catch {
       identities.delete(row.id);
@@ -764,11 +770,16 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       setStatus(row.id, "disabled");
       return;
     }
-    if (loaded.has(row.id)) {
-      // Idempotent load: enabling an already-running plugin (or any future
-      // caller) must not orphan the previous instance — its services would
-      // keep running and its sqlite handles would leak.
-      await disposeOne(row.id);
+    const previous = loaded.get(row.id);
+    function failBeforeFactory(
+      status: PluginRuntimeStatus,
+      detail: string,
+    ): void {
+      if (previous !== undefined) {
+        setStatus(row.id, "running", `reload failed: ${detail}`);
+      } else {
+        setStatus(row.id, status, detail);
+      }
     }
     const hung = hungServices.get(row.id);
     if (hung !== undefined && hung.size > 0) {
@@ -784,8 +795,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     try {
       await stat(row.rootDir);
     } catch {
-      setStatus(
-        row.id,
+      failBeforeFactory(
         "missing",
         `plugin directory not found: ${row.rootDir} (reinstall)`,
       );
@@ -795,8 +805,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     try {
       manifest = await readPluginManifest(row.rootDir);
     } catch (error) {
-      setStatus(
-        row.id,
+      failBeforeFactory(
         "error",
         error instanceof Error ? error.message : String(error),
       );
@@ -805,21 +814,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const engineProblem =
       checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
     if (engineProblem) {
-      setStatus(row.id, "incompatible", engineProblem);
+      failBeforeFactory("incompatible", engineProblem);
       return;
     }
     const artifactProblem = await packagedBuiltinArtifactProblem(row, manifest);
     if (artifactProblem !== null) {
-      setStatus(row.id, "incompatible", artifactProblem);
+      failBeforeFactory("incompatible", artifactProblem);
       return;
     }
-    // Before the factory runs, so a backend load failure still leaves
-    // current bundle info in the inventory (the frontend only imports
-    // bundles of running plugins anyway).
-    const appBundleProblem = await refreshAppBundle(row, manifest);
+    // Build candidate assets without publishing them; a failed reload keeps
+    // the previous backend and frontend registration sets together.
+    const appBundleCandidate = await loadAppBundleCandidate(row, manifest);
     // Logo refresh rides every load too, so `bb plugin reload` picks up a
     // changed/added/removed logo file (either variant).
-    logos.set(row.id, await loadPluginLogos(row.id, row.rootDir, manifest));
+    const logoCandidate = await loadPluginLogos(row.id, manifest);
     const handle = createPluginApi({
       pluginId: row.id,
       logger: deps.logger,
@@ -855,6 +863,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         return deps.ensureSharedPortTunnel(hostId);
       },
+      validateSharedPortDeclaration: (hostId, ports) => {
+        if (!deps.sharedPorts) {
+          throw new Error("host shared-port control plane is unavailable");
+        }
+        return deps.sharedPorts.validateSharedPortDeclaration(hostId, ports);
+      },
       declareSharedPorts: (hostId, ports) => {
         if (!deps.sharedPorts) {
           throw new Error("host shared-port control plane is unavailable");
@@ -865,14 +879,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ports,
         });
       },
-      clearDeclaredSharedPorts: () => {
-        deps.sharedPorts?.clearDeclarationsForOwner(row.id);
+      replaceDeclaredSharedPorts: (declarations) => {
+        if (declarations.length > 0 && !deps.sharedPorts) {
+          throw new Error("host shared-port control plane is unavailable");
+        }
+        deps.sharedPorts?.replaceDeclarationsForOwner(row.id, declarations);
       },
     });
-    // Fresh load: a plugin that was waiting on configuration gets to prove
-    // itself again (its factory/services re-report if still unconfigured).
-    needsConfiguration.delete(row.id);
-    agentToolProblems.delete(row.id);
     try {
       // Fresh instance per load: guarantees re-imports see current sources.
       const jiti = createJiti(import.meta.url, { moduleCache: false });
@@ -894,8 +907,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         handle.api,
       );
     } catch (error) {
-      deps.sharedPorts?.clearDeclarationsForOwner(row.id);
-      for (const database of handle.sqliteHandles.splice(0)) {
+      for (const database of handle.databaseHandles.splice(0)) {
         try {
           database.close();
         } catch {
@@ -910,7 +922,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       if (/ERR_DLOPEN_FAILED|\.node/.test(message)) {
         message += " (native dependencies are not supported in BB plugins)";
       }
-      setStatus(row.id, "error", message);
+      if (previous !== undefined) {
+        setStatus(row.id, "running", `reload failed: ${message}`);
+      } else {
+        setStatus(row.id, "error", message);
+      }
       logger.warn(
         `plugin ${row.id} failed to load: ${statuses.get(row.id)?.detail}`,
       );
@@ -932,8 +948,32 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       })),
       isBuiltin: loadedBuiltinName !== null,
       builtinName: loadedBuiltinName,
+      experimentExempt: experimentGateExempt(row),
     };
+    if (previous !== undefined) {
+      await disposePluginInstance(row.id, previous);
+      if ((hungServices.get(row.id)?.size ?? 0) > 0) {
+        loaded.delete(row.id);
+        deps.sharedPorts?.clearDeclarationsForOwner(row.id);
+        for (const database of handle.databaseHandles.splice(0)) {
+          try {
+            database.close();
+          } catch {
+            // The degraded status from the hung service is actionable.
+          }
+        }
+        handle.invalidate();
+        return;
+      }
+    }
+    // One map replacement is the registration commit point. Until this line,
+    // every dispatcher continues to resolve the complete previous handle.
     loaded.set(row.id, plugin);
+    appBundles.set(row.id, appBundleCandidate.snapshot);
+    logos.set(row.id, logoCandidate);
+    needsConfiguration.delete(row.id);
+    agentToolProblems.delete(row.id);
+    handle.activate();
     // Sync durable schedule rows to this load's registrations: upsert each
     // (computing next_run_at from its cron) and drop rows for names the
     // plugin no longer registers. Run history on kept rows survives.
@@ -960,9 +1000,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     // A dropped tool registration or a failed frontend rebuild keeps the
     // plugin running but rides along as the status detail.
     if (!needsConfiguration.has(row.id)) {
-      const details = [agentToolProblems.get(row.id), appBundleProblem].filter(
-        (detail): detail is string => typeof detail === "string",
-      );
+      const details = [
+        agentToolProblems.get(row.id),
+        appBundleCandidate.problem,
+      ].filter((detail): detail is string => typeof detail === "string");
       setStatus(
         row.id,
         "running",
@@ -972,10 +1013,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     logger.info(`plugin ${row.id}@${manifest.version} loaded`);
   }
 
-  async function disposeOne(id: string): Promise<void> {
-    const plugin = loaded.get(id);
-    if (!plugin) return;
-    loaded.delete(id);
+  async function disposePluginInstance(
+    id: string,
+    plugin: LoadedPlugin,
+  ): Promise<void> {
     disposingPluginIds.add(id);
     try {
       try {
@@ -999,16 +1040,16 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
       }
       // §3 step 3: let in-flight rpc/http/event handlers settle (bounded)
-      // before their sqlite handles close and their API handle goes stale.
+      // before their database handles close and their API handle goes stale.
       await drainInvocations(id);
-      // Close host-vended sqlite handles before invalidating: a stale handle
+      // Close host-vended database handles before invalidating: a stale handle
       // throws on use instead of writing to a database mid-reload.
-      for (const database of plugin.handle.sqliteHandles.splice(0)) {
+      for (const database of plugin.handle.databaseHandles.splice(0)) {
         try {
           database.close();
         } catch (error) {
           logger.warn(
-            `plugin ${id} sqlite close failed: ${error instanceof Error ? error.message : String(error)}`,
+            `plugin ${id} database close failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
@@ -1016,6 +1057,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       plugin.handle.invalidate();
       disposingPluginIds.delete(id);
     }
+  }
+
+  async function disposeOne(id: string): Promise<void> {
+    const plugin = loaded.get(id);
+    if (!plugin) return;
+    loaded.delete(id);
+    await disposePluginInstance(id, plugin);
+    deps.sharedPorts?.clearDeclarationsForOwner(id);
   }
 
   async function disposeAll(): Promise<void> {

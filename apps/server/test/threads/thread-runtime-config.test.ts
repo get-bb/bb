@@ -816,12 +816,8 @@ describe("thread runtime config", () => {
       });
 
       setExperiments(harness.db, {
-        bbConnect: false,
         claudeCodeMockCliTraffic: true,
-        multiMachine: false,
         threadSplits: false,
-        popoutChat: false,
-        popoutChatHotkey: "Alt+Space",
         plugins: false,
       });
 
@@ -1135,6 +1131,7 @@ describe("thread runtime config", () => {
         harness.deps,
         {
           thread,
+          model: "test-model",
           environment: {
             hostId: environment.hostId,
             id: environment.id,
@@ -1198,6 +1195,7 @@ describe("thread runtime config", () => {
         harness.deps,
         {
           thread: sideChatThread,
+          model: "test-model",
           environment: {
             hostId: environment.hostId,
             id: environment.id,
@@ -1252,6 +1250,7 @@ describe("thread runtime config", () => {
         harness.deps,
         {
           thread,
+          model: "test-model",
           environment: {
             hostId: environment.hostId,
             id: environment.id,
@@ -1286,7 +1285,6 @@ describe("thread runtime config", () => {
       seedPrimaryHost(harness.deps, primary.id);
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const workspacePath = "/remote/runtime-agents-workspace";
       const agentInstructionsPath = path.join(
@@ -1323,6 +1321,7 @@ describe("thread runtime config", () => {
         {
           thread,
           environment,
+          model: "test-model",
         },
       );
 
@@ -1354,7 +1353,6 @@ describe("thread runtime config", () => {
       seedPrimaryHost(harness.deps, primary.id);
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const workspacePath = "/remote/runtime-missing-agents-workspace";
       registerRemoteRuntimeFileResponder(harness, {
@@ -1378,7 +1376,7 @@ describe("thread runtime config", () => {
 
       const runtimeConfig = await resolveThreadRuntimeCommandConfig(
         harness.deps,
-        { thread, environment },
+        { thread, environment, model: "test-model" },
       );
 
       expect(runtimeConfig.instructions).not.toContain(
@@ -1398,7 +1396,6 @@ describe("thread runtime config", () => {
       seedPrimaryHost(harness.deps, primary.id);
       setExperiments(harness.db, {
         ...defaultExperiments,
-        multiMachine: true,
       });
       const workspacePath = "/remote/runtime-skills-workspace";
       const skillRootPath = path.join(
@@ -1441,7 +1438,7 @@ describe("thread runtime config", () => {
 
       const runtimeConfig = await resolveThreadRuntimeCommandConfig(
         harness.deps,
-        { thread, environment },
+        { thread, environment, model: "test-model" },
       );
 
       expect(runtimeConfig.injectedSkillSources).toContainEqual({
@@ -1508,6 +1505,7 @@ describe("thread runtime config", () => {
         harness.deps,
         {
           thread,
+          model: "test-model",
           environment: {
             hostId: environment.hostId,
             id: environment.id,
@@ -1621,6 +1619,7 @@ describe("thread runtime config", () => {
           harness.deps,
           {
             thread,
+            model: "test-model",
             environment: {
               hostId: environment.hostId,
               id: environment.id,
@@ -1704,6 +1703,7 @@ describe("thread runtime config", () => {
           harness.deps,
           {
             thread,
+            model: "test-model",
             environment: {
               hostId: environment.hostId,
               id: environment.id,
@@ -1775,6 +1775,7 @@ describe("thread runtime config", () => {
           harness.deps,
           {
             thread: sideChatThread,
+            model: "test-model",
             environment: {
               hostId: environment.hostId,
               id: environment.id,

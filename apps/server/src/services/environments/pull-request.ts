@@ -158,11 +158,8 @@ function assemblePullRequestAttention(
  * a draft becomes `draft`; otherwise the open/merged/closed state carries over.
  */
 export function assembleThreadPullRequest(
-  raw: GitHostPullRequest | null,
-): ThreadPullRequest | null {
-  if (!raw) {
-    return null;
-  }
+  raw: GitHostPullRequest,
+): ThreadPullRequest {
   const state =
     raw.state === "MERGED"
       ? "merged"

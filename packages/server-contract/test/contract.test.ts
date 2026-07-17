@@ -69,6 +69,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Thread creation may omit visibility for backward compatibility; the server fills visible at the creation boundary.",
+    fields: ["createThreadRequestSchema.visibility"],
+  },
+  {
+    reason:
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
       "createThreadRequestSchema.folderId",
@@ -172,11 +177,21 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "System execution-option lookups may target a host indirectly or directly and may omit provider id to use the host default.",
+      "Pre-environment project workspace queries may omit both routing selectors to use the project's primary source.",
+    fields: [
+      "projectFilesQuerySchema.environmentId",
+      "projectFilesQuerySchema.hostId",
+    ],
+  },
+  {
+    reason:
+      "System provider lookups may target a host indirectly or directly and may omit provider id to use the host default.",
     fields: [
       "systemExecutionOptionsQuerySchema.environmentId",
       "systemExecutionOptionsQuerySchema.hostId",
       "systemExecutionOptionsQuerySchema.providerId",
+      "systemProvidersQuerySchema.environmentId",
+      "systemProvidersQuerySchema.hostId",
     ],
   },
   {
@@ -784,6 +799,7 @@ describe("server-contract canonical schemas", () => {
           originKind: null,
           childOrigin: null,
           originPluginId: null,
+          visibility: "visible",
           archivedAt: null,
           pinnedAt: null,
           pinSortKey: null,
@@ -1172,6 +1188,44 @@ describe("server-contract canonical schemas", () => {
     expect(parsed.origin).toBe("sdk");
   });
 
+  it("accepts generic hidden thread visibility without changing omitted requests", () => {
+    const base = {
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "sdk" as const,
+      input: [{ type: "text" as const, text: "Scripted start" }],
+      environment: {
+        type: "host" as const,
+        hostId: "host_abc",
+        workspace: { type: "unmanaged" as const, path: null },
+      },
+    };
+
+    expect(createThreadRequestSchema.parse(base).visibility).toBeUndefined();
+    expect(
+      createThreadRequestSchema.parse({ ...base, visibility: "hidden" })
+        .visibility,
+    ).toBe("hidden");
+  });
+
+  it("allows assigning a hidden thread to a folder at creation", () => {
+    expect(
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "sdk",
+        input: [{ type: "text", text: "Background work" }],
+        visibility: "hidden",
+        folderId: "fld_work",
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+      }).folderId,
+    ).toBe("fld_work");
+  });
+
   it("rejects empty input for a normal thread start", () => {
     expect(() =>
       createThreadRequestSchema.parse({
@@ -1480,7 +1534,7 @@ describe("server-contract clients", () => {
         query: maxQuery,
         environmentId: "",
       }),
-    ).toMatchObject({ query: maxQuery, environmentId: null });
+    ).toEqual({ query: maxQuery, environmentId: undefined });
     expect(() =>
       contract.projectFilesQuerySchema.parse({
         query: longQuery,
@@ -1506,7 +1560,7 @@ describe("server-contract clients", () => {
         provider: "codex",
         environmentId: "",
       }),
-    ).toEqual({ provider: "codex", environmentId: null });
+    ).toEqual({ provider: "codex", environmentId: undefined });
     expect(() =>
       contract.projectCommandsQuerySchema.parse({
         provider: "codex",
@@ -1608,6 +1662,7 @@ describe("server-contract clients", () => {
       squashMergeActionResponseSchema: contract.squashMergeActionResponseSchema,
       systemExecutionOptionsQuerySchema:
         contract.systemExecutionOptionsQuerySchema,
+      systemProvidersQuerySchema: contract.systemProvidersQuerySchema,
       threadEventsQuerySchema: contract.threadEventsQuerySchema,
       threadListQuerySchema: contract.threadListQuerySchema,
       threadPendingInteractionsResponseSchema:

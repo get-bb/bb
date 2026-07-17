@@ -20,6 +20,7 @@ import {
   beginThreadMetadataTransaction,
   beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
+  beginUnpinAndMoveThreadTransaction,
   beginUnpinThreadTransaction,
   rollbackArchiveThreadsTransaction,
   rollbackDeleteThreadTransaction,
@@ -41,6 +42,9 @@ interface ThreadMutationRequest {
 type UpdateThreadMutationRequest = ThreadMutationRequest & UpdateThreadRequest;
 type ReorderPinnedThreadMutationRequest = ThreadMutationRequest &
   ReorderPinnedThreadRequest;
+type UnpinAndMoveThreadMutationRequest = ThreadMutationRequest & {
+  folderId: string | null;
+};
 
 interface UpdateThreadMutationOptions {
   errorMessage?: string | undefined;
@@ -149,6 +153,47 @@ export function useUnpinThread() {
     mutationFn: ({ id }: ThreadMutationRequest) => api.unpinThread(id),
     onMutate: async ({ id }): Promise<ThreadListMutationTransaction> =>
       beginUnpinThreadTransaction({ queryClient, threadId: id }),
+    onError: (_error, variables, context) => {
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId: variables.id,
+        transaction: context,
+      });
+    },
+    onSuccess: (thread) => {
+      applyThreadPinStateResult({ queryClient, thread, pinSortKey: null });
+    },
+    onSettled: (_data, _error, variables) => {
+      settleThreadListMembershipMutation({
+        queryClient,
+        threadId: variables.id,
+      });
+    },
+  });
+}
+
+export function useUnpinAndMoveThread() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ThreadResponse,
+    Error,
+    UnpinAndMoveThreadMutationRequest,
+    ThreadListMutationTransaction
+  >({
+    meta: {
+      errorMessage: "Failed to unpin and move thread.",
+    },
+    mutationFn: async ({ folderId, id }) => {
+      await api.unpinThread(id);
+      return api.updateThread(id, { folderId });
+    },
+    onMutate: async ({ folderId, id }) =>
+      beginUnpinAndMoveThreadTransaction({
+        folderId,
+        queryClient,
+        threadId: id,
+      }),
     onError: (_error, variables, context) => {
       rollbackThreadListMutationTransaction({
         queryClient,

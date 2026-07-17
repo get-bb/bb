@@ -48,6 +48,7 @@ export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
 
+/** Rich plugin identity for roomy settings rows and cards. */
 export function PluginLogo({
   plugin,
   className,
@@ -85,7 +86,7 @@ export function PluginLogo({
 
 /**
  * Neutral avatar for entries without a shipped logo (installed rows, browse
- * cards, marketplace rows). Renders a bare generic glyph — a placeholder, not
+ * cards and catalog status). Renders a bare generic glyph — a placeholder, not
  * the entry's initial and not a tile. The `className` sizes the footprint so
  * it aligns with sibling logo images.
  */
@@ -157,7 +158,9 @@ export function DetailsDisclosure({
         />
       </button>
       {expanded ? (
-        <div className="border-t border-border-seam px-3 py-2.5">{children}</div>
+        <div className="border-t border-border-seam px-3 py-2.5">
+          {children}
+        </div>
       ) : null}
     </div>
   );

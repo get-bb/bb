@@ -467,19 +467,25 @@ export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
   rawRequestInput: ThreadCreateServiceRequestInput,
 ) {
+  const normalizedRequestInput: ThreadCreateServiceRequestInput & {
+    visibility: NonNullable<ThreadCreateServiceRequestInput["visibility"]>;
+  } = {
+    ...rawRequestInput,
+    visibility: rawRequestInput.visibility ?? "visible",
+  };
   const project = requirePublicProjectForThreadCreate(
     deps,
-    rawRequestInput.projectId,
+    normalizedRequestInput.projectId,
   );
-  if (rawRequestInput.origin === "plugin") {
-    if (rawRequestInput.originPluginId === undefined) {
+  if (normalizedRequestInput.origin === "plugin") {
+    if (normalizedRequestInput.originPluginId === undefined) {
       throw new ApiError(
         400,
         "invalid_request",
         'originPluginId is required when origin is "plugin"',
       );
     }
-  } else if (rawRequestInput.originPluginId !== undefined) {
+  } else if (normalizedRequestInput.originPluginId !== undefined) {
     throw new ApiError(
       400,
       "invalid_request",
@@ -489,13 +495,13 @@ export async function createThreadFromRequest(
   // Resolve the server-owned "project-default" environment marker into a
   // concrete environment before any workspace/provisioning logic runs.
   const requestInput = {
-    ...rawRequestInput,
+    ...normalizedRequestInput,
     environment:
-      rawRequestInput.environment.type === "project-default"
+      normalizedRequestInput.environment.type === "project-default"
         ? resolveProjectDefaultThreadEnvironment(deps, {
-            projectId: rawRequestInput.projectId,
+            projectId: normalizedRequestInput.projectId,
           })
-        : rawRequestInput.environment,
+        : normalizedRequestInput.environment,
   };
   // Plugin mentions resolve once at send time (plugin design §4.9): each
   // unique mention becomes an agent-only context input appended after the

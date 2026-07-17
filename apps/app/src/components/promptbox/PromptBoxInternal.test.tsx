@@ -822,6 +822,8 @@ describe("PromptBoxInternal compact layout", () => {
     expect(submitButton.classList.contains("size-8")).toBe(true);
     expect(submitButton.classList.contains("p-0")).toBe(true);
     expect(submitButton.classList.contains("ml-1")).toBe(false);
+    expect(submitButton.classList.contains("transition-colors")).toBe(true);
+    expect(submitButton.classList.contains("transition-all")).toBe(false);
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
@@ -1047,12 +1049,9 @@ describe("PromptBoxInternal mention triggers", () => {
         },
       },
     ]);
-    const logo = within(getPromptEditorElement()).getByTestId(
-      "plugin-logo-github",
-    );
-    expect(logo.getAttribute("src")).toBe(
-      "/api/v1/plugins/github/assets/logo?h=abc",
-    );
+    const promptEditor = getPromptEditorElement();
+    expect(promptEditor.querySelector('[data-icon="Zap"]')).toBeTruthy();
+    expect(promptEditor.querySelector("img")).toBeNull();
   });
 
   it("keeps path-first mention results in keyboard navigation order", async () => {

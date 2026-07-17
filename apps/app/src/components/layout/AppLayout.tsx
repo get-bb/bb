@@ -58,7 +58,6 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   getLegacyProjectComposeRoutePath,
-  getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
@@ -252,7 +251,7 @@ function SidebarTriggerOverlay({
     <div
       data-testid="app-sidebar-trigger-overlay"
       className={cn(
-        "fixed left-0 top-0 z-50",
+        "fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)] z-50",
         CHROME_ROW_CLASS,
         BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
       )}
@@ -289,12 +288,11 @@ interface AppHeaderProps {
    */
   usesProjectChromeStyle: boolean;
   usesDesktopChrome: boolean;
-  isArchivedView: boolean;
   isSettingsView: boolean;
   projectId?: string;
   project?: ProjectResponse;
   /** Registered navPanel when this is a plugin panel route (design §5.2):
-   * the shared header shows plugin logo + title, plus the registration's
+   * the shared header shows plugin icon + title, plus the registration's
    * `headerContent` as the actions. */
   pluginPanel?: PluginNavPanelSlot;
   /** The panel route's splat remainder ("" at the panel root). */
@@ -309,7 +307,6 @@ interface AppHeaderProps {
 function AppHeader({
   usesProjectChromeStyle,
   usesDesktopChrome,
-  isArchivedView,
   isSettingsView,
   projectId,
   project,
@@ -402,20 +399,6 @@ function AppHeader({
       >
         <Icon name="Settings" />
       </Link>
-      <Link
-        to={getProjectArchivedRoutePath(projectId)}
-        className={cn(
-          HEADER_ICON_BUTTON_CLASS,
-          "inline-flex items-center justify-center transition-colors",
-          isArchivedView
-            ? "bg-state-active text-foreground"
-            : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-        )}
-        aria-label="Archived threads"
-        aria-current={isArchivedView ? "page" : undefined}
-      >
-        <Icon name="Archive" />
-      </Link>
       {project ? (
         <ProjectActionsMenu
           project={project}
@@ -502,7 +485,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const archivedFolderId = isArchivedView
     ? new URLSearchParams(location.search).get("folderId")
     : null;
-  // Plugin panel routes ride the shared header (design §5.2): logo + panel
+  // Plugin panel routes ride the shared header (design §5.2): icon + panel
   // title in the center, the registration's headerContent as the actions.
   const { navPanels } = usePluginSlots();
   // Global settings routes swap the app sidebar for the settings sidebar.
@@ -805,7 +788,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <div
                 ref={contentShellRef}
                 data-testid="app-layout-content-shell"
-                className="relative flex h-[100dvh] min-w-0 w-full flex-col"
+                className="relative flex h-[100dvh] min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
               >
                 {showHeader ? (
                   <AppHeader
@@ -813,7 +796,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                     usesProjectChromeStyle={
                       isRootView || isArchivedView || isSettingsView
                     }
-                    isArchivedView={isArchivedView}
                     isSettingsView={isSettingsView}
                     projectId={projectId}
                     project={project}

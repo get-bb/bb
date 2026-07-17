@@ -82,7 +82,10 @@ describe("prepareHtmlPreview rpc", () => {
         file: "demo.html",
         extra: true,
       }),
-    ).rejects.toThrow(/unknown input field/);
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
   });
 
   it("rejects missing fields and non-object input", async () => {
@@ -90,15 +93,24 @@ describe("prepareHtmlPreview rpc", () => {
       threads: { get: () => threadWithEnv() },
       files: { read: () => ({ content: "", contentEncoding: "utf8" }) },
     });
-    await expect(harness.callRpc("prepareHtmlPreview", null)).rejects.toThrow(
-      /expected \{ threadId/,
-    );
+    await expect(
+      harness.callRpc("prepareHtmlPreview", null),
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
     await expect(
       harness.callRpc("prepareHtmlPreview", { threadId: "thr_1" }),
-    ).rejects.toThrow(/"file"/);
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
     await expect(
       harness.callRpc("prepareHtmlPreview", { file: "demo.html" }),
-    ).rejects.toThrow(/"threadId"/);
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
   });
 
   it("requires a live environment path and hostId", async () => {

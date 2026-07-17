@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULTS } from "@bb/config/defaults";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createTelemetryService,
@@ -129,13 +130,29 @@ describe("telemetry service", () => {
   });
 
   it.each([
-    { apiKey: "", enabled: true, label: "no API key" },
-    { apiKey: "phc_test", enabled: false, label: "opted out" },
-  ])("is fully inert when $label", async ({ apiKey, enabled }) => {
+    {
+      apiKey: "",
+      appVersion: "1.2.3",
+      enabled: true,
+      label: "there is no API key",
+    },
+    {
+      apiKey: "phc_test",
+      appVersion: "1.2.3",
+      enabled: false,
+      label: "the user opted out",
+    },
+    {
+      apiKey: "phc_test",
+      appVersion: DEFAULTS.appVersion,
+      enabled: true,
+      label: "the release version is unresolved",
+    },
+  ])("is fully inert when $label", async ({ apiKey, appVersion, enabled }) => {
     const telemetry = await createTelemetryService({
       apiKey,
       appSurface: "web",
-      appVersion: "1.2.3",
+      appVersion,
       dataDir,
       enabled,
       logger: createTestLogger(),

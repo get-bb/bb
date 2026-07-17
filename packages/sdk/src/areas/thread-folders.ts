@@ -1,6 +1,8 @@
 import type {
   CreateThreadFolderRequest,
   DeleteThreadFolderRequest,
+  ThreadFolderMutationResponse,
+  ThreadFolderResponse,
   UpdateThreadFolderRequest,
 } from "@bb/server-contract";
 import {
@@ -8,25 +10,17 @@ import {
   threadFolderMutationResponseSchema,
   threadFolderSchema,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
-export type ThreadFolderCreateResult = PublicApiOutput<
-  "/thread-folders",
-  "$post"
->;
-export type ThreadFolderUpdateResult = PublicApiOutput<
-  "/thread-folders",
-  "$patch"
->;
-export type ThreadFolderDeleteResult = PublicApiOutput<
-  "/thread-folders",
-  "$delete"
->;
+export type ThreadFolderCreateResult = ThreadFolderResponse;
+export type ThreadFolderUpdateResult = ThreadFolderMutationResponse;
+export type ThreadFolderDeleteResult = ThreadFolderMutationResponse;
+export type ThreadFolderListResult = ThreadFolderResponse[];
 
 export interface ThreadFoldersArea {
   create(args: CreateThreadFolderRequest): Promise<ThreadFolderCreateResult>;
   delete(args: DeleteThreadFolderRequest): Promise<ThreadFolderDeleteResult>;
-  list(): Promise<ThreadFolderCreateResult[]>;
+  list(): Promise<ThreadFolderListResult>;
   update(args: UpdateThreadFolderRequest): Promise<ThreadFolderUpdateResult>;
 }
 

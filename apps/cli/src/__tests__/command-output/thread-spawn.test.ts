@@ -57,7 +57,7 @@ describe("bb thread spawn command output", () => {
     });
   });
 
-  it("bb thread spawn forwards repeatable file and image attachments", async () => {
+  it("bb thread spawn forwards host-readable paths without reading them on the CLI machine", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-attachments",
       projectId: "proj-1",
@@ -230,9 +230,77 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn forwards hidden visibility", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-hidden",
+      projectId: "proj-1",
+      providerId: "codex",
+      visibility: "hidden",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "background work",
+        "--visibility",
+        "hidden",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({ visibility: "hidden" }),
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "  Visibility: hidden",
+    );
+  });
+
+  it("bb thread spawn allows folders for hidden workers", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      folderId: "fld_work",
+      id: "thread-hidden-folder",
+      projectId: "proj-1",
+      providerId: "codex",
+      visibility: "hidden",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "background work",
+        "--visibility",
+        "hidden",
+        "--folder",
+        "fld_work",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        folderId: "fld_work",
+        visibility: "hidden",
+      }),
+    });
+  });
+
   it("bb thread spawn help lists product permission modes", async () => {
     const helpOutput = await getHelpOutput(["thread", "spawn"], register);
     expect(helpOutput).toContain("--permission-mode <mode>");
+    expect(helpOutput).toContain("--visibility <visibility>");
     expect(helpOutput).toMatch(
       /Permission mode: full, workspace-write, or\s+readonly/,
     );

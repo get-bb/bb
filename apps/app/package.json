@@ -25,6 +25,7 @@
     "@bb/fuzzy-match": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/plugin-sdk": "workspace:*",
+    "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/shared-ui": "workspace:*",
     "@bb/templates": "workspace:*",

@@ -5,6 +5,7 @@ import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Switch } from "@bb/shared-ui/switch";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   setPluginEnabled,
@@ -27,7 +28,11 @@ import {
  * failure. Newer-incompatible and pinned never badge. Hover reveals the
  * chevron; the row navigates to the plugin's detail page where depth lives.
  */
-export function InstalledPluginsTab({ plugins }: { plugins: PluginListItem[] }) {
+export function InstalledPluginsTab({
+  plugins,
+}: {
+  plugins: PluginListItem[];
+}) {
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
     updateTargetId === null
@@ -36,7 +41,7 @@ export function InstalledPluginsTab({ plugins }: { plugins: PluginListItem[] }) 
 
   if (plugins.length === 0) {
     return (
-      <EmptyState message="No plugins installed. Use “Add plugin”, browse a marketplace, or run bb plugin install <source>." />
+      <EmptyState message="No plugins installed. Use “Add plugin”, browse the official catalog, or run bb plugin install <source>." />
     );
   }
 
@@ -83,7 +88,7 @@ export function InstalledPluginRow({
       appToast.error(
         `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
         {
-          description: error instanceof Error ? error.message : String(error),
+          description: pluginAdminErrorMessage(error),
         },
       );
     },
@@ -106,7 +111,7 @@ export function InstalledPluginRow({
     <div
       role="link"
       tabIndex={0}
-      aria-label={`${plugin.displayName ?? plugin.id} plugin settings`}
+      aria-label={`${plugin.name ?? plugin.id} plugin settings`}
       className="group flex cursor-pointer items-center gap-3 py-3 focus-visible:outline-none"
       data-testid={`plugin-row-${plugin.id}`}
       onClick={openDetail}
@@ -115,7 +120,7 @@ export function InstalledPluginRow({
       <PluginLogo plugin={plugin} className="size-6 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">
-          {plugin.displayName ?? plugin.id}
+          {plugin.name ?? plugin.id}
         </p>
         {plugin.description !== null && plugin.description.length > 0 ? (
           <p className="mt-0.5 truncate text-xs leading-snug text-muted-foreground">

@@ -28,6 +28,10 @@ const PRESENCE_INTERVAL_MS = 50_000;
 /** Gate → DO header carrying a share target; never forwarded to the origin. */
 const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
 
+// Standard WebSocket readyState numbering (workerd's READY_STATE_OPEN; the
+// constant itself is Cloudflare-only, so tests in Node use the number).
+const WS_READY_STATE_OPEN = 1;
+
 /**
  * DO → gate marker on the offline 503. Lets the gate distinguish "no tunnel
  * connected" (infra offline — render the styled page for browser navigations)
@@ -160,16 +164,7 @@ export class TunnelDO {
 
     const tunnel = this.tunnelSocket();
     if (!tunnel) {
-      return new Response(
-        "bb connect: this server is offline (no tunnel connected)\n",
-        {
-          status: 503,
-          headers: {
-            "content-type": "text/plain; charset=utf-8",
-            [TUNNEL_OFFLINE_HEADER]: "1",
-          },
-        },
-      );
+      return this.offlineResponse();
     }
 
     const target = readTunnelTarget(request.headers);
@@ -187,7 +182,47 @@ export class TunnelDO {
   }
 
   private tunnelSocket(): WebSocket | null {
-    return this.state.getWebSockets(TUNNEL_TAG)[0] ?? null;
+    // A tunnel socket can die without webSocketClose ever being delivered
+    // (abrupt network drop), leaving it tagged but unusable — send() on it
+    // throws. And after a reconnect the runtime can briefly list both the
+    // stale socket and the replacement. Pick the most recently accepted OPEN
+    // socket; a dead-but-lingering socket must read as "offline", never be
+    // proxied to (that turns every visitor request into an uncaught 1101).
+    const sockets = this.state.getWebSockets(TUNNEL_TAG);
+    for (let i = sockets.length - 1; i >= 0; i--) {
+      if (sockets[i].readyState === WS_READY_STATE_OPEN) return sockets[i];
+    }
+    return null;
+  }
+
+  /**
+   * send() throws once the socket is closing/closed, and that can race any
+   * liveness check. Returns false instead of throwing so callers degrade to
+   * their offline path rather than crashing the request.
+   */
+  private trySend(
+    tunnel: WebSocket,
+    data: ArrayBuffer | ArrayBufferView | string,
+  ): boolean {
+    try {
+      tunnel.send(data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private offlineResponse(): Response {
+    return new Response(
+      "bb connect: this server is offline (no tunnel connected)\n",
+      {
+        status: 503,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          [TUNNEL_OFFLINE_HEADER]: "1",
+        },
+      },
+    );
   }
 
   /** Bump the connected server or machine's last_seen_at. */
@@ -239,7 +274,11 @@ export class TunnelDO {
     }
     // Single tunnel per label: a reconnect replaces the previous socket.
     for (const existing of this.state.getWebSockets(TUNNEL_TAG)) {
-      existing.close(1000, "replaced by a new tunnel connection");
+      try {
+        existing.close(1000, "replaced by a new tunnel connection");
+      } catch {
+        // Already dead — must not block the replacement from connecting.
+      }
     }
     // Streams opened over a replaced (or hibernated-away) tunnel belong to
     // the old client session — the connecting client has no state for them,
@@ -278,11 +317,11 @@ export class TunnelDO {
         .map((p) => p.trim())
         .filter(Boolean) ?? [];
 
-    const pair = new WebSocketPair();
-    pair[1].serializeAttachment({ streamId });
-    this.state.acceptWebSocket(pair[1], [`visitor:${streamId}`]);
-
-    tunnel.send(
+    // Send the open frame before accepting the visitor socket: if the tunnel
+    // died since the liveness check, answer 503 offline instead of leaving an
+    // accepted visitor socket with no stream behind it.
+    const opened = this.trySend(
+      tunnel,
       encodeFrame({
         type: "open-ws",
         streamId,
@@ -292,6 +331,11 @@ export class TunnelDO {
         ...(target !== undefined ? { target } : {}),
       }),
     );
+    if (!opened) return this.offlineResponse();
+
+    const pair = new WebSocketPair();
+    pair[1].serializeAttachment({ streamId });
+    this.state.acceptWebSocket(pair[1], [`visitor:${streamId}`]);
 
     const responseHeaders = new Headers();
     if (protocols.length > 0) {
@@ -332,7 +376,8 @@ export class TunnelDO {
       });
     });
 
-    tunnel.send(
+    const opened = this.trySend(
+      tunnel,
       encodeFrame({
         type: "open-http",
         streamId,
@@ -343,6 +388,14 @@ export class TunnelDO {
         ...(target !== undefined ? { target } : {}),
       }),
     );
+    if (!opened) {
+      const entry = this.pendingHttp.get(streamId);
+      if (entry) {
+        this.pendingHttp.delete(streamId);
+        clearTimeout(entry.timeout);
+      }
+      return this.offlineResponse();
+    }
 
     if (hasBody) {
       void this.pumpRequestBody(streamId, request.body!, tunnel);
@@ -363,18 +416,23 @@ export class TunnelDO {
         // Frames cap at MAX_CHUNK_BYTES; reader chunks are far smaller in
         // practice, but split defensively.
         for (let offset = 0; offset < value.length; offset += 1024 * 1024) {
-          tunnel.send(
+          const sent = this.trySend(
+            tunnel,
             encodeFrame({
               type: "body-chunk",
               streamId,
               data: value.subarray(offset, offset + 1024 * 1024),
             }),
           );
+          // Tunnel died mid-body: nothing left to notify — the client session
+          // behind this socket is gone and the stream dies with it.
+          if (!sent) return;
         }
       }
-      tunnel.send(encodeFrame({ type: "body-end", streamId }));
+      this.trySend(tunnel, encodeFrame({ type: "body-end", streamId }));
     } catch {
-      tunnel.send(
+      this.trySend(
+        tunnel,
         encodeFrame({
           type: "close-stream",
           streamId,
@@ -392,7 +450,11 @@ export class TunnelDO {
     }
     for (const visitor of this.state.getWebSockets()) {
       if (!this.state.getTags(visitor).includes(TUNNEL_TAG)) {
-        visitor.close(1001, wsReason);
+        try {
+          visitor.close(1001, wsReason);
+        } catch {
+          // already closed
+        }
       }
     }
   }
@@ -435,7 +497,8 @@ export class TunnelDO {
       return;
     }
     const isBinary = typeof message !== "string";
-    tunnel.send(
+    const sent = this.trySend(
+      tunnel,
       encodeFrame({
         type: "ws-data",
         streamId: attachment.streamId,
@@ -445,6 +508,7 @@ export class TunnelDO {
           : new TextEncoder().encode(message),
       }),
     );
+    if (!sent) ws.close(1011, "tunnel disconnected");
   }
 
   private onTunnelFrame(frame: Frame): void {
@@ -523,19 +587,27 @@ export class TunnelDO {
             `tunnel client aborted: ${frame.reason}`,
           );
         } else {
-          this.visitorSocket(frame.streamId)?.close(
-            safeCloseCode(frame.code),
-            frame.reason,
-          );
+          try {
+            this.visitorSocket(frame.streamId)?.close(
+              safeCloseCode(frame.code),
+              frame.reason,
+            );
+          } catch {
+            // already closed
+          }
         }
         return;
       }
       case "ws-data": {
         const visitor = this.visitorSocket(frame.streamId);
         if (!visitor) return;
-        visitor.send(
-          frame.isBinary ? frame.data : new TextDecoder().decode(frame.data),
-        );
+        try {
+          visitor.send(
+            frame.isBinary ? frame.data : new TextDecoder().decode(frame.data),
+          );
+        } catch {
+          // Visitor socket died; its close handler tells the client.
+        }
         return;
       }
       case "ws-open-ack":
@@ -566,14 +638,18 @@ export class TunnelDO {
       return;
     }
     const attachment = ws.deserializeAttachment() as { streamId: number };
-    this.tunnelSocket()?.send(
-      encodeFrame({
-        type: "close-stream",
-        streamId: attachment.streamId,
-        code: safeCloseCode(code),
-        reason,
-      }),
-    );
+    const tunnel = this.tunnelSocket();
+    if (tunnel) {
+      this.trySend(
+        tunnel,
+        encodeFrame({
+          type: "close-stream",
+          streamId: attachment.streamId,
+          code: safeCloseCode(code),
+          reason,
+        }),
+      );
+    }
     // Complete the close handshake on the visitor socket (a client-initiated
     // close is delivered to this handler without the runtime echoing it).
     try {

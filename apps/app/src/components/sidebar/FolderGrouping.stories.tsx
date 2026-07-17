@@ -16,6 +16,7 @@ import {
   compareStandardThreads,
   type SidebarFolderDefinition,
 } from "./projectThreadGroups";
+import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
 
 export default {
   title: "sidebar/Folder grouping",
@@ -129,7 +130,7 @@ export function ChronologicalFolders() {
   return (
     <StoryCard>
       <StoryRow
-        label="all threads"
+        label="threads"
         hint="stored folderId groups matching threads across projects"
       >
         <SidebarStage>
@@ -141,8 +142,17 @@ export function ChronologicalFolders() {
             collapsedEnvironmentIds={new Set()}
             onToggleThreadCollapsed={noop}
             onToggleEnvironmentCollapsed={noop}
-            renderAllThreadsSection={(content) => content}
-            renderFoldersSection={(content) => content}
+            topLevelSectionOrder={[
+              ...STORY_FOLDERS.map((folder) =>
+                buildSidebarEntitySectionId("folder", folder.id),
+              ),
+              "threads",
+            ]}
+            onTopLevelSectionOrderChange={noop}
+            pinnedReorderPending={false}
+            pinnedThreads={[]}
+            onReorderPinnedThread={noop}
+            renderPinnedSection={() => null}
             renderThreadsSection={(content) => content}
           />
         </SidebarStage>

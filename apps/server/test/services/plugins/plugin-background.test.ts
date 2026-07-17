@@ -32,7 +32,12 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Background fixture",
+        description: "Background plugin fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -78,7 +83,6 @@ describe("plugin background services", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       serviceStopTimeoutMs: 100,
       serviceRestartBaseMs: 5,
@@ -148,7 +152,6 @@ describe("plugin background services", () => {
       dataDir: join(workDir, "data-dispose-request"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       serviceStopTimeoutMs: 2000,
     });
@@ -163,7 +166,7 @@ describe("plugin background services", () => {
               start(signal: any) {
                 return new Promise<void>((resolve) => {
                   signal.addEventListener("abort", () => {
-                    void bb.interactions.request({
+                    void bb.ui.requestInput({
                       threadId: "thread-test",
                       rendererId: "form",
                       title: "Form",
@@ -206,7 +209,6 @@ describe("plugin background services", () => {
       dataDir: join(workDir, "data-serialize"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       serviceStopTimeoutMs: 2000,
     });
@@ -407,7 +409,6 @@ describe("plugin schedules", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });

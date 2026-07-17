@@ -6,10 +6,9 @@ import {
   getPersonalProject,
   getProjectExecutionDefaults,
   hosts,
-  setExperiments,
   type DbConnection,
 } from "@bb/db";
-import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
@@ -44,13 +43,8 @@ function readLatestAppliedMigrationCreatedAt(db: DbConnection): number {
 }
 
 describe("server skeleton", () => {
-  function enableMultiMachine(db: DbConnection): void {
-    setExperiments(db, { ...defaultExperiments, multiMachine: true });
-  }
-
   it("serves the machine install script bytes without auth", async () => {
     await withTestHarness(async (harness) => {
-      enableMultiMachine(harness.db);
       const expected = readFileSync(
         new URL("../../src/assets/install-machine.sh", import.meta.url),
       );
@@ -66,7 +60,6 @@ describe("server skeleton", () => {
 
   it("serves install version metadata without auth", async () => {
     const harness = await createTestAppHarness();
-    enableMultiMachine(harness.db);
     const { app } = createApp(harness.deps, {
       bbAppArtifactService: {
         getTarballPath: async () => "/unused",
@@ -87,7 +80,6 @@ describe("server skeleton", () => {
 
   it("serves the cached server bb-app tarball without auth", async () => {
     const harness = await createTestAppHarness();
-    enableMultiMachine(harness.db);
     const tarballPath = join(harness.config.dataDir, "fixture.tgz");
     writeFileSync(tarballPath, "tarball-bytes");
     const getTarballPath = vi.fn(async () => tarballPath);
@@ -100,29 +92,6 @@ describe("server skeleton", () => {
       expect(response.headers.get("content-type")).toBe("application/gzip");
       expect(await response.text()).toBe("tarball-bytes");
       expect(getTarballPath).toHaveBeenCalledOnce();
-    } finally {
-      await harness.cleanup();
-    }
-  });
-
-  it("returns 404 for every install endpoint while multi-machine is disabled", async () => {
-    const harness = await createTestAppHarness();
-    const getTarballPath = vi.fn(async () => "/must-not-be-read");
-    const getVersion = vi.fn(async () => "must-not-be-read");
-    const { app } = createApp(harness.deps, {
-      bbAppArtifactService: { getTarballPath, getVersion },
-    });
-    try {
-      for (const path of [
-        "/install.sh",
-        "/install/version",
-        "/install/bb-app.tgz",
-      ]) {
-        const response = await app.request(path);
-        expect(response.status).toBe(404);
-      }
-      expect(getTarballPath).not.toHaveBeenCalled();
-      expect(getVersion).not.toHaveBeenCalled();
     } finally {
       await harness.cleanup();
     }

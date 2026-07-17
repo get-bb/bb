@@ -1,6 +1,4 @@
 import {
-  PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN,
-  PLUGIN_SLOT_ID_PATTERN,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginComposerAccessoryRegistration,
@@ -43,6 +41,9 @@ export function isPluginAppDefinition(
     typeof (value as { setup?: unknown }).setup === "function"
   );
 }
+
+const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 function requireSlotId(kind: string, value: unknown): string {
   if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
@@ -169,12 +170,6 @@ export function collectPluginAppRegistrations(
             `${kind}: "path" must match ${String(PLUGIN_SLOT_ID_PATTERN)} (it becomes a URL segment), got ${JSON.stringify(path)}`,
           );
         }
-        const chrome = registration.chrome ?? "page";
-        if (chrome !== "page" && chrome !== "none") {
-          throw new Error(
-            `${kind}: "chrome" must be "page" or "none" when set, got ${JSON.stringify(registration.chrome)}`,
-          );
-        }
         if (
           registration.headerContent !== undefined &&
           typeof registration.headerContent !== "function"
@@ -189,8 +184,6 @@ export function collectPluginAppRegistrations(
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
           component: requireComponent(kind, registration.component),
-          // Default filled here once (the host renders `chrome` as-is).
-          chrome,
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }
             : {}),

@@ -30,7 +30,6 @@ import {
   npmArtifactCacheDir,
   parsePluginSource,
 } from "../../../src/services/plugins/install-sources.js";
-import { githubReleaseRegistryUrl } from "../../../src/services/plugins/github-release-source.js";
 import {
   createPluginService,
   type PluginService,
@@ -81,6 +80,9 @@ async function writePluginFixture(
           }
         : {}),
       bb: {
+        name: "Install fixture",
+        description: "Plugin installation fixture.",
+        branding: { icon: "Zap" },
         server: "./server.ts",
         ...(options.appSource === undefined ? {} : { app: "./app.tsx" }),
       },
@@ -263,7 +265,6 @@ describe("plugin install flows", () => {
       dataDir,
       appVersion: "0.9.0",
       isEnabled: () => true,
-      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
       onArtifactMaterialize: () => {
@@ -320,7 +321,7 @@ describe("plugin install flows", () => {
       await commitAll(repoDir, "init");
 
       await expect(service.install(`git:${repoDir}@main`)).rejects.toThrowError(
-        /reserved by the builtin plugin.*builtin:connect/,
+        /reserved by the bundled plugin.*builtin:connect/,
       );
       expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
     });
@@ -638,97 +639,6 @@ describe("plugin install flows", () => {
 
   describe.skipIf(!hasNpm)("npm sources", () => {
     it(
-      "installs a digest-verified GitHub Release package through the managed update path",
-      { timeout: 120_000 },
-      async () => {
-        const name = "bb-plugin-release-fixture";
-        const version = "0.1.0";
-        const fixtureDir = join(workDir, "release-fixture");
-        await writePluginFixture(fixtureDir, { name, version });
-        const packDir = join(workDir, "release-pack");
-        await mkdir(packDir, { recursive: true });
-        await run("npm", ["pack", "--silent", "--pack-destination", packDir], {
-          cwd: fixtureDir,
-        });
-        const [tarballName] = await readdir(packDir);
-        if (tarballName === undefined) {
-          throw new Error("npm pack produced no release archive");
-        }
-        const tarball = await readFile(join(packDir, tarballName));
-        const digestHex = createHash("sha256").update(tarball).digest("hex");
-        const downloadUrl =
-          "https://github.com/ymichael/bb/releases/download/plugin-release-fixture-v0.1.0/bb-plugin-release-fixture-0.1.0.tgz";
-        let archiveRequests = 0;
-        vi.stubGlobal("fetch", async (input: string | URL | Request) => {
-          const url = String(input);
-          if (url === downloadUrl) {
-            archiveRequests += 1;
-            return new Response(new Uint8Array(tarball), {
-              status: 200,
-              headers: { "content-length": String(tarball.byteLength) },
-            });
-          }
-          if (
-            url.startsWith("https://api.github.com/repos/ymichael/bb/releases?")
-          ) {
-            return new Response(
-              JSON.stringify([
-                {
-                  tag_name: "plugin-release-fixture-v0.1.0",
-                  draft: false,
-                  immutable: false,
-                  assets: [
-                    {
-                      name: tarballName,
-                      browser_download_url: downloadUrl,
-                      digest: `sha256:${digestHex}`,
-                    },
-                  ],
-                },
-              ]),
-              { status: 200 },
-            );
-          }
-          throw new Error(`unexpected fetch ${url}`);
-        });
-        const registry = githubReleaseRegistryUrl({
-          repository: "ymichael/bb",
-          tagTemplate: "plugin-release-fixture-v{version}",
-          assetTemplate: "bb-plugin-release-fixture-{version}.tgz",
-          bbEngineRange: ">=0.0",
-          pluginSdkEngineRange: `^${PLUGIN_SDK_VERSION}`,
-        });
-        const source = `npm:${name}@^0.1.0`;
-
-        const entry = await service.installFromMarketplace({
-          source,
-          marketplaceId: "bb-official",
-          entryId: "release-fixture",
-          npmRegistry: registry,
-        });
-
-        expect(archiveRequests).toBe(1);
-        expect(entry).toMatchObject({
-          id: "release-fixture",
-          version,
-          status: "running",
-        });
-        expect(
-          getInstalledPluginRegistration(db, "release-fixture"),
-        ).toMatchObject({
-          provenance: "marketplace",
-          sourceKind: "npm",
-          sourceNpmPackage: name,
-          sourceNpmRegistry: registry,
-          sourceNpmRequestedSpec: "^0.1.0",
-          sourceNpmSpecKind: "range",
-          npmResolvedVersion: version,
-          npmIntegrity: `sha256-${Buffer.from(digestHex, "hex").toString("base64")}`,
-        });
-      },
-    );
-
-    it(
       "installs a scoped package into the immutable cache and retains it on removal",
       { timeout: 120_000 },
       async () => {
@@ -875,7 +785,7 @@ describe("plugin install flows", () => {
   it("refuses an npm package whose derived id shadows a builtin before install", async () => {
     await expect(
       service.install("npm:bb-plugin-connect@1.2.3"),
-    ).rejects.toThrowError(/reserved by the builtin plugin.*builtin:connect/);
+    ).rejects.toThrowError(/reserved by the bundled plugin.*builtin:connect/);
     expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
   });
 
@@ -883,7 +793,7 @@ describe("plugin install flows", () => {
     const rootDir = join(workDir, "bb-plugin-connect");
     await writePluginFixture(rootDir, { name: "bb-plugin-connect" });
     await expect(service.installPath(rootDir)).rejects.toThrowError(
-      /reserved by the builtin plugin.*builtin:connect/,
+      /reserved by the bundled plugin.*builtin:connect/,
     );
     expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
   });

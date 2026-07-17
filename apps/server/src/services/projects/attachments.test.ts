@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  deleteAttachment,
+  copyProjectAttachments,
   readAttachment,
   validatePromptAttachmentReferences,
 } from "./attachments.js";
@@ -37,43 +37,40 @@ describe("project attachments", () => {
     expect(result.mimeType).toBe("text/plain");
   });
 
-  it("deletes only the requested attachment from its project directory", async () => {
+  it("copies project-scoped attachments without changing their draft paths", async () => {
     const dataDir = await makeTempDir();
-    const projectId = "proj_test";
-    const attachmentDir = join(dataDir, "attachments", projectId);
-    const deletedPath = join(attachmentDir, "delete-me.txt");
-    const retainedPath = join(attachmentDir, "keep-me.txt");
+    const sourceDir = join(dataDir, "attachments", "proj_source");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "image-uploaded.png"), "image bytes");
 
-    await mkdir(attachmentDir, { recursive: true });
-    await Promise.all([
-      writeFile(deletedPath, "delete", "utf8"),
-      writeFile(retainedPath, "keep", "utf8"),
+    await copyProjectAttachments(dataDir, "proj_source", "proj_target", [
+      "image-uploaded.png",
     ]);
 
-    await deleteAttachment(dataDir, projectId, "delete-me.txt");
-
-    await expect(
-      readAttachment(dataDir, projectId, "delete-me.txt"),
-    ).rejects.toMatchObject({
-      status: 404,
-      body: expect.objectContaining({ message: "Attachment not found" }),
-    });
-    await expect(
-      readAttachment(dataDir, projectId, "keep-me.txt"),
-    ).resolves.toMatchObject({ content: Buffer.from("keep") });
+    const copied = await readAttachment(
+      dataDir,
+      "proj_target",
+      "image-uploaded.png",
+    );
+    expect(copied.content.toString("utf8")).toBe("image bytes");
   });
 
-  it("applies the same containment checks before deleting an attachment", async () => {
+  it("does not partially copy when one source attachment is missing", async () => {
     const dataDir = await makeTempDir();
+    const sourceDir = join(dataDir, "attachments", "proj_source");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "present.txt"), "present");
 
     await expect(
-      deleteAttachment(dataDir, "proj_test", "../secret.txt"),
-    ).rejects.toMatchObject({
-      status: 400,
-      body: expect.objectContaining({
-        message: "Attachment path escapes project directory",
-      }),
-    });
+      copyProjectAttachments(dataDir, "proj_source", "proj_target", [
+        "present.txt",
+        "missing.txt",
+      ]),
+    ).rejects.toMatchObject({ status: 404 });
+
+    await expect(
+      readAttachment(dataDir, "proj_target", "present.txt"),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it("accepts prompt attachment references to uploaded project files", async () => {

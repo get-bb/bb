@@ -11,8 +11,8 @@ You can use either story independently or combine them.
 
 ## Open bb from another browser
 
-The simplest managed route is **bb connect**. Enable the bb connect experiment,
-pair the server from Settings → Connect (or `bb connect --code ... --server
+The simplest managed route is **bb connect**. Pair the server from Settings →
+Connect (or `bb connect --code ... --server
 ...`), then open its getbb.app URL. The server owns the tunnel and reconnects
 after restart.
 

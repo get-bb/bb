@@ -357,18 +357,65 @@ export function parseGitHostPullRequest(
 }
 
 /**
+ * Structured result of a pull-request detection attempt. "none" is a real
+ * answer (`gh` ran and reported no PR for the branch); "unavailable" means the
+ * lookup could not produce an answer (gh missing, not authenticated, timeout,
+ * unparseable output), so callers must not treat it as "no PR exists".
+ */
+export type GitHostPullRequestLookup =
+  | { outcome: "found"; pullRequest: GitHostPullRequest }
+  | { outcome: "none" }
+  | { outcome: "unavailable"; message: string };
+
+/** `gh pr view` stderr for a branch that genuinely has no pull request. */
+const GH_NO_PULL_REQUEST_PATTERN = /no pull requests found for branch/iu;
+
+/**
+ * Classify a failed `gh pr view` invocation. Only the "no pull requests
+ * found" answer is genuine absence; everything else (gh missing, auth
+ * failure, no remote, timeout, crash) means the lookup itself failed.
+ */
+function classifyPullRequestViewError(
+  error: unknown,
+): Extract<GitHostPullRequestLookup, { outcome: "none" | "unavailable" }> {
+  const execError = getExecFileException(error);
+  if (GH_NO_PULL_REQUEST_PATTERN.test(trimGhOutput(execError?.stderr))) {
+    return { outcome: "none" };
+  }
+  if (execError?.code === "ENOENT") {
+    return { outcome: "unavailable", message: "GitHub CLI is not available" };
+  }
+  if (execError?.killed) {
+    return {
+      outcome: "unavailable",
+      message: `gh pr view timed out after ${GH_PR_VIEW_TIMEOUT_MS}ms`,
+    };
+  }
+  const detail =
+    trimGhOutput(execError?.stderr) ||
+    trimGhOutput(execError?.stdout) ||
+    (error instanceof Error ? error.message : "");
+  return {
+    outcome: "unavailable",
+    message: detail ? `gh pr view failed: ${detail}` : "gh pr view failed",
+  };
+}
+
+/**
  * Detect the open/most-relevant GitHub pull request for `branch` by shelling
- * out to the host `gh` CLI in `cwd`. Returns `null` — never throws — for every
- * "no PR" condition: `gh` not installed, not authenticated, no GitHub remote,
- * no PR for the branch, a timeout, or unparseable output. The inherited
- * environment preserves `PATH`/`HOME`/token vars so `gh` auth resolves the same
- * way it would in the user's shell.
+ * out to the host `gh` CLI in `cwd`. Never throws: a branch with no PR is
+ * `outcome: "none"`, while every lookup failure (`gh` not installed, not
+ * authenticated, no GitHub remote, a timeout, unparseable output) is
+ * `outcome: "unavailable"` so callers can distinguish "no PR" from "could not
+ * check". The inherited environment preserves `PATH`/`HOME`/token vars so
+ * `gh` auth resolves the same way it would in the user's shell.
  */
 export async function getPullRequestForBranch(
   args: GetPullRequestForBranchArgs,
-): Promise<GitHostPullRequest | null> {
+): Promise<GitHostPullRequestLookup> {
+  let stdout: string;
   try {
-    const { stdout } = await execFileAsync(
+    ({ stdout } = await execFileAsync(
       "gh",
       // `--` ends option parsing so `branch` is always taken as the positional
       // target, never mistaken for a flag.
@@ -380,13 +427,18 @@ export async function getPullRequestForBranch(
         timeout: GH_PR_VIEW_TIMEOUT_MS,
         maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
       },
-    );
-    return parseGitHostPullRequest(stdout);
-  } catch {
-    // gh-missing / not-authed / no-remote / no-PR / timeout all land here and
-    // mean the same thing to the product: there is no PR to show.
-    return null;
+    ));
+  } catch (error) {
+    return classifyPullRequestViewError(error);
   }
+  const pullRequest = parseGitHostPullRequest(stdout);
+  if (!pullRequest) {
+    return {
+      outcome: "unavailable",
+      message: "gh pr view returned unparseable output",
+    };
+  }
+  return { outcome: "found", pullRequest };
 }
 
 /**

@@ -122,12 +122,8 @@ async function startDesktopSmokeServer(
           pluginThemes: [],
           dataDir: args.dataDir,
           experiments: {
-            bbConnect: false,
             claudeCodeMockCliTraffic: false,
-            multiMachine: false,
             threadSplits: false,
-            popoutChat: false,
-            popoutChatHotkey: "Alt+Space",
             plugins: false,
           },
           featureFlags: {

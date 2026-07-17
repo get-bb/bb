@@ -491,6 +491,48 @@
       "when": 1783996567564,
       "tag": "0069_flashy_zaran",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "6",
+      "when": 1784044149805,
+      "tag": "0070_swift_rattler",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "6",
+      "when": 1784086639143,
+      "tag": "0071_lovely_hammerhead",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "6",
+      "when": 1784132965255,
+      "tag": "0072_bizarre_the_liberteens",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1784156543551,
+      "tag": "0073_glorious_frightful_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "6",
+      "when": 1784188800245,
+      "tag": "0074_legal_wither",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "6",
+      "when": 1784216319756,
+      "tag": "0075_productive_zeigeist",
+      "breakpoints": true
     }
   ]
 }

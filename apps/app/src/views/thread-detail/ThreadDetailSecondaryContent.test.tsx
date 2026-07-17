@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
+import {
+  DefaultPaneContextProvider,
+  PaneContext,
+  type PaneContextValue,
+} from "./PaneContext";
+import { MemoryRouter } from "react-router-dom";
 
 type ThreadDetailSecondaryContentProps = ComponentProps<
   typeof ThreadDetailSecondaryContent
@@ -181,6 +187,7 @@ interface QueuedAnimationFrames {
 }
 
 interface RenderThreadDetailArgs {
+  isFocusedHosted?: boolean;
   isCompactViewport: boolean;
   isSecondaryPanelOpen: boolean;
   renderBrowserDeck: RenderBrowserDeck;
@@ -188,6 +195,38 @@ interface RenderThreadDetailArgs {
 }
 
 const noop = () => {};
+
+const hostedPaneRegistration = {
+  clear: noop,
+  publish: noop,
+};
+
+function ThreadDetailTestPaneProvider({
+  children,
+  isFocusedHosted,
+}: {
+  children: ReactNode;
+  isFocusedHosted: boolean | undefined;
+}) {
+  if (isFocusedHosted === undefined) {
+    return (
+      <MemoryRouter>
+        <DefaultPaneContextProvider>{children}</DefaultPaneContextProvider>
+      </MemoryRouter>
+    );
+  }
+  const value: PaneContextValue = {
+    paneId: "pane-test",
+    isFocused: isFocusedHosted,
+    secondaryPanelHost: hostedPaneRegistration,
+    reservesWindowPanelToggle: false,
+    onRequestClose: noop,
+    isBoundedPane: true,
+    isTopRow: true,
+    navigateInPane: noop,
+  };
+  return <PaneContext.Provider value={value}>{children}</PaneContext.Provider>;
+}
 
 function installAnimationFrameQueue(order?: string[]): QueuedAnimationFrames {
   const callbacks = new Map<number, FrameRequestCallback>();
@@ -249,6 +288,7 @@ function makeThread(
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     childOrigin: null,
     status: "idle",
     stopRequestedAt: null,
@@ -307,6 +347,8 @@ function createProps({
       workspaceStatusError: null,
     } as ThreadDetailSecondaryContentProps["metadata"],
     onToggleConversationCollapse: noop,
+    onToggleSecondaryPanel: noop,
+    renderHostedPanel: (panel) => panel,
     secondaryPanel: {
       activeTab: null,
       canUseGitUi: false,
@@ -322,7 +364,6 @@ function createProps({
       renderBrowserDeck,
       showGitDiffTab: false,
     },
-    surface: "page",
     timeline: {
       activeThinking: null,
       hasOlderTimelineRows: false,
@@ -349,13 +390,17 @@ function renderThreadDetail(args: RenderThreadDetailArgs) {
     <CompactViewportOverrideProvider
       isCompactViewport={renderArgs.isCompactViewport}
     >
-      <ThreadDetailSecondaryContent
-        {...createProps({
-          isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
-          renderBrowserDeck: renderArgs.renderBrowserDeck,
-          threadId: renderArgs.threadId,
-        })}
-      />
+      <ThreadDetailTestPaneProvider
+        isFocusedHosted={renderArgs.isFocusedHosted}
+      >
+        <ThreadDetailSecondaryContent
+          {...createProps({
+            isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
+            renderBrowserDeck: renderArgs.renderBrowserDeck,
+            threadId: renderArgs.threadId,
+          })}
+        />
+      </ThreadDetailTestPaneProvider>
     </CompactViewportOverrideProvider>,
   );
 
@@ -367,13 +412,17 @@ function renderThreadDetail(args: RenderThreadDetailArgs) {
         <CompactViewportOverrideProvider
           isCompactViewport={renderArgs.isCompactViewport}
         >
-          <ThreadDetailSecondaryContent
-            {...createProps({
-              isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
-              renderBrowserDeck: renderArgs.renderBrowserDeck,
-              threadId: renderArgs.threadId,
-            })}
-          />
+          <ThreadDetailTestPaneProvider
+            isFocusedHosted={renderArgs.isFocusedHosted}
+          >
+            <ThreadDetailSecondaryContent
+              {...createProps({
+                isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
+                renderBrowserDeck: renderArgs.renderBrowserDeck,
+                threadId: renderArgs.threadId,
+              })}
+            />
+          </ThreadDetailTestPaneProvider>
         </CompactViewportOverrideProvider>,
       );
     },
@@ -410,6 +459,35 @@ beforeEach(() => {
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {
+  it("hides and restores native browser readiness as hosted pane focus changes", () => {
+    const order: string[] = [];
+    const renderBrowserDeck = createBrowserDeckRenderer(order);
+    const view = renderThreadDetail({
+      isCompactViewport: false,
+      isFocusedHosted: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      canShowNativeBrowserView: true,
+    });
+    view.rerenderWith({ isFocusedHosted: false });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      canShowNativeBrowserView: false,
+    });
+    view.rerenderWith({ isFocusedHosted: true });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      canShowNativeBrowserView: true,
+    });
+    expect(order.filter((entry) => entry.startsWith("render:"))).toEqual([
+      "render:true",
+      "render:false",
+      "render:true",
+    ]);
+  });
+
   it("orders open-animation completion, rAF, bounds sync, and drawer settled true", () => {
     const order: string[] = [];
     const frames = installAnimationFrameQueue(order);

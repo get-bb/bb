@@ -261,6 +261,8 @@ describe("bb thread open command output", () => {
     expect(help).toContain("--line");
     expect(help).toContain("--split <placement>");
     expect(help).toContain("right, down, left, top, or replace");
+    expect(help).toContain("add panes through pane 8");
+    expect(help).toMatch(/replace\s+the focused pane/u);
     expect(help).not.toContain("--preview");
     expect(help).not.toContain("--source");
     expect(help).not.toContain("--self");

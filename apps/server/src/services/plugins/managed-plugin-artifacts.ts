@@ -1,6 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import {
   createPluginArtifact,
   getInstalledPlugin,
@@ -27,7 +27,6 @@ import {
   readPluginManifest,
   type PluginManifest,
 } from "./manifest.js";
-import { parseGithubReleaseRegistryUrl } from "./github-release-source.js";
 import type {
   PluginListEntry,
   PluginServiceDeps,
@@ -52,7 +51,6 @@ export interface RegisterInstalledArgs extends InstallRegistrationIdentity {
   rootDir: string;
   source: string;
   exactResolution: PluginExactResolution;
-  installation?: { engines: { bb?: string; bbPluginSdk?: string } };
   refuseEngineMismatch: boolean;
   validated: boolean;
   activeArtifactId?: string;
@@ -62,9 +60,6 @@ export interface RegisterInstalledArgs extends InstallRegistrationIdentity {
 
 export interface InstallContext {
   provenance: PluginProvenance;
-  installation?: { engines: { bb?: string; bbPluginSdk?: string } };
-  gitSubdirectory?: string;
-  npmRegistry?: string;
 }
 
 interface ActivateManagedUpdateArgs {
@@ -99,91 +94,29 @@ export interface ManagedPluginArtifactsContext {
   activateManagedUpdate: (args: ActivateManagedUpdateArgs) => Promise<void>;
 }
 
-const MAX_RELEASE_ARCHIVE_BYTES = 64 * 1024 * 1024;
-
-async function installNpmCandidateTarball(args: {
+async function installNpmCandidate(args: {
   stagingPrefix: string;
   registry: string;
   packageName: string;
   candidate: NpmResolvedCandidate;
   notFoundHint: string;
 }): Promise<void> {
-  const commonArgs = [
-    "install",
-    "--prefix",
-    args.stagingPrefix,
-    "--ignore-scripts",
-    "--omit=optional",
-    "--no-audit",
-    "--no-fund",
-  ];
-  const githubRelease = parseGithubReleaseRegistryUrl(args.registry) !== null;
-  if (!githubRelease) {
-    await runInstallCommand(
-      "npm",
-      [
-        ...commonArgs,
-        "--registry",
-        args.registry,
-        `${args.packageName}@${args.candidate.version}`,
-      ],
-      { notFoundHint: args.notFoundHint },
-    );
-    return;
-  }
-
-  const tarball = args.candidate.tarball;
-  if (tarball === undefined) {
-    throw new Error(
-      `install refused: GitHub Release metadata has no archive for ${args.candidate.display}`,
-    );
-  }
-  const expectedIntegrity = args.candidate.integrity.match(
-    /^sha256-([A-Za-z0-9+/]+={0,2})$/u,
-  )?.[1];
-  if (expectedIntegrity === undefined) {
-    throw new Error(
-      `install refused: GitHub Release metadata has an invalid SHA-256 digest for ${args.candidate.display}`,
-    );
-  }
-  const response = await fetch(tarball, {
-    headers: { accept: "application/octet-stream" },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `install failed: could not download ${args.candidate.display}: ${response.status} ${response.statusText}`,
-    );
-  }
-  const declaredLength = Number(response.headers.get("content-length"));
-  if (
-    Number.isFinite(declaredLength) &&
-    declaredLength > MAX_RELEASE_ARCHIVE_BYTES
-  ) {
-    throw new Error(
-      `install refused: ${args.candidate.display} archive exceeds ${MAX_RELEASE_ARCHIVE_BYTES} bytes`,
-    );
-  }
-  const archive = Buffer.from(await response.arrayBuffer());
-  if (archive.byteLength > MAX_RELEASE_ARCHIVE_BYTES) {
-    throw new Error(
-      `install refused: ${args.candidate.display} archive exceeds ${MAX_RELEASE_ARCHIVE_BYTES} bytes`,
-    );
-  }
-  const actualIntegrity = createHash("sha256").update(archive).digest("base64");
-  if (actualIntegrity !== expectedIntegrity) {
-    throw new Error(
-      `install refused: SHA-256 digest for ${args.candidate.display} did not match GitHub Release metadata`,
-    );
-  }
-  const archivePath = join(args.stagingPrefix, ".bb-plugin-release.tgz");
-  await writeFile(archivePath, archive, { mode: 0o600 });
-  try {
-    await runInstallCommand("npm", [...commonArgs, archivePath], {
-      notFoundHint: args.notFoundHint,
-    });
-  } finally {
-    await rm(archivePath, { force: true });
-  }
+  await runInstallCommand(
+    "npm",
+    [
+      "install",
+      "--prefix",
+      args.stagingPrefix,
+      "--ignore-scripts",
+      "--omit=optional",
+      "--no-audit",
+      "--no-fund",
+      "--registry",
+      args.registry,
+      `${args.packageName}@${args.candidate.version}`,
+    ],
+    { notFoundHint: args.notFoundHint },
+  );
 }
 
 export function createManagedPluginArtifacts(
@@ -372,7 +305,7 @@ export function createManagedPluginArtifacts(
       sourceIntent: {
         kind: "git",
         url: parsed.url,
-        subdirectory: context.gitSubdirectory ?? null,
+        subdirectory: null,
         requestedRef: parsed.ref,
         refKind: resolution.refKind,
       },
@@ -385,12 +318,7 @@ export function createManagedPluginArtifacts(
     return withArtifactLock(targetDir, async () => {
       const stagingDir = `${targetDir}.staging`;
       await rm(stagingDir, { recursive: true, force: true });
-      const targetRoot = resolve(targetDir, context.gitSubdirectory ?? ".");
-      if (targetRoot !== targetDir && !targetRoot.startsWith(`${targetDir}/`)) {
-        throw new Error(
-          `invalid git plugin subdirectory ${JSON.stringify(context.gitSubdirectory)}`,
-        );
-      }
+      const targetRoot = targetDir;
       const cachedRealRoot = await realPathInside(
         targetDir,
         targetRoot,
@@ -435,9 +363,6 @@ export function createManagedPluginArtifacts(
             source,
             ...registrationIdentity,
             exactResolution: { kind: "git", commit: resolvedCommit },
-            ...(context.installation === undefined
-              ? {}
-              : { installation: context.installation }),
             refuseEngineMismatch: true,
             validated: true,
             activeArtifactId: existingArtifact.id,
@@ -462,15 +387,7 @@ export function createManagedPluginArtifacts(
           "--detach",
           resolvedCommit,
         ]);
-        const stagedRoot = resolve(stagingDir, context.gitSubdirectory ?? ".");
-        if (
-          stagedRoot !== stagingDir &&
-          !stagedRoot.startsWith(`${stagingDir}/`)
-        ) {
-          throw new Error(
-            `invalid git plugin subdirectory ${JSON.stringify(context.gitSubdirectory)}`,
-          );
-        }
+        const stagedRoot = stagingDir;
         const stagedRealRoot = await realPathInside(
           stagingDir,
           stagedRoot,
@@ -534,9 +451,6 @@ export function createManagedPluginArtifacts(
           source,
           ...registrationIdentity,
           exactResolution: { kind: "git", commit: resolvedCommit },
-          ...(context.installation === undefined
-            ? {}
-            : { installation: context.installation }),
           refuseEngineMismatch: true,
           validated: true,
           activeArtifactId: artifact.id,
@@ -574,9 +488,7 @@ export function createManagedPluginArtifacts(
   ): Promise<PluginListEntry> {
     const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
     await mkdir(registryProbe, { recursive: true });
-    const registry =
-      context.npmRegistry ??
-      (await resolveNpmRegistry(registryProbe, parsed.name));
+    const registry = await resolveNpmRegistry(registryProbe, parsed.name);
     const intent: NpmSourceIntentForResolution = {
       packageName: parsed.name,
       registry,
@@ -654,9 +566,6 @@ export function createManagedPluginArtifacts(
               version: candidate.version,
               integrity: candidate.integrity,
             },
-            ...(context.installation === undefined
-              ? {}
-              : { installation: context.installation }),
             refuseEngineMismatch: true,
             validated: true,
             activeArtifactId: existingArtifact.id,
@@ -666,7 +575,7 @@ export function createManagedPluginArtifacts(
       await mkdir(stagingPrefix, { recursive: true });
       try {
         deps.onArtifactMaterialize?.({ path: rootDir });
-        await installNpmCandidateTarball({
+        await installNpmCandidate({
           stagingPrefix,
           registry,
           packageName: parsed.name,
@@ -688,7 +597,6 @@ export function createManagedPluginArtifacts(
           parsed.name,
         );
         if (
-          parseGithubReleaseRegistryUrl(registry) === null &&
           installedIntegrity !== null &&
           installedIntegrity !== candidate.integrity
         ) {
@@ -742,9 +650,6 @@ export function createManagedPluginArtifacts(
             version: candidate.version,
             integrity: candidate.integrity,
           },
-          ...(context.installation === undefined
-            ? {}
-            : { installation: context.installation }),
           refuseEngineMismatch: true,
           validated: true,
           activeArtifactId: artifact.id,
@@ -1108,7 +1013,7 @@ export function createManagedPluginArtifacts(
       await mkdir(stagingPrefix, { recursive: true });
       try {
         deps.onArtifactMaterialize?.({ path: targetRoot });
-        await installNpmCandidateTarball({
+        await installNpmCandidate({
           stagingPrefix,
           registry: args.selectionIntent.registry,
           packageName: args.selectionIntent.packageName,
@@ -1136,8 +1041,6 @@ export function createManagedPluginArtifacts(
           args.selectionIntent.packageName,
         );
         if (
-          parseGithubReleaseRegistryUrl(args.selectionIntent.registry) ===
-            null &&
           installedIntegrity !== null &&
           installedIntegrity !== args.candidate.integrity
         ) {

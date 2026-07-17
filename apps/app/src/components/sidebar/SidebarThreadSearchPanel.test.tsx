@@ -2,6 +2,7 @@
 
 import { createRef } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
 import type {
@@ -15,6 +16,7 @@ import {
 import { isThreadSearchKeyboardEventTarget } from "./AppSidebar";
 import { ProjectListActionButtons } from "./ProjectList";
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   getSidebarThreadSearchOptionId,
   haveSameSidebarThreadSearchNavigationItems,
@@ -61,6 +63,7 @@ function createThreadListEntry({
     latestAttentionAt: 1000,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     parentThreadId: null,
     pinSortKey: null,
     pinnedAt: null,
@@ -287,6 +290,48 @@ describe("sidebar thread search navigation items", () => {
 });
 
 describe("ProjectListActionButtons", () => {
+  it("shows the compose pane position when New thread is open in a split", () => {
+    const store = createStore();
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-thread",
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-compose",
+            content: { kind: "new-thread" },
+          },
+          {
+            type: "pane",
+            paneId: "pane-thread",
+            content: {
+              kind: "thread",
+              projectId: "proj_test",
+              threadId: "thr_test",
+            },
+          },
+        ],
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <ProjectListActionButtons
+          splitEnabled
+          onNewChat={vi.fn()}
+          newThreadSplit={{ openInSplit: vi.fn() }}
+        />
+      </Provider>,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "New thread — open in split" }),
+    ).not.toBeNull();
+  });
+
   it("exposes the active search option on the combobox input", () => {
     const inputRef = createRef<HTMLInputElement>();
 

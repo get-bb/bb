@@ -1,4 +1,4 @@
-import { getExperiments, getNonDestroyedHost, updateHost } from "@bb/db";
+import { getNonDestroyedHost, updateHost } from "@bb/db";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -34,16 +34,6 @@ const FOLDER_PICKER_TIMEOUT_MS = 10 * 60 * 1000;
 
 function providerCliInstallEventsToNdjson(events: readonly unknown[]): string {
   return events.map((event) => `${JSON.stringify(event)}\n`).join("");
-}
-
-function assertMultiMachineEnabled(deps: AppDeps): void {
-  if (!getExperiments(deps.db).multiMachine) {
-    throw new ApiError(
-      400,
-      "multi_machine_disabled",
-      "Multi-machine support is disabled",
-    );
-  }
 }
 
 function requireMutableHost(deps: AppDeps, hostId: string) {
@@ -84,7 +74,7 @@ async function revokeConnectMachineCredential(
       handler.value,
       { machineId },
     );
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(result.error.message);
   } catch (error) {
     deps.logger.error(
       { err: error, machineId },
@@ -108,7 +98,6 @@ export function registerHostRoutes(
   // public API, so this route intentionally does not require loopback access.
   post(routes.createJoinCode, async (context) => {
     assertHostManagementAllowed(context);
-    assertMultiMachineEnabled(deps);
     const issued = await issuePersistentHostEnrollKey(deps, {
       enrollSource: "public-multi-machine",
     });
@@ -132,7 +121,6 @@ export function registerHostRoutes(
 
   patch(routes.update, (context, payload) => {
     assertHostManagementAllowed(context);
-    assertMultiMachineEnabled(deps);
     const hostId = context.req.param("id");
     requireMutableHost(deps, hostId);
     const updated = updateHost(deps.db, deps.hub, hostId, {
@@ -148,7 +136,6 @@ export function registerHostRoutes(
 
   del(routes.delete, async (context) => {
     assertHostManagementAllowed(context);
-    assertMultiMachineEnabled(deps);
     const hostId = context.req.param("id");
     const host = requireMutableHost(deps, hostId);
     if (resolvePrimaryHostId(deps) === hostId) {

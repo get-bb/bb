@@ -322,6 +322,7 @@ export async function buildThreadStartCommand(
   const runtimeContext = await resolveThreadRuntimeCommandConfig(deps, {
     thread: args.thread,
     environment: args.environment,
+    model: args.execution.model,
   });
   const acpLaunchSpec = buildAcpLaunchSpecForProviderId(deps, args.providerId);
   return {
@@ -437,6 +438,7 @@ export async function prepareTurnSubmitCommandPayload(
   const runtimeContext = await resolveThreadRuntimeCommandConfig(deps, {
     thread: args.thread,
     environment: args.environment,
+    model: args.execution.model,
   });
   return buildPreparedTurnSubmitCommandPayload({
     claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),

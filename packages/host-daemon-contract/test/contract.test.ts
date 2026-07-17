@@ -324,6 +324,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       ],
     },
     claudeCode: { status: "unauthenticated" },
+    cursor: { status: "not_installed" },
   },
   "provider_cli.status": {
     codex: {
@@ -403,6 +404,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffPatch": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.pull_request": {
+    outcome: "available",
     pullRequest: {
       number: 42,
       title: "Add host RPC guard",
@@ -536,7 +538,15 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
     {
       name: "workspace.pull_request no-PR result",
       commandType: "workspace.pull_request",
-      result: { pullRequest: null },
+      result: { outcome: "absent" },
+    },
+    {
+      name: "workspace.pull_request unavailable result",
+      commandType: "workspace.pull_request",
+      result: {
+        outcome: "unavailable",
+        message: "GitHub CLI is not available",
+      },
     },
   ];
 
@@ -976,6 +986,22 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  it("preserves optional USD spend amounts on usage windows", () => {
+    expect(
+      contract.providerUsageWindowSchema.parse({
+        label: "On-demand spend",
+        usedPercent: 10,
+        resetsAt: null,
+        cost: { usedUsdCents: 500, limitUsdCents: 5_000 },
+      }),
+    ).toEqual({
+      label: "On-demand spend",
+      usedPercent: 10,
+      resetsAt: null,
+      cost: { usedUsdCents: 500, limitUsdCents: 5_000 },
+    });
+  });
+
   it("normalizes ACP launch specs at the contract boundary", () => {
     expect(
       normalizeHostDaemonAcpLaunchSpec({

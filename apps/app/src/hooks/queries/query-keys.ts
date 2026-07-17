@@ -83,8 +83,7 @@ export type ArchivedThreadsKindFilter = "all" | "root" | "child";
 
 export interface ArchivedThreadsListFilters {
   projectId?: string;
-  folderId?: string;
-  unfiled?: boolean;
+  kind?: ArchivedThreadsKindFilter;
 }
 
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";
@@ -128,6 +127,8 @@ export type ProjectPromptHistoryQueryKey = readonly [
 export type ProjectPathsQueryKey = readonly [
   typeof PROJECT_PATHS_QUERY_KEY,
   string | undefined,
+  string | null,
+  string | null,
   string,
   number,
   boolean,
@@ -140,6 +141,8 @@ export type ProjectPathsQueryKeyPrefix = readonly [
 export type ProjectFilePreviewQueryKey = readonly [
   typeof PROJECT_FILE_PREVIEW_QUERY_KEY,
   string | undefined,
+  string | null,
+  string | null,
   string | null,
 ];
 export type ProjectSourceBranchesQueryKey = readonly [
@@ -229,6 +232,7 @@ export type ProjectCommandsQueryKey = readonly [
   typeof PROJECT_COMMANDS_QUERY_KEY,
   string | undefined,
   string | undefined,
+  string | null,
   string | null,
 ];
 export type AllProjectCommandsQueryKeyPrefix = readonly [
@@ -422,6 +426,11 @@ export type EnvironmentPathsQueryKeyPrefix = readonly [
 ];
 export type SystemProvidersQueryKey = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
+  string | null,
+  string | null,
+];
+export type AllSystemProvidersQueryKeyPrefix = readonly [
+  typeof SYSTEM_PROVIDERS_QUERY_KEY,
 ];
 export type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
 export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
@@ -435,6 +444,7 @@ export type SystemUsageLimitsQueryKey = readonly [
 ];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
+  string | null,
   string | null,
   string | null,
 ];
@@ -489,6 +499,8 @@ export function projectsQueryKey(): ProjectsQueryKey {
 
 export function projectPathsQueryKey(
   projectId: string | undefined,
+  environmentId: string | null,
+  hostId: string | null,
   query: string,
   limit: number,
   includeFiles: boolean,
@@ -497,6 +509,8 @@ export function projectPathsQueryKey(
   return [
     PROJECT_PATHS_QUERY_KEY,
     projectId,
+    environmentId,
+    hostId,
     query,
     limit,
     includeFiles,
@@ -506,9 +520,17 @@ export function projectPathsQueryKey(
 
 export function projectFilePreviewQueryKey(
   projectId: string | undefined,
+  environmentId: string | null,
+  hostId: string | null,
   path: string | null,
 ): ProjectFilePreviewQueryKey {
-  return [PROJECT_FILE_PREVIEW_QUERY_KEY, projectId, path];
+  return [
+    PROJECT_FILE_PREVIEW_QUERY_KEY,
+    projectId,
+    environmentId,
+    hostId,
+    path,
+  ];
 }
 
 export function allProjectPathsQueryKeyPrefix(): AllProjectPathsQueryKeyPrefix {
@@ -705,8 +727,15 @@ export function projectCommandsQueryKey(
   projectId: string | undefined,
   providerId: string | undefined,
   environmentId: string | null,
+  hostId: string | null,
 ): ProjectCommandsQueryKey {
-  return [PROJECT_COMMANDS_QUERY_KEY, projectId, providerId, environmentId];
+  return [
+    PROJECT_COMMANDS_QUERY_KEY,
+    projectId,
+    providerId,
+    environmentId,
+    hostId,
+  ];
 }
 
 export function allProjectCommandsQueryKeyPrefix(): AllProjectCommandsQueryKeyPrefix {
@@ -1000,7 +1029,22 @@ export function environmentFilePreviewQueryKeyPrefix(
   return [ENVIRONMENT_FILE_PREVIEW_QUERY_KEY, environmentId];
 }
 
-export function systemProvidersQueryKey(): SystemProvidersQueryKey {
+export interface SystemProvidersQueryKeyArgs {
+  environmentId?: string | null;
+  hostId?: string | null;
+}
+
+export function systemProvidersQueryKey(
+  args: SystemProvidersQueryKeyArgs = {},
+): SystemProvidersQueryKey {
+  return [
+    SYSTEM_PROVIDERS_QUERY_KEY,
+    args.environmentId ?? null,
+    args.hostId ?? null,
+  ];
+}
+
+export function allSystemProvidersQueryKeyPrefix(): AllSystemProvidersQueryKeyPrefix {
   return [SYSTEM_PROVIDERS_QUERY_KEY];
 }
 
@@ -1026,14 +1070,21 @@ export function systemUsageLimitsQueryKey(
 
 export interface SystemExecutionOptionsQueryKeyArgs {
   environmentId: string | null;
+  hostId: string | null;
   providerId: string | null;
 }
 
 export function systemExecutionOptionsQueryKey({
   environmentId,
+  hostId,
   providerId,
 }: SystemExecutionOptionsQueryKeyArgs): SystemExecutionOptionsQueryKey {
-  return [SYSTEM_EXECUTION_OPTIONS_QUERY_KEY, environmentId, providerId];
+  return [
+    SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
+    environmentId,
+    hostId,
+    providerId,
+  ];
 }
 
 export function allSystemExecutionOptionsQueryKeyPrefix(): AllSystemExecutionOptionsQueryKeyPrefix {

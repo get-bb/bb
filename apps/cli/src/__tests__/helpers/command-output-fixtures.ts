@@ -71,6 +71,7 @@ export function makeTimelineResponse(
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    modelFallback: null,
     maxSeq: 0,
     timelinePage: {
       kind: "latest",
@@ -113,6 +114,7 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     originKind: null,
     childOrigin: null,
     originPluginId: null,
+    visibility: "visible",
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,

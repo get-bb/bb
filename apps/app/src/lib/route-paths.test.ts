@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
-  getPopoutThreadRoutePath,
-  getProjectArchivedRoutePath,
-  getProjectlessArchivedRoutePath,
-  getSurfaceAwareThreadRoutePath,
   getThreadRoutePath,
   isRoutePath,
   isProjectlessProjectId,
@@ -12,9 +8,7 @@ import {
 } from "./route-paths";
 
 describe("route path helpers", () => {
-  it("builds and recognizes the canonical projectless archived URL", () => {
-    expect(getProjectlessArchivedRoutePath()).toBe("/archived");
-    expect(getProjectArchivedRoutePath(PERSONAL_PROJECT_ID)).toBe("/archived");
+  it("recognizes the legacy archived URL", () => {
     expect(isRoutePath({ path: "/archived" })).toBe(true);
   });
 
@@ -52,51 +46,6 @@ describe("route path helpers", () => {
 
   it("recognizes the global settings route", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
-  });
-
-  it("builds and recognizes popout thread URLs", () => {
-    expect(
-      getPopoutThreadRoutePath({
-        projectId: PERSONAL_PROJECT_ID,
-        threadId: "thr_personal",
-      }),
-    ).toBe("/popout/threads/thr_personal");
-    expect(
-      getPopoutThreadRoutePath({
-        projectId: "proj_standard",
-        threadId: "thr_standard",
-      }),
-    ).toBe("/popout/projects/proj_standard/threads/thr_standard");
-    expect(isRoutePath({ path: "/popout/threads/thr_personal" })).toBe(true);
-    expect(
-      isRoutePath({
-        path: "/popout/projects/proj_standard/threads/thr_standard",
-      }),
-    ).toBe(true);
-  });
-
-  it("builds thread URLs for the active surface", () => {
-    expect(
-      getSurfaceAwareThreadRoutePath({
-        projectId: PERSONAL_PROJECT_ID,
-        surface: "page",
-        threadId: "thr_personal",
-      }),
-    ).toBe("/threads/thr_personal");
-    expect(
-      getSurfaceAwareThreadRoutePath({
-        projectId: PERSONAL_PROJECT_ID,
-        surface: "popout",
-        threadId: "thr_personal",
-      }),
-    ).toBe("/popout/threads/thr_personal");
-    expect(
-      getSurfaceAwareThreadRoutePath({
-        projectId: "proj_standard",
-        surface: "popout",
-        threadId: "thr_standard",
-      }),
-    ).toBe("/popout/projects/proj_standard/threads/thr_standard");
   });
 
   it("does not mistake deeper filesystem-like paths for routes", () => {

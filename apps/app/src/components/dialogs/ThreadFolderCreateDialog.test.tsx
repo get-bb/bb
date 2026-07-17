@@ -5,7 +5,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadFolderRenameDialog } from "./ThreadFolderCreateDialog";
 
-const DUPLICATE_NAME_MESSAGE = "Folder name already exists";
+const DUPLICATE_NAME_MESSAGE = "Section name already exists";
 
 function RenameDialogHarness({ onRename }: { onRename: () => void }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -34,18 +34,18 @@ describe("ThreadFolderRenameDialog", () => {
     const onRename = vi.fn();
     render(<RenameDialogHarness onRename={onRename} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Rename folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename section" }));
 
     expect(onRename).toHaveBeenCalledTimes(1);
     expect(screen.getByText(DUPLICATE_NAME_MESSAGE)).not.toBeNull();
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Folder name" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Section name" }), {
       target: { value: "Beta" },
     });
 
     expect(screen.queryByText(DUPLICATE_NAME_MESSAGE)).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Rename folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename section" }));
 
     expect(onRename).toHaveBeenCalledTimes(2);
     expect(screen.getByText(DUPLICATE_NAME_MESSAGE)).not.toBeNull();

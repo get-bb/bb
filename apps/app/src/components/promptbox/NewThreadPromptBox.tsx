@@ -417,10 +417,9 @@ interface ProjectlessMachineSlotProps {
 }
 
 /**
- * Environment-slot replacement for projectless composing (multiMachine
- * experiment, >1 host): a machine chip that picks which machine's personal
- * workspace the thread runs in. With the experiment off or a single host the
- * slot stays empty, exactly as before.
+ * Environment-slot replacement for projectless composing (>1 host): a
+ * machine chip that picks which machine's personal workspace the thread runs
+ * in. With a single host the slot stays empty.
  */
 export function ProjectlessMachineSlot({
   environment,
@@ -544,28 +543,23 @@ function ConnectedThreadModeBranch({
     () => selectPrimaryHost(hosts, primaryHostId),
     [hosts, primaryHostId],
   );
-  const multiMachineEnabled =
-    systemConfigQuery.data?.experiments.multiMachine === true;
   const { isLocalDaemonHost, localDaemonHostId } = useHostDaemon();
 
   const parsedEnvironment = parseEnvironmentValue(
     threadConfig.environment.value,
   );
-  // With the multiMachine experiment on, the picker (and everything downstream
-  // of `host`, like the offline chip) follows the selected machine instead of
-  // being pinned to the primary host.
   const selectedHost =
-    multiMachineEnabled && parsedEnvironment?.type === "host"
+    parsedEnvironment?.type === "host"
       ? (hosts?.find((host) => host.id === parsedEnvironment.hostId) ??
         primaryHost)
       : primaryHost;
   const isLocalHost = selectedHost ? isLocalDaemonHost(selectedHost.id) : false;
   const machines = useMemo<EnvironmentPickerMachines | null>(
     () =>
-      multiMachineEnabled && hosts
+      hosts
         ? { hosts, localDaemonHostId, primaryHostId }
         : null,
-    [multiMachineEnabled, hosts, localDaemonHostId, primaryHostId],
+    [hosts, localDaemonHostId, primaryHostId],
   );
 
   const isHostMode = parsedEnvironment?.type === "host";

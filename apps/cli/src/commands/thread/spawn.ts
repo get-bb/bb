@@ -1,5 +1,9 @@
 import { Command } from "commander";
-import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  threadVisibilitySchema,
+  type Thread,
+} from "@bb/domain";
 import type { BaseBranchSpec, EnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
@@ -48,6 +52,7 @@ interface ThreadSpawnCommandOptions {
   originKind?: string;
   sourceThread?: string;
   sourceSeqEnd?: string;
+  visibility?: string;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -199,17 +204,18 @@ export function registerSpawnCommand(
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option(
       "--file <path>",
-      "Attach a local file (repeatable)",
+      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
       collectOption,
       [],
     )
     .option(
       "--image <path>",
-      "Attach a local image (repeatable)",
+      "Pass a host-readable absolute or uploaded attachment image path (repeatable)",
       collectOption,
       [],
     )
     .option("--folder <id>", "Create the thread in a folder")
+    .option("--visibility <visibility>", "Thread visibility: visible or hidden")
     .option("--origin-kind <kind>", "Thread origin: fork or side-chat")
     .option("--source-thread <id>", "Source thread for a fork or side chat")
     .option("--source-seq-end <seq>", "Last source event sequence")
@@ -259,6 +265,10 @@ export function registerSpawnCommand(
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const permissionMode = parsePermissionMode(opts.permissionMode);
+        const visibility =
+          opts.visibility === undefined
+            ? undefined
+            : threadVisibilitySchema.parse(opts.visibility);
         const parentThreadId = resolveSpawnParentThreadId({
           parentSelf: opts.parentSelf,
           parentThread: opts.parentThread,
@@ -298,6 +308,7 @@ export function registerSpawnCommand(
             ...(opts.title ? { title: opts.title } : {}),
             ...(serviceTier ? { serviceTier } : {}),
             ...(permissionMode ? { permissionMode } : {}),
+            ...(visibility ? { visibility } : {}),
             environment,
             // The typed $post client types this body against the schema's
             // output shape, where startedOnBehalfOf/originKind/childOrigin
@@ -322,7 +333,8 @@ export function registerSpawnCommand(
         console.log(`Thread spawned: ${thread.id}`);
         if (
           thread.parentThreadId &&
-          thread.parentThreadId === resolveContextThreadId()
+          thread.parentThreadId === resolveContextThreadId() &&
+          thread.visibility === "visible"
         ) {
           console.log("You will be notified when this thread is done.");
         }
@@ -338,6 +350,9 @@ function printThread(thread: Thread): void {
     `  Project:  ${thread.projectId === PERSONAL_PROJECT_ID ? "-" : thread.projectId}`,
   );
   console.log(`  Status:   ${thread.status}`);
+  if (thread.visibility === "hidden") {
+    console.log("  Visibility: hidden");
+  }
   if (thread.archivedAt !== null) {
     console.log(`  Archived: ${new Date(thread.archivedAt).toLocaleString()}`);
   }

@@ -275,6 +275,7 @@ describe("public environment action regressions", () => {
           command.environmentId === environment.id,
       );
       await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        outcome: "available",
         pullRequest: rawPullRequest({ isDraft: true }),
       });
 
@@ -332,6 +333,7 @@ describe("public environment action regressions", () => {
           command.environmentId === environment.id,
       );
       await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        outcome: "available",
         pullRequest: rawPullRequest(),
       });
 
@@ -390,6 +392,7 @@ describe("public environment action regressions", () => {
           command.environmentId === environment.id,
       );
       await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        outcome: "available",
         pullRequest: rawPullRequest({
           mergeStateStatus: "BLOCKED",
           mergeable: "UNKNOWN",
@@ -439,6 +442,7 @@ describe("public environment action regressions", () => {
           command.environmentId === environment.id,
       );
       await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        outcome: "available",
         pullRequest: rawPullRequest(),
       });
 

@@ -23,23 +23,19 @@
       ]
     },
     "build": {
+      "dependsOn": [
+        "topo"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
         "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/scripts/**",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
+        "$TURBO_ROOT$/scripts/build-package.mjs",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
         "$TURBO_ROOT$/turbo.json"
       ],
       "outputs": [
@@ -73,12 +69,16 @@
       ]
     },
     "bb-app#build": {
+      // copy-builtin-plugins bundles every plugin in BUNDLED_PLUGINS; the
+      // tasks plugin's app bundle imports the @bb/plugin-sdk root at runtime
+      // (shared RPC contract), so the SDK dist must exist first.
       "dependsOn": [
         "@bb/app#build",
         "@bb/server#build",
         "@bb/host-daemon#build",
         "@bb/cli#build",
-        "@bb/sdk#build"
+        "@bb/sdk#build",
+        "@bb/plugin-sdk#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -102,15 +102,30 @@
         "$TURBO_ROOT$/plugins/connect/**",
         "!$TURBO_ROOT$/plugins/connect/dist/**",
         "!$TURBO_ROOT$/plugins/connect/node_modules/**",
+        "$TURBO_ROOT$/plugins/custom-instructions/**",
+        "!$TURBO_ROOT$/plugins/custom-instructions/dist/**",
+        "!$TURBO_ROOT$/plugins/custom-instructions/node_modules/**",
         "$TURBO_ROOT$/plugins/inline-vis/**",
         "!$TURBO_ROOT$/plugins/inline-vis/dist/**",
         "!$TURBO_ROOT$/plugins/inline-vis/node_modules/**",
-        "$TURBO_ROOT$/marketplace/plugins/memory/**",
-        "!$TURBO_ROOT$/marketplace/plugins/memory/dist/**",
-        "!$TURBO_ROOT$/marketplace/plugins/memory/node_modules/**",
         "$TURBO_ROOT$/plugins/secrets/**",
         "!$TURBO_ROOT$/plugins/secrets/dist/**",
         "!$TURBO_ROOT$/plugins/secrets/node_modules/**",
+        "$TURBO_ROOT$/plugins/workflows/**",
+        "!$TURBO_ROOT$/plugins/workflows/dist/**",
+        "!$TURBO_ROOT$/plugins/workflows/node_modules/**",
+        "$TURBO_ROOT$/official-plugins/docs/**",
+        "!$TURBO_ROOT$/official-plugins/docs/dist/**",
+        "!$TURBO_ROOT$/official-plugins/docs/node_modules/**",
+        "$TURBO_ROOT$/official-plugins/github/**",
+        "!$TURBO_ROOT$/official-plugins/github/dist/**",
+        "!$TURBO_ROOT$/official-plugins/github/node_modules/**",
+        "$TURBO_ROOT$/official-plugins/memory/**",
+        "!$TURBO_ROOT$/official-plugins/memory/dist/**",
+        "!$TURBO_ROOT$/official-plugins/memory/node_modules/**",
+        "$TURBO_ROOT$/official-plugins/tasks/**",
+        "!$TURBO_ROOT$/official-plugins/tasks/dist/**",
+        "!$TURBO_ROOT$/official-plugins/tasks/node_modules/**",
         "$TURBO_ROOT$/scripts/*.mjs"
       ],
       "outputs": [
@@ -118,6 +133,14 @@
         "dist/**",
         "host-daemon/**",
         "server/**"
+      ]
+    },
+    "bb-plugin-tasks#build": {
+      // The tasks plugin's app bundle imports the @bb/plugin-sdk root at
+      // runtime (shared RPC contract), so the SDK dist must exist first.
+      "dependsOn": [
+        "topo",
+        "@bb/plugin-sdk#build"
       ]
     },
     "@bb/desktop#build": {
@@ -382,7 +405,8 @@
         "$TURBO_ROOT$/packages/plugin-sdk/scripts/**"
       ],
       "outputs": [
-        "bundled-types/**"
+        "bundled-types/**",
+        "dist/**"
       ]
     },
     "@bb/plugin-build#typecheck": {

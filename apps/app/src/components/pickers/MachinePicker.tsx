@@ -51,7 +51,7 @@ export interface MachinePickerUIProps {
 }
 
 /**
- * Machine chip for projectless threads (multiMachine experiment, >1 host):
+ * Machine chip for projectless threads (>1 host):
  * picks which machine's personal workspace the thread runs in. There are no
  * worktree/checkout options — the mode is implicit, so the chip is just the
  * machine name.

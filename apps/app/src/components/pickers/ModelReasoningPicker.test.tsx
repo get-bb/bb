@@ -2,7 +2,10 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
-import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
+import type {
+  SystemExecutionOptionsResponse,
+  SystemProvidersQuery,
+} from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -86,16 +89,19 @@ function renderPicker({
   onModelChange = vi.fn(),
   modelOptions = codexModels,
   moreModelOptions = [],
+  providerRouting,
 }: {
   onSelectedProviderChange?: (value: string) => void;
   onModelChange?: (value: string) => void;
   modelOptions?: readonly PickerOption<string>[];
   moreModelOptions?: readonly PickerOption<string>[];
+  providerRouting?: SystemProvidersQuery;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
     systemExecutionOptionsQueryKey({
-      environmentId: null,
+      environmentId: providerRouting?.environmentId ?? null,
+      hostId: providerRouting?.hostId ?? null,
       providerId: "claude-code",
     }),
     executionOptions({
@@ -112,6 +118,7 @@ function renderPicker({
   render(
     <ModelReasoningPicker
       providerOptions={providerOptions}
+      providerRouting={providerRouting}
       selectedProviderId="codex"
       onSelectedProviderChange={onSelectedProviderChange}
       hasMultipleProviders
@@ -160,6 +167,19 @@ describe("ModelReasoningPicker", () => {
 
     expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
+  });
+
+  it("previews provider models on the compose-selected host", async () => {
+    renderPicker({ providerRouting: { hostId: "host-remote" } });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+    );
+    fireEvent.click(screen.getByTitle("Claude Code"));
+
+    expect(await screen.findByText("Opus 4.7")).not.toBeNull();
   });
 
   it("fuzzy-filters a long model list and selects the match by keyboard", () => {

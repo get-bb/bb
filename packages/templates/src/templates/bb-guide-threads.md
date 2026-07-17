@@ -28,8 +28,9 @@ Spawning:
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
     --folder <id>                  Create the thread in a folder
-    --file <path>                  Attach a local file (repeatable)
-    --image <path>                 Attach a local image (repeatable)
+    --visibility <visibility>      visible (default) or hidden
+    --file <path>                  Host-readable absolute or uploaded file path
+    --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork or side-chat thread
     --source-thread <id>           Source thread for fork/side-chat
     --source-seq-end <seq>         Last included source event sequence
@@ -37,6 +38,10 @@ Spawning:
   Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
   When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
+  Hidden threads are for plugin/background workers. They remain addressable by
+  ID while staying out of sidebar organization, unread/pending favicon
+  attention, and native parent notifications. Ordinary list, search, history,
+  folder, lifecycle, parent-operation, and direct-open behavior is unchanged.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
@@ -101,65 +106,14 @@ Opening threads and files in the app:
   the thread ID argument is omitted for file-only opens. Pass an explicit thread
   ID with --split to open another thread. Outside a BB thread, pass the thread ID
   as the first argument. A thread already open in a pane is focused instead of
-  duplicated. At four panes, edge placement replaces the focused pane.
+  duplicated. Edge placement creates panes through the eighth pane; at eight
+  panes, it replaces the focused pane.
   Enable the "Thread splits" experiment in Settings → Experiments before using
   --split; ordinary thread/file opens without --split remain available while off.
-
   Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
   thread-storage files for the current thread. Use this for Markdown or HTML
   artifacts you create for the user so they open in the BB IDE.
-
-Thread terminals:
-
-  Use thread terminals for long-running commands that should stay alive for the
-  user, such as dev servers, watch tasks, REPLs, and database consoles. Terminals
-  are real PTY sessions scoped to the thread's environment, and they appear in the
-  bb UI as terminal tabs.
-
-  bb thread terminal start <id> --command "pnpm dev"
-    --title <title>                        Display title
-    --cols <n>                             Initial terminal columns
-    --rows <n>                             Initial terminal rows
-    --attach                               Attach interactively after starting
-    --json                                 Print the created terminal session
-
-  bb thread terminal list <id>             List running terminals for a thread
-
-  bb thread terminal attach <terminal-id> <id>
-                                            Attach interactively; Ctrl-B d detaches
-
-  bb thread terminal send <terminal-id> <id>
-    --text <text>                          Text to send
-    --stdin                                Read text from stdin
-    --enter                                Append a newline
-
-  bb thread terminal output <terminal-id> <id>
-    --since-seq <n>                        Read output chunks from a sequence
-    --tail-bytes <n>                       Bound output to latest N bytes
-    --limit-chunks <n>                     Bound output to latest N chunks
-    --json                                 Print chunks, nextSeq, and truncated
-
-  bb thread terminal wait <terminal-id> <id>
-    --contains <text>                      Wait for new output containing text
-    --regex <pattern>                      Wait for new output matching regex
-    --exit                                 Wait until the terminal exits
-    --from-start                           Include existing scrollback
-    --timeout <seconds>                    Timeout
-    --poll-interval <ms>                   Polling interval
-
-  bb thread terminal resize <terminal-id> <id> --cols <n> --rows <n>
-  bb thread terminal stop <terminal-id> <id>
-
-  Terminal commands require an explicit thread ID.
-
-  For a dev server, prefer:
-
-    bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"
-    bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120
-
-  Do not run long-lived servers as one-off foreground commands when the user will
-  need to inspect logs, refresh the page, or stop the process later.
 
 Messaging:
 
@@ -167,8 +121,8 @@ Messaging:
     --mode <mode>                          Message mode: queue (default), steer, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
-    --file <path>                          Attach a local file (repeatable)
-    --image <path>                         Attach a local image (repeatable)
+    --file <path>                          Host-readable absolute or uploaded file path
+    --image <path>                         Host-readable absolute or uploaded image path
 
   By default, tell queues: if the agent is working, the message is delivered
   after the current turn finishes. Use --mode steer to send immediately into
@@ -219,4 +173,3 @@ Lifecycle:
 
 Read-only commands require a thread ID or --self where supported.
 Mutating thread lifecycle and messaging commands require an explicit ID or --self.
-Terminal commands require an explicit thread ID.

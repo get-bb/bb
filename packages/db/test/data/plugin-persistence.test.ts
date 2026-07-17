@@ -4,17 +4,12 @@ import {
   createPluginArtifact,
   deletePluginArtifact,
   deleteInstalledPlugin,
-  deleteMarketplace,
   getInstalledPluginRegistration,
   getInstalledPlugin,
-  getMarketplace,
-  getMarketplaceIncludingRemoved,
   listPluginArtifacts,
-  listMarketplaces,
   migrate,
   setInstalledPluginActiveArtifact,
   upsertInstalledPlugin,
-  upsertMarketplace,
   type DbConnection,
 } from "../../src/index.js";
 
@@ -33,8 +28,7 @@ describe("normalized plugin persistence", () => {
       id: "linear",
       source: "npm:bb-plugin-linear@1.2.3",
       provenance: {
-        kind: "marketplace",
-        marketplaceId: "official",
+        kind: "catalog",
         entryId: "linear",
       },
       sourceIntent: {
@@ -80,9 +74,8 @@ describe("normalized plugin persistence", () => {
     );
 
     expect(getInstalledPluginRegistration(db, "linear")).toMatchObject({
-      provenance: "marketplace",
-      marketplaceId: "official",
-      marketplaceEntryId: "linear",
+      provenance: "catalog",
+      catalogEntryId: "linear",
       sourceKind: "npm",
       sourceNpmRequestedSpec: "^1.2.0",
       sourceNpmSpecKind: "range",
@@ -93,33 +86,6 @@ describe("normalized plugin persistence", () => {
     expect(deletePluginArtifact(db, "artifact-1")).toBe(true);
     expect(getInstalledPluginRegistration(db, "linear")?.activeArtifactId).toBe(
       null,
-    );
-  });
-
-  it("upserts and lists typed marketplace state", () => {
-    upsertMarketplace(db, {
-      id: "official",
-      displayName: "Official",
-      sourceKind: "git",
-      location: "https://github.com/bb/marketplace.git",
-      requestedGitRef: "main",
-      resolvedGitCommit: null,
-      cachePath: null,
-      catalogJson: null,
-      lastSuccessfulRefreshAt: null,
-      lastAttemptedRefreshAt: null,
-      lastError: null,
-      removedAt: null,
-    });
-
-    expect(listMarketplaces(db)).toMatchObject([
-      { id: "official", sourceKind: "git" },
-    ]);
-    expect(getMarketplace(db, "official")?.displayName).toBe("Official");
-    expect(deleteMarketplace(db, "official")).toBe(true);
-    expect(getMarketplace(db, "official")).toBeUndefined();
-    expect(getMarketplaceIncludingRemoved(db, "official")?.removedAt).toEqual(
-      expect.any(Number),
     );
   });
 

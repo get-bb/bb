@@ -24,6 +24,7 @@ type CodexVoiceTranscribeCommand = Extract<
 >;
 
 interface CodexTranscriptionHarness {
+  app: TestAppHarness["app"];
   cleanup: TestAppHarness["cleanup"];
   deps: TestAppHarness["deps"];
   requests: HostRpcResponder["requests"];
@@ -37,6 +38,10 @@ function voiceFile(): File {
   return new File([Buffer.from("audio")], "prompt.webm", {
     type: "audio/webm",
   });
+}
+
+function emptyVoiceFile(): File {
+  return new File([], "prompt.webm", { type: "audio/webm" });
 }
 
 function requireCodexVoiceTranscribeCommand(
@@ -62,6 +67,7 @@ async function createCodexTranscriptionHarness({
     handle,
   });
   return {
+    app: harness.app,
     cleanup: harness.cleanup,
     deps: harness.deps,
     requests: responder.requests,
@@ -84,6 +90,31 @@ function expectRetryableApiError(
 }
 
 describe("voice transcription", () => {
+  it("rejects empty audio before sending a host RPC command", async () => {
+    const harness = await createCodexTranscriptionHarness({
+      handle() {
+        throw new Error("Empty audio must not reach the host daemon");
+      },
+    });
+    try {
+      const form = new FormData();
+      form.set("file", emptyVoiceFile());
+      const response = await harness.app.request(
+        "/api/v1/system/voice-transcription",
+        { body: form, method: "POST" },
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Audio file must not be empty",
+      });
+      expect(harness.requests).toHaveLength(0);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("retries transient Codex transcription rate limits", async () => {
     let requestCount = 0;
     const harness = await createCodexTranscriptionHarness({

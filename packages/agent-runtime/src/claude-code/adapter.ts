@@ -849,6 +849,7 @@ export function createClaudeCodeProviderAdapter(
         reasoningOutputTokens: 0,
       },
       latestRequestContextTokens: undefined,
+      lastModelFallback: undefined,
       openAssistantMessageIdsByScope: new Map(),
       openCompaction: undefined,
       openReasoningItemIdsByScope: new Map(),

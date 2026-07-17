@@ -24,6 +24,7 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
@@ -133,7 +134,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
         isPinned: false,
         selectedThread: thread({ projectId: "proj_app" }),
       }),
-    ).toEqual({ projectId: "proj_app", sidebarSectionId: "projects" });
+    ).toEqual({ projectId: "proj_app" });
   });
 
   it("expands the threads section for unfiled project threads in folders mode", () => {
@@ -155,7 +156,6 @@ describe("getSelectedThreadSidebarExpansion", () => {
       }),
     ).toEqual({
       folderKey: `${CHRONOLOGICAL_CONTAINER_ID}::fld_work`,
-      sidebarSectionId: "folders",
     });
   });
 

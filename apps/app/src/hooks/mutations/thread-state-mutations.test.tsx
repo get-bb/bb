@@ -14,12 +14,16 @@ import {
   threadListQueryKey,
   threadQueryKey,
 } from "../queries/query-keys";
-import { useUpdateThread } from "./thread-state-mutations";
+import {
+  useUnpinAndMoveThread,
+  useUpdateThread,
+} from "./thread-state-mutations";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...actual,
+    unpinThread: vi.fn(),
     updateThread: vi.fn(),
   };
 });
@@ -40,6 +44,7 @@ function makeThreadWithRuntime(
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
+    visibility: "visible",
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
@@ -261,6 +266,111 @@ describe("thread state mutations", () => {
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
+    });
+  });
+
+  it("serializes unpin before folder move while optimistically applying both fields", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const threadId = "thread-1";
+    const destinationFolderId = "fld_personal";
+    const thread = makeThreadWithRuntime({
+      id: threadId,
+      folderId: null,
+      pinnedAt: 10,
+    });
+    const listEntry = makeThreadListEntry({
+      id: threadId,
+      folderId: null,
+      pinnedAt: 10,
+      pinSortKey: "a0",
+    });
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    let resolveUnpin: (thread: ThreadResponse) => void = () => {};
+    let resolveUpdate: (thread: ThreadResponse) => void = () => {};
+
+    queryClient.setQueryData(threadQueryKey(threadId), thread);
+    queryClient.setQueryData(threadListKey, [listEntry]);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation([listEntry]),
+    );
+    vi.mocked(api.unpinThread).mockImplementation(
+      () =>
+        new Promise<ThreadResponse>((resolve) => {
+          resolveUnpin = resolve;
+        }),
+    );
+    vi.mocked(api.updateThread).mockImplementation(
+      () =>
+        new Promise<ThreadResponse>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useUnpinAndMoveThread(), { wrapper });
+
+    act(() => {
+      result.current.mutate({ id: threadId, folderId: destinationFolderId });
+    });
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0],
+      ).toMatchObject({
+        folderId: destinationFolderId,
+        pinnedAt: null,
+        pinSortKey: null,
+      });
+    });
+    expect(
+      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId)),
+    ).toMatchObject({
+      folderId: destinationFolderId,
+      pinnedAt: null,
+    });
+    expect(api.unpinThread).toHaveBeenCalledWith(threadId);
+    expect(api.updateThread).not.toHaveBeenCalled();
+
+    act(() => {
+      resolveUnpin(
+        makeThreadResponse({
+          id: threadId,
+          folderId: null,
+          pinnedAt: null,
+          updatedAt: 2,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(api.updateThread).toHaveBeenCalledWith(threadId, {
+        folderId: destinationFolderId,
+      });
+    });
+
+    act(() => {
+      resolveUpdate(
+        makeThreadResponse({
+          id: threadId,
+          folderId: destinationFolderId,
+          pinnedAt: null,
+          updatedAt: 3,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0],
+    ).toMatchObject({
+      folderId: destinationFolderId,
+      pinnedAt: null,
+      pinSortKey: null,
     });
   });
 });

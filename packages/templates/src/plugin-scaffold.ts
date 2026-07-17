@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   PLUGIN_SDK_APP_DTS,
   PLUGIN_SDK_DTS,
@@ -32,6 +33,13 @@ export interface ScaffoldPluginArgs {
 /** "bb-plugin-hello" → "hello" (mirrors the server's id derivation). */
 function pluginIdOf(packageName: string): string {
   return packageName.replace(/^bb-plugin-/, "");
+}
+
+function pluginNameOf(packageName: string): string {
+  return pluginIdOf(packageName)
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function enginesRange(bbVersion: string): string {
@@ -88,9 +96,17 @@ function serverEntrySource(packageName: string): string {
   const id = pluginIdOf(packageName);
   return `// ${packageName} — a BB plugin backend entry.
 //
-// The default export is a factory that receives the plugin API. Type-only
-// imports are erased when BB loads this file, so it runs as-is.
-import type { BbPluginApi } from "@bb/plugin-sdk";
+// The default export is a factory that receives the plugin API. BB supplies
+// the tiny defineRpcContract runtime helper; the API type remains type-only.
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
+
+export const rpcContract = defineRpcContract({
+  greeting: {
+    input: z.null(),
+    output: z.object({ greeting: z.string(), loadCount: z.number().int() }),
+  },
+});
 
 export default async function plugin(bb: BbPluginApi) {
   bb.log.info("loaded");
@@ -103,10 +119,16 @@ export default async function plugin(bb: BbPluginApi) {
   const { greeting } = await settings.get();
 
   // Namespaced key-value storage in bb.db (JSON values, up to 256KB each).
-  // For bigger or relational data use bb.storage.sqlite().
+  // For bigger or relational data use bb.storage.database().
   const loadCount = ((await bb.storage.kv.get<number>("load-count")) ?? 0) + 1;
   await bb.storage.kv.set("load-count", loadCount);
   bb.log.info(\`\${greeting} — load #\${loadCount}\`);
+
+  // Both schemas run at the wire boundary. Handler input/output are inferred
+  // from the shared contract; app.tsx imports only its type.
+  bb.rpc.register(rpcContract, {
+    greeting: () => ({ greeting, loadCount }),
+  });
 
   // Cleanup on reload/disable/shutdown; hooks run LIFO. The sanctioned place
   // to clear timers and close connections.
@@ -149,7 +171,9 @@ function appEntrySource(packageName: string): string {
 // \`npx shadcn add @bb/<name>\` (see components.json) — dialogs, dropdowns,
 // tables, the full shadcn set, version-matched to this BB install. Run
 // \`npm install\` once before \`bb plugin build\`.
-import { definePluginApp, useBbContext } from "@bb/plugin-sdk/app";
+import { useState } from "react";
+import { definePluginApp, useBbContext, useRpc } from "@bb/plugin-sdk/app";
+import type { rpcContract } from "./server";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -160,6 +184,8 @@ import {
 
 function HelloCard() {
   const { projectId } = useBbContext();
+  const rpc = useRpc<typeof rpcContract>();
+  const [greeting, setGreeting] = useState("Say hello");
   // Tailwind classes compile against the host theme's live CSS variables —
   // derive colors from the theme tokens, never hardcoded grays.
   return (
@@ -173,10 +199,16 @@ function HelloCard() {
             ? "No project selected."
             : \`Project: \${projectId}.\`}
         </span>
-        <Button size="sm" variant="outline" asChild>
-          <a href="https://github.com/ymichael/bb" target="_blank" rel="noreferrer">
-            Docs
-          </a>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void rpc.call("greeting").then((result) => {
+              setGreeting(\`\${result.greeting} (#\${result.loadCount})\`);
+            });
+          }}
+        >
+          {greeting}
         </Button>
       </CardContent>
     </Card>
@@ -200,8 +232,8 @@ export default definePluginApp((app) => {
  * Typecheck-only tsconfig: server.ts compiles against the BbPluginApi contract
  * (type-only, erased at load time); app.tsx is included when the plugin
  * declares a frontend entry. `@bb/plugin-sdk` resolves to the bundled `.d.ts`
- * files shipped in `types/` — the workspace package is unpublished, so authors
- * get real types without it on disk.
+ * files shipped in `types/`, so authors get the root/app types without a
+ * package install. Tests can install `@bb/plugin-sdk` for its testing subpaths.
  */
 function tsconfigSource(app: boolean): string {
   return `${JSON.stringify(
@@ -216,7 +248,6 @@ function tsconfigSource(app: boolean): string {
         // Only @types/node ambiently — stray ancestor node_modules/@types
         // (e.g. bun-types in a home directory) must not leak in.
         types: ["node"],
-        baseUrl: ".",
         paths: {
           "@bb/plugin-sdk": ["./types/bb-plugin-sdk.d.ts"],
           "@bb/plugin-sdk/app": ["./types/bb-plugin-sdk-app.d.ts"],
@@ -225,7 +256,7 @@ function tsconfigSource(app: boolean): string {
           ...(app ? { "@/*": ["./*"] } : {}),
         },
         noEmit: true,
-        skipLibCheck: true,
+        skipLibCheck: false,
       },
       include: app
         ? ["server.ts", "app.tsx", "types", "components", "lib", "hooks"]
@@ -283,8 +314,12 @@ ${componentsSection}
 \`package.json\` is the plugin manifest. Notable fields:
 
 - \`bb.server\` — backend entry (required); optional \`bb.app\` for a frontend.
+- \`bb.name\` and \`bb.description\` — required human-facing identity.
+- \`bb.branding\` — required; declare \`icon\` or \`logo.light\` (and optional
+  \`logo.dark\`). Logo assets must be relative \`.svg\`, \`.png\`, or \`.webp\`
+  files.
 - \`engines.bb\` — supported bb app version range.
-- \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^0.2.0\`).
+- \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^${PLUGIN_SDK_VERSION}\`).
 
 Run \`bb plugin build\` before publishing git/npm installs. It writes
 \`dist/server.js\` + \`server.meta.json\` (and, with \`bb.app\`, \`app.js\` /
@@ -349,16 +384,20 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         type: "module",
         engines: {
           bb: enginesRange(bbVersion),
-          bbPluginSdk: "^0.2.0",
+          bbPluginSdk: `^${PLUGIN_SDK_VERSION}`,
         },
-        bb: app
-          ? { server: "./server.ts", app: "./app.tsx" }
-          : { server: "./server.ts" },
+        bb: {
+          name: pluginNameOf(packageName),
+          description: "A BB plugin.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+          ...(app ? { app: "./app.tsx" } : {}),
+        },
         // Typecheck-only. The BbPluginApi/SDK types come from the bundled
         // `.d.ts` in `types/` (tsconfig maps @bb/plugin-sdk to them), so the
-        // unpublished workspace package is never needed. These deps supply the
-        // real npm types the bundle references (zod/hono/better-sqlite3, plus
-        // react for the frontend); BB provides them all at runtime, and
+        // package is not needed for normal plugin source. These deps supply the
+        // real npm types the bundle references (zod/hono/better-sqlite3 and
+        // the root contract's React types); BB provides them all at runtime, and
         // `bb plugin build` never bundles them.
         // Real runtime deps of the vendored starter components — esbuild
         // bundles these into dist/app.js, so they must be installed to
@@ -368,7 +407,9 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         devDependencies: {
           "@types/better-sqlite3": "^7.6.12",
           "@types/node": "^22.0.0",
-          ...(app ? { "@types/react": "^19.0.0" } : {}),
+          // The root SDK declaration also exposes frontend contract types, so
+          // React's declarations are required for headless plugin typechecks.
+          "@types/react": "^19.0.0",
           "better-sqlite3": "^12.0.0",
           hono: "^4.11.9",
           typescript: "^5.7.0",
@@ -383,9 +424,9 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
   );
   await writeFile(join(targetDir, "server.ts"), serverEntrySource(packageName));
   await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource(app));
-  // Bundled type declarations so the plugin typechecks without the (unpublished)
-  // @bb/plugin-sdk workspace package on disk. tsconfig `paths` maps the imports
-  // here.
+  // Bundled root/app declarations keep normal plugin source self-contained.
+  // Tests that use @bb/plugin-sdk/testing install the published package; the
+  // exact root/app paths below intentionally continue to resolve here.
   const typesDir = join(targetDir, "types");
   await mkdir(typesDir, { recursive: true });
   await writeFile(join(typesDir, "bb-plugin-sdk.d.ts"), PLUGIN_SDK_DTS);

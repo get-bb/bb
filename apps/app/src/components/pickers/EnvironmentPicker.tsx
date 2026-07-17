@@ -48,7 +48,7 @@ interface SelectedEnvironment {
   icon: IconName;
 }
 
-/** Multi-machine picker input (multiMachine experiment). Callers pass this
+/** Multi-machine picker input. Callers pass this
  * only while the experiment is on; the menu switches to machine-grouped
  * sections once more than one host exists. */
 export interface EnvironmentPickerMachines {
@@ -377,7 +377,7 @@ function EnvironmentOptionsSection({
   );
 }
 
-// Machine-grouped menu (multiMachine experiment, >1 host)
+// Machine-grouped menu (>1 host)
 // ---------------------------------------------------------------------------
 
 const MACHINE_BADGE_CLASS_NAME =

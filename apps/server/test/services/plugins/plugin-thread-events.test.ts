@@ -20,6 +20,7 @@ interface RecordedThreadPayload {
     id: string;
     projectId?: string;
     status: string;
+    visibility?: "hidden" | "visible";
   };
   lastAssistantText?: string | null;
   error?: string | null;
@@ -46,7 +47,12 @@ async function setUpPluginHarness(serverSource: string): Promise<{
     JSON.stringify({
       name: "bb-plugin-observer",
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Observer fixture",
+        description: "Thread events plugin fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), serverSource);
@@ -67,12 +73,51 @@ function lifecycleDeps(harness: TestAppHarness) {
 }
 
 describe("plugin thread lifecycle events", () => {
+  it("delivers thread.active once when run.started enters active", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__activeEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.active", (payload: any) => {
+          (globalThis as any).__activeEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "starting" },
+      });
+
+      const started = applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        threadId: thread.id,
+        event: { type: "run.started" },
+      });
+      expect(started.applied).toBe(true);
+
+      const duplicate = applyLoggedThreadLifecycleEvent(
+        lifecycleDeps(harness),
+        {
+          threadId: thread.id,
+          event: { type: "run.started" },
+        },
+      );
+      expect(duplicate.applied).toBe(false);
+
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread.id).toBe(thread.id);
+      expect(recorded[0]?.thread.status).toBe("active");
+    } finally {
+      delete globals.__activeEvents;
+      await cleanup();
+    }
+  });
+
   it("delivers thread.idle with the public DTO and lastAssistantText", async () => {
     const recorded: RecordedThreadPayload[] = [];
     globals.__idleEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.idle", (payload: any) => {
+        bb.events.on("thread.idle", (payload: any) => {
           (globalThis as any).__idleEvents.push(payload);
         });
       }
@@ -120,7 +165,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__failedEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.failed", (payload: any) => {
+        bb.events.on("thread.failed", (payload: any) => {
           (globalThis as any).__failedEvents.push(payload);
         });
       }
@@ -159,7 +204,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__createdEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.created", (payload: any) => {
+        bb.events.on("thread.created", (payload: any) => {
           (globalThis as any).__createdEvents.push(payload);
         });
       }
@@ -189,12 +234,59 @@ describe("plugin thread lifecycle events", () => {
     }
   });
 
+  it("broadcasts hidden lifecycle events like visible lifecycle events", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__hiddenCreatedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.created", (payload: any) => {
+          (globalThis as any).__hiddenCreatedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { environment, project } = seedThreadFixture(harness);
+      const createHidden = (originPluginId: string) =>
+        createThreadRecord(
+          { db: harness.db, hub: harness.hub },
+          {
+            environmentId: environment.id,
+            request: {
+              environment: { type: "reuse", environmentId: environment.id },
+              input: [],
+              origin: "plugin",
+              originPluginId,
+              projectId: project.id,
+              providerId: "codex",
+              startedOnBehalfOf: null,
+              titleFallback: "Hidden plugin worker",
+              visibility: "hidden",
+            },
+          },
+        );
+
+      createHidden("other-plugin");
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread.visibility).toBe("hidden");
+
+      const owned = createHidden("observer");
+      await vi.waitFor(() => expect(recorded).toHaveLength(2));
+      expect(recorded[1]?.thread).toMatchObject({
+        id: owned.id,
+        visibility: "hidden",
+      });
+    } finally {
+      delete globals.__hiddenCreatedEvents;
+      await cleanup();
+    }
+  });
+
   it("delivers thread.deleted when thread creation rolls back after insert", async () => {
     const deleted: RecordedThreadPayload[] = [];
     globals.__rollbackDeletedEvents = deleted;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.deleted", (payload: any) => {
+        bb.events.on("thread.deleted", (payload: any) => {
           (globalThis as any).__rollbackDeletedEvents.push(payload);
         });
       }
@@ -234,7 +326,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__deletedEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.deleted", (payload: any) => {
+        bb.events.on("thread.deleted", (payload: any) => {
           (globalThis as any).__deletedEvents.push(payload);
         });
       }
@@ -244,11 +336,14 @@ describe("plugin thread lifecycle events", () => {
         thread: { status: "idle" },
       });
 
-      const response = await harness.app.request(`/api/v1/threads/${thread.id}`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ childThreadsConfirmed: false }),
-      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
 
       expect(response.status).toBe(200);
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
@@ -264,7 +359,7 @@ describe("plugin thread lifecycle events", () => {
   it("isolates a throwing thread.deleted handler and still deletes", async () => {
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.deleted", () => {
+        bb.events.on("thread.deleted", () => {
           throw new Error("delete handler boom");
         });
       }
@@ -274,11 +369,14 @@ describe("plugin thread lifecycle events", () => {
         thread: { status: "idle" },
       });
 
-      const response = await harness.app.request(`/api/v1/threads/${thread.id}`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ childThreadsConfirmed: false }),
-      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
 
       expect(response.status).toBe(200);
       await vi.waitFor(() => {
@@ -288,9 +386,7 @@ describe("plugin thread lifecycle events", () => {
         expect(entry?.handlerStats.count).toBe(1);
         expect(entry?.handlerStats.errorCount).toBe(1);
         expect(entry?.status).toBe("running");
-        expect(entry?.statusDetail).toContain(
-          "thread.deleted handler failed",
-        );
+        expect(entry?.statusDetail).toContain("thread.deleted handler failed");
       });
     } finally {
       await cleanup();
@@ -302,10 +398,10 @@ describe("plugin thread lifecycle events", () => {
     globals.__survivorEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.idle", () => {
+        bb.events.on("thread.idle", () => {
           throw new Error("handler boom");
         });
-        bb.on("thread.idle", (payload: any) => {
+        bb.events.on("thread.idle", (payload: any) => {
           (globalThis as any).__survivorEvents.push(payload);
         });
       }
@@ -357,7 +453,7 @@ describe("plugin thread lifecycle events", () => {
     globals.__disabledEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.on("thread.idle", (payload: any) => {
+        bb.events.on("thread.idle", (payload: any) => {
           (globalThis as any).__disabledEvents.push(payload);
         });
       }

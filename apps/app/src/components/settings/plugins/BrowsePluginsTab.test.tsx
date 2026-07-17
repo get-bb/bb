@@ -2,57 +2,48 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
+
+const MEMORY_ENTRY: PluginCatalogSearchEntry = {
+  entryId: "memory",
+  displayName: "Memory",
+  description: "Provider-independent durable memory for agents.",
+  icon: "Brain",
+  category: "Productivity",
+  source: "builtin:memory",
+  installed: false,
+  compatible: true,
+  incompatibleReason: null,
+};
+
+const CATALOG_STATUS = { pluginCount: 4 };
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("BrowsePluginsTab", () => {
-  it("shows catalog icons and truncates long source labels", async () => {
-    const source =
-      "github-release:ymichael/bb/bb-plugin-memory-{version}.tgz@^0.1.0";
+  it("shows the official plugins and entries", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        if (url === "/api/v1/marketplaces") {
-          return jsonResponse({
-            marketplaces: [
-              {
-                id: "bb-official",
-                name: "bb-official",
-                displayName: "BB Official",
-                source: "https://github.com/ymichael/bb.git@main",
-                pluginCount: 3,
-              },
-            ],
-          });
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
         }
-        if (url === "/api/v1/marketplaces/search?q=") {
+        if (url === "/api/v1/plugin-catalog/search?q=") {
           return jsonResponse({
-            results: [
-              {
-                marketplaceId: "bb-official",
-                entryId: "memory",
-                displayName: "Memory",
-                description: "Provider-independent durable memory for agents.",
-                icon: "Brain",
-                category: "Productivity",
-                source,
-                installed: false,
-                compatible: true,
-              },
-            ],
+            results: [MEMORY_ENTRY],
           });
         }
         return jsonResponse({ error: "not found" }, 404);
@@ -63,17 +54,46 @@ describe("BrowsePluginsTab", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(<BrowsePluginsTab onInstall={onInstall} />, { wrapper });
 
+    expect(await screen.findByText("BB Official plugins")).toBeTruthy();
     const card = await screen.findByTestId("browse-card-memory");
     expect(card.querySelector('[data-icon="Brain"]')).not.toBeNull();
 
     const sourceLine = screen.getByTestId("browse-source-memory");
     expect(sourceLine.classList.contains("truncate")).toBe(true);
-    expect(sourceLine.getAttribute("title")).toBe(`BB Official · ${source}`);
-    expect(sourceLine.textContent).toBe(`BB Official · ${source}`);
+    expect(sourceLine.getAttribute("title")).toBe(MEMORY_ENTRY.source);
+    expect(sourceLine.textContent).toBe(MEMORY_ENTRY.source);
+
+    // The remote-catalog Refresh action is gone: plugins ship with the app.
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Install" }));
-    expect(onInstall).toHaveBeenCalledWith(
-      expect.objectContaining({ icon: "Brain" }),
+    expect(onInstall).toHaveBeenCalledWith({
+      entryId: "memory",
+      displayName: "Memory",
+      icon: "Brain",
+    });
+  });
+
+  it("marks installed entries instead of offering install", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({
+            results: [{ ...MEMORY_ENTRY, installed: true }],
+          });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
     );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<BrowsePluginsTab onInstall={() => {}} />, { wrapper });
+
+    expect(await screen.findByText("Installed ✓")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
   });
 });

@@ -195,8 +195,8 @@ describe("public environments", () => {
         hostId: host.id,
       });
       // A "personal" workspace is exactly what a projectless thread runs in.
-      // The project-scoped /projects/:id/paths route would reject it; the
-      // environment-scoped route serves it because it never consults the project.
+      // The environment-scoped route remains the direct surface used by
+      // existing-thread file search for a personal workspace.
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,

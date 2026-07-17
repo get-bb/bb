@@ -112,6 +112,32 @@ describe("public thread open", () => {
     });
   });
 
+  it("opens a hidden thread through the ordinary direct path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-thread-open-hidden",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-open-hidden-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        visibility: "hidden",
+      });
+      const socket = createMockHubSocket();
+      harness.deps.hub.registerClient(socket);
+
+      const response = await postOpen(harness, thread.id, { file: null });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(socket.messages[0]!)).toMatchObject({
+        type: "thread-open",
+        projectId: project.id,
+        threadId: thread.id,
+      });
+    });
+  });
+
   it("opens a thread without a file and validates split placement", async () => {
     await withTestHarness(async (harness) => {
       setExperiments(harness.db, {

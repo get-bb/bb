@@ -61,6 +61,7 @@ function updateGeneralSetting(
   switch (key) {
     case "caffeinate":
     case "showKeyboardHints":
+    case "showUnhandledProviderEvents":
     case "codexMemoryEnabled":
     case "claudeCodeMemoryEnabled":
     case "codexSubagentsDisabled":
@@ -77,17 +78,11 @@ function updateExperiment(
   key: string,
   value: string,
 ): Experiments {
-  if (key === "popoutChatHotkey") {
-    return experimentsSchema.parse({ ...experiments, popoutChatHotkey: value });
-  }
   const enabled = parseBoolean(value);
   switch (key) {
-    case "bbConnect":
     case "claudeCodeMockCliTraffic":
-    case "multiMachine":
     case "threadSplits":
     case "plugins":
-    case "popoutChat":
       return experimentsSchema.parse({ ...experiments, [key]: enabled });
     default:
       throw new Error(`Unknown experiment '${key}'.`);

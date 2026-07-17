@@ -1,13 +1,21 @@
 import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
+import type { Host } from "@bb/domain";
 import type {
+  CreateHostJoinCodeResponse,
   HostCloneDefaultPathQuery,
+  HostCloneDefaultPathResponse,
+  HostDirectoryListing,
   HostDirectoryQuery,
   HostPathsExistRequest,
+  HostPathsExistResponse,
   HostPickFolderRequest,
+  HostPickFolderResponse,
+  HostProviderCliInstallEvent,
   HostProviderCliInstallRequest,
+  HostProviderCliStatusResponse,
   UpdateHostRequest,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface HostGetArgs {
   hostId: string;
@@ -37,35 +45,34 @@ export interface HostProviderCliInstallArgs extends HostProviderCliInstallReques
   hostId: string;
 }
 
-export type HostGetResult = PublicApiOutput<"/hosts/:id", "$get">;
-export type HostListResult = PublicApiOutput<"/hosts", "$get">;
+export type HostCreateJoinCodeResult = CreateHostJoinCodeResponse;
+export type HostDeleteResult = { ok: true };
+export type HostDirectoryResult = HostDirectoryListing;
+export type HostGetResult = Host;
+export type HostCloneDefaultPathResult = HostCloneDefaultPathResponse;
+export type HostProviderCliInstallResult = HostProviderCliInstallEvent[];
+export type HostListResult = Host[];
+export type HostPathsExistResult = HostPathsExistResponse;
+export type HostPickFolderResult = HostPickFolderResponse;
+export type HostProviderCliStatusResult = HostProviderCliStatusResponse;
+export type HostUpdateResult = Host;
 
 export interface HostsArea {
-  createJoinCode(): Promise<PublicApiOutput<"/hosts/join-codes", "$post">>;
-  delete(args: HostGetArgs): Promise<{ ok: true }>;
-  directory(
-    args: HostDirectoryArgs,
-  ): Promise<PublicApiOutput<"/hosts/:id/directory", "$get">>;
+  createJoinCode(): Promise<HostCreateJoinCodeResult>;
+  delete(args: HostGetArgs): Promise<HostDeleteResult>;
+  directory(args: HostDirectoryArgs): Promise<HostDirectoryResult>;
   get(args: HostGetArgs): Promise<HostGetResult>;
   cloneDefaultPath(
     args: HostCloneDefaultPathArgs,
-  ): Promise<PublicApiOutput<"/hosts/:id/clone-default-path", "$get">>;
+  ): Promise<HostCloneDefaultPathResult>;
   installProviderCli(
     args: HostProviderCliInstallArgs,
-  ): Promise<PublicApiOutput<"/hosts/:id/provider-clis/install", "$post">[]>;
+  ): Promise<HostProviderCliInstallResult>;
   list(): Promise<HostListResult>;
-  pathsExist(
-    args: HostPathsExistArgs,
-  ): Promise<PublicApiOutput<"/hosts/:id/paths/exist", "$post">>;
-  pickFolder(
-    args: HostPickFolderArgs,
-  ): Promise<PublicApiOutput<"/hosts/:id/pick-folder", "$post">>;
-  providerCliStatus(
-    args: HostGetArgs,
-  ): Promise<PublicApiOutput<"/hosts/:id/provider-clis/status", "$get">>;
-  update(
-    args: HostUpdateArgs,
-  ): Promise<PublicApiOutput<"/hosts/:id", "$patch">>;
+  pathsExist(args: HostPathsExistArgs): Promise<HostPathsExistResult>;
+  pickFolder(args: HostPickFolderArgs): Promise<HostPickFolderResult>;
+  providerCliStatus(args: HostGetArgs): Promise<HostProviderCliStatusResult>;
+  update(args: HostUpdateArgs): Promise<HostUpdateResult>;
 }
 
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {

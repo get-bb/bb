@@ -1,12 +1,15 @@
 import type { ComponentType } from "react";
-import type { JsonValue } from "@bb/domain";
+import type { JsonValue } from "./json-value.js";
+import type {
+  PluginRpcCallArgs,
+  PluginRpcContract,
+  PluginRpcResult,
+} from "./rpc-contract.js";
 
 /**
- * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types plus
- * the runtime export-name list, with no side effects. This module is what the
- * BB app imports to keep its real implementation in sync (`satisfies
- * PluginSdkApp`) and what `bb plugin build` imports to generate the shim's
- * named-export list. Plugin authors import the same shapes through
+ * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * side effects. The BB app imports these to keep its real implementation in
+ * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
  * `@bb/plugin-sdk/app`.
  *
  * Per-slot props are versioned contracts: additive-only within an SDK major.
@@ -50,7 +53,7 @@ export interface PluginThreadPanelProps {
    * through persistence, so the tab restores across reloads); null when the
    * action opened the panel without params.
    */
-  params: unknown;
+  params: JsonValue | null;
 }
 
 /** Props passed to a `composerAccessory` component. */
@@ -156,20 +159,6 @@ export interface PluginMessageDirectiveProps {
 // Slot registrations (the arguments to `app.slots.*`).
 // ---------------------------------------------------------------------------
 
-/**
- * Slot/panel ids and nav-panel paths must match this pattern (letters,
- * digits, `-`, `_`): they ride URLs and persisted panel-tab keys.
- */
-export const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-/**
- * Message-directive ids must be lowercase kebab-case beginning with a letter
- * (e.g. `inline-vis` matching `::inline-vis{...}`). Stricter than general
- * slot ids so directive names stay URL/Markdown-safe and case-stable.
- */
-export const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN =
-  /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-
 export interface PluginHomepageSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
@@ -200,15 +189,7 @@ export interface PluginNavPanelRegistration {
   path: string;
   component: ComponentType<PluginNavPanelProps>;
   /**
-   * Panel chrome (default "page"): "page" renders the host title bar (plugin
-   * logo + `title` + your `headerContent`) above a full-width padded body;
-   * "none" hands the ENTIRE panel area to `component` — no host padding, no
-   * title bar (`headerContent` is ignored) — only the per-plugin error
-   * boundary remains.
-   */
-  chrome?: "page" | "none";
-  /**
-   * Optional component rendered on the right side of the "page" title bar
+   * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
    * throwing headerContent is hidden without breaking the title bar.
    */
@@ -228,7 +209,7 @@ export interface PluginThreadPanelActionContext {
    * (updating its title) instead of duplicating it. May be called more than
    * once (different params ⇒ multiple tabs) or not at all.
    */
-  openPanel(options?: { title?: string; params?: unknown }): void;
+  openPanel(options?: { title?: string; params?: JsonValue }): void;
 }
 
 export interface PluginThreadPanelActionRegistration {
@@ -259,7 +240,7 @@ export interface PluginComposerAccessoryRegistration {
 }
 
 export interface PluginPendingInteractionRegistration {
-  /** Matches `rendererId` passed to `bb.interactions.request`. */
+  /** Matches `rendererId` passed to `bb.ui.requestInput`. */
   id: string;
   component: ComponentType<PluginPendingInteractionProps>;
 }
@@ -320,8 +301,7 @@ export interface PluginFileOpenerRegistration {
  */
 export interface PluginMessageDirectiveRegistration {
   /**
-   * The directive name. Lowercase kebab-case beginning with a letter
-   * (see {@link PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN}).
+   * The directive name. Lowercase kebab-case beginning with a letter.
    */
   id: string;
   component: ComponentType<PluginMessageDirectiveProps>;
@@ -366,14 +346,19 @@ export interface PluginAppDefinition {
 // Hooks
 // ---------------------------------------------------------------------------
 
-export interface PluginRpcClient {
+export interface PluginRpcClient<
+  Contract extends PluginRpcContract = PluginRpcContract,
+> {
   /**
    * Invoke one of the plugin's `bb.rpc` methods (POST
    * /api/v1/plugins/&lt;id&gt;/rpc/&lt;method&gt;). Resolves with the method's
-   * result; rejects with an `Error` carrying the server's message when the
-   * handler fails or the plugin is not running.
+   * inferred output; rejects with an `Error` carrying the server's message,
+   * stable `code`, and validation `issues` when present.
    */
-  call(method: string, input?: unknown): Promise<unknown>;
+  call<Method extends Extract<keyof Contract, string>>(
+    method: Method,
+    ...args: PluginRpcCallArgs<Contract[Method]>
+  ): Promise<PluginRpcResult<Contract[Method]>>;
 }
 
 export interface PluginSettingsState {
@@ -384,6 +369,12 @@ export interface PluginSettingsState {
   values: Record<string, string | boolean> | undefined;
   isLoading: boolean;
 }
+
+/** State of the app's shared realtime connection to the bb server. */
+export type PluginRealtimeConnectionState =
+  | "connecting"
+  | "connected"
+  | "reconnecting";
 
 /** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
 export type PluginComposerScope =
@@ -409,6 +400,21 @@ export interface PluginComposerMention {
  */
 export interface PluginComposerApi {
   scope: PluginComposerScope;
+  /** Current plain text for this composer scope. */
+  readonly text: string;
+  /**
+   * Replace the draft's plain text. Attachments are preserved. Inline mentions
+   * outside the changed range are preserved and rebased; mentions overlapped
+   * by the replacement are removed because their text representation changed.
+   */
+  setText(next: string): void;
+  /**
+   * Replace the draft's plain text from the latest committed value. Uses the
+   * same structured-state reconciliation as `setText`.
+   */
+  updateText(updater: (current: string) => string): void;
+  /** Clear plain text without clearing independently attached files. */
+  clear(): void;
   /**
    * Append text to the draft as a `> ` blockquote block and focus the
    * composer. Blank text is a no-op. This is the "reference this selection
@@ -454,7 +460,8 @@ export interface BbNavigate {
 }
 
 // ---------------------------------------------------------------------------
-// The whole surface + its runtime export names.
+// The whole runtime surface. Declaration-versus-runtime parity is tested
+// against the actual `@bb/plugin-sdk/app` module namespace.
 //
 // Components are deliberately NOT part of this surface (removed 2026-07-03,
 // plugin design §5.5): plugins vendor shadcn-style component source from the
@@ -471,35 +478,19 @@ export interface BbNavigate {
  */
 export interface PluginSdkApp {
   definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
-  useRpc(): PluginRpcClient;
+  useRpc<
+    Contract extends PluginRpcContract = PluginRpcContract,
+  >(): PluginRpcClient<Contract>;
   useRealtime(channel: string, handler: (payload: unknown) => void): void;
+  /**
+   * Observe the same shared connection that delivers `useRealtime` signals.
+   * Use a subsequent transition to `connected` to reconcile server state that
+   * may have changed while ephemeral signals could not be delivered. The first
+   * connection can transition from `connecting` and is not a reconnection.
+   */
+  useRealtimeConnectionState(): PluginRealtimeConnectionState;
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
   useComposer(): PluginComposerApi;
 }
-
-/**
- * Named runtime exports of `@bb/plugin-sdk/app`, in sorted order. Single
- * source of truth for the build shim's export list and the app's
- * implementation-key test — adding a surface member without updating this
- * list fails the type assertion below.
- */
-export const PLUGIN_SDK_APP_EXPORT_NAMES = [
-  "definePluginApp",
-  "useBbContext",
-  "useBbNavigate",
-  "useComposer",
-  "useRealtime",
-  "useRpc",
-  "useSettings",
-] as const satisfies readonly (keyof PluginSdkApp)[];
-
-// Compile-time exhaustiveness: every PluginSdkApp key must appear in
-// PLUGIN_SDK_APP_EXPORT_NAMES (the `satisfies` above covers the converse).
-type MissingExportName = Exclude<
-  keyof PluginSdkApp,
-  (typeof PLUGIN_SDK_APP_EXPORT_NAMES)[number]
->;
-const _assertAllExported: MissingExportName extends never ? true : never = true;
-void _assertAllExported;

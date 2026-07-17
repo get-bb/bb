@@ -389,6 +389,7 @@ export function SideChatTabContent({
     initialPermissionMode: "readonly",
   });
   const {
+    executionOptionsRouting,
     selectedProviderId,
     providerOptions,
     hasMultipleProviders,
@@ -1210,6 +1211,7 @@ export function SideChatTabContent({
   // be changed before sending a side-chat turn.
   const executionConfig = useMemo<ExecutionControlsProps>(
     () => ({
+      providerRouting: executionOptionsRouting,
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
@@ -1240,6 +1242,7 @@ export function SideChatTabContent({
     }),
     [
       activeModel,
+      executionOptionsRouting,
       hasMultipleProviders,
       isLoadingModels,
       modelLoadFailed,

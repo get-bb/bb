@@ -138,34 +138,78 @@ export const projectListQuerySchema = z.object({
       { message: "Invalid include" },
     )
     .optional(),
+  /** Include the singleton personal project; omitted preserves ordinary-only listing. */
+  includePersonal: z.enum(["true", "false"]).optional(),
 });
 export type ProjectListQuery = z.infer<typeof projectListQuerySchema>;
 
-export const projectFilesQuerySchema = z.object({
-  query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
-  limit: z.string().regex(/^\d+$/).optional(),
-  /**
-   * Required + nullable. Pass an environment id to scope the file list to that
-   * environment's workspace (e.g. a worktree); pass `null` to use the project's
-   * default source. Encoded as the empty string on the wire because URL query
-   * params can't represent JSON null directly.
-   */
+const projectWorkspaceRoutingFields = {
+  hostId: z.string().min(1),
   environmentId: z.preprocess(
-    (value) => (value === "" ? null : value),
-    z.string().min(1).nullable(),
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
   ),
-});
+} as const;
+
+function rejectMultipleProjectWorkspaceSelectors(
+  query: { environmentId?: string; hostId?: string },
+  context: z.RefinementCtx,
+): void {
+  if (query.environmentId !== undefined && query.hostId !== undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "hostId and environmentId are mutually exclusive",
+    });
+  }
+}
+
+/**
+ * Route project workspace discovery through an environment's workspace or an
+ * explicit project source host. Omitting both intentionally falls back to the
+ * primary host's project source.
+ */
+export const projectWorkspaceRoutingQuerySchema = z
+  .object(projectWorkspaceRoutingFields)
+  .partial()
+  .superRefine(rejectMultipleProjectWorkspaceSelectors);
+export type ProjectWorkspaceRoutingQuery = z.infer<
+  typeof projectWorkspaceRoutingQuerySchema
+>;
+
+export const projectFilesQuerySchema = z
+  .object({
+    ...projectWorkspaceRoutingFields,
+    query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
+    limit: z.string().regex(/^\d+$/).optional(),
+  })
+  .partial()
+  .superRefine(rejectMultipleProjectWorkspaceSelectors);
 export type ProjectFilesQuery = z.infer<typeof projectFilesQuerySchema>;
 
-export const projectPathsQuerySchema = projectFilesQuerySchema.extend({
-  includeFiles: pathListIncludeQueryValueSchema,
-  includeDirectories: pathListIncludeQueryValueSchema,
-});
+export const projectPathsQuerySchema = z
+  .object({
+    ...projectWorkspaceRoutingFields,
+    query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
+    limit: z.string().regex(/^\d+$/).optional(),
+    includeFiles: pathListIncludeQueryValueSchema,
+    includeDirectories: pathListIncludeQueryValueSchema,
+  })
+  .partial({
+    hostId: true,
+    environmentId: true,
+    query: true,
+    limit: true,
+  })
+  .superRefine(rejectMultipleProjectWorkspaceSelectors);
 export type ProjectPathsQuery = z.infer<typeof projectPathsQuerySchema>;
 
-export const projectFileContentQuerySchema = z.object({
-  path: z.string().min(1),
-});
+export const projectFileContentQuerySchema = z
+  .object({
+    ...projectWorkspaceRoutingFields,
+    path: z.string().min(1),
+  })
+  .partial({ hostId: true, environmentId: true })
+  .superRefine(rejectMultipleProjectWorkspaceSelectors);
 export type ProjectFileContentQuery = z.infer<
   typeof projectFileContentQuerySchema
 >;
@@ -192,13 +236,6 @@ export type ProjectAttachmentContentQuery = z.infer<
   typeof projectAttachmentContentQuerySchema
 >;
 
-export const projectAttachmentDeleteQuerySchema = z.object({
-  path: z.string().min(1),
-});
-export type ProjectAttachmentDeleteQuery = z.infer<
-  typeof projectAttachmentDeleteQuerySchema
->;
-
 export const projectDefaultExecutionOptionsQuerySchema = z.object({});
 export type ProjectDefaultExecutionOptionsQuery = z.infer<
   typeof projectDefaultExecutionOptionsQuerySchema
@@ -214,9 +251,7 @@ export type PromptHistoryQuery = z.infer<typeof promptHistoryQuerySchema>;
 export const promptHistoryResponseSchema = z.array(promptHistoryEntrySchema);
 export type PromptHistoryResponse = z.infer<typeof promptHistoryResponseSchema>;
 
-export interface ProjectAttachmentUploadForm {
-  [key: string]: string | Blob;
-}
+export type ProjectAttachmentUploadForm = Record<"file", Blob>;
 
 export const updateProjectRequestSchema = z
   .object({
@@ -319,13 +354,15 @@ export const commandListResponseSchema = z.object({
 export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
 
 /** Query for the complete command catalog available to a project and provider. */
-export const projectCommandsQuerySchema = projectFilesQuerySchema
-  .pick({ environmentId: true })
-  .extend({
+export const projectCommandsQuerySchema = z
+  .object({
+    ...projectWorkspaceRoutingFields,
     /** Provider whose command/skill surface to discover (e.g. `claude-code`, `codex`). */
     provider: z.string().min(1),
   })
-  .strict();
+  .partial({ hostId: true, environmentId: true })
+  .strict()
+  .superRefine(rejectMultipleProjectWorkspaceSelectors);
 export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
 
 export const projectResponseSchema = projectSchema.extend({
@@ -366,4 +403,14 @@ export const uploadedPromptAttachmentSchema = z.object({
 });
 export type UploadedPromptAttachment = z.infer<
   typeof uploadedPromptAttachmentSchema
+>;
+
+export const copyProjectAttachmentsRequestSchema = z
+  .object({
+    sourceProjectId: z.string().min(1),
+    paths: z.array(z.string().min(1)).min(1).max(100),
+  })
+  .strict();
+export type CopyProjectAttachmentsRequest = z.infer<
+  typeof copyProjectAttachmentsRequestSchema
 >;

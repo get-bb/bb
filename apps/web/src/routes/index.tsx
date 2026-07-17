@@ -27,12 +27,15 @@ import {
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
+import changelogMd from "../../../../CHANGELOG.md?raw";
 import { initAnalytics, trackLandingEvent } from "../landing/analytics";
 import bbIcon from "../assets/bb-icon.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
+import { RELEASE_META, parseChangelog } from "../landing/changelog";
+import { DownloadLink, EmailSignup, GitHubLink } from "../landing/cta";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   ClaudeIcon,
@@ -45,16 +48,21 @@ import {
   PiIcon,
 } from "../landing/icons";
 import type { CtaPlacement } from "../landing/site";
-import {
-  CLI_COMMAND,
-  GITHUB_URL,
-  SITE_DESCRIPTION,
-  SITE_TITLE,
-  SUBSCRIBE_PATH,
-  downloadMacosHref,
-} from "../landing/site";
+import { CLI_COMMAND, SITE_DESCRIPTION, SITE_TITLE } from "../landing/site";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
+
+const [LATEST_RELEASE] = parseChangelog(changelogMd);
+if (!LATEST_RELEASE) {
+  throw new Error("CHANGELOG.md must contain at least one release");
+}
+const LATEST_RELEASE_META = RELEASE_META[LATEST_RELEASE.version];
+if (!LATEST_RELEASE_META) {
+  throw new Error(
+    `Latest release ${LATEST_RELEASE.version} must have presentation metadata`,
+  );
+}
+const LATEST_RELEASE_URL = `/changelog#${LATEST_RELEASE.version.replaceAll(".", "-")}`;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -110,40 +118,6 @@ const AppleSolidIcon: IconSvgElement = [
 ];
 
 /* ── CTAs ─────────────────────────────────────────────────────────── */
-
-type CtaLinkProps = {
-  placement: CtaPlacement;
-  /** Omit for a plain inline link (nav/footer); set for button-styled CTAs. */
-  className?: string;
-  children: ReactNode;
-};
-
-function DownloadLink({ placement, className, children }: CtaLinkProps) {
-  return (
-    <a className={className} href={downloadMacosHref(placement)}>
-      {children}
-    </a>
-  );
-}
-
-function GitHubLink({ placement, className, children }: CtaLinkProps) {
-  return (
-    <a
-      className={className}
-      href={GITHUB_URL}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() =>
-        trackLandingEvent({
-          name: "landing_github_clicked",
-          properties: { placement },
-        })
-      }
-    >
-      {children}
-    </a>
-  );
-}
 
 // The browser install path, rendered as an outline button whose body is the
 // run command. Clicking anywhere copies it (there's no hosted URL to open —
@@ -209,92 +183,6 @@ function InstallOptions({ placement }: { placement: CtaPlacement }) {
         </span>
       </div>
     </div>
-  );
-}
-
-/* ── Email signup ─────────────────────────────────────────────────── */
-
-type SubscribeStatus = "idle" | "submitting" | "success" | "error";
-
-// Email capture that POSTs to the first-party /api/subscribe Worker route,
-// which adds the address to the bb marketing audience in Resend. JS-enhanced:
-// it submits inline and swaps to a confirmation rather than navigating.
-function EmailSignup({ placement }: { placement: CtaPlacement }) {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<SubscribeStatus>("idle");
-  const [error, setError] = useState("");
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (status === "submitting") {
-      return;
-    }
-    setStatus("submitting");
-    setError("");
-    try {
-      const response = await fetch(SUBSCRIBE_PATH, {
-        body: JSON.stringify({ email }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        setError(body.error ?? "Something went wrong. Try again.");
-        setStatus("error");
-        return;
-      }
-      trackLandingEvent({ name: "landing_email_subscribed", properties: { placement } });
-      setStatus("success");
-    } catch {
-      setError("Could not reach the server. Try again.");
-      setStatus("error");
-    }
-  };
-
-  if (status === "success") {
-    return (
-      <p className="subscribe-done" role="status">
-        <HugeiconsIcon icon={CheckmarkCircle02Icon} className="subscribe-done-ic" />
-        You&rsquo;re on the list. We&rsquo;ll be in touch.
-      </p>
-    );
-  }
-
-  return (
-    <form className="subscribe-form" onSubmit={submit} noValidate>
-      <input
-        className="subscribe-input"
-        type="email"
-        name="email"
-        inputMode="email"
-        autoComplete="email"
-        required
-        placeholder="you@example.com"
-        aria-label="Email address"
-        aria-invalid={status === "error"}
-        value={email}
-        onChange={(event) => {
-          setEmail(event.target.value);
-          if (status === "error") {
-            setStatus("idle");
-          }
-        }}
-      />
-      <button
-        type="submit"
-        className="btn btn-primary subscribe-btn"
-        disabled={status === "submitting"}
-      >
-        {status === "submitting" ? "Subscribing…" : "Subscribe"}
-      </button>
-      {status === "error" ? (
-        <span className="subscribe-error" role="alert">
-          {error}
-        </span>
-      ) : null}
-    </form>
   );
 }
 
@@ -1733,6 +1621,7 @@ function LandingPage() {
           <img src={bbIcon} alt="bb" width={36} height={36} />
         </a>
         <div className="nav-links">
+          <a href="/changelog">Changelog</a>
           <GitHubLink placement="nav">GitHub</GitHubLink>
           <a href={DASHBOARD_PATH}>Sign in</a>
           <DownloadLink placement="nav" className="btn btn-primary btn-sm">
@@ -1742,6 +1631,11 @@ function LandingPage() {
       </nav>
 
       <header className="hero">
+        <a className="updates-callout" href={LATEST_RELEASE_URL}>
+          <span className="updates-label">New</span>
+          <span className="updates-title">{LATEST_RELEASE_META.headline}</span>
+          <span aria-hidden="true">→</span>
+        </a>
         <h1>
           The First LDE<span className="lde-star">*</span>
         </h1>
@@ -1836,6 +1730,8 @@ function LandingPage() {
       <footer className="footer">
         <span>bb is free and open source (MIT)</span>
         <span>
+          <a href="/changelog">Changelog</a>
+          {" · "}
           <GitHubLink placement="footer">GitHub</GitHubLink>
           {" · "}
           <DownloadLink placement="footer">Download</DownloadLink>

@@ -4534,6 +4534,93 @@ describe("claude-code provider adapter", () => {
     expect(events).toMatchObject([]);
   });
 
+  it("translateEvent normalizes Claude model refusal fallbacks", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const events = adapter.translateEvent({
+      type: "system",
+      subtype: "model_refusal_fallback",
+      original_model: "claude-fable-5",
+      fallback_model: "claude-opus-4-8",
+      content: "Fable refused this request. Switched to Opus.",
+      session_id: "sess-1",
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/modelFallback",
+        scope: threadScope(),
+        originalModel: "claude-fable-5",
+        fallbackModel: "claude-opus-4-8",
+        reason: "refusal",
+        message: "Fable refused this request. Switched to Opus.",
+      }),
+    ]);
+  });
+
+  it("translateEvent emits the early assistant fallback block and deduplicates the later system event", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const earlyEvents = adapter.translateEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        model: "claude-opus-4-8",
+        content: [
+          {
+            type: "fallback",
+            from: { model: "claude-fable-5" },
+            to: { model: "claude-opus-4-8" },
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+
+    expect(earlyEvents).toEqual([
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("turn-1"),
+      }),
+      expect.objectContaining({
+        type: "provider/modelFallback",
+        scope: turnScope("turn-1"),
+        originalModel: "claude-fable-5",
+        fallbackModel: "claude-opus-4-8",
+        reason: "provider",
+        message: "Switched from claude-fable-5 to claude-opus-4-8.",
+      }),
+    ]);
+
+    const detailedEvents = adapter.translateEvent({
+      type: "system",
+      subtype: "model_refusal_fallback",
+      original_model: "claude-fable-5",
+      fallback_model: "claude-opus-4-8",
+      content: "Fable refused this request. Switched to Opus.",
+      session_id: "sess-1",
+    });
+
+    expect(detailedEvents).toEqual([]);
+  });
+
+  it("translateEvent surfaces refusal without fallback as a warning", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const events = adapter.translateEvent({
+      type: "system",
+      subtype: "model_refusal_no_fallback",
+      content: "The model refused and no fallback was configured.",
+      session_id: "sess-1",
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/warning",
+        category: "general",
+        summary: "Model refused the request",
+        details: "The model refused and no fallback was configured.",
+      }),
+    ]);
+  });
+
   it("translateEvent status compacting starts a turn and emits a compaction item", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const events = adapter.translateEvent({

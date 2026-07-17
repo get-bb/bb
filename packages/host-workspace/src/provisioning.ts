@@ -49,6 +49,8 @@ export interface CreateWorkspaceArgs {
   baseBranch: string | null;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
+  /** Resolved user-shell PATH for the setup script. */
+  setupPath?: string;
   onProgress?: ProgressCallback;
   pruneEmptyParent?: boolean;
   signal?: AbortSignal;
@@ -57,6 +59,8 @@ export interface CreateWorkspaceArgs {
 export interface RunSetupScriptArgs {
   workspacePath: string;
   timeoutMs: number;
+  /** Resolved user-shell PATH. Falls back to the daemon process PATH. */
+  setupPath?: string;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
 }
@@ -388,6 +392,7 @@ export async function createWorktree(
     await runSetupScript({
       workspacePath: args.targetPath,
       timeoutMs: args.timeoutMs,
+      setupPath: args.setupPath,
       onProgress: args.onProgress,
       signal: args.signal,
     });
@@ -436,12 +441,16 @@ export async function runSetupScript(
   });
 
   const { timeoutMs } = args;
+  const env = sanitizeInheritedChildProcessEnv({ env: process.env });
+  if (args.setupPath !== undefined) {
+    env.PATH = args.setupPath;
+  }
   const child = spawnPortableOutputProcess({
     command: command.command,
     args: command.args,
     cwd: args.workspacePath,
     detached: shouldRunSetupScriptInProcessGroup(),
-    env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+    env,
   });
 
   const outputChunks: string[] = [];

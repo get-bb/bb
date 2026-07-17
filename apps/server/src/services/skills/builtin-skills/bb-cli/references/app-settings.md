@@ -32,3 +32,12 @@ every window and client sees the same value.
   the same resolved shortcuts as renderer commands.
 - The complete default table is in `docs/configuration.md` in the bb source
   repository.
+
+## Unhandled provider events
+
+- `showUnhandledProviderEvents` defaults to false. Set it with
+  `bb settings general showUnhandledProviderEvents <true|false>`.
+- When enabled, packaged builds show raw provider events that bb has persisted
+  but does not yet understand. These diagnostic payloads can be noisy.
+- Development builds always show unhandled provider events regardless of the
+  saved preference.
