@@ -9,6 +9,7 @@ import {
 import type { SplitLayout } from "@/lib/split-layout";
 import {
   applyThreadOpenToLayout,
+  applyThreadPaneActionToLayout,
   createSinglePaneLayout,
   focusedPaneRoute,
   focusedThreadRoute,
@@ -220,5 +221,52 @@ describe("applyThreadOpenToLayout", () => {
       focusedPaneId,
     );
     expect(findPaneByThread(after.root, "p1", "thread-8")).toBeNull();
+  });
+});
+
+describe("applyThreadPaneActionToLayout", () => {
+  it("focuses and maximizes the targeted open thread without changing the tree", () => {
+    const before = twoPaneLayout();
+    const result = applyThreadPaneActionToLayout(
+      before,
+      null,
+      { projectId: "p1", threadId: "thread-1" },
+      "maximize",
+    );
+
+    expect(result.layout.root).toEqual(before.root);
+    expect(result.layout.focusedPaneId).toBe("pane-1");
+    expect(result.maximizedPaneId).toBe("pane-1");
+  });
+
+  it("restores only the targeted maximized pane and toggles it back", () => {
+    const before = twoPaneLayout();
+    const restored = applyThreadPaneActionToLayout(
+      before,
+      "pane-2",
+      { projectId: "p1", threadId: "thread-2" },
+      "restore",
+    );
+    expect(restored).toEqual({ layout: before, maximizedPaneId: null });
+
+    const toggled = applyThreadPaneActionToLayout(
+      restored.layout,
+      restored.maximizedPaneId,
+      { projectId: "p1", threadId: "thread-2" },
+      "toggle",
+    );
+    expect(toggled.maximizedPaneId).toBe("pane-2");
+  });
+
+  it("is a no-op when the target is not open", () => {
+    const before = twoPaneLayout();
+    expect(
+      applyThreadPaneActionToLayout(
+        before,
+        "pane-2",
+        { projectId: "p1", threadId: "missing" },
+        "maximize",
+      ),
+    ).toEqual({ layout: before, maximizedPaneId: "pane-2" });
   });
 });

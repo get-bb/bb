@@ -23,6 +23,18 @@ async function postOpen(
   });
 }
 
+async function postPaneAction(
+  harness: TestAppHarness,
+  threadId: string,
+  body: unknown,
+): Promise<Response> {
+  return harness.app.request(`/api/v1/threads/${threadId}/pane-action`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 describe("public thread open", () => {
   it("broadcasts an open-file signal to connected clients without persisting", async () => {
     await withTestHarness(async (harness) => {
@@ -202,6 +214,56 @@ describe("public thread open", () => {
           'Thread splits are disabled — enable the "Thread splits" experiment in Settings → Experiments.',
       });
       expect(socket.messages).toHaveLength(0);
+    });
+  });
+
+  it("broadcasts pane actions when thread splits are enabled", async () => {
+    await withTestHarness(async (harness) => {
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        threadSplits: true,
+      });
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-thread-pane-action",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-pane-action-source",
+      });
+      const thread = seedThread(harness.deps, { projectId: project.id });
+      const socket = createMockHubSocket();
+      harness.deps.hub.registerClient(socket);
+
+      const response = await postPaneAction(harness, thread.id, {
+        action: "maximize",
+      });
+
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({ delivered: 1 });
+      expect(JSON.parse(socket.messages[0]!)).toEqual({
+        type: "thread-pane-action",
+        projectId: project.id,
+        threadId: thread.id,
+        action: "maximize",
+      });
+    });
+  });
+
+  it("rejects pane actions when thread splits are disabled", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-thread-pane-action-disabled",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-pane-action-disabled-source",
+      });
+      const thread = seedThread(harness.deps, { projectId: project.id });
+
+      const response = await postPaneAction(harness, thread.id, {
+        action: "restore",
+      });
+      expect(response.status).toBe(403);
     });
   });
 });

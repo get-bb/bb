@@ -4,6 +4,7 @@ import {
   pluginSignalLenientSchema,
   realtimeSubscriptionTargetKey,
   threadOpenSignalLenientSchema,
+  threadPaneActionSignalLenientSchema,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
@@ -12,11 +13,13 @@ import type {
   RealtimeSubscriptionTarget,
   ThreadOpenFile,
   ThreadOpenSignal,
+  ThreadPaneActionSignal,
 } from "@bb/server-contract";
 import { buildDevWebSocketUrl } from "./dev-websocket-url";
 
 type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
+type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
 type ConnectedCallback = (event: { reconnected: boolean }) => void;
 type ConnectionStateCallback = () => void;
@@ -35,6 +38,7 @@ export class WebSocketManager {
   private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
+  private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
   // Ephemeral "open this file in the secondary panel" intents, keyed by thread.
   // Held in memory only (cleared on reload) so a thread that is not currently
@@ -118,6 +122,15 @@ export class WebSocketManager {
       return;
     }
 
+    const threadPaneAction =
+      threadPaneActionSignalLenientSchema.safeParse(parsed);
+    if (threadPaneAction.success) {
+      for (const cb of this.threadPaneActionCallbacks) {
+        cb(threadPaneAction.data);
+      }
+      return;
+    }
+
     // Ephemeral plugin realtime signal (bb.realtime.publish). Not buffered:
     // only live useRealtime subscribers care, and V1 has no replay.
     const pluginSignal = pluginSignalLenientSchema.safeParse(parsed);
@@ -191,6 +204,13 @@ export class WebSocketManager {
     this.threadOpenCallbacks.add(callback);
     return () => {
       this.threadOpenCallbacks.delete(callback);
+    };
+  }
+
+  onThreadPaneAction(callback: ThreadPaneActionCallback): () => void {
+    this.threadPaneActionCallbacks.add(callback);
+    return () => {
+      this.threadPaneActionCallbacks.delete(callback);
     };
   }
 

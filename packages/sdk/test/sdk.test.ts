@@ -103,6 +103,31 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("sends thread pane presentation actions through the typed transport", async () => {
+    const queue = createFetchQueue([{ body: { delivered: 3 } }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.paneAction({
+        threadId: "thr_test",
+        action: "restore",
+      }),
+    ).resolves.toEqual({ delivered: 3 });
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({ action: "restore" }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/thr_test/pane-action",
+      },
+    ]);
+  });
+
   it("keeps realtime subscriptions distinct under subscribe", () => {
     const queue = createFetchQueue([]);
     const sdk = createBbSdk({

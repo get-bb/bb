@@ -480,6 +480,47 @@ export const threadOpenResponseSchema = z.object({
 });
 export type ThreadOpenResponse = z.infer<typeof threadOpenResponseSchema>;
 
+/** Presentation action for one thread pane in each connected app window. */
+export const threadPaneActionSchema = z.enum(["maximize", "restore", "toggle"]);
+export type ThreadPaneAction = z.infer<typeof threadPaneActionSchema>;
+
+/** Request body for POST /threads/:id/pane-action. */
+export const threadPaneActionRequestSchema = z
+  .object({ action: threadPaneActionSchema })
+  .strict();
+export type ThreadPaneActionRequest = z.infer<
+  typeof threadPaneActionRequestSchema
+>;
+
+/** Ephemeral server→client request to change an already-open thread pane. */
+export const threadPaneActionSignalSchema = z
+  .object({
+    type: z.literal("thread-pane-action"),
+    projectId: z.string().min(1),
+    threadId: z.string().min(1),
+    action: threadPaneActionSchema,
+  })
+  .strict();
+export type ThreadPaneActionSignal = z.infer<
+  typeof threadPaneActionSignalSchema
+>;
+
+/** Lenient inbound parser for clients connected to a newer server. */
+export const threadPaneActionSignalLenientSchema = z.object({
+  type: z.literal("thread-pane-action"),
+  projectId: z.string(),
+  threadId: z.string(),
+  action: threadPaneActionSchema,
+});
+
+/** Number of connected app clients that received the pane action. */
+export const threadPaneActionResponseSchema = z.object({
+  delivered: z.number().int().nonnegative(),
+});
+export type ThreadPaneActionResponse = z.infer<
+  typeof threadPaneActionResponseSchema
+>;
+
 /** @deprecated Compatibility shape for clients that still call composer bootstrap. */
 export const threadComposerBootstrapResponseSchema = z.object({
   defaultExecutionOptions: resolvedThreadExecutionOptionsSchema.nullable(),

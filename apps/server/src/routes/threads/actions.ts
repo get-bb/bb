@@ -429,6 +429,22 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ delivered });
   });
 
+  post(routes.paneAction, (context, payload) => {
+    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+    if (!getExperiments(deps.db).threadSplits) {
+      throw new ApiError(
+        403,
+        "experiment_disabled",
+        'Thread splits are disabled — enable the "Thread splits" experiment in Settings → Experiments.',
+      );
+    }
+    const delivered = deps.hub.notifyThreadPaneAction(
+      { projectId: publicThread.projectId, threadId: publicThread.id },
+      payload.action,
+    );
+    return context.json({ delivered });
+  });
+
   post(routes.pin, (context) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
     const thread = pinThread(deps.db, deps.hub, {

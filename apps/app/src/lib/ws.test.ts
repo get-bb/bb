@@ -242,4 +242,23 @@ describe("WebSocketManager thread-open signals", () => {
     expect(changed).toHaveBeenCalledTimes(1);
     expect(threadOpen).not.toHaveBeenCalled();
   });
+
+  it("routes typed thread-pane actions separately", () => {
+    const { manager } = createConnectedManager();
+    const paneAction = vi.fn();
+    const threadOpen = vi.fn();
+    manager.onThreadPaneAction(paneAction);
+    manager.onThreadOpen(threadOpen);
+
+    const signal = {
+      type: "thread-pane-action",
+      projectId: "proj_1",
+      threadId: "thr_1",
+      action: "maximize",
+    } as const;
+    dispatchRaw(signal);
+
+    expect(paneAction).toHaveBeenCalledWith(signal);
+    expect(threadOpen).not.toHaveBeenCalled();
+  });
 });

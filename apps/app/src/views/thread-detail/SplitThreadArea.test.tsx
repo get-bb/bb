@@ -465,6 +465,13 @@ describe("SplitThreadArea", () => {
 
     await waitFor(() => expect(hiddenScroller.scrollTop).toBe(12));
     expect(hiddenPane?.getAttribute("aria-hidden")).toBeNull();
+
+    hiddenScroller.scrollTop = 0;
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    // The restore transition no longer owns this element after the intentional
+    // visible scroll to zero, so it does not replay the older saved offset.
+    await waitFor(() => expect(hiddenScroller.scrollTop).toBe(0));
   });
 
   it("toggles the focused pane through the discoverable app command", async () => {

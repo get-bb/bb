@@ -21,6 +21,8 @@ import type {
   ThreadConversationOutlineResponse,
   ThreadListResponse,
   ThreadOpenResponse,
+  ThreadPaneAction,
+  ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
@@ -100,6 +102,7 @@ export type ThreadEventWaitResult = ThreadEventRow | null;
 export type ThreadTimelineResult = ThreadTimelineResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
+export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = { ok: true };
 export type ThreadStopResult = { ok: true };
@@ -230,6 +233,11 @@ export interface ThreadOpenArgs {
   file: ThreadOpenFile | null;
 }
 
+export interface ThreadPaneActionArgs {
+  action: ThreadPaneAction;
+  threadId: string;
+}
+
 export interface ThreadEventsListArgs {
   afterSeq?: string;
   limit?: string;
@@ -269,13 +277,11 @@ export interface ThreadInteractionGetArgs extends ThreadInteractionTargetArgs {
   signal?: AbortSignal;
 }
 
-export interface ThreadInteractionResolveArgs
-  extends ThreadInteractionTargetArgs {
+export interface ThreadInteractionResolveArgs extends ThreadInteractionTargetArgs {
   resolution: PendingInteractionResolution;
 }
 
-export interface ThreadInteractionRespondArgs
-  extends ThreadInteractionTargetArgs {
+export interface ThreadInteractionRespondArgs extends ThreadInteractionTargetArgs {
   value: JsonValue;
 }
 
@@ -403,6 +409,7 @@ export interface ThreadsArea {
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
+  paneAction(args: ThreadPaneActionArgs): Promise<ThreadPaneActionResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
   promptHistory(
@@ -912,6 +919,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             ...(input.split === undefined ? {} : { split: input.split }),
             file: input.file,
           },
+        }),
+      );
+    },
+    async paneAction(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["pane-action"].$post({
+          param: { id: input.threadId },
+          json: { action: input.action },
         }),
       );
     },

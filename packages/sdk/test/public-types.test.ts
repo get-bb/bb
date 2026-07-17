@@ -352,6 +352,7 @@ type ExpectedThreadsKey =
   | "markUnread"
   | "open"
   | "output"
+  | "paneAction"
   | "pin"
   | "promptHistory"
   | "queuedMessages"

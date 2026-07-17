@@ -81,6 +81,7 @@ import {
   getPaneIdAtReadingIndex,
 } from "./splitPaneCommands";
 import {
+  applyThreadPaneActionToLayout,
   createSinglePaneLayout,
   focusedPaneRoute,
   paneContentRoute,
@@ -96,6 +97,7 @@ import {
 import { SplitWorkspaceSecondaryPanelHost } from "./SplitWorkspaceSecondaryPanelHost";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
+import { wsManager } from "@/lib/ws";
 
 // A `pointerdown`-relative move threshold before a pane-header drag engages.
 const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
@@ -147,6 +149,7 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
     )) {
       for (const element of pane.querySelectorAll<HTMLElement>("*")) {
         if (element.scrollLeft === 0 && element.scrollTop === 0) {
+          positionsRef.current.delete(element);
           continue;
         }
         positionsRef.current.set(element, {
@@ -269,6 +272,40 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       setMaximizedPaneIdAtom(next);
     },
     [captureVisibleScrollPositions, setMaximizedPaneIdAtom],
+  );
+
+  // CLI/SDK pane actions arrive as ephemeral server broadcasts. This split
+  // owner applies them so agent-driven transitions share the local control's
+  // scroll snapshot and focus/URL policy.
+  useEffect(
+    () =>
+      wsManager.onThreadPaneAction((signal) => {
+        if (!threadSplitsEnabled) {
+          return;
+        }
+        const current = store.get(splitLayoutAtom);
+        if (current === null) {
+          return;
+        }
+        const previousMaximizedPaneId = store.get(maximizedPaneIdAtom);
+        const next = applyThreadPaneActionToLayout(
+          current,
+          previousMaximizedPaneId,
+          { projectId: signal.projectId, threadId: signal.threadId },
+          signal.action,
+        );
+        if (next.layout !== current) {
+          store.set(splitLayoutAtom, next.layout);
+          const route = focusedPaneRoute(next.layout);
+          if (route !== null) {
+            navigate(route, { replace: true });
+          }
+        }
+        if (next.maximizedPaneId !== previousMaximizedPaneId) {
+          setMaximizedPaneId(next.maximizedPaneId);
+        }
+      }),
+    [navigate, setMaximizedPaneId, store, threadSplitsEnabled],
   );
 
   // A maximized pane is always the focused/address-bar owner. External opens

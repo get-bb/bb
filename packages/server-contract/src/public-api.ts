@@ -160,6 +160,8 @@ import type {
   ThreadConversationOutlineResponse,
   ThreadOpenRequest,
   ThreadOpenResponse,
+  ThreadPaneActionRequest,
+  ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
@@ -253,6 +255,7 @@ import {
   threadHostFileContentQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
+  threadPaneActionRequestSchema,
   threadSearchQuerySchema,
   threadStorageContentQuerySchema,
   threadStorageFilesQuerySchema,
@@ -956,6 +959,14 @@ export const publicApiRoutes = {
       method: "post",
       request: jsonRequest<PathId, ThreadOpenRequest>(threadOpenRequestSchema),
       response: jsonResponse<ThreadOpenResponse>(),
+    }),
+    paneAction: defineRoute({
+      path: "/threads/:id/pane-action",
+      method: "post",
+      request: jsonRequest<PathId, ThreadPaneActionRequest>(
+        threadPaneActionRequestSchema,
+      ),
+      response: jsonResponse<ThreadPaneActionResponse>(),
     }),
     tabs: defineRoute({
       path: "/threads/:id/tabs",

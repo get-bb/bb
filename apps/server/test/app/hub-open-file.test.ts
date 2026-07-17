@@ -40,4 +40,27 @@ describe("NotificationHub.notifyThreadOpen", () => {
       });
     }
   });
+
+  it("broadcasts typed thread-pane actions to every connected client", () => {
+    const hub = new NotificationHub();
+    const first = createMockHubSocket();
+    const second = createMockHubSocket();
+    hub.registerClient(first);
+    hub.registerClient(second);
+
+    expect(
+      hub.notifyThreadPaneAction(
+        { projectId: "proj_1", threadId: "thr_1" },
+        "toggle",
+      ),
+    ).toBe(2);
+    for (const socket of [first, second]) {
+      expect(JSON.parse(socket.messages[0]!)).toEqual({
+        type: "thread-pane-action",
+        projectId: "proj_1",
+        threadId: "thr_1",
+        action: "toggle",
+      });
+    }
+  });
 });

@@ -1,5 +1,5 @@
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
-import type { ThreadOpenSplit } from "@bb/server-contract";
+import type { ThreadOpenSplit, ThreadPaneAction } from "@bb/server-contract";
 import {
   countPanes,
   findPane,
@@ -172,6 +172,40 @@ export function applyThreadOpenToLayout(
   return decision.zone === "center"
     ? replacePaneContent(layout, layout.focusedPaneId, content)
     : splitPane(layout, layout.focusedPaneId, decision.zone, content);
+}
+
+export interface ThreadPaneActionLayoutResult {
+  layout: SplitLayout;
+  maximizedPaneId: string | null;
+}
+
+/** Apply one CLI/SDK pane action without creating or replacing pane content. */
+export function applyThreadPaneActionToLayout(
+  layout: SplitLayout,
+  maximizedPaneId: string | null,
+  thread: ThreadRoutePathArgs,
+  action: ThreadPaneAction,
+): ThreadPaneActionLayoutResult {
+  const pane = findPaneByThread(layout.root, thread.projectId, thread.threadId);
+  if (pane === null || countPanes(layout.root) < 2) {
+    return { layout, maximizedPaneId };
+  }
+  if (action === "restore") {
+    return {
+      layout,
+      maximizedPaneId: maximizedPaneId === pane.paneId ? null : maximizedPaneId,
+    };
+  }
+  if (action === "toggle" && maximizedPaneId === pane.paneId) {
+    return { layout, maximizedPaneId: null };
+  }
+  return {
+    layout:
+      layout.focusedPaneId === pane.paneId
+        ? layout
+        : setFocus(layout, pane.paneId),
+    maximizedPaneId: pane.paneId,
+  };
 }
 
 /**

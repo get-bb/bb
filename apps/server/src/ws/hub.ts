@@ -22,6 +22,8 @@ import {
   serverMessageSchema,
   terminalServerMessageSchema,
   threadOpenSignalSchema,
+  threadPaneActionSignalSchema,
+  type ThreadPaneAction,
   type ThreadOpenFile,
   type ThreadOpenSplit,
   type TerminalServerMessage,
@@ -588,6 +590,27 @@ export class NotificationHub implements DbNotifier {
         threadId: thread.threadId,
         split: request.split,
         file: request.file,
+      }),
+    );
+    let delivered = 0;
+    for (const socket of this.clientKeysBySocket.keys()) {
+      socket.send(payload);
+      delivered += 1;
+    }
+    return delivered;
+  }
+
+  /** Broadcast an ephemeral maximize/restore request to every app client. */
+  notifyThreadPaneAction(
+    thread: { projectId: string; threadId: string },
+    action: ThreadPaneAction,
+  ): number {
+    const payload = JSON.stringify(
+      threadPaneActionSignalSchema.parse({
+        type: "thread-pane-action",
+        projectId: thread.projectId,
+        threadId: thread.threadId,
+        action,
       }),
     );
     let delivered = 0;
