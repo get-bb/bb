@@ -1,7 +1,7 @@
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import type {
   AdapterCommand,
@@ -59,6 +59,99 @@ describe("createAgentRuntime lifecycle", () => {
       await wait(50);
       expect(events.some((e) => e.type === "thread/identity")).toBe(true);
       await runtime.shutdown();
+    });
+
+    it("allows thread/start to outlive the generic JSON-RPC timeout", async () => {
+      vi.useFakeTimers();
+      const releasePath = join(tmpDir, "release-slow-thread-start");
+      const slowStartScriptPath = join(tmpDir, "slow-start-provider.cjs");
+      writeFileSync(
+        slowStartScriptPath,
+        `
+const { existsSync } = require("node:fs");
+const readline = require("node:readline");
+const releasePath = ${JSON.stringify(releasePath)};
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+function waitForRelease(callback) {
+  if (existsSync(releasePath)) {
+    callback();
+    return;
+  }
+  setImmediate(() => waitForRelease(callback));
+}
+
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+
+  if (message.method === "thread/start") {
+    process.stderr.write("thread/start received\\n");
+    waitForRelease(() => {
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: { threadId: "prov-slow-start" },
+      });
+    });
+  }
+});
+`,
+        "utf8",
+      );
+
+      let markThreadStartReceived: (() => void) | undefined;
+      const threadStartReceived = new Promise<void>((resolve) => {
+        markThreadStartReceived = resolve;
+      });
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => undefined,
+        onStderr: (line) => {
+          if (line === "thread/start received") {
+            markThreadStartReceived?.();
+          }
+        },
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(slowStartScriptPath),
+      });
+      const startOutcome = runtime
+        .startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        })
+        .then(
+          (result) => ({ status: "resolved" as const, result }),
+          (error: unknown) => ({ status: "rejected" as const, error }),
+        );
+
+      try {
+        await threadStartReceived;
+        await vi.advanceTimersByTimeAsync(30_001);
+        writeFileSync(releasePath, "release", "utf8");
+
+        expect(await startOutcome).toEqual({
+          status: "resolved",
+          result: { providerThreadId: "prov-slow-start" },
+        });
+      } finally {
+        writeFileSync(releasePath, "release", "utf8");
+        vi.useRealTimers();
+        await runtime.shutdown();
+      }
     });
 
     it("accepts thread/start results with a null providerThreadId", async () => {
