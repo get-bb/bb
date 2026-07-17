@@ -159,7 +159,7 @@ describe("list-row Active chip", () => {
     expect(slot.queryByText(/Attached/)).toBeNull();
   });
 
-  it("aggregates multiple live agents into one chip with a count", async () => {
+  it("aggregates multiple live agents into one constant-text chip", async () => {
     const busy = task(1);
     const { slot } = renderList({
       tasks: [busy],
@@ -175,7 +175,7 @@ describe("list-row Active chip", () => {
     await waitFor(() => {
       expect(slot.getByTitle("2 agents working")).toBeTruthy();
     });
-    expect(slot.getByTitle("2 agents working").textContent).toBe("2 active");
+    expect(slot.getByTitle("2 agents working").textContent).toBe("Active");
   });
 });
 

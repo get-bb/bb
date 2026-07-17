@@ -52,8 +52,9 @@ const RAIL_CHIP_CLASS =
 /**
  * Live-activity chip: a green dot plus an "Active" pill, styled like the
  * label chips so the rail stays uniform. Renders only while an agent is
- * actively starting/working; historical attachments show nothing. The
- * tooltip carries the specific state (starting vs working, agent count).
+ * actively starting/working; historical attachments show nothing. The pill
+ * text stays constant; the tooltip carries the specific state (starting vs
+ * working, agent count).
  */
 function ActiveChip({ threads }: { threads: readonly TaskThread[] }) {
   if (threads.length === 0) return null;
@@ -63,7 +64,7 @@ function ActiveChip({ threads }: { threads: readonly TaskThread[] }) {
         aria-hidden
         className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
       />
-      {threads.length === 1 ? "Active" : `${threads.length} active`}
+      Active
     </span>
   );
 }
