@@ -1225,7 +1225,7 @@ export function QueuedMessagesList({
       <header
         className={cn(
           "flex h-9 shrink-0 items-center gap-2 px-2",
-          mode !== "collapsed" && "border-b border-border/65",
+          mode !== "collapsed" && "border-b border-border/35",
         )}
         data-queued-messages-mode={mode}
       >

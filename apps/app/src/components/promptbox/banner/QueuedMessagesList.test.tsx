@@ -118,6 +118,7 @@ describe("QueuedMessagesList", () => {
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
     expect(header?.className.split(/\s+/u)).toContain("border-b");
+    expect(header?.className.split(/\s+/u)).toContain("border-border/35");
     expect(
       getByRole("button", { name: "Expand queued messages" }).querySelector(
         '[data-icon="ChevronUp"]',
