@@ -1,6 +1,12 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
 import { initializeTasksSchema } from "./schema";
+import {
+  TASKS_PAGE_DEFAULT_LIMIT,
+  TASKS_PAGE_MAX_LIMIT,
+  type TaskSort,
+} from "../shared/pagination.js";
 import type {
   Attachment,
   Comment,
@@ -14,6 +20,7 @@ import type {
   Folder,
   Label,
   ListTasksFilters,
+  ListTasksPage,
   Preset,
   PresetEnvironmentKind,
   Project,
@@ -78,6 +85,20 @@ interface TaskRow {
   updated_at: string;
 }
 
+interface TaskPageRow extends TaskRow {
+  cursor_priority: number;
+  cursor_due_null: number;
+  cursor_due_date: string;
+  cursor_project_id: string;
+  cursor_status: string;
+  cursor_position: number;
+  cursor_id: string;
+}
+
+interface TaskListRevisionRow {
+  revision: number;
+}
+
 interface LabelRow {
   id: string;
   project_id: string;
@@ -138,6 +159,81 @@ interface PresetRow {
   instructions: string;
   builtin: number;
   created_at: string;
+}
+
+const taskCursorSchema = z
+  .object({
+    version: z.literal(1),
+    revision: z.number().int().nonnegative(),
+    query: z.string().length(43),
+    sort: z.enum(["manual", "priority", "due"]),
+    key: z
+      .object({
+        priority: z.number().int().min(0).max(5),
+        dueNull: z.number().int().min(0).max(1),
+        dueDate: z.string(),
+        projectId: z.string(),
+        status: z.string(),
+        position: z.number().finite(),
+        id: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+type TaskCursor = z.infer<typeof taskCursorSchema>;
+
+export class TasksPageCursorError extends Error {
+  constructor(
+    readonly code: "invalid_cursor" | "cursor_query_mismatch" | "stale_cursor",
+    message: string,
+  ) {
+    super(message);
+    this.name = "TasksPageCursorError";
+  }
+}
+
+function normalizedFilterValues(values: readonly string[] | undefined) {
+  return values === undefined ? null : [...new Set(values)].sort();
+}
+
+function taskQueryFingerprint(
+  filters: ListTasksFilters,
+  sort: TaskSort,
+): string {
+  const normalized = JSON.stringify({
+    projectId: filters.projectId ?? null,
+    statuses: normalizedFilterValues(filters.statuses),
+    priorities: normalizedFilterValues(filters.priorities),
+    labelIds: normalizedFilterValues(filters.labelIds),
+    activeOnly: filters.activeOnly === true,
+    parentTaskId:
+      filters.parentTaskId === undefined
+        ? { specified: false, value: null }
+        : { specified: true, value: filters.parentTaskId },
+    search: filters.search?.trim() || null,
+    sort,
+  });
+  return createHash("sha256").update(normalized).digest("base64url");
+}
+
+function decodeTaskCursor(value: string): TaskCursor {
+  try {
+    const decoded = Buffer.from(value, "base64url").toString("utf8");
+    const parsed: unknown = JSON.parse(decoded);
+    const result = taskCursorSchema.safeParse(parsed);
+    if (result.success) return result.data;
+  } catch {
+    // The common error below deliberately does not reveal cursor internals.
+  }
+  throw new TasksPageCursorError(
+    "invalid_cursor",
+    "invalid task-list cursor; start again without --cursor",
+  );
+}
+
+function encodeTaskCursor(cursor: TaskCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
 // Monotonic ULIDs (per the ULID spec): rows created in the same millisecond
@@ -733,7 +829,7 @@ export function createTasksStore(db: PluginDatabase) {
     return createTaskTransaction(input);
   }
 
-  function listTasks(filters: ListTasksFilters = {}): Task[] {
+  function listTasksPage(filters: ListTasksFilters = {}): ListTasksPage {
     const clauses: string[] = [];
     const parameters: Record<string, SqlParameter> = {};
 
@@ -742,7 +838,7 @@ export function createTasksStore(db: PluginDatabase) {
       parameters.projectId = filters.projectId;
     }
     if (filters.statuses !== undefined) {
-      if (filters.statuses.length === 0) return [];
+      if (filters.statuses.length === 0) return { tasks: [], nextCursor: null };
       const names = filters.statuses.map((status, index) => {
         const name = `status${index}`;
         parameters[name] = status;
@@ -751,7 +847,8 @@ export function createTasksStore(db: PluginDatabase) {
       clauses.push(`t.status IN (${names.join(", ")})`);
     }
     if (filters.priorities !== undefined) {
-      if (filters.priorities.length === 0) return [];
+      if (filters.priorities.length === 0)
+        return { tasks: [], nextCursor: null };
       const names = filters.priorities.map((priority, index) => {
         const name = `priority${index}`;
         parameters[name] = priority;
@@ -760,7 +857,7 @@ export function createTasksStore(db: PluginDatabase) {
       clauses.push(`t.priority IN (${names.join(", ")})`);
     }
     if (filters.labelIds !== undefined) {
-      if (filters.labelIds.length === 0) return [];
+      if (filters.labelIds.length === 0) return { tasks: [], nextCursor: null };
       const names = filters.labelIds.map((labelId, index) => {
         const name = `label${index}`;
         parameters[name] = labelId;
@@ -795,17 +892,152 @@ export function createTasksStore(db: PluginDatabase) {
       )`);
     }
 
-    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    return db
-      .prepare<Record<string, SqlParameter>, TaskRow>(
-        `
-        ${taskSelect}
-        ${where}
-        ORDER BY t.project_id, t.status, t.position, t.id
-      `,
-      )
-      .all(parameters)
-      .map(taskFromRow);
+    const limit = filters.limit ?? TASKS_PAGE_DEFAULT_LIMIT;
+    if (!Number.isInteger(limit) || limit < 1 || limit > TASKS_PAGE_MAX_LIMIT) {
+      throw new Error(
+        `Task page limit must be an integer from 1 to ${TASKS_PAGE_MAX_LIMIT}`,
+      );
+    }
+    const sort = filters.sort ?? "manual";
+    const query = taskQueryFingerprint(filters, sort);
+    const cursor =
+      filters.cursor === undefined ? null : decodeTaskCursor(filters.cursor);
+    if (cursor !== null && cursor.sort !== sort) {
+      throw new TasksPageCursorError(
+        "cursor_query_mismatch",
+        "task-list cursor does not match --sort; start again without --cursor",
+      );
+    }
+    if (cursor !== null && cursor.query !== query) {
+      throw new TasksPageCursorError(
+        "cursor_query_mismatch",
+        "task-list cursor does not match the current filters; start again without --cursor",
+      );
+    }
+
+    const orderBy =
+      sort === "manual"
+        ? "cursor_project_id, cursor_status, cursor_position, cursor_id"
+        : sort === "priority"
+          ? "cursor_priority, cursor_due_null, cursor_due_date, cursor_project_id, cursor_status, cursor_position, cursor_id"
+          : "cursor_due_null, cursor_due_date, cursor_priority, cursor_project_id, cursor_status, cursor_position, cursor_id";
+    const cursorWhere =
+      cursor === null
+        ? ""
+        : sort === "manual"
+          ? "WHERE (cursor_project_id, cursor_status, cursor_position, cursor_id) > (@cursorProjectId, @cursorStatus, @cursorPosition, @cursorId)"
+          : sort === "priority"
+            ? "WHERE (cursor_priority, cursor_due_null, cursor_due_date, cursor_project_id, cursor_status, cursor_position, cursor_id) > (@cursorPriority, @cursorDueNull, @cursorDueDate, @cursorProjectId, @cursorStatus, @cursorPosition, @cursorId)"
+            : "WHERE (cursor_due_null, cursor_due_date, cursor_priority, cursor_project_id, cursor_status, cursor_position, cursor_id) > (@cursorDueNull, @cursorDueDate, @cursorPriority, @cursorProjectId, @cursorStatus, @cursorPosition, @cursorId)";
+    if (cursor !== null) {
+      parameters.cursorPriority = cursor.key.priority;
+      parameters.cursorDueNull = cursor.key.dueNull;
+      parameters.cursorDueDate = cursor.key.dueDate;
+      parameters.cursorProjectId = cursor.key.projectId;
+      parameters.cursorStatus = cursor.key.status;
+      parameters.cursorPosition = cursor.key.position;
+      parameters.cursorId = cursor.key.id;
+    }
+    parameters.pageLimit = limit + 1;
+    const filteredWhere =
+      clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+
+    const readPage = db.transaction((): ListTasksPage => {
+      const revision = db
+        .prepare<
+          [],
+          TaskListRevisionRow
+        >("SELECT revision FROM task_list_revision WHERE id = 1")
+        .get()?.revision;
+      if (revision === undefined) {
+        throw new Error("Task-list revision state is unavailable");
+      }
+      if (cursor !== null && cursor.revision !== revision) {
+        throw new TasksPageCursorError(
+          "stale_cursor",
+          "task-list data changed after this cursor was issued; restart pagination without --cursor",
+        );
+      }
+
+      const rows = db
+        .prepare<Record<string, SqlParameter>, TaskPageRow>(
+          `
+            WITH filtered_tasks AS (
+              SELECT
+                t.*,
+                p.prefix AS project_prefix,
+                CASE t.priority
+                  WHEN 'urgent' THEN 0
+                  WHEN 'high' THEN 1
+                  WHEN 'medium' THEN 2
+                  WHEN 'low' THEN 3
+                  WHEN 'none' THEN 4
+                  ELSE 5
+                END AS cursor_priority,
+                CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END AS cursor_due_null,
+                COALESCE(t.due_date, '') AS cursor_due_date,
+                t.project_id AS cursor_project_id,
+                t.status AS cursor_status,
+                t.position AS cursor_position,
+                t.id AS cursor_id
+              FROM tasks t
+              JOIN projects p ON p.id = t.project_id
+              ${filteredWhere}
+            )
+            SELECT *
+            FROM filtered_tasks
+            ${cursorWhere}
+            ORDER BY ${orderBy}
+            LIMIT @pageLimit
+          `,
+        )
+        .all(parameters);
+      const hasMore = rows.length > limit;
+      const pageRows = rows.slice(0, limit);
+      const last = pageRows.at(-1);
+      return {
+        tasks: pageRows.map(taskFromRow),
+        nextCursor:
+          hasMore && last !== undefined
+            ? encodeTaskCursor({
+                version: 1,
+                revision,
+                query,
+                sort,
+                key: {
+                  priority: last.cursor_priority,
+                  dueNull: last.cursor_due_null,
+                  dueDate: last.cursor_due_date,
+                  projectId: last.cursor_project_id,
+                  status: last.cursor_status,
+                  position: last.cursor_position,
+                  id: last.cursor_id,
+                },
+              })
+            : null,
+      };
+    });
+
+    return readPage();
+  }
+
+  /** Compatibility helper for internal jobs that intentionally need all tasks. */
+  function listTasks(filters: ListTasksFilters = {}): Task[] {
+    const unpagedFilters: ListTasksFilters = { ...filters };
+    delete unpagedFilters.limit;
+    delete unpagedFilters.cursor;
+    const tasks: Task[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = listTasksPage({
+        ...unpagedFilters,
+        limit: TASKS_PAGE_MAX_LIMIT,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      tasks.push(...page.tasks);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    return tasks;
   }
 
   function listSubtasks(parentTaskId: string): Task[] {
@@ -1579,6 +1811,7 @@ export function createTasksStore(db: PluginDatabase) {
     createTask,
     getTask,
     getTaskByKey,
+    listTasksPage,
     listTasks,
     listSubtasks,
     getSubtaskDoneCounts,

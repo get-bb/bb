@@ -140,14 +140,44 @@ export function pluginProxyCandidate(
   return firstArg;
 }
 
+interface PluginCliOutputStream {
+  write(chunk: string, callback: (error?: Error | null) => void): boolean;
+}
+
+interface PluginCliOutputStreams {
+  stdout: PluginCliOutputStream;
+  stderr: PluginCliOutputStream;
+}
+
+async function writePluginCliOutput(
+  stream: PluginCliOutputStream,
+  value: string,
+): Promise<void> {
+  if (value.length === 0) return;
+  const output = value.endsWith("\n") ? value : `${value}\n`;
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    stream.write(output, (error) => {
+      if (error) rejectPromise(error);
+      else resolvePromise();
+    });
+  });
+}
+
 /**
  * Proxy one invocation to the server and mirror its output. Returns the
- * command's exit code.
+ * command's exit code after both output streams have flushed. Waiting for the
+ * write callbacks is required because callers terminate the CLI process as
+ * soon as this promise resolves; an immediate exit can otherwise drop every
+ * buffered byte after the platform pipe capacity.
  */
 export async function runPluginCliCommand(
   baseUrl: string,
   pluginId: string,
   argv: string[],
+  streams: PluginCliOutputStreams = {
+    stdout: process.stdout,
+    stderr: process.stderr,
+  },
 ): Promise<number> {
   const threadId = resolveContextThreadId();
   const projectId = resolveContextProjectId();
@@ -171,7 +201,8 @@ export async function runPluginCliCommand(
     error?: unknown;
   } | null;
   if (result === null || typeof result.exitCode !== "number") {
-    console.error(
+    await writePluginCliOutput(
+      streams.stderr,
       typeof result?.error === "string"
         ? result.error
         : `Unexpected response from the plugin CLI endpoint (HTTP ${response.status})`,
@@ -179,14 +210,10 @@ export async function runPluginCliCommand(
     return 1;
   }
   if (typeof result.stdout === "string" && result.stdout.length > 0) {
-    process.stdout.write(
-      result.stdout.endsWith("\n") ? result.stdout : `${result.stdout}\n`,
-    );
+    await writePluginCliOutput(streams.stdout, result.stdout);
   }
   if (typeof result.stderr === "string" && result.stderr.length > 0) {
-    process.stderr.write(
-      result.stderr.endsWith("\n") ? result.stderr : `${result.stderr}\n`,
-    );
+    await writePluginCliOutput(streams.stderr, result.stderr);
   }
   return result.exitCode;
 }

@@ -111,9 +111,10 @@ The scaffold ships the full API as bundled type declarations in `types/`
 --noEmit` typechecks anywhere — no bb checkout required. Those `.d.ts` files
 are the authoritative, exhaustive surface: read them (or the source at
 <https://github.com/ymichael/bb>, cloned) when you need an exact signature or
-a symbol this skill doesn't cover. Backend API imports stay type-only; the one
-root runtime helper is `defineRpcContract`, supplied by BB for shared schema
-contracts: `import { defineRpcContract, type BbPluginApi } from
+a symbol this skill doesn't cover. Backend API imports normally stay type-only;
+the root runtime exports are `defineRpcContract`, supplied by BB for shared
+schema contracts, and the numeric `PLUGIN_CLI_OUTPUT_MAX_BYTES` ceiling:
+`import { defineRpcContract, type BbPluginApi } from
 "@bb/plugin-sdk"`. Validator imports such as Zod are normal plugin runtime
 dependencies (and are bundled by `bb plugin build`).
 
@@ -528,7 +529,11 @@ bb.cli.register({
 
 Agents discover plugin commands through the server-generated
 `plugin-commands` skill, which lists each command's `summary` and the
-`commands` usage lines — fill both in. Caveat: in a `readonly`-sandboxed
+`commands` usage lines — fill both in. Combined stdout and stderr must fit
+`PLUGIN_CLI_OUTPUT_MAX_BYTES` from `@bb/plugin-sdk` (1,048,576 UTF-8 bytes).
+The host rejects a larger result atomically as `plugin_cli_output_too_large`;
+it never clips it. Page growing collections, cap verbose fields, and use
+file/streaming commands for large content. Caveat: in a `readonly`-sandboxed
 thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
@@ -1160,6 +1165,7 @@ Remaining reference examples in `examples/plugins/`:
   with host token classes, no custom `@theme` colors, no hand-set oklch.
 - `onDispose` hooks run LIFO; stale `bb` handles from before a reload throw
   on use.
-- Backend API imports remain type-only. `defineRpcContract` is the one root
-  runtime helper BB supplies; validator imports are plugin dependencies. The
+- Backend API imports normally remain type-only. The root runtime exports
+  `defineRpcContract` plus `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are
+  plugin dependencies. The
   scaffold tsconfig typechecks both `server.ts` and `app.tsx`.

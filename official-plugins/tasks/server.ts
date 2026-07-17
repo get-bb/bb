@@ -9,7 +9,7 @@ import { registerLifecycle } from "./lifecycle";
 import { registerMentions } from "./mentions";
 
 export const TASKS_PLUGIN_NAME = "Tasks";
-export const TASKS_PLUGIN_VERSION = "0.1.0";
+export const TASKS_PLUGIN_VERSION = "0.1.1";
 
 export const tasksRpcContract = defineRpcContract({
   ping: {

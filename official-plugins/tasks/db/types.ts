@@ -1,3 +1,5 @@
+import type { TaskSort } from "../shared/pagination.js";
+
 export const TASK_STATUSES = [
   "backlog",
   "todo",
@@ -191,6 +193,14 @@ export interface ListTasksFilters {
   activeOnly?: boolean;
   parentTaskId?: string | null;
   search?: string;
+  sort?: TaskSort;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface ListTasksPage {
+  tasks: Task[];
+  nextCursor: string | null;
 }
 
 export interface UpdateTaskPositionInput {

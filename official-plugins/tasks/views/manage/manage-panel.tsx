@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Folder, Label, Preset } from "../../shared/contract.js";
 import {
+  listAllTasks,
   useFolders,
   usePresets,
   useProjects,
@@ -132,7 +133,7 @@ function LabelsSection() {
 
   const askDelete = (label: Label) =>
     run(async () => {
-      const { tasks } = await rpc.call("listTasks", { labelIds: [label.id] });
+      const tasks = await listAllTasks(rpc, { labelIds: [label.id] });
       setConfirmDelete({ label, usedBy: tasks.length });
     });
 
@@ -347,7 +348,9 @@ function PresetsSection() {
                     {preset.reasoningLevel}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {permission ? PERMISSION_LABELS[permission] : preset.permissionMode}
+                    {permission
+                      ? PERMISSION_LABELS[permission]
+                      : preset.permissionMode}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
                     {describePresetEnvironment(preset, machines.data ?? [])}

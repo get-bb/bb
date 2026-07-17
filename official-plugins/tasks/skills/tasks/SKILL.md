@@ -26,6 +26,11 @@ not already exist. Dispatch requires an existing preset.
    open/draft/merged/closed). Use
    `bb tasks show ABC-12 --json` when the result will drive commands or code.
 
+   For project-wide discovery, `bb tasks list` returns at most 100 rows by
+   default. Pass `--limit 1-500`; in JSON, continue with `nextCursor` via the
+   same filters/sort and `--cursor <value>`. A task-list mutation makes an old
+   cursor stale, so restart without it.
+
 2. Fetch every relevant attachment before making assumptions about it:
 
    ```sh

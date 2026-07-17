@@ -24,13 +24,16 @@ import plugin from "../server";
 // create --attach partial-failure path is deterministic.
 vi.mock("../attachments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../attachments")>();
-  const saveAttachmentFromBytes: typeof actual.saveAttachmentFromBytes =
-    async (store, bytes, options) => {
-      if (options.fileName === "boom.bin") {
-        throw new Error("simulated blob write failure");
-      }
-      return actual.saveAttachmentFromBytes(store, bytes, options);
-    };
+  const saveAttachmentFromBytes: typeof actual.saveAttachmentFromBytes = async (
+    store,
+    bytes,
+    options,
+  ) => {
+    if (options.fileName === "boom.bin") {
+      throw new Error("simulated blob write failure");
+    }
+    return actual.saveAttachmentFromBytes(store, bytes, options);
+  };
   return { ...actual, saveAttachmentFromBytes };
 });
 
@@ -344,6 +347,87 @@ describe("bb tasks CLI", () => {
     const invalid = await harness.runCli(["list", "--sort", "sideways"]);
     expect(invalid.exitCode).not.toBe(0);
     expect(invalid.stderr).toContain("invalid sort");
+
+    await harness.dispose();
+  });
+
+  it("traverses a project whose former single JSON response exceeds 64 KiB", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Large project",
+      prefix: "BIG",
+      color: "blue",
+    });
+    for (let index = 0; index < 180; index += 1) {
+      store.tasks.createTask({
+        projectId: project.id,
+        title: `Large task ${String(index + 1).padStart(3, "0")}`,
+        description: `Regression payload ${index} ${"x".repeat(512)}`,
+        status: index % 2 === 0 ? "todo" : "in_progress",
+        priority: index % 3 === 0 ? "high" : "none",
+      });
+    }
+    expect(
+      Buffer.byteLength(
+        JSON.stringify({
+          tasks: store.tasks.listTasks({ projectId: project.id }),
+        }),
+        "utf8",
+      ),
+    ).toBeGreaterThan(64 * 1024);
+
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    let pageCount = 0;
+    do {
+      const result = await harness.runCli([
+        "list",
+        "--project",
+        "BIG",
+        "--sort",
+        "priority",
+        "--limit",
+        "37",
+        ...(cursor === null ? [] : ["--cursor", cursor]),
+        "--json",
+      ]);
+      const page = JSON.parse(stdout(result)) as {
+        tasks: Array<{ id: string }>;
+        nextCursor: string | null;
+        limit: number;
+      };
+      expect(page.limit).toBe(37);
+      expect(page.tasks.length).toBeLessThanOrEqual(37);
+      for (const task of page.tasks) {
+        expect(seen.has(task.id)).toBe(false);
+        seen.add(task.id);
+      }
+      cursor = page.nextCursor;
+      pageCount += 1;
+    } while (cursor !== null);
+
+    expect(pageCount).toBe(5);
+    expect(seen.size).toBe(180);
+
+    const human = stdout(
+      await harness.runCli(["list", "--project", "BIG", "--limit", "2"]),
+    );
+    expect(human).toContain("More results are available.");
+    expect(human).toContain("--limit 2 --cursor ");
+
+    const invalidLimit = await harness.runCli([
+      "list",
+      "--project",
+      "BIG",
+      "--limit",
+      "501",
+    ]);
+    expect(invalidLimit.exitCode).toBe(1);
+    expect(invalidLimit.stderr).toContain(
+      "--limit must be an integer from 1 to 500",
+    );
 
     await harness.dispose();
   });

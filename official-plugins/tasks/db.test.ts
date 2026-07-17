@@ -1,6 +1,6 @@
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
-import { createTasksStore } from "./db";
+import { createTasksStore, TasksPageCursorError } from "./db";
 
 function setup() {
   const { bb, harness } = createFakePluginHost({ pluginId: "tasks-db-test" });
@@ -31,7 +31,7 @@ describe("tasks storage", () => {
             { count: number }
           >("SELECT COUNT(*) AS count FROM schema_version")
           .get()?.count,
-      ).toBe(3);
+      ).toBe(4);
     } finally {
       await harness.dispose();
     }
@@ -214,6 +214,172 @@ describe("tasks storage", () => {
           activeOnly: true,
         }),
       ).toEqual([active]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("traverses deterministic filtered and sorted keyset pages without gaps", async () => {
+    const { harness, store } = setup();
+    try {
+      const project = createProject(store, "PAG");
+      const bug = store.createLabel({
+        projectId: project.id,
+        name: "Bug",
+        color: "red",
+      });
+      const fixtures = [
+        { title: "Low later", priority: "low" as const, dueDate: "2026-08-03" },
+        { title: "Urgent undated", priority: "urgent" as const, dueDate: null },
+        {
+          title: "High soon",
+          priority: "high" as const,
+          dueDate: "2026-08-01",
+        },
+        {
+          title: "High later",
+          priority: "high" as const,
+          dueDate: "2026-08-02",
+        },
+        {
+          title: "Ignored",
+          priority: "urgent" as const,
+          dueDate: "2026-07-01",
+        },
+      ].map((fixture, index) =>
+        store.createTask({
+          projectId: project.id,
+          title: fixture.title,
+          status: index === 4 ? "done" : "todo",
+          priority: fixture.priority,
+          dueDate: fixture.dueDate,
+        }),
+      );
+      for (const task of fixtures.slice(0, 4)) {
+        store.addTaskLabel(task.id, bug.id);
+      }
+
+      const collect = (sort: "manual" | "priority" | "due") => {
+        const keys: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = store.listTasksPage({
+            projectId: project.id,
+            statuses: ["todo"],
+            priorities: ["urgent", "high", "low"],
+            labelIds: [bug.id],
+            search: "later",
+            sort,
+            limit: 1,
+            ...(cursor === undefined ? {} : { cursor }),
+          });
+          keys.push(...page.tasks.map((task) => task.key));
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor !== undefined);
+        return keys;
+      };
+
+      expect(collect("manual")).toEqual([fixtures[0]!.key, fixtures[3]!.key]);
+      expect(collect("priority")).toEqual([fixtures[3]!.key, fixtures[0]!.key]);
+      expect(collect("due")).toEqual([fixtures[3]!.key, fixtures[0]!.key]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("invalidates cursors after tasks are added, removed, reordered, or updated", async () => {
+    const { harness, store } = setup();
+    try {
+      const project = createProject(store, "MUT");
+      const tasks = Array.from({ length: 5 }, (_, index) =>
+        store.createTask({
+          projectId: project.id,
+          title: `Task ${index + 1}`,
+          status: "todo",
+        }),
+      );
+      const firstCursor = () => {
+        const cursor = store.listTasksPage({
+          projectId: project.id,
+          limit: 2,
+        }).nextCursor;
+        expect(cursor).not.toBeNull();
+        if (cursor === null) throw new Error("expected another task page");
+        return cursor;
+      };
+      const expectStale = (cursor: string) => {
+        try {
+          store.listTasksPage({ projectId: project.id, limit: 2, cursor });
+          throw new Error("expected stale cursor failure");
+        } catch (error) {
+          if (!(error instanceof TasksPageCursorError)) throw error;
+          expect(error.code).toBe("stale_cursor");
+        }
+      };
+
+      let cursor = firstCursor();
+      store.createTask({
+        projectId: project.id,
+        title: "Added",
+        status: "todo",
+      });
+      expectStale(cursor);
+
+      cursor = firstCursor();
+      store.deleteTask(tasks[4]!.id);
+      expectStale(cursor);
+
+      cursor = firstCursor();
+      store.updatePosition(tasks[3]!.id, {
+        status: "in_progress",
+        beforeTaskId: null,
+        afterTaskId: null,
+      });
+      expectStale(cursor);
+
+      cursor = firstCursor();
+      store.updateTask(tasks[2]!.id, { title: "Updated" });
+      expectStale(cursor);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("rejects cursors reused with different filters or sorting", async () => {
+    const { harness, store } = setup();
+    try {
+      const project = createProject(store, "CUR");
+      for (let index = 0; index < 3; index += 1) {
+        store.createTask({
+          projectId: project.id,
+          title: `Task ${index + 1}`,
+          status: "todo",
+        });
+      }
+      const cursor = store.listTasksPage({
+        projectId: project.id,
+        statuses: ["todo"],
+        limit: 1,
+      }).nextCursor;
+      if (cursor === null) throw new Error("expected another task page");
+
+      expect(() =>
+        store.listTasksPage({
+          projectId: project.id,
+          statuses: ["done"],
+          limit: 1,
+          cursor,
+        }),
+      ).toThrow("does not match the current filters");
+      expect(() =>
+        store.listTasksPage({
+          projectId: project.id,
+          statuses: ["todo"],
+          sort: "due",
+          limit: 1,
+          cursor,
+        }),
+      ).toThrow("does not match --sort");
     } finally {
       await harness.dispose();
     }

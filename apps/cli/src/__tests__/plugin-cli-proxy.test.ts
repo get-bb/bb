@@ -15,6 +15,7 @@ import {
   findDisabledPluginForCommand,
   findPluginCliCommand,
   pluginProxyCandidate,
+  runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
 
@@ -61,9 +62,10 @@ describe("reserved bb CLI command names", () => {
     const names = topLevelCommandNames(buildProgram());
     const reserved = new Set(RESERVED_BB_CLI_COMMANDS);
     for (const name of names) {
-      expect(reserved, `"${name}" is missing from RESERVED_BB_CLI_COMMANDS`).toContain(
-        name,
-      );
+      expect(
+        reserved,
+        `"${name}" is missing from RESERVED_BB_CLI_COMMANDS`,
+      ).toContain(name);
     }
   });
 
@@ -71,9 +73,10 @@ describe("reserved bb CLI command names", () => {
     const names = new Set(topLevelCommandNames(buildProgram()));
     names.add("help"); // commander built-in
     for (const reserved of RESERVED_BB_CLI_COMMANDS) {
-      expect(names, `"${reserved}" is reserved but not a core command`).toContain(
-        reserved,
-      );
+      expect(
+        names,
+        `"${reserved}" is reserved but not a core command`,
+      ).toContain(reserved);
     }
   });
 });
@@ -120,7 +123,9 @@ describe("fetchPluginCliContributions", () => {
         throw new Error("ECONNREFUSED");
       }),
     );
-    await expect(fetchPluginCliContributions("http://localhost")).resolves.toEqual({
+    await expect(
+      fetchPluginCliContributions("http://localhost"),
+    ).resolves.toEqual({
       outcome: "unreachable",
     });
 
@@ -129,7 +134,9 @@ describe("fetchPluginCliContributions", () => {
       "fetch",
       vi.fn(async () => new Response("not found", { status: 404 })),
     );
-    await expect(fetchPluginCliContributions("http://localhost")).resolves.toEqual({
+    await expect(
+      fetchPluginCliContributions("http://localhost"),
+    ).resolves.toEqual({
       outcome: "invalid",
     });
   });
@@ -142,7 +149,12 @@ describe("fetchPluginCliContributions", () => {
           new Response(
             JSON.stringify({
               cliCommands: [
-                { pluginId: "connect", name: "connect", summary: "s", commands: [] },
+                {
+                  pluginId: "connect",
+                  name: "connect",
+                  summary: "s",
+                  commands: [],
+                },
                 { bogus: true },
               ],
             }),
@@ -255,5 +267,52 @@ describe("findPluginCliCommand", () => {
     expect(findPluginCliCommand(contributions, "linear")?.pluginId).toBe(
       "linear",
     );
+  });
+});
+
+describe("runPluginCliCommand", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("waits for output larger than 64 KiB to flush before returning", async () => {
+    const stdout = "x".repeat(1024 * 1024);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ exitCode: 0, stdout, stderr: "warning" }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const writes: Array<{ channel: "stdout" | "stderr"; value: string }> = [];
+    let pendingWrites = 0;
+    const outputStream = (channel: "stdout" | "stderr") => ({
+      write(value: string, callback: (error?: Error | null) => void) {
+        pendingWrites += 1;
+        setTimeout(() => {
+          writes.push({ channel, value });
+          pendingWrites -= 1;
+          callback();
+        }, 0);
+        return false;
+      },
+    });
+
+    const exitCode = await runPluginCliCommand(
+      "http://localhost",
+      "fixture",
+      [],
+      { stdout: outputStream("stdout"), stderr: outputStream("stderr") },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(pendingWrites).toBe(0);
+    expect(writes).toEqual([
+      { channel: "stdout", value: `${stdout}\n` },
+      { channel: "stderr", value: "warning\n" },
+    ]);
   });
 });

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type {
-  BbPluginApi,
-  PluginAgentConfigurationContext,
+import {
+  PLUGIN_CLI_OUTPUT_MAX_BYTES,
+  type BbPluginApi,
+  type PluginAgentConfigurationContext,
 } from "../../backend-contract.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
@@ -367,6 +368,34 @@ describe("cli", () => {
       stdout: "",
       stderr: "bb docs failed: bad flag",
     });
+  });
+
+  it("mirrors production output-limit errors without truncating", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.cli.register({
+      name: "exporter",
+      summary: "Export data",
+      run: () => ({
+        exitCode: 0,
+        stdout: "x".repeat(PLUGIN_CLI_OUTPUT_MAX_BYTES + 1),
+      }),
+    });
+
+    const human = await harness.runCli([]);
+    expect(human).toMatchObject({
+      exitCode: 1,
+      stdout: "",
+      error: {
+        code: "plugin_cli_output_too_large",
+        maxBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES,
+      },
+    });
+    expect(human.stderr).toContain("use a file/streaming command");
+
+    const machine = await harness.runCli(["--json"]);
+    expect(machine.exitCode).toBe(1);
+    expect(machine.stderr).toBe("");
+    expect(JSON.parse(machine.stdout)).toEqual({ error: machine.error });
   });
 
   it("rejects reserved names", () => {

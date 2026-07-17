@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtime, useRpc } from "@bb/plugin-sdk/app";
 import type { TasksRpcContract } from "../shared/contract.js";
+import type { Task, TaskPriority, TaskStatus } from "../shared/contract.js";
+import { TASKS_PAGE_MAX_LIMIT, type TaskSort } from "../shared/pagination.js";
 import type { MentionItem } from "../editor/extensions.js";
 import { useTasksRefresh } from "./refresh.js";
 
@@ -10,6 +12,36 @@ export function useTasksRpc() {
 }
 
 export type TasksRpc = ReturnType<typeof useTasksRpc>;
+
+export interface TaskListQuery {
+  projectId?: string;
+  statuses?: TaskStatus[];
+  priorities?: TaskPriority[];
+  labelIds?: string[];
+  activeOnly?: boolean;
+  parentTaskId?: string | null;
+  search?: string;
+  sort?: TaskSort;
+}
+
+/** Traverse stable keyset pages while preserving the UI's complete-list views. */
+export async function listAllTasks(
+  rpc: TasksRpc,
+  input: TaskListQuery = {},
+): Promise<Task[]> {
+  const tasks: Task[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await rpc.call("listTasks", {
+      ...input,
+      limit: TASKS_PAGE_MAX_LIMIT,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    tasks.push(...page.tasks);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return tasks;
+}
 
 export const INVALIDATION_CHANNELS = [
   "tasks:changed",
@@ -133,7 +165,10 @@ export function useMentionItems() {
     async (query: string): Promise<MentionItem[]> => {
       const trimmed = query.trim();
       const [taskResult, threadResult] = await Promise.all([
-        rpc.call("listTasks", trimmed ? { search: trimmed } : {}),
+        rpc.call("listTasks", {
+          ...(trimmed ? { search: trimmed } : {}),
+          limit: 8,
+        }),
         rpc
           .call("searchThreads", { query: trimmed, limit: 5 })
           .catch(() => ({ threads: [] })),
@@ -159,7 +194,7 @@ export function useMentionItems() {
 /** Tasks with agents currently working, for the Active view count. */
 export function useActiveTasks() {
   return useTasksQuery(
-    async (rpc) => (await rpc.call("listTasks", { activeOnly: true })).tasks,
+    async (rpc) => listAllTasks(rpc, { activeOnly: true }),
     ["tasks:changed", "threads:changed"],
   );
 }

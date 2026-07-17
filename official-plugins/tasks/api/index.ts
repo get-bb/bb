@@ -838,19 +838,21 @@ export function registerHandlers(
       return { deleted };
     },
     listTasks(input) {
+      const page = store.tasks.listTasksPage({
+        projectId: input.projectId,
+        statuses: input.statuses,
+        priorities: input.priorities,
+        labelIds: input.labelIds,
+        activeOnly: input.activeOnly,
+        parentTaskId: input.parentTaskId,
+        search: input.search,
+        sort: input.sort,
+        limit: input.limit,
+        cursor: input.cursor,
+      });
       return {
-        tasks: apiTasks(
-          store,
-          store.tasks.listTasks({
-            projectId: input.projectId,
-            statuses: input.statuses,
-            priorities: input.priorities,
-            labelIds: input.labelIds,
-            activeOnly: input.activeOnly,
-            parentTaskId: input.parentTaskId,
-            search: input.search,
-          }),
-        ),
+        tasks: apiTasks(store, page.tasks),
+        nextCursor: page.nextCursor,
       };
     },
     boardMove(input) {

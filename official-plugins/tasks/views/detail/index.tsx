@@ -4,6 +4,7 @@ import { SmilePlusIcon } from "@hugeicons/core-free-icons";
 import type { Task } from "../../shared/contract.js";
 import { useBbNavigate } from "@bb/plugin-sdk/app";
 import {
+  listAllTasks,
   useMentionItems,
   useTasksQuery,
   useTasksRpc,
@@ -16,10 +17,7 @@ import {
   createDescriptionSaver,
   type DescriptionSaver,
 } from "./description-save.js";
-import {
-  STATUS_LABELS,
-  StatusIcon,
-} from "./meta.js";
+import { STATUS_LABELS, StatusIcon } from "./meta.js";
 import {
   InlineProperties,
   PropertiesRail,
@@ -237,8 +235,7 @@ function TaskDetail({ task }: { task: Task }) {
     [task.parentTaskId],
   );
   const subtasks = useTasksQuery(
-    async (query) =>
-      (await query.call("listTasks", { parentTaskId: task.id })).tasks,
+    async (query) => listAllTasks(query, { parentTaskId: task.id }),
     ["tasks:changed"],
     [task.id],
   );
@@ -297,7 +294,10 @@ function TaskDetail({ task }: { task: Task }) {
     input: TaskPropertyUpdate & { title?: string; description?: string },
   ) => {
     try {
-      const result = await rpc.call("updateTask", { taskId: task.id, ...input });
+      const result = await rpc.call("updateTask", {
+        taskId: task.id,
+        ...input,
+      });
       if (!result.ok) push("error", result.error.message);
     } catch (error) {
       push("error", error instanceof Error ? error.message : String(error));
@@ -325,10 +325,7 @@ function TaskDetail({ task }: { task: Task }) {
       try {
         await uploadAttachment(file, { taskId: task.id });
       } catch (error) {
-        push(
-          "error",
-          error instanceof Error ? error.message : String(error),
-        );
+        push("error", error instanceof Error ? error.message : String(error));
       }
     }
     attachments.refresh();
@@ -365,7 +362,7 @@ function TaskDetail({ task }: { task: Task }) {
     <div className="@container flex min-h-full flex-col bg-surface-recessed-solid p-3">
       <div className="flex flex-1 items-stretch rounded-lg border border-border bg-card shadow-2xs">
         <div className="mx-auto w-full min-w-0 max-w-[55rem] flex-1 px-7 pb-16 pt-8 @3xl:px-13 @3xl:pt-11">
-          {(parentTask || subtasks.data?.length) ? (
+          {parentTask || subtasks.data?.length ? (
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {parentTask ? (
                 <button
@@ -395,7 +392,10 @@ function TaskDetail({ task }: { task: Task }) {
             </div>
           ) : null}
 
-          <EditableTitle task={task} onSave={(title) => void updateTask({ title })} />
+          <EditableTitle
+            task={task}
+            onSave={(title) => void updateTask({ title })}
+          />
 
           <InlineProperties
             task={task}

@@ -35,6 +35,8 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginCli",
   "PluginCliCommandInfo",
   "PluginCliContext",
+  "PluginCliExecutionResult",
+  "PluginCliOutputLimitError",
   "PluginCliRegistration",
   "PluginCliResult",
   "PluginEvents",
@@ -73,7 +75,9 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginUi",
 ] as const;
 
-const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS: readonly string[] = [];
+const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [
+  "PLUGIN_CLI_OUTPUT_MAX_BYTES",
+] as const;
 
 const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
   "PluginRpcCallArgs",

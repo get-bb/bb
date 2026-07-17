@@ -1,5 +1,10 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
+import {
+  TASK_SORTS,
+  TASKS_PAGE_DEFAULT_LIMIT,
+  TASKS_PAGE_MAX_LIMIT,
+} from "./pagination.js";
 
 export const TASK_STATUSES = [
   "backlog",
@@ -69,6 +74,7 @@ const dueDateSchema = z
   }, "must be a valid calendar date in YYYY-MM-DD format");
 const taskStatusSchema = z.enum(TASK_STATUSES);
 const taskPrioritySchema = z.enum(TASK_PRIORITIES);
+const taskSortSchema = z.enum(TASK_SORTS);
 const threadSearchStatusSchema = z.enum([
   "idle",
   "starting",
@@ -502,6 +508,11 @@ export const tasksRpcContract = defineRpcContract({
     input: z.object({ taskId: idSchema }).strict(),
     output: z.object({ deleted: z.boolean() }).strict(),
   },
+  /**
+   * Stable keyset page in the requested database sort. `nextCursor` is opaque
+   * and bound to the filters, sort, and task-list revision; any list-affecting
+   * mutation makes it stale so callers restart instead of mixing snapshots.
+   */
   listTasks: {
     input: z
       .object({
@@ -512,9 +523,22 @@ export const tasksRpcContract = defineRpcContract({
         activeOnly: z.boolean().default(false),
         parentTaskId: idSchema.nullable().optional(),
         search: z.string().optional(),
+        sort: taskSortSchema.default("manual"),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(TASKS_PAGE_MAX_LIMIT)
+          .default(TASKS_PAGE_DEFAULT_LIMIT),
+        cursor: nonBlankStringSchema.optional(),
       })
       .strict(),
-    output: z.object({ tasks: z.array(taskSchema) }).strict(),
+    output: z
+      .object({
+        tasks: z.array(taskSchema),
+        nextCursor: z.string().nullable(),
+      })
+      .strict(),
   },
   boardMove: {
     input: z

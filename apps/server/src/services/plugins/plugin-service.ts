@@ -11,12 +11,15 @@ import {
   type PluginThemeMeta,
   type ToolCallResponse,
 } from "@bb/domain";
-import type {
-  PluginRpcError,
-  PluginRpcValidationIssue,
-  StandardSchemaV1,
-  StandardSchemaV1Issue,
-  StandardSchemaV1Result,
+import {
+  PLUGIN_CLI_OUTPUT_MAX_BYTES,
+  type PluginCliExecutionResult,
+  type PluginCliOutputLimitError,
+  type PluginRpcError,
+  type PluginRpcValidationIssue,
+  type StandardSchemaV1,
+  type StandardSchemaV1Issue,
+  type StandardSchemaV1Result,
 } from "@bb/plugin-sdk";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
@@ -273,7 +276,7 @@ export interface PluginService {
     id: string,
     argv: string[],
     ctx: PluginCliContext,
-  ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  ): Promise<PluginCliExecutionResult>;
   /**
    * Skills roots of running plugins (manifest bb.skills or the skills/
    * convention dir), ordered by plugin id — the "plugin" precedence tier
@@ -398,6 +401,35 @@ const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
+
+function enforcePluginCliOutputLimit(
+  result: Omit<PluginCliExecutionResult, "error">,
+  jsonOutput: boolean,
+): PluginCliExecutionResult {
+  const stdoutBytes = Buffer.byteLength(result.stdout, "utf8");
+  const stderrBytes = Buffer.byteLength(result.stderr, "utf8");
+  const totalBytes = stdoutBytes + stderrBytes;
+  if (totalBytes <= PLUGIN_CLI_OUTPUT_MAX_BYTES) return result;
+
+  const error: PluginCliOutputLimitError = {
+    code: "plugin_cli_output_too_large",
+    message:
+      `Plugin CLI output is ${totalBytes} bytes (${stdoutBytes} stdout + ${stderrBytes} stderr), ` +
+      `exceeding the ${PLUGIN_CLI_OUTPUT_MAX_BYTES}-byte limit. Narrow the query, request a smaller page, or use a file/streaming command.`,
+    maxBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES,
+    stdoutBytes,
+    stderrBytes,
+    totalBytes,
+  };
+  return jsonOutput
+    ? {
+        exitCode: 1,
+        stdout: JSON.stringify({ error }),
+        stderr: "",
+        error,
+      }
+    : { exitCode: 1, stdout: "", stderr: error.message, error };
+}
 
 /** Next cron occurrence strictly after `now` (server-local time). */
 function nextCronRunAt(cron: string, now: number): number {
@@ -739,7 +771,10 @@ function normalizePluginAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters is not JSON-serializable`,
     );
   }
-  if (Buffer.byteLength(serialized, "utf8") > PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES) {
+  if (
+    Buffer.byteLength(serialized, "utf8") >
+    PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES
+  ) {
     throw new Error(
       `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
     );
@@ -1724,7 +1759,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async runCliCommand(id, argv, ctx) {
-      const fail = (stderr: string) => ({ exitCode: 1, stdout: "", stderr });
+      const fail = (stderr: string) =>
+        enforcePluginCliOutputLimit(
+          { exitCode: 1, stdout: "", stderr },
+          argv.includes("--json"),
+        );
       const plugin = loaded.get(id);
       if (!shouldExposePluginId(id)) {
         return fail(
@@ -1755,11 +1794,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               "cli run() must return { exitCode: number, stdout?, stderr? }",
             );
           }
-          return {
-            exitCode: result.exitCode,
-            stdout: typeof result.stdout === "string" ? result.stdout : "",
-            stderr: typeof result.stderr === "string" ? result.stderr : "",
-          };
+          return enforcePluginCliOutputLimit(
+            {
+              exitCode: result.exitCode,
+              stdout: typeof result.stdout === "string" ? result.stdout : "",
+              stderr: typeof result.stderr === "string" ? result.stderr : "",
+            },
+            argv.includes("--json"),
+          );
         },
       );
       if (outcome.ok) return outcome.value;

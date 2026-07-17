@@ -139,6 +139,94 @@ const MIGRATIONS = [
     ALTER TABLE presets ADD COLUMN base_branch TEXT;
     ALTER TABLE presets ADD COLUMN machine_id TEXT;
   `,
+  `
+    CREATE TABLE task_list_revision (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      revision INTEGER NOT NULL CHECK (revision >= 0)
+    );
+    INSERT INTO task_list_revision (id, revision) VALUES (1, 0);
+
+    CREATE TRIGGER task_list_revision_tasks_insert
+    AFTER INSERT ON tasks BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER task_list_revision_tasks_update
+    AFTER UPDATE ON tasks BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER task_list_revision_tasks_delete
+    AFTER DELETE ON tasks BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+
+    CREATE TRIGGER task_list_revision_labels_insert
+    AFTER INSERT ON task_labels BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER task_list_revision_labels_delete
+    AFTER DELETE ON task_labels BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER task_list_revision_label_names
+    AFTER UPDATE OF name ON labels
+    WHEN OLD.name <> NEW.name BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+
+    CREATE TRIGGER task_list_revision_threads_insert
+    AFTER INSERT ON task_threads BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER task_list_revision_threads_update
+    AFTER UPDATE ON task_threads BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER task_list_revision_threads_delete
+    AFTER DELETE ON task_threads BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+
+    CREATE TRIGGER task_list_revision_project_prefix
+    AFTER UPDATE OF prefix ON projects
+    WHEN OLD.prefix <> NEW.prefix BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+
+    CREATE INDEX idx_tasks_manual_page
+      ON tasks(project_id, status, position, id);
+    CREATE INDEX idx_tasks_priority_page ON tasks(
+      CASE priority
+        WHEN 'urgent' THEN 0
+        WHEN 'high' THEN 1
+        WHEN 'medium' THEN 2
+        WHEN 'low' THEN 3
+        WHEN 'none' THEN 4
+        ELSE 5
+      END,
+      CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+      due_date,
+      project_id,
+      status,
+      position,
+      id
+    );
+    CREATE INDEX idx_tasks_due_page ON tasks(
+      CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+      due_date,
+      CASE priority
+        WHEN 'urgent' THEN 0
+        WHEN 'high' THEN 1
+        WHEN 'medium' THEN 2
+        WHEN 'low' THEN 3
+        WHEN 'none' THEN 4
+        ELSE 5
+      END,
+      project_id,
+      status,
+      position,
+      id
+    );
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {

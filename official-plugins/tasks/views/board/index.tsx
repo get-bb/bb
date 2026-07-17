@@ -12,7 +12,12 @@ import {
   type TaskStatus,
   type TaskThread,
 } from "../../shared/contract.js";
-import { useTasksQuery, useTasksRpc, type TasksRpc } from "../../shell/data.js";
+import {
+  listAllTasks,
+  useTasksQuery,
+  useTasksRpc,
+  type TasksRpc,
+} from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/index.js";
 import {
@@ -51,8 +56,11 @@ const EMPTY_META: BoardCardMeta = {
   subTotal: 0,
 };
 
-async function fetchBoard(rpc: TasksRpc, projectId: string): Promise<BoardData> {
-  const { tasks } = await rpc.call("listTasks", { projectId });
+async function fetchBoard(
+  rpc: TasksRpc,
+  projectId: string,
+): Promise<BoardData> {
+  const tasks = await listAllTasks(rpc, { projectId });
   const topLevel = tasks.filter((task) => task.parentTaskId === null);
 
   // Everything below decorates cards; a failure hides chips, never the board.
@@ -68,12 +76,13 @@ async function fetchBoard(rpc: TasksRpc, projectId: string): Promise<BoardData> 
     if (task.status === "done") entry.done += 1;
     subProgress.set(task.parentTaskId, entry);
   }
-  const activeTaskIds = await rpc
-    .call("listTasks", { projectId, activeOnly: true })
-    .then(
-      (result) => new Set(result.tasks.map((task) => task.id)),
-      () => new Set<string>(),
-    );
+  const activeTaskIds = await listAllTasks(rpc, {
+    projectId,
+    activeOnly: true,
+  }).then(
+    (result) => new Set(result.map((task) => task.id)),
+    () => new Set<string>(),
+  );
   const workingByTaskId = new Map<string, TaskThread[]>();
   await Promise.all(
     topLevel
@@ -248,7 +257,10 @@ function BoardSkeleton() {
   return (
     <div className="flex h-full items-start gap-3 overflow-x-auto p-4">
       {BOARD_STATUSES.map((status) => (
-        <div key={status} className="flex w-[230px] shrink-0 flex-col gap-2 p-1">
+        <div
+          key={status}
+          className="flex w-[230px] shrink-0 flex-col gap-2 p-1"
+        >
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-20 w-full rounded-lg" />
           <Skeleton className="h-20 w-full rounded-lg" />
@@ -409,7 +421,11 @@ export function BoardView({ projectId }: BoardViewProps) {
       dragCleanupRef.current = null;
       if (!active) return;
       if (upEvent) {
-        const target = findDropTarget(upEvent.clientX, upEvent.clientY, task.id);
+        const target = findDropTarget(
+          upEvent.clientX,
+          upEvent.clientY,
+          task.id,
+        );
         if (target) commitDrop(task.id, target.status, target.index);
       }
       setDrag(null);
@@ -452,7 +468,8 @@ export function BoardView({ projectId }: BoardViewProps) {
   }
 
   const labelsById = board.data?.labelsById ?? new Map<string, Label>();
-  const metaByTaskId = board.data?.metaByTaskId ?? new Map<string, BoardCardMeta>();
+  const metaByTaskId =
+    board.data?.metaByTaskId ?? new Map<string, BoardCardMeta>();
   const ghostTask = drag
     ? Object.values(columns)
         .flat()
@@ -498,10 +515,7 @@ export function BoardView({ projectId }: BoardViewProps) {
     if (indicatorBeforeTaskId === null) children.push(indicator);
 
     return (
-      <div
-        key={status}
-        className="flex max-h-full w-[230px] shrink-0 flex-col"
-      >
+      <div key={status} className="flex max-h-full w-[230px] shrink-0 flex-col">
         <div className="flex items-center gap-1.5 px-1 pb-2 text-sm font-semibold">
           <StatusIcon status={status} />
           <span>{STATUS_LABELS[status]}</span>

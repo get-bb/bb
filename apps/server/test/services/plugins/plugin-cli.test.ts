@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
+import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@bb/plugin-sdk";
 import {
   generatedSkillsRootPath,
   pluginCommandsSkillDir,
@@ -29,6 +30,18 @@ const CLI_SOURCE = `
         if (argv[0] === "fail") return { exitCode: 3, stderr: "acme failed" };
         if (argv[0] === "throw") throw new Error("kaboom");
         if (argv[0] === "malformed") return { exitCode: "nope" };
+        if (argv[0] === "bytes") {
+          const size = Number(argv[1]);
+          if (argv.includes("--json")) {
+            const prefix = '{"data":"';
+            const suffix = '"}';
+            return {
+              exitCode: 0,
+              stdout: prefix + "x".repeat(size - prefix.length - suffix.length) + suffix,
+            };
+          }
+          return { exitCode: 0, stdout: "x".repeat(size) };
+        }
         const { signal, ...requestContext } = ctx;
         return {
           exitCode: 0,
@@ -164,6 +177,67 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     });
   });
 
+  it("accepts output through the shared byte ceiling and rejects larger output atomically", async () => {
+    for (const jsonOutput of [false, true]) {
+      for (const bytes of [
+        PLUGIN_CLI_OUTPUT_MAX_BYTES - 1,
+        PLUGIN_CLI_OUTPUT_MAX_BYTES,
+      ]) {
+        const argv = [
+          "bytes",
+          String(bytes),
+          ...(jsonOutput ? ["--json"] : []),
+        ];
+        const result = (await (
+          await runCli(harness, "acme", { argv })
+        ).json()) as {
+          exitCode: number;
+          stdout: string;
+          stderr: string;
+          error?: unknown;
+        };
+        expect(result.exitCode).toBe(0);
+        expect(Buffer.byteLength(result.stdout, "utf8")).toBe(bytes);
+        expect(result.stderr).toBe("");
+        expect(result.error).toBeUndefined();
+        if (jsonOutput) expect(() => JSON.parse(result.stdout)).not.toThrow();
+      }
+
+      const argv = [
+        "bytes",
+        String(PLUGIN_CLI_OUTPUT_MAX_BYTES + 1),
+        ...(jsonOutput ? ["--json"] : []),
+      ];
+      const result = (await (
+        await runCli(harness, "acme", { argv })
+      ).json()) as {
+        exitCode: number;
+        stdout: string;
+        stderr: string;
+        error: {
+          code: string;
+          maxBytes: number;
+          totalBytes: number;
+        };
+      };
+      expect(result).toMatchObject({
+        exitCode: 1,
+        error: {
+          code: "plugin_cli_output_too_large",
+          maxBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES,
+          totalBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES + 1,
+        },
+      });
+      if (jsonOutput) {
+        expect(result.stderr).toBe("");
+        expect(JSON.parse(result.stdout)).toEqual({ error: result.error });
+      } else {
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain("request a smaller page");
+      }
+    }
+  });
+
   it("propagates nonzero exit codes and stderr", async () => {
     const result = await (
       await runCli(harness, "acme", { argv: ["fail"] })
@@ -273,6 +347,8 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     );
     const content = await readFile(skillFile, "utf8");
     expect(content).toContain("name: plugin-commands");
+    expect(content).toContain("capped at 1048576 UTF-8 bytes");
+    expect(content).toContain("plugin_cli_output_too_large");
     expect(content).toContain("## bb acme — Acme tools");
     expect(content).toContain("bb acme issues [--json]");
 

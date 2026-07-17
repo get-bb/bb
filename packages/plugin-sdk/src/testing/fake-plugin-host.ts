@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
 import { z } from "zod";
+import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
   BbPluginApi,
   PluginAgentConfiguration,
@@ -16,6 +17,8 @@ import type {
   PluginCli,
   PluginCliCommandInfo,
   PluginCliContext,
+  PluginCliExecutionResult,
+  PluginCliOutputLimitError,
   PluginCliResult,
   PluginEvents,
   PluginHttp,
@@ -120,6 +123,35 @@ const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
 const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
+
+function enforcePluginCliOutputLimit(
+  result: Omit<PluginCliExecutionResult, "error">,
+  jsonOutput: boolean,
+): PluginCliExecutionResult {
+  const stdoutBytes = Buffer.byteLength(result.stdout, "utf8");
+  const stderrBytes = Buffer.byteLength(result.stderr, "utf8");
+  const totalBytes = stdoutBytes + stderrBytes;
+  if (totalBytes <= PLUGIN_CLI_OUTPUT_MAX_BYTES) return result;
+
+  const error: PluginCliOutputLimitError = {
+    code: "plugin_cli_output_too_large",
+    message:
+      `Plugin CLI output is ${totalBytes} bytes (${stdoutBytes} stdout + ${stderrBytes} stderr), ` +
+      `exceeding the ${PLUGIN_CLI_OUTPUT_MAX_BYTES}-byte limit. Narrow the query, request a smaller page, or use a file/streaming command.`,
+    maxBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES,
+    stdoutBytes,
+    stderrBytes,
+    totalBytes,
+  };
+  return jsonOutput
+    ? {
+        exitCode: 1,
+        stdout: JSON.stringify({ error }),
+        stderr: "",
+        error,
+      }
+    : { exitCode: 1, stdout: "", stderr: error.message, error };
+}
 const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MENTION_TRIGGER_VALUES = [
@@ -343,7 +375,10 @@ export interface FakePluginBehaviorDrivers {
    * exitCode must be a number, stdout/stderr default to "", and a throwing
    * run() becomes `{ exitCode: 1, stderr: "bb <name> failed: …" }`.
    */
-  runCli(argv: string[], ctx?: PluginCliContext): Promise<PluginCliResult>;
+  runCli(
+    argv: string[],
+    ctx?: PluginCliContext,
+  ): Promise<PluginCliExecutionResult>;
   /**
    * Dispatch a request to a registered `bb.http` route (exact method+path
    * match, like the host's V1 router) through a real Hono context. Auth
@@ -2010,17 +2045,23 @@ function createFakePluginHostInternal(
             "cli run() must return { exitCode: number, stdout?, stderr? }",
           );
         }
-        return {
-          exitCode: result.exitCode,
-          stdout: typeof result.stdout === "string" ? result.stdout : "",
-          stderr: typeof result.stderr === "string" ? result.stderr : "",
-        };
+        return enforcePluginCliOutputLimit(
+          {
+            exitCode: result.exitCode,
+            stdout: typeof result.stdout === "string" ? result.stdout : "",
+            stderr: typeof result.stderr === "string" ? result.stderr : "",
+          },
+          argv.includes("--json"),
+        );
       } catch (error) {
-        return {
-          exitCode: 1,
-          stdout: "",
-          stderr: `bb ${registration.name} failed: ${errorMessage(error)}`,
-        };
+        return enforcePluginCliOutputLimit(
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr: `bb ${registration.name} failed: ${errorMessage(error)}`,
+          },
+          argv.includes("--json"),
+        );
       }
     },
 

@@ -277,6 +277,19 @@ describe("bb-plugin-memory", () => {
       [2, "update"],
       [1, "create"],
     ]);
+
+    const boundedHistory = await host.harness.runCli([
+      "history",
+      memory.id,
+      "--limit",
+      "2",
+      "--json",
+    ]);
+    expect(
+      JSON.parse(boundedHistory.stdout ?? "").history.map(
+        (entry: { version: number }) => entry.version,
+      ),
+    ).toEqual([3, 2]);
   });
 
   it("lists every scope and edits or deletes memories through settings RPC", async () => {

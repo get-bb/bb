@@ -280,6 +280,29 @@ export interface PluginCliResult {
   stderr?: string;
 }
 
+/**
+ * Maximum combined UTF-8 bytes accepted from plugin CLI stdout and stderr.
+ * This is the shared source of truth for production and the testing harness.
+ */
+export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 1024 * 1024;
+
+export interface PluginCliOutputLimitError {
+  code: "plugin_cli_output_too_large";
+  message: string;
+  maxBytes: number;
+  stdoutBytes: number;
+  stderrBytes: number;
+  totalBytes: number;
+}
+
+/** Normalized host result returned by the plugin CLI HTTP/testing boundary. */
+export interface PluginCliExecutionResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  error?: PluginCliOutputLimitError;
+}
+
 export interface PluginCliRegistration {
   /** Top-level command name (`bb <name> …`): lowercase [a-z0-9-]+, and not
    * a core bb command (see RESERVED_BB_CLI_COMMANDS in the server). */

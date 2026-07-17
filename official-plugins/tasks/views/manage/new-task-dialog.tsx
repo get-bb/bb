@@ -12,7 +12,12 @@ import {
   stageFiles,
   type StagedAttachment,
 } from "../../components/staged-attachments.js";
-import { useProjects, useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import {
+  listAllTasks,
+  useProjects,
+  useTasksQuery,
+  useTasksRpc,
+} from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import {
@@ -29,11 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@bb/shared-ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@bb/shared-ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   Command,
   CommandEmpty,
@@ -152,12 +153,10 @@ export function NewTaskDialog({
   const parentCandidates = useTasksQuery(
     async (rpc) =>
       effectiveProjectId && subtaskMode
-        ? (
-            await rpc.call("listTasks", {
-              projectId: effectiveProjectId,
-              parentTaskId: null,
-            })
-          ).tasks
+        ? listAllTasks(rpc, {
+            projectId: effectiveProjectId,
+            parentTaskId: null,
+          })
         : [],
     ["tasks:changed"],
     [effectiveProjectId, subtaskMode],
@@ -462,8 +461,7 @@ export function NewTaskDialog({
           ) : null}
           {hasOversized ? (
             <p className="mt-2 text-xs text-destructive">
-              Remove attachments over the 25 MB limit before creating the
-              task.
+              Remove attachments over the 25 MB limit before creating the task.
             </p>
           ) : null}
         </div>
@@ -627,9 +625,7 @@ export function NewTaskDialog({
                   className={cn(CHIP_TRIGGER, "border-input font-normal")}
                 >
                   <Icon name="CornerDownRight" className="size-3" />
-                  {parentTask
-                    ? `Sub-task of ${parentTask.key}`
-                    : "Parent task"}
+                  {parentTask ? `Sub-task of ${parentTask.key}` : "Parent task"}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-72 p-0" align="start">

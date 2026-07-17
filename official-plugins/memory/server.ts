@@ -722,7 +722,7 @@ class MemoryStore {
     return rows.map(parseMemoryRow);
   }
 
-  history(id: string, projectId: string | undefined): unknown[] {
+  history(id: string, projectId: string | undefined, limit: number): unknown[] {
     const scoped = scopeSql("all", projectId);
     return this.db
       .prepare(
@@ -731,9 +731,10 @@ class MemoryStore {
          FROM memory_history h
          JOIN memories m ON m.id = h.memory_id
          WHERE h.memory_id = ? AND ${scoped.sql}
-         ORDER BY h.version DESC`,
+         ORDER BY h.version DESC
+         LIMIT ?`,
       )
-      .all(id, ...scoped.params);
+      .all(id, ...scoped.params, limit);
   }
 
   private insertHistory(
@@ -825,7 +826,7 @@ const USAGE = [
   "  bb memory add --scope project|global --name NAME --summary TEXT --details TEXT --reason TEXT [--kind KIND] [--tag TAG]... [--importance 0-100] [--pinned] [--json]",
   "  bb memory update <id> --expected-version N --reason TEXT [--summary TEXT] [--details TEXT] [--kind KIND] [--tag TAG]... [--importance 0-100] [--pinned true|false] [--json]",
   "  bb memory forget <id> --expected-version N --reason TEXT [--json]",
-  "  bb memory history <id> [--json]",
+  "  bb memory history <id> [--limit N] [--json]",
 ].join("\n");
 
 function jsonOutput(value: unknown): string {
@@ -1021,7 +1022,7 @@ export default async function plugin(bb: BbPluginApi) {
       {
         name: "history",
         summary: "Show a memory's version history",
-        usage: "bb memory history <id> [--json]",
+        usage: "bb memory history <id> [--limit N] [--json]",
       },
     ],
     async run(argv, ctx) {
@@ -1200,7 +1201,12 @@ export default async function plugin(bb: BbPluginApi) {
         if (command === "history") {
           const id = args.positionals[0];
           if (!id) throw new CliError("history requires a memory id");
-          const history = store.history(id, ctx.projectId);
+          const limit = parseInteger("limit", option(args, "limit"), {
+            defaultValue: DEFAULT_RESULT_LIMIT,
+            min: 1,
+            max: MAX_RESULT_LIMIT,
+          });
+          const history = store.history(id, ctx.projectId, limit);
           if (history.length === 0)
             throw new CliError(`memory history for "${id}" was not found`);
           return {

@@ -71,7 +71,7 @@ deletion.
                 [--tag <tag>]... [--importance <0-100>] [--pinned] [--json]
   bb memory update <id> --expected-version <n> [fields...] [--json]
   bb memory forget <id> --expected-version <n> --reason <text> [--json]
-  bb memory history <id> [--scope project|global|all] [--json]
+  bb memory history <id> [--scope project|global|all] [--limit 1-100] [--json]
 
 Project writes use the invoking CLI's current project. Global writes require
 the explicit `--scope global` flag.
@@ -102,7 +102,7 @@ The Tasks plugin is an opt-in official plugin bundled with the app:
 and the `bb tasks` command. Common agent operations are:
 
   bb tasks show <key-or-id> [--json]
-  bb tasks list [--project <prefix-or-id>] [filters...] [--sort manual|priority|due] [--json]
+  bb tasks list [--project <prefix-or-id>] [filters...] [--sort manual|priority|due] [--limit 1-500] [--cursor <opaque>] [--json]
   bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--json]
   bb tasks attachment add <key-or-comment-id> --file <path> [--json]
   bb tasks attachment get <attachment-id> --out <path> [--json]
@@ -115,6 +115,12 @@ Delegated threads are attached automatically; use `bb tasks attach` only when
 work started outside Tasks. File paths in tasks commands resolve on the
 invoking machine (the thread's machine inside an agent thread, otherwise the
 server's); pass `--machine <id-or-name>` to target another enrolled machine.
+Task lists default to 100 rows. JSON pages include `nextCursor`; human pages
+print the exact continuation option when more rows exist. Cursors are bound to
+the filters, sort, and task-list revision. Any add, removal, reorder, update,
+label-link/name change, active-thread change, or project-prefix change invalidates an
+outstanding cursor; restart without `--cursor` instead of accepting a mixed
+snapshot.
 
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
@@ -288,6 +294,11 @@ commands; core command names always win. Inside agent threads the generated
 
 Settings changes do not auto-reload a plugin — run `bb plugin reload <id>`
 after configuring. Add --json to plugin commands for machine-readable output.
+Plugin CLI stdout plus stderr is capped at 1,048,576 UTF-8 bytes from the
+shared `@bb/plugin-sdk` constant. Results above the ceiling are rejected in
+full with a structured `plugin_cli_output_too_large` error; output is never
+silently clipped. Page growing collections and use file/streaming commands for
+large content.
 
 Authoring a plugin
 
@@ -347,7 +358,8 @@ type-only frontend method/input/result inference);
 bb.realtime.publish (ephemeral signals to open app pages);
 bb.background.service (long-lived, AbortSignal, restart w/ backoff) and
 bb.background.schedule (durable cron rows); bb.cli.register (a top-level
-`bb <name>` command agents run through bash); bb.agents.registerTool
+`bb <name>` command agents run through bash, with a shared 1 MiB combined
+stdout/stderr ceiling and atomic structured over-limit errors); bb.agents.registerTool
 (static native tools with zod or JSON-schema parameters) and
 bb.agents.configure (one synchronous per-resolution callback selecting this
 plugin's own tool/skill ids and optional dynamic instructions; tools apply on

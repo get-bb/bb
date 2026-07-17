@@ -5,7 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/ymichael/bb
 
-import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginThreadActionContext, PluginThreadActionResult, PluginInteractionRequest } from '@bb/plugin-sdk';
+import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginThreadActionContext, PluginThreadActionResult, PluginInteractionRequest } from '@bb/plugin-sdk';
 
 type BbSdk = BbPluginApi["sdk"];
 /**
@@ -205,7 +205,7 @@ interface FakePluginBehaviorDrivers {
      * exitCode must be a number, stdout/stderr default to "", and a throwing
      * run() becomes `{ exitCode: 1, stderr: "bb <name> failed: …" }`.
      */
-    runCli(argv: string[], ctx?: PluginCliContext): Promise<PluginCliResult>;
+    runCli(argv: string[], ctx?: PluginCliContext): Promise<PluginCliExecutionResult>;
     /**
      * Dispatch a request to a registered `bb.http` route (exact method+path
      * match, like the host's V1 router) through a real Hono context. Auth

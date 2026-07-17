@@ -1,4 +1,4 @@
-import { useTasksQuery } from "../../shell/data.js";
+import { listAllTasks, useTasksQuery } from "../../shell/data.js";
 import type {
   Label,
   Task,
@@ -29,22 +29,20 @@ export function useListTasks(
 ) {
   return useTasksQuery(
     async (rpc) =>
-      (
-        await rpc.call("listTasks", {
-          ...(projectId === null ? {} : { projectId }),
-          ...(filters.statuses.length > 0
-            ? { statuses: [...filters.statuses] }
-            : {}),
-          ...(filters.priorities.length > 0
-            ? { priorities: [...filters.priorities] }
-            : {}),
-          ...(filters.labelIds !== null
-            ? { labelIds: [...filters.labelIds] }
-            : {}),
-          activeOnly,
-          parentTaskId: null,
-        })
-      ).tasks,
+      listAllTasks(rpc, {
+        ...(projectId === null ? {} : { projectId }),
+        ...(filters.statuses.length > 0
+          ? { statuses: [...filters.statuses] }
+          : {}),
+        ...(filters.priorities.length > 0
+          ? { priorities: [...filters.priorities] }
+          : {}),
+        ...(filters.labelIds !== null
+          ? { labelIds: [...filters.labelIds] }
+          : {}),
+        activeOnly,
+        parentTaskId: null,
+      }),
     ["tasks:changed", "threads:changed"],
     [
       projectId,

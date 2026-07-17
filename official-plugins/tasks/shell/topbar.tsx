@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { Project, Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
-import { useTasksQuery } from "./data.js";
+import { listAllTasks, useTasksQuery } from "./data.js";
 import type { TaskViewMode, TasksRoute } from "./routes.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -53,12 +53,10 @@ function TaskPager({
   // steps through the full sibling list.
   const siblings = useTasksQuery(
     async (rpc) =>
-      (
-        await rpc.call("listTasks", {
-          ...(projectId === null ? {} : { projectId }),
-          parentTaskId: null,
-        })
-      ).tasks,
+      listAllTasks(rpc, {
+        ...(projectId === null ? {} : { projectId }),
+        parentTaskId: null,
+      }),
     ["tasks:changed"],
     [projectId],
   );
@@ -254,12 +252,15 @@ export function TasksTopbar({
   return (
     <header className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border-hairline bg-background px-3.5 text-sm">
       <div className="min-w-0 flex-1">{breadcrumb}</div>
-      {route.kind === "task" && (pagerScope !== null || projects !== undefined) ? (
+      {route.kind === "task" &&
+      (pagerScope !== null || projects !== undefined) ? (
         <TaskPager
           taskKey={route.taskKey}
           // No browse context (deep link): step through the task's own
           // project in list order; All tasks only if its project is unknown.
-          projectId={pagerScope !== null ? pagerScope.projectId : (project?.id ?? null)}
+          projectId={
+            pagerScope !== null ? pagerScope.projectId : (project?.id ?? null)
+          }
           onNavigate={onNavigate}
         />
       ) : null}

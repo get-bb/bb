@@ -225,6 +225,32 @@ Exactly one top-level command may be registered per factory execution. A second 
 
 `argv` excludes the command name. `ctx` is `{ cwd?, threadId?, projectId?, signal? }`; the signal aborts if the invoking HTTP request disconnects. Plugin command metadata is injected into agents through the generated `plugin-commands` skill.
 
+Plugin CLI output has one shared ceiling: `PLUGIN_CLI_OUTPUT_MAX_BYTES` from
+`@bb/plugin-sdk`, currently 1,048,576 combined UTF-8 bytes across `stdout` and
+`stderr`. Output at or below the ceiling is returned unchanged. Above it, the
+host discards the whole result and returns `exitCode: 1` with a structured
+`plugin_cli_output_too_large` error containing the maximum and observed byte
+counts. Human commands receive the message on stderr; invocations containing
+`--json` receive a complete `{ "error": ... }` object on stdout. The direct
+`bb <command>` and explicit `bb plugin run <id> ...` forms use this same
+server-side path, so neither can silently truncate output or emit partial JSON.
+
+Commands should still page or otherwise bound naturally growing collections;
+the shared ceiling is the final safety boundary, not a substitute for efficient
+queries. The repository-owned command audit is:
+
+| Plugin command | Potential growth | Bounded contract / remediation |
+| --- | --- | --- |
+| `bb automation` | automation lists, run history, stored script output | `runs` defaults to 50 and accepts `--limit`; stored script output is capped; all remaining responses fail atomically at the shared ceiling. |
+| `bb connect` | servers and shared ports | Account and host share inventories are externally bounded; the shared ceiling remains the final guard. |
+| `bb instructions` | one configured instruction document | Single-record output; an oversized value fails atomically at the shared ceiling. |
+| `bb workflows` | run lists, status payloads, call history | `list` is capped at 50, `history` is cursor-paged at 1–100 records, and status/list fields and inline results have byte caps. |
+| `bb secret` | request metadata | Secret values are never returned; output is fixed-size request/reconciliation metadata. |
+| `bb github` | repositories and cached issues/PRs | Issue/PR output can be narrowed to one `owner/repo`; any still-oversized cache response fails atomically with guidance to narrow the query. |
+| `bb docs` | vault trees, note content, status/diffs | Discovery can be scoped by vault/path and large content should use `pull` to a workspace; oversized inline responses fail atomically with file/streaming guidance. |
+| `bb memory` | catalog/search results, record history, one large record | Catalog/search and history use `--limit` with a 1–100 range; a single oversized record fails atomically. |
+| `bb tasks` | task collections and rich task detail | `list` uses SQL keyset pagination (`--limit` 1–500, opaque `--cursor`); detail/scoped auxiliary lists remain protected by the shared ceiling. |
+
 ### `bb.ui.requestInput`
 
 `requestInput(request, options?) => Promise<PluginInteractionResult>`
@@ -921,13 +947,13 @@ Use a dynamic import thunk with `loadPluginApp` so the runtime is installed befo
 
 The root `@bb/plugin-sdk` declaration exports these public type families:
 
-- root/backend: `BbPluginApi`, `PluginLogger`, `PluginSettings`, `PluginSettingsHandle`, `PluginSettingDescriptor`, `PluginSettingDescriptors`, `PluginSettingValue`, `PluginSettingsValues`, `PluginKvStorage`, `PluginStorage`, `PluginHttp`, `PluginHttpHandler`, `PluginHttpAuthMode`, `PluginRpc`, `PluginRealtime`, `PluginBackground`, `PluginCli`, `PluginCliRegistration`, `PluginCliCommandInfo`, `PluginCliContext`, `PluginCliResult`, `PluginInteractionRequest`, `PluginInteractionResult`, `PluginInteractionCancelReason`, `PluginAgents`, `PluginAgentConfiguration`, `PluginAgentConfigurationContext`, `PluginAgentToolRegistrationBase`, `PluginAgentToolContext`, `PluginAgentToolContentPart`, `PluginAgentToolResult`, `PluginUi`, `PluginThreadActionRegistration`, `PluginThreadActionContext`, `PluginThreadActionResult`, `PluginThreadActionToast`, `PluginMentionProviderRegistration`, `PluginMentionSearchContext`, `PluginMentionItem`, `PluginMentionTrigger`, `PluginEvents`, `PluginStatusApi`, `PluginServerApi`, `PluginHosts`, `PluginSharedPortTunnelIdentity`, `PluginThreadEventPayloads`, `PluginThreadEventName`, and `PluginThreadEventHandler`;
+- root/backend: `BbPluginApi`, `PluginLogger`, `PluginSettings`, `PluginSettingsHandle`, `PluginSettingDescriptor`, `PluginSettingDescriptors`, `PluginSettingValue`, `PluginSettingsValues`, `PluginKvStorage`, `PluginStorage`, `PluginHttp`, `PluginHttpHandler`, `PluginHttpAuthMode`, `PluginRpc`, `PluginRealtime`, `PluginBackground`, `PluginCli`, `PluginCliRegistration`, `PluginCliCommandInfo`, `PluginCliContext`, `PluginCliResult`, `PluginCliExecutionResult`, `PluginCliOutputLimitError`, `PluginInteractionRequest`, `PluginInteractionResult`, `PluginInteractionCancelReason`, `PluginAgents`, `PluginAgentConfiguration`, `PluginAgentConfigurationContext`, `PluginAgentToolRegistrationBase`, `PluginAgentToolContext`, `PluginAgentToolContentPart`, `PluginAgentToolResult`, `PluginUi`, `PluginThreadActionRegistration`, `PluginThreadActionContext`, `PluginThreadActionResult`, `PluginThreadActionToast`, `PluginMentionProviderRegistration`, `PluginMentionSearchContext`, `PluginMentionItem`, `PluginMentionTrigger`, `PluginEvents`, `PluginStatusApi`, `PluginServerApi`, `PluginHosts`, `PluginSharedPortTunnelIdentity`, `PluginThreadEventPayloads`, `PluginThreadEventName`, and `PluginThreadEventHandler`;
 - RPC/JSON: `JsonValue`, `PluginRpcCallArgs`, `PluginRpcContract`, `PluginRpcError`, `PluginRpcErrorCode`, `PluginRpcHandlers`, `PluginRpcIssuePathSegment`, `PluginRpcMethodContract`, `PluginRpcResult`, `PluginRpcValidationIssue`, `StandardSchemaV1`, `StandardSchemaV1InferInput`, `StandardSchemaV1InferOutput`, `StandardSchemaV1Issue`, and `StandardSchemaV1Result`;
 - app definition: `PluginSdkApp`, `PluginAppBuilder`, `PluginAppSlots`, `PluginAppSetup`, and `PluginAppDefinition`;
 - slot props/registrations: homepage, settings, nav panel, thread panel action, composer accessory, pending interaction, sidebar footer action, file opener, and message directive types documented above;
 - hooks: `PluginRpcClient`, `PluginSettingsState`, `PluginRealtimeConnectionState`, `BbContext`, `BbNavigate`, `PluginComposerApi`, `PluginComposerScope`, `PluginComposerMention`.
 
-The root declaration is side-effect-free for app/backend types and also exports `defineRpcContract`. The `/app` runtime subpath exports exactly the eight hook/setup functions listed above plus app types; slot/directive validation regexes and the runtime export-name list are host-internal and are not declared author imports.
+The root declaration is side-effect-free for app/backend types and also exports `defineRpcContract` plus the numeric `PLUGIN_CLI_OUTPUT_MAX_BYTES` constant. The `/app` runtime subpath exports exactly the eight hook/setup functions listed above plus app types; slot/directive validation regexes and the runtime export-name list are host-internal and are not declared author imports.
 
 ## Security and trust boundaries
 

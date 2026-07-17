@@ -32,7 +32,11 @@ import {
   type Task,
   type TaskMutationResult,
 } from "../shared/contract";
-import { sortTasks, TASK_SORTS } from "../shared/sort";
+import {
+  TASK_SORTS,
+  TASKS_PAGE_DEFAULT_LIMIT,
+  TASKS_PAGE_MAX_LIMIT,
+} from "../shared/pagination";
 import {
   assertAllowed,
   CliError,
@@ -86,8 +90,7 @@ const FOLDER_HELP = `Usage:
 
 const CREATE_HELP =
   "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--machine <id-or-name>] [--json]";
-const LIST_HELP =
-  "Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--json]";
+const LIST_HELP = `Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--limit <1-${TASKS_PAGE_MAX_LIMIT}>] [--cursor <opaque>] [--json]`;
 const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
 const UPDATE_HELP =
   "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--add-label <name>]... [--remove-label <name>]... [--machine <id-or-name>] [--json]";
@@ -124,6 +127,7 @@ interface PluginStatus {
 }
 
 type TasksDomain = ReturnType<typeof registerHandlers>;
+type ListTasksInput = Parameters<TasksDomain["listTasks"]>[0];
 
 function normalizePrefix(value: string): string {
   return value.trim().toUpperCase();
@@ -363,14 +367,47 @@ async function resolveTask(
   if (!TASK_KEY_PATTERN.test(normalized)) {
     throw new CliError(`task not found: ${address}`);
   }
-  const result = tasksRpcContract.listTasks.output.parse(
-    await domain.listTasks(
-      tasksRpcContract.listTasks.input.parse({ search: normalized }),
+  const result = tasksRpcContract.getTaskByKey.output.parse(
+    await domain.getTaskByKey(
+      tasksRpcContract.getTaskByKey.input.parse({ taskKey: normalized }),
     ),
   );
-  const task = result.tasks.find((candidate) => candidate.key === normalized);
-  if (!task) throw new CliError(`task not found: ${address}`);
-  return task;
+  if (!result.task) throw new CliError(`task not found: ${address}`);
+  return result.task;
+}
+
+async function listAllTasks(
+  domain: TasksDomain,
+  input: ListTasksInput,
+): Promise<Task[]> {
+  const tasks: Task[] = [];
+  let cursor = input.cursor;
+  do {
+    const page = tasksRpcContract.listTasks.output.parse(
+      await domain.listTasks(
+        tasksRpcContract.listTasks.input.parse({
+          ...input,
+          limit: TASKS_PAGE_MAX_LIMIT,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      ),
+    );
+    tasks.push(...page.tasks);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return tasks;
+}
+
+function taskPageLimit(args: ParsedArgs): number {
+  const raw = option(args, "limit");
+  if (raw === undefined) return TASKS_PAGE_DEFAULT_LIMIT;
+  const limit = Number(raw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > TASKS_PAGE_MAX_LIMIT) {
+    throw new CliError(
+      `--limit must be an integer from 1 to ${TASKS_PAGE_MAX_LIMIT}`,
+    );
+  }
+  return limit;
 }
 
 function resolvePreset(presets: readonly Preset[], address: string): Preset {
@@ -920,7 +957,16 @@ async function runList(
   if (args.flags.has("help")) return LIST_HELP;
   assertAllowed(
     args,
-    ["project", "status", "priority", "label", "search", "sort"],
+    [
+      "project",
+      "status",
+      "priority",
+      "label",
+      "search",
+      "sort",
+      "limit",
+      "cursor",
+    ],
     ["active"],
   );
   requirePositionals(args, 0, LIST_HELP);
@@ -967,11 +1013,14 @@ async function runList(
         labelIds: labelIds.length > 0 ? labelIds : undefined,
         activeOnly: args.flags.has("active"),
         search: option(args, "search"),
+        sort,
+        limit: taskPageLimit(args),
+        cursor: option(args, "cursor"),
       }),
     ),
   );
   const tasks = [];
-  for (const task of sortTasks(result.tasks, sort)) {
+  for (const task of result.tasks) {
     const threadResult = tasksRpcContract.listTaskThreads.output.parse(
       await domain.listTaskThreads(
         tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
@@ -985,21 +1034,26 @@ async function runList(
       ).length,
     });
   }
-  return args.flags.has("json")
-    ? json({ tasks })
-    : table(
-        ["KEY", "STATUS", "PRIORITY", "DUE", "TITLE", "LABELS", "AGENTS"],
-        tasks.map((task) => [
-          task.key,
-          task.status,
-          task.priority,
-          task.dueDate ?? "-",
-          task.title,
-          task.labels.join(", ") || "-",
-          task.agentsWorking,
-        ]),
-        "No tasks.",
-      );
+  const limit = taskPageLimit(args);
+  if (args.flags.has("json")) {
+    return json({ tasks, nextCursor: result.nextCursor, limit });
+  }
+  const output = table(
+    ["KEY", "STATUS", "PRIORITY", "DUE", "TITLE", "LABELS", "AGENTS"],
+    tasks.map((task) => [
+      task.key,
+      task.status,
+      task.priority,
+      task.dueDate ?? "-",
+      task.title,
+      task.labels.join(", ") || "-",
+      task.agentsWorking,
+    ]),
+    "No tasks.",
+  );
+  return result.nextCursor === null
+    ? output
+    : `${output}\n\nMore results are available. Re-run with the same filters and add: --limit ${limit} --cursor ${result.nextCursor}`;
 }
 
 async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
@@ -1012,11 +1066,10 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
   const allLabels = await projectLabels(domain, project.id);
   const labelById = new Map(allLabels.map((label) => [label.id, label]));
   const labels = task.labelIds.map((id) => labelById.get(id)!).filter(Boolean);
-  const subtasks = tasksRpcContract.listTasks.output.parse(
-    await domain.listTasks(
-      tasksRpcContract.listTasks.input.parse({ parentTaskId: task.id }),
-    ),
-  ).tasks;
+  const subtasks = await listAllTasks(
+    domain,
+    tasksRpcContract.listTasks.input.parse({ parentTaskId: task.id }),
+  );
   const comments = tasksRpcContract.listComments.output.parse(
     await domain.listComments(
       tasksRpcContract.listComments.input.parse({ taskId: task.id }),

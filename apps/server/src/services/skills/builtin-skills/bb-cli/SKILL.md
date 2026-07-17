@@ -321,6 +321,10 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - Add `--json` when command output will drive follow-up work. Run `bb tasks
 --help` for project, folder, task, label, attachment, preset, delegation,
   attached-thread, and demo-data commands.
+- `bb tasks list` defaults to 100 rows and accepts `--limit 1-500` plus the
+  opaque `--cursor` returned as `nextCursor` in JSON (or printed after a human
+  page). Keep the same filters and sort. A task-list mutation makes the cursor
+  stale; restart without it.
 
 ## Docs
 
@@ -559,6 +563,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   them directly — unknown `bb` commands are resolved against installed plugins
   and proxied to the server. Core command names always win. In agent threads,
   the injected `plugin-commands` skill lists what is available.
+- Plugin commands share a 1,048,576-byte combined stdout/stderr ceiling. An
+  oversized result is rejected in full as `plugin_cli_output_too_large` (valid
+  JSON for `--json` callers), never truncated. Use pagination or file/streaming
+  commands for large results.
 - **Writing a plugin?** Use the `bb-plugin-authoring` skill — the complete
   authoring reference for the backend `BbPluginApi` (settings, storage, sdk,
   http/rpc/realtime, background services and schedules, CLI commands, agent

@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@bb/plugin-sdk";
 import type { PluginCliCommandInfo } from "./plugin-api.js";
 
 /**
@@ -55,6 +56,9 @@ export function renderPluginCommandsSkill(
     "",
     "Installed BB plugins contribute these `bb` subcommands. Invoke them with",
     "bash exactly like core `bb` commands; they run server-side.",
+    `Combined stdout and stderr is capped at ${PLUGIN_CLI_OUTPUT_MAX_BYTES} UTF-8 bytes. Above-limit`,
+    "results fail atomically as `plugin_cli_output_too_large` and are never clipped;",
+    "use pagination or file/streaming commands for large results.",
     "",
     ...sections,
     "",
