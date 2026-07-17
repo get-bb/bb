@@ -727,7 +727,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 disabled={actionDisabled || sendDisabled}
                 onClick={() => onSendImmediately(queuedMessage.id)}
                 aria-label={`Send queued message ${index + 1} now`}
-                title="Send now"
               >
                 <Icon name="Sent" className="size-4" aria-hidden />
               </Button>
@@ -747,7 +746,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   })
                 }
                 aria-label={`Edit queued message ${index + 1}`}
-                title="Edit"
               >
                 <Icon name="Edit" className="size-4" aria-hidden />
               </Button>
@@ -762,7 +760,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 disabled={actionDisabled}
                 onClick={() => onDelete(queuedMessage.id)}
                 aria-label={`Delete queued message ${index + 1}`}
-                title="Delete"
               >
                 <Icon name="Trash2" className="size-4" aria-hidden />
               </Button>
