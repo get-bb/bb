@@ -45,7 +45,7 @@ function FilterChip({
         <button
           type="button"
           className={cn(
-            "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs",
+            "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs max-md:pointer-coarse:h-8",
             active
               ? "border-border bg-secondary text-foreground"
               : "border-dashed border-border text-muted-foreground hover:border-input hover:text-foreground",
@@ -54,7 +54,7 @@ function FilterChip({
           <Icon name={icon} className="size-3" />
           {label}
           {active ? (
-            <span className="max-w-48 truncate font-medium">
+            <span className="max-w-48 truncate font-medium @max-md:max-w-24">
               {selectedNames.join(", ")}
             </span>
           ) : null}
@@ -81,7 +81,7 @@ function SortChip({
         <button
           type="button"
           className={cn(
-            "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs",
+            "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs max-md:pointer-coarse:h-8",
             active
               ? "border-border bg-secondary text-foreground"
               : "border-dashed border-border text-muted-foreground hover:border-input hover:text-foreground",
@@ -158,142 +158,149 @@ export function ListFilterBar({
   const showLabelChip =
     labelOptions.length > 0 || filters.labelNames.length > 0;
   return (
-    <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border-hairline px-3.5 py-1.5">
-      <FilterChip
-        icon="Circle"
-        label="Status"
-        selectedNames={filters.statuses.map((status) => STATUS_LABELS[status])}
-      >
-        {TASK_STATUSES.map((status) => (
-          <DropdownMenuCheckboxItem
-            key={status}
-            checked={filters.statuses.includes(status)}
-            onSelect={keepOpen}
-            onCheckedChange={(checked) =>
-              onChange({
-                ...filters,
-                statuses: toggled(filters.statuses, status, checked === true),
-              })
-            }
-          >
-            <span className="flex items-center gap-2">
-              <StatusIcon status={status} className="size-3" />
-              {STATUS_LABELS[status]}
-            </span>
-          </DropdownMenuCheckboxItem>
-        ))}
-      </FilterChip>
-      <FilterChip
-        icon="ArrowUpDown"
-        label="Priority"
-        selectedNames={filters.priorities.map(
-          (priority) => PRIORITY_LABELS[priority],
-        )}
-      >
-        {TASK_PRIORITIES.map((priority) => (
-          <DropdownMenuCheckboxItem
-            key={priority}
-            checked={filters.priorities.includes(priority)}
-            onSelect={keepOpen}
-            onCheckedChange={(checked) =>
-              onChange({
-                ...filters,
-                priorities: toggled(
-                  filters.priorities,
-                  priority,
-                  checked === true,
-                ),
-              })
-            }
-          >
-            <span className="flex items-center gap-2">
-              <PriorityIcon priority={priority} className="size-3" />
-              {PRIORITY_LABELS[priority]}
-            </span>
-          </DropdownMenuCheckboxItem>
-        ))}
-      </FilterChip>
-      {showLabelChip ? (
+    // The chips live in their own horizontal scroller while the task count is
+    // pinned outside it, so the count never wraps and stays visible however
+    // many chips overflow a narrow container.
+    <div className="flex shrink-0 items-center gap-1.5 border-b border-border-hairline px-3.5 py-1.5">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
         <FilterChip
-          icon="ListTodo"
-          label="Label"
-          selectedNames={filters.labelNames}
+          icon="Circle"
+          label="Status"
+          selectedNames={filters.statuses.map(
+            (status) => STATUS_LABELS[status],
+          )}
         >
-          {labelOptions.map((option) => (
+          {TASK_STATUSES.map((status) => (
             <DropdownMenuCheckboxItem
-              key={option.name}
-              checked={filters.labelNames.includes(option.name)}
+              key={status}
+              checked={filters.statuses.includes(status)}
               onSelect={keepOpen}
               onCheckedChange={(checked) =>
                 onChange({
                   ...filters,
-                  labelNames: toggled(
-                    filters.labelNames,
-                    option.name,
+                  statuses: toggled(filters.statuses, status, checked === true),
+                })
+              }
+            >
+              <span className="flex items-center gap-2">
+                <StatusIcon status={status} className="size-3" />
+                {STATUS_LABELS[status]}
+              </span>
+            </DropdownMenuCheckboxItem>
+          ))}
+        </FilterChip>
+        <FilterChip
+          icon="ArrowUpDown"
+          label="Priority"
+          selectedNames={filters.priorities.map(
+            (priority) => PRIORITY_LABELS[priority],
+          )}
+        >
+          {TASK_PRIORITIES.map((priority) => (
+            <DropdownMenuCheckboxItem
+              key={priority}
+              checked={filters.priorities.includes(priority)}
+              onSelect={keepOpen}
+              onCheckedChange={(checked) =>
+                onChange({
+                  ...filters,
+                  priorities: toggled(
+                    filters.priorities,
+                    priority,
                     checked === true,
                   ),
                 })
               }
             >
               <span className="flex items-center gap-2">
-                <span
-                  aria-hidden
-                  className="size-2 rounded-full"
-                  style={{ backgroundColor: option.color }}
-                />
-                {option.name}
+                <PriorityIcon priority={priority} className="size-3" />
+                {PRIORITY_LABELS[priority]}
               </span>
             </DropdownMenuCheckboxItem>
           ))}
-          {filters.labelNames
-            .filter(
-              (name) => !labelOptions.some((option) => option.name === name),
-            )
-            .map((name) => (
+        </FilterChip>
+        {showLabelChip ? (
+          <FilterChip
+            icon="ListTodo"
+            label="Label"
+            selectedNames={filters.labelNames}
+          >
+            {labelOptions.map((option) => (
               <DropdownMenuCheckboxItem
-                key={`stale:${name}`}
-                checked
+                key={option.name}
+                checked={filters.labelNames.includes(option.name)}
                 onSelect={keepOpen}
                 onCheckedChange={(checked) =>
                   onChange({
                     ...filters,
                     labelNames: toggled(
                       filters.labelNames,
-                      name,
+                      option.name,
                       checked === true,
                     ),
                   })
                 }
               >
-                <span className="flex items-center gap-2 text-muted-foreground">
+                <span className="flex items-center gap-2">
                   <span
                     aria-hidden
-                    className="size-2 rounded-full bg-muted-foreground/40"
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: option.color }}
                   />
-                  {name}
-                  <span className="text-xs">(unavailable)</span>
+                  {option.name}
                 </span>
               </DropdownMenuCheckboxItem>
             ))}
-        </FilterChip>
-      ) : null}
-      {hasActiveFilters(filters) ? (
-        <button
-          type="button"
-          onClick={() => onChange(EMPTY_FILTERS)}
-          className="flex h-6 shrink-0 items-center gap-1 rounded-md border border-dashed border-border px-2.5 text-xs text-muted-foreground hover:border-input hover:text-foreground"
-        >
-          <Icon name="X" className="size-3" />
-          Clear
-        </button>
-      ) : null}
-      <span className="ml-auto flex items-center gap-2">
-        <SortChip sort={sort} onChange={onSortChange} />
-        <span className="text-xs tabular-nums text-subtle-foreground">
-          {taskCount === undefined
-            ? ""
-            : `${taskCount} ${taskCount === 1 ? "task" : "tasks"}`}
-        </span>
+            {filters.labelNames
+              .filter(
+                (name) => !labelOptions.some((option) => option.name === name),
+              )
+              .map((name) => (
+                <DropdownMenuCheckboxItem
+                  key={`stale:${name}`}
+                  checked
+                  onSelect={keepOpen}
+                  onCheckedChange={(checked) =>
+                    onChange({
+                      ...filters,
+                      labelNames: toggled(
+                        filters.labelNames,
+                        name,
+                        checked === true,
+                      ),
+                    })
+                  }
+                >
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <span
+                      aria-hidden
+                      className="size-2 rounded-full bg-muted-foreground/40"
+                    />
+                    {name}
+                    <span className="text-xs">(unavailable)</span>
+                  </span>
+                </DropdownMenuCheckboxItem>
+              ))}
+          </FilterChip>
+        ) : null}
+        {hasActiveFilters(filters) ? (
+          <button
+            type="button"
+            onClick={() => onChange(EMPTY_FILTERS)}
+            className="flex h-6 shrink-0 items-center gap-1 rounded-md border border-dashed border-border px-2.5 text-xs text-muted-foreground hover:border-input hover:text-foreground max-md:pointer-coarse:h-8"
+          >
+            <Icon name="X" className="size-3" />
+            Clear
+          </button>
+        ) : null}
+      </div>
+      {/* Sort and the count sit outside the scroller so they stay visible and
+          aligned however far the filter chips overflow. */}
+      <SortChip sort={sort} onChange={onSortChange} />
+      <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-subtle-foreground">
+        {taskCount === undefined
+          ? ""
+          : `${taskCount} ${taskCount === 1 ? "task" : "tasks"}`}
       </span>
     </div>
   );

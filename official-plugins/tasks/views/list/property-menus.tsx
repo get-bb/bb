@@ -27,6 +27,7 @@ import {
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import type { TaskEdit } from "./optimistic.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import { formatDueDate, PRIORITY_LABELS, STATUS_LABELS } from "./lib.js";
@@ -72,9 +73,7 @@ export function isBareKey(event: {
   altKey: boolean;
   shiftKey: boolean;
 }): boolean {
-  return (
-    !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
-  );
+  return !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
 }
 
 function localIsoDate(daysFromNow: number): string {
@@ -147,7 +146,7 @@ function PickerOption({
 }
 
 const TRIGGER_CLASS =
-  "relative z-10 inline-flex size-5 shrink-0 items-center justify-center rounded-sm hover:bg-state-active focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-state-active";
+  "relative z-10 inline-flex size-5 shrink-0 items-center justify-center rounded-sm hover:bg-state-active focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-state-active max-md:pointer-coarse:size-8";
 
 /** Inline status picker: the row's status glyph, click/S to open the menu. */
 export function StatusEditor({
@@ -156,12 +155,15 @@ export function StatusEditor({
   open,
   onOpenChange,
   triggerRef,
+  className,
 }: {
   task: Task;
   onEdit: EditFn;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   triggerRef?: Ref<HTMLButtonElement>;
+  /** Extra classes for the trigger button (e.g. grid placement in list rows). */
+  className?: string;
 }) {
   const select = (status: TaskStatus) => {
     if (status !== task.status) onEdit(task, { status });
@@ -173,7 +175,7 @@ export function StatusEditor({
           ref={triggerRef}
           type="button"
           aria-label={`Change status, currently ${STATUS_LABELS[task.status]}`}
-          className={TRIGGER_CLASS}
+          className={cn(TRIGGER_CLASS, className)}
         >
           <StatusIcon status={task.status} />
         </button>
@@ -218,12 +220,15 @@ export function PriorityEditor({
   open,
   onOpenChange,
   triggerRef,
+  className,
 }: {
   task: Task;
   onEdit: EditFn;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   triggerRef?: Ref<HTMLButtonElement>;
+  /** Extra classes for the trigger button (e.g. grid placement in list rows). */
+  className?: string;
 }) {
   const select = (priority: TaskPriority) => {
     if (priority !== task.priority) onEdit(task, { priority });
@@ -235,7 +240,7 @@ export function PriorityEditor({
           ref={triggerRef}
           type="button"
           aria-label={`Set priority, currently ${PRIORITY_LABELS[task.priority]}`}
-          className={TRIGGER_CLASS}
+          className={cn(TRIGGER_CLASS, className)}
         >
           <PriorityIcon priority={task.priority} />
         </button>
@@ -384,7 +389,9 @@ export function TaskContextMenu({
             {task.dueDate !== null ? (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem onSelect={() => onEdit(task, { dueDate: null })}>
+                <ContextMenuItem
+                  onSelect={() => onEdit(task, { dueDate: null })}
+                >
                   <Icon name="X" className="size-3.5" />
                   <span>No due date</span>
                 </ContextMenuItem>

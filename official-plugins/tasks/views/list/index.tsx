@@ -166,7 +166,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     return map;
   }, [labels.data]);
   const projectsById = useMemo(
-    () => new Map((projects.data ?? []).map((project) => [project.id, project])),
+    () =>
+      new Map((projects.data ?? []).map((project) => [project.id, project])),
     [projects.data],
   );
 
@@ -177,7 +178,12 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
     return editedTasks(tasksQuery.data, edits.entries).filter((task) =>
-      matchesFilters(task, filters.statuses, filters.priorities, labelIds ?? []),
+      matchesFilters(
+        task,
+        filters.statuses,
+        filters.priorities,
+        labelIds ?? [],
+      ),
     );
   }, [
     tasksQuery.data,
@@ -217,11 +223,16 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   let body: React.ReactNode;
   if (tasksQuery.data === undefined || displayTasks === undefined) {
-    body = tasksQuery.error !== null ? (
-      <EmptyState icon="AlertCircle" title="Couldn't load tasks" description={tasksQuery.error} />
-    ) : (
-      <LoadingRows />
-    );
+    body =
+      tasksQuery.error !== null ? (
+        <EmptyState
+          icon="AlertCircle"
+          title="Couldn't load tasks"
+          description={tasksQuery.error}
+        />
+      ) : (
+        <LoadingRows />
+      );
   } else if (displayTasks.length === 0) {
     if (filtered) {
       body = (

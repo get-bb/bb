@@ -50,8 +50,9 @@ function isEditableTarget(target: EventTarget | null): boolean {
  */
 function hasOpenOverlay(): boolean {
   return (
-    document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]') !==
-    null
+    document.querySelector(
+      '[role="dialog"], [role="menu"], [role="listbox"]',
+    ) !== null
   );
 }
 
@@ -187,25 +188,54 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // In narrow containers the sidebar can't share the row (208px of a 320px
+  // viewport would crush the list), so it opens as an overlay drawer instead.
+  // Navigating from the drawer closes it — the destination is what the user
+  // came for, and the transient narrow override resets to its collapsed
+  // default rather than persisting a preference.
+  const sidebarOverlay = narrow && !effectiveSidebarCollapsed;
+  const navigateFromSidebar = (target: TasksRoute) => {
+    if (sidebarOverlay) setNarrowOverride(null);
+    navigation.go(target);
+  };
+  const sidebar = (
+    <TasksSidebar
+      route={route}
+      folders={folders.data}
+      projects={projects.data}
+      summaries={summaries.data}
+      presets={presets.data}
+      activeTasks={activeTasks.data}
+      isLoading={projects.isLoading || summaries.isLoading}
+      overlay={sidebarOverlay}
+      onNavigate={navigateFromSidebar}
+      onNewProject={() => setNewProjectOpen(true)}
+    />
+  );
+
   return (
     <div
       ref={rootRef}
-      className="flex h-full min-h-0 flex-row-reverse bg-background text-foreground"
+      className="relative flex h-full min-h-0 flex-row-reverse bg-background text-foreground"
     >
       {!effectiveSidebarCollapsed ? (
-        <TasksSidebar
-          route={route}
-          folders={folders.data}
-          projects={projects.data}
-          summaries={summaries.data}
-          presets={presets.data}
-          activeTasks={activeTasks.data}
-          isLoading={projects.isLoading || summaries.isLoading}
-          onNavigate={navigation.go}
-          onNewProject={() => setNewProjectOpen(true)}
-        />
+        sidebarOverlay ? (
+          <div className="absolute inset-0 z-30">
+            <button
+              type="button"
+              aria-label="Close sidebar"
+              onClick={toggleSidebar}
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+            />
+            <div className="absolute inset-y-0 right-0 flex max-w-[85%]">
+              {sidebar}
+            </div>
+          </div>
+        ) : (
+          sidebar
+        )
       ) : null}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="@container flex min-w-0 flex-1 flex-col">
         <TasksTopbar
           route={route}
           projects={projects.data}
@@ -227,7 +257,9 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
         />
         <div className="min-h-0 flex-1 overflow-auto">
           {noProjects && route.kind !== "task" && route.kind !== "manage" ? (
-            <NoProjectsEmptyState onNewProject={() => setNewProjectOpen(true)} />
+            <NoProjectsEmptyState
+              onNewProject={() => setNewProjectOpen(true)}
+            />
           ) : (
             <RouteOutlet route={route} />
           )}

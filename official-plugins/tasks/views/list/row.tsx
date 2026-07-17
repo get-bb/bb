@@ -151,7 +151,13 @@ export function TaskRow({
         data-task-key={task.key}
         aria-busy={pending || undefined}
         className={cn(
-          "relative flex h-[34px] w-full items-center gap-2 border-b border-border-hairline px-3.5 text-left transition-opacity hover:bg-state-hover",
+          // Narrow containers get a two-line hierarchy: status + full-width
+          // title on top, then priority, key, and the metadata rail below.
+          // From @md up the same children lay out as the classic single flex
+          // row (the grid placement classes are inert in flex), so desktop
+          // keeps its exact 34px rows.
+          "relative grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline px-3.5 py-1.5 text-left transition-opacity hover:bg-state-hover",
+          "@md:flex @md:h-[34px] @md:py-0",
           pending && "opacity-70",
         )}
       >
@@ -177,8 +183,9 @@ export function TaskRow({
           onEdit={onEdit}
           open={openMenu === "priority"}
           onOpenChange={(next) => setOpenMenu(next ? "priority" : null)}
+          className="col-start-1 row-start-2"
         />
-        <span className="w-14 shrink-0 truncate text-xs tabular-nums text-subtle-foreground">
+        <span className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-14 @md:shrink-0">
           {task.key}
         </span>
         <StatusEditor
@@ -186,9 +193,12 @@ export function TaskRow({
           onEdit={onEdit}
           open={openMenu === "status"}
           onOpenChange={(next) => setOpenMenu(next ? "status" : null)}
+          className="col-start-1 row-start-1"
         />
-        <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
-        <span className="flex shrink-0 items-center gap-1.5 text-xs text-subtle-foreground">
+        <span className="col-start-2 col-span-2 row-start-1 min-w-0 truncate text-sm @md:flex-1">
+          {task.title}
+        </span>
+        <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
           {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
           <LabelChips task={task} labelsById={labelsById} />
           {task.dueDate !== null ? (

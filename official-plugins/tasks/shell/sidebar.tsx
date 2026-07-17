@@ -64,7 +64,7 @@ function SidebarRow({ active, onClick, children, title }: SidebarRowProps) {
       onClick={onClick}
       title={title}
       className={cn(
-        "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring max-md:pointer-coarse:h-9",
         onClick ? "cursor-pointer" : "cursor-default",
         active
           ? "bg-sidebar-accent font-medium text-foreground"
@@ -91,7 +91,10 @@ function SectionHeader({
       {onToggle ? (
         <Icon
           name="ChevronDown"
-          className={cn("size-3 transition-transform", collapsed && "-rotate-90")}
+          className={cn(
+            "size-3 transition-transform",
+            collapsed && "-rotate-90",
+          )}
         />
       ) : null}
       {label}
@@ -187,6 +190,12 @@ export interface TasksSidebarProps {
   presets: Preset[] | undefined;
   activeTasks: Task[] | undefined;
   isLoading: boolean;
+  /**
+   * Rendered as an overlay drawer over the list (narrow containers). Uses a
+   * fixed drawer width and hides the resize handle; the stored desktop width
+   * is left untouched.
+   */
+  overlay?: boolean;
   onNavigate: (route: TasksRoute) => void;
   onNewProject: () => void;
 }
@@ -199,6 +208,7 @@ export function TasksSidebar({
   presets,
   activeTasks,
   isLoading,
+  overlay = false,
   onNavigate,
   onNewProject,
 }: TasksSidebarProps) {
@@ -275,9 +285,7 @@ export function TasksSidebar({
     const folderProjects = (projects ?? []).filter(
       (p) => p.folderId === folder.id,
     );
-    const children = childFolders.filter(
-      (f) => f.parentFolderId === folder.id,
-    );
+    const children = childFolders.filter((f) => f.parentFolderId === folder.id);
     return (
       <div key={folder.id} className={cn(indent && "pl-3")}>
         <SectionHeader
@@ -297,7 +305,9 @@ export function TasksSidebar({
               />
             ))}
             {/* Folders nest one level; children only render under roots. */}
-            {!indent ? children.map((child) => renderFolder(child, true)) : null}
+            {!indent
+              ? children.map((child) => renderFolder(child, true))
+              : null}
           </div>
         ) : null}
       </div>
@@ -307,27 +317,30 @@ export function TasksSidebar({
   return (
     <aside
       ref={asideRef}
-      style={{ width }}
+      style={overlay ? undefined : { width }}
       className={cn(
         "relative flex h-full shrink-0 flex-col border-l border-border-seam-vertical bg-sidebar",
+        overlay && "w-72 min-w-0 max-w-full shrink shadow-lg",
         resizing && "select-none",
       )}
     >
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        title="Drag to resize · double-click to reset"
-        className={cn(
-          "absolute inset-y-0 -left-px z-10 w-1 cursor-col-resize transition-colors",
-          resizing ? "bg-primary/50" : "hover:bg-primary/30",
-        )}
-        onPointerDown={startResize}
-        onPointerMove={moveResize}
-        onPointerUp={endResize}
-        onPointerCancel={endResize}
-        onDoubleClick={resetWidth}
-      />
+      {!overlay ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          title="Drag to resize · double-click to reset"
+          className={cn(
+            "absolute inset-y-0 -left-px z-10 w-1 cursor-col-resize transition-colors",
+            resizing ? "bg-primary/50" : "hover:bg-primary/30",
+          )}
+          onPointerDown={startResize}
+          onPointerMove={moveResize}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onDoubleClick={resetWidth}
+        />
+      ) : null}
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
         <div className="space-y-px">
           <SidebarRow
