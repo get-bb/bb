@@ -20,12 +20,18 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { SuggestionProps } from "@tiptap/suggestion";
 import { Button } from "@bb/shared-ui/button";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   createEditorExtensions,
   type MentionItem,
   type MentionSuggestionHandle,
 } from "./extensions.js";
+
+/** True while an IME is composing (e.g. Japanese candidate selection). */
+function isImeComposing(event: KeyboardEvent): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
 
 const STYLE_MARKER = "data-bb-tasks-editor-styles";
 const EDITOR_CSS = `
@@ -204,6 +210,13 @@ export interface TasksEditorProps {
   mentionItems?: (query: string) => Promise<MentionItem[]>;
   /** Invoked when a thread-mention pill is clicked (edit and read-only). */
   onOpenThread?: (threadId: string) => void;
+  /**
+   * When set, bare Enter (and Cmd/Ctrl+Enter) invoke this instead of inserting
+   * a newline. Shift+Enter still inserts a newline. Used by the task comment
+   * composer. On coarse-pointer devices bare Enter stays a newline; Cmd/Ctrl+Enter
+   * still submits. Hosts should no-op when send is disabled or in-flight.
+   */
+  onSubmit?: () => void;
   onEditorReady?: (editor: Editor) => void;
   className?: string;
 }
@@ -219,6 +232,7 @@ export function TasksEditor({
   onAttachFiles,
   mentionItems,
   onOpenThread,
+  onSubmit,
   onEditorReady,
   className,
 }: TasksEditorProps) {
@@ -239,10 +253,23 @@ export function TasksEditor({
   mentionItemsRef.current = mentionItems;
   const openThreadRef = useRef(onOpenThread);
   openThreadRef.current = onOpenThread;
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
   const readyRef = useRef(onEditorReady);
   readyRef.current = onEditorReady;
   const initialValueRef = useRef(value);
   const autofocusRef = useRef(autofocus);
+  // Coarse pointer (touch) keeps bare Enter as newline; soft keyboards use
+  // enterkeyhint="enter" rather than "send" so the key doesn't look like submit.
+  const isPointerCoarse = usePointerCoarse();
+  const canSubmitWithEnterKey = Boolean(onSubmit) && !isPointerCoarse;
+  const canSubmitWithEnterRef = useRef(canSubmitWithEnterKey);
+  canSubmitWithEnterRef.current = canSubmitWithEnterKey;
+  const editorEnterKeyHint = onSubmit
+    ? isPointerCoarse
+      ? "enter"
+      : "send"
+    : undefined;
 
   const [, setRevision] = useState(0);
   const [mention, setMentionState] = useState<MentionPopoverState | null>(
@@ -328,6 +355,39 @@ export function TasksEditor({
       content: initialValueRef.current,
       autofocus: autofocusRef.current && !readOnly ? "end" : false,
       editorProps: {
+        handleKeyDown(_view, event) {
+          // Submit-on-Enter is opt-in via onSubmit (comment composer). Without
+          // it, Enter keeps the default TipTap newline/list behavior.
+          if (!onSubmitRef.current || readOnly) return false;
+          if (event.key !== "Enter") return false;
+          // Never steal Enter while an IME is composing a candidate.
+          if (isImeComposing(event)) return false;
+          // Mention popover owns Enter/Tab while open.
+          const openMention = mentionRef.current;
+          if (openMention && openMention.items.length > 0) return false;
+
+          const withPrimaryMod =
+            (event.metaKey || event.ctrlKey) &&
+            !event.altKey &&
+            !event.shiftKey;
+          const plainEnter =
+            !event.shiftKey &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey;
+
+          // Shift+Enter (and other modifier combos we don't claim) insert a
+          // newline via the default editor keymap.
+          if (event.shiftKey && !withPrimaryMod) return false;
+          if (!withPrimaryMod && !plainEnter) return false;
+          // Touch devices: bare Enter stays a newline; Cmd/Ctrl+Enter still
+          // submits so a hardware keyboard can force send.
+          if (plainEnter && !canSubmitWithEnterRef.current) return false;
+
+          event.preventDefault();
+          onSubmitRef.current();
+          return true;
+        },
         handlePaste(_view, event) {
           const files = [...(event.clipboardData?.files ?? [])];
           if (attachFilesRef.current) {
@@ -441,6 +501,17 @@ export function TasksEditor({
     lastMarkdownRef.current = value;
     editor.commands.setContent(value, false);
   }, [value]);
+
+  // Soft-keyboard enterkeyhint tracks coarse-pointer without recreating the editor.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || editor.isDestroyed) return;
+    if (editorEnterKeyHint) {
+      editor.view.dom.setAttribute("enterkeyhint", editorEnterKeyHint);
+    } else {
+      editor.view.dom.removeAttribute("enterkeyhint");
+    }
+  }, [editorEnterKeyHint]);
 
   const editor = editorRef.current;
   const mentionRect = mention?.clientRect?.() ?? null;

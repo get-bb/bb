@@ -35,11 +35,21 @@ vi.mock("../../editor/tasks-editor.js", () => ({
   TasksEditor: (props: {
     value: string;
     onChange: (value: string) => void;
+    onSubmit?: () => void;
   }) => (
     <textarea
       aria-label="Comment body"
       value={props.value}
       onChange={(event) => props.onChange(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        // Mirror the real TasksEditor submit-on-Enter contract for unit tests.
+        if (event.key !== "Enter" || !props.onSubmit) return;
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+        if (event.shiftKey || event.altKey) return;
+        // Bare Enter or Cmd/Ctrl+Enter submits.
+        event.preventDefault();
+        props.onSubmit();
+      }}
     />
   ),
 }));
@@ -188,71 +198,89 @@ describe("AgentNotificationControl", () => {
   });
 });
 
+async function renderComposerWithTask(options?: {
+  body?: string;
+  holdSend?: boolean;
+}) {
+  let releaseSend!: () => void;
+  const sendGate = options?.holdSend
+    ? new Promise<void>((resolve) => {
+        releaseSend = resolve;
+      })
+    : Promise.resolve();
+  if (!options?.holdSend) {
+    releaseSend = () => {};
+  }
+  const { bb, harness } = createFakePluginHost({
+    pluginId: "tasks",
+    sdk: {
+      threads: {
+        get: async ({ threadId }) =>
+          makeThreadResponse({ id: threadId, status: "active" }),
+        send: async () => sendGate,
+      },
+    },
+  });
+  const store = createStore(bb);
+  const project = store.tasks.createProject({
+    name: "Composer",
+    prefix: "CMP",
+    color: "blue",
+  });
+  const task = store.tasks.createTask({
+    projectId: project.id,
+    title: "Submit once",
+  });
+  store.tasks.createComment({
+    taskId: task.id,
+    kind: "agent",
+    authorName: "Worker",
+    threadId: "thr_worker",
+    body: "Ready for input",
+  });
+  rpcCall.mockImplementation(async (method, input) => {
+    if (method !== "createComment") {
+      throw new Error(`Unexpected RPC method: ${String(method)}`);
+    }
+    const request = input as {
+      taskId: string;
+      body: string;
+      notify: boolean;
+    };
+    return {
+      comment: await createComment(bb, store, {
+        taskId: request.taskId,
+        kind: "user",
+        authorName: "You",
+        presetName: null,
+        threadId: null,
+        body: request.body,
+        notify: request.notify,
+      }),
+    };
+  });
+
+  render(
+    <CommentComposer
+      taskId={task.id}
+      notificationTarget={{ kind: "ready", title: "Worker" }}
+    />,
+  );
+  if (options?.body !== undefined) {
+    fireEvent.change(screen.getByRole("textbox", { name: "Comment body" }), {
+      target: { value: options.body },
+    });
+  }
+  return { store, task, harness, releaseSend };
+}
+
 describe("CommentComposer", () => {
   it("single-flights rapid submit activation into one comment and send", async () => {
-    let releaseSend!: () => void;
-    const sendGate = new Promise<void>((resolve) => {
-      releaseSend = resolve;
-    });
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: {
-        threads: {
-          get: async ({ threadId }) =>
-            makeThreadResponse({ id: threadId, status: "active" }),
-          send: async () => sendGate,
-        },
-      },
+    const { store, task, harness, releaseSend } = await renderComposerWithTask({
+      body: "Only once",
+      holdSend: true,
     });
     try {
-      const store = createStore(bb);
-      const project = store.tasks.createProject({
-        name: "Composer",
-        prefix: "CMP",
-        color: "blue",
-      });
-      const task = store.tasks.createTask({
-        projectId: project.id,
-        title: "Submit once",
-      });
-      store.tasks.createComment({
-        taskId: task.id,
-        kind: "agent",
-        authorName: "Worker",
-        threadId: "thr_worker",
-        body: "Ready for input",
-      });
-      rpcCall.mockImplementation(async (method, input) => {
-        if (method !== "createComment") {
-          throw new Error(`Unexpected RPC method: ${String(method)}`);
-        }
-        const request = input as {
-          taskId: string;
-          body: string;
-          notify: boolean;
-        };
-        return {
-          comment: await createComment(bb, store, {
-            taskId: request.taskId,
-            kind: "user",
-            authorName: "You",
-            presetName: null,
-            threadId: null,
-            body: request.body,
-            notify: request.notify,
-          }),
-        };
-      });
-
-      render(
-        <CommentComposer
-          taskId={task.id}
-          notificationTarget={{ kind: "ready", title: "Worker" }}
-        />,
-      );
-      fireEvent.change(screen.getByRole("textbox", { name: "Comment body" }), {
-        target: { value: "Only once" },
-      });
       const submit = screen.getByRole("button", { name: "Comment" });
       fireEvent.click(submit);
       fireEvent.click(submit);
@@ -275,6 +303,104 @@ describe("CommentComposer", () => {
             .find((entry) => entry.body === "Only once")?.notifiedCount,
         ).toBe(1),
       );
+    } finally {
+      releaseSend();
+      await harness.dispose();
+    }
+  });
+
+  it("submits on Enter and single-flights rapid Enter presses", async () => {
+    const { store, task, harness, releaseSend } = await renderComposerWithTask({
+      body: "From keyboard",
+      holdSend: true,
+    });
+    try {
+      const body = screen.getByRole("textbox", { name: "Comment body" });
+      fireEvent.keyDown(body, { key: "Enter" });
+      fireEvent.keyDown(body, { key: "Enter" });
+
+      await waitFor(() => expect(rpcCall).toHaveBeenCalledTimes(1));
+      expect(
+        store.tasks
+          .listComments(task.id)
+          .filter((entry) => entry.body === "From keyboard"),
+      ).toHaveLength(1);
+      releaseSend();
+    } finally {
+      releaseSend();
+      await harness.dispose();
+    }
+  });
+
+  it("does not submit on Shift+Enter", async () => {
+    const { harness, releaseSend } = await renderComposerWithTask({
+      body: "Keep drafting",
+    });
+    try {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment body" }), {
+        key: "Enter",
+        shiftKey: true,
+      });
+      expect(rpcCall).not.toHaveBeenCalled();
+    } finally {
+      releaseSend();
+      await harness.dispose();
+    }
+  });
+
+  it("does not submit during IME composition", async () => {
+    const { harness, releaseSend } = await renderComposerWithTask({
+      body: "候補",
+    });
+    try {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment body" }), {
+        key: "Enter",
+        isComposing: true,
+      });
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment body" }), {
+        key: "Enter",
+        keyCode: 229,
+      });
+      expect(rpcCall).not.toHaveBeenCalled();
+    } finally {
+      releaseSend();
+      await harness.dispose();
+    }
+  });
+
+  it("does not submit when the comment is empty", async () => {
+    const { harness, releaseSend } = await renderComposerWithTask({ body: "" });
+    try {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment body" }), {
+        key: "Enter",
+      });
+      expect(rpcCall).not.toHaveBeenCalled();
+      expect(
+        (
+          screen.getByRole("button", { name: "Comment" }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+    } finally {
+      releaseSend();
+      await harness.dispose();
+    }
+  });
+
+  it("submits on Cmd+Enter", async () => {
+    const { store, task, harness, releaseSend } = await renderComposerWithTask({
+      body: "Mod submit",
+    });
+    try {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment body" }), {
+        key: "Enter",
+        metaKey: true,
+      });
+      await waitFor(() => expect(rpcCall).toHaveBeenCalledTimes(1));
+      expect(
+        store.tasks
+          .listComments(task.id)
+          .some((entry) => entry.body === "Mod submit"),
+      ).toBe(true);
     } finally {
       releaseSend();
       await harness.dispose();
