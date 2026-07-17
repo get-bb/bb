@@ -452,10 +452,11 @@ function ThreadTrailingIndicator({
     isBusy ||
     isWorkflowActive ||
     showUnreadBadge;
-  const draftReplacesLoadingGlyph =
+  const draftIsWorking =
     hasComposerDraft && isActive && isThreadLoadingGlyphVisible(statusProps);
-  const showDraftIndicator =
-    draftReplacesLoadingGlyph || (hasComposerDraft && !showStatusGlyph);
+  const hasCriticalStatus =
+    (showUnreadBadge && unreadBadgeTone === "error") || hasPendingInteraction;
+  const showDraftIndicator = hasComposerDraft && !hasCriticalStatus;
 
   if (!showStatusGlyph && !showDraftIndicator) {
     return null;
@@ -470,7 +471,7 @@ function ThreadTrailingIndicator({
       )}
     >
       {showDraftIndicator ? (
-        <ThreadDraftIndicator isWorking={draftReplacesLoadingGlyph} />
+        <ThreadDraftIndicator isWorking={draftIsWorking} />
       ) : (
         <ThreadStatusGlyph {...statusProps} />
       )}

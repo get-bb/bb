@@ -161,10 +161,7 @@ afterEach(cleanup);
 
 describe("ThreadRow", () => {
   it("puts the draft icon in the trailing status slot", () => {
-    const { container } = renderThreadRow({
-      hasComposerDraft: true,
-      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
-    });
+    const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
@@ -174,6 +171,7 @@ describe("ThreadRow", () => {
     expect(
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
     ).not.toBeNull();
+    expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
   });
 
   it("replaces the active working spinner with a shimmering draft icon", () => {
@@ -195,6 +193,27 @@ describe("ThreadRow", () => {
     expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
     expect(Array.from(draftIcon.classList)).toContain(
       SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
+    expect(screen.queryByLabelText("Agent working")).toBeNull();
+  });
+
+  it("keeps a static draft icon when a working thread is not selected", () => {
+    const { container } = renderThreadRow({
+      hasComposerDraft: true,
+      isActive: false,
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    const draftIcon = container.querySelector('[data-icon="Edit"]');
+    expect(draftIcon).not.toBeNull();
+    expect(Array.from(draftIcon?.classList ?? [])).not.toContain(
+      "animate-shine-icon",
     );
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
@@ -413,6 +432,7 @@ describe("ThreadRow", () => {
 
   it("shows an unread error before pending or active work", () => {
     renderThreadRow({
+      hasComposerDraft: true,
       thread: createThread({
         status: "error",
         hasPendingInteraction: true,
@@ -438,6 +458,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Background agent running")).toBeNull();
     expect(screen.queryByLabelText("Background command running")).toBeNull();
+    expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
   });
 
   it("shows an animated working-colored workflow glyph for an idle thread with an active workflow", () => {

@@ -483,8 +483,30 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
+        label="inactive working + draft"
+        hint="the draft pencil remains visible in the trailing slot but stops shimmering when the thread is not selected"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={makeThread({
+              title: "Background thread with a saved draft",
+              titleFallback: "Background thread with a saved draft",
+              status: "active",
+              runtime: {
+                displayStatus: "active",
+                hostReconnectGraceExpiresAt: null,
+              },
+            })}
+            hasComposerDraft
+            isActive={false}
+            options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
         label="draft + unread"
-        hint="the unread status keeps priority in the single trailing status slot"
+        hint="the persistent draft pencil owns the trailing slot instead of the unread dot"
       >
         <SidebarStage>
           <StoryThreadRow
