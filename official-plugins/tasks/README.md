@@ -62,6 +62,10 @@ the newly recorded agent comment itself.
 
 Run `bb tasks --help` or `bb tasks <command> --help` for exact options. Add
 `--json` to commands when another command or agent will consume the output.
+File paths (`--file`, `--attach`, `--out`, `--description-file`, `--body-file`)
+resolve on the invoking machine: inside an agent thread that is the thread's
+machine, otherwise the server's machine; pass `--machine <id-or-name>` to
+target another enrolled machine.
 
 | Command                                        | Purpose                                                                                                                           |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |

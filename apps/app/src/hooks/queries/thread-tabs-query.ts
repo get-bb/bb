@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ThreadTabsResponse } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { threadTabsQueryKey } from "./query-keys";
 import { RESUME_REFETCH_QUERY_POLICY } from "./query-policies";
 
@@ -16,7 +16,7 @@ export function useThreadTabs(
 
   return useQuery<ThreadTabsResponse>({
     queryKey: threadTabsQueryKey(threadId),
-    queryFn: ({ signal }) => api.getThreadTabs(threadId, signal),
+    queryFn: ({ signal }) => sdk.threads.tabs.get({ threadId, signal }),
     enabled,
     ...RESUME_REFETCH_QUERY_POLICY,
   });

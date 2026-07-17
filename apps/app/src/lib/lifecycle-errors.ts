@@ -1,4 +1,5 @@
 import { assertNever } from "@bb/core-ui";
+import { BbHttpError } from "@bb/sdk/browser";
 import {
   lifecycleApiErrorSchema,
   type LifecycleApiError,
@@ -420,7 +421,7 @@ function describeParentThreadInvalid({
 }
 
 export function parseLifecycleError(error: unknown): LifecycleApiError | null {
-  if (!(error instanceof HttpError)) {
+  if (!(error instanceof HttpError) && !(error instanceof BbHttpError)) {
     return null;
   }
 

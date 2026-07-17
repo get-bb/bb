@@ -792,8 +792,8 @@ declare const providerPendingInteractionSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     threadId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        pending: "pending";
         interrupted: "interrupted";
+        pending: "pending";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -930,8 +930,8 @@ declare const pluginPendingInteractionSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     threadId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        pending: "pending";
         interrupted: "interrupted";
+        pending: "pending";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -1074,8 +1074,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerThreadId: z$1.ZodString;
     objective: z$1.ZodString;
     status: z$1.ZodEnum<{
-        paused: "paused";
         active: "active";
+        paused: "paused";
         budgetLimited: "budgetLimited";
         complete: "complete";
     }>;
@@ -1119,10 +1119,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         command: z$1.ZodString;
         cwd: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1166,10 +1166,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             diff: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1202,10 +1202,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tool: z$1.ZodString;
         arguments: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodUnknown>>;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         result: z$1.ZodOptional<z$1.ZodUnknown>;
         error: z$1.ZodOptional<z$1.ZodString>;
@@ -1252,17 +1252,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            pending: "pending";
-            running: "running";
-            paused: "paused";
             completed: "completed";
             failed: "failed";
+            paused: "paused";
+            pending: "pending";
+            running: "running";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1278,8 +1278,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    running: "running";
                     failed: "failed";
+                    running: "running";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1347,10 +1347,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         command: z$1.ZodString;
         cwd: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1394,10 +1394,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             diff: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1430,10 +1430,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tool: z$1.ZodString;
         arguments: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodUnknown>>;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         result: z$1.ZodOptional<z$1.ZodUnknown>;
         error: z$1.ZodOptional<z$1.ZodString>;
@@ -1480,17 +1480,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            pending: "pending";
-            running: "running";
-            paused: "paused";
             completed: "completed";
             failed: "failed";
+            paused: "paused";
+            pending: "pending";
+            running: "running";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1506,8 +1506,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    running: "running";
                     failed: "failed";
+                    running: "running";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1609,17 +1609,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            pending: "pending";
-            running: "running";
-            paused: "paused";
             completed: "completed";
             failed: "failed";
+            paused: "paused";
+            pending: "pending";
+            running: "running";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1635,8 +1635,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    running: "running";
                     failed: "failed";
+                    running: "running";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1681,17 +1681,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
+            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            pending: "pending";
-            running: "running";
-            paused: "paused";
             completed: "completed";
             failed: "failed";
+            paused: "paused";
+            pending: "pending";
+            running: "running";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1707,8 +1707,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    running: "running";
                     failed: "failed";
+                    running: "running";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1780,10 +1780,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     plan: z$1.ZodArray<z$1.ZodObject<{
         step: z$1.ZodString;
         status: z$1.ZodOptional<z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
             failed: "failed";
             active: "active";
+            pending: "pending";
         }>>;
     }, z$1.core.$strip>>;
     explanation: z$1.ZodOptional<z$1.ZodString>;
@@ -2176,8 +2176,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerId: z$1.ZodString;
     providerRequestId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        pending: "pending";
         interrupted: "interrupted";
+        pending: "pending";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -2228,8 +2228,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerId: z$1.ZodString;
     providerRequestId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        pending: "pending";
         interrupted: "interrupted";
+        pending: "pending";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -2398,8 +2398,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
+            pending: "pending";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -2954,6 +2954,11 @@ declare const uploadedPromptAttachmentSchema: z$1.ZodObject<{
     sizeBytes: z$1.ZodNumber;
 }, z$1.core.$strip>;
 type UploadedPromptAttachment = z$1.infer<typeof uploadedPromptAttachmentSchema>;
+declare const copyProjectAttachmentsRequestSchema: z$1.ZodObject<{
+    sourceProjectId: z$1.ZodString;
+    paths: z$1.ZodArray<z$1.ZodString>;
+}, z$1.core.$strict>;
+type CopyProjectAttachmentsRequest = z$1.infer<typeof copyProjectAttachmentsRequestSchema>;
 
 declare const updateEnvironmentRequestSchema: z$1.ZodObject<{
     mergeBaseBranch: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
@@ -3033,32 +3038,32 @@ declare const environmentDiffFileQuerySchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
     target: z$1.ZodLiteral<"uncommitted">;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"branch_committed">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"all">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"commit">;
     sha: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>], "target">;
 type EnvironmentDiffFileQuery = z$1.infer<typeof environmentDiffFileQuerySchema>;
@@ -3080,8 +3085,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -3112,8 +3117,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -3463,6 +3468,7 @@ type EnvironmentStatusResponse = z$1.infer<typeof environmentStatusResponseSchem
 declare const providerUsageResponseSchema: z$1.ZodObject<{
     codex: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         status: z$1.ZodLiteral<"ok">;
+        accountEmail: z$1.ZodNullable<z$1.ZodString>;
         planLabel: z$1.ZodNullable<z$1.ZodString>;
         windows: z$1.ZodArray<z$1.ZodObject<{
             label: z$1.ZodString;
@@ -3485,6 +3491,7 @@ declare const providerUsageResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strip>], "status">;
     claudeCode: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         status: z$1.ZodLiteral<"ok">;
+        accountEmail: z$1.ZodNullable<z$1.ZodString>;
         planLabel: z$1.ZodNullable<z$1.ZodString>;
         windows: z$1.ZodArray<z$1.ZodObject<{
             label: z$1.ZodString;
@@ -3507,6 +3514,7 @@ declare const providerUsageResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strip>], "status">;
     cursor: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         status: z$1.ZodLiteral<"ok">;
+        accountEmail: z$1.ZodNullable<z$1.ZodString>;
         planLabel: z$1.ZodNullable<z$1.ZodString>;
         windows: z$1.ZodArray<z$1.ZodObject<{
             label: z$1.ZodString;
@@ -5012,6 +5020,7 @@ declare const hostDaemonCommandRegistry: {
     }, z$1.core.$strict>, z$1.ZodObject<{
         codex: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             status: z$1.ZodLiteral<"ok">;
+            accountEmail: z$1.ZodNullable<z$1.ZodString>;
             planLabel: z$1.ZodNullable<z$1.ZodString>;
             windows: z$1.ZodArray<z$1.ZodObject<{
                 label: z$1.ZodString;
@@ -5034,6 +5043,7 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "status">;
         claudeCode: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             status: z$1.ZodLiteral<"ok">;
+            accountEmail: z$1.ZodNullable<z$1.ZodString>;
             planLabel: z$1.ZodNullable<z$1.ZodString>;
             windows: z$1.ZodArray<z$1.ZodObject<{
                 label: z$1.ZodString;
@@ -5056,6 +5066,7 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "status">;
         cursor: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             status: z$1.ZodLiteral<"ok">;
+            accountEmail: z$1.ZodNullable<z$1.ZodString>;
             planLabel: z$1.ZodNullable<z$1.ZodString>;
             windows: z$1.ZodArray<z$1.ZodObject<{
                 label: z$1.ZodString;
@@ -6556,19 +6567,19 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
     closeReason: z$1.ZodNullable<z$1.ZodEnum<{
         user: "user";
+        "thread-deleted": "thread-deleted";
         "process-exit": "process-exit";
         "daemon-disconnect": "daemon-disconnect";
         "environment-destroyed": "environment-destroyed";
         "thread-archived": "thread-archived";
-        "thread-deleted": "thread-deleted";
         "open-timeout": "open-timeout";
     }>>;
     createdAt: z$1.ZodNumber;
@@ -6587,19 +6598,19 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
         closeReason: z$1.ZodNullable<z$1.ZodEnum<{
             user: "user";
+            "thread-deleted": "thread-deleted";
             "process-exit": "process-exit";
             "daemon-disconnect": "daemon-disconnect";
             "environment-destroyed": "environment-destroyed";
             "thread-archived": "thread-archived";
-            "thread-deleted": "thread-deleted";
             "open-timeout": "open-timeout";
         }>>;
         createdAt: z$1.ZodNumber;
@@ -8842,8 +8853,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -9085,8 +9096,11 @@ declare const updateThreadTabsRequestSchema: z$1.ZodObject<{
 }, z$1.core.$strict>;
 type UpdateThreadTabsRequest = z$1.infer<typeof updateThreadTabsRequestSchema>;
 
-interface EnvironmentGetArgs {
+interface EnvironmentActionArgs {
     environmentId: string;
+}
+interface EnvironmentGetArgs extends EnvironmentActionArgs {
+    signal?: AbortSignal;
 }
 type EnvironmentMergeBaseBranchUpdateValue = Exclude<UpdateEnvironmentRequest["mergeBaseBranch"], undefined>;
 type EnvironmentNameUpdateValue = Exclude<UpdateEnvironmentRequest["name"], undefined>;
@@ -9104,15 +9118,19 @@ type EnvironmentUpdateArgs = EnvironmentUpdateFields & {
 };
 interface EnvironmentStatusArgs extends EnvironmentStatusQuery {
     environmentId: string;
+    signal?: AbortSignal;
 }
 type EnvironmentDiffArgs = EnvironmentDiffQuery & {
     environmentId: string;
+    signal?: AbortSignal;
 };
 type EnvironmentDiffFileArgs = EnvironmentDiffFileQuery & {
     environmentId: string;
+    signal?: AbortSignal;
 };
 interface EnvironmentDiffBranchesArgs extends EnvironmentDiffBranchesQuery {
     environmentId: string;
+    signal?: AbortSignal;
 }
 interface EnvironmentCommitArgs {
     environmentId: string;
@@ -9127,9 +9145,11 @@ interface EnvironmentPullRequestMergeArgs {
 }
 type EnvironmentDiffPatchArgs = EnvironmentDiffPatchRequest & {
     environmentId: string;
+    signal?: AbortSignal;
 };
 interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
     environmentId: string;
+    signal?: AbortSignal;
 }
 type EnvironmentArchiveThreadsResult = EnvironmentArchiveThreadsResponse;
 type EnvironmentCommitResult = CommitActionResponse;
@@ -9148,7 +9168,7 @@ type EnvironmentSquashMergeResult = SquashMergeActionResponse;
 type EnvironmentStatusResult = EnvironmentStatusResponse;
 type EnvironmentUpdateResult = Environment;
 interface EnvironmentsArea {
-    archiveThreads(args: EnvironmentGetArgs): Promise<EnvironmentArchiveThreadsResult>;
+    archiveThreads(args: EnvironmentActionArgs): Promise<EnvironmentArchiveThreadsResult>;
     commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
     diff(args: EnvironmentDiffArgs): Promise<EnvironmentDiffResult>;
     diffBranches(args: EnvironmentDiffBranchesArgs): Promise<EnvironmentDiffBranchesResult>;
@@ -9157,8 +9177,8 @@ interface EnvironmentsArea {
     diffPatch(args: EnvironmentDiffPatchArgs): Promise<EnvironmentDiffPatchResult>;
     get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
     pullRequest(args: EnvironmentGetArgs): Promise<EnvironmentPullRequestResult>;
-    markPullRequestDraft(args: EnvironmentGetArgs): Promise<EnvironmentMarkPullRequestDraftResult>;
-    markPullRequestReady(args: EnvironmentGetArgs): Promise<EnvironmentMarkPullRequestReadyResult>;
+    markPullRequestDraft(args: EnvironmentActionArgs): Promise<EnvironmentMarkPullRequestDraftResult>;
+    markPullRequestReady(args: EnvironmentActionArgs): Promise<EnvironmentMarkPullRequestReadyResult>;
     mergePullRequest(args: EnvironmentPullRequestMergeArgs): Promise<EnvironmentMergePullRequestResult>;
     paths(args: EnvironmentPathsArgs): Promise<EnvironmentPathsResult>;
     squashMerge(args: EnvironmentSquashMergeArgs): Promise<EnvironmentSquashMergeResult>;
@@ -9175,6 +9195,7 @@ interface FileReadArgs {
     hostId?: string;
     path: string;
     rootPath?: string;
+    signal?: AbortSignal;
 }
 interface FileWriteArgs {
     hostId?: string;
@@ -9199,6 +9220,7 @@ interface FileListArgs {
     path: string;
     query?: string;
     limit?: number;
+    signal?: AbortSignal;
 }
 interface PathListArgs extends FileListArgs {
     includeFiles: boolean;
@@ -9225,6 +9247,7 @@ interface FileRemoveArgs {
 interface FilePreviewArgs {
     hostId?: string;
     rootPath: string;
+    signal?: AbortSignal;
     ttlMs?: number;
 }
 type FileReadResult = HostFileReadResponse;
@@ -9259,24 +9282,35 @@ interface GuideArea {
 
 interface HostGetArgs {
     hostId: string;
+    signal?: AbortSignal;
+}
+interface HostDeleteArgs {
+    hostId: string;
 }
 interface HostUpdateArgs extends UpdateHostRequest {
     hostId: string;
 }
 interface HostDirectoryArgs extends HostDirectoryQuery {
     hostId: string;
+    signal?: AbortSignal;
 }
 interface HostCloneDefaultPathArgs extends HostCloneDefaultPathQuery {
     hostId: string;
+    signal?: AbortSignal;
 }
 interface HostPathsExistArgs extends HostPathsExistRequest {
     hostId: string;
+    signal?: AbortSignal;
 }
 interface HostPickFolderArgs extends HostPickFolderRequest {
     hostId: string;
+    signal?: AbortSignal;
 }
 interface HostProviderCliInstallArgs extends HostProviderCliInstallRequest {
     hostId: string;
+}
+interface HostListArgs {
+    signal?: AbortSignal;
 }
 type HostCreateJoinCodeResult = CreateHostJoinCodeResponse;
 type HostDeleteResult = {
@@ -9293,12 +9327,12 @@ type HostProviderCliStatusResult = HostProviderCliStatusResponse;
 type HostUpdateResult = Host;
 interface HostsArea {
     createJoinCode(): Promise<HostCreateJoinCodeResult>;
-    delete(args: HostGetArgs): Promise<HostDeleteResult>;
+    delete(args: HostDeleteArgs): Promise<HostDeleteResult>;
     directory(args: HostDirectoryArgs): Promise<HostDirectoryResult>;
     get(args: HostGetArgs): Promise<HostGetResult>;
     cloneDefaultPath(args: HostCloneDefaultPathArgs): Promise<HostCloneDefaultPathResult>;
     installProviderCli(args: HostProviderCliInstallArgs): Promise<HostProviderCliInstallResult>;
-    list(): Promise<HostListResult>;
+    list(args?: HostListArgs): Promise<HostListResult>;
     pathsExist(args: HostPathsExistArgs): Promise<HostPathsExistResult>;
     pickFolder(args: HostPickFolderArgs): Promise<HostPickFolderResult>;
     providerCliStatus(args: HostGetArgs): Promise<HostProviderCliStatusResult>;
@@ -9309,11 +9343,13 @@ interface ProjectListArgs {
     include?: ProjectListQuery["include"];
     /** Include the singleton personal project. Defaults to false for compatibility. */
     includePersonal?: boolean;
+    signal?: AbortSignal;
 }
 interface ProjectCreateArgs extends CreateProjectRequest {
 }
 interface ProjectGetArgs {
     projectId: string;
+    signal?: AbortSignal;
 }
 interface ProjectUpdateArgs extends UpdateProjectRequest {
     projectId: string;
@@ -9326,6 +9362,7 @@ interface ProjectReorderArgs extends ReorderProjectRequest {
 }
 interface ProjectPromptHistoryArgs extends PromptHistoryQuery {
     projectId: string;
+    signal?: AbortSignal;
 }
 /** Select one project workspace source, or omit both for the primary host. */
 type ProjectWorkspaceRoutingArgs = {
@@ -9340,21 +9377,27 @@ type ProjectWorkspaceRoutingArgs = {
 };
 type ProjectFilesArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectFilesQuery, "environmentId" | "hostId"> & {
     projectId: string;
+    signal?: AbortSignal;
 };
 type ProjectPathsArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectPathsQuery, "environmentId" | "hostId"> & {
     projectId: string;
+    signal?: AbortSignal;
 };
 type ProjectCommandsArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectCommandsQuery, "environmentId" | "hostId"> & {
     projectId: string;
+    signal?: AbortSignal;
 };
 type ProjectFileContentArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectFileContentQuery, "environmentId" | "hostId"> & {
     projectId: string;
+    signal?: AbortSignal;
 };
 interface ProjectBranchesArgs extends ProjectBranchesQuery {
     projectId: string;
+    signal?: AbortSignal;
 }
 interface ProjectDefaultExecutionOptionsArgs {
     projectId: string;
+    signal?: AbortSignal;
 }
 interface ProjectAttachmentFileLike {
     arrayBuffer(): Promise<ArrayBuffer>;
@@ -9379,6 +9422,10 @@ type ProjectAttachmentUploadArgs = ProjectAttachmentUploadArgsBase & ({
 });
 interface ProjectAttachmentReadArgs {
     path: string;
+    projectId: string;
+    signal?: AbortSignal;
+}
+interface ProjectAttachmentCopyArgs extends CopyProjectAttachmentsRequest {
     projectId: string;
 }
 type ProjectSourceAddArgs = CreateProjectSourceRequest & {
@@ -9430,6 +9477,7 @@ interface ProjectSourcesArea {
     update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
 interface ProjectAttachmentsArea {
+    copy(args: ProjectAttachmentCopyArgs): Promise<void>;
     read(args: ProjectAttachmentReadArgs): Promise<ProjectAttachmentReadResult>;
     upload(args: ProjectAttachmentUploadArgs): Promise<ProjectAttachmentUploadResult>;
 }
@@ -9462,9 +9510,12 @@ type ProviderHostRoutingArgs = {
     environmentId?: never;
     hostId?: never;
 };
-type ProviderListArgs = ProviderHostRoutingArgs;
+type ProviderListArgs = ProviderHostRoutingArgs & {
+    signal?: AbortSignal;
+};
 type ProviderModelsArgs = ProviderHostRoutingArgs & {
     providerId?: string;
+    signal?: AbortSignal;
 };
 type ProviderListResult = ProviderInfo[];
 type ProviderModelsResult = SystemExecutionOptionsResponse;
@@ -9497,6 +9548,7 @@ interface PluginTokenArgs extends PluginIdArgs {
 }
 interface PluginCheckUpdatesArgs {
     pluginId?: string;
+    signal?: AbortSignal;
 }
 interface PluginRpcArgs<TOutput> extends PluginIdArgs {
     input?: JsonValue;
@@ -9505,6 +9557,22 @@ interface PluginRpcArgs<TOutput> extends PluginIdArgs {
 }
 interface PluginCatalogSearchArgs {
     query: string;
+    signal?: AbortSignal;
+}
+interface PluginCatalogStatusArgs {
+    signal?: AbortSignal;
+}
+interface PluginGetSettingsArgs extends PluginIdArgs {
+    signal?: AbortSignal;
+}
+interface PluginGetSourceArgs extends PluginIdArgs {
+    signal?: AbortSignal;
+}
+interface PluginListArgs {
+    signal?: AbortSignal;
+}
+interface PluginListUpdateResultsArgs {
+    signal?: AbortSignal;
 }
 type PluginDisableResult = InstalledPlugin;
 type PluginEnableResult = InstalledPlugin;
@@ -9523,7 +9591,7 @@ type PluginCatalogSearchResult = PluginCatalogSearchResult$1[];
 interface PluginCatalogArea {
     install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
     search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
-    status(): Promise<PluginCatalogStatusResult>;
+    status(args?: PluginCatalogStatusArgs): Promise<PluginCatalogStatusResult>;
 }
 interface PluginsArea {
     applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
@@ -9532,11 +9600,11 @@ interface PluginsArea {
     catalog: PluginCatalogArea;
     disable(args: PluginIdArgs): Promise<PluginDisableResult>;
     enable(args: PluginIdArgs): Promise<PluginEnableResult>;
-    getSettings(args: PluginIdArgs): Promise<PluginGetSettingsResult>;
-    getSource(args: PluginIdArgs): Promise<PluginGetSourceResult>;
+    getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;
+    getSource(args: PluginGetSourceArgs): Promise<PluginGetSourceResult>;
     install(args: PluginInstallArgs): Promise<PluginInstallResult>;
-    list(): Promise<PluginListResult>;
-    listUpdateResults(): Promise<PluginCheckUpdatesResult>;
+    list(args?: PluginListArgs): Promise<PluginListResult>;
+    listUpdateResults(args?: PluginListUpdateResultsArgs): Promise<PluginCheckUpdatesResult>;
     reload(args?: PluginReloadArgs): Promise<PluginReloadResult>;
     remove(args: PluginIdArgs): Promise<PluginRemoveResult>;
     token(args: PluginTokenArgs): Promise<PluginTokenResult>;
@@ -9629,6 +9697,7 @@ interface BbRealtime {
 
 interface StatusGetArgs {
     projectId?: string;
+    signal?: AbortSignal;
     threadId?: string;
 }
 interface StatusThreadSummary {
@@ -9656,11 +9725,17 @@ type ThemeGetResult = AppTheme;
 type ThemeCatalogResult = ThemeCatalogResponse;
 type ThemeSetInput = AppThemeSelection;
 type ThemeSetResult = AppTheme;
+interface ThemeCatalogArgs {
+    signal?: AbortSignal;
+}
+interface ThemeGetArgs {
+    signal?: AbortSignal;
+}
 interface ThemeArea {
     /** The active app palette, resolved server-side (built-in id or custom CSS). */
-    get(): Promise<ThemeGetResult>;
+    get(args?: ThemeGetArgs): Promise<ThemeGetResult>;
     /** The custom-theme directory plus discovered themes and the active palette. */
-    catalog(): Promise<ThemeCatalogResult>;
+    catalog(args?: ThemeCatalogArgs): Promise<ThemeCatalogResult>;
     /** Set the complete app appearance selection in one request. */
     set(selection: ThemeSetInput): Promise<ThemeSetResult>;
     /**
@@ -9671,12 +9746,26 @@ interface ThemeArea {
     set(themeId: string): Promise<ThemeSetResult>;
 }
 
+interface SystemAttentionArgs {
+    signal?: AbortSignal;
+}
+interface SystemConfigArgs {
+    signal?: AbortSignal;
+}
+interface SystemExecutionOptionsArgs extends SystemExecutionOptionsQuery {
+    signal?: AbortSignal;
+}
+interface SystemUsageLimitsArgs extends SystemUsageLimitsQuery {
+    signal?: AbortSignal;
+}
 interface SystemVersionArgs {
     force?: boolean;
+    signal?: AbortSignal;
 }
 interface SystemVoiceTranscriptionArgs {
     file: Blob;
     prompt?: string;
+    signal?: AbortSignal;
 }
 type SystemAttentionResult = SystemAttentionResponse;
 type SystemConfigResult = SystemConfigResponse;
@@ -9689,15 +9778,15 @@ type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 type SystemUsageLimitsResult = ProviderUsageResponse;
 type SystemVersionResult = SystemVersionResponse;
 interface SystemArea {
-    attention(): Promise<SystemAttentionResult>;
-    config(): Promise<SystemConfigResult>;
-    executionOptions(args?: SystemExecutionOptionsQuery): Promise<SystemExecutionOptionsResult>;
+    attention(args?: SystemAttentionArgs): Promise<SystemAttentionResult>;
+    config(args?: SystemConfigArgs): Promise<SystemConfigResult>;
+    executionOptions(args?: SystemExecutionOptionsArgs): Promise<SystemExecutionOptionsResult>;
     reloadConfig(): Promise<SystemReloadConfigResult>;
     transcribeVoice(args: SystemVoiceTranscriptionArgs): Promise<SystemVoiceTranscriptionResult>;
     updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
     updateGeneralSettings(args: AppSettings): Promise<SystemUpdateGeneralSettingsResult>;
     updateKeyboardSettings(args: AppKeybindingOverrides): Promise<SystemUpdateKeyboardSettingsResult>;
-    usageLimits(args?: SystemUsageLimitsQuery): Promise<SystemUsageLimitsResult>;
+    usageLimits(args?: SystemUsageLimitsArgs): Promise<SystemUsageLimitsResult>;
     version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
 }
 
@@ -9734,6 +9823,7 @@ interface TerminalHostPathCreateScope {
 type TerminalListScope = TerminalThreadScope | TerminalEnvironmentScope | TerminalHostPathListScope;
 type TerminalCreateScope = TerminalThreadScope | TerminalEnvironmentScope | TerminalHostPathCreateScope;
 interface TerminalListArgs {
+    signal?: AbortSignal;
     scope: TerminalListScope;
 }
 interface TerminalCreateArgs {
@@ -9746,7 +9836,9 @@ interface TerminalCreateArgs {
 interface TerminalTargetArgs {
     terminalId: string;
 }
-type TerminalGetArgs = TerminalTargetArgs;
+interface TerminalGetArgs extends TerminalTargetArgs {
+    signal?: AbortSignal;
+}
 interface TerminalRenameArgs extends TerminalTargetArgs {
     title: UpdateTerminalRequest["title"];
 }
@@ -9762,6 +9854,7 @@ interface TerminalResizeArgs extends TerminalTargetArgs {
 }
 interface TerminalOutputArgs extends TerminalTargetArgs {
     limitChunks?: TerminalOutputQuery["limitChunks"];
+    signal?: AbortSignal;
     sinceSeq?: TerminalOutputQuery["sinceSeq"];
     tailBytes?: TerminalOutputQuery["tailBytes"];
 }
@@ -9802,13 +9895,16 @@ interface ThreadListArgs {
     originKind?: ThreadListQuery["originKind"];
     parentThreadId?: string;
     projectId?: string;
+    signal?: AbortSignal;
     sourceThreadId?: string;
     unfiled?: boolean;
 }
 interface ThreadSearchArgs extends ThreadSearchQuery {
+    signal?: AbortSignal;
 }
 interface ThreadGetArgs {
     include?: ThreadGetQuery["include"];
+    signal?: AbortSignal;
     threadId: string;
 }
 type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
@@ -9883,16 +9979,21 @@ interface ThreadDeleteArgs extends DeleteThreadRequest {
 interface ThreadSendArgs extends SendMessageRequest {
     threadId: string;
 }
-interface ThreadStatusArgs {
+interface ThreadActionArgs {
     threadId: string;
 }
+interface ThreadStatusArgs extends ThreadActionArgs {
+    signal?: AbortSignal;
+}
 interface ThreadPromptHistoryArgs extends PromptHistoryQuery {
+    signal?: AbortSignal;
     threadId: string;
 }
 interface ThreadPinOrderArgs extends ReorderPinnedThreadRequest {
     threadId: string;
 }
 interface ThreadQueuedMessageArgs {
+    signal?: AbortSignal;
     threadId: string;
 }
 interface ThreadQueuedMessageCreateArgs extends CreateQueuedMessageRequest {
@@ -9910,12 +10011,15 @@ interface ThreadQueuedMessageGroupBoundaryArgs extends SetQueuedMessageGroupBoun
     threadId: string;
 }
 interface ThreadStorageFilesArgs extends ThreadStorageFilesQuery {
+    signal?: AbortSignal;
     threadId: string;
 }
 interface ThreadStoragePathsArgs extends ThreadStoragePathsQuery {
+    signal?: AbortSignal;
     threadId: string;
 }
 interface ThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsQuery {
+    signal?: AbortSignal;
     threadId: string;
 }
 interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
@@ -9929,30 +10033,39 @@ interface ThreadOpenArgs {
 interface ThreadEventsListArgs {
     afterSeq?: string;
     limit?: string;
+    signal?: AbortSignal;
     threadId: string;
 }
 interface ThreadEventWaitArgs {
     afterSeq?: string;
+    signal?: AbortSignal;
     threadId: string;
     type: string;
     waitMs: string;
 }
 interface ThreadTimelineArgs extends ThreadTimelineQuery {
+    signal?: AbortSignal;
     threadId: string;
 }
 interface ThreadOutputArgs {
+    signal?: AbortSignal;
     threadId: string;
 }
 interface ThreadInteractionListArgs {
+    signal?: AbortSignal;
     threadId: string;
 }
-interface ThreadInteractionGetArgs extends ThreadInteractionListArgs {
+interface ThreadInteractionTargetArgs {
     interactionId: string;
+    threadId: string;
 }
-interface ThreadInteractionResolveArgs extends ThreadInteractionGetArgs {
+interface ThreadInteractionGetArgs extends ThreadInteractionTargetArgs {
+    signal?: AbortSignal;
+}
+interface ThreadInteractionResolveArgs extends ThreadInteractionTargetArgs {
     resolution: PendingInteractionResolution;
 }
-interface ThreadInteractionRespondArgs extends ThreadInteractionGetArgs {
+interface ThreadInteractionRespondArgs extends ThreadInteractionTargetArgs {
     value: JsonValue;
 }
 type ThreadWaitTarget = {
@@ -9965,6 +10078,7 @@ type ThreadWaitTarget = {
 interface ThreadWaitArgs {
     event?: string;
     pollIntervalMs?: number;
+    signal?: AbortSignal;
     status?: ThreadStatus;
     threadId: string;
     timeoutMs?: number;
@@ -9985,7 +10099,7 @@ type ThreadWaitResult = {
     threadId: string;
 };
 interface ThreadInteractionsArea {
-    cancel(args: ThreadInteractionGetArgs): Promise<ThreadInteractionCancelResult>;
+    cancel(args: ThreadInteractionTargetArgs): Promise<ThreadInteractionCancelResult>;
     get(args: ThreadInteractionGetArgs): Promise<ThreadInteractionGetResult>;
     list(args: ThreadInteractionListArgs): Promise<ThreadInteractionListResult>;
     resolve(args: ThreadInteractionResolveArgs): Promise<ThreadInteractionResolveResult>;
@@ -10008,8 +10122,8 @@ interface ThreadTabsArea {
     update(args: ThreadTabsUpdateArgs): Promise<ThreadTabsUpdateResult>;
 }
 interface ThreadsArea {
-    archive(args: ThreadStatusArgs): Promise<ThreadArchiveResult>;
-    archiveAll(args: ThreadStatusArgs): Promise<ThreadArchiveAllResult>;
+    archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
+    archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
     childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
     conversationOutline(args: ThreadStatusArgs): Promise<ThreadConversationOutlineResult>;
     defaultExecutionOptions(args: ThreadStatusArgs): Promise<ThreadDefaultExecutionOptionsResult>;
@@ -10018,25 +10132,25 @@ interface ThreadsArea {
     get(args: ThreadGetArgs): Promise<ThreadGetResult>;
     interactions: ThreadInteractionsArea;
     list(args?: ThreadListArgs): Promise<ThreadListResult>;
-    markRead(args: ThreadStatusArgs): Promise<ThreadReadStateResult>;
-    markUnread(args: ThreadStatusArgs): Promise<ThreadReadStateResult>;
+    markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
+    markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
     open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
     output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
-    pin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
+    pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
     promptHistory(args: ThreadPromptHistoryArgs): Promise<ThreadPromptHistoryResult>;
     queuedMessages: ThreadQueuedMessagesArea;
     reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
     search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
     send(args: ThreadSendArgs): Promise<ThreadSendResult>;
     spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
-    stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
+    stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
     tabs: ThreadTabsArea;
     timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
     timelineTurnSummaryDetails(args: ThreadTimelineTurnSummaryDetailsArgs): Promise<ThreadTimelineTurnSummaryDetailsResult>;
     storageFiles(args: ThreadStorageFilesArgs): Promise<ThreadStorageFilesResult>;
     storagePaths(args: ThreadStoragePathsArgs): Promise<ThreadStoragePathsResult>;
-    unarchive(args: ThreadStatusArgs): Promise<ThreadUnarchiveResult>;
-    unpin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
+    unarchive(args: ThreadActionArgs): Promise<ThreadUnarchiveResult>;
+    unpin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
     update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
     wait(args: ThreadWaitArgs): Promise<ThreadWaitResult>;
 }
@@ -10045,10 +10159,13 @@ type ThreadFolderCreateResult = ThreadFolderResponse;
 type ThreadFolderUpdateResult = ThreadFolderMutationResponse;
 type ThreadFolderDeleteResult = ThreadFolderMutationResponse;
 type ThreadFolderListResult = ThreadFolderResponse[];
+interface ThreadFolderListArgs {
+    signal?: AbortSignal;
+}
 interface ThreadFoldersArea {
     create(args: CreateThreadFolderRequest): Promise<ThreadFolderCreateResult>;
     delete(args: DeleteThreadFolderRequest): Promise<ThreadFolderDeleteResult>;
-    list(): Promise<ThreadFolderListResult>;
+    list(args?: ThreadFolderListArgs): Promise<ThreadFolderListResult>;
     update(args: UpdateThreadFolderRequest): Promise<ThreadFolderUpdateResult>;
 }
 
@@ -10371,11 +10488,26 @@ interface PluginAgentConfigurationContext {
         pluginId: string | null;
     };
 }
+/** Object form of a {@link PluginAgentConfiguration} tools entry: selects a
+ * registered tool and overrides the parameter schema advertised to the
+ * provider for this resolution only. */
+interface PluginAgentToolSelection {
+    /** Name of a tool registered by this plugin via `registerTool`. */
+    name: string;
+    /** JSON-schema object (root `type: "object"`, JSON-serializable, at most
+     * 128 KiB serialized) sent to the provider in place of the registered
+     * parameter schema. Execution-side validation still runs the registered
+     * parameters, so the override must only narrow what the registered schema
+     * already accepts. */
+    parameters: Record<string, unknown>;
+}
 /** Per-resolution selection returned by {@link PluginAgents.configure}. */
 interface PluginAgentConfiguration {
-    /** Tool names registered by this plugin. Duplicate or unknown names reject
+    /** Tool names registered by this plugin, or {@link PluginAgentToolSelection}
+     * entries to also override a tool's advertised parameter schema for this
+     * resolution. Duplicate or unknown names, or an invalid override, reject
      * this plugin's complete selection for the resolution. */
-    tools: string[];
+    tools: Array<string | PluginAgentToolSelection>;
     /** Skill frontmatter names from this plugin's manifest skill roots.
      * Duplicate or unknown names reject this plugin's complete selection. */
     skills: string[];
@@ -10632,4 +10764,4 @@ interface BbPluginApi {
 }
 
 export { defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };
+export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };

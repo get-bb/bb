@@ -16,7 +16,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
@@ -689,7 +689,12 @@ describe("ThreadDetailPromptArea", () => {
   it("dismisses a missing queued message but keeps a stale edit recoverable", async () => {
     mocks.queuedMessages = [makeQueuedMessage()];
     mocks.updateQueuedMessageMutateAsync.mockRejectedValueOnce(
-      new HttpError({ status: 409, message: "Queued message changed" }),
+      new BbHttpError({
+        body: null,
+        code: "invalid_request",
+        status: 409,
+        message: "Queued message changed",
+      }),
     );
     renderPromptArea();
     fireEvent.click(
@@ -705,7 +710,12 @@ describe("ThreadDetailPromptArea", () => {
     ).toBeTruthy();
 
     mocks.updateQueuedMessageMutateAsync.mockRejectedValueOnce(
-      new HttpError({ status: 404, message: "Queued message not found" }),
+      new BbHttpError({
+        body: null,
+        code: "invalid_request",
+        status: 404,
+        message: "Queued message not found",
+      }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
     await waitFor(() =>

@@ -1,5 +1,3 @@
-import { constants, readFileSync } from "node:fs";
-import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type {
   BbPluginApi,
@@ -16,10 +14,9 @@ import {
 } from "../api";
 import {
   buildAttachmentUrl,
-  MAX_ATTACHMENT_SIZE_BYTES,
   publishAttachmentChanged,
-  readAttachmentToPath,
-  saveAttachmentFromPath,
+  readAttachmentContent,
+  saveAttachmentFromBytes,
 } from "../attachments";
 import { delegationRpcContract } from "../delegate/contract";
 import { handlers as delegationHandlers } from "../delegate";
@@ -88,23 +85,27 @@ const FOLDER_HELP = `Usage:
   bb tasks folder update <id-or-name> [--name <name>] [--parent <id-or-name> | --no-parent] [--json]`;
 
 const CREATE_HELP =
-  "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--json]";
+  "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--machine <id-or-name>] [--json]";
 const LIST_HELP =
   "Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--json]";
 const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
 const UPDATE_HELP =
-  "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--add-label <name>]... [--remove-label <name>]... [--json]";
+  "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--add-label <name>]... [--remove-label <name>]... [--machine <id-or-name>] [--json]";
 const COMMENT_HELP =
-  "Usage: bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--author <name>] [--notify] [--json]";
+  "Usage: bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--author <name>] [--machine <id-or-name>] [--notify] [--json]";
 const LABEL_HELP = `Usage:
   bb tasks label create --project <prefix-or-id> --name <name> [--color <color>] [--json]
   bb tasks label list --project <prefix-or-id> [--json]
   bb tasks label delete --project <prefix-or-id> <name-or-id> [--json]`;
 const ATTACHMENT_HELP = `Usage:
-  bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--json]
-  bb tasks attachment get <attachment-id> --out <path> [--json]
+  bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--machine <id-or-name>] [--json]
+  bb tasks attachment get <attachment-id> --out <path> [--machine <id-or-name>] [--json]
   bb tasks attachment list <key> [--json]
-  bb tasks attachment remove <attachment-id> [--remove-references] [--json]`;
+  bb tasks attachment remove <attachment-id> [--remove-references] [--json]
+
+File paths are read from and written to the invoking machine: the thread's
+machine when run inside an agent thread, otherwise the server's machine.
+Pass --machine to target another enrolled machine explicitly.`;
 const PRESET_HELP = `Usage:
   bb tasks preset list [--json]
   bb tasks preset show <name-or-id> [--json]
@@ -133,12 +134,93 @@ function unwrapTask(result: TaskMutationResult): Task {
   return result.task;
 }
 
-function readFileOption(
+// CLI handlers execute on the server, so a path argument names a file on the
+// INVOKING machine, not this process's filesystem. All client file access
+// goes through bb.sdk.files with the host resolved from the calling thread's
+// environment (or an explicit --machine override); node:fs would silently
+// read or write the server's disk in a multi-machine setup.
+async function resolveClientHostId(
+  bb: BbPluginApi,
+  domain: TasksDomain,
   args: ParsedArgs,
   ctx: PluginCliContext,
+): Promise<string | undefined> {
+  const machine = option(args, "machine");
+  if (machine !== undefined) return resolveMachineId(domain, machine);
+  if (!ctx.threadId) return undefined;
+  const thread = await bb.sdk.threads.get({ threadId: ctx.threadId });
+  if (!thread.environmentId) return undefined;
+  const environment = await bb.sdk.environments.get({
+    environmentId: thread.environmentId,
+  });
+  return environment.hostId;
+}
+
+function isMissingClientFileError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bENOENT\b|does not exist|not found|is a directory/i.test(message);
+}
+
+async function readClientFile(
+  bb: BbPluginApi,
+  hostId: string | undefined,
+  path: string,
+): Promise<{ bytes: Buffer; text: string | null }> {
+  const file = await bb.sdk.files.read({
+    ...(hostId ? { hostId } : {}),
+    path,
+  });
+  return {
+    bytes: Buffer.from(
+      file.content,
+      file.contentEncoding === "base64" ? "base64" : "utf8",
+    ),
+    text: file.contentEncoding === "utf8" ? file.content : null,
+  };
+}
+
+async function readAttachmentSource(
+  bb: BbPluginApi,
+  hostId: string | undefined,
+  path: string,
+): Promise<Buffer> {
+  try {
+    return (await readClientFile(bb, hostId, path)).bytes;
+  } catch (error) {
+    if (isMissingClientFileError(error)) {
+      throw new CliError(`attachment source is not a file: ${path}`);
+    }
+    throw error;
+  }
+}
+
+async function writeClientFile(
+  bb: BbPluginApi,
+  hostId: string | undefined,
+  path: string,
+  content: Buffer,
+): Promise<void> {
+  await bb.sdk.files.write({
+    ...(hostId ? { hostId } : {}),
+    path,
+    content: content.toString("base64"),
+    contentEncoding: "base64",
+    createParents: true,
+  });
+}
+
+function attachmentFileName(path: string): string {
+  return path.split(/[\\/]/).at(-1) || "attachment";
+}
+
+async function readFileOption(
+  bb: BbPluginApi,
+  args: ParsedArgs,
+  ctx: PluginCliContext,
+  hostId: string | undefined,
   inlineName: string,
   fileName: string,
-): string | undefined {
+): Promise<string | undefined> {
   const inline = option(args, inlineName);
   const file = option(args, fileName);
   if (inline !== undefined && file !== undefined) {
@@ -147,8 +229,13 @@ function readFileOption(
   if (file === undefined) return inline;
   const path = resolve(ctx.cwd ?? process.cwd(), file);
   try {
-    return readFileSync(path, "utf8");
+    const { text } = await readClientFile(bb, hostId, path);
+    if (text === null) {
+      throw new CliError(`could not read ${file}: file is not UTF-8 text`);
+    }
+    return text;
   } catch (error) {
+    if (error instanceof CliError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw new CliError(`could not read ${file}: ${message}`);
   }
@@ -705,27 +792,29 @@ async function runCreate(
     "due",
     "parent",
     "attach",
+    "machine",
   ]);
   requirePositionals(args, 0, CREATE_HELP);
-  // Validate attachment sources against every upload constraint before
-  // creating anything, so a bad path cannot leave behind a half-built task.
+  // Read every attachment source up front so a bad path (or a source over
+  // the daemon's transfer limit) cannot leave behind a half-built task.
   const attachPaths = options(args, "attach").map((path) =>
     resolve(ctx.cwd ?? process.cwd(), path),
   );
-  await Promise.all(
-    attachPaths.map(async (path) => {
-      const source = await stat(path).catch(() => null);
-      if (!source?.isFile()) {
-        throw new CliError(`attachment source is not a file: ${path}`);
-      }
-      if (source.size > MAX_ATTACHMENT_SIZE_BYTES) {
-        throw new CliError(`attachment exceeds the 25 MB limit: ${path}`);
-      }
-      await access(path, constants.R_OK).catch(() => {
-        throw new CliError(`attachment source is not readable: ${path}`);
-      });
-    }),
-  );
+  const usesClientFiles =
+    attachPaths.length > 0 || option(args, "description-file") !== undefined;
+  if (option(args, "machine") !== undefined && !usesClientFiles) {
+    throw new CliError("--machine requires --attach or --description-file");
+  }
+  const clientHostId = usesClientFiles
+    ? await resolveClientHostId(bb, domain, args, ctx)
+    : undefined;
+  const attachSources: Array<{ path: string; bytes: Buffer }> = [];
+  for (const path of attachPaths) {
+    attachSources.push({
+      path,
+      bytes: await readAttachmentSource(bb, clientHostId, path),
+    });
+  }
   const project = await selectedProject(
     domain,
     ctx,
@@ -745,7 +834,14 @@ async function runCreate(
     projectId: project.id,
     title: requireOption(args, "title"),
     description:
-      readFileOption(args, ctx, "description", "description-file") ?? "",
+      (await readFileOption(
+        bb,
+        args,
+        ctx,
+        clientHostId,
+        "description",
+        "description-file",
+      )) ?? "",
     priority: option(args, "priority") ?? "none",
     dueDate: option(args, "due") ?? null,
     parentTaskId: parent?.id ?? null,
@@ -758,16 +854,21 @@ async function runCreate(
   // reported; stopping at the first failure would hide the rest.
   const attachments: Attachment[] = [];
   const failedAttachments: Array<{ path: string; error: string }> = [];
-  for (const sourcePath of attachPaths) {
+  for (const source of attachSources) {
     try {
-      const attachment = await saveAttachmentFromPath(store.tasks, sourcePath, {
-        taskId: task.id,
-      });
+      const attachment = await saveAttachmentFromBytes(
+        store.tasks,
+        source.bytes,
+        {
+          taskId: task.id,
+          fileName: attachmentFileName(source.path),
+        },
+      );
       publishAttachmentChanged(bb, store.tasks, attachment);
       attachments.push(attachment);
     } catch (error) {
       failedAttachments.push({
-        path: sourcePath,
+        path: source.path,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -1039,6 +1140,7 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
 }
 
 async function runUpdate(
+  bb: BbPluginApi,
   domain: TasksDomain,
   ctx: PluginCliContext,
   argv: string[],
@@ -1056,6 +1158,7 @@ async function runUpdate(
       "due",
       "add-label",
       "remove-label",
+      "machine",
     ],
     ["no-due"],
   );
@@ -1063,9 +1166,21 @@ async function runUpdate(
   const task = await resolveTask(domain, address!);
   const dueDate = option(args, "due");
   validateSingleFlagChoice(dueDate, args.flags.has("no-due"), "due", "no-due");
-  const description = readFileOption(
+  if (
+    option(args, "machine") !== undefined &&
+    option(args, "description-file") === undefined
+  ) {
+    throw new CliError("--machine requires --description-file");
+  }
+  const clientHostId =
+    option(args, "description-file") !== undefined
+      ? await resolveClientHostId(bb, domain, args, ctx)
+      : undefined;
+  const description = await readFileOption(
+    bb,
     args,
     ctx,
+    clientHostId,
     "description",
     "description-file",
   );
@@ -1120,10 +1235,27 @@ async function runComment(
 ): Promise<string> {
   const args = parseArgs(argv);
   if (args.flags.has("help")) return COMMENT_HELP;
-  assertAllowed(args, ["body", "body-file", "author"], ["notify"]);
+  assertAllowed(args, ["body", "body-file", "author", "machine"], ["notify"]);
   const [address] = requirePositionals(args, 1, COMMENT_HELP);
   const task = await resolveTask(domain, address!);
-  const body = readFileOption(args, ctx, "body", "body-file");
+  if (
+    option(args, "machine") !== undefined &&
+    option(args, "body-file") === undefined
+  ) {
+    throw new CliError("--machine requires --body-file");
+  }
+  const clientHostId =
+    option(args, "body-file") !== undefined
+      ? await resolveClientHostId(bb, domain, args, ctx)
+      : undefined;
+  const body = await readFileOption(
+    bb,
+    args,
+    ctx,
+    clientHostId,
+    "body",
+    "body-file",
+  );
   if (body === undefined)
     throw new CliError("missing required --body or --body-file");
   if (!body.trim()) throw new CliError("comment body must not be blank");
@@ -1230,11 +1362,11 @@ async function runAttachment(
   if (args.flags.has("help")) return ATTACHMENT_HELP;
 
   if (action === "add") {
-    assertAllowed(args, ["file", "name"]);
+    assertAllowed(args, ["file", "name", "machine"]);
     const [ownerAddress] = requirePositionals(
       args,
       1,
-      "bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--json]",
+      "bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--machine <id-or-name>] [--json]",
     );
     const sourceOption = requireOption(args, "file");
     const sourcePath = resolve(ctx.cwd ?? process.cwd(), sourceOption);
@@ -1248,9 +1380,11 @@ async function runAttachment(
     const owner = comment
       ? { commentId: comment.id }
       : { taskId: (await resolveTask(domain, ownerAddress!)).id };
-    const attachment = await saveAttachmentFromPath(store.tasks, sourcePath, {
+    const clientHostId = await resolveClientHostId(bb, domain, args, ctx);
+    const bytes = await readAttachmentSource(bb, clientHostId, sourcePath);
+    const attachment = await saveAttachmentFromBytes(store.tasks, bytes, {
       ...owner,
-      fileName: option(args, "name"),
+      fileName: option(args, "name") ?? attachmentFileName(sourcePath),
     });
     publishAttachmentChanged(bb, store.tasks, attachment);
     const payload = {
@@ -1263,19 +1397,20 @@ async function runAttachment(
   }
 
   if (action === "get") {
-    assertAllowed(args, ["out"]);
+    assertAllowed(args, ["out", "machine"]);
     const [attachmentId] = requirePositionals(
       args,
       1,
-      "bb tasks attachment get <attachment-id> --out <path> [--json]",
+      "bb tasks attachment get <attachment-id> --out <path> [--machine <id-or-name>] [--json]",
     );
     const outOption = requireOption(args, "out");
     const outPath = resolve(ctx.cwd ?? process.cwd(), outOption);
-    const attachment = await readAttachmentToPath(
+    const clientHostId = await resolveClientHostId(bb, domain, args, ctx);
+    const { attachment, content } = await readAttachmentContent(
       store.tasks,
       attachmentId!,
-      outPath,
     );
+    await writeClientFile(bb, clientHostId, outPath, content);
     return args.flags.has("json")
       ? json({ attachment, out: outPath })
       : `Saved ${attachment.fileName}  ${outPath}`;
@@ -1786,7 +1921,7 @@ export function registerTasksCli(
             stdout = await runShow(domain, rest);
             break;
           case "update":
-            stdout = await runUpdate(domain, ctx, rest);
+            stdout = await runUpdate(bb, domain, ctx, rest);
             break;
           case "comment":
             stdout = await runComment(bb, store, domain, ctx, rest);

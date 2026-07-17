@@ -1,11 +1,14 @@
 import { useStore } from "jotai";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
 // Shared animation tokens for height transitions across the timeline.
 const HEIGHT_TRANSITION_DURATION_MS = 180;
 // Cubic-bezier ease-out-expo: fast initial expansion, gentle settle.
 const HEIGHT_TRANSITION_EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
+const PAUSE_COLLAPSED_DESCENDANT_ANIMATIONS_CLASS =
+  "[&_*]:![animation-play-state:paused]";
 
 // While content is reflowing (window/panel resize, sidebar collapse, font
 // load), the wrapper's height changes every frame. Letting the CSS height
@@ -205,7 +208,10 @@ export function HeightTransition({
   return (
     <div
       ref={wrapperRef}
-      className={className}
+      className={cn(
+        className,
+        !visible && PAUSE_COLLAPSED_DESCENDANT_ANIMATIONS_CLASS,
+      )}
       style={{
         // Clip vertically (so intermediate heights during the animation
         // don't leak content past the wrapper) without turning the wrapper

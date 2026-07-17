@@ -6,7 +6,7 @@ import {
   type DiffPatchEntry,
   type EnvironmentDiffPatchResponse,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { extractErrorMessage } from "@bb/core-ui";
 import {
   type PatchQueryIdentity,
@@ -222,7 +222,8 @@ export function useEnvironmentDiffPatches(
       const controller = new AbortController();
       abortControllersRef.current.add(controller);
       try {
-        const response = await api.getEnvironmentDiffPatches(environmentId, {
+        const response = await sdk.environments.diffPatch({
+          environmentId,
           target,
           paths,
           signal: controller.signal,
@@ -349,14 +350,7 @@ export function useEnvironmentDiffPatches(
     for (const page of chunkPaths(toFetch)) {
       void fetchPage(page, targetIdentity);
     }
-  }, [
-    environmentId,
-    target,
-    targetIdentity,
-    identity,
-    queryClient,
-    fetchPage,
-  ]);
+  }, [environmentId, target, targetIdentity, identity, queryClient, fetchPage]);
 
   const requestPaths = useCallback(
     (args: RequestDiffPatchPathsArgs) => {
@@ -544,9 +538,7 @@ function clearLoading(
   paths: string[],
   loadingGeneration: number,
 ): InFlightState {
-  if (
-    !paths.some((path) => previous.loading.get(path) === loadingGeneration)
-  ) {
+  if (!paths.some((path) => previous.loading.get(path) === loadingGeneration)) {
     return previous;
   }
   const loading = new Map(previous.loading);

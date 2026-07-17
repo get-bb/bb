@@ -366,6 +366,103 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea", () => {
+  it("keeps drag updates local and persists the resized pair once on release", () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const separator = screen.getByRole("separator");
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (!(previous instanceof HTMLElement) || !(next instanceof HTMLElement)) {
+      throw new Error("Expected adjacent split flex items");
+    }
+
+    Object.defineProperty(separator, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 406,
+      right: 806,
+      top: 0,
+      width: 400,
+      x: 406,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const scrollViewport = document.createElement("div");
+    scrollViewport.style.overflowY = "auto";
+    Object.defineProperties(scrollViewport, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 1_000 },
+    });
+    vi.spyOn(scrollViewport, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const offscreenRow = document.createElement("div");
+    offscreenRow.dataset.timelineRowId = "offscreen-row";
+    vi.spyOn(offscreenRow, "getBoundingClientRect").mockReturnValue({
+      bottom: -450,
+      height: 50,
+      left: 0,
+      right: 400,
+      top: -500,
+      width: 400,
+      x: 0,
+      y: -500,
+      toJSON: () => ({}),
+    });
+    scrollViewport.appendChild(offscreenRow);
+    previous.appendChild(scrollViewport);
+
+    const splitSizes = () => {
+      const root = store.get(splitLayoutAtom)?.root;
+      if (root?.type !== "split") {
+        throw new Error("Expected split layout");
+      }
+      return root.sizes;
+    };
+
+    fireEvent.pointerDown(separator, { clientX: 403, pointerId: 1 });
+    fireEvent.pointerMove(separator, { clientX: 564.2, pointerId: 1 });
+
+    expect(splitSizes()).toEqual([0.5, 0.5]);
+    expect(offscreenRow.style.contentVisibility).toBe("hidden");
+    expect(offscreenRow.style.containIntrinsicBlockSize).toBe("50px");
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.7, 5);
+    expect(Number.parseFloat(next.style.flexGrow)).toBeCloseTo(0.3, 5);
+
+    fireEvent.pointerUp(separator, { clientX: 564.2, pointerId: 1 });
+
+    expect(splitSizes()[0]).toBeCloseTo(0.7, 5);
+    expect(splitSizes()[1]).toBeCloseTo(0.3, 5);
+    expect(offscreenRow.style.contentVisibility).toBe("");
+    expect(offscreenRow.style.containIntrinsicBlockSize).toBe("");
+  });
+
   it("keeps the merged toggle absolute and places a visible shortcut hint below pane actions", async () => {
     commandPresentationState.isModifierHeld = true;
     commandPresentationState.shortcut = {

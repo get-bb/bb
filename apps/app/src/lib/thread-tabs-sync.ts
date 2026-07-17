@@ -10,7 +10,7 @@ import {
   invalidateCachedThreadTabs,
   setCachedThreadTabs,
 } from "@/hooks/cache-owners/thread-tabs-cache-owner";
-import * as api from "./api";
+import { BbHttpError, sdk } from "./sdk";
 import {
   areFixedPanelTabsEquivalent,
   type FixedPanelTabsState,
@@ -110,14 +110,14 @@ async function readCurrentThreadTabs({
   if (cached !== undefined) {
     return cached;
   }
-  const response = await api.getThreadTabs(threadId);
+  const response = await sdk.threads.tabs.get({ threadId });
   setCachedThreadTabs(queryClient, threadId, response);
   return response;
 }
 
 function isThreadTabsConflict(error: unknown): boolean {
   return (
-    error instanceof api.HttpError &&
+    error instanceof BbHttpError &&
     error.status === 409 &&
     error.code === "thread_tabs_conflict"
   );
@@ -132,9 +132,10 @@ async function persistThreadTabs({
   if (areThreadTabListsEquivalent(current.tabs, tabs)) {
     return;
   }
-  const response = await api.updateThreadTabs(threadId, {
+  const response = await sdk.threads.tabs.update({
     expectedRevision: current.revision,
     tabs: threadTabsSchema.parse(tabs),
+    threadId,
   });
   setCachedThreadTabs(queryClient, threadId, response);
 }
@@ -148,9 +149,10 @@ async function migrateLocalThreadTabs({
   if (current.revision !== 0) {
     return;
   }
-  const response = await api.updateThreadTabs(threadId, {
+  const response = await sdk.threads.tabs.update({
     expectedRevision: 0,
     tabs: threadTabsSchema.parse(tabs),
+    threadId,
   });
   setCachedThreadTabs(queryClient, threadId, response);
 }

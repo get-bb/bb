@@ -296,11 +296,25 @@ async function selectPromptAction(label: string) {
   await waitFor(() =>
     expect(document.activeElement).toBe(getPromptEditorElement()),
   );
+  await act(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
   const trigger = screen.getByRole("button", { name: "Prompt actions" });
   fireEvent.pointerDown(trigger, { button: 0 });
   const menu = await screen.findByRole("menu", { name: "Prompt actions" });
   const menuItem = within(menu).getByRole("menuitem", { name: label });
   fireEvent.click(menuItem);
+  // Radix removes the portaled menu asynchronously. Let that close settle so
+  // a following test or second action cannot select an item from the stale
+  // closing portal.
+  await waitFor(() =>
+    expect(screen.queryByRole("menu", { name: "Prompt actions" })).toBeNull(),
+  );
+  if (label !== "Attach files") {
+    await waitFor(() =>
+      expect(document.activeElement).toBe(getPromptEditorElement()),
+    );
+  }
 }
 
 async function selectCommandSuggestion(label: string) {

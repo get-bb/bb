@@ -41,14 +41,36 @@ Docs is a good destination for durable plans, specifications, write-ups, and
 HTML artifacts the user should be able to reopen.
 
 ```sh
-bb docs write plans/release-plan.md --vault personal --content '# Release plan'
-bb docs mkdir artifacts --vault personal
-bb docs write artifacts/report.html --vault personal --content '<!doctype html>…'
-bb docs remove artifacts --vault personal --recursive
+bb docs pull plans/release-plan.md --vault personal --into ./docs-work
+# Edit ./docs-work/plans/release-plan.md with normal file tools.
+bb docs status ./docs-work --diff
+bb docs push ./docs-work
 ```
 
-`remove` deletes files and empty directories without a flag. Use
-`--recursive` only when deleting a non-empty directory tree.
+Pull a folder subtree with `--folder`, or the whole selected vault with
+`--all`:
+
+```sh
+bb docs pull plans --folder --vault personal --into ./docs-work
+bb docs pull --all --vault personal --into ./docs-work
+```
+
+Always edit the pulled files with ordinary workspace tools, then run `status`
+before `push`. The manifest in `.bb-docs-state.json` records stable vault paths
+and remote SHA-256 versions; do not edit it. Pull and push fail closed when both
+the local and vault copies changed. Resolve the content manually, then pull or
+push again. `push --dry-run --diff` previews without writing.
+
+Local file and empty-directory deletions are ignored by default. Only use
+`push --delete` when the user explicitly asked to delete the corresponding
+vault paths. A pulled folder root is intentionally retained; pull its parent or
+the whole vault to remove that folder. Binary assets round-trip with their
+original bytes. If state is malformed, preserve the directory for recovery and
+pull into a new clean `--into` directory.
+
+The direct `write`, `mkdir`, `move`, and `remove` commands are deprecated. Do
+not use them for agent edits; they remain temporarily available only for
+backward compatibility.
 
 Use Markdown for documents and plans. Use a self-contained `.html` file for a
 visual artifact or interactive report; relative assets can live beside it.

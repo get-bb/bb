@@ -26,7 +26,7 @@ import {
   buildSquashMergeCommitFailureFollowUpInstruction,
   buildSquashMergeConflictFollowUpInstruction,
 } from "@/lib/thread-operation-prompts";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type {
   RequestEnvironmentActionMutationLike,
@@ -113,7 +113,7 @@ function toEnvironmentActionFailureDetails(
   error: unknown,
 ): EnvironmentActionFailureDetails | undefined {
   if (
-    !(error instanceof HttpError) ||
+    !(error instanceof BbHttpError) ||
     typeof error.body !== "object" ||
     error.body === null
   ) {

@@ -19,11 +19,12 @@ import {
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { useIsMutating } from "@tanstack/react-query";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
+  clampSplitPairFraction,
   countPanes,
   findPane,
   listPanes,
@@ -343,6 +344,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           content={firstPane.content}
           paneId={firstPane.paneId}
           isFocused
+          isSplitPane={false}
           secondaryPanelRegistry={null}
           reservesWindowPanelToggle={false}
           onRequestClose={null}
@@ -478,6 +480,7 @@ function SplitTree(props: SplitTreeProps) {
           content={node.content}
           paneId={node.paneId}
           isFocused={isFocused}
+          isSplitPane
           secondaryPanelRegistry={props.secondaryPanelRegistry}
           reservesWindowPanelToggle={isTopRow && isRightEdge}
           onRequestClose={() => props.onClosePane(node.paneId)}
@@ -543,6 +546,7 @@ interface WorkspacePaneContentProps {
   content: PaneContent;
   paneId: string;
   isFocused: boolean;
+  isSplitPane: boolean;
   secondaryPanelRegistry: PaneSecondaryPanelRegistry | null;
   reservesWindowPanelToggle: boolean;
   onRequestClose: (() => void) | null;
@@ -559,6 +563,7 @@ function WorkspacePaneContent({
   content,
   paneId,
   isFocused,
+  isSplitPane,
   secondaryPanelRegistry,
   reservesWindowPanelToggle,
   onRequestClose,
@@ -593,6 +598,7 @@ function WorkspacePaneContent({
     () => ({
       paneId,
       isFocused,
+      isSplitPane,
       secondaryPanelHost,
       reservesWindowPanelToggle,
       onRequestClose,
@@ -605,6 +611,7 @@ function WorkspacePaneContent({
       beginPaneDrag,
       isBoundedPane,
       isFocused,
+      isSplitPane,
       isTopRow,
       navigateInPane,
       onRequestClose,
@@ -776,6 +783,81 @@ interface SplitDividerProps {
   onResize: (fraction: number) => void;
 }
 
+interface FrozenTimelineRow {
+  containIntrinsicBlockSize: string;
+  contentVisibility: string;
+  element: HTMLElement;
+  height: string;
+}
+
+function findVerticalScrollViewport(element: HTMLElement): HTMLElement | null {
+  let candidate = element.parentElement;
+  while (candidate !== null) {
+    const overflowY = window.getComputedStyle(candidate).overflowY;
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      candidate.scrollHeight > candidate.clientHeight
+    ) {
+      return candidate;
+    }
+    candidate = candidate.parentElement;
+  }
+  return null;
+}
+
+function freezeOffscreenTimelineRows(
+  previous: HTMLElement,
+  next: HTMLElement,
+): () => void {
+  const rows = [
+    ...previous.querySelectorAll<HTMLElement>("[data-timeline-row-id]"),
+    ...next.querySelectorAll<HTMLElement>("[data-timeline-row-id]"),
+  ];
+  const frozenRows: FrozenTimelineRow[] = [];
+  const viewportRects = new Map<HTMLElement, DOMRect>();
+
+  // Batch every geometry read before writing styles so this setup incurs at
+  // most one layout pass. Keep one viewport of overscan on each side; only
+  // rows far outside the clipped pane are skipped during the drag.
+  for (const row of rows) {
+    const viewport = findVerticalScrollViewport(row);
+    if (viewport === null) continue;
+    const rowRect = row.getBoundingClientRect();
+    let viewportRect = viewportRects.get(viewport);
+    if (viewportRect === undefined) {
+      viewportRect = viewport.getBoundingClientRect();
+      viewportRects.set(viewport, viewportRect);
+    }
+    const overscan = viewportRect.height;
+    const isOffscreen =
+      rowRect.bottom < viewportRect.top - overscan ||
+      rowRect.top > viewportRect.bottom + overscan;
+    if (!isOffscreen || rowRect.height <= 0) continue;
+    frozenRows.push({
+      containIntrinsicBlockSize: row.style.containIntrinsicBlockSize,
+      contentVisibility: row.style.contentVisibility,
+      element: row,
+      height: `${rowRect.height}px`,
+    });
+  }
+
+  for (const { element, height } of frozenRows) {
+    element.style.containIntrinsicBlockSize = height;
+    element.style.contentVisibility = "hidden";
+  }
+
+  return () => {
+    for (const {
+      containIntrinsicBlockSize,
+      contentVisibility,
+      element,
+    } of frozenRows) {
+      element.style.containIntrinsicBlockSize = containIntrinsicBlockSize;
+      element.style.contentVisibility = contentVisibility;
+    }
+  };
+}
+
 function SplitDivider({ dir, onResize }: SplitDividerProps) {
   const horizontal = dir === "row";
 
@@ -791,30 +873,71 @@ function SplitDivider({ dir, onResize }: SplitDividerProps) {
       ) {
         return;
       }
+      // The adjacent pair's outer bounds do not move during this drag. Read
+      // them once instead of forcing layout twice for every pointer event.
+      const previousRect = previous.getBoundingClientRect();
+      const nextRect = next.getBoundingClientRect();
+      const start = horizontal ? previousRect.left : previousRect.top;
+      const end = horizontal ? nextRect.right : nextRect.bottom;
+      const span = end - start;
+      if (span <= 0) {
+        return;
+      }
+
       divider.setPointerCapture(event.pointerId);
       divider.dataset.dragging = "true";
 
+      const previousGrow = Number.parseFloat(
+        window.getComputedStyle(previous).flexGrow,
+      );
+      const nextGrow = Number.parseFloat(
+        window.getComputedStyle(next).flexGrow,
+      );
+      const pairTotal =
+        Number.isFinite(previousGrow) &&
+        Number.isFinite(nextGrow) &&
+        previousGrow + nextGrow > 0
+          ? previousGrow + nextGrow
+          : 1;
+      const previousFlex = previous.style.flex;
+      const nextFlex = next.style.flex;
+      const restoreTimelineRows = freezeOffscreenTimelineRows(previous, next);
+      let pendingFraction: number | null = null;
+      let finished = false;
+
       const onMove = (moveEvent: PointerEvent) => {
-        const previousRect = previous.getBoundingClientRect();
-        const nextRect = next.getBoundingClientRect();
-        const start = horizontal ? previousRect.left : previousRect.top;
-        const end = horizontal ? nextRect.right : nextRect.bottom;
-        const span = end - start;
-        if (span <= 0) {
-          return;
-        }
         const pointer = horizontal ? moveEvent.clientX : moveEvent.clientY;
-        // Fraction of the adjacent pair claimed by the first child; resizeSplit
-        // clamps it into [0.15, 0.85].
-        onResize((pointer - start) / span);
+        const fraction = clampSplitPairFraction((pointer - start) / span);
+        pendingFraction = fraction;
+
+        // Keep high-frequency drag state local to the two flex items. Writing
+        // the persisted split-layout atom here would rerender every pane and
+        // sidebar split indicator, and serialize localStorage, on every move.
+        previous.style.flex = `${pairTotal * fraction} 1 0px`;
+        next.style.flex = `${pairTotal * (1 - fraction)} 1 0px`;
       };
-      const onUp = () => {
+      const finish = (commit: boolean) => {
+        if (finished) return;
+        finished = true;
         delete divider.dataset.dragging;
         divider.removeEventListener("pointermove", onMove);
         divider.removeEventListener("pointerup", onUp);
+        divider.removeEventListener("pointercancel", onCancel);
+        restoreTimelineRows();
+        if (commit && pendingFraction !== null) {
+          // Commit once so the imperative flex values above become the
+          // canonical persisted layout without a visual jump.
+          onResize(pendingFraction);
+          return;
+        }
+        previous.style.flex = previousFlex;
+        next.style.flex = nextFlex;
       };
+      const onUp = () => finish(true);
+      const onCancel = () => finish(false);
       divider.addEventListener("pointermove", onMove);
       divider.addEventListener("pointerup", onUp);
+      divider.addEventListener("pointercancel", onCancel);
     },
     [horizontal, onResize],
   );
@@ -869,7 +992,8 @@ function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
     predicate: (mutation) =>
       mutation.options.meta?.lifecycleOperation === "archive_thread",
   });
-  const isGone = isError && error instanceof HttpError && error.status === 404;
+  const isGone =
+    isError && error instanceof BbHttpError && error.status === 404;
   const isDeleted =
     isSuccess && thread !== undefined && thread.deletedAt !== null;
   const isConfirmedArchived =

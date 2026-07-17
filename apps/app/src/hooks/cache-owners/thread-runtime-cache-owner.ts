@@ -16,7 +16,7 @@ import type {
   TimelineRow,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
-import type { AppCreateThreadRequest } from "@/lib/api";
+import type { AppCreateThreadRequest } from "@/lib/api-types";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {

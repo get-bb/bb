@@ -376,11 +376,27 @@ export interface PluginAgentConfigurationContext {
   };
 }
 
+/** Object form of a {@link PluginAgentConfiguration} tools entry: selects a
+ * registered tool and overrides the parameter schema advertised to the
+ * provider for this resolution only. */
+export interface PluginAgentToolSelection {
+  /** Name of a tool registered by this plugin via `registerTool`. */
+  name: string;
+  /** JSON-schema object (root `type: "object"`, JSON-serializable, at most
+   * 128 KiB serialized) sent to the provider in place of the registered
+   * parameter schema. Execution-side validation still runs the registered
+   * parameters, so the override must only narrow what the registered schema
+   * already accepts. */
+  parameters: Record<string, unknown>;
+}
+
 /** Per-resolution selection returned by {@link PluginAgents.configure}. */
 export interface PluginAgentConfiguration {
-  /** Tool names registered by this plugin. Duplicate or unknown names reject
+  /** Tool names registered by this plugin, or {@link PluginAgentToolSelection}
+   * entries to also override a tool's advertised parameter schema for this
+   * resolution. Duplicate or unknown names, or an invalid override, reject
    * this plugin's complete selection for the resolution. */
-  tools: string[];
+  tools: Array<string | PluginAgentToolSelection>;
   /** Skill frontmatter names from this plugin's manifest skill roots.
    * Duplicate or unknown names reject this plugin's complete selection. */
   skills: string[];

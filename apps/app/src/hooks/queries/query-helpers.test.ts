@@ -37,6 +37,7 @@ import {
 } from "./query-placeholders";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 import { isTransientReadError, requireEnabledQueryArg } from "./query-helpers";
 
 describe("requireEnabledQueryArg", () => {
@@ -79,6 +80,16 @@ describe("isTransientReadError", () => {
     expect(
       isTransientReadError(
         new HttpError({ status: 404, message: "Not found" }),
+      ),
+    ).toBe(false);
+    expect(
+      isTransientReadError(
+        new BbHttpError({
+          status: 404,
+          message: "Not found",
+          body: { error: "Not found" },
+          code: null,
+        }),
       ),
     ).toBe(false);
     expect(isTransientReadError(new Error("Unexpected parse error"))).toBe(

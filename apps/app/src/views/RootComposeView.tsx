@@ -104,13 +104,13 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
-import { copyPromptAttachments } from "@/lib/api";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { sdk } from "@/lib/sdk";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import {
@@ -1730,7 +1730,8 @@ export function RootComposeView() {
         setAttachmentError(null);
         setIsCopyingPromptAttachments(true);
         try {
-          await copyPromptAttachments(nextRootComposeProjectId, {
+          await sdk.projects.attachments.copy({
+            projectId: nextRootComposeProjectId,
             sourceProjectId: projectId,
             paths: attachmentPaths,
           });

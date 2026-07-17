@@ -2,12 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CloseTerminalRequest,
   CreateTerminalRequest,
-  TerminalListQuery,
   TerminalListResponse,
   TerminalSession,
   UpdateTerminalRequest,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   applyTerminalSessionClose,
   applyTerminalSessionUpsert,
@@ -64,21 +63,6 @@ interface CloseEnvironmentTerminalMutationRequest
   environmentId: string;
 }
 
-function terminalListQueryForScope(
-  scope: TerminalQueryScope,
-): TerminalListQuery {
-  switch (scope.kind) {
-    case "thread":
-      return { threadId: scope.threadId };
-    case "environment":
-      return { environmentId: scope.environmentId };
-    case "host_path":
-      return scope.cwd === undefined
-        ? { hostId: scope.hostId }
-        : { cwd: scope.cwd, hostId: scope.hostId };
-  }
-}
-
 export function useTerminals(
   scope: TerminalQueryScope | null | undefined,
   options?: QueryOptions,
@@ -88,16 +72,14 @@ export function useTerminals(
       scope ?? { kind: "host_path", hostId: "__disabled__" },
     ),
     queryFn: ({ signal }) =>
-      api.listTerminals(
-        terminalListQueryForScope(
-          requireEnabledQueryArg({
-            value: scope,
-            hookName: "useTerminals",
-            argName: "terminal scope",
-          }),
-        ),
+      sdk.terminals.list({
+        scope: requireEnabledQueryArg({
+          value: scope,
+          hookName: "useTerminals",
+          argName: "terminal scope",
+        }),
         signal,
-      ),
+      }),
     enabled: (options?.enabled ?? true) && scope !== null && scope !== undefined,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   });
@@ -128,7 +110,8 @@ export function useCreateTerminal() {
       errorMessage: "Failed to start terminal.",
       lifecycleOperation: "open_terminal",
     },
-    mutationFn: (request: CreateTerminalRequest) => api.createTerminal(request),
+    mutationFn: ({ target, ...request }: CreateTerminalRequest) =>
+      sdk.terminals.create({ ...request, scope: target }),
     onSuccess: (session: TerminalSession) => {
       applyTerminalSessionUpsert({ queryClient, session });
     },
@@ -194,7 +177,7 @@ export function useRenameTerminal() {
       errorMessage: "Failed to rename terminal.",
     },
     mutationFn: ({ terminalId, ...request }: RenameTerminalMutationRequest) =>
-      api.renameTerminal(terminalId, request),
+      sdk.terminals.rename({ terminalId, ...request }),
     onSuccess: (session: TerminalSession) => {
       applyTerminalSessionUpsert({ queryClient, session });
     },
@@ -246,7 +229,7 @@ export function useCloseTerminal() {
       errorMessage: "Failed to close terminal.",
     },
     mutationFn: ({ mode, terminalId }: CloseTerminalMutationRequest) =>
-      api.closeTerminal(terminalId, { mode, reason: "user" }),
+      sdk.terminals.close({ mode, terminalId }),
     onSuccess: (session: TerminalSession, variables) => {
       applyTerminalSessionClose({
         queryClient,

@@ -31,10 +31,14 @@ import type {
   UpdateEnvironmentRequest,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
-export interface EnvironmentGetArgs {
+export interface EnvironmentActionArgs {
   environmentId: string;
+}
+
+export interface EnvironmentGetArgs extends EnvironmentActionArgs {
+  signal?: AbortSignal;
 }
 
 type EnvironmentMergeBaseBranchUpdateValue = Exclude<
@@ -67,18 +71,22 @@ export type EnvironmentUpdateArgs = EnvironmentUpdateFields & {
 
 export interface EnvironmentStatusArgs extends EnvironmentStatusQuery {
   environmentId: string;
+  signal?: AbortSignal;
 }
 
 export type EnvironmentDiffArgs = EnvironmentDiffQuery & {
   environmentId: string;
+  signal?: AbortSignal;
 };
 
 export type EnvironmentDiffFileArgs = EnvironmentDiffFileQuery & {
   environmentId: string;
+  signal?: AbortSignal;
 };
 
 export interface EnvironmentDiffBranchesArgs extends EnvironmentDiffBranchesQuery {
   environmentId: string;
+  signal?: AbortSignal;
 }
 
 export interface EnvironmentCommitArgs {
@@ -97,10 +105,12 @@ export interface EnvironmentPullRequestMergeArgs {
 
 export type EnvironmentDiffPatchArgs = EnvironmentDiffPatchRequest & {
   environmentId: string;
+  signal?: AbortSignal;
 };
 
 export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
   environmentId: string;
+  signal?: AbortSignal;
 }
 
 export type EnvironmentArchiveThreadsResult = EnvironmentArchiveThreadsResponse;
@@ -124,7 +134,7 @@ export type EnvironmentUpdateResult = Environment;
 
 export interface EnvironmentsArea {
   archiveThreads(
-    args: EnvironmentGetArgs,
+    args: EnvironmentActionArgs,
   ): Promise<EnvironmentArchiveThreadsResult>;
   commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
   diff(args: EnvironmentDiffArgs): Promise<EnvironmentDiffResult>;
@@ -139,10 +149,10 @@ export interface EnvironmentsArea {
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   pullRequest(args: EnvironmentGetArgs): Promise<EnvironmentPullRequestResult>;
   markPullRequestDraft(
-    args: EnvironmentGetArgs,
+    args: EnvironmentActionArgs,
   ): Promise<EnvironmentMarkPullRequestDraftResult>;
   markPullRequestReady(
-    args: EnvironmentGetArgs,
+    args: EnvironmentActionArgs,
   ): Promise<EnvironmentMarkPullRequestReadyResult>;
   mergePullRequest(
     args: EnvironmentPullRequestMergeArgs,
@@ -222,6 +232,20 @@ function environmentDiffBranchesQuery(
   return {
     ...(args.query !== undefined ? { query: args.query } : {}),
     ...(args.limit !== undefined ? { limit: args.limit } : {}),
+    ...(args.selectedBranch !== undefined
+      ? { selectedBranch: args.selectedBranch }
+      : {}),
+  };
+}
+
+function environmentPathsQuery(
+  args: EnvironmentPathsArgs,
+): EnvironmentPathsQuery {
+  return {
+    includeDirectories: args.includeDirectories,
+    includeFiles: args.includeFiles,
+    limit: args.limit,
+    query: args.query,
   };
 }
 
@@ -250,58 +274,81 @@ export function createEnvironmentsArea(
     },
     async diff(input) {
       return transport.readJson(
-        transport.api.v1.environments[":id"].diff.$get({
-          param: { id: input.environmentId },
-          query: environmentDiffQuery(input),
-        }),
+        transport.api.v1.environments[":id"].diff.$get(
+          {
+            param: { id: input.environmentId },
+            query: environmentDiffQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async diffBranches(input) {
       return transport.readJson(
-        transport.api.v1.environments[":id"].diff.branches.$get({
-          param: { id: input.environmentId },
-          query: environmentDiffBranchesQuery(input),
-        }),
+        transport.api.v1.environments[":id"].diff.branches.$get(
+          {
+            param: { id: input.environmentId },
+            query: environmentDiffBranchesQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async diffFile(input) {
       return transport.readJson(
-        transport.api.v1.environments[":id"].diff.file.$get({
-          param: { id: input.environmentId },
-          query: environmentDiffFileQuery(input),
-        }),
+        transport.api.v1.environments[":id"].diff.file.$get(
+          {
+            param: { id: input.environmentId },
+            query: environmentDiffFileQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async diffFiles(input) {
       return transport.readJson(
-        transport.api.v1.environments[":id"].diff.files.$get({
-          param: { id: input.environmentId },
-          query: environmentDiffQuery(input),
-        }),
+        transport.api.v1.environments[":id"].diff.files.$get(
+          {
+            param: { id: input.environmentId },
+            query: environmentDiffQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async diffPatch(input) {
-      const { environmentId, ...json } = input;
       return transport.readJson(
-        transport.api.v1.environments[":id"].diff.patch.$post({
-          param: { id: environmentId },
-          json,
-        }),
+        transport.api.v1.environments[":id"].diff.patch.$post(
+          {
+            param: { id: input.environmentId },
+            json: {
+              paths: input.paths,
+              target: input.target,
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async get(input) {
       const body = await transport.readJson(
-        transport.api.v1.environments[":id"].$get({
-          param: { id: input.environmentId },
-        }),
+        transport.api.v1.environments[":id"].$get(
+          {
+            param: { id: input.environmentId },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
       return environmentSchema.parse(body);
     },
     async pullRequest(input) {
       return transport.readJson(
-        transport.api.v1.environments[":id"]["pull-request"].$get({
-          param: { id: input.environmentId },
-        }),
+        transport.api.v1.environments[":id"]["pull-request"].$get(
+          {
+            param: { id: input.environmentId },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async markPullRequestDraft(input) {
@@ -335,12 +382,14 @@ export function createEnvironmentsArea(
       return pullRequestMergeActionResponseSchema.parse(body);
     },
     async paths(input) {
-      const { environmentId, ...query } = input;
       return transport.readJson(
-        transport.api.v1.environments[":id"].paths.$get({
-          param: { id: environmentId },
-          query,
-        }),
+        transport.api.v1.environments[":id"].paths.$get(
+          {
+            param: { id: input.environmentId },
+            query: environmentPathsQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async squashMerge(input) {
@@ -359,10 +408,13 @@ export function createEnvironmentsArea(
     },
     async status(input) {
       return transport.readJson(
-        transport.api.v1.environments[":id"].status.$get({
-          param: { id: input.environmentId },
-          query: environmentStatusQuery(input),
-        }),
+        transport.api.v1.environments[":id"].status.$get(
+          {
+            param: { id: input.environmentId },
+            query: environmentStatusQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async update(input) {

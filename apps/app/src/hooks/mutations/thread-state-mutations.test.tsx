@@ -7,7 +7,7 @@ import type {
   ThreadResponse,
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   sidebarNavigationQueryKey,
@@ -19,14 +19,9 @@ import {
   useUpdateThread,
 } from "./thread-state-mutations";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    unpinThread: vi.fn(),
-    updateThread: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: { threads: { unpin: vi.fn(), update: vi.fn() } },
+}));
 
 function makeThreadWithRuntime(
   thread: Partial<ThreadWithRuntime> = {},
@@ -154,7 +149,7 @@ describe("thread state mutations", () => {
       sidebarNavigationQueryKey(),
       makeSidebarNavigation([listEntry]),
     );
-    vi.mocked(api.updateThread).mockImplementation(
+    vi.mocked(sdk.threads.update).mockImplementation(
       () =>
         new Promise<ThreadResponse>((resolve) => {
           resolveUpdate = resolve;
@@ -181,7 +176,8 @@ describe("thread state mutations", () => {
         sidebarNavigationQueryKey(),
       )?.projects[0]?.threads[0]?.title,
     ).toBe("New title");
-    expect(api.updateThread).toHaveBeenCalledWith(threadId, {
+    expect(sdk.threads.update).toHaveBeenCalledWith({
+      threadId,
       title: "New title",
     });
 
@@ -223,7 +219,7 @@ describe("thread state mutations", () => {
       sidebarNavigationQueryKey(),
       makeSidebarNavigation([listEntry]),
     );
-    vi.mocked(api.updateThread).mockImplementation(
+    vi.mocked(sdk.threads.update).mockImplementation(
       () =>
         new Promise<ThreadResponse>((resolve) => {
           resolveUpdate = resolve;
@@ -250,7 +246,8 @@ describe("thread state mutations", () => {
         sidebarNavigationQueryKey(),
       )?.projects[0]?.threads[0]?.folderId,
     ).toBe("fld_personal");
-    expect(api.updateThread).toHaveBeenCalledWith(threadId, {
+    expect(sdk.threads.update).toHaveBeenCalledWith({
+      threadId,
       folderId: "fld_personal",
     });
 
@@ -297,13 +294,13 @@ describe("thread state mutations", () => {
       sidebarNavigationQueryKey(),
       makeSidebarNavigation([listEntry]),
     );
-    vi.mocked(api.unpinThread).mockImplementation(
+    vi.mocked(sdk.threads.unpin).mockImplementation(
       () =>
         new Promise<ThreadResponse>((resolve) => {
           resolveUnpin = resolve;
         }),
     );
-    vi.mocked(api.updateThread).mockImplementation(
+    vi.mocked(sdk.threads.update).mockImplementation(
       () =>
         new Promise<ThreadResponse>((resolve) => {
           resolveUpdate = resolve;
@@ -331,8 +328,8 @@ describe("thread state mutations", () => {
       folderId: destinationFolderId,
       pinnedAt: null,
     });
-    expect(api.unpinThread).toHaveBeenCalledWith(threadId);
-    expect(api.updateThread).not.toHaveBeenCalled();
+    expect(sdk.threads.unpin).toHaveBeenCalledWith({ threadId });
+    expect(sdk.threads.update).not.toHaveBeenCalled();
 
     act(() => {
       resolveUnpin(
@@ -346,7 +343,8 @@ describe("thread state mutations", () => {
     });
 
     await waitFor(() => {
-      expect(api.updateThread).toHaveBeenCalledWith(threadId, {
+      expect(sdk.threads.update).toHaveBeenCalledWith({
+        threadId,
         folderId: destinationFolderId,
       });
     });

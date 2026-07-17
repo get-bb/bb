@@ -1,17 +1,25 @@
 import type { AppTheme, AppThemeSelection } from "@bb/domain";
 import type { ThemeCatalogResponse } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export type ThemeGetResult = AppTheme;
 export type ThemeCatalogResult = ThemeCatalogResponse;
 export type ThemeSetInput = AppThemeSelection;
 export type ThemeSetResult = AppTheme;
 
+export interface ThemeCatalogArgs {
+  signal?: AbortSignal;
+}
+
+export interface ThemeGetArgs {
+  signal?: AbortSignal;
+}
+
 export interface ThemeArea {
   /** The active app palette, resolved server-side (built-in id or custom CSS). */
-  get(): Promise<ThemeGetResult>;
+  get(args?: ThemeGetArgs): Promise<ThemeGetResult>;
   /** The custom-theme directory plus discovered themes and the active palette. */
-  catalog(): Promise<ThemeCatalogResult>;
+  catalog(args?: ThemeCatalogArgs): Promise<ThemeCatalogResult>;
   /** Set the complete app appearance selection in one request. */
   set(selection: ThemeSetInput): Promise<ThemeSetResult>;
   /**
@@ -25,14 +33,22 @@ export interface ThemeArea {
 export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
   const { transport } = args;
   return {
-    async get() {
+    async get(input = {}) {
       const config = await transport.readJson(
-        transport.api.v1.system.config.$get(),
+        transport.api.v1.system.config.$get(
+          {},
+          ...signalRequestArgs(input.signal),
+        ),
       );
       return config.appearance;
     },
-    async catalog() {
-      return transport.readJson(transport.api.v1.settings.themes.$get());
+    async catalog(input = {}) {
+      return transport.readJson(
+        transport.api.v1.settings.themes.$get(
+          {},
+          ...signalRequestArgs(input.signal),
+        ),
+      );
     },
     async set(input) {
       const selection =

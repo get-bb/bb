@@ -8,17 +8,13 @@ import {
   defaultExperiments,
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { usePromptMentions } from "./usePromptMentions";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getSystemConfig: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: { system: { config: vi.fn() } },
+}));
 
 function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
@@ -60,7 +56,7 @@ afterEach(() => {
 
 describe("usePromptMentions", () => {
   it("shows loading for a non-at plugin trigger while the query is debouncing", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(true));
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = urlForFetchInput(input);
       if (url === "/api/v1/plugins/contributions") {

@@ -10,17 +10,21 @@ import {
   threadFolderMutationResponseSchema,
   threadFolderSchema,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export type ThreadFolderCreateResult = ThreadFolderResponse;
 export type ThreadFolderUpdateResult = ThreadFolderMutationResponse;
 export type ThreadFolderDeleteResult = ThreadFolderMutationResponse;
 export type ThreadFolderListResult = ThreadFolderResponse[];
 
+export interface ThreadFolderListArgs {
+  signal?: AbortSignal;
+}
+
 export interface ThreadFoldersArea {
   create(args: CreateThreadFolderRequest): Promise<ThreadFolderCreateResult>;
   delete(args: DeleteThreadFolderRequest): Promise<ThreadFolderDeleteResult>;
-  list(): Promise<ThreadFolderListResult>;
+  list(args?: ThreadFolderListArgs): Promise<ThreadFolderListResult>;
   update(args: UpdateThreadFolderRequest): Promise<ThreadFolderUpdateResult>;
 }
 
@@ -41,9 +45,12 @@ export function createThreadFoldersArea(
       );
       return threadFolderMutationResponseSchema.parse(body);
     },
-    async list() {
+    async list(input) {
       const body = await transport.readJson(
-        transport.api.v1["sidebar-bootstrap"].$get(),
+        transport.api.v1["sidebar-bootstrap"].$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
       );
       return sidebarBootstrapResponseSchema.parse(body).folders;
     },

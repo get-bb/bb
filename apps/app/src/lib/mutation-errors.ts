@@ -1,4 +1,5 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
+import { BbHttpError } from "@bb/sdk/browser";
 import { appToast } from "@/components/ui/app-toast";
 import { HttpError } from "./api";
 import {
@@ -49,7 +50,11 @@ function isAbortLikeError(error: unknown): boolean {
 }
 
 function isNetworkTransportError(error: unknown): boolean {
-  if (error instanceof HttpError || isAbortLikeError(error)) {
+  if (
+    error instanceof HttpError ||
+    error instanceof BbHttpError ||
+    isAbortLikeError(error)
+  ) {
     return false;
   }
 
@@ -97,7 +102,7 @@ function toLifecycleErrorOperation(
   }
 }
 
-function getHttpErrorMessage(error: HttpError): string | null {
+function getHttpErrorMessage(error: HttpError | BbHttpError): string | null {
   const bodyMessage = extractErrorMessage(error.body);
   if (bodyMessage) {
     return normalizeMessage(bodyMessage);
@@ -148,7 +153,7 @@ export function getMutationErrorMessage({
     return formatLifecycleErrorDescription(lifecycleErrorDescription);
   }
 
-  if (error instanceof HttpError) {
+  if (error instanceof HttpError || error instanceof BbHttpError) {
     return getHttpErrorMessage(error) ?? fallbackMessage;
   }
 

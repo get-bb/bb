@@ -4,7 +4,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { ExistingThreadExecutionInputSources } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { threadQueuedMessagesQueryKey } from "../queries/query-keys";
 import {
@@ -14,14 +14,20 @@ import {
   useSendThreadMessage,
 } from "./thread-runtime-mutations";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/lib/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/sdk")>();
   return {
     ...actual,
-    createThreadQueuedMessage: vi.fn(),
-    deleteThreadQueuedMessage: vi.fn(),
-    setThreadQueuedMessageGroupBoundary: vi.fn(),
-    sendThreadMessage: vi.fn(),
+    sdk: {
+      threads: {
+        queuedMessages: {
+          create: vi.fn(),
+          delete: vi.fn(),
+          setGroupBoundary: vi.fn(),
+        },
+        send: vi.fn(),
+      },
+    },
   };
 });
 
@@ -56,12 +62,12 @@ const executionInputSources = {
 } satisfies ExistingThreadExecutionInputSources;
 
 beforeEach(() => {
-  vi.mocked(api.sendThreadMessage).mockResolvedValue(undefined);
-  vi.mocked(api.createThreadQueuedMessage).mockResolvedValue(
+  vi.mocked(sdk.threads.send).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
     makeQueuedMessage(),
   );
-  vi.mocked(api.deleteThreadQueuedMessage).mockResolvedValue(undefined);
-  vi.mocked(api.setThreadQueuedMessageGroupBoundary).mockResolvedValue([]);
+  vi.mocked(sdk.threads.queuedMessages.delete).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.queuedMessages.setGroupBoundary).mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -83,10 +89,10 @@ describe("thread runtime mutations", () => {
       });
     });
 
-    expect(api.sendThreadMessage).toHaveBeenCalledWith(
-      "thread-1",
+    expect(sdk.threads.send).toHaveBeenCalledWith(
       expect.objectContaining({
         executionInputSources,
+        threadId: "thread-1",
       }),
     );
   });
@@ -106,11 +112,11 @@ describe("thread runtime mutations", () => {
       });
     });
 
-    expect(api.createThreadQueuedMessage).toHaveBeenCalledWith(
-      "thread-1",
+    expect(sdk.threads.queuedMessages.create).toHaveBeenCalledWith(
       expect.objectContaining({
         executionInputSources,
         senderThreadId: "thread-source",
+        threadId: "thread-1",
       }),
     );
   });
@@ -121,8 +127,8 @@ describe("thread runtime mutations", () => {
       makeQueuedMessage({ id: "qmsg-1" }),
       makeQueuedMessage({ id: "qmsg-2" }),
     ]);
-    vi.mocked(api.deleteThreadQueuedMessage).mockRejectedValue(
-      new api.HttpError({
+    vi.mocked(sdk.threads.queuedMessages.delete).mockRejectedValue(
+      new BbHttpError({
         status: 404,
         code: "invalid_request",
         message: "Queued message not found",
@@ -169,12 +175,10 @@ describe("thread runtime mutations", () => {
       });
     });
 
-    expect(api.setThreadQueuedMessageGroupBoundary).toHaveBeenCalledWith(
-      "thread-1",
-      {
-        expectedGroupedPrefixQueuedMessageIds: ["qmsg-1", "qmsg-2"],
-        groupBoundaryQueuedMessageId: "qmsg-2",
-      },
-    );
+    expect(sdk.threads.queuedMessages.setGroupBoundary).toHaveBeenCalledWith({
+      expectedGroupedPrefixQueuedMessageIds: ["qmsg-1", "qmsg-2"],
+      groupBoundaryQueuedMessageId: "qmsg-2",
+      threadId: "thread-1",
+    });
   });
 });

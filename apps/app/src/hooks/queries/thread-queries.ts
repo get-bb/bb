@@ -22,10 +22,12 @@ import type {
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import { applyTimelineDelta } from "@bb/server-contract";
-import type { ThreadListFilters, FilePreview } from "@/lib/api";
+import type { ThreadListFilters } from "@/lib/api-types";
+import type { FilePreview } from "@/lib/file-preview";
 import type { PathListOptions } from "@/lib/path-list-options";
 import type { ThreadStorageFileListOptions } from "@/lib/thread-storage-files";
 import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   useThreadDetailRealtimeSubscription,
   useThreadListRealtimeSubscription,
@@ -310,16 +312,14 @@ export function useArchivedThreads(
       ...(kind !== "all" ? { kind } : {}),
     }),
     queryFn: ({ pageParam, signal }) =>
-      api.listThreads(
-        {
-          ...(projectId ? { projectId } : {}),
-          ...(hasParent !== undefined ? { hasParent } : {}),
-          archived: true,
-          limit: ARCHIVED_THREADS_PAGE_SIZE,
-          offset: pageParam,
-        },
+      sdk.threads.list({
+        ...(projectId ? { projectId } : {}),
+        ...(hasParent !== undefined ? { hasParent } : {}),
+        archived: true,
+        limit: ARCHIVED_THREADS_PAGE_SIZE,
+        offset: pageParam,
         signal,
-      ),
+      }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.length < ARCHIVED_THREADS_PAGE_SIZE) {
@@ -344,13 +344,11 @@ export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
   return useQuery<ThreadListResponse>({
     queryKey,
     queryFn: ({ signal }) =>
-      api.listThreads(
-        {
-          ...rest,
-          projectId: requireThreadId(projectId ?? "", "useThreads"),
-        },
+      sdk.threads.list({
+        ...rest,
+        projectId: requireThreadId(projectId ?? "", "useThreads"),
         signal,
-      ),
+      }),
     enabled,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
@@ -382,13 +380,11 @@ export function useProjectThreadSubset({
   const activeProjectThreadsQuery = useQuery<ThreadListResponse>({
     queryKey: activeProjectThreadListQueryKey,
     queryFn: ({ signal }) =>
-      api.listThreads(
-        {
-          archived: false,
-          projectId: requireThreadId(projectId ?? "", "useProjectThreadSubset"),
-        },
+      sdk.threads.list({
+        archived: false,
+        projectId: requireThreadId(projectId ?? "", "useProjectThreadSubset"),
         signal,
-      ),
+      }),
     enabled: enabled && activeProjectThreadListIsCached,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
@@ -437,7 +433,7 @@ export function useThreadMentionCandidates({
   const threadsQuery = useQuery<ThreadListResponse>({
     queryKey,
     queryFn: ({ signal }) =>
-      api.listThreads(THREAD_MENTION_CANDIDATE_FILTERS, signal),
+      sdk.threads.list({ ...THREAD_MENTION_CANDIDATE_FILTERS, signal }),
     enabled,
     placeholderData: (previousData) =>
       previousData ??
@@ -475,7 +471,11 @@ export function useThreadSearch({
   const threadSearchQuery = useQuery<ThreadSearchResponse>({
     queryKey: threadSearchQueryKey({ limitPerGroup, query: debouncedQuery }),
     queryFn: ({ signal }) =>
-      api.searchThreads({ limitPerGroup, query: debouncedQuery }, signal),
+      sdk.threads.search({
+        limitPerGroup: String(limitPerGroup),
+        query: debouncedQuery,
+        signal,
+      }),
     enabled,
     staleTime: THREAD_SEARCH_STALE_TIME_MS,
   });
@@ -499,7 +499,10 @@ export function useThread(id: string, options?: QueryOptions) {
   return useQuery<ThreadResponse>({
     queryKey: threadQueryKey(id),
     queryFn: ({ signal }) =>
-      api.getThread(requireThreadId(id, "useThread"), signal),
+      sdk.threads.get({
+        threadId: requireThreadId(id, "useThread"),
+        signal,
+      }),
     enabled,
     staleTime: 5_000,
     refetchOnMount: options?.refetchOnMount ?? true,
@@ -537,10 +540,11 @@ export function useThreadDetailBootstrap(
   return useQuery<ThreadWithIncludesResponse>({
     queryKey: threadDetailBootstrapQueryKey(id),
     queryFn: async ({ signal }) => {
-      const thread = await api.getThreadWithEnvironmentHost(
-        requireThreadId(id, "useThreadDetailBootstrap"),
+      const thread = await sdk.threads.get({
+        include: "environment,host",
+        threadId: requireThreadId(id, "useThreadDetailBootstrap"),
         signal,
-      );
+      });
       ingestThreadDetailBootstrap({
         queryClient,
         thread,
@@ -565,10 +569,10 @@ export function useThreadQueuedMessages(
   return useQuery<ThreadQueuedMessageListResponse>({
     queryKey: threadQueuedMessagesQueryKey(id),
     queryFn: ({ signal }) =>
-      api.listThreadQueuedMessages(
-        requireThreadId(id, "useThreadQueuedMessages"),
+      sdk.threads.queuedMessages.list({
+        threadId: requireThreadId(id, "useThreadQueuedMessages"),
         signal,
-      ),
+      }),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: true,
@@ -586,10 +590,10 @@ export function useThreadPromptHistory(
   return useQuery<PromptHistoryResponse>({
     queryKey: threadPromptHistoryQueryKey(id),
     queryFn: ({ signal }) =>
-      api.listThreadPromptHistory(
-        requireThreadId(id, "useThreadPromptHistory"),
+      sdk.threads.promptHistory({
+        threadId: requireThreadId(id, "useThreadPromptHistory"),
         signal,
-      ),
+      }),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? PROMPT_HISTORY_STALE_TIME_MS,
@@ -606,10 +610,10 @@ export function useThreadPendingInteractions(
   return useQuery<ThreadPendingInteractionsResponse>({
     queryKey: threadPendingInteractionsQueryKey(id),
     queryFn: ({ signal }) =>
-      api.listThreadPendingInteractions(
-        requireThreadId(id, "useThreadPendingInteractions"),
+      sdk.threads.interactions.list({
+        threadId: requireThreadId(id, "useThreadPendingInteractions"),
         signal,
-      ),
+      }),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
@@ -627,12 +631,15 @@ export function useThreadStorageFiles(
 
   return useQuery<ThreadStorageFileListResponse>({
     queryKey: threadStorageFilesQueryKey(id, listOptions),
-    queryFn: ({ signal }) =>
-      api.listThreadStorageFiles({
-        id: requireThreadId(id, "useThreadStorageFiles"),
-        options: listOptions,
+    queryFn: ({ signal }) => {
+      const query = listOptions.query?.trim() ?? "";
+      return sdk.threads.storageFiles({
+        limit: String(listOptions.limit),
+        ...(query.length > 0 ? { query } : {}),
+        threadId: requireThreadId(id, "useThreadStorageFiles"),
         signal,
-      }),
+      });
+    },
     enabled,
     // Subscriptions can be absent while no UI is listening, so remount must
     // establish a fresh baseline instead of trusting cached data.
@@ -650,12 +657,17 @@ export function useThreadStoragePaths(
 
   return useQuery<ThreadStoragePathListResponse>({
     queryKey: threadStoragePathsQueryKey(id, listOptions),
-    queryFn: ({ signal }) =>
-      api.listThreadStoragePaths({
-        id: requireThreadId(id, "useThreadStoragePaths"),
-        options: listOptions,
+    queryFn: ({ signal }) => {
+      const query = listOptions.query?.trim() ?? "";
+      return sdk.threads.storagePaths({
+        includeDirectories: listOptions.includeDirectories ? "true" : "false",
+        includeFiles: listOptions.includeFiles ? "true" : "false",
+        limit: String(listOptions.limit),
+        ...(query.length > 0 ? { query } : {}),
+        threadId: requireThreadId(id, "useThreadStoragePaths"),
         signal,
-      }),
+      });
+    },
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     placeholderData: (previousData) => previousData,
@@ -751,15 +763,15 @@ export function useThreadTimeline(
       const previous = queryClient.getQueryData<ThreadTimelineResponse>(
         threadTimelineQueryKey(id),
       );
-      const response = await api.getThreadTimeline({
-        id: threadId,
+      const response = await sdk.threads.timeline({
+        threadId,
         signal,
         ...(previous?.maxSeq !== undefined
-          ? { afterSequence: previous.maxSeq }
+          ? { afterSequence: String(previous.maxSeq) }
           : {}),
       });
       return mergeThreadTimelineDelta(previous, response, () =>
-        api.getThreadTimeline({ id: threadId, signal }),
+        sdk.threads.timeline({ threadId, signal }),
       );
     },
     enabled,
@@ -797,7 +809,7 @@ export function useThreadConversationOutline(
     queryKey: threadConversationOutlineQueryKey(id),
     queryFn: async ({ signal }) => {
       const threadId = requireThreadId(id, "useThreadConversationOutline");
-      return api.getThreadConversationOutline({ id: threadId, signal });
+      return sdk.threads.conversationOutline({ threadId, signal });
     },
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
@@ -814,15 +826,15 @@ export function useThreadTimelineTurnSummaryDetails(
   return useQuery<TimelineTurnSummaryDetailsResponse>({
     queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
     queryFn: ({ signal }) =>
-      api.getThreadTimelineTurnSummaryDetails({
-        id: requireThreadId(
+      sdk.threads.timelineTurnSummaryDetails({
+        threadId: requireThreadId(
           identity.threadId,
           "useThreadTimelineTurnSummaryDetails",
         ),
-        signal,
-        sourceSeqEnd: identity.sourceSeqEnd,
-        sourceSeqStart: identity.sourceSeqStart,
+        sourceSeqEnd: String(identity.sourceSeqEnd),
+        sourceSeqStart: String(identity.sourceSeqStart),
         turnId: identity.turnId,
+        signal,
       }),
     enabled:
       (options?.enabled ?? true) &&

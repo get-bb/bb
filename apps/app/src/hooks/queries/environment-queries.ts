@@ -5,15 +5,21 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
+  EnvironmentDiffFileResponse,
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFilesResponse,
   EnvironmentPullRequestResponse,
   EnvironmentStatusResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
-import type { FilePreview } from "@/lib/api";
-import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
-import * as api from "@/lib/api";
+import type { EnvironmentDiffArgs } from "@bb/sdk/browser";
+import {
+  buildFilePreview,
+  normalizeFilePreviewMimeType,
+  type EnvironmentFilePreviewSource,
+  type FilePreview,
+} from "@/lib/file-preview";
+import { sdk } from "@/lib/sdk";
 import { useEnvironmentDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   environmentDiffFilesQueryKey,
@@ -85,10 +91,10 @@ export function useEnvironment(
   return useQuery<Environment>({
     queryKey: environmentQueryKey(environmentId),
     queryFn: ({ signal }) =>
-      api.getEnvironment(
-        requireEnvironmentId(environmentId, "useEnvironment"),
+      sdk.environments.get({
+        environmentId: requireEnvironmentId(environmentId, "useEnvironment"),
         signal,
-      ),
+      }),
     enabled,
     staleTime: options?.staleTime,
   });
@@ -109,11 +115,14 @@ export function useEnvironmentWorkStatus(
       normalizedMergeBaseBranch,
     ),
     queryFn: ({ signal }) =>
-      api.getEnvironmentWorkStatus(
-        requireEnvironmentId(environmentId, "useEnvironmentWorkStatus"),
+      sdk.environments.status({
+        environmentId: requireEnvironmentId(
+          environmentId,
+          "useEnvironmentWorkStatus",
+        ),
         mergeBaseBranch,
         signal,
-      ),
+      }),
     enabled,
     // Subscriptions can be absent while no UI is listening, so remount must
     // establish a fresh baseline instead of trusting cached data.
@@ -174,10 +183,13 @@ export function useEnvironmentPullRequest(
   return useQuery<EnvironmentPullRequestResponse>({
     queryKey: environmentPullRequestQueryKey(environmentId),
     queryFn: ({ signal }) =>
-      api.getEnvironmentPullRequest(
-        requireEnvironmentId(environmentId, "useEnvironmentPullRequest"),
+      sdk.environments.pullRequest({
+        environmentId: requireEnvironmentId(
+          environmentId,
+          "useEnvironmentPullRequest",
+        ),
         signal,
-      ),
+      }),
     enabled,
     refetchOnMount: true,
     refetchOnWindowFocus: "always",
@@ -209,15 +221,13 @@ export function useEnvironmentMergeBaseBranches(
       selectedBranch ?? "",
     ),
     queryFn: ({ signal }) =>
-      api.getEnvironmentDiffBranches(
+      sdk.environments.diffBranches({
         environmentId,
-        {
-          ...(query ? { query } : {}),
-          ...(selectedBranch ? { selectedBranch } : {}),
-          limit,
-        },
+        ...(query ? { query } : {}),
+        ...(selectedBranch ? { selectedBranch } : {}),
+        limit: String(limit),
         signal,
-      ),
+      }),
     enabled,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
     staleTime: MERGE_BASE_BRANCHES_STALE_MS,
@@ -249,21 +259,34 @@ export function useEnvironmentFilePreview(
 
   return useQuery<FilePreview>({
     queryKey: environmentFilePreviewQueryKey(environmentId, path, source),
-    queryFn: ({ signal }) =>
-      api.getEnvironmentFilePreview({
-        id: requireEnvironmentId(environmentId, "useEnvironmentFilePreview"),
-        path: requireEnabledQueryArg({
-          value: path,
-          hookName: "useEnvironmentFilePreview",
-          argName: "path",
-        }),
-        source: requireEnabledQueryArg({
-          value: source,
-          hookName: "useEnvironmentFilePreview",
-          argName: "source",
-        }),
+    queryFn: async ({ signal }) => {
+      const resolvedPath = requireEnabledQueryArg({
+        value: path,
+        hookName: "useEnvironmentFilePreview",
+        argName: "path",
+      });
+      const resolvedSource = requireEnabledQueryArg({
+        value: source,
+        hookName: "useEnvironmentFilePreview",
+        argName: "source",
+      });
+      const response = await sdk.environments.diffFile({
+        environmentId: requireEnvironmentId(
+          environmentId,
+          "useEnvironmentFilePreview",
+        ),
+        path: resolvedPath,
+        side: resolvedSource.kind === "working-tree" ? "new" : "old",
         signal,
-      }),
+        ...(resolvedSource.kind === "merge-base"
+          ? {
+              target: "branch_committed" as const,
+              mergeBaseRef: resolvedSource.ref,
+            }
+          : { target: "uncommitted" as const }),
+      });
+      return buildEnvironmentFilePreview(resolvedPath, response);
+    },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
   });
@@ -305,15 +328,15 @@ export function useEnvironmentPathSuggestions(
       includeDirectories,
     ),
     queryFn: ({ signal }) =>
-      api.searchEnvironmentPaths({
+      sdk.environments.paths({
         environmentId: requireEnvironmentId(
           environmentId,
           "useEnvironmentPathSuggestions",
         ),
         query: trimmedQuery,
-        limit,
-        includeFiles,
-        includeDirectories,
+        limit: String(limit),
+        includeFiles: includeFiles ? "true" : "false",
+        includeDirectories: includeDirectories ? "true" : "false",
         signal,
       }),
     enabled,
@@ -343,15 +366,17 @@ export function useEnvironmentDiffFiles(
       environmentDiffTargetKey(target),
     ),
     queryFn: ({ signal }) =>
-      api.getEnvironmentDiffFiles(
-        environmentId,
-        requireEnabledQueryArg({
-          value: target,
-          hookName: "useEnvironmentDiffFiles",
-          argName: "target",
-        }),
+      sdk.environments.diffFiles({
+        ...buildEnvironmentDiffArgs(
+          environmentId,
+          requireEnabledQueryArg({
+            value: target,
+            hookName: "useEnvironmentDiffFiles",
+            argName: "target",
+          }),
+        ),
         signal,
-      ),
+      }),
     enabled,
     placeholderData: (previousData, previousQuery) =>
       resolveEnvironmentDiffFilesPlaceholder(
@@ -361,5 +386,66 @@ export function useEnvironmentDiffFiles(
       ),
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     staleTime: ENVIRONMENT_DIFF_STALE_MS,
+  });
+}
+
+function buildEnvironmentDiffArgs(
+  environmentId: string,
+  target: WorkspaceDiffTarget,
+): EnvironmentDiffArgs {
+  switch (target.type) {
+    case "uncommitted":
+      return { environmentId, target: target.type };
+    case "branch_committed":
+    case "all":
+      return {
+        environmentId,
+        mergeBaseBranch: target.mergeBaseBranch,
+        target: target.type,
+      };
+    case "commit":
+      return { environmentId, sha: target.sha, target: target.type };
+  }
+}
+
+function decodeBase64Bytes(content: string): Uint8Array {
+  const binaryContent = atob(content);
+  const bytes = new Uint8Array(binaryContent.length);
+  for (let index = 0; index < binaryContent.length; index += 1) {
+    bytes[index] = binaryContent.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function encodeBase64Bytes(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  const binaryChunks: string[] = [];
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binaryChunks.push(
+      String.fromCharCode(...bytes.subarray(index, index + chunkSize)),
+    );
+  }
+  return btoa(binaryChunks.join(""));
+}
+
+function buildEnvironmentFilePreview(
+  path: string,
+  response: EnvironmentDiffFileResponse,
+): FilePreview {
+  const contentBytes =
+    response.contentEncoding === "base64"
+      ? decodeBase64Bytes(response.content)
+      : new TextEncoder().encode(response.content);
+  const mimeType = normalizeFilePreviewMimeType(response.mimeType ?? null);
+  const base64Content =
+    response.contentEncoding === "base64"
+      ? response.content
+      : encodeBase64Bytes(contentBytes);
+  return buildFilePreview({
+    contentBytes,
+    mimeType,
+    name: path.split("/").at(-1),
+    path,
+    url: `data:${mimeType};base64,${base64Content}`,
   });
 }

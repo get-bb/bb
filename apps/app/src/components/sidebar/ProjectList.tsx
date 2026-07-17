@@ -42,7 +42,7 @@ import { useDialogState } from "@/hooks/useDialogState";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@bb/sdk/browser";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
@@ -461,7 +461,10 @@ function getSectionMutationErrorMessage(
   error: unknown,
   fallbackMessage: string,
 ): string {
-  if (error instanceof HttpError && error.code === "folder_name_conflict") {
+  if (
+    error instanceof BbHttpError &&
+    error.code === "folder_name_conflict"
+  ) {
     return "Section name already exists.";
   }
   return getMutationErrorMessage({ error, fallbackMessage });

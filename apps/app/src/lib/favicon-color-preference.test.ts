@@ -3,6 +3,7 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppTheme } from "@bb/domain";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   FAVICON_COLOR_SERVER_SYNCED_STORAGE_KEY,
   FAVICON_COLOR_STORAGE_KEY,
@@ -18,10 +19,12 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: mocks.useSystemConfig,
 }));
 
-vi.mock("@/hooks/mutations/settings-mutations", () => ({
-  useUpdateAppearance: () => ({
-    mutate: mocks.updateAppearance,
-  }),
+vi.mock("@/lib/sdk", () => ({
+  sdk: {
+    theme: {
+      set: mocks.updateAppearance,
+    },
+  },
 }));
 
 function setSystemFaviconColor(
@@ -47,16 +50,14 @@ describe("favicon color server sync", () => {
   it("migrates a cached legacy tint when the server has no stored tint yet", async () => {
     window.localStorage.setItem(FAVICON_COLOR_STORAGE_KEY, "teal");
     setSystemFaviconColor("default");
-    mocks.updateAppearance.mockImplementation((_selection, options) => {
-      options?.onSuccess?.();
-    });
+    mocks.updateAppearance.mockResolvedValue(undefined);
+    const { wrapper } = createQueryClientTestHarness();
 
-    renderHook(() => useFaviconColorSync());
+    renderHook(() => useFaviconColorSync(), { wrapper });
 
     await waitFor(() =>
       expect(mocks.updateAppearance).toHaveBeenCalledWith(
         { themeId: "default", faviconColor: "teal" },
-        expect.objectContaining({ onSuccess: expect.any(Function) }),
       ),
     );
     expect(window.localStorage.getItem(FAVICON_COLOR_STORAGE_KEY)).toBe("teal");
@@ -68,7 +69,8 @@ describe("favicon color server sync", () => {
   it("does not restore a cached tint after the server value has been seen", async () => {
     window.localStorage.setItem(FAVICON_COLOR_STORAGE_KEY, "teal");
     setSystemFaviconColor("teal");
-    const { rerender } = renderHook(() => useFaviconColorSync());
+    const { wrapper } = createQueryClientTestHarness();
+    const { rerender } = renderHook(() => useFaviconColorSync(), { wrapper });
 
     await waitFor(() =>
       expect(

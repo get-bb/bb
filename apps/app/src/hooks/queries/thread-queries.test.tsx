@@ -3,6 +3,7 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import {
@@ -20,10 +21,17 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     getThreadHostFilePreview: vi.fn(),
-    listThreadQueuedMessages: vi.fn(),
-    listThreads: vi.fn(),
   };
 });
+
+vi.mock("@/lib/sdk", () => ({
+  sdk: {
+    threads: {
+      list: vi.fn(),
+      queuedMessages: { list: vi.fn() },
+    },
+  },
+}));
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadDetailRealtimeSubscription: vi.fn(),
@@ -36,8 +44,8 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.mocked(api.listThreads).mockResolvedValue([]);
-  vi.mocked(api.listThreadQueuedMessages).mockResolvedValue([]);
+  vi.mocked(sdk.threads.list).mockResolvedValue([]);
+  vi.mocked(sdk.threads.queuedMessages.list).mockResolvedValue([]);
   vi.mocked(api.getThreadHostFilePreview).mockResolvedValue({
     kind: "text",
     path: "/tmp/log.txt",
@@ -54,12 +62,13 @@ describe("useArchivedThreads", () => {
     renderHook(() => useArchivedThreads({}), { wrapper });
 
     await waitFor(() => {
-      expect(api.listThreads).toHaveBeenCalled();
+      expect(sdk.threads.list).toHaveBeenCalled();
     });
-    expect(vi.mocked(api.listThreads).mock.calls[0]?.[0]).toEqual({
+    expect(vi.mocked(sdk.threads.list).mock.calls[0]?.[0]).toEqual({
       archived: true,
       limit: ARCHIVED_THREADS_PAGE_SIZE,
       offset: 0,
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -69,13 +78,14 @@ describe("useArchivedThreads", () => {
     renderHook(() => useArchivedThreads({ kind: "child" }), { wrapper });
 
     await waitFor(() => {
-      expect(api.listThreads).toHaveBeenCalled();
+      expect(sdk.threads.list).toHaveBeenCalled();
     });
-    expect(vi.mocked(api.listThreads).mock.calls[0]?.[0]).toEqual({
+    expect(vi.mocked(sdk.threads.list).mock.calls[0]?.[0]).toEqual({
       archived: true,
       hasParent: true,
       limit: ARCHIVED_THREADS_PAGE_SIZE,
       offset: 0,
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -87,13 +97,14 @@ describe("useArchivedThreads", () => {
     });
 
     await waitFor(() => {
-      expect(api.listThreads).toHaveBeenCalled();
+      expect(sdk.threads.list).toHaveBeenCalled();
     });
-    expect(vi.mocked(api.listThreads).mock.calls[0]?.[0]).toEqual({
+    expect(vi.mocked(sdk.threads.list).mock.calls[0]?.[0]).toEqual({
       archived: true,
       limit: ARCHIVED_THREADS_PAGE_SIZE,
       offset: 0,
       projectId: "proj_1",
+      signal: expect.any(AbortSignal),
     });
   });
 });
@@ -105,7 +116,7 @@ describe("useThreadQueuedMessages", () => {
     renderHook(() => useThreadQueuedMessages("thread-1"), { wrapper });
 
     await waitFor(() => {
-      expect(api.listThreadQueuedMessages).toHaveBeenCalledTimes(1);
+      expect(sdk.threads.queuedMessages.list).toHaveBeenCalledTimes(1);
     });
 
     const query = queryClient.getQueryCache().find({

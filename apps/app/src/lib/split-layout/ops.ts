@@ -14,6 +14,10 @@ const MIN_SIZE = 0.15;
 const MAX_SIZE = 0.85;
 const SIZE_EPSILON = 1e-12;
 
+export function clampSplitPairFraction(fraction: number): number {
+  return Math.min(MAX_SIZE, Math.max(MIN_SIZE, fraction));
+}
+
 export function listPanes(root: LayoutNode): PaneNode[] {
   if (root.type === "pane") {
     return [root];
@@ -444,7 +448,7 @@ export function resizeSplit(
       return null;
     }
     const pairTotal = first + second;
-    const pairFraction = Math.min(MAX_SIZE, Math.max(MIN_SIZE, fraction));
+    const pairFraction = clampSplitPairFraction(fraction);
     const nextSizes = [...sizes];
     nextSizes[childIndex] = pairTotal * pairFraction;
     nextSizes[childIndex + 1] = pairTotal * (1 - pairFraction);

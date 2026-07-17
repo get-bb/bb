@@ -7,7 +7,7 @@ import type {
   UpdateProjectRequest,
   UploadedPromptAttachment,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   applyProjectCreateResult,
   applyProjectDeleteResult,
@@ -59,7 +59,7 @@ export function useCreateProject() {
     meta: {
       errorMessage: "Failed to create project.",
     },
-    mutationFn: (request: CreateProjectRequest) => api.createProject(request),
+    mutationFn: (request: CreateProjectRequest) => sdk.projects.create(request),
     onSuccess: (project) => {
       applyProjectCreateResult({ project, queryClient });
       invalidateProjectListQueries({ queryClient });
@@ -75,7 +75,7 @@ export function useUpdateProject() {
       errorMessage: "Failed to update project.",
     },
     mutationFn: ({ id, ...request }: UpdateProjectMutationRequest) =>
-      api.updateProject(id, request),
+      sdk.projects.update({ projectId: id, ...request }),
     onSuccess: (_data, variables) => {
       invalidateProjectUpdateQueries({ projectId: variables.id, queryClient });
     },
@@ -95,7 +95,8 @@ export function useReorderProject() {
       previousProjectId,
       nextProjectId,
     }: ReorderProjectMutationRequest): Promise<ProjectResponse[]> =>
-      api.reorderProject(projectId, {
+      sdk.projects.reorder({
+        projectId,
         previousProjectId,
         nextProjectId,
       }),
@@ -123,7 +124,9 @@ export function useDeleteProject() {
     meta: {
       errorMessage: "Failed to remove project.",
     },
-    mutationFn: (projectId: string) => api.deleteProject(projectId),
+    mutationFn: async (projectId: string): Promise<void> => {
+      await sdk.projects.delete({ projectId });
+    },
     onSuccess: (_data, projectId) => {
       applyProjectDeleteResult({ projectId, queryClient });
     },
@@ -138,7 +141,12 @@ export function useAddLocalProjectSource() {
       errorMessage: "Failed to add local source.",
     },
     mutationFn: ({ projectId, hostId, path }: AddLocalProjectSourceRequest) =>
-      api.addProjectSource(projectId, { type: "local_path", hostId, path }),
+      sdk.projects.sources.add({
+        projectId,
+        type: "local_path",
+        hostId,
+        path,
+      }),
     onSuccess: (_data, variables) => {
       invalidateProjectSourceQueries({
         projectId: variables.projectId,
@@ -166,7 +174,7 @@ export function useAddProjectSource() {
       showErrorToast: false,
     },
     mutationFn: ({ projectId, request }: AddProjectSourceMutationRequest) =>
-      api.addProjectSource(projectId, request),
+      sdk.projects.sources.add({ projectId, ...request }),
     onSuccess: (_data, variables) => {
       invalidateProjectSourceQueries({
         projectId: variables.projectId,
@@ -188,7 +196,9 @@ export function useUpdateLocalProjectSource() {
       sourceId,
       path,
     }: UpdateLocalProjectSourceRequest) =>
-      api.updateProjectSource(projectId, sourceId, {
+      sdk.projects.sources.update({
+        projectId,
+        sourceId,
         type: "local_path",
         path,
       }),
@@ -208,8 +218,12 @@ export function useDeleteLocalProjectSource() {
     meta: {
       errorMessage: "Failed to remove source.",
     },
-    mutationFn: ({ projectId, sourceId }: DeleteLocalProjectSourceRequest) =>
-      api.removeProjectSource(projectId, sourceId),
+    mutationFn: async ({
+      projectId,
+      sourceId,
+    }: DeleteLocalProjectSourceRequest): Promise<void> => {
+      await sdk.projects.sources.delete({ projectId, sourceId });
+    },
     onSuccess: (_data, variables) => {
       invalidateProjectSourceQueries({
         projectId: variables.projectId,
@@ -229,7 +243,7 @@ export function useUploadPromptAttachment() {
       projectId,
       file,
     }: UploadPromptAttachmentRequest): Promise<UploadedPromptAttachment> =>
-      api.uploadPromptAttachment(projectId, file),
+      sdk.projects.attachments.upload({ projectId, clientFile: file }),
     retry: false,
   });
 }

@@ -2,7 +2,7 @@ import { useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Thread } from "@bb/domain";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
   isThreadForkable,
@@ -46,7 +46,10 @@ export function useForkThreadFromMessage({
       const executionOptions = await queryClient.fetchQuery({
         queryKey: threadDefaultExecutionOptionsQueryKey(sourceThread.id),
         queryFn: ({ signal }) =>
-          api.getThreadDefaultExecutionOptions(sourceThread.id, signal),
+          sdk.threads.defaultExecutionOptions({
+            signal,
+            threadId: sourceThread.id,
+          }),
       });
       if (executionOptions === null || sourceThread.environmentId === null) {
         return;

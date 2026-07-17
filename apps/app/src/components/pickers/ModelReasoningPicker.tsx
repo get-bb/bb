@@ -59,6 +59,8 @@ import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import { resolveModelPickerToggle } from "./modelPickerToggle";
 
 interface ModelLabelParts {
   base: string;
@@ -535,22 +537,45 @@ export function ModelReasoningPicker({
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
   );
 
+  // Scope Cmd+Shift+M to one composer of the focused pane. Standalone/single-pane
+  // surfaces have no pane context and default to focused/non-split.
+  const paneContext = useOptionalPaneContext();
+  const isFocusedPane = paneContext?.isFocused ?? true;
+  const isSplitPane = paneContext?.isSplitPane ?? false;
   useAppCommandContext("modelPickerOpen", open && !disabled);
   useAppCommandHandler(
     "modelPicker.toggle",
     ({ target }) => {
-      if (disabled) return false;
-      if (open) {
-        setOpen(false);
-        return true;
-      }
-      if (!(target instanceof HTMLElement)) return false;
-      const targetComposer = target.closest("[data-app-composer]");
-      const pickerComposer = triggerRef.current?.closest("[data-app-composer]");
-      if (targetComposer === null || targetComposer !== pickerComposer) {
-        return false;
-      }
-      setOpen(true);
+      const pickerComposer =
+        triggerRef.current?.closest("[data-app-composer]") ?? null;
+      const caretComposer =
+        target instanceof HTMLElement
+          ? target.closest("[data-app-composer]")
+          : null;
+      // Two composers of the same pane share its `[data-split-pane-id]` wrapper;
+      // a lone surface has none, so this stays false there.
+      const pickerPane =
+        triggerRef.current?.closest("[data-split-pane-id]") ?? null;
+      const caretPane = caretComposer?.closest("[data-split-pane-id]") ?? null;
+      const action = resolveModelPickerToggle({
+        open,
+        disabled: disabled ?? false,
+        isFocusedPane,
+        isSplitPane,
+        // The main/new-thread composer is primary; a side chat marks itself
+        // secondary via data-app-composer-role.
+        isPrimaryComposer:
+          pickerComposer?.getAttribute("data-app-composer-role") !== "secondary",
+        caretInThisComposer:
+          caretComposer !== null && caretComposer === pickerComposer,
+        caretInOtherComposerOfPane:
+          caretComposer !== null &&
+          caretComposer !== pickerComposer &&
+          pickerPane !== null &&
+          caretPane === pickerPane,
+      });
+      if (action === "ignore") return false;
+      setOpen(action === "open");
       return true;
     },
     50,

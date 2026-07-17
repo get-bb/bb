@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
+import { z } from "zod";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -13,13 +14,42 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
-import * as api from "@/lib/api";
-import type { ConnectMachineCode } from "@/lib/api";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 interface AddMachineDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+const connectMachineCodeSchema = z.object({
+  code: z.string(),
+  expiresAt: z.number(),
+  serverUrl: z.string(),
+});
+
+type ConnectMachineCode = z.infer<typeof connectMachineCodeSchema>;
+
+async function createConnectMachineCode(): Promise<ConnectMachineCode | null> {
+  try {
+    return await sdk.plugins.callRpc({
+      pluginId: "connect",
+      method: "createMachineCode",
+      input: {},
+      outputSchema: connectMachineCodeSchema,
+    });
+  } catch (error) {
+    if (
+      error instanceof BbHttpError &&
+      (error.code === "not_paired" ||
+        error.status === 404 ||
+        error.status === 422 ||
+        error.status === 503)
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -80,8 +110,8 @@ function AddMachineDialogContent({
     meta: { showErrorToast: false },
     mutationFn: async () => {
       const [join, machine] = await Promise.all([
-        api.createHostJoinCode(),
-        api.createConnectMachineCode(),
+        sdk.hosts.createJoinCode(),
+        createConnectMachineCode(),
       ]);
       return { join, machine };
     },

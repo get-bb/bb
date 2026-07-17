@@ -6,16 +6,15 @@ import type {
   ProviderCliKey,
 } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { InstallHostProviderCliArgs } from "@/lib/api";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
 import type { ProviderCliActionableIssue } from "./provider-cli-install";
 import { useProviderCliInstallRunner } from "./provider-cli-install";
 
 interface DeferredInstall {
-  args: InstallHostProviderCliArgs;
+  args: Parameters<typeof sdk.hosts.installProviderCli>[0];
   reject: (error: unknown) => void;
-  resolve: () => void;
+  resolve: (events: ProviderCliInstallEvent[]) => void;
 }
 
 vi.mock("@/components/dialogs/ProviderCliInstallLogDialog", () => ({
@@ -37,15 +36,17 @@ vi.mock("@/components/ui/app-toast", () => ({
   },
 }));
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/lib/sdk", () => {
   return {
-    ...actual,
-    installHostProviderCli: vi.fn(),
+    sdk: {
+      hosts: {
+        installProviderCli: vi.fn(),
+      },
+    },
   };
 });
 
-const installHostProviderCliMock = vi.mocked(api.installHostProviderCli);
+const installHostProviderCliMock = vi.mocked(sdk.hosts.installProviderCli);
 const appToastMock = vi.mocked(appToast);
 
 let pendingInstalls: DeferredInstall[] = [];
@@ -91,8 +92,7 @@ function completeInstall(
   install: DeferredInstall,
   event: ProviderCliInstallEvent,
 ): void {
-  install.args.onEvent(event);
-  install.resolve();
+  install.resolve([event]);
 }
 
 function installAt(index: number): DeferredInstall {
@@ -107,7 +107,7 @@ beforeEach(() => {
   pendingInstalls = [];
   installHostProviderCliMock.mockImplementation(
     (args) =>
-      new Promise<void>((resolve, reject) => {
+      new Promise<ProviderCliInstallEvent[]>((resolve, reject) => {
         pendingInstalls.push({ args, reject, resolve });
       }),
   );
@@ -135,7 +135,8 @@ describe("useProviderCliInstallRunner", () => {
     expect(installHostProviderCliMock).toHaveBeenCalledTimes(1);
     expect(installHostProviderCliMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        request: { provider: "codex", actionKind: "update" },
+        provider: "codex",
+        actionKind: "update",
       }),
     );
 
@@ -168,7 +169,8 @@ describe("useProviderCliInstallRunner", () => {
     });
     expect(installHostProviderCliMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        request: { provider: "claudeCode", actionKind: "update" },
+        provider: "claudeCode",
+        actionKind: "update",
       }),
     );
     expect(result.current.queuedProviders.has("claudeCode")).toBe(false);

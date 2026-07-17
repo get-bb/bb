@@ -38,6 +38,7 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
@@ -200,6 +201,15 @@ export interface FollowUpPromptBoxProps {
    * queued message restores its text into the draft.
    */
   focusEndKey?: string | number;
+  /**
+   * Whether this is the pane's primary composer (the main thread box) rather
+   * than a secondary one such as a side-chat composer, which stays mounted but
+   * hidden. Only the primary composer answers the pane-scoped Cmd+Shift+C /
+   * Cmd+Shift+M fallback when the caret is outside every composer. Defaults to
+   * true; side chats pass false. Marks the composer shell via
+   * `data-app-composer-role` so the model picker can read the same signal.
+   */
+  isPrimaryComposer?: boolean;
 }
 
 type FollowUpPromptBoxWithComposerProps = Omit<
@@ -240,6 +250,7 @@ function FollowUpPromptBoxWithComposer({
   promptActions,
   zenModeResetKey,
   focusEndKey,
+  isPrimaryComposer = true,
 }: FollowUpPromptBoxWithComposerProps) {
   const submitMode = composer.submitMode;
   const canQueueFollowUp = submitMode.kind === "queue";
@@ -264,8 +275,15 @@ function FollowUpPromptBoxWithComposer({
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   const bottomComposerAnchorRef = useRef<HTMLDivElement>(null);
   const [composerPortalHost] = useState(() => document.createElement("div"));
+  // Scope Cmd+Shift+C to the focused pane's primary composer. Every mounted
+  // composer registers this handler — including side-chat composers that stay
+  // mounted while hidden — so gating on both the focused pane and "primary"
+  // keeps a hidden side chat from stealing the chord. Standalone/single-pane
+  // surfaces have no pane context and default to focused.
+  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   useAppCommandContext("promptAvailable", true);
   useAppCommandHandler("composer.focus", () => {
+    if (!isFocusedPane || !isPrimaryComposer) return false;
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
   });
@@ -588,7 +606,12 @@ function FollowUpPromptBoxWithComposer({
       <ThreadTimelineScrollToBottomButton
         active={composer.threadRuntimeDisplayStatus === "active"}
       />
-      <div data-app-composer="" data-promptbox-shell="" className="space-y-2">
+      <div
+        data-app-composer=""
+        data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
+        data-promptbox-shell=""
+        className="space-y-2"
+      >
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>

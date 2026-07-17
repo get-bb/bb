@@ -78,7 +78,7 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { promptDraftToInput } from "@/lib/prompt-draft";
 import type { PromptDraftState } from "@/lib/prompt-draft";
@@ -958,7 +958,7 @@ export function ThreadDetailPromptArea({
       setAttachmentError(null);
       dismissInlineQueuedMessageEditor();
     } catch (nextError) {
-      if (nextError instanceof HttpError && nextError.status === 404) {
+      if (nextError instanceof BbHttpError && nextError.status === 404) {
         dismissInlineQueuedMessageEditor();
       }
       appToast.error(

@@ -27,7 +27,7 @@ describe("bundled plugin SDK declarations", () => {
     );
     expect(declarations).toContain("interface PluginCatalogArea");
     expect(declarations).toContain("catalog: PluginCatalogArea;");
-    expect(declarations).toContain("getSource(args: PluginIdArgs)");
+    expect(declarations).toContain("getSource(args: PluginGetSourceArgs)");
     expect(declarations).toContain("checkUpdates(");
     expect(declarations).toContain("applyUpdate(args: PluginIdArgs)");
 

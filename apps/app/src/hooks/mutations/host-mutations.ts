@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { invalidateHostListQueries } from "../cache-owners/mutation-cache-effects";
 
 interface RenameHostRequest {
@@ -16,7 +16,7 @@ export function useRenameHost() {
       showErrorToast: false,
     },
     mutationFn: ({ hostId, name }: RenameHostRequest) =>
-      api.updateHost(hostId, name),
+      sdk.hosts.update({ hostId, name }),
     onSuccess: () => {
       invalidateHostListQueries({ queryClient });
     },
@@ -35,7 +35,9 @@ export function useRemoveHost() {
     meta: {
       showErrorToast: false,
     },
-    mutationFn: (hostId: string) => api.deleteHost(hostId),
+    mutationFn: async (hostId: string) => {
+      await sdk.hosts.delete({ hostId });
+    },
     onSuccess: () => {
       invalidateHostListQueries({ queryClient });
     },

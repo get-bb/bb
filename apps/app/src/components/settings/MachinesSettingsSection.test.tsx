@@ -16,20 +16,20 @@ import {
 } from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { MachinesSettingsSection } from "./MachinesSettingsSection";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    listHosts: vi.fn(),
-    getSystemConfig: vi.fn(),
-    updateHost: vi.fn(),
-    deleteHost: vi.fn(),
-  };
-});
+vi.mock("@/lib/sdk", () => ({
+  sdk: {
+    hosts: {
+      delete: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
+    },
+    system: { config: vi.fn() },
+  },
+}));
 
 vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
@@ -125,8 +125,8 @@ afterEach(() => {
 
 describe("MachinesSettingsSection", () => {
   it("renders each machine with status, primary badge, and project counts", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
-    vi.mocked(api.listHosts).mockResolvedValue([primaryHost, offlineHost]);
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
     stubSidebarBootstrapFetch();
 
     renderSection();
@@ -143,8 +143,8 @@ describe("MachinesSettingsSection", () => {
   });
 
   it("shows protocol versions when a machine needs an update", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
-    vi.mocked(api.listHosts).mockResolvedValue([
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
       primaryHost,
       {
         ...offlineHost,
@@ -163,9 +163,9 @@ describe("MachinesSettingsSection", () => {
   });
 
   it("renames a machine through the row menu", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
-    vi.mocked(api.listHosts).mockResolvedValue([primaryHost, offlineHost]);
-    vi.mocked(api.updateHost).mockResolvedValue({
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    vi.mocked(sdk.hosts.update).mockResolvedValue({
       ...offlineHost,
       name: "build box",
     });
@@ -182,17 +182,17 @@ describe("MachinesSettingsSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rename machine" }));
 
     await waitFor(() => {
-      expect(vi.mocked(api.updateHost)).toHaveBeenCalledWith(
-        "host_remote",
-        "build box",
-      );
+      expect(vi.mocked(sdk.hosts.update)).toHaveBeenCalledWith({
+        hostId: "host_remote",
+        name: "build box",
+      });
     });
   });
 
   it("removes a machine after confirmation", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
-    vi.mocked(api.listHosts).mockResolvedValue([primaryHost, offlineHost]);
-    vi.mocked(api.deleteHost).mockResolvedValue(undefined);
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
     stubSidebarBootstrapFetch();
 
     renderSection();
@@ -208,13 +208,15 @@ describe("MachinesSettingsSection", () => {
     );
 
     await waitFor(() => {
-      expect(vi.mocked(api.deleteHost)).toHaveBeenCalledWith("host_remote");
+      expect(vi.mocked(sdk.hosts.delete)).toHaveBeenCalledWith({
+        hostId: "host_remote",
+      });
     });
   });
 
   it("disables removal of the primary machine", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig());
-    vi.mocked(api.listHosts).mockResolvedValue([primaryHost, offlineHost]);
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
     stubSidebarBootstrapFetch();
 
     renderSection();
@@ -226,6 +228,6 @@ describe("MachinesSettingsSection", () => {
       name: /Remove machine/,
     });
     expect(removeItem.getAttribute("aria-disabled")).toBe("true");
-    expect(vi.mocked(api.deleteHost)).not.toHaveBeenCalled();
+    expect(vi.mocked(sdk.hosts.delete)).not.toHaveBeenCalled();
   });
 });

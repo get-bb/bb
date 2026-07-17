@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { __testing } from "./provider-usage.js";
 
@@ -7,32 +11,37 @@ const {
   normalizeCursorUsage,
   codexPlanLabel,
   claudePlanLabel,
+  readCursorAccountEmailFromDatabase,
 } = __testing;
 
 describe("normalizeCodexUsage", () => {
   it("maps primary/secondary windows and plan to the unified shape", () => {
     const primaryReset = 1_780_000_000;
     const secondaryReset = 1_780_500_000;
-    const result = normalizeCodexUsage({
-      plan_type: "pro",
-      rate_limit: {
-        primary_window: {
-          used_percent: 12,
-          reset_at: primaryReset,
-          limit_window_seconds: 18_000,
+    const result = normalizeCodexUsage(
+      {
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            used_percent: 12,
+            reset_at: primaryReset,
+            limit_window_seconds: 18_000,
+          },
+          secondary_window: {
+            used_percent: 18,
+            reset_at: secondaryReset,
+            limit_window_seconds: 604_800,
+          },
         },
-        secondary_window: {
-          used_percent: 18,
-          reset_at: secondaryReset,
-          limit_window_seconds: 604_800,
-        },
+        // Unknown sibling fields must be ignored, not fatal.
+        credits: { has_credits: false, unlimited: false, balance: null },
       },
-      // Unknown sibling fields must be ignored, not fatal.
-      credits: { has_credits: false, unlimited: false, balance: null },
-    });
+      "codex@example.com",
+    );
 
     expect(result).toEqual({
       status: "ok",
+      accountEmail: "codex@example.com",
       planLabel: "Pro",
       windows: [
         {
@@ -60,6 +69,7 @@ describe("normalizeCodexUsage", () => {
 
     expect(result).toEqual({
       status: "ok",
+      accountEmail: null,
       planLabel: "Team",
       windows: [
         { label: "Current session", usedPercent: 100, resetsAt: null },
@@ -71,6 +81,7 @@ describe("normalizeCodexUsage", () => {
   it("returns ok with no windows when rate limits are absent", () => {
     expect(normalizeCodexUsage({ plan_type: "plus" })).toEqual({
       status: "ok",
+      accountEmail: null,
       planLabel: "Plus",
       windows: [],
     });
@@ -100,10 +111,12 @@ describe("normalizeClaudeUsage", () => {
         seven_day_sonnet: { utilization: 0, resets_at: null },
       },
       credentials,
+      "claude@example.com",
     );
 
     expect(result).toEqual({
       status: "ok",
+      accountEmail: "claude@example.com",
       planLabel: "Max (20x)",
       windows: [
         {
@@ -131,6 +144,7 @@ describe("normalizeClaudeUsage", () => {
 
     expect(result).toEqual({
       status: "ok",
+      accountEmail: null,
       planLabel: null,
       windows: [{ label: "Current session", usedPercent: 7, resetsAt: null }],
     });
@@ -138,6 +152,34 @@ describe("normalizeClaudeUsage", () => {
 });
 
 describe("normalizeCursorUsage", () => {
+  it("reads and validates Cursor's cached authenticated email", async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "bb-cursor-email-"),
+    );
+    const databasePath = path.join(directory, "state.vscdb");
+    const database = new Database(databasePath);
+    try {
+      database.exec(
+        "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+      );
+      database
+        .prepare("INSERT INTO ItemTable (key, value) VALUES (?, ?)")
+        .run("cursorAuth/cachedEmail", "cursor@example.com");
+
+      expect(readCursorAccountEmailFromDatabase(databasePath)).toBe(
+        "cursor@example.com",
+      );
+
+      database
+        .prepare("UPDATE ItemTable SET value = ? WHERE key = ?")
+        .run("not-an-email", "cursorAuth/cachedEmail");
+      expect(readCursorAccountEmailFromDatabase(databasePath)).toBeNull();
+    } finally {
+      database.close();
+      await fs.rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("uses Cursor's explicit plan percentage instead of its spend ratio", () => {
     const billingCycleEnd = 1_784_391_684_000;
     const result = normalizeCursorUsage(
@@ -163,10 +205,12 @@ describe("normalizeCursorUsage", () => {
           includedAmountCents: 2_000,
         },
       },
+      "cursor@example.com",
     );
 
     expect(result).toEqual({
       status: "ok",
+      accountEmail: "cursor@example.com",
       planLabel: "Pro",
       windows: [
         {
@@ -198,6 +242,7 @@ describe("normalizeCursorUsage", () => {
 
     expect(result).toEqual({
       status: "ok",
+      accountEmail: null,
       planLabel: null,
       windows: [
         {

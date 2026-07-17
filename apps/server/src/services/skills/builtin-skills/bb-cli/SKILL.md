@@ -310,17 +310,34 @@ For review or fix pipelines, get the environment ID from
 - Start tracked work with `bb tasks show <key-or-id> --json`. Fetch relevant
   files with `bb tasks attachment get <attachment-id> --out <path>`.
 - Leave substantive milestone updates with `bb tasks comment <key-or-id>
-  --body <markdown>` and attach result artifacts with `bb tasks attachment
-  add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
+--body <markdown>` and attach result artifacts with `bb tasks attachment
+add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   = that comment). Avoid progress spam.
 - Delegated threads are attached automatically. For work started independently,
   run `bb tasks attach <key-or-id>` from the working thread.
 - When implementation is ready for review, run `bb tasks update <key-or-id>
-  --status in_review`; if blocked, leave the status accurate and explain the
+--status in_review`; if blocked, leave the status accurate and explain the
   blocker in a comment.
 - Add `--json` when command output will drive follow-up work. Run `bb tasks
-  --help` for project, folder, task, label, attachment, preset, delegation,
+--help` for project, folder, task, label, attachment, preset, delegation,
   attached-thread, and demo-data commands.
+
+## Docs
+
+- Docs is an opt-in official plugin. Keep read-only discovery small with
+  `bb docs vaults`, `list`, and `read`.
+- Edit through a sync workspace: `bb docs pull <path> --into <dir>` for one
+  file, add `--folder` for a subtree, or use `bb docs pull --all`. Edit the
+  resulting ordinary files, inspect `bb docs status <dir> --diff`, then run
+  `bb docs push <dir>`.
+- `.bb-docs-state.json` is versioned identity/concurrency state; do not edit it.
+  Concurrent local and remote changes fail closed with exit 3. Pull and merge,
+  then retry.
+- Local deletions are ignored unless `push --delete` is explicit. Use
+  `push --dry-run --diff` before destructive mirroring. Standalone callers can
+  select the local workspace machine with `--workspace-host <id>`.
+- Direct `write`, `mkdir`, `move`, and `remove` commands are deprecated and
+  retained temporarily for compatibility. Agents should use pull/edit/push.
 
 ## Automations
 

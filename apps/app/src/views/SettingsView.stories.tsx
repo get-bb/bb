@@ -95,6 +95,7 @@ const usageFixture: {
 } = {
   codex: {
     status: "ok",
+    accountEmail: "sawyer@example.com",
     planLabel: "Pro",
     windows: [
       {
@@ -111,6 +112,7 @@ const usageFixture: {
   },
   claudeCode: {
     status: "ok",
+    accountEmail: "sawyer@example.com",
     planLabel: "Max (20x)",
     windows: [
       {
@@ -127,6 +129,7 @@ const usageFixture: {
   },
   cursor: {
     status: "ok",
+    accountEmail: "sawyer@example.com",
     planLabel: "Pro",
     windows: [
       {

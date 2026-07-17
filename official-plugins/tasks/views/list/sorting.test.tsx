@@ -107,10 +107,10 @@ function renderList() {
 
 async function rowOrder(slot: ReturnType<typeof renderList>) {
   await slot.findByText("TSK-1");
-  const keys = slot
-    .getAllByRole("button")
-    .map((button) => /TSK-\d/.exec(button.textContent ?? "")?.[0])
-    .filter((key): key is string => key !== undefined);
+  // Rows carry their key on a stable data attribute; DOM order is render order.
+  const keys = Array.from(
+    slot.container.querySelectorAll("[data-task-key]"),
+  ).map((row) => row.getAttribute("data-task-key"));
   expect(keys).toHaveLength(tasks.length);
   return keys;
 }

@@ -97,7 +97,7 @@ import {
 } from "@/lib/side-chat-create-request";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@/lib/sdk";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
@@ -1164,7 +1164,7 @@ export function SideChatTabContent({
       setAttachmentError(null);
       dismissInlineQueuedMessageEditor();
     } catch (error) {
-      if (error instanceof HttpError && error.status === 404) {
+      if (error instanceof BbHttpError && error.status === 404) {
         dismissInlineQueuedMessageEditor();
       }
       appToast.error(
@@ -1570,6 +1570,10 @@ export function SideChatTabContent({
           promptActions={promptActions}
           zenModeResetKey={childThreadId ?? tab.id}
           focusEndKey={composerFocusNonce}
+          // A side chat is a secondary composer: it stays mounted (often hidden)
+          // inside its pane, so it must not answer the pane-scoped Cmd+Shift+C /
+          // Cmd+Shift+M fallback unless the caret is actually inside it.
+          isPrimaryComposer={false}
         />
       </div>
     </div>

@@ -707,15 +707,125 @@ function normalizeMentionSearchItems(
 
 const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
 const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
+const PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
 
 interface NormalizedPluginAgentConfiguration {
   toolIds: string[];
+  toolParameterOverrides: Map<string, Record<string, unknown>>;
   skillIds: string[];
   instructions: string | null;
 }
 
+function normalizePluginAgentToolParameters(args: {
+  index: number;
+  value: unknown;
+}): Record<string, unknown> {
+  const { index, value } = args;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters must be a JSON-schema object`,
+    );
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new Error(
+      `configure() output.tools[${index}].parameters is not JSON-serializable`,
+    );
+  }
+  if (serialized === undefined) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters is not JSON-serializable`,
+    );
+  }
+  if (Buffer.byteLength(serialized, "utf8") > PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
+    );
+  }
+  const parameters = JSON.parse(serialized) as Record<string, unknown>;
+  if (parameters.type !== "object") {
+    throw new Error(
+      `configure() output.tools[${index}].parameters must have root type "object"`,
+    );
+  }
+  return parameters;
+}
+
+function normalizePluginAgentToolSelections(args: {
+  knownIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): {
+  toolIds: string[];
+  parameterOverrides: Map<string, Record<string, unknown>>;
+} {
+  if (!Array.isArray(args.value)) {
+    throw new Error("configure() output.tools must be an array");
+  }
+  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+    throw new Error(
+      `configure() output.tools exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+    );
+  }
+  const toolIds: string[] = [];
+  const parameterOverrides = new Map<string, Record<string, unknown>>();
+  const seen = new Set<string>();
+  for (let index = 0; index < args.value.length; index += 1) {
+    const entry = args.value[index];
+    let name: unknown;
+    let parameters: Record<string, unknown> | null = null;
+    if (typeof entry === "string") {
+      name = entry;
+    } else if (
+      typeof entry === "object" &&
+      entry !== null &&
+      !Array.isArray(entry)
+    ) {
+      const typed = entry as Record<string, unknown>;
+      const unknownKeys = Object.keys(typed)
+        .filter((key) => !["name", "parameters"].includes(key))
+        .sort();
+      if (unknownKeys.length > 0) {
+        throw new Error(
+          `configure() output.tools[${index}] contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+        );
+      }
+      name = typed.name;
+      parameters = normalizePluginAgentToolParameters({
+        index,
+        value: typed.parameters,
+      });
+    } else {
+      throw new Error(
+        `configure() output.tools[${index}] must be a tool name or { name, parameters }`,
+      );
+    }
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error(
+        `configure() output.tools[${index}] must ${typeof entry === "string" ? "be" : "name"} a non-empty string`,
+      );
+    }
+    if (seen.has(name)) {
+      throw new Error(
+        `configure() output.tools contains duplicate id ${JSON.stringify(name)}`,
+      );
+    }
+    if (!args.knownIds.has(name)) {
+      throw new Error(
+        `configure() selected unknown tool id ${JSON.stringify(name)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+      );
+    }
+    seen.add(name);
+    toolIds.push(name);
+    if (parameters !== null) parameterOverrides.set(name, parameters);
+  }
+  return { toolIds, parameterOverrides };
+}
+
 function normalizePluginAgentSelectionIds(args: {
-  field: "tools" | "skills";
+  field: "skills";
   knownIds: ReadonlySet<string>;
   pluginId: string;
   value: unknown;
@@ -744,7 +854,7 @@ function normalizePluginAgentSelectionIds(args: {
     }
     if (!args.knownIds.has(id)) {
       throw new Error(
-        `configure() selected unknown ${args.field === "tools" ? "tool" : "skill"} id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+        `configure() selected unknown skill id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
       );
     }
     seen.add(id);
@@ -791,13 +901,14 @@ function normalizePluginAgentConfiguration(args: {
           PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
         )
       : null;
+  const toolSelections = normalizePluginAgentToolSelections({
+    knownIds: args.knownToolIds,
+    pluginId: args.pluginId,
+    value: output.tools,
+  });
   return {
-    toolIds: normalizePluginAgentSelectionIds({
-      field: "tools",
-      knownIds: args.knownToolIds,
-      pluginId: args.pluginId,
-      value: output.tools,
-    }),
+    toolIds: toolSelections.toolIds,
+    toolParameterOverrides: toolSelections.parameterOverrides,
     skillIds: normalizePluginAgentSelectionIds({
       field: "skills",
       knownIds: args.knownSkillIds,
@@ -1724,6 +1835,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
 
         const selectedTools = new Set(outcome.value.toolIds);
+        const parameterOverrides = outcome.value.toolParameterOverrides;
         tools.push(
           ...pluginTools
             .filter(({ record }) => selectedTools.has(record.name))
@@ -1732,7 +1844,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               tool: {
                 name: record.name,
                 description: record.description,
-                inputSchema: record.inputSchema,
+                inputSchema:
+                  parameterOverrides.get(record.name) ?? record.inputSchema,
               },
               instructions: record.instructions,
             })),

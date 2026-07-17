@@ -76,6 +76,27 @@ deletion.
 Project writes use the invoking CLI's current project. Global writes require
 the explicit `--scope global` flag.
 
+The Docs plugin is an opt-in official plugin bundled with the app:
+`bb plugin install docs`. Read-only discovery remains direct, while edits use
+a manifest-backed local workspace:
+
+  bb docs vaults [--json]
+  bb docs list [--vault <id>] [--json]
+  bb docs read <path> [--vault <id>]
+  bb docs pull <path> [--folder] [--vault <id>] [--into <dir>]
+  bb docs pull --all [--vault <id>] [--into <dir>]
+  bb docs status [workspace-dir] [--delete] [--diff] [--json]
+  bb docs push [workspace-dir] [--delete] [--dry-run] [--diff] [--json]
+
+Pull preserves vault-relative paths and writes `.bb-docs-state.json`; edit the
+ordinary files and leave that state file untouched. Push uses pulled SHA-256
+versions as compare-and-swap guards. Concurrent changes stop with exit 3.
+Local file and empty-directory deletions are warnings unless `--delete` is
+explicit; a pulled folder root is retained, so pull its parent or the whole
+vault to remove that folder. Use `--workspace-host <id>` when a standalone
+CLI's working directory is on a non-primary host. Direct `write`, `mkdir`,
+`move`, and `remove` remain only as deprecated compatibility commands.
+
 The Tasks plugin is an opt-in official plugin bundled with the app:
 `bb plugin install tasks`. It adds a task tracker, agent delegation,
 and the `bb tasks` command. Common agent operations are:
@@ -91,7 +112,9 @@ and the `bb tasks` command. Common agent operations are:
 Run `bb tasks --help` for project, folder, task, label, attachment, and demo-data
 commands, plus preset management, delegation, and attached-thread inspection.
 Delegated threads are attached automatically; use `bb tasks attach` only when
-work started outside Tasks.
+work started outside Tasks. File paths in tasks commands resolve on the
+invoking machine (the thread's machine inside an agent thread, otherwise the
+server's); pass `--machine <id-or-name>` to target another enrolled machine.
 
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
