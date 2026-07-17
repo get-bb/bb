@@ -159,9 +159,12 @@ export interface ThreadSendArgs extends SendMessageRequest {
   threadId: string;
 }
 
-export interface ThreadStatusArgs {
-  signal?: AbortSignal;
+export interface ThreadActionArgs {
   threadId: string;
+}
+
+export interface ThreadStatusArgs extends ThreadActionArgs {
+  signal?: AbortSignal;
 }
 
 export interface ThreadPromptHistoryArgs extends PromptHistoryQuery {
@@ -252,15 +255,22 @@ export interface ThreadInteractionListArgs {
   threadId: string;
 }
 
-export interface ThreadInteractionGetArgs extends ThreadInteractionListArgs {
+export interface ThreadInteractionTargetArgs {
   interactionId: string;
+  threadId: string;
 }
 
-export interface ThreadInteractionResolveArgs extends ThreadInteractionGetArgs {
+export interface ThreadInteractionGetArgs extends ThreadInteractionTargetArgs {
+  signal?: AbortSignal;
+}
+
+export interface ThreadInteractionResolveArgs
+  extends ThreadInteractionTargetArgs {
   resolution: PendingInteractionResolution;
 }
 
-export interface ThreadInteractionRespondArgs extends ThreadInteractionGetArgs {
+export interface ThreadInteractionRespondArgs
+  extends ThreadInteractionTargetArgs {
   value: JsonValue;
 }
 
@@ -326,7 +336,7 @@ export class ThreadWaitUnreachableError extends Error {
 
 export interface ThreadInteractionsArea {
   cancel(
-    args: ThreadInteractionGetArgs,
+    args: ThreadInteractionTargetArgs,
   ): Promise<ThreadInteractionCancelResult>;
   get(args: ThreadInteractionGetArgs): Promise<ThreadInteractionGetResult>;
   list(args: ThreadInteractionListArgs): Promise<ThreadInteractionListResult>;
@@ -368,8 +378,8 @@ export interface ThreadTabsArea {
 }
 
 export interface ThreadsArea {
-  archive(args: ThreadStatusArgs): Promise<ThreadArchiveResult>;
-  archiveAll(args: ThreadStatusArgs): Promise<ThreadArchiveAllResult>;
+  archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
+  archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
   conversationOutline(
     args: ThreadStatusArgs,
@@ -382,11 +392,11 @@ export interface ThreadsArea {
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
-  markRead(args: ThreadStatusArgs): Promise<ThreadReadStateResult>;
-  markUnread(args: ThreadStatusArgs): Promise<ThreadReadStateResult>;
+  markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
+  markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
-  pin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
+  pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
   promptHistory(
     args: ThreadPromptHistoryArgs,
   ): Promise<ThreadPromptHistoryResult>;
@@ -395,7 +405,7 @@ export interface ThreadsArea {
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
-  stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
+  stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
   timelineTurnSummaryDetails(
@@ -403,8 +413,8 @@ export interface ThreadsArea {
   ): Promise<ThreadTimelineTurnSummaryDetailsResult>;
   storageFiles(args: ThreadStorageFilesArgs): Promise<ThreadStorageFilesResult>;
   storagePaths(args: ThreadStoragePathsArgs): Promise<ThreadStoragePathsResult>;
-  unarchive(args: ThreadStatusArgs): Promise<ThreadUnarchiveResult>;
-  unpin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
+  unarchive(args: ThreadActionArgs): Promise<ThreadUnarchiveResult>;
+  unpin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
   update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
   wait(args: ThreadWaitArgs): Promise<ThreadWaitResult>;
 }
@@ -769,12 +779,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   };
   const tabs: ThreadTabsArea = {
     async get(input) {
-      return transport.readJson(
+      const body = await transport.readJson(
         transport.api.v1.threads[":id"].tabs.$get(
           { param: { id: input.threadId } },
           ...signalRequestArgs(input.signal),
         ),
       );
+      return threadTabsResponseSchema.parse(body);
     },
     async update(input) {
       const body = await transport.readJson(
