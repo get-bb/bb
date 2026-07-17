@@ -245,8 +245,13 @@ export function SplitWorkspaceSecondaryPanelHost({
             )}
           >
             {/* Panel renders a plain block; the split tree sizes itself with
-              flex-1, so restore a full-height flex context for it. */}
-            <div className="flex h-full min-h-0 min-w-0">{children}</div>
+              flex-1, so restore a full-height flex context for it. `relative`
+              makes this the containing block for a maximized pane's
+              `absolute inset-0`, so fullscreening a pane fills the main panel
+              without covering the open secondary panel to its right. */}
+            <div className="relative flex h-full min-h-0 min-w-0">
+              {children}
+            </div>
           </Panel>
           {model === null ? (
             <>
