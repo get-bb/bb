@@ -164,6 +164,8 @@ function withPaneContext(
     secondaryPanelHost: null,
     reservesWindowPanelToggle: false,
     onRequestClose: noop,
+    isMaximized: false,
+    onToggleMaximize: noop,
     isBoundedPane: true,
     isTopRow,
     navigateInPane: noop,

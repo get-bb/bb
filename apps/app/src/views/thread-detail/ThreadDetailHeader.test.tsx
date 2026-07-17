@@ -33,6 +33,8 @@ const PANE_CONTEXT: PaneContextValue = {
   secondaryPanelHost: null,
   reservesWindowPanelToggle: false,
   onRequestClose: null,
+  isMaximized: false,
+  onToggleMaximize: null,
   isBoundedPane: false,
   isTopRow: true,
   navigateInPane: vi.fn(),

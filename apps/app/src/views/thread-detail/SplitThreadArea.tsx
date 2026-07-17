@@ -699,6 +699,12 @@ function SplitTree(props: SplitTreeProps) {
         // the content's page-bleed negative margins (see
         // PaneContextValue.isBoundedPane) so content fills the tile exactly.
         aria-hidden={isHiddenByMaximize || undefined}
+        // Electron can retain a composited frame from animated descendants
+        // (notably the New Thread welcome mark) after visibility changes.
+        // Skip subtree painting while preserving the mounted pane and its box.
+        style={
+          isHiddenByMaximize ? { contentVisibility: "hidden" } : undefined
+        }
         className={cn(
           "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
           isHiddenByMaximize && "invisible pointer-events-none",

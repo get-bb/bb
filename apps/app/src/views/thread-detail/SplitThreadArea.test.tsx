@@ -415,12 +415,17 @@ describe("SplitThreadArea", () => {
 
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
 
-    const paneA = document.querySelector('[data-split-pane-id="pane-1"]');
-    const paneB = document.querySelector('[data-split-pane-id="pane-2"]');
+    const paneA = document.querySelector<HTMLElement>(
+      '[data-split-pane-id="pane-1"]',
+    );
+    const paneB = document.querySelector<HTMLElement>(
+      '[data-split-pane-id="pane-2"]',
+    );
     expect(paneA?.getAttribute("data-maximized")).toBe("true");
     expect(paneA?.className).toContain("absolute");
     expect(paneB?.className).toContain("invisible");
     expect(paneB?.getAttribute("aria-hidden")).toBe("true");
+    expect(paneB?.style.contentVisibility).toBe("hidden");
     expect(screen.getByTestId("draft-thr-b")).toBeTruthy();
     expect(store.get(splitLayoutAtom)?.root).toEqual(initialLayout.root);
     expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
@@ -429,6 +434,7 @@ describe("SplitThreadArea", () => {
 
     expect(paneA?.getAttribute("data-maximized")).toBeNull();
     expect(paneB?.className).not.toContain("invisible");
+    expect(paneB?.style.contentVisibility).toBe("");
     expect(
       (screen.getByTestId("draft-thr-b") as HTMLTextAreaElement).value,
     ).toBe("preserve this hidden draft");
