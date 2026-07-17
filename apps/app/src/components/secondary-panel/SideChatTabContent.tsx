@@ -1336,6 +1336,10 @@ export function SideChatTabContent({
           promptActions={promptActions}
           zenModeResetKey={childThreadId ?? tab.id}
           focusEndKey={composerFocusNonce}
+          // A side chat is a secondary composer: it stays mounted (often hidden)
+          // inside its pane, so it must not answer the pane-scoped Cmd+Shift+C /
+          // Cmd+Shift+M fallback unless the caret is actually inside it.
+          isPrimaryComposer={false}
         />
       </div>
     </div>

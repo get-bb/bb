@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { TimelineTitleLink } from "@bb/thread-view";
@@ -68,6 +74,7 @@ function renderChildCompleted() {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 // An agent-generated body that carries an offset-based `path` mention and a
@@ -145,6 +152,40 @@ function mockInnerPreviewTextOverflow(text: string): void {
   );
 }
 
+function mockContinuationSensitiveOverflow(): () => void {
+  const resizeCallbacks: Array<() => void> = [];
+
+  class ResizeObserverMock {
+    constructor(callback: ResizeObserverCallback) {
+      resizeCallbacks.push(() =>
+        callback([], this as unknown as ResizeObserver),
+      );
+    }
+
+    observe(): void {}
+    disconnect(): void {}
+  }
+
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(20);
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(20);
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+    function clientWidth(this: HTMLElement) {
+      const continuation = Array.from(this.parentElement?.children ?? []).find(
+        (child) => child.textContent === "...",
+      );
+      return continuation ? 90 : 100;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(100);
+
+  return () => {
+    act(() => {
+      for (const callback of resizeCallbacks) callback();
+    });
+  };
+}
+
 describe("GeneratedConversationMessage markdown body", () => {
   it("renders the source as a thread pill with title mentions resolved to display text", () => {
     const { container } = renderAgentMessage(AGENT_BODY, {
@@ -182,7 +223,7 @@ describe("GeneratedConversationMessage markdown body", () => {
 
     const toggle = screen.getByRole("button", { name: /Message from Worker/u });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("...")).toBeNull();
+    expect(screen.getByText("...").className).toContain("invisible");
 
     fireEvent.click(toggle);
 
@@ -215,6 +256,20 @@ describe("GeneratedConversationMessage markdown body", () => {
 });
 
 describe("GeneratedConversationMessage markdown body (system)", () => {
+  it("keeps the continuation width stable when it makes the preview overflow", () => {
+    const notifyResize = mockContinuationSensitiveOverflow();
+    renderChildCompleted();
+
+    const continuation = screen.getByText("...");
+    expect(continuation.className).toContain("invisible");
+
+    notifyResize();
+    notifyResize();
+
+    expect(screen.getByText("...")).toBe(continuation);
+    expect(continuation.className).toContain("invisible");
+  });
+
   it("shows a first-line preview and reveals the rest when expanded", () => {
     renderChildCompleted();
 

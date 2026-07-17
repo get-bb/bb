@@ -1,0 +1,94 @@
+import { describe, expect, it } from "vitest";
+import {
+  resolveModelPickerToggle,
+  type ModelPickerToggleInput,
+} from "./modelPickerToggle";
+
+// A focused, split, primary composer with the caret sitting inside it — the
+// simplest "open" case. Individual tests override just the fields they exercise.
+const base: ModelPickerToggleInput = {
+  open: false,
+  disabled: false,
+  isFocusedPane: true,
+  isSplitPane: true,
+  isPrimaryComposer: true,
+  caretInThisComposer: true,
+  caretInOtherComposerOfPane: false,
+};
+
+describe("resolveModelPickerToggle", () => {
+  it("opens when the focused pane's caret sits in this composer", () => {
+    expect(resolveModelPickerToggle(base)).toBe("open");
+  });
+
+  it("ignores the chord entirely while disabled", () => {
+    expect(resolveModelPickerToggle({ ...base, disabled: true })).toBe(
+      "ignore",
+    );
+  });
+
+  it("ignores panes that are not focused", () => {
+    expect(resolveModelPickerToggle({ ...base, isFocusedPane: false })).toBe(
+      "ignore",
+    );
+  });
+
+  it("closes only the focused pane's open picker", () => {
+    expect(resolveModelPickerToggle({ ...base, open: true })).toBe("close");
+    // Focus is checked before close, so an unfocused pane's stale-open picker
+    // cannot swallow the chord away from the focused pane.
+    expect(
+      resolveModelPickerToggle({ ...base, open: true, isFocusedPane: false }),
+    ).toBe("ignore");
+  });
+
+  it("opens the composer under the caret regardless of split or primary", () => {
+    expect(
+      resolveModelPickerToggle({
+        ...base,
+        isPrimaryComposer: false,
+        isSplitPane: false,
+      }),
+    ).toBe("open");
+  });
+
+  it("defers to a sibling composer the caret is actually in", () => {
+    // A side-chat caret toggles the side chat's picker, not the main one.
+    expect(
+      resolveModelPickerToggle({
+        ...base,
+        caretInThisComposer: false,
+        caretInOtherComposerOfPane: true,
+      }),
+    ).toBe("ignore");
+  });
+
+  it("opens the focused split pane's primary composer when the caret is outside every composer", () => {
+    // Keyboard pane navigation leaves the caret off the text field.
+    expect(
+      resolveModelPickerToggle({ ...base, caretInThisComposer: false }),
+    ).toBe("open");
+  });
+
+  it("does NOT open a hidden secondary (side-chat) composer on the caret-outside fallback", () => {
+    // The regression the reviewer flagged: a mounted-but-hidden side chat
+    // must not win the fallback in a focused split pane.
+    expect(
+      resolveModelPickerToggle({
+        ...base,
+        caretInThisComposer: false,
+        isPrimaryComposer: false,
+      }),
+    ).toBe("ignore");
+  });
+
+  it("does nothing on a lone surface when the caret is outside the composer (backward compatible)", () => {
+    expect(
+      resolveModelPickerToggle({
+        ...base,
+        isSplitPane: false,
+        caretInThisComposer: false,
+      }),
+    ).toBe("ignore");
+  });
+});

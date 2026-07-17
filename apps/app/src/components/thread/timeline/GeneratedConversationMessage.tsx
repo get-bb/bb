@@ -511,8 +511,14 @@ export const GeneratedConversationMessage = memo(
       (hasExpandedOnlyContent ||
         hasAdditionalBodyLines ||
         collapsedPreviewOverflowMeasurement === "overflowing");
-    const showManualContinuation =
-      expandable && collapsedPreviewOverflowMeasurement !== "overflowing";
+    // Keep the continuation marker mounted once the row is expandable. If we
+    // remove it when the preview overflows, its reclaimed width can make the
+    // preview fit again; ResizeObserver then adds it back and creates a
+    // fit/overflow render loop. `invisible` preserves the measured width while
+    // native truncation supplies the visible continuation affordance.
+    const renderManualContinuation = expandable;
+    const hideManualContinuation =
+      collapsedPreviewOverflowMeasurement === "overflowing";
     const collapsedPreviewBody = clipMentionTextToVisibleRange({
       mentions: messageMentions,
       rangeStart: 0,
@@ -556,8 +562,15 @@ export const GeneratedConversationMessage = memo(
               })}
             </span>
           )}
-          {showManualContinuation ? (
-            <span className="shrink-0 text-muted-foreground">...</span>
+          {renderManualContinuation ? (
+            <span
+              className={cn(
+                "shrink-0 text-muted-foreground",
+                hideManualContinuation && "invisible",
+              )}
+            >
+              ...
+            </span>
           ) : null}
         </div>
       </div>

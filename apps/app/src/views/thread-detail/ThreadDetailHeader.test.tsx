@@ -29,6 +29,7 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 const PANE_CONTEXT: PaneContextValue = {
   paneId: "main",
   isFocused: true,
+  isSplitPane: false,
   secondaryPanelHost: null,
   reservesWindowPanelToggle: false,
   onRequestClose: null,

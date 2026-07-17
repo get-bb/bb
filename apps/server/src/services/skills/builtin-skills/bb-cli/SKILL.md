@@ -320,6 +320,23 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 --help` for project, folder, task, label, attachment, preset, delegation,
   attached-thread, and demo-data commands.
 
+## Docs
+
+- Docs is an opt-in official plugin. Keep read-only discovery small with
+  `bb docs vaults`, `list`, and `read`.
+- Edit through a sync workspace: `bb docs pull <path> --into <dir>` for one
+  file, add `--folder` for a subtree, or use `bb docs pull --all`. Edit the
+  resulting ordinary files, inspect `bb docs status <dir> --diff`, then run
+  `bb docs push <dir>`.
+- `.bb-docs-state.json` is versioned identity/concurrency state; do not edit it.
+  Concurrent local and remote changes fail closed with exit 3. Pull and merge,
+  then retry.
+- Local deletions are ignored unless `push --delete` is explicit. Use
+  `push --dry-run --diff` before destructive mirroring. Standalone callers can
+  select the local workspace machine with `--workspace-host <id>`.
+- Direct `write`, `mkdir`, `move`, and `remove` commands are deprecated and
+  retained temporarily for compatibility. Agents should use pull/edit/push.
+
 ## Automations
 
 - Use `bb automation ...` to manage scheduled tasks. This command is provided

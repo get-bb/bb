@@ -218,6 +218,7 @@ function ThreadDetailTestPaneProvider({
   const value: PaneContextValue = {
     paneId: "pane-test",
     isFocused: isFocusedHosted,
+    isSplitPane: true,
     secondaryPanelHost: hostedPaneRegistration,
     reservesWindowPanelToggle: false,
     onRequestClose: noop,

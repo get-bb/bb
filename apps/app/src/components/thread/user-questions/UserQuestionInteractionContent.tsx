@@ -33,6 +33,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 
 interface UserQuestionAnswerFormProps {
   className?: string;
@@ -411,8 +412,12 @@ export function UserQuestionAnswerForm({
     stopThread.mutate(threadId);
   };
 
+  // Scope number-key question answers to the focused split pane, so a pending
+  // question in another pane never steals the keypress. Defaults to focused on
+  // standalone/single-pane surfaces (no pane context).
+  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   const selectChoiceAt = (index: number): boolean => {
-    if (disabled || !currentQuestion) return false;
+    if (!isFocusedPane || disabled || !currentQuestion) return false;
     const choice = resolveQuestionShortcutChoice(currentQuestion, index);
     if (choice?.kind === "option") {
       handleToggleOption(currentQuestion, choice.value);

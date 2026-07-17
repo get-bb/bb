@@ -886,8 +886,11 @@ function MarkdownBlockquote({ children }: MarkdownBlockquoteProps) {
 }
 
 function MarkdownTable({ children }: MarkdownTableProps) {
+  const breakoutRef = useMarkdownTableContentWidthVariable();
+
   return (
     <div
+      ref={breakoutRef}
       className="my-2 flex justify-center"
       style={{
         width: MARKDOWN_TABLE_BREAKOUT_WIDTH,
@@ -1094,18 +1097,19 @@ function setMarkdownContentWidthVariable({
   element.style.setProperty(MARKDOWN_CONTENT_WIDTH_VARIABLE, `${width}px`);
 }
 
-function useMarkdownContentWidthVariable() {
-  const contentRef = useRef<HTMLDivElement>(null);
+function useMarkdownTableContentWidthVariable() {
+  const breakoutRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
-    const element = contentRef.current;
-    if (!element) {
+    const breakout = breakoutRef.current;
+    const content = breakout?.closest<HTMLElement>("[data-markdown-preview]");
+    if (!breakout || !content) {
       return;
     }
 
     setMarkdownContentWidthVariable({
-      element,
-      width: element.getBoundingClientRect().width,
+      element: breakout,
+      width: content.getBoundingClientRect().width,
     });
 
     if (typeof ResizeObserver === "undefined") {
@@ -1118,15 +1122,15 @@ function useMarkdownContentWidthVariable() {
         return;
       }
       setMarkdownContentWidthVariable({
-        element,
+        element: breakout,
         width: entry.contentRect.width,
       });
     });
-    observer.observe(element);
+    observer.observe(content);
     return () => observer.disconnect();
   }, []);
 
-  return contentRef;
+  return breakoutRef;
 }
 
 const FRONTMATTER_PATTERN =
@@ -1205,7 +1209,6 @@ function MarkdownPreviewComponent({
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
   const [rewriteLocalhostLinks] = useRewriteLocalhostLinksPreference();
-  const contentRef = useMarkdownContentWidthVariable();
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
@@ -1356,7 +1359,7 @@ function MarkdownPreviewComponent({
   return (
     <>
       <div
-        ref={contentRef}
+        data-markdown-preview=""
         className={cn(
           "max-w-none break-words text-sm leading-relaxed text-foreground",
           className,
