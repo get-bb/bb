@@ -392,8 +392,215 @@ describe("tasks app shell", () => {
     await slot.findByText("Recovered list title");
 
     title = "Manually refreshed list title";
-    fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
+    fireEvent.click(slot.getByRole("button", { name: "Refresh tasks" }));
     await slot.findByText("Manually refreshed list title");
+  });
+
+  it("exposes a subtle icon-only refresh control left of New task", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listTasks: () => ({
+            tasks: [
+              {
+                ...pagerTask("TSK-4", "todo", 1),
+                title: "Order probe",
+                description: "",
+                labelIds: [],
+              },
+            ],
+          }),
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByText("Order probe");
+
+    const refresh = slot.getByRole("button", { name: "Refresh tasks" });
+    const newTask = slot.getByRole("button", { name: /New task/i });
+    const sidebar = slot.getByRole("button", { name: "Collapse sidebar" });
+
+    // Icon-only: no visible "Refresh" text; accessible name remains.
+    expect(refresh.textContent?.trim() ?? "").not.toMatch(/Refresh/i);
+    expect(refresh.getAttribute("aria-label")).toBe("Refresh tasks");
+    expect(refresh.className).toMatch(/size-7/);
+
+    // DOM order: refresh → New task → sidebar toggle.
+    expect(
+      refresh.compareDocumentPosition(newTask) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      newTask.compareDocumentPosition(sidebar) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    // Tab order follows DOM order among the three controls.
+    const tabbables = [refresh, newTask, sidebar];
+    for (let i = 0; i < tabbables.length - 1; i++) {
+      expect(
+        tabbables[i]!.compareDocumentPosition(tabbables[i + 1]!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+
+    // Focus-visible path: control is a native button and can take focus.
+    refresh.focus();
+    expect(document.activeElement).toBe(refresh);
+  });
+
+  it("single-flights manual refresh and keeps icon-button geometry stable", async () => {
+    let listTasksCalls = 0;
+    let title = "Flight title A";
+    const task = {
+      ...pagerTask("TSK-4", "todo", 1),
+      title,
+      description: "",
+      labelIds: [],
+    };
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listTasks: () => {
+            listTasksCalls += 1;
+            return { tasks: [{ ...task, title }] };
+          },
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByText("Flight title A");
+    const baselineCalls = listTasksCalls;
+    expect(baselineCalls).toBeGreaterThan(0);
+
+    const refresh = slot.getByRole("button", {
+      name: "Refresh tasks",
+    }) as HTMLButtonElement;
+    const idleClassName = refresh.className;
+    expect(idleClassName).toMatch(/size-7/);
+    expect(refresh.getAttribute("aria-busy")).not.toBe("true");
+    expect(refresh.disabled).toBe(false);
+
+    title = "Flight title B";
+    fireEvent.click(refresh);
+    // In-flight: disabled + busy, same icon-button box classes (no layout shift).
+    expect(refresh.disabled).toBe(true);
+    expect(refresh.getAttribute("aria-busy")).toBe("true");
+    expect(refresh.className).toBe(idleClassName);
+
+    // Rapid pointer/keyboard re-activation while in flight must not re-bump.
+    fireEvent.click(refresh);
+    fireEvent.keyDown(refresh, { key: "Enter" });
+    fireEvent.keyUp(refresh, { key: "Enter" });
+    fireEvent.keyDown(refresh, { key: " " });
+    fireEvent.keyUp(refresh, { key: " " });
+
+    await waitFor(() => expect(listTasksCalls).toBeGreaterThan(baselineCalls));
+    await slot.findByText("Flight title B");
+    const afterFirstFlight = listTasksCalls;
+
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+    // Allow any would-be effect to flush; call count must stay flat.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(listTasksCalls).toBe(afterFirstFlight);
+
+    // After the flight window clears, a deliberate second refresh works.
+    await waitFor(
+      () => {
+        expect(
+          (
+            slot.getByRole("button", {
+              name: "Refresh tasks",
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false);
+      },
+      { timeout: 1500 },
+    );
+
+    title = "Flight title C";
+    fireEvent.click(slot.getByRole("button", { name: "Refresh tasks" }));
+    await slot.findByText("Flight title C");
+    expect(listTasksCalls).toBeGreaterThan(afterFirstFlight);
+
+    // Wait for the second flight window so recovery assertions are stable.
+    await waitFor(
+      () => {
+        const button = slot.getByRole("button", {
+          name: "Refresh tasks",
+        }) as HTMLButtonElement;
+        expect(button.disabled).toBe(false);
+        expect(button.getAttribute("aria-busy")).not.toBe("true");
+      },
+      { timeout: 1500 },
+    );
+
+    const recovered = slot.getByRole("button", {
+      name: "Refresh tasks",
+    }) as HTMLButtonElement;
+    expect(recovered.className).toMatch(/size-7/);
+  });
+
+  it("retains stale list data when a manual refresh fails, then recovers", async () => {
+    let shouldFail = false;
+    let title = "Stable title";
+    const task = {
+      ...pagerTask("TSK-4", "todo", 1),
+      title,
+      description: "",
+      labelIds: [],
+    };
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listTasks: () => {
+            if (shouldFail) throw new Error("refresh failed");
+            return { tasks: [{ ...task, title }] };
+          },
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByText("Stable title");
+
+    shouldFail = true;
+    fireEvent.click(slot.getByRole("button", { name: "Refresh tasks" }));
+    // Prior data stays on screen (useTasksQuery retains data on error).
+    await waitFor(() =>
+      expect(slot.getByText("Stable title")).toBeDefined(),
+    );
+    // Give the failed request a moment to settle without clearing rows.
+    await waitFor(
+      () => {
+        expect(
+          (slot.getByRole("button", { name: "Refresh tasks" }) as HTMLButtonElement)
+            .disabled,
+        ).toBe(false);
+      },
+      { timeout: 1500 },
+    );
+    expect(slot.getByText("Stable title")).toBeDefined();
+
+    shouldFail = false;
+    title = "Recovered after failure";
+    fireEvent.click(slot.getByRole("button", { name: "Refresh tasks" }));
+    await slot.findByText("Recovered after failure");
   });
 
   it("resyncs an open task detail after reconnect", async () => {
