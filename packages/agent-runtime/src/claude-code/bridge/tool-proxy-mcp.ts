@@ -1,10 +1,10 @@
-import {
-  createSdkMcpServer,
-  tool,
-  type McpSdkServerConfigWithInstance,
-} from "@anthropic-ai/claude-agent-sdk";
+import type { McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
 import type { DynamicTool } from "@bb/domain";
-import { z } from "zod/v4";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 
 export const BRIDGE_MCP_SERVER_NAME = "bb-bridge";
 
@@ -19,29 +19,43 @@ export function buildBridgeMcpServer(
   dynamicTools: DynamicToolDefinition[],
   forwardToolCall: ToolCallForwarder,
 ): McpSdkServerConfigWithInstance {
-  const mcpTools = dynamicTools.map((def) => {
-    return tool(
+  const toolsByName = new Map(dynamicTools.map((def) => [def.name, def]));
+  const instance = new McpServer(
+    { name: BRIDGE_MCP_SERVER_NAME, version: "1.0.0" },
+    { capabilities: { tools: {} } },
+  );
+  // Low-level handlers instead of McpServer.registerTool: registerTool only
+  // accepts zod schemas, and rebuilding zod from the plugin's JSON Schema
+  // loses nested types, enums, and required-ness. The wire format is JSON
+  // Schema, so serve the registered schema verbatim. Argument validation
+  // stays server-side where the plugin's own parse runs on execution.
+  instance.server.setRequestHandler(ListToolsRequestSchema, () => ({
+    tools: dynamicTools.map((def) => ({
+      name: def.name,
+      description: def.description,
+      inputSchema: normalizeInputSchema(def.inputSchema),
+    })),
+  }));
+  instance.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const def = toolsByName.get(request.params.name);
+    if (def === undefined) {
+      return {
+        content: [
+          { type: "text" as const, text: `Unknown tool: ${request.params.name}` },
+        ],
+        isError: true,
+      };
+    }
+    const result = await forwardToolCall(
       def.name,
-      def.description,
-      buildZodShape(def.inputSchema),
-      async (args) => {
-        const result = await forwardToolCall(
-          def.name,
-          args as Record<string, unknown>,
-        );
-        return {
-          content: [{ type: "text" as const, text: result.content }],
-          ...(result.isError ? { isError: true } : {}),
-        };
-      },
+      request.params.arguments ?? {},
     );
+    return {
+      content: [{ type: "text" as const, text: result.content }],
+      ...(result.isError ? { isError: true } : {}),
+    };
   });
-
-  return createSdkMcpServer({
-    name: BRIDGE_MCP_SERVER_NAME,
-    version: "1.0.0",
-    tools: mcpTools,
-  });
+  return { type: "sdk", name: BRIDGE_MCP_SERVER_NAME, instance };
 }
 
 export function getAllowedToolNames(
@@ -52,39 +66,16 @@ export function getAllowedToolNames(
   );
 }
 
-function buildZodShape(inputSchema: unknown): z.ZodRawShape {
+function normalizeInputSchema(
+  inputSchema: unknown,
+): Record<string, unknown> & { type: "object" } {
   if (
-    !inputSchema ||
-    typeof inputSchema !== "object" ||
-    !("properties" in inputSchema)
+    inputSchema !== null &&
+    typeof inputSchema === "object" &&
+    !Array.isArray(inputSchema) &&
+    (inputSchema as { type?: unknown }).type === "object"
   ) {
-    return {};
+    return inputSchema as Record<string, unknown> & { type: "object" };
   }
-
-  const schema = inputSchema as {
-    properties?: Record<string, { type?: string }>;
-  };
-
-  if (!schema.properties) return {};
-
-  const shape: Record<string, z.ZodType> = {};
-  for (const [key, prop] of Object.entries(schema.properties)) {
-    switch (prop?.type) {
-      case "string":
-        shape[key] = z.string().optional();
-        break;
-      case "number":
-      case "integer":
-        shape[key] = z.number().optional();
-        break;
-      case "boolean":
-        shape[key] = z.boolean().optional();
-        break;
-      default:
-        shape[key] = z.unknown().optional();
-        break;
-    }
-  }
-
-  return shape as z.ZodRawShape;
+  return { type: "object" };
 }

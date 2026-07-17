@@ -616,9 +616,15 @@ execution. Its context has required, plain-data `thread`, `project`,
 `environment`, `host`, and `provider: { id, model }` objects, plus `sideChat`
 and `origin: { kind, pluginId }`; genuinely absent values are `null`, not
 omitted. `tools` names and `skills` frontmatter names may select only this
-plugin's static registrations. Unknown or duplicate ids, malformed output,
-more than 256 ids in either array, or a throwing callback fail closed for that
-plugin only. Dynamic `instructions` are truncated to 4096 characters.
+plugin's static registrations. A `tools` entry may instead be
+`{ name, parameters }` to override the parameter schema advertised to the
+provider for that resolution only — `parameters` must be a JSON-serializable
+JSON-schema object with root `type: "object"`, at most 128 KiB serialized, and
+should only narrow what the registered schema accepts, since execution-side
+validation still runs the registered parameters. Unknown or duplicate ids,
+malformed output, an invalid override, more than 256 ids in either array, or a
+throwing callback fail closed for that plugin only. Dynamic `instructions` are
+truncated to 4096 characters.
 
 Resolution happens for `thread.start` and `turn.submit`. A selected tool set
 takes effect only when the provider session is next started/resumed; BB never

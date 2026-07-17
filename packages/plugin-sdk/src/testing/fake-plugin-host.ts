@@ -801,8 +801,118 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
   return visit(value, "$result");
 }
 
+const AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
+
+function normalizeAgentToolSelections(args: {
+  knownIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): {
+  toolIds: string[];
+  parameterOverrides: Map<string, Record<string, unknown>>;
+} {
+  if (!Array.isArray(args.value)) {
+    throw new Error("configure() output.tools must be an array");
+  }
+  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+    throw new Error(
+      `configure() output.tools exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+    );
+  }
+  const toolIds: string[] = [];
+  const parameterOverrides = new Map<string, Record<string, unknown>>();
+  const seen = new Set<string>();
+  for (let index = 0; index < args.value.length; index += 1) {
+    const entry = args.value[index];
+    let name: unknown;
+    let parameters: Record<string, unknown> | null = null;
+    if (typeof entry === "string") {
+      name = entry;
+    } else if (
+      typeof entry === "object" &&
+      entry !== null &&
+      !Array.isArray(entry)
+    ) {
+      const typed = entry as Record<string, unknown>;
+      const unknownKeys = Object.keys(typed)
+        .filter((key) => !["name", "parameters"].includes(key))
+        .sort();
+      if (unknownKeys.length > 0) {
+        throw new Error(
+          `configure() output.tools[${index}] contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+        );
+      }
+      name = typed.name;
+      parameters = normalizeAgentToolParameters({
+        index,
+        value: typed.parameters,
+      });
+    } else {
+      throw new Error(
+        `configure() output.tools[${index}] must be a tool name or { name, parameters }`,
+      );
+    }
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error(
+        `configure() output.tools[${index}] must ${typeof entry === "string" ? "be" : "name"} a non-empty string`,
+      );
+    }
+    if (seen.has(name)) {
+      throw new Error(
+        `configure() output.tools contains duplicate id ${JSON.stringify(name)}`,
+      );
+    }
+    if (!args.knownIds.has(name)) {
+      throw new Error(
+        `configure() selected unknown tool id ${JSON.stringify(name)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+      );
+    }
+    seen.add(name);
+    toolIds.push(name);
+    if (parameters !== null) parameterOverrides.set(name, parameters);
+  }
+  return { toolIds, parameterOverrides };
+}
+
+function normalizeAgentToolParameters(args: {
+  index: number;
+  value: unknown;
+}): Record<string, unknown> {
+  const { index, value } = args;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters must be a JSON-schema object`,
+    );
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new Error(
+      `configure() output.tools[${index}].parameters is not JSON-serializable`,
+    );
+  }
+  if (serialized === undefined) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters is not JSON-serializable`,
+    );
+  }
+  if (Buffer.byteLength(serialized, "utf8") > AGENT_TOOL_PARAMETERS_MAX_BYTES) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters exceeds the ${AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
+    );
+  }
+  const parameters = JSON.parse(serialized) as Record<string, unknown>;
+  if (parameters.type !== "object") {
+    throw new Error(
+      `configure() output.tools[${index}].parameters must have root type "object"`,
+    );
+  }
+  return parameters;
+}
+
 function normalizeAgentConfigurationIds(args: {
-  field: "tools" | "skills";
+  field: "skills";
   knownIds: ReadonlySet<string>;
   pluginId: string;
   value: unknown;
@@ -831,7 +941,7 @@ function normalizeAgentConfigurationIds(args: {
     }
     if (!args.knownIds.has(id)) {
       throw new Error(
-        `configure() selected unknown ${args.field === "tools" ? "tool" : "skill"} id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+        `configure() selected unknown skill id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
       );
     }
     seen.add(id);
@@ -845,7 +955,12 @@ function normalizeAgentConfiguration(args: {
   knownToolIds: ReadonlySet<string>;
   pluginId: string;
   value: unknown;
-}): { toolIds: string[]; skillIds: string[]; instructions: string | null } {
+}): {
+  toolIds: string[];
+  toolParameterOverrides: Map<string, Record<string, unknown>>;
+  skillIds: string[];
+  instructions: string | null;
+} {
   if (
     typeof args.value !== "object" ||
     args.value === null ||
@@ -870,13 +985,14 @@ function normalizeAgentConfiguration(args: {
   ) {
     throw new Error("configure() output.instructions must be a string");
   }
+  const toolSelections = normalizeAgentToolSelections({
+    knownIds: args.knownToolIds,
+    pluginId: args.pluginId,
+    value: output.tools,
+  });
   return {
-    toolIds: normalizeAgentConfigurationIds({
-      field: "tools",
-      knownIds: args.knownToolIds,
-      pluginId: args.pluginId,
-      value: output.tools,
-    }),
+    toolIds: toolSelections.toolIds,
+    toolParameterOverrides: toolSelections.parameterOverrides,
     skillIds: normalizeAgentConfigurationIds({
       field: "skills",
       knownIds: args.knownSkillIds,
@@ -2030,7 +2146,16 @@ function createFakePluginHostInternal(
         });
         const selectedTools = new Set(normalized.toolIds);
         return {
-          tools: agentTools.filter((tool) => selectedTools.has(tool.name)),
+          tools: agentTools
+            .filter((tool) => selectedTools.has(tool.name))
+            .map((tool) => {
+              const parameters = normalized.toolParameterOverrides.get(
+                tool.name,
+              );
+              return parameters === undefined
+                ? tool
+                : { ...tool, inputSchema: parameters };
+            }),
           skills: normalized.skillIds,
           instructions: normalized.instructions,
         };

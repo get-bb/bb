@@ -282,6 +282,46 @@ function validateValue(
   }
 }
 
+function resultToolParameters(
+  outputSchema: JsonSchema,
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: { value: outputSchema },
+    required: ["value"],
+    additionalProperties: false,
+  };
+}
+
+function resolveStructuredValue(
+  schema: JsonSchema,
+  value: JsonValue,
+): { value: JsonValue; validation: ReturnType<typeof validateValue> } {
+  const validation = validateValue(schema, value);
+  if (validation.valid || typeof value !== "string") {
+    return { value, validation };
+  }
+  // Models sometimes double-encode structured output as a JSON string.
+  // Accept the unwrapped value only when it satisfies the schema.
+  let unwrapped: JsonValue;
+  try {
+    unwrapped = JSON.parse(value) as JsonValue;
+  } catch {
+    return { value, validation };
+  }
+  const unwrappedValidation = validateValue(schema, unwrapped);
+  if (unwrappedValidation.valid) {
+    return { value: unwrapped, validation: unwrappedValidation };
+  }
+  return {
+    value,
+    validation: {
+      valid: false,
+      error: `${validation.error}. The value was a JSON-encoded string; pass the JSON value itself, not a string. After decoding it still fails validation: ${unwrappedValidation.error}`,
+    },
+  };
+}
+
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve();
@@ -327,7 +367,9 @@ export interface WorkflowService {
     value: JsonValue,
   ): Promise<{ ok: true } | { ok: false; terminal: boolean; error: string }>;
   agentConfiguration(threadId: string): {
-    structured: boolean;
+    /** Parameter schema for bb_workflow_result; null when the call is not a
+     * running structured call. */
+    resultParameters: Record<string, unknown> | null;
     terminal: boolean;
     instructions: string | null;
   } | null;
@@ -873,10 +915,11 @@ export function createWorkflowService(
       if (output !== null) {
         try {
           const value = parseJson(output, "worker JSON response");
+          const resolved = resolveStructuredValue(options.outputSchema, value);
           fallback = {
             parsed: true,
-            value,
-            validation: validateValue(options.outputSchema, value),
+            value: resolved.value,
+            validation: resolved.validation,
           };
         } catch (error) {
           fallback = { parsed: false, error: message(error) };
@@ -998,14 +1041,15 @@ export function createWorkflowService(
         error: "This workflow call does not require structured output",
       };
     }
-    const validation = validateValue(options.outputSchema, value);
+    const resolved = resolveStructuredValue(options.outputSchema, value);
+    const validation = resolved.validation;
     if (validation.valid) {
-      const stored = storeStructuredResult(db, call.id, value);
+      const stored = storeStructuredResult(db, call.id, resolved.value);
       if (stored === "accepted") {
         settleCall(db, {
           id: call.id,
           status: "succeeded",
-          result: value,
+          result: resolved.value,
           error: null,
         });
         wakeCall(call);
@@ -1060,7 +1104,10 @@ export function createWorkflowService(
     if (call === null) return null;
     const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
     return {
-      structured: call.status === "running" && options.outputSchema !== null,
+      resultParameters:
+        call.status === "running" && options.outputSchema !== null
+          ? resultToolParameters(options.outputSchema)
+          : null,
       terminal: call.status !== "running",
       instructions:
         call.status !== "running"

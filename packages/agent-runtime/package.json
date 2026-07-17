@@ -39,6 +39,7 @@
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@mariozechner/pi-ai": "^0.70.5",
     "@mariozechner/pi-coding-agent": "^0.70.5",
     "zod": "^4.3.6"
