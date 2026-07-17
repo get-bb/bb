@@ -786,6 +786,22 @@ body.sidebar-resizing [data-sidebar="panel"] {
     mask: url(/bb-mark.svg) center / contain no-repeat;
     background-color: var(--foreground);
   }
+
+  /* Reduced motion: drop the shimmer sweep and render the active cue as plain
+     full-strength foreground text/glyph instead of a frozen gradient/mask. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-shine {
+      animation: none;
+      background: none;
+      -webkit-text-fill-color: currentColor;
+    }
+
+    .animate-shine-icon {
+      animation: none;
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+  }
 }
 
 @keyframes shine {
