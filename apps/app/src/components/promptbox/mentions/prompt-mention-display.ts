@@ -52,7 +52,7 @@ export function promptMentionIconName(
     return "MessageSquare";
   }
   if (resource.kind === "project") {
-    return "FolderGit";
+    return "Folder";
   }
   if (resource.kind === "folder") {
     return "Folder";

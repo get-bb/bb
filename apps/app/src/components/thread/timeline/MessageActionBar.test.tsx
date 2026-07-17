@@ -23,8 +23,7 @@ afterEach(() => {
 
 function mockMobileCoarsePointer() {
   vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-    matches:
-      query === COMPACT_VIEWPORT_QUERY || query === POINTER_COARSE_QUERY,
+    matches: query === COMPACT_VIEWPORT_QUERY || query === POINTER_COARSE_QUERY,
     media: query,
     onchange: null,
     addListener: () => {},
@@ -69,6 +68,59 @@ describe("MessageActionBar", () => {
     expect(button.className).toContain("cursor-pointer");
     fireEvent.click(button);
     expect(onSendToMain).toHaveBeenCalledTimes(1);
+  });
+
+  it("orders agent actions as copy, add, reply, then fork", () => {
+    const { container } = render(
+      <MessageActionBar
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onAddToChat={vi.fn()}
+        onSideChat={vi.fn()}
+        onFork={vi.fn()}
+      />,
+    );
+
+    expect(
+      [...container.querySelectorAll<HTMLButtonElement>("button[aria-label]")]
+        .map((button) => button.getAttribute("aria-label"))
+        .filter((label) => label !== "Message actions"),
+    ).toEqual([
+      "Copy message",
+      "Add to chat",
+      "Reply in side chat",
+      "Fork into new thread",
+    ]);
+  });
+
+  it("keeps the same agent action order in the mobile overflow", () => {
+    mockMobileCoarsePointer();
+    render(
+      <MessageActionBar
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="overflow"
+        onAddToChat={vi.fn()}
+        onSideChat={vi.fn()}
+        onFork={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    const content =
+      document.body.querySelector<HTMLElement>('[data-side="top"]');
+    if (!content) throw new Error("Missing mobile message action menu");
+    expect(
+      within(content)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual([
+      "Copy message",
+      "Add to chat",
+      "Reply in side chat",
+      "Fork into new thread",
+    ]);
   });
 
   it("renders add-to-chat as an icon action and passes the message text", () => {
@@ -206,9 +258,8 @@ describe("MessageActionBar", () => {
     expect(trigger.hasAttribute("data-no-sidebar-swipe")).toBe(true);
     fireEvent.click(trigger);
 
-    const content = document.body.querySelector<HTMLElement>(
-      '[data-side="top"]',
-    );
+    const content =
+      document.body.querySelector<HTMLElement>('[data-side="top"]');
     expect(content).not.toBeNull();
     expect(document.body.querySelector("[data-vaul-drawer]")).toBeNull();
 
@@ -234,15 +285,16 @@ describe("MessageActionBar", () => {
 
     const trigger = screen.getByRole("button", { name: "Message actions" });
     fireEvent.click(trigger);
-    const content = document.body.querySelector<HTMLElement>(
-      '[data-side="top"]',
-    );
+    const content =
+      document.body.querySelector<HTMLElement>('[data-side="top"]');
     if (!content) throw new Error("Missing mobile message action menu");
     fireEvent.click(
       within(content).getByRole("button", { name: "Copy message" }),
     );
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Copy this answer."));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("Copy this answer."),
+    );
     expect(trigger.querySelector('[data-icon="Check"]')).not.toBeNull();
   });
 

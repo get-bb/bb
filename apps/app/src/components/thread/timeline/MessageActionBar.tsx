@@ -234,13 +234,12 @@ export function MessageActionBar({
           },
         ]
       : []),
-    ...(onFork
+    ...(onSendToMain
       ? [
           {
-            icon: "Fork" as const,
-            label: "Fork into new thread",
-            onSelect: onFork,
-            disabled,
+            icon: "ArrowTurnBackward" as const,
+            label: "Send to main thread",
+            onSelect: onSendToMain,
           },
         ]
       : []),
@@ -254,12 +253,13 @@ export function MessageActionBar({
           },
         ]
       : []),
-    ...(onSendToMain
+    ...(onFork
       ? [
           {
-            icon: "ArrowTurnBackward" as const,
-            label: "Send to main thread",
-            onSelect: onSendToMain,
+            icon: "Fork" as const,
+            label: "Fork into new thread",
+            onSelect: onFork,
+            disabled,
           },
         ]
       : []),
@@ -320,7 +320,7 @@ export function MessageActionBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        {onFork ? (
+        {onSendToMain ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -330,18 +330,17 @@ export function MessageActionBar({
                   HOVER_REVEAL_CLASS,
                   mobileDirectActionClass,
                 )}
-                onClick={onFork}
-                disabled={disabled}
-                aria-label="Fork into new thread"
+                onClick={onSendToMain}
+                aria-label="Send to main thread"
               >
-                <Icon name="Fork" className="size-3" />
+                <Icon name="ArrowTurnBackward" className="size-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent
               side={ACTION_TOOLTIP_SIDE}
               collisionBoundary={collisionBoundary}
             >
-              Fork into new thread
+              Send to main thread
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -370,7 +369,7 @@ export function MessageActionBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        {onSendToMain ? (
+        {onFork ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -380,17 +379,18 @@ export function MessageActionBar({
                   HOVER_REVEAL_CLASS,
                   mobileDirectActionClass,
                 )}
-                onClick={onSendToMain}
-                aria-label="Send to main thread"
+                onClick={onFork}
+                disabled={disabled}
+                aria-label="Fork into new thread"
               >
-                <Icon name="ArrowTurnBackward" className="size-3" />
+                <Icon name="Fork" className="size-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent
               side={ACTION_TOOLTIP_SIDE}
               collisionBoundary={collisionBoundary}
             >
-              Send to main thread
+              Fork into new thread
             </TooltipContent>
           </Tooltip>
         ) : null}

@@ -269,6 +269,30 @@ describe("user message parsing", () => {
     });
   });
 
+  it("recovers agent attribution from a legacy cross-thread envelope", () => {
+    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+    const row = factory.clientTurnRequested({
+      initiator: "user",
+      senderThreadId: null,
+      target: { kind: "new-turn" },
+      text: "[bb message from thread:thr_legacy; reply later]\n\nLegacy handoff",
+    });
+    const { event, meta } = decodeThreadEventRow(row);
+
+    const message = parseUserFromClientRequest({
+      decoded: event,
+      meta,
+      options: standardProjectionOptions,
+    });
+
+    expect(message).toMatchObject({
+      kind: "user",
+      initiator: "agent",
+      senderThreadId: "thr_legacy",
+      text: "[bb message from thread:thr_legacy; reply later]\n\nLegacy handoff",
+    });
+  });
+
   it("populates initiator for system-initiated messages with a turnRequest", () => {
     const { event, meta } = decodeThreadEventRow(systemMessageRequest());
 

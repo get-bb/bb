@@ -15,6 +15,7 @@ import type {
 import { messageId } from "./format-helpers.js";
 import { assertNever } from "./assert-never.js";
 import { eventProjectionMessageTurnScopeFields } from "./message-scope.js";
+import { parseAgentMessageEnvelope } from "./agent-message-envelope.js";
 
 export function parsePromptInput(
   input: ReadonlyArray<PromptInput> | undefined,
@@ -278,6 +279,17 @@ function buildClientUserMessage({
     acceptedClientRequest && turnRequest.kind === "steer"
       ? acceptedClientRequest.meta
       : meta;
+  // Recover the structured source for legacy cross-thread requests that were
+  // persisted as ordinary user turns. The reserved envelope is written by BB,
+  // so an exact match is authoritative even when old event metadata is absent.
+  const agentEnvelope = parseAgentMessageEnvelope(parsedInput.text);
+  const initiator =
+    decoded.initiator === "user" && agentEnvelope !== null
+      ? "agent"
+      : decoded.initiator;
+  const senderThreadId =
+    decoded.senderThreadId ??
+    (initiator === "agent" ? (agentEnvelope?.senderThreadId ?? null) : null);
 
   return {
     kind: "user",
@@ -293,8 +305,8 @@ function buildClientUserMessage({
     ...(targetTurnId
       ? eventProjectionMessageTurnScopeFields(targetTurnId)
       : { scope: decoded.scope }),
-    initiator: decoded.initiator,
-    senderThreadId: decoded.senderThreadId,
+    initiator,
+    senderThreadId,
     // Legacy defaulting lives in `storedTurnRequestEventDataSchema`, so decoded
     // rows always carry concrete values at runtime. These `??` fallbacks only
     // satisfy the base in-flight schema's `.optional()` static type; they never

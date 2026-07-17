@@ -11,6 +11,7 @@ import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { PROMPT_MENTION_PILL_CLASS } from "@/components/promptbox/mentions/prompt-mention-display";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { parseAgentMessageEnvelope } from "@bb/thread-view";
 
 export interface TocItem {
   id: string;
@@ -47,9 +48,6 @@ const TOC_MAX_RAIL_TICKS = 20;
 const TOC_JUMP_MAX_PAGE_LOADS = 1000;
 // Frames to wait for prepended rows to commit before paginating again.
 const TOC_JUMP_RENDER_FRAMES = 6;
-const AGENT_MESSAGE_PREFIX =
-  /^\[bb message from thread:([^;\]\s]+)(?:;[^\]]*)?\]\s*/;
-
 function toPreviewLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -199,18 +197,19 @@ function TocItemPreview({
   item: TocItem;
   senderThreadMetadataById: ReadonlyMap<string, { title: string | null }>;
 }) {
-  const sourceMatch = item.label.match(AGENT_MESSAGE_PREFIX);
-  const threadId = sourceMatch?.[1];
-  if (!sourceMatch || !threadId) {
+  const source = parseAgentMessageEnvelope(item.label);
+  if (source === null) {
     return <span className="line-clamp-2">{item.label}</span>;
   }
 
-  const body = item.label.slice(sourceMatch[0].length).trimStart();
+  const body = item.label.slice(source.bodyStart);
   return (
     <span className="flex min-w-0 items-start gap-1">
       <TocThreadMention
-        threadId={threadId}
-        threadTitle={senderThreadMetadataById.get(threadId)?.title ?? null}
+        threadId={source.senderThreadId}
+        threadTitle={
+          senderThreadMetadataById.get(source.senderThreadId)?.title ?? null
+        }
       />
       <span className="line-clamp-2 min-w-0">{body || "Message"}</span>
     </span>
