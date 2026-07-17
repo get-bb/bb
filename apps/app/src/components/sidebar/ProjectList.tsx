@@ -853,8 +853,9 @@ export function ProjectListActionButtons({
             aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
           >
             <Icon name="MessageSquarePlus" />
-            <span className="min-w-0 flex-1 truncate text-left">
-              New thread
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="min-w-0 truncate text-left">New thread</span>
+              <AppCommandShortcutHint shortcut={newThreadShortcut} />
             </span>
             {newThreadSplitIndicator.miniMap ? (
               <SplitPaneMiniMap
@@ -862,7 +863,6 @@ export function ProjectListActionButtons({
                 label="New thread — open in split"
               />
             ) : null}
-            <AppCommandShortcutHint shortcut={newThreadShortcut} />
           </Button>
           {threadSearch ? (
             <span className="flex shrink-0 items-center gap-1">
