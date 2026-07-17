@@ -12,7 +12,17 @@ import { useRealtimeConnectionState } from "@bb/plugin-sdk/app";
 
 interface TasksRefreshState {
   generation: number;
+  /**
+   * True while any mounted query still has a generation-driven fetch in
+   * flight (manual refresh or reconnect). Used by the header control for
+   * single-flight + loading UI without a second refresh channel.
+   */
+  isRefreshing: boolean;
   refresh: () => void;
+  /** Called by queries when a generation-driven fetch starts. */
+  beginGenerationWork: () => void;
+  /** Called by queries when a generation-driven fetch settles or unmounts. */
+  endGenerationWork: () => void;
 }
 
 const TasksRefreshContext = createContext<TasksRefreshState | null>(null);
@@ -29,10 +39,25 @@ export function TasksRefreshProvider({ children }: { children: ReactNode }) {
   // even if the Tasks shell happened to mount during the outage.
   const hasConnected = useRef(connectionState !== "connecting");
   const [generation, setGeneration] = useState(0);
-  const refresh = useCallback(
-    () => setGeneration((current) => current + 1),
-    [],
-  );
+  const pendingWorkRef = useRef(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refresh = useCallback(() => {
+    // Optimistic busy so rapid pointer/keyboard activations coalesce before
+    // query effects report beginGenerationWork on the next paint.
+    setIsRefreshing(true);
+    setGeneration((current) => current + 1);
+  }, []);
+
+  const beginGenerationWork = useCallback(() => {
+    pendingWorkRef.current += 1;
+    setIsRefreshing(true);
+  }, []);
+
+  const endGenerationWork = useCallback(() => {
+    pendingWorkRef.current = Math.max(0, pendingWorkRef.current - 1);
+    if (pendingWorkRef.current === 0) setIsRefreshing(false);
+  }, []);
 
   useEffect(() => {
     const previous = previousConnectionState.current;
@@ -42,7 +67,22 @@ export function TasksRefreshProvider({ children }: { children: ReactNode }) {
     hasConnected.current = true;
   }, [connectionState, refresh]);
 
-  const value = useMemo(() => ({ generation, refresh }), [generation, refresh]);
+  const value = useMemo(
+    () => ({
+      generation,
+      isRefreshing,
+      refresh,
+      beginGenerationWork,
+      endGenerationWork,
+    }),
+    [
+      generation,
+      isRefreshing,
+      refresh,
+      beginGenerationWork,
+      endGenerationWork,
+    ],
+  );
   return (
     <TasksRefreshContext.Provider value={value}>
       {children}

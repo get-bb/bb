@@ -454,9 +454,15 @@ describe("tasks app shell", () => {
     expect(document.activeElement).toBe(refresh);
   });
 
-  it("single-flights manual refresh and keeps icon-button geometry stable", async () => {
+  it("single-flights manual refresh against deferred RPCs and keeps geometry stable", async () => {
     let listTasksCalls = 0;
     let title = "Flight title A";
+    let holdListTasks = false;
+    const pendingResolvers: Array<() => void> = [];
+    const releaseAllPending = () => {
+      const resolvers = pendingResolvers.splice(0, pendingResolvers.length);
+      for (const resolve of resolvers) resolve();
+    };
     const task = {
       ...pagerTask("TSK-4", "todo", 1),
       title,
@@ -470,7 +476,16 @@ describe("tasks app shell", () => {
         rpc: seededRpc({
           listTasks: () => {
             listTasksCalls += 1;
-            return { tasks: [{ ...task, title }] };
+            if (!holdListTasks) {
+              return { tasks: [{ ...task, title }] };
+            }
+            // Generation-driven fetches stay pending until released so the
+            // shared in-flight bit tracks real request completion.
+            return new Promise((resolve) => {
+              pendingResolvers.push(() =>
+                resolve({ tasks: [{ ...task, title }] }),
+              );
+            });
           },
           listLabels: () => ({ labels: [] }),
           listAttachments: () => ({ attachments: [] }),
@@ -490,66 +505,68 @@ describe("tasks app shell", () => {
     expect(idleClassName).toMatch(/size-7/);
     expect(refresh.getAttribute("aria-busy")).not.toBe("true");
     expect(refresh.disabled).toBe(false);
+    expect(idleClassName).toMatch(/active:bg-state-active/);
 
+    // Accessible name is the stable tooltip/label contract.
+    fireEvent.pointerMove(refresh);
+    fireEvent.focus(refresh);
+    expect(refresh.getAttribute("aria-label")).toBe("Refresh tasks");
+
+    holdListTasks = true;
     title = "Flight title B";
     fireEvent.click(refresh);
-    // In-flight: disabled + busy, same icon-button box classes (no layout shift).
+    await waitFor(() => expect(listTasksCalls).toBeGreaterThan(baselineCalls));
+    // In-flight while the deferred RPC is still pending.
     expect(refresh.disabled).toBe(true);
     expect(refresh.getAttribute("aria-busy")).toBe("true");
     expect(refresh.className).toBe(idleClassName);
 
-    // Rapid pointer/keyboard re-activation while in flight must not re-bump.
-    fireEvent.click(refresh);
-    fireEvent.keyDown(refresh, { key: "Enter" });
-    fireEvent.keyUp(refresh, { key: "Enter" });
-    fireEvent.keyDown(refresh, { key: " " });
-    fireEvent.keyUp(refresh, { key: " " });
-
-    await waitFor(() => expect(listTasksCalls).toBeGreaterThan(baselineCalls));
-    await slot.findByText("Flight title B");
-    const afterFirstFlight = listTasksCalls;
-
+    const callsWhilePending = listTasksCalls;
+    // Rapid re-activation while pending must not bump generation again.
     fireEvent.click(refresh);
     fireEvent.click(refresh);
-    // Allow any would-be effect to flush; call count must stay flat.
+    // Browser keyboard activation synthesizes click; exercise that path.
+    refresh.focus();
+    fireEvent.click(refresh);
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(listTasksCalls).toBe(afterFirstFlight);
+    expect(listTasksCalls).toBe(callsWhilePending);
 
-    // After the flight window clears, a deliberate second refresh works.
-    await waitFor(
-      () => {
-        expect(
-          (
-            slot.getByRole("button", {
-              name: "Refresh tasks",
-            }) as HTMLButtonElement
-          ).disabled,
-        ).toBe(false);
-      },
-      { timeout: 1500 },
-    );
+    // Stay pending well past any former fixed timer; still disabled.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(refresh.disabled).toBe(true);
+    expect(listTasksCalls).toBe(callsWhilePending);
 
+    releaseAllPending();
+    await slot.findByText("Flight title B");
+    await waitFor(() => {
+      expect(
+        (
+          slot.getByRole("button", {
+            name: "Refresh tasks",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+
+    // Deliberate second refresh after completion works.
     title = "Flight title C";
     fireEvent.click(slot.getByRole("button", { name: "Refresh tasks" }));
-    await slot.findByText("Flight title C");
-    expect(listTasksCalls).toBeGreaterThan(afterFirstFlight);
-
-    // Wait for the second flight window so recovery assertions are stable.
-    await waitFor(
-      () => {
-        const button = slot.getByRole("button", {
-          name: "Refresh tasks",
-        }) as HTMLButtonElement;
-        expect(button.disabled).toBe(false);
-        expect(button.getAttribute("aria-busy")).not.toBe("true");
-      },
-      { timeout: 1500 },
+    await waitFor(() =>
+      expect(listTasksCalls).toBeGreaterThan(callsWhilePending),
     );
-
-    const recovered = slot.getByRole("button", {
-      name: "Refresh tasks",
-    }) as HTMLButtonElement;
-    expect(recovered.className).toMatch(/size-7/);
+    releaseAllPending();
+    await slot.findByText("Flight title C");
+    await waitFor(() => {
+      const button = slot.getByRole("button", {
+        name: "Refresh tasks",
+      }) as HTMLButtonElement;
+      expect(button.disabled).toBe(false);
+      expect(button.getAttribute("aria-busy")).not.toBe("true");
+    });
+    expect(
+      (slot.getByRole("button", { name: "Refresh tasks" }) as HTMLButtonElement)
+        .className,
+    ).toMatch(/size-7/);
   });
 
   it("retains stale list data when a manual refresh fails, then recovers", async () => {
@@ -582,19 +599,17 @@ describe("tasks app shell", () => {
     shouldFail = true;
     fireEvent.click(slot.getByRole("button", { name: "Refresh tasks" }));
     // Prior data stays on screen (useTasksQuery retains data on error).
-    await waitFor(() =>
-      expect(slot.getByText("Stable title")).toBeDefined(),
-    );
-    // Give the failed request a moment to settle without clearing rows.
-    await waitFor(
-      () => {
-        expect(
-          (slot.getByRole("button", { name: "Refresh tasks" }) as HTMLButtonElement)
-            .disabled,
-        ).toBe(false);
-      },
-      { timeout: 1500 },
-    );
+    await waitFor(() => expect(slot.getByText("Stable title")).toBeDefined());
+    // Failed generation work clears the shared in-flight bit.
+    await waitFor(() => {
+      expect(
+        (
+          slot.getByRole("button", {
+            name: "Refresh tasks",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
     expect(slot.getByText("Stable title")).toBeDefined();
 
     shouldFail = false;

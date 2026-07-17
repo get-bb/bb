@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { Project, Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
 import { listAllTasks, useTasksQuery } from "./data.js";
@@ -16,13 +16,6 @@ import { useTasksRefresh } from "./refresh.js";
 
 /** Accessible name + tooltip for the header refresh control. */
 export const REFRESH_TASKS_LABEL = "Refresh tasks";
-
-/**
- * Coalesce rapid pointer/keyboard activations so a double-click or held key
- * does not bump the shared refresh generation twice. Long enough to cover
- * activation bounce; short enough that a deliberate second refresh is available.
- */
-export const REFRESH_SINGLE_FLIGHT_MS = 500;
 
 export interface PagerPosition {
   /** 1-based position of the task within its sibling list. */
@@ -145,33 +138,16 @@ function ViewToggle({
 
 /**
  * Subtle icon-only refresh control. Shares the BB-19 generation channel; does
- * not add listeners or alternate refresh paths. In-flight state is visual only
- * (spin + disabled) with a fixed geometry so the header does not shift.
+ * not add listeners or alternate refresh paths. In-flight state tracks real
+ * generation-driven query work (spin + disabled) with fixed geometry so the
+ * header does not shift.
  */
 function RefreshTasksButton() {
-  const { refresh } = useTasksRefresh();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const flightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (flightTimerRef.current !== null) {
-        clearTimeout(flightTimerRef.current);
-      }
-    };
-  }, []);
+  const { refresh, isRefreshing } = useTasksRefresh();
 
   const handleRefresh = useCallback(() => {
     if (isRefreshing) return;
-    setIsRefreshing(true);
     refresh();
-    if (flightTimerRef.current !== null) {
-      clearTimeout(flightTimerRef.current);
-    }
-    flightTimerRef.current = setTimeout(() => {
-      flightTimerRef.current = null;
-      setIsRefreshing(false);
-    }, REFRESH_SINGLE_FLIGHT_MS);
   }, [isRefreshing, refresh]);
 
   return (
@@ -182,7 +158,7 @@ function RefreshTasksButton() {
             type="button"
             variant="ghost"
             size="icon"
-            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+            className="size-7 shrink-0 text-muted-foreground hover:text-foreground active:bg-state-active active:text-foreground"
             aria-label={REFRESH_TASKS_LABEL}
             aria-busy={isRefreshing}
             disabled={isRefreshing}

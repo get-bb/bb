@@ -83,6 +83,10 @@ export interface TasksQuery<T> {
  * Fetch-and-subscribe primitive: runs `fetcher` on mount and again whenever
  * one of `channels` fires or `deps` change. Stale responses (superseded by a
  * newer refresh) are dropped.
+ *
+ * Generation bumps (manual refresh / reconnect) report begin/end to the shared
+ * refresh provider so the header control can single-flight without a timer.
+ * Invalidation- and deps-driven refetches do not mark the shared in-flight bit.
  */
 export function useTasksQuery<T>(
   fetcher: (rpc: TasksRpc) => Promise<T>,
@@ -90,7 +94,8 @@ export function useTasksQuery<T>(
   deps: readonly unknown[] = [],
 ): TasksQuery<T> {
   const rpc = useTasksRpc();
-  const { generation } = useTasksRefresh();
+  const { generation, beginGenerationWork, endGenerationWork } =
+    useTasksRefresh();
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
   const [state, setState] = useState<{
@@ -99,10 +104,11 @@ export function useTasksQuery<T>(
     isLoading: boolean;
   }>({ data: undefined, error: null, isLoading: true });
   const seqRef = useRef(0);
+  const previousGenerationRef = useRef(generation);
   const depsKey = JSON.stringify(deps);
   const refresh = useCallback(() => {
     const seq = ++seqRef.current;
-    fetcherRef.current(rpc).then(
+    return fetcherRef.current(rpc).then(
       (data) => {
         if (seq !== seqRef.current) return;
         setState({ data, error: null, isLoading: false });
@@ -118,9 +124,21 @@ export function useTasksQuery<T>(
     );
   }, [rpc, depsKey]);
   useEffect(() => {
+    const generationBumped = previousGenerationRef.current !== generation;
+    previousGenerationRef.current = generation;
     setState((current) => ({ ...current, isLoading: true }));
-    refresh();
-  }, [refresh, generation]);
+    if (generationBumped) beginGenerationWork();
+    let settled = false;
+    const finish = () => {
+      if (!generationBumped || settled) return;
+      settled = true;
+      endGenerationWork();
+    };
+    void refresh().finally(finish);
+    return () => {
+      finish();
+    };
+  }, [refresh, generation, beginGenerationWork, endGenerationWork]);
   useInvalidation(channels, refresh);
   return { ...state, refresh };
 }
