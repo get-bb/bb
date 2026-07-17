@@ -696,11 +696,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     ? "1 attachment"
                     : `${attachmentCount} attachments`
                 }
-                title={
-                  attachmentCount === 1
-                    ? "1 attachment"
-                    : `${attachmentCount} attachments`
-                }
               >
                 <Icon name="FileAttachment" className="size-3.5" aria-hidden />
                 <span aria-hidden>{attachmentCount}</span>

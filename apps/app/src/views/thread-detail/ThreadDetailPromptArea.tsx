@@ -365,6 +365,9 @@ export function ThreadDetailPromptArea({
     projectId,
     threadId: thread.id,
   });
+  const setStoredPromptDraft = promptDraft.setDraft;
+  const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
+  const removeStoredPromptAttachment = promptDraft.removeAttachment;
   const promptMentions = usePromptMentions(projectId, {
     currentThreadId: thread.id,
     environmentId: thread.environmentId ?? null,
@@ -575,9 +578,9 @@ export function ThreadDetailPromptArea({
         );
         return;
       }
-      promptDraft.setDraft(draft);
+      setStoredPromptDraft(draft);
     },
-    [inlineEditingQueuedMessage, promptDraft.setDraft],
+    [inlineEditingQueuedMessage, setStoredPromptDraft],
   );
   const handleComposerMessageChange = useCallback(
     (text: string, mentions: PromptDraftState["mentions"]) => {
@@ -589,9 +592,9 @@ export function ThreadDetailPromptArea({
         );
         return;
       }
-      promptDraft.setTextAndMentions(text, mentions);
+      setStoredPromptTextAndMentions(text, mentions);
     },
-    [inlineEditingQueuedMessage, promptDraft.setTextAndMentions],
+    [inlineEditingQueuedMessage, setStoredPromptTextAndMentions],
   );
   const removeActiveComposerAttachment = useCallback(
     (path: string) => {
@@ -611,9 +614,9 @@ export function ThreadDetailPromptArea({
         );
         return;
       }
-      promptDraft.removeAttachment(path);
+      removeStoredPromptAttachment(path);
     },
-    [inlineEditingQueuedMessage, promptDraft.removeAttachment],
+    [inlineEditingQueuedMessage, removeStoredPromptAttachment],
   );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
   const isPromptEmpty = useCallback(

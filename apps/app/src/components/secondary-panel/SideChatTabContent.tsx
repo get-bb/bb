@@ -448,6 +448,9 @@ export function SideChatTabContent({
     parentThreadId: sourceThread.id,
     tabId: tab.id,
   });
+  const setStoredPromptDraft = promptDraft.setDraft;
+  const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
+  const removeStoredPromptAttachment = promptDraft.removeAttachment;
   const promptContextEnvironmentId =
     childThreadQuery.data?.environmentId ?? sourceThread.environmentId ?? null;
   const promptContextThreadId = childThreadId ?? sourceThread.id;
@@ -532,9 +535,9 @@ export function SideChatTabContent({
         );
         return;
       }
-      promptDraft.setDraft(draft);
+      setStoredPromptDraft(draft);
     },
-    [inlineEditingQueuedMessage, promptDraft.setDraft],
+    [inlineEditingQueuedMessage, setStoredPromptDraft],
   );
   const handleChangeMessage = useCallback(
     (nextValue: string, nextMentions: PromptTextMention[]) => {
@@ -553,9 +556,9 @@ export function SideChatTabContent({
         );
         return;
       }
-      promptDraft.setTextAndMentions(nextValue, nextMentions);
+      setStoredPromptTextAndMentions(nextValue, nextMentions);
     },
-    [inlineEditingQueuedMessage, promptDraft.setTextAndMentions],
+    [inlineEditingQueuedMessage, setStoredPromptTextAndMentions],
   );
   const removeActiveComposerAttachment = useCallback(
     (path: string) => {
@@ -575,9 +578,9 @@ export function SideChatTabContent({
         );
         return;
       }
-      promptDraft.removeAttachment(path);
+      removeStoredPromptAttachment(path);
     },
-    [inlineEditingQueuedMessage, promptDraft.removeAttachment],
+    [inlineEditingQueuedMessage, removeStoredPromptAttachment],
   );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
 
