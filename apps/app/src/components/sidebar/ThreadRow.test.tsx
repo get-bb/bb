@@ -282,7 +282,7 @@ describe("ThreadRow", () => {
     });
 
     const shortcut = screen.getByText("⌘3");
-    expect(shortcut.className).toContain("p-1");
+    expect(shortcut.className).toContain("p-1.5");
     expect(shortcut.className).toContain("opacity-60");
     expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
     expect(

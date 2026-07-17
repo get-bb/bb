@@ -8,7 +8,7 @@ interface AppCommandShortcutHintProps {
 }
 
 export const APP_COMMAND_SHORTCUT_HINT_CLASS =
-  "pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover p-1 text-xs font-normal leading-none tabular-nums text-subtle-foreground opacity-60 [word-spacing:-0.15em]";
+  "pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover p-1.5 text-xs font-normal leading-none tabular-nums text-subtle-foreground opacity-60 [word-spacing:-0.15em]";
 
 export function AppCommandShortcutHint({
   shortcut,
