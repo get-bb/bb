@@ -38,6 +38,12 @@ import {
   usePaneSecondaryPanelRegistration,
   type PaneSecondaryPanelViewModel,
 } from "./PaneContext";
+import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
+import {
+  getBbDesktopInfo,
+  shouldReserveMacosTrafficLights,
+} from "@/lib/bb-desktop";
+import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
 const COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT = 0;
@@ -104,6 +110,24 @@ export function ThreadDetailSecondaryContent({
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
+  // The hosted (split-workspace) collapsed rail is the window's top-left-most
+  // surface while the main sidebar is collapsed on macOS desktop: it must
+  // reserve a title-bar-height strip so the traffic lights sit on clean window
+  // chrome instead of on the rail's glyph/working indicator. When the sidebar
+  // is open it hosts the lights itself and the rail sits to its right; the
+  // inline (non-host) rail always sits below a full-width header on the lights'
+  // row, so neither needs the reserve there.
+  // `null` (no sidebar context, e.g. tests) is treated as showing, so no
+  // reserve is applied.
+  const isSidebarShowing = useOptionalIsSidebarShowing();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const desktopWindowState = useDesktopWindowState();
+  const hostedRailReservesTrafficLights =
+    isSidebarShowing === false &&
+    shouldReserveMacosTrafficLights({
+      desktopInfo,
+      windowState: desktopWindowState,
+    });
   // Collapsing the conversation only makes sense on a wide viewport with the
   // secondary panel open — there is otherwise nothing to expand into.
   const canCollapseConversation = isSecondaryPanelOpen && !renderAsDrawer;
@@ -318,11 +342,12 @@ export function ThreadDetailSecondaryContent({
       <ConversationCollapsedRail
         collapsed={isConversationCollapsedActive}
         isWorking={isConversationWorking}
-        reserveTopForDesktopTrafficLights={false}
+        reserveTopForDesktopTrafficLights={hostedRailReservesTrafficLights}
         onExpand={onToggleConversationCollapse}
       />
     ),
     [
+      hostedRailReservesTrafficLights,
       isConversationCollapsedActive,
       isConversationWorking,
       onToggleConversationCollapse,
@@ -394,6 +419,9 @@ export function ThreadDetailSecondaryContent({
         <ConversationCollapsedRail
           collapsed={isConversationCollapsedActive}
           isWorking={isConversationWorking}
+          // The inline (non-split) surface keeps a full-width thread header on
+          // the traffic-light row above this rail, so the lights never reach the
+          // rail's glyph — only the hosted split rail owns the window top-left.
           reserveTopForDesktopTrafficLights={false}
           onExpand={onToggleConversationCollapse}
         />

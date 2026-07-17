@@ -61,10 +61,14 @@ import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
+  shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
+import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -110,6 +114,57 @@ export function getReservedInlinePanelToggleClassName(
     SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
     usesDesktopChrome && MACOS_APP_REGION_NO_DRAG_CLASS,
   );
+}
+
+interface CollapsedPanelTrafficLightReserveArgs {
+  /** The conversation is collapsed, so this panel fills the content area. */
+  isConversationCollapsed: boolean;
+  /** The compact drawer layout (never the window's top-left surface). */
+  renderAsDrawer: boolean;
+  /**
+   * True inside the split-workspace host — the only surface where the panel
+   * itself owns the window's flush top-left corner while the conversation is
+   * collapsed. Inline (non-split) thread detail keeps a full-width header on the
+   * traffic-light row above the panel, so it needs no reserve here.
+   */
+  isInSplitHost: boolean;
+  /**
+   * Whether the main app sidebar is showing. `null` when the sidebar context is
+   * absent (e.g. tests) — treated as showing, so no reserve is applied. The
+   * sidebar hosts the traffic lights in its own top strip while open.
+   */
+  isSidebarShowing: boolean | null;
+  /**
+   * Whether macOS traffic lights are visible (macOS desktop chrome, not
+   * fullscreen). False on the web build and in fullscreen, where the lights are
+   * hidden.
+   */
+  reserveMacosTrafficLights: boolean;
+}
+
+/**
+ * Left-padding class that clears the macOS traffic-light safe area for the
+ * secondary panel's leading top-chrome toolbar, or `false` when no reserve is
+ * needed. The reserve applies only when the panel is the window's flush
+ * top-left surface (split host, conversation collapsed) while the main sidebar
+ * is collapsed and the lights are visible — the collapsed-left / expanded-right
+ * case from BB-46. See {@link MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS}
+ * for the geometry.
+ */
+export function resolveCollapsedPanelTrafficLightReserveClassName({
+  isConversationCollapsed,
+  renderAsDrawer,
+  isInSplitHost,
+  isSidebarShowing,
+  reserveMacosTrafficLights,
+}: CollapsedPanelTrafficLightReserveArgs): string | false {
+  const reserves =
+    isConversationCollapsed &&
+    !renderAsDrawer &&
+    isInSplitHost &&
+    isSidebarShowing === false &&
+    reserveMacosTrafficLights;
+  return reserves && MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS;
 }
 
 interface ResolveActiveFixedPanelArgs {
@@ -403,6 +458,23 @@ export function ThreadSecondaryPanel({
   const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
     useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const desktopWindowState = useDesktopWindowState();
+  const isSidebarShowing = useOptionalIsSidebarShowing();
+  // The panel reserves the traffic-light safe area only when it is the window's
+  // flush top-left surface (split-workspace host, conversation collapsed) with
+  // the main sidebar collapsed and the lights visible. See
+  // resolveCollapsedPanelTrafficLightReserveClassName.
+  const collapsedPanelTrafficLightReserveClassName =
+    resolveCollapsedPanelTrafficLightReserveClassName({
+      isConversationCollapsed,
+      renderAsDrawer,
+      isInSplitHost: hostLayout !== null,
+      isSidebarShowing,
+      reserveMacosTrafficLights: shouldReserveMacosTrafficLights({
+        desktopInfo,
+        windowState: desktopWindowState,
+      }),
+    });
   const preferredTheme = usePreferredTheme();
   const gitDiffViewOptions = useMemo(
     () => ({
@@ -491,7 +563,23 @@ export function ThreadSecondaryPanel({
           )}
         >
           <div
-            className="flex min-w-0 flex-1 items-center gap-1"
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-1",
+              // When this panel owns the window's top-left (split host, sidebar
+              // collapsed, conversation collapsed), reserve the traffic-light
+              // safe area so the leading controls clear the lights and the
+              // pinned sidebar trigger. The padding must animate on the SAME
+              // timing/easing as the panel's collapse slide
+              // (PANEL_COLLAPSE_TRANSITION_CLASS): the panel's left edge starts
+              // well right of 120px and both ease to their endpoints together,
+              // so the combined inset (panel-left + px-4 + padding) decreases
+              // monotonically to exactly 120px and never dips below it
+              // mid-animation. A faster/looser padding transition would let the
+              // panel reach the left edge before the padding fills, briefly
+              // sliding the leading controls back under the lights/trigger.
+              `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
+              collapsedPanelTrafficLightReserveClassName,
+            )}
             // A toolbar, not a tablist: the Info/Diff controls and file tabs are
             // toggle buttons (`aria-pressed`) rather than `role="tab"` widgets
             // backed by tabpanels, so `role="tablist"` would be malformed. Toolbar
