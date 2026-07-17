@@ -183,23 +183,40 @@ describe("QueuedMessagesList", () => {
     ).toBe("workspace");
   });
 
-  it("uses one hover-revealed overflow action and a grip-only drag handle", () => {
+  it("uses hover-revealed icon actions on desktop and an overflow menu on mobile widths", () => {
     const { container, getByRole } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
     ]);
 
-    expect(
-      getByRole("button", { name: "Queued message 1 actions" }).className,
-    ).toContain("opacity-0");
+    const sendButton = getByRole("button", {
+      name: "Send queued message 1 now",
+    });
+    const editButton = getByRole("button", {
+      name: "Edit queued message 1",
+    });
+    const deleteButton = getByRole("button", {
+      name: "Delete queued message 1",
+    });
+    const overflowButton = getByRole("button", {
+      name: "Queued message 1 actions",
+    });
+
+    expect(sendButton.closest("div")?.className).toContain("opacity-0");
+    expect(sendButton.closest("div")?.className).toContain("md:flex");
+    expect(sendButton.closest("div")?.className).toContain("hidden");
+    expect(editButton).toBeTruthy();
+    expect(deleteButton).toBeTruthy();
+    expect(overflowButton.className).toContain("md:hidden");
+    expect(overflowButton.className).toContain("opacity-0");
+    expect(container.querySelector('[data-icon="Sent"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="Trash2"]')).not.toBeNull();
     expect(
       container.querySelector('[data-icon="MoreHorizontal"]'),
     ).not.toBeNull();
     expect(
       container.querySelector('[data-icon="DragDropVertical"]'),
     ).not.toBeNull();
-    expect(
-      container.querySelector('[data-icon="ArrowTurnForward"]'),
-    ).toBeNull();
   });
 
   it("replaces the edited row with the real-composer target", () => {

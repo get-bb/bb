@@ -708,51 +708,115 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             {processingLabel}
           </span>
         ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <>
+            <div
+              className={cn(
+                "pointer-events-none hidden shrink-0 items-center gap-0.5 opacity-0 transition-opacity md:flex",
+                "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
+                "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
+              )}
+            >
               <Button
                 type="button"
                 size="icon"
                 variant="ghost"
                 className={cn(
-                  "pointer-events-none shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+                  "shrink-0 text-muted-foreground",
+                  compact ? "size-7" : "size-8",
+                )}
+                disabled={actionDisabled || sendDisabled}
+                onClick={() => onSendImmediately(queuedMessage.id)}
+                aria-label={`Send queued message ${index + 1} now`}
+                title="Send now"
+              >
+                <Icon name="Sent" className="size-4" aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={cn(
+                  "shrink-0 text-muted-foreground",
                   compact ? "size-7" : "size-8",
                 )}
                 disabled={actionDisabled}
-                aria-label={`Queued message ${index + 1} actions`}
-              >
-                <Icon name="MoreHorizontal" className="size-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[7rem]">
-              <DropdownMenuItem
-                disabled={sendDisabled}
-                onSelect={() => onSendImmediately(queuedMessage.id)}
-              >
-                <Icon name="Sent" aria-hidden />
-                Send now
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() =>
+                onClick={() =>
                   onEdit({
                     queuedMessageId: queuedMessage.id,
                     queuedMessageIndex: index,
                   })
                 }
+                aria-label={`Edit queued message ${index + 1}`}
+                title="Edit"
               >
-                <Icon name="Edit" aria-hidden />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => onDelete(queuedMessage.id)}
+                <Icon name="Edit" className="size-4" aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={cn(
+                  "shrink-0 text-muted-foreground hover:text-destructive",
+                  compact ? "size-7" : "size-8",
+                )}
+                disabled={actionDisabled}
+                onClick={() => onDelete(queuedMessage.id)}
+                aria-label={`Delete queued message ${index + 1}`}
+                title="Delete"
               >
-                <Icon name="Trash2" aria-hidden />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <Icon name="Trash2" className="size-4" aria-hidden />
+              </Button>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className={cn(
+                    "pointer-events-none shrink-0 text-muted-foreground opacity-0 transition-opacity md:hidden",
+                    "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
+                    "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
+                    "data-[state=open]:pointer-events-auto data-[state=open]:opacity-100",
+                    "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+                    compact ? "size-7" : "size-8",
+                  )}
+                  disabled={actionDisabled}
+                  aria-label={`Queued message ${index + 1} actions`}
+                >
+                  <Icon name="MoreHorizontal" className="size-4" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[7rem]">
+                <DropdownMenuItem
+                  disabled={sendDisabled}
+                  onSelect={() => onSendImmediately(queuedMessage.id)}
+                >
+                  <Icon name="Sent" aria-hidden />
+                  Send now
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    onEdit({
+                      queuedMessageId: queuedMessage.id,
+                      queuedMessageIndex: index,
+                    })
+                  }
+                >
+                  <Icon name="Edit" aria-hidden />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => onDelete(queuedMessage.id)}
+                >
+                  <Icon name="Trash2" aria-hidden />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         )}
       </div>
     </li>
