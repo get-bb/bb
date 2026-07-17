@@ -55,6 +55,7 @@ export const PLUGIN_THEME_CSS = `@theme inline {
   --color-surface-recessed: var(--surface-recessed);
   --color-surface-recessed-solid: var(--surface-recessed-solid);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-solid: var(--surface-raised-solid);
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
   --color-surface-destructive-border: var(--surface-destructive-border);
