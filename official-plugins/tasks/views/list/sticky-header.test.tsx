@@ -117,6 +117,9 @@ describe("status-group sticky headers", () => {
       expect(header.className).toMatch(/\bbg-background\b/);
       expect(header.className).toMatch(/\bz-20\b/);
       expect(header.className).toMatch(/\bisolate\b/);
+      // Edge separates the pin band from scrolling rows (theme hairline).
+      expect(header.className).toMatch(/\bborder-b\b/);
+      expect(header.className).toMatch(/\bborder-border-hairline\b/);
       // Guard against reintroducing translucent chrome tokens.
       expect(header.className).not.toMatch(/bg-surface-scrim|bg-background\//);
     }

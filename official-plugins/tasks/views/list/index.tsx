@@ -273,10 +273,12 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
           titles paint on top while scrolling and read as a transparent bar.
           bg-background maps to --canvas via the host theme (same family as
           card); do not use surface-scrim or hardcoded colors here.
+          Hairline bottom border separates the pin band from scrolling rows
+          (same token family as the filter bar and row dividers).
         */}
         <div
           data-status-group-header={group.status}
-          className="sticky top-0 z-20 isolate flex items-center gap-2 bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
+          className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
         >
           <StatusIcon status={group.status} />
           {STATUS_LABELS[group.status]}
