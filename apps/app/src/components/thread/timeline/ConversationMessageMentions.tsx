@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
@@ -28,6 +28,8 @@ interface PromptMentionPillProps {
    * `resource.projectId` react-router link; a non-thread mention ignores this.
    */
   linkHref?: string;
+  /** Activates a mention that opens an in-place surface instead of a route. */
+  onActivate?: () => void;
 }
 
 interface NormalizeMentionsArgs {
@@ -129,6 +131,7 @@ export function PromptMentionPill({
   resolveMentionLink,
   serializedText,
   linkHref,
+  onActivate,
 }: PromptMentionPillProps) {
   const title = promptMentionTooltipLabel(resource);
   const clipboardAttributes = promptMentionClipboardDataAttributes({
@@ -150,6 +153,31 @@ export function PromptMentionPill({
       <span
         className={mentionPillClassName(false)}
         {...clipboardAttributes}
+        title={title}
+      >
+        {labelNode}
+      </span>
+    );
+  }
+
+  if (onActivate) {
+    return (
+      <span
+        role="link"
+        tabIndex={0}
+        className={mentionPillClassName(true)}
+        {...clipboardAttributes}
+        onClick={(event: MouseEvent<HTMLSpanElement>) => {
+          event.stopPropagation();
+          onActivate();
+        }}
+        onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.stopPropagation();
+            onActivate();
+          }
+        }}
         title={title}
       >
         {labelNode}

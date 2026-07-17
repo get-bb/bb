@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { TimelineTitleLink } from "@bb/thread-view";
 import { ConversationMessageContent } from "./ConversationMessageContent";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import type { TimelineTitleActionResolver } from "./TimelineTitleView";
 
 function resolveThreadLink(link: TimelineTitleLink): string | null {
   return link.kind === "thread"
@@ -81,7 +82,15 @@ const OVERFLOWING_ONE_LINE_AGENT_BODY =
 
 function renderAgentMessage(
   text = AGENT_BODY,
-  { senderChildOrigin }: { senderChildOrigin?: "side-chat" | null } = {},
+  {
+    senderChildOrigin,
+    senderThreadTitle = "Worker",
+    onTitleAction,
+  }: {
+    onTitleAction?: TimelineTitleActionResolver;
+    senderChildOrigin?: "side-chat" | null;
+    senderThreadTitle?: string;
+  } = {},
 ) {
   const mentions =
     text === AGENT_BODY
@@ -108,8 +117,9 @@ function renderAgentMessage(
           initiator="agent"
           childOrigin={null}
           senderThreadId="thr_agent"
-          senderThreadTitle="Worker"
+          senderThreadTitle={senderThreadTitle}
           senderChildOrigin={senderChildOrigin ?? null}
+          onTitleAction={onTitleAction}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="unlabeled"
           systemMessageSubject={null}
@@ -136,6 +146,27 @@ function mockInnerPreviewTextOverflow(text: string): void {
 }
 
 describe("GeneratedConversationMessage markdown body", () => {
+  it("renders the source as a thread pill with title mentions resolved to display text", () => {
+    const { container } = renderAgentMessage(AGENT_BODY, {
+      senderThreadTitle:
+        "Ask @thread:thr_target. Review @docs/foo.test.ts. Keep @owner/repo literal",
+    });
+
+    const sourcePill = container.querySelector(
+      '[data-prompt-mention-serialized-text="@thread:thr_agent"]',
+    );
+    expect(sourcePill).not.toBeNull();
+    expect(sourcePill?.textContent).toBe(
+      "Ask thr_target. Review foo.test.ts. Keep @owner/repo literal",
+    );
+    expect(screen.queryByText(/@thread:thr_target/u)).toBeNull();
+    expect(sourcePill?.className).toContain("prompt-mention-pill");
+    expect(sourcePill?.tagName).toBe("A");
+    expect(sourcePill?.getAttribute("href")).toBe(
+      "/projects/proj_demo/threads/thr_agent",
+    );
+  });
+
   it("keeps the agent body on the offset renderer (no markdown, no <br>) and renders its path mention", () => {
     renderAgentMessage();
 
@@ -160,16 +191,24 @@ describe("GeneratedConversationMessage markdown body", () => {
   });
 
   it("renders side-chat handoffs as markdown", () => {
+    const openSideChat = vi.fn();
     renderAgentMessage("**Ready** to merge.\n\n- checks passed", {
       senderChildOrigin: "side-chat",
+      onTitleAction: (action) =>
+        action.kind === "open-side-chat" ? openSideChat : null,
     });
 
     expect(screen.getByText("Ready").tagName).toBe("STRONG");
     expect(screen.queryByText("**Ready** to merge.")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /Message from side chat/u }),
-    );
+    const toggle = screen.getByRole("button", {
+      name: /Message from side chat/u,
+    });
+    fireEvent.click(screen.getByRole("link", { name: "side chat" }));
+    expect(openSideChat).toHaveBeenCalledOnce();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle);
 
     expect(screen.getByRole("list").textContent).toContain("checks passed");
   });

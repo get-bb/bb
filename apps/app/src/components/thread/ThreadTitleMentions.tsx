@@ -130,10 +130,17 @@ function resolveTitleMentionResource(
   return pathMentionResource(token);
 }
 
-/** Renders serialized prompt mentions persisted in thread title fallbacks. */
-export function ThreadTitleMentions({ title }: { title: string }) {
-  const resources = useContext(ThreadTitleMentionResourcesContext);
-  const nodes: ReactNode[] = [];
+interface ThreadTitleTextSegment {
+  resource: PromptMentionResource | null;
+  serializedText: string | null;
+  text: string;
+}
+
+function threadTitleTextSegments(
+  title: string,
+  resources: ThreadTitleMentionResources,
+): ThreadTitleTextSegment[] {
+  const segments: ThreadTitleTextSegment[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
 
@@ -150,25 +157,60 @@ export function ThreadTitleMentions({ title }: { title: string }) {
       continue;
     }
     if (match.index > cursor) {
-      nodes.push(title.slice(cursor, match.index));
+      segments.push({
+        resource: null,
+        serializedText: null,
+        text: title.slice(cursor, match.index),
+      });
     }
-    nodes.push(
-      <span key={`${match.index}:${token}`}>
-        <PromptMentionPill
-          interactive={false}
-          resource={resolveTitleMentionResource(token, resources)}
-          serializedText={token}
-        />
-      </span>,
-    );
+    const resource = resolveTitleMentionResource(token, resources);
+    segments.push({
+      resource,
+      serializedText: token,
+      text: resource.label,
+    });
     cursor = matchEnd;
   }
 
-  if (nodes.length === 0) {
-    return title;
+  if (segments.length === 0) {
+    return [{ resource: null, serializedText: null, text: title }];
   }
   if (cursor < title.length) {
-    nodes.push(title.slice(cursor));
+    segments.push({
+      resource: null,
+      serializedText: null,
+      text: title.slice(cursor),
+    });
   }
-  return nodes;
+  return segments;
+}
+
+/** Resolves serialized mentions in a thread title to one plain display label. */
+export function useThreadTitleDisplayText(title: string): string {
+  const resources = useContext(ThreadTitleMentionResourcesContext);
+  return useMemo(
+    () =>
+      threadTitleTextSegments(title, resources)
+        .map((segment) => segment.text)
+        .join(""),
+    [resources, title],
+  );
+}
+
+/** Renders serialized prompt mentions persisted in thread title fallbacks. */
+export function ThreadTitleMentions({ title }: { title: string }) {
+  const resources = useContext(ThreadTitleMentionResourcesContext);
+  return threadTitleTextSegments(title, resources).map((segment, index) =>
+    segment.resource === null || segment.serializedText === null ? (
+      segment.text
+    ) : (
+      <span key={`${index}:${segment.serializedText}`}>
+        <PromptMentionPill
+          interactive={false}
+          resource={segment.resource}
+          serializedText={segment.serializedText}
+        />
+      </span>
+    ),
+  );
 }

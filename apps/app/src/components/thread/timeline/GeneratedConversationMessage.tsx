@@ -35,6 +35,8 @@ import type {
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
+import { PromptMentionPill } from "./ConversationMessageMentions.js";
+import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
@@ -324,6 +326,60 @@ function generatedConversationIconName(
   }
 }
 
+interface GeneratedAgentSourceTitleProps {
+  onTitleAction?: TimelineTitleActionResolver;
+  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  sourceIsSideChat: boolean;
+  sourceName: string;
+  sourceThreadId: string | null;
+  title: TimelineTitle;
+}
+
+function GeneratedAgentSourceTitle({
+  onTitleAction,
+  resolveSegmentLinkHref,
+  sourceIsSideChat,
+  sourceName,
+  sourceThreadId,
+  title,
+}: GeneratedAgentSourceTitleProps) {
+  const sourceDisplayName = useThreadTitleDisplayText(sourceName);
+  const sourceTitleAction =
+    title.action && onTitleAction ? onTitleAction(title.action) : null;
+  const sourceLinkHref =
+    sourceThreadId !== null && !sourceIsSideChat && resolveSegmentLinkHref
+      ? resolveSegmentLinkHref({ kind: "thread", threadId: sourceThreadId })
+      : null;
+  const leadIn = title.segments[0]?.text ?? "Message from";
+
+  return (
+    <span
+      className="inline-flex min-w-0 max-w-full items-center gap-1 overflow-hidden whitespace-nowrap text-sm leading-5"
+      title={`${leadIn} ${sourceDisplayName}`}
+    >
+      <span className="shrink-0 whitespace-pre text-muted-foreground">
+        {leadIn}
+      </span>{" "}
+      {sourceThreadId === null ? (
+        <span className="min-w-0 truncate font-medium text-foreground opacity-70">
+          {sourceDisplayName}
+        </span>
+      ) : (
+        <PromptMentionPill
+          resource={{
+            kind: "thread",
+            threadId: sourceThreadId,
+            label: sourceDisplayName,
+          }}
+          serializedText={`@thread:${sourceThreadId}`}
+          linkHref={sourceLinkHref ?? undefined}
+          onActivate={sourceTitleAction ?? undefined}
+        />
+      )}
+    </span>
+  );
+}
+
 // True only for the ownership kinds, whose one-line body restates the granular
 // title verbatim. Those rows render title-only (no body, no preview,
 // non-expandable); every other kind keeps its information-bearing body.
@@ -410,6 +466,17 @@ export const GeneratedConversationMessage = memo(
         systemMessageSubject,
       ],
     );
+    const sourceTitleContent =
+      sourceKind === "agent" ? (
+        <GeneratedAgentSourceTitle
+          onTitleAction={onTitleAction}
+          resolveSegmentLinkHref={resolveSegmentLinkHref}
+          sourceIsSideChat={sourceIsSideChat}
+          sourceName={sourceName}
+          sourceThreadId={sourceThreadId}
+          title={title}
+        />
+      ) : undefined;
     const leadingIcon = generatedConversationIconName(
       sourceKind,
       childOrigin,
@@ -566,6 +633,7 @@ export const GeneratedConversationMessage = memo(
     return (
       <ExpandableTimelineRow
         title={title}
+        titleContent={sourceTitleContent}
         collapsedPreview={collapsedPreview}
         expandable={expandable}
         leadingIcon={leadingIcon}
