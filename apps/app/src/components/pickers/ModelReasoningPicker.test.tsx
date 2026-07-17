@@ -142,6 +142,18 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("marks the portaled picker as native no-drag content", () => {
+    renderPicker();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(
+      screen.getByRole("dialog").getAttribute("data-bb-portaled-overlay"),
+    ).toBe("");
+  });
+
   it("previews another provider's models without committing the provider", async () => {
     const { onSelectedProviderChange, onModelChange } = renderPicker();
 

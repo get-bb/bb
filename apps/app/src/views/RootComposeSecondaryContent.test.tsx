@@ -5,6 +5,10 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
+  PaneContext,
+  type PaneContextValue,
+} from "./thread-detail/PaneContext";
+import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
@@ -28,6 +32,7 @@ interface PanelProps {
 interface RenderRootComposeArgs {
   isCompactViewport: boolean;
   isSecondaryPanelOpen: boolean;
+  isTopRow?: boolean;
   panelTogglePositionClassName?: string;
 }
 
@@ -147,9 +152,28 @@ function createSecondaryPanel(
   };
 }
 
+function withPaneContext(
+  children: ReactNode,
+  isTopRow: boolean | undefined,
+): ReactNode {
+  if (isTopRow === undefined) return children;
+  const value: PaneContextValue = {
+    paneId: "pane-test",
+    isFocused: true,
+    isSplitPane: true,
+    secondaryPanelHost: null,
+    reservesWindowPanelToggle: false,
+    onRequestClose: noop,
+    isBoundedPane: true,
+    isTopRow,
+    navigateInPane: noop,
+  };
+  return <PaneContext.Provider value={value}>{children}</PaneContext.Provider>;
+}
+
 function renderRootCompose(args: RenderRootComposeArgs) {
   let renderArgs = args;
-  const view = render(
+  const content = (
     <CompactViewportOverrideProvider
       isCompactViewport={renderArgs.isCompactViewport}
     >
@@ -164,14 +188,15 @@ function renderRootCompose(args: RenderRootComposeArgs) {
       >
         <div data-testid="root-compose-content" />
       </RootComposeSecondaryContent>
-    </CompactViewportOverrideProvider>,
+    </CompactViewportOverrideProvider>
   );
+  const view = render(withPaneContext(content, renderArgs.isTopRow));
 
   return {
     ...view,
     rerenderWith(nextArgs: Partial<RenderRootComposeArgs>) {
       renderArgs = { ...renderArgs, ...nextArgs };
-      view.rerender(
+      const nextContent = (
         <CompactViewportOverrideProvider
           isCompactViewport={renderArgs.isCompactViewport}
         >
@@ -188,8 +213,9 @@ function renderRootCompose(args: RenderRootComposeArgs) {
           >
             <div data-testid="root-compose-content" />
           </RootComposeSecondaryContent>
-        </CompactViewportOverrideProvider>,
+        </CompactViewportOverrideProvider>
       );
+      view.rerender(withPaneContext(nextContent, renderArgs.isTopRow));
     },
   };
 }
@@ -213,6 +239,34 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(strip.className).toContain("h-[48px]");
     expect(strip.className).toContain("[app-region:drag]");
     expect(strip.className).toContain("[-webkit-app-region:drag]");
+  });
+
+  it("keeps the drag strip on a split pane that touches the window top edge", () => {
+    setMacosDesktopChrome();
+
+    renderRootCompose({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: false,
+      isTopRow: true,
+    });
+
+    expect(
+      screen.getByTestId("root-compose-main-window-drag-strip"),
+    ).toBeTruthy();
+  });
+
+  it("does not create a native pointer dead zone in a lower split pane", () => {
+    setMacosDesktopChrome();
+
+    renderRootCompose({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: false,
+      isTopRow: false,
+    });
+
+    expect(
+      screen.queryByTestId("root-compose-main-window-drag-strip"),
+    ).toBeNull();
   });
 
   // Electron resolves app-regions in DOM order (later wins), and the drag strip

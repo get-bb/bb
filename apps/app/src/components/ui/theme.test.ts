@@ -255,3 +255,13 @@ describe("theme.css Cadence text tokens", () => {
     });
   }
 });
+
+describe("theme.css desktop portal hit testing", () => {
+  it("carves portaled overlays out of native window drag regions", () => {
+    const rule = css.match(/\[data-bb-portaled-overlay\]\s*\{([^}]*)\}/)?.[1];
+
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/(?:^|\s)app-region:\s*no-drag;/);
+    expect(rule).toMatch(/-webkit-app-region:\s*no-drag;/);
+  });
+});

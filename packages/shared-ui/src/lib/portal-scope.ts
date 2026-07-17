@@ -7,8 +7,16 @@
  * `[data-bb-plugin-root]` mount, and must carry its own scope root for the
  * plugin's compiled stylesheet (`@scope ([data-bb-plugin-root])`) to reach
  * it. In the host app the same hook reads the plugin-slot context instead,
- * so host overlays stay out of plugin scopes.
+ * so host overlays stay out of plugin scopes. The portaled-overlay marker is
+ * shared with the host copy and lets Electron route pointer input to visible
+ * overlay controls instead of an underlying window-drag region.
  */
-export function usePortalScopeProps(): { "data-bb-plugin-root"?: "" } {
-  return { "data-bb-plugin-root": "" };
+export function usePortalScopeProps(): {
+  "data-bb-portaled-overlay": "";
+  "data-bb-plugin-root"?: "";
+} {
+  return {
+    "data-bb-portaled-overlay": "",
+    "data-bb-plugin-root": "",
+  };
 }

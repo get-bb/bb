@@ -103,6 +103,14 @@ export function RootComposeSecondaryContent({
     useState(false);
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  // A bounded pane below a horizontal split is not part of the native window
+  // chrome. Marking the top of every RootComposeView as draggable creates an
+  // invisible Electron hit-test strip inside the lower pane: portaled menus
+  // paint over it, but native pointer input is still consumed as window drag.
+  // Standalone/single-pane compose surfaces and every pane touching the
+  // workspace's top edge keep the intended title-bar drag affordance.
+  const rendersWindowDragStrip =
+    usesDesktopChrome && paneContext?.isTopRow !== false;
   const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
   const compactDrawerContentSettleGenerationRef = useRef(0);
   const compactDrawerContentSettleStateRef = useRef({
@@ -261,7 +269,7 @@ export function RootComposeSecondaryContent({
 
   const mainContent = (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      {usesDesktopChrome ? (
+      {rendersWindowDragStrip ? (
         <div
           data-testid="root-compose-main-window-drag-strip"
           aria-hidden="true"

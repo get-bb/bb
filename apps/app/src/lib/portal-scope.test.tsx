@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ReactNode } from "react";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
@@ -11,6 +11,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@bb/shared-ui/select";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@bb/shared-ui/context-menu";
 
 /**
  * Portaled overlay content renders into document.body — outside every
@@ -47,6 +60,7 @@ describe("usePortalScopeProps", () => {
 
     const content = baseElement.querySelector('[role="dialog"]');
     expect(content).not.toBeNull();
+    expect(content!.getAttribute("data-bb-portaled-overlay")).toBe("");
     // Portaled out of the plugin mount subtree, so it must carry its own
     // scope root for the plugin stylesheet to reach it.
     expect(content!.getAttribute("data-bb-plugin-root")).toBe("");
@@ -54,6 +68,9 @@ describe("usePortalScopeProps", () => {
     const scoped = baseElement.querySelectorAll("[data-bb-plugin-root]");
     // Overlay + content (both portaled top-level elements).
     expect(scoped.length).toBe(2);
+    expect(
+      baseElement.querySelectorAll("[data-bb-portaled-overlay]").length,
+    ).toBe(2);
   });
 
   it("leaves host-tree dialogs unscoped so plugin CSS cannot match them", () => {
@@ -62,6 +79,7 @@ describe("usePortalScopeProps", () => {
     const content = baseElement.querySelector('[role="dialog"]');
     expect(content).not.toBeNull();
     expect(content!.hasAttribute("data-bb-plugin-root")).toBe(false);
+    expect(content!.getAttribute("data-bb-portaled-overlay")).toBe("");
     expect(baseElement.querySelectorAll("[data-bb-plugin-root]").length).toBe(
       0,
     );
@@ -79,11 +97,50 @@ describe("usePortalScopeProps", () => {
       ),
     );
 
-    const tip = baseElement.querySelector('[data-bb-plugin-root][role="tooltip"], [role="tooltip"]');
-    expect(tip).not.toBeNull();
-    const scopedTip = baseElement.querySelector(
-      "[data-bb-plugin-root]",
+    const tip = baseElement.querySelector(
+      '[data-bb-plugin-root][role="tooltip"], [role="tooltip"]',
     );
+    expect(tip).not.toBeNull();
+    const scopedTip = baseElement.querySelector("[data-bb-plugin-root]");
     expect(scopedTip).not.toBeNull();
+    expect(scopedTip!.getAttribute("data-bb-portaled-overlay")).toBe("");
+  });
+
+  it("stamps select content so native drag regions cannot swallow options", () => {
+    const { baseElement } = render(
+      <Select open value="one">
+        <SelectTrigger aria-label="Example select">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="one">One</SelectItem>
+        </SelectContent>
+      </Select>,
+    );
+
+    expect(
+      baseElement
+        .querySelector('[role="listbox"]')
+        ?.getAttribute("data-bb-portaled-overlay"),
+    ).toBe("");
+  });
+
+  it("stamps context menu content after a real context-menu gesture", () => {
+    const { baseElement } = render(
+      <ContextMenu>
+        <ContextMenuTrigger>Context target</ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem>Action</ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>,
+    );
+
+    fireEvent.contextMenu(screen.getByText("Context target"));
+
+    expect(
+      baseElement
+        .querySelector('[role="menu"]')
+        ?.getAttribute("data-bb-portaled-overlay"),
+    ).toBe("");
   });
 });

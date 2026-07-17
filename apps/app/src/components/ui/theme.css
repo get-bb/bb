@@ -742,6 +742,17 @@ body.sidebar-resizing [data-sidebar="panel"] {
   transition-duration: 0ms !important;
 }
 
+/*
+ * Radix portals paint outside the pane tree, but Electron resolves native
+ * window-drag regions separately from ordinary CSS stacking. Explicitly carve
+ * every interactive portaled surface out of an underlying drag strip so a
+ * menu/select/dialog that crosses split chrome keeps its visible hit target.
+ */
+[data-bb-portaled-overlay] {
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
 @layer utilities {
   .animate-shine {
     display: inline-block;
