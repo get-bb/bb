@@ -117,12 +117,20 @@ interface ThreadRowContainerArgs {
   style: CSSProperties;
 }
 
-function ThreadDraftIndicator() {
+function ThreadDraftIndicator({ isWorking }: { isWorking: boolean }) {
   return (
     <Icon
       name="Edit"
-      className="pointer-events-none size-3.5 shrink-0 text-muted-foreground"
-      aria-hidden="true"
+      className={cn(
+        "pointer-events-none shrink-0",
+        COARSE_POINTER_ICON_SIZE_CLASS,
+        isWorking
+          ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
+          : "text-muted-foreground",
+      )}
+      {...(isWorking
+        ? { "aria-label": "Thread working with unsubmitted draft" }
+        : { "aria-hidden": true })}
     />
   );
 }
@@ -369,9 +377,12 @@ function getThreadUnreadBadgeLabel({
   return tone === "error" ? "Unread thread failed" : "Unread thread succeeded";
 }
 
-type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
+type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
+  hasComposerDraft: boolean;
+  isActive: boolean;
+};
 
-function ThreadTrailingIndicator({
+function isThreadLoadingGlyphVisible({
   hasPendingInteraction,
   isBackgroundAgentActive,
   isBackgroundCommandActive,
@@ -382,7 +393,55 @@ function ThreadTrailingIndicator({
   isWorkflowActive,
   showUnreadBadge,
   unreadBadgeTone,
+}: ThreadStatusGlyphProps): boolean {
+  if (
+    (showUnreadBadge && unreadBadgeTone === "error") ||
+    hasPendingInteraction
+  ) {
+    return false;
+  }
+  if (isForegroundAgentWorking) {
+    return true;
+  }
+  if (
+    isWorkflowActive ||
+    isBackgroundAgentActive ||
+    isBackgroundCommandActive ||
+    isPlanModeActive ||
+    isGoalActive ||
+    showUnreadBadge
+  ) {
+    return false;
+  }
+  return isBusy;
+}
+
+function ThreadTrailingIndicator({
+  hasComposerDraft,
+  hasPendingInteraction,
+  isActive,
+  isBackgroundAgentActive,
+  isBackgroundCommandActive,
+  isForegroundAgentWorking,
+  isGoalActive,
+  isPlanModeActive,
+  isBusy,
+  isWorkflowActive,
+  showUnreadBadge,
+  unreadBadgeTone,
 }: ThreadTrailingIndicatorProps) {
+  const statusProps: ThreadStatusGlyphProps = {
+    hasPendingInteraction,
+    isBackgroundAgentActive,
+    isBackgroundCommandActive,
+    isForegroundAgentWorking,
+    isGoalActive,
+    isPlanModeActive,
+    isBusy,
+    isWorkflowActive,
+    showUnreadBadge,
+    unreadBadgeTone,
+  };
   const showStatusGlyph =
     hasPendingInteraction ||
     isBackgroundAgentActive ||
@@ -393,30 +452,28 @@ function ThreadTrailingIndicator({
     isBusy ||
     isWorkflowActive ||
     showUnreadBadge;
+  const draftReplacesLoadingGlyph =
+    hasComposerDraft && isActive && isThreadLoadingGlyphVisible(statusProps);
+  const showDraftIndicator =
+    draftReplacesLoadingGlyph || (hasComposerDraft && !showStatusGlyph);
 
-  if (!showStatusGlyph) {
+  if (!showStatusGlyph && !showDraftIndicator) {
     return null;
   }
 
   return (
     <span
+      data-sidebar-thread-trailing-indicator=""
       className={cn(
         SIDEBAR_ROW_GLYPH_SLOT_CLASS,
         COARSE_POINTER_GLYPH_BOX_CLASS,
       )}
     >
-      <ThreadStatusGlyph
-        hasPendingInteraction={hasPendingInteraction}
-        isBackgroundAgentActive={isBackgroundAgentActive}
-        isBackgroundCommandActive={isBackgroundCommandActive}
-        isForegroundAgentWorking={isForegroundAgentWorking}
-        isGoalActive={isGoalActive}
-        isPlanModeActive={isPlanModeActive}
-        isBusy={isBusy}
-        isWorkflowActive={isWorkflowActive}
-        showUnreadBadge={showUnreadBadge}
-        unreadBadgeTone={unreadBadgeTone}
-      />
+      {showDraftIndicator ? (
+        <ThreadDraftIndicator isWorking={draftReplacesLoadingGlyph} />
+      ) : (
+        <ThreadStatusGlyph {...statusProps} />
+      )}
     </span>
   );
 }
@@ -591,7 +648,6 @@ function ThreadRowComponent({
             revealOnHover
           />
         ) : null}
-        {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
         {splitIndicator.miniMap ? (
@@ -627,7 +683,9 @@ function ThreadRowComponent({
                 )}
               >
                 <ThreadTrailingIndicator
+                  hasComposerDraft={hasComposerDraft}
                   hasPendingInteraction={trailingHasPendingInteraction}
+                  isActive={isActive}
                   isBackgroundAgentActive={trailingBackgroundAgentActive}
                   isBackgroundCommandActive={trailingBackgroundCommandActive}
                   isForegroundAgentWorking={trailingRuntimeBusy}

@@ -79,6 +79,7 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
 function ThreadRowTestHarness({
   accessibleTitle,
   displayTitle,
+  hasComposerDraft = false,
   isActive = false,
   options = DEFAULT_OPTIONS,
   shortcutKey,
@@ -86,6 +87,7 @@ function ThreadRowTestHarness({
 }: {
   accessibleTitle?: string;
   displayTitle?: string;
+  hasComposerDraft?: boolean;
   isActive?: boolean;
   options?: ThreadRowOptions;
   shortcutKey?: string;
@@ -107,7 +109,7 @@ function ThreadRowTestHarness({
           projectId={thread.projectId}
           thread={thread}
           isActive={isActive}
-          hasComposerDraft={false}
+          hasComposerDraft={hasComposerDraft}
           options={options}
           displayTitle={displayTitle}
           accessibleTitle={accessibleTitle}
@@ -118,11 +120,13 @@ function ThreadRowTestHarness({
 }
 
 function renderThreadRow({
+  hasComposerDraft = false,
   isActive = false,
   options = DEFAULT_OPTIONS,
   shortcutKey,
   thread = createThread(),
 }: {
+  hasComposerDraft?: boolean;
   isActive?: boolean;
   options?: ThreadRowOptions;
   shortcutKey?: string;
@@ -130,6 +134,7 @@ function renderThreadRow({
 }) {
   const result = render(
     <ThreadRowTestHarness
+      hasComposerDraft={hasComposerDraft}
       isActive={isActive}
       options={options}
       shortcutKey={shortcutKey}
@@ -141,6 +146,7 @@ function renderThreadRow({
     rerenderThreadRow(nextThread: ThreadListEntry) {
       result.rerender(
         <ThreadRowTestHarness
+          hasComposerDraft={hasComposerDraft}
           isActive={isActive}
           options={options}
           shortcutKey={shortcutKey}
@@ -154,6 +160,45 @@ function renderThreadRow({
 afterEach(cleanup);
 
 describe("ThreadRow", () => {
+  it("puts the draft icon in the trailing status slot", () => {
+    const { container } = renderThreadRow({
+      hasComposerDraft: true,
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+    });
+
+    const draftIcon = container.querySelector('[data-icon="Edit"]');
+    expect(draftIcon).not.toBeNull();
+    expect(
+      draftIcon?.closest("[data-sidebar-thread-trailing-indicator]"),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
+    ).not.toBeNull();
+  });
+
+  it("replaces the active working spinner with a shimmering draft icon", () => {
+    renderThreadRow({
+      hasComposerDraft: true,
+      isActive: true,
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    const draftIcon = screen.getByLabelText(
+      "Thread working with unsubmitted draft",
+    );
+    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(draftIcon.classList)).toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
+    expect(screen.queryByLabelText("Agent working")).toBeNull();
+  });
+
   it("renders serialized title mentions as non-interactive pills", () => {
     const mentionedThread = createThread({
       id: "thr_mentioned",
