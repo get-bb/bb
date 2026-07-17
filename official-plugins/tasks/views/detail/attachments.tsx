@@ -175,6 +175,12 @@ export function AttachmentsGrid({
 
   if (attachments.length === 0) return null;
 
+  // Files render before images, each group in upload order. A single mixed
+  // wrap lets `align-items: stretch` inflate compact file cards to image
+  // height; separate tracks keep every card at its natural height.
+  const files = attachments.filter((attachment) => !attachment.isImage);
+  const images = attachments.filter((attachment) => attachment.isImage);
+
   const removeButton = (attachment: Attachment, variant: "image" | "file") => {
     if (!removable) return null;
     const busy = pending.has(attachment.id);
@@ -199,64 +205,72 @@ export function AttachmentsGrid({
     );
   };
 
+  const fileCard = (attachment: Attachment) => (
+    <div
+      key={attachment.id}
+      className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm shadow-2xs"
+    >
+      <a
+        href={attachmentDownloadUrl(attachment.id)}
+        download={attachment.fileName}
+        className="flex min-w-0 items-center gap-2 rounded-sm hover:bg-state-hover"
+      >
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
+          <Icon name="File" className="size-3.5" />
+        </span>
+        <span className="min-w-0">
+          <span className="block max-w-48 truncate">{attachment.fileName}</span>
+          <span className="block text-2xs text-muted-foreground">
+            {formatBytes(attachment.sizeBytes)}
+          </span>
+        </span>
+      </a>
+      {removeButton(attachment, "file")}
+    </div>
+  );
+
+  const imageTile = (attachment: Attachment) => (
+    <div
+      key={attachment.id}
+      className="group relative overflow-hidden rounded-md border border-border shadow-2xs"
+    >
+      <button
+        type="button"
+        className="block"
+        title={`${attachment.fileName} · ${formatBytes(attachment.sizeBytes)}`}
+        onClick={() => setLightbox(attachment)}
+      >
+        <img
+          src={attachmentDownloadUrl(attachment.id)}
+          alt={attachment.fileName}
+          className="block h-24 w-36 object-cover transition-opacity group-hover:opacity-90"
+        />
+        <span
+          className="absolute inset-x-0 bottom-0 truncate px-1.5 py-0.5 text-left text-2xs opacity-0 transition-opacity group-hover:opacity-100"
+          style={{
+            background: "color-mix(in oklab, var(--ink) 55%, transparent)",
+            color: "var(--canvas)",
+          }}
+        >
+          {attachment.fileName}
+        </span>
+      </button>
+      {removeButton(attachment, "image")}
+    </div>
+  );
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {attachments.map((attachment) =>
-        attachment.isImage ? (
-          <div
-            key={attachment.id}
-            className="group relative overflow-hidden rounded-md border border-border shadow-2xs"
-          >
-            <button
-              type="button"
-              className="block"
-              title={`${attachment.fileName} · ${formatBytes(attachment.sizeBytes)}`}
-              onClick={() => setLightbox(attachment)}
-            >
-              <img
-                src={attachmentDownloadUrl(attachment.id)}
-                alt={attachment.fileName}
-                className="block h-24 w-36 object-cover transition-opacity group-hover:opacity-90"
-              />
-              <span
-                className="absolute inset-x-0 bottom-0 truncate px-1.5 py-0.5 text-left text-2xs opacity-0 transition-opacity group-hover:opacity-100"
-                style={{
-                  background:
-                    "color-mix(in oklab, var(--ink) 55%, transparent)",
-                  color: "var(--canvas)",
-                }}
-              >
-                {attachment.fileName}
-              </span>
-            </button>
-            {removeButton(attachment, "image")}
-          </div>
-        ) : (
-          <div
-            key={attachment.id}
-            className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm shadow-2xs"
-          >
-            <a
-              href={attachmentDownloadUrl(attachment.id)}
-              download={attachment.fileName}
-              className="flex min-w-0 items-center gap-2 rounded-sm hover:bg-state-hover"
-            >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
-                <Icon name="File" className="size-3.5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block max-w-48 truncate">
-                  {attachment.fileName}
-                </span>
-                <span className="block text-2xs text-muted-foreground">
-                  {formatBytes(attachment.sizeBytes)}
-                </span>
-              </span>
-            </a>
-            {removeButton(attachment, "file")}
-          </div>
-        ),
-      )}
+    <div className="flex flex-col gap-2">
+      {files.length > 0 ? (
+        <div className="flex flex-wrap items-start gap-2">
+          {files.map(fileCard)}
+        </div>
+      ) : null}
+      {images.length > 0 ? (
+        <div className="flex flex-wrap items-start gap-2">
+          {images.map(imageTile)}
+        </div>
+      ) : null}
       {lightbox ? (
         <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />
       ) : null}

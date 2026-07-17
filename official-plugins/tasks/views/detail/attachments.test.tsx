@@ -22,6 +22,31 @@ function imageAttachment(overrides: Partial<Attachment> = {}): Attachment {
   };
 }
 
+describe("AttachmentsGrid layout", () => {
+  it("groups file cards before image previews regardless of input order", () => {
+    const screen = render(
+      <AttachmentsGrid
+        attachments={[
+          imageAttachment({ id: "01JIMAGE0000000000000000A1" }),
+          imageAttachment({
+            id: "01JFILE00000000000000000A1",
+            fileName: "notes.md",
+            mime: "text/markdown",
+            isImage: false,
+          }),
+          imageAttachment({ id: "01JIMAGE0000000000000000A2" }),
+        ]}
+      />,
+    );
+    const fileCard = screen.getByText("notes.md");
+    const image = screen.getAllByAltText("diagram.png")[0]!;
+    expect(
+      fileCard.compareDocumentPosition(image) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+});
+
 describe("AttachmentsGrid removal", () => {
   it("calls the typed removal callback after confirmation", async () => {
     const onRemove = vi.fn().mockResolvedValue(undefined);

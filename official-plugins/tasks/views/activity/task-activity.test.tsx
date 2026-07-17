@@ -12,9 +12,10 @@ import {
 } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createComment, createStore } from "../../api/index.js";
-import type { DisplayComment } from "../../shared/contract.js";
+import type { Attachment, DisplayComment } from "../../shared/contract.js";
 import {
   AgentNotificationControl,
+  AttachmentTracks,
   agentNotificationTarget,
   CommentComposer,
 } from "./task-activity.js";
@@ -77,6 +78,53 @@ function comment(
     createdAt: "2026-07-15T00:00:00.000Z",
   };
 }
+
+describe("AttachmentTracks", () => {
+  const attachment = (
+    id: string,
+    fileName: string,
+    isImage: boolean,
+  ): Attachment => ({
+    id,
+    taskId: "01HZZZZZZZZZZZZZZZZZZZZZT1",
+    commentId: "01HZZZZZZZZZZZZZZZZZZZZZC1",
+    fileName,
+    mime: isImage ? "image/png" : "text/plain",
+    sizeBytes: 1024,
+    isImage,
+    createdAt: "2026-07-15T00:00:00.000Z",
+  });
+
+  it("renders file cards before images regardless of input order", () => {
+    const screen = render(
+      <AttachmentTracks
+        attachments={[
+          attachment("01HZZZZZZZZZZZZZZZZZZZZ1I1", "shot-a.png", true),
+          attachment("01HZZZZZZZZZZZZZZZZZZZZ1F1", "notes.md", false),
+          attachment("01HZZZZZZZZZZZZZZZZZZZZ1I2", "shot-b.png", true),
+        ]}
+        onOpenImage={() => {}}
+      />,
+    );
+    const file = screen.getByText("notes.md");
+    const image = screen.getByAltText("shot-a.png");
+    expect(
+      file.compareDocumentPosition(image) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps each caption inside its own image figure", () => {
+    const screen = render(
+      <AttachmentTracks
+        attachments={[attachment("01HZZZZZZZZZZZZZZZZZZZZ1I1", "shot.png", true)]}
+        onOpenImage={() => {}}
+      />,
+    );
+    const figure = screen.getByRole("figure");
+    expect(figure.contains(screen.getByAltText("shot.png"))).toBe(true);
+    expect(figure.contains(screen.getByText("shot.png"))).toBe(true);
+  });
+});
 
 describe("agent notification target", () => {
   it("uses the last agent reply rather than the last activity entry", () => {

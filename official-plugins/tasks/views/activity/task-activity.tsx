@@ -110,41 +110,15 @@ function UserAvatar({ name }: { name: string }) {
   );
 }
 
-function AttachmentPreview({
-  attachment,
-  onOpenImage,
-}: {
-  attachment: Attachment;
-  onOpenImage: (attachment: Attachment) => void;
-}) {
-  const url = attachmentDownloadUrl(attachment.id);
-  if (attachment.isImage) {
-    return (
-      <figure className="m-0 flex flex-col">
-        <button
-          type="button"
-          aria-label={`View ${attachment.fileName}`}
-          onClick={() => onOpenImage(attachment)}
-        >
-          <img
-            src={url}
-            alt={attachment.fileName}
-            className="h-24 w-[150px] cursor-zoom-in rounded-md border border-border bg-muted object-cover hover:border-input"
-          />
-        </button>
-        <figcaption className="mt-0.5 max-w-[150px] truncate text-2xs text-muted-foreground">
-          {attachment.fileName}
-        </figcaption>
-      </figure>
-    );
-  }
+function FileAttachmentCard({ attachment }: { attachment: Attachment }) {
   return (
     <a
-      href={url}
+      href={attachmentDownloadUrl(attachment.id)}
       download={attachment.fileName}
-      className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs shadow-2xs hover:border-input"
+      title={`${attachment.fileName} · ${formatFileSize(attachment.sizeBytes)}`}
+      className="inline-flex min-w-0 max-w-60 items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs shadow-2xs hover:border-input hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span className="flex size-6 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
         <HugeiconsIcon icon={File01Icon} className="size-3.5" />
       </span>
       <span className="min-w-0">
@@ -154,6 +128,93 @@ function AttachmentPreview({
         </small>
       </span>
     </a>
+  );
+}
+
+/**
+ * Gallery thumbnail: shares the track's row height and keeps its natural
+ * aspect ratio, center-cropping past a 0.62×–2.2× width clamp so panoramas
+ * and tall phone shots stay on the shared row. The width cap sits on the
+ * button (not just the img) because a percentage max-width is ignored during
+ * intrinsic sizing — the figure must shrink-wrap the *cropped* width for the
+ * centered caption to stay aligned with the visible image.
+ */
+function ImageAttachmentFigure({
+  attachment,
+  onOpenImage,
+}: {
+  attachment: Attachment;
+  onOpenImage: (attachment: Attachment) => void;
+}) {
+  return (
+    <figure className="relative m-0 flex min-w-0 max-w-full flex-col">
+      <button
+        type="button"
+        aria-label={`View ${attachment.fileName}`}
+        title={attachment.fileName}
+        className="block max-w-[211px] rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring @2xl:max-w-[282px]"
+        onClick={() => onOpenImage(attachment)}
+      >
+        <img
+          src={attachmentDownloadUrl(attachment.id)}
+          alt={attachment.fileName}
+          className="h-24 w-auto min-w-15 max-w-full cursor-zoom-in rounded-md border border-border bg-muted object-cover hover:border-input @2xl:h-32 @2xl:min-w-20"
+        />
+      </button>
+      {/* w-0 + min-w-full: the caption never inflates the figure, so it
+          truncates and centers at the image's own width. */}
+      <figcaption
+        title={attachment.fileName}
+        className="mt-0.5 w-0 min-w-full truncate px-1 text-center text-2xs text-muted-foreground"
+      >
+        {attachment.fileName}
+      </figcaption>
+    </figure>
+  );
+}
+
+/**
+ * Two-track attachment layout: compact file cards first, then an image
+ * gallery. Grouping by kind keeps file cards out of image wrap rows (a
+ * single wrap's `align-items: stretch` is what inflated them to image
+ * height); DOM order matches the rendered order, so keyboard and screen
+ * reader traversal follow the visual reading order.
+ */
+export function AttachmentTracks({
+  attachments,
+  onOpenImage,
+}: {
+  attachments: Attachment[];
+  onOpenImage: (attachment: Attachment) => void;
+}) {
+  const files = attachments.filter((attachment) => !attachment.isImage);
+  const images = attachments.filter((attachment) => attachment.isImage);
+  return (
+    <div className="mt-1.5">
+      {files.length > 0 ? (
+        <div className="flex flex-wrap items-start gap-1.5">
+          {files.map((attachment) => (
+            <FileAttachmentCard key={attachment.id} attachment={attachment} />
+          ))}
+        </div>
+      ) : null}
+      {images.length > 0 ? (
+        <div
+          className={cn(
+            "flex flex-wrap items-start gap-x-2.5 gap-y-2",
+            files.length > 0 && "mt-2",
+          )}
+        >
+          {images.map((attachment) => (
+            <ImageAttachmentFigure
+              key={attachment.id}
+              attachment={attachment}
+              onOpenImage={onOpenImage}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -216,15 +277,7 @@ function CommentCard({ entry, nowMs }: { entry: FeedEntry; nowMs: number }) {
           onOpenThread={(threadId) => navigate.toThread(threadId)}
         />
         {attachments.length > 0 ? (
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            {attachments.map((attachment) => (
-              <AttachmentPreview
-                key={attachment.id}
-                attachment={attachment}
-                onOpenImage={setLightbox}
-              />
-            ))}
-          </div>
+          <AttachmentTracks attachments={attachments} onOpenImage={setLightbox} />
         ) : null}
         {lightbox ? (
           <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />
