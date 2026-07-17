@@ -46,6 +46,12 @@ interface AppPageHeaderProps {
    * desktop window. Split panes below the workspace's top edge disable this.
    */
   isWindowDragRegion?: boolean;
+  /**
+   * Whether this header owns the window's top-left chrome footprint. A split
+   * may have several top-row drag regions, but only its structural top-left
+   * leaf may clear the pinned sidebar trigger and macOS traffic lights.
+   */
+  ownsWindowTopLeft?: boolean;
 }
 
 export function AppPageHeader({
@@ -54,6 +60,7 @@ export function AppPageHeader({
   bordered = true,
   className,
   isWindowDragRegion = true,
+  ownsWindowTopLeft = true,
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
   const isCompactViewport = useIsCompactViewport();
@@ -64,7 +71,8 @@ export function AppPageHeader({
     desktopInfo,
     windowState: desktopWindowState,
   });
-  const shouldReserveSidebarTrigger = isCompactViewport || !isSidebarShowing;
+  const shouldReserveSidebarTrigger =
+    ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing);
   return (
     <header
       className={cn(

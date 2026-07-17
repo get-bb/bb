@@ -37,6 +37,7 @@ const PANE_CONTEXT: PaneContextValue = {
   onToggleMaximize: null,
   isBoundedPane: false,
   isTopRow: true,
+  ownsWindowTopLeft: true,
   navigateInPane: vi.fn(),
 };
 

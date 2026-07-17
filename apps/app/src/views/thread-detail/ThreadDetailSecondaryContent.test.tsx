@@ -226,6 +226,7 @@ function ThreadDetailTestPaneProvider({
     onToggleMaximize: noop,
     isBoundedPane: true,
     isTopRow: true,
+    ownsWindowTopLeft: true,
     navigateInPane: noop,
   };
   return <PaneContext.Provider value={value}>{children}</PaneContext.Provider>;

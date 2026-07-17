@@ -75,6 +75,7 @@ export function ThreadDetailHeader({
     beginPaneDrag,
     isFocused,
     isTopRow,
+    ownsWindowTopLeft,
     reservesWindowPanelToggle,
     secondaryPanelHost,
   } = usePaneContext();
@@ -229,6 +230,7 @@ export function ThreadDetailHeader({
       actions={actions}
       bordered={false}
       isWindowDragRegion={isTopRow}
+      ownsWindowTopLeft={ownsWindowTopLeft}
       className={cn(
         "border-b border-border-seam-vertical/60",
         beginPaneDrag && isFocused && "bg-surface-raised",

@@ -41,6 +41,7 @@ const threadStore = vi.hoisted(
 );
 const experimentState = vi.hoisted(() => ({ enabled: true }));
 const viewportState = vi.hoisted(() => ({ compact: false }));
+const sidebarState = vi.hoisted(() => ({ showing: true }));
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 interface ShortcutPresentationFixture {
   ariaKeyshortcuts: string;
@@ -113,7 +114,7 @@ vi.mock("react-resizable-panels", async () => {
 });
 
 vi.mock("@/components/ui/sidebar.js", () => ({
-  useIsSidebarShowing: () => true,
+  useIsSidebarShowing: () => sidebarState.showing,
 }));
 
 // Lightweight stand-in for the heavyweight thread view. It surfaces the pane's
@@ -153,6 +154,7 @@ vi.mock("./ThreadDetailView", () => ({
       <div
         data-testid={`pane-${threadId}`}
         data-focused={pane?.isFocused ? "true" : "false"}
+        data-window-top-left-owner={pane?.ownsWindowTopLeft ? "true" : "false"}
       >
         <div
           data-testid={`drag-${threadId}`}
@@ -387,6 +389,7 @@ function renderSplitArea(options: {
 beforeEach(() => {
   experimentState.enabled = true;
   viewportState.compact = false;
+  sidebarState.showing = true;
   commandHandlers.clear();
   commandPresentationState.isModifierHeld = false;
   commandPresentationState.shortcut = null;
@@ -920,12 +923,27 @@ describe("SplitThreadArea", () => {
     });
     await screen.findByTestId("pane-thr-b");
 
+    expect(
+      screen
+        .getAllByTestId(/^pane-thr-/)
+        .filter(
+          (pane) => pane.getAttribute("data-window-top-left-owner") === "true",
+        ),
+    ).toEqual([screen.getByTestId("pane-thr-a")]);
+
     fireEvent.click(screen.getByTestId("external-nav"));
 
     // Focused pane (thr-b) now shows thr-c; the unfocused pane (thr-a) survives.
     expect(await screen.findByTestId("pane-thr-c")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.queryByTestId("pane-thr-b")).toBeNull();
+    expect(
+      screen
+        .getAllByTestId(/^pane-thr-/)
+        .filter(
+          (pane) => pane.getAttribute("data-window-top-left-owner") === "true",
+        ),
+    ).toEqual([screen.getByTestId("pane-thr-a")]);
   });
 
   it("focuses an already-open pane instead of duplicating on external navigation", async () => {
@@ -1086,6 +1104,113 @@ describe("SplitThreadArea", () => {
       expect(header?.className).not.toContain("[app-region:drag]");
       expect(header?.className).not.toContain("[-webkit-app-region:drag]");
     }
+  });
+
+  it("reserves collapsed window-left chrome only for the structural top-left pane", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      lastCheckedAt: null,
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.0-test",
+    };
+    window.bbDesktop = createBbDesktopApi(desktopInfo);
+    sidebarState.showing = false;
+    setPluginSlotRegistrations("test-plugin", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
+        (path) => ({
+          id: path,
+          title: path,
+          icon: "FileText",
+          path,
+          component: () => <div>{path} panel</div>,
+        }),
+      ),
+      threadPanelActions: [],
+      composerAccessories: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderSplitArea({
+      path: "/plugins/test-plugin/bottom-right",
+      layout: fourPanePluginLayout(),
+      routeContent: pluginContent("bottom-right"),
+    });
+
+    const contentRow = async (path: string) =>
+      (await screen.findByText(path))
+        .closest("header")
+        ?.querySelector('[data-testid="app-page-header-content-row"]');
+    expect((await contentRow("top-left"))?.className).toContain("pl-[104px]");
+    for (const path of ["top-right", "bottom-left", "bottom-right"]) {
+      expect((await contentRow(path))?.className).not.toContain("pl-[104px]");
+    }
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Maximize pane/ })[3]!,
+    );
+    await waitFor(() =>
+      expect(contentRow("bottom-right")).resolves.toHaveProperty(
+        "className",
+        expect.stringContaining("pl-[104px]"),
+      ),
+    );
+    expect((await contentRow("top-left"))?.className).not.toContain(
+      "pl-[104px]",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Restore pane/ }));
+    await waitFor(() =>
+      expect(contentRow("top-left")).resolves.toHaveProperty(
+        "className",
+        expect.stringContaining("pl-[104px]"),
+      ),
+    );
+  });
+
+  it("assigns exactly one top-left owner through eight-pane structural changes", async () => {
+    for (const threadId of [
+      "thr-c",
+      "thr-d",
+      "thr-e",
+      "thr-f",
+      "thr-g",
+      "thr-h",
+    ]) {
+      threadStore.set(threadId, { archivedAt: null, deletedAt: null });
+    }
+    const initialLayout = eightPaneThreadLayout();
+    const store = renderSplitArea({
+      path: threadPath("thr-h"),
+      layout: initialLayout,
+    });
+    await screen.findByTestId("pane-thr-h");
+
+    const owners = () =>
+      screen
+        .getAllByTestId(/^pane-thr-/)
+        .filter(
+          (pane) => pane.getAttribute("data-window-top-left-owner") === "true",
+        );
+    expect(owners()).toHaveLength(1);
+    expect(owners()[0]?.getAttribute("data-testid")).toBe("pane-thr-a");
+
+    const moved = movePane(initialLayout, "pane-8", "pane-1", "left");
+    store.set(splitLayoutAtom, moved);
+    await waitFor(() => expect(owners()).toHaveLength(1));
+    expect(owners()[0]?.getAttribute("data-testid")).toBe("pane-thr-h");
+
+    fireEvent.click(screen.getByTestId("close-thr-h"));
+    await waitFor(() => expect(screen.queryByTestId("pane-thr-h")).toBeNull());
+    expect(owners()).toHaveLength(1);
+    expect(owners()[0]?.getAttribute("data-testid")).toBe("pane-thr-a");
   });
 
   it("places plugin header actions before the pane close button", async () => {

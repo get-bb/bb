@@ -168,6 +168,7 @@ function withPaneContext(
     onToggleMaximize: noop,
     isBoundedPane: true,
     isTopRow,
+    ownsWindowTopLeft: isTopRow,
     navigateInPane: noop,
   };
   return <PaneContext.Provider value={value}>{children}</PaneContext.Provider>;

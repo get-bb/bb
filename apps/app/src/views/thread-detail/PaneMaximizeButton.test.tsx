@@ -31,6 +31,7 @@ function renderButton(
     onToggleMaximize,
     isBoundedPane: true,
     isTopRow: true,
+    ownsWindowTopLeft: true,
     navigateInPane: noop,
   };
   return render(
@@ -86,6 +87,7 @@ describe("PaneMaximizeButton", () => {
       onToggleMaximize: null,
       isBoundedPane: false,
       isTopRow: true,
+      ownsWindowTopLeft: true,
       navigateInPane: noop,
     };
     render(

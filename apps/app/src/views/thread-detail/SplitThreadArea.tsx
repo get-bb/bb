@@ -565,6 +565,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           onToggleMaximize={null}
           isBoundedPane={false}
           isTopRow
+          ownsWindowTopLeft
           onNavigateInPane={navigateInPane}
         />
       </>
@@ -591,6 +592,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
             node={layout.root}
             path={EMPTY_PATH}
             isTopRow
+            isLeftEdge
             isRightEdge
             focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
             maximizedPaneId={effectiveMaximizedPaneId}
@@ -666,6 +668,8 @@ interface SplitTreeProps {
   path: SplitPath;
   /** Whether this subtree touches the workspace's top edge. */
   isTopRow: boolean;
+  /** Whether this subtree touches the workspace's left edge. */
+  isLeftEdge: boolean;
   /** Whether this subtree touches the workspace's right edge. */
   isRightEdge: boolean;
   focusedPaneId: string;
@@ -685,7 +689,8 @@ interface SplitTreeProps {
 }
 
 function SplitTree(props: SplitTreeProps) {
-  const { node, path, isTopRow, isRightEdge, focusedPaneId } = props;
+  const { node, path, isTopRow, isLeftEdge, isRightEdge, focusedPaneId } =
+    props;
 
   if (node.type === "pane") {
     const isFocused = node.paneId === focusedPaneId;
@@ -733,6 +738,11 @@ function SplitTree(props: SplitTreeProps) {
           onToggleMaximize={() => props.onToggleMaximizePane(node.paneId)}
           isBoundedPane
           isTopRow={isMaximized || isTopRow}
+          ownsWindowTopLeft={
+            props.maximizedPaneId !== null
+              ? isMaximized
+              : isTopRow && isLeftEdge
+          }
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
@@ -778,6 +788,9 @@ function SplitTree(props: SplitTreeProps) {
               // vertical stack, only the first child can inherit the parent
               // subtree's contact with the workspace top edge.
               isTopRow={isTopRow && (node.dir === "row" || index === 0)}
+              // Vertical siblings share the parent's left edge. In a
+              // horizontal row, only the first child can inherit it.
+              isLeftEdge={isLeftEdge && (node.dir === "col" || index === 0)}
               isRightEdge={
                 isRightEdge &&
                 (node.dir === "col" || index === node.children.length - 1)
@@ -804,6 +817,7 @@ interface WorkspacePaneContentProps {
   // content fills the card exactly (see PaneContextValue.isBoundedPane).
   isBoundedPane: boolean;
   isTopRow: boolean;
+  ownsWindowTopLeft: boolean;
   onNavigateInPane: NavigateInPane;
   // Absent for the single-pane surface — a lone pane has nothing to reorder.
   onBeginPaneDrag?: BeginPaneDrag;
@@ -821,6 +835,7 @@ function WorkspacePaneContent({
   onToggleMaximize,
   isBoundedPane,
   isTopRow,
+  ownsWindowTopLeft,
   onNavigateInPane,
   onBeginPaneDrag,
 }: WorkspacePaneContentProps) {
@@ -858,6 +873,7 @@ function WorkspacePaneContent({
       onToggleMaximize,
       isBoundedPane,
       isTopRow,
+      ownsWindowTopLeft,
       navigateInPane,
       beginPaneDrag,
     }),
@@ -867,6 +883,7 @@ function WorkspacePaneContent({
       isFocused,
       isSplitPane,
       isTopRow,
+      ownsWindowTopLeft,
       navigateInPane,
       onRequestClose,
       isMaximized,
@@ -886,6 +903,7 @@ function WorkspacePaneContent({
           beginPaneDrag={beginPaneDrag}
           isBoundedPane={isBoundedPane}
           isTopRow={isTopRow}
+          ownsWindowTopLeft={ownsWindowTopLeft}
         />
       </PaneContext.Provider>
     );
@@ -924,12 +942,14 @@ function NonThreadPaneContent({
   beginPaneDrag,
   isBoundedPane,
   isTopRow,
+  ownsWindowTopLeft,
 }: {
   content: Exclude<PaneContent, { kind: "thread" }>;
   onRequestClose: (() => void) | null;
   beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
   isBoundedPane: boolean;
   isTopRow: boolean;
+  ownsWindowTopLeft: boolean;
 }) {
   const { navPanels } = usePluginSlots();
   const { reservesWindowPanelToggle } = useOptionalPaneContext() ?? {
@@ -993,6 +1013,7 @@ function NonThreadPaneContent({
         <AppPageHeader
           bordered={false}
           isWindowDragRegion={isTopRow}
+          ownsWindowTopLeft={ownsWindowTopLeft}
           className="border-b border-border-seam-vertical/60"
           center={
             <div

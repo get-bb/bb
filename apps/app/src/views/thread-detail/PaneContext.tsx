@@ -55,6 +55,12 @@ export interface PaneContextValue {
    * occupies the native desktop title-bar row.
    */
   isTopRow: boolean;
+  /**
+   * Whether this pane owns the window's top-left chrome footprint. This is
+   * stricter than {@link isTopRow}: horizontal siblings can all be title-bar
+   * drag regions, but only one leaf may reserve traffic-light/sidebar space.
+   */
+  ownsWindowTopLeft: boolean;
   navigateInPane: (thread: ThreadRoutePathArgs) => void;
   /**
    * Starts a pane-reorder drag from the pane header via the shared split-drag
@@ -197,6 +203,7 @@ export function DefaultPaneContextProvider({
       onToggleMaximize: null,
       isBoundedPane: false,
       isTopRow: true,
+      ownsWindowTopLeft: true,
       navigateInPane,
     }),
     [navigateInPane],
