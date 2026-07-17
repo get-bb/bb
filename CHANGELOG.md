@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.0.31
+
+Splits headline this release: split views graduate out of experiments for everyone, with twice the pane capacity, per-pane maximize, and a smarter side panel. Queued messages, sidebar organization, and model-fallback visibility also got significant upgrades.
+
+### Splits, out of experiments
+
+- Split views are now on for everyone — no experiment toggle needed. Arrange multiple chats side by side by dragging threads from the sidebar, then resize, rearrange, and move between panes with keyboard shortcuts.
+- Splits now hold up to eight panes, up from four, with focus shortcuts for panes 5–8 and smarter layout balancing as you add panes.
+- Maximize a single pane and restore the full layout with Mod+Shift+E, the pane header control, or `bb thread pane maximize|restore|toggle` from the CLI and SDK.
+- The right panel (diffs, previews, terminals) now lives at the window level: it follows the focused pane and stays open as you move between panes and threads.
+- Sidebar actions show a split preview, so you can see where a thread or new chat will open before you click.
+- Keyboard commands like focus composer and toggle model picker now act on the focused pane instead of an arbitrary one.
+- Polish throughout: precise divider hit testing, smoother resizing, no more stuck sidebar state after dragging a thread into a split, window dragging confined to the top row, correct macOS traffic-light spacing, and refined pane header and focused-pane styling.
+
+### Queued messages and the composer
+
+- Queued follow-ups now live in a compact drawer that scales to long queues, with drag-to-resize and a fullscreen editing mode; editing a queued message keeps its position, grouping, and execution options.
+- Queued message actions — send now, edit, delete — are now icon buttons on desktop.
+- Agent messages have a consistent action row: Copy, Add to chat, Reply in side chat, and Fork, with Add to chat inserting the response into your current draft.
+- Thread mentions render as live pills that follow renames across timelines, thread headers, and the sidebar.
+- Prompt attachments are preserved when switching projects.
+
+### Sidebar and navigation
+
+- Top-level sidebar sections (Pinned, your sections, Threads) are unified and drag-reorderable, and you can now pin or unpin a thread by dragging it.
+- Archived threads moved out of the sidebar into Settings.
+- The Threads sidebar header is unified across organization modes, and the manual sort option is now called Manually.
+
+### Models and providers
+
+- When Claude falls back to another model, bb shows it immediately with a dismissible banner above the composer and updates the model picker to the active model.
+- Usage limits now show which account email each provider is signed in with, and Cursor usage limits are now supported.
+- Thread creation no longer fails on providers that are slow to start.
+
+### Other improvements
+
+- `bb secret request` can now write credentials to any destination on the thread's host, and the secure form shows the resolved absolute path before you approve.
+- The SDK now includes the personal project in project listings and emits a curated `thread.active` lifecycle event.
+- The bb website has a new changelog page, with the latest release highlighted on the homepage.
+
+### Fixes and polish
+
+- Fixed desktop light/dark switching when following the system theme.
+- Fixed scrolling of long agent questions and sidebar safe-area coverage on mobile.
+- Fixed a render loop in collapsed thread previews and paused animations during collapse transitions for smoother sidebars.
+- Worktree setup now runs with your resolved shell PATH.
+- Development builds no longer send telemetry.
+- bb Connect no longer proxies requests through a dead tunnel socket.
+- Removed the popout chat experiment, superseded by splits.
+
 ## 0.0.30
 
 This release introduces multi-machine workflows and bb Connect, adds more ways to customize how bb works, and gives you clearer visibility into what agents are doing.

@@ -29,6 +29,10 @@ export type ReleaseMeta = {
 };
 
 export const RELEASE_META: Record<string, ReleaseMeta> = {
+  "0.0.31": {
+    date: "July 17, 2026",
+    headline: "Splits for everyone",
+  },
   "0.0.30": {
     date: "July 14, 2026",
     headline: "Multi-machine workflows and bb Connect",
