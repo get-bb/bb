@@ -236,6 +236,19 @@ describe("QueuedMessagesList", () => {
     expect(
       container.querySelector("[data-queued-message-inline-editor]"),
     ).not.toBeNull();
+    const inlineEditorSlot = container.querySelector(
+      "[data-queued-message-inline-editor]",
+    );
+    expect(
+      inlineEditorSlot?.querySelector(
+        '[data-overflow-fade="above"][data-overflow-fade-tone="surface-raised"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      inlineEditorSlot?.querySelector(
+        '[data-overflow-fade="below"][data-overflow-fade-tone="surface-raised"]',
+      ),
+    ).not.toBeNull();
     expect(container.textContent).toContain("First queued message");
     expect(container.textContent).not.toContain("Second queued message");
     const queueItems = container.querySelectorAll("ul > li");

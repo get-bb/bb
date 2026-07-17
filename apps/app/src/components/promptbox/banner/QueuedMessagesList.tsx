@@ -833,33 +833,37 @@ function QueuedMessageInlineEditorSlot({
   return (
     <li
       data-queued-message-inline-editor=""
-      className="border-b border-border/35 px-2.5 py-1 last:border-b-0"
+      className="relative z-10 border-b border-border/35 px-2.5 py-1 last:border-b-0"
     >
-      <div className="mb-1.5 flex min-h-7 items-center gap-1.5 pl-1 text-xs text-subtle-foreground">
-        <Icon name="Edit" className="size-3.5" aria-hidden />
-        <span>Editing queued message {editor.queuedMessageIndex + 1}</span>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="ml-auto size-6 text-subtle-foreground"
-          onClick={editor.onDismiss}
-          aria-label="Move editor back to the prompt box"
-        >
-          <Icon name="X" className="size-3" aria-hidden />
-        </Button>
-      </div>
-      {editor.ready ? (
-        <div
-          ref={editor.onComposerTargetChange}
-          className="relative z-20 min-h-28 duration-200 animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none"
-          data-queued-message-composer-target=""
-        />
-      ) : (
-        <div className="flex min-h-28 items-center justify-center rounded-xl border border-border bg-background text-xs text-muted-foreground shadow-lift">
-          Opening editor…
+      <OverflowFade placement="above" tone="surface-raised" className="z-10" />
+      <div className="relative z-20">
+        <div className="mb-1.5 flex min-h-7 items-center gap-1.5 pl-1 text-xs text-subtle-foreground">
+          <Icon name="Edit" className="size-3.5" aria-hidden />
+          <span>Editing queued message {editor.queuedMessageIndex + 1}</span>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="ml-auto size-6 text-subtle-foreground"
+            onClick={editor.onDismiss}
+            aria-label="Move editor back to the prompt box"
+          >
+            <Icon name="X" className="size-3" aria-hidden />
+          </Button>
         </div>
-      )}
+        {editor.ready ? (
+          <div
+            ref={editor.onComposerTargetChange}
+            className="relative min-h-28 duration-200 animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none"
+            data-queued-message-composer-target=""
+          />
+        ) : (
+          <div className="flex min-h-28 items-center justify-center rounded-xl border border-border bg-background text-xs text-muted-foreground shadow-lift">
+            Opening editor…
+          </div>
+        )}
+      </div>
+      <OverflowFade placement="below" tone="surface-raised" className="z-10" />
     </li>
   );
 }
