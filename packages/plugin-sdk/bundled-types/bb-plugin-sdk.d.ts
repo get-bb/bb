@@ -3468,6 +3468,7 @@ type EnvironmentStatusResponse = z$1.infer<typeof environmentStatusResponseSchem
 declare const providerUsageResponseSchema: z$1.ZodObject<{
     codex: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         status: z$1.ZodLiteral<"ok">;
+        accountEmail: z$1.ZodNullable<z$1.ZodString>;
         planLabel: z$1.ZodNullable<z$1.ZodString>;
         windows: z$1.ZodArray<z$1.ZodObject<{
             label: z$1.ZodString;
@@ -3490,6 +3491,7 @@ declare const providerUsageResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strip>], "status">;
     claudeCode: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         status: z$1.ZodLiteral<"ok">;
+        accountEmail: z$1.ZodNullable<z$1.ZodString>;
         planLabel: z$1.ZodNullable<z$1.ZodString>;
         windows: z$1.ZodArray<z$1.ZodObject<{
             label: z$1.ZodString;
@@ -3512,6 +3514,7 @@ declare const providerUsageResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strip>], "status">;
     cursor: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         status: z$1.ZodLiteral<"ok">;
+        accountEmail: z$1.ZodNullable<z$1.ZodString>;
         planLabel: z$1.ZodNullable<z$1.ZodString>;
         windows: z$1.ZodArray<z$1.ZodObject<{
             label: z$1.ZodString;
@@ -5017,6 +5020,7 @@ declare const hostDaemonCommandRegistry: {
     }, z$1.core.$strict>, z$1.ZodObject<{
         codex: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             status: z$1.ZodLiteral<"ok">;
+            accountEmail: z$1.ZodNullable<z$1.ZodString>;
             planLabel: z$1.ZodNullable<z$1.ZodString>;
             windows: z$1.ZodArray<z$1.ZodObject<{
                 label: z$1.ZodString;
@@ -5039,6 +5043,7 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "status">;
         claudeCode: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             status: z$1.ZodLiteral<"ok">;
+            accountEmail: z$1.ZodNullable<z$1.ZodString>;
             planLabel: z$1.ZodNullable<z$1.ZodString>;
             windows: z$1.ZodArray<z$1.ZodObject<{
                 label: z$1.ZodString;
@@ -5061,6 +5066,7 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "status">;
         cursor: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             status: z$1.ZodLiteral<"ok">;
+            accountEmail: z$1.ZodNullable<z$1.ZodString>;
             planLabel: z$1.ZodNullable<z$1.ZodString>;
             windows: z$1.ZodArray<z$1.ZodObject<{
                 label: z$1.ZodString;
