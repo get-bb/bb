@@ -25,6 +25,13 @@ This release brings split views to everyone and redesigns queued messages in the
 - Improved bb Connect reliability.
 - Worktree setup now runs with your resolved shell PATH.
 
+### Experiments
+
+- New Tasks plugin: Linear-style task tracking with agent dispatch — assign agents to tasks, follow their progress in comments, and attach files and GitHub PRs.
+- Official plugins are now bundled with the app and update alongside it.
+- New Workflows plugin renders live multi-agent workflow runs in chat, across providers.
+- Docs gained table editing, easier file management, and a pull/push-based CLI.
+
 ## 0.0.30
 
 This release introduces multi-machine workflows and bb Connect, adds more ways to customize how bb works, and gives you clearer visibility into what agents are doing.
