@@ -23,6 +23,7 @@ export interface CodexChatGptAuthCredentials {
   type: "chatgpt";
   accessToken: string;
   accountId: string;
+  accountEmail: string | null;
   isFedrampAccount: boolean;
 }
 
@@ -98,6 +99,15 @@ function getChatGptAuthClaims(token: string): JsonObject | null {
 function getAccountIdFromToken(token: string): string | null {
   const auth = getChatGptAuthClaims(token);
   return auth ? optionalString(auth.chatgpt_account_id) : null;
+}
+
+function getAccountEmailFromToken(token: string): string | null {
+  const payload = decodeJwtPayload(token);
+  if (!payload) {
+    return null;
+  }
+  const profile = toJsonObject(payload["https://api.openai.com/profile"]);
+  return optionalString(payload.email) ?? optionalString(profile?.email);
 }
 
 function isFedrampToken(token: string): boolean {
@@ -222,6 +232,11 @@ function buildChatGptCredentials(
       accessToken: auth.accessToken,
       tokens: auth.tokens,
     }),
+    accountEmail:
+      getAccountEmailFromToken(auth.accessToken) ??
+      (typeof auth.tokens.id_token === "string"
+        ? getAccountEmailFromToken(auth.tokens.id_token)
+        : null),
     isFedrampAccount: resolveFedrampAccount({
       accessToken: auth.accessToken,
       tokens: auth.tokens,

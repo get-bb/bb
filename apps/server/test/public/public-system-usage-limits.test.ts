@@ -8,6 +8,7 @@ import { withTestHarness } from "../helpers/test-app.js";
 const USAGE_RESPONSE: ProviderUsageResponse = {
   codex: {
     status: "ok",
+    accountEmail: "codex@example.com",
     planLabel: "Plus",
     windows: [{ label: "5-hour", usedPercent: 42, resetsAt: null }],
   },

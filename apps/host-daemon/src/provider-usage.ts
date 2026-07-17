@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import Database from "better-sqlite3";
 import type {
   ProviderUsage,
   ProviderUsageResponse,
@@ -145,7 +146,10 @@ async function fetchChatGptUsage(headers: Headers): Promise<Response> {
   return response;
 }
 
-function normalizeCodexUsage(raw: unknown): ProviderUsage {
+function normalizeCodexUsage(
+  raw: unknown,
+  accountEmail: string | null = null,
+): ProviderUsage {
   const parsed = codexUsageResponseSchema.safeParse(raw);
   if (!parsed.success) {
     return { status: "error", message: "Codex usage response was malformed." };
@@ -158,6 +162,7 @@ function normalizeCodexUsage(raw: unknown): ProviderUsage {
 
   return {
     status: "ok",
+    accountEmail,
     planLabel: codexPlanLabel(parsed.data.plan_type),
     windows,
   };
@@ -209,7 +214,7 @@ async function fetchCodexUsage(): Promise<ProviderUsage> {
     };
   }
 
-  return normalizeCodexUsage(await response.json());
+  return normalizeCodexUsage(await response.json(), credentials.accountEmail);
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +239,12 @@ const claudeCredentialsSchema = z.object({
 type ClaudeCredentials = z.infer<
   typeof claudeCredentialsSchema
 >["claudeAiOauth"];
+
+const claudeAccountSchema = z.object({
+  oauthAccount: z
+    .object({ emailAddress: z.string().email().nullish() })
+    .nullish(),
+});
 
 const claudeUsageWindowSchema = z.object({
   utilization: z.number().nullish(),
@@ -306,6 +317,21 @@ async function readClaudeCredentials(): Promise<ClaudeCredentials | null> {
   return parsed.success ? parsed.data.claudeAiOauth : null;
 }
 
+async function readClaudeAccountEmail(): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(
+      path.join(os.homedir(), ".claude.json"),
+      "utf8",
+    );
+    const parsed = claudeAccountSchema.safeParse(JSON.parse(raw));
+    return parsed.success
+      ? (parsed.data.oauthAccount?.emailAddress ?? null)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function claudePlanLabel(credentials: ClaudeCredentials): string | null {
   const tier = credentials.rateLimitTier ?? "";
   const maxMatch = tier.match(/max_(\d+)x/u);
@@ -336,6 +362,7 @@ function claudeWindow(
 function normalizeClaudeUsage(
   raw: unknown,
   credentials: ClaudeCredentials,
+  accountEmail: string | null = null,
 ): ProviderUsage {
   const parsed = claudeUsageResponseSchema.safeParse(raw);
   if (!parsed.success) {
@@ -349,13 +376,17 @@ function normalizeClaudeUsage(
 
   return {
     status: "ok",
+    accountEmail,
     planLabel: claudePlanLabel(credentials),
     windows,
   };
 }
 
 async function fetchClaudeUsage(): Promise<ProviderUsage> {
-  const credentials = await readClaudeCredentials();
+  const [credentials, accountEmail] = await Promise.all([
+    readClaudeCredentials(),
+    readClaudeAccountEmail(),
+  ]);
   if (!credentials) {
     return { status: "unauthenticated" };
   }
@@ -393,7 +424,7 @@ async function fetchClaudeUsage(): Promise<ProviderUsage> {
     };
   }
 
-  return normalizeClaudeUsage(await response.json(), credentials);
+  return normalizeClaudeUsage(await response.json(), credentials, accountEmail);
 }
 
 // ---------------------------------------------------------------------------
@@ -447,6 +478,8 @@ const cursorPlanInfoSchema = z
 const cursorFileCredentialsSchema = z.object({
   accessToken: z.string().min(1).nullish(),
 });
+
+const cursorCachedEmailSchema = z.string().email();
 
 function cursorAuthFilePath(): string {
   if (process.platform === "win32") {
@@ -509,6 +542,63 @@ async function readCursorAccessToken(): Promise<string | null> {
   );
 }
 
+function cursorStateDatabasePath(): string {
+  if (process.platform === "win32") {
+    const appData =
+      process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+    return path.join(appData, "Cursor", "User", "globalStorage", "state.vscdb");
+  }
+  if (process.platform === "darwin") {
+    return path.join(
+      os.homedir(),
+      "Library",
+      "Application Support",
+      "Cursor",
+      "User",
+      "globalStorage",
+      "state.vscdb",
+    );
+  }
+  const configHome =
+    process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
+  return path.join(
+    configHome,
+    "Cursor",
+    "User",
+    "globalStorage",
+    "state.vscdb",
+  );
+}
+
+function readCursorAccountEmailFromDatabase(
+  databasePath: string,
+): string | null {
+  let database: Database.Database | null = null;
+  try {
+    database = new Database(databasePath, {
+      fileMustExist: true,
+      readonly: true,
+    });
+    const row = database
+      .prepare("SELECT value FROM ItemTable WHERE key = ?")
+      .get("cursorAuth/cachedEmail");
+    const parsed = z.object({ value: z.string() }).safeParse(row);
+    if (!parsed.success) {
+      return null;
+    }
+    const email = cursorCachedEmailSchema.safeParse(parsed.data.value);
+    return email.success ? email.data : null;
+  } catch {
+    return null;
+  } finally {
+    database?.close();
+  }
+}
+
+function readCursorAccountEmail(): string | null {
+  return readCursorAccountEmailFromDatabase(cursorStateDatabasePath());
+}
+
 interface CursorSpendUsageWindowArgs {
   label: string;
   used: number | null | undefined;
@@ -550,6 +640,7 @@ function cursorPlanUsageWindow(
 function normalizeCursorUsage(
   rawUsage: unknown,
   rawPlan: unknown,
+  accountEmail: string | null = null,
 ): ProviderUsage {
   const usage = cursorCurrentPeriodUsageSchema.safeParse(rawUsage);
   if (!usage.success) {
@@ -581,6 +672,7 @@ function normalizeCursorUsage(
 
   return {
     status: "ok",
+    accountEmail,
     planLabel: plan.success ? (plan.data.planInfo?.planName ?? null) : null,
     windows,
   };
@@ -635,7 +727,11 @@ async function fetchCursorUsage(): Promise<ProviderUsage> {
   }
 
   const rawPlan: unknown = planResponse.ok ? await planResponse.json() : {};
-  return normalizeCursorUsage(await usageResponse.json(), rawPlan);
+  return normalizeCursorUsage(
+    await usageResponse.json(),
+    rawPlan,
+    readCursorAccountEmail(),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -678,4 +774,5 @@ export const __testing = {
   normalizeCursorUsage,
   codexPlanLabel,
   claudePlanLabel,
+  readCursorAccountEmailFromDatabase,
 };

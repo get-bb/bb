@@ -314,6 +314,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "provider.usage": {
     codex: {
       status: "ok",
+      accountEmail: "codex@example.com",
       planLabel: "Pro",
       windows: [
         {

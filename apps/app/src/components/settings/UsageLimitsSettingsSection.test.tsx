@@ -42,6 +42,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
       usage: {
         cursor: {
           status: "ok",
+          accountEmail: "cursor@example.com",
           planLabel: "Pro",
           windows: [
             { label: "Plan usage", usedPercent: 50, resetsAt: null },
@@ -61,6 +62,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Cursor" })).toBeDefined();
+    expect(screen.getByText("cursor@example.com")).toBeDefined();
     expect(screen.getByText("Plan usage")).toBeDefined();
     expect(screen.getByText("50% used")).toBeDefined();
     expect(screen.getByText("On-demand spend")).toBeDefined();
