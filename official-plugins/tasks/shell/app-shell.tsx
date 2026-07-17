@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { PluginNavPanelProps } from "@bb/plugin-sdk/app";
 import {
   useActiveTasks,
@@ -59,6 +59,73 @@ function hasOpenOverlay(): boolean {
     document.querySelector(
       '[role="dialog"], [role="menu"], [role="listbox"]',
     ) !== null
+  );
+}
+
+/**
+ * Accessible shell for the narrow-container sidebar drawer: dialog semantics,
+ * focus moved in on open and restored on close, a Tab cycle kept inside, and
+ * Escape closing the drawer. `preventDefault` on Escape keeps the shell's
+ * task-back handler from also firing; the `role="dialog"` node additionally
+ * makes `hasOpenOverlay` treat the drawer like every other overlay.
+ */
+function SidebarDrawer({
+  onClose,
+  children,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previous =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    ref.current?.focus();
+    return () => previous?.focus();
+  }, []);
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab" || !ref.current) return;
+    const focusables = ref.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    );
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (first === undefined || last === undefined) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Tasks sidebar"
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      className="absolute inset-0 z-30 focus-visible:outline-none"
+    >
+      <button
+        type="button"
+        aria-label="Close sidebar"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+      />
+      <div className="absolute inset-y-0 right-0 flex max-w-[85%]">
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -125,21 +192,29 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   // narrow collapse is transient; an explicit toggle updates the user's
   // client-local preference.
   const rootRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(false);
   const [boardUsable, setBoardUsable] = useState(true);
   const [narrowOverride, setNarrowOverride] = useState<boolean | null>(null);
   useEffect(() => {
     const root = rootRef.current;
-    if (!root || typeof ResizeObserver === "undefined") return;
+    const main = mainRef.current;
+    if (!root || !main || typeof ResizeObserver === "undefined") return;
     const update = () => {
       const width = root.clientWidth;
       // Width 0 means hidden or not yet laid out — keep the wide default.
       setNarrow(width > 0 && width < SIDEBAR_AUTO_COLLAPSE_WIDTH);
-      setBoardUsable(!(width > 0 && width < BOARD_MIN_WIDTH));
+      // Board usability must track the same box the topbar's @md container
+      // rule measures — the main pane, after the desktop sidebar's width —
+      // or a wide sidebar could hide the toggle while the board still
+      // renders.
+      const mainWidth = main.clientWidth;
+      setBoardUsable(!(mainWidth > 0 && mainWidth < BOARD_MIN_WIDTH));
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(root);
+    observer.observe(main);
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
@@ -237,22 +312,12 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
     >
       {!effectiveSidebarCollapsed ? (
         sidebarOverlay ? (
-          <div className="absolute inset-0 z-30">
-            <button
-              type="button"
-              aria-label="Close sidebar"
-              onClick={toggleSidebar}
-              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
-            />
-            <div className="absolute inset-y-0 right-0 flex max-w-[85%]">
-              {sidebar}
-            </div>
-          </div>
+          <SidebarDrawer onClose={toggleSidebar}>{sidebar}</SidebarDrawer>
         ) : (
           sidebar
         )
       ) : null}
-      <main className="@container flex min-w-0 flex-1 flex-col">
+      <main ref={mainRef} className="@container flex min-w-0 flex-1 flex-col">
         <TasksTopbar
           route={route}
           projects={projects.data}
